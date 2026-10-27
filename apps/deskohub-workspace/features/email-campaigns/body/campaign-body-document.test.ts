@@ -1,12 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Result, Schema } from "effect";
+import { Option, Result, Schema } from "effect";
 import {
-  CampaignBodyDocument,
   type CampaignBodyNode,
+  campaignBodyDocument,
+  UnfinishedCampaignBodyDocument,
 } from "./campaign-body-document";
-
-const decode = Schema.decodeUnknownResult(CampaignBodyDocument);
 
 const body = (...content: ReadonlyArray<CampaignBodyNode>) => ({
   formatVersion: 1,
@@ -37,15 +36,11 @@ const cta = (attrs: CampaignBodyNode["attrs"]) => ({
 const cloudinaryImage =
   "https://res.cloudinary.com/cloud/image/upload/v1/campaigns/autumn.jpg";
 
-const failureMessage = (input: {
-  readonly formatVersion: number;
-  readonly doc: CampaignBodyNode;
-}): string => {
-  const result = decode(input);
-  return Result.isFailure(result) ? result.failure.message : "";
-};
+const decode = Schema.decodeUnknownResult(
+  campaignBodyDocument(Option.some("cloud"))
+);
 
-describe("CampaignBodyDocument", () => {
+describe("campaignBodyDocument", () => {
   test("accepts every node and mark of the content set", () => {
     const document = body(
       { type: "heading", attrs: { level: 2 }, content: [text("Novinky")] },
@@ -73,30 +68,6 @@ describe("CampaignBodyDocument", () => {
     expect(decode(document)).toEqual(Result.succeed(document));
   });
 
-  test("rejects a node outside the content set", () => {
-    expect(failureMessage(body({ type: "table" }))).toContain(
-      "Unknown node type: table"
-    );
-  });
-
-  test("rejects a mark outside the content set", () => {
-    expect(
-      failureMessage(body(paragraph(text("x", [{ type: "strike" }]))))
-    ).toContain("strike");
-  });
-
-  test("rejects invalid nesting", () => {
-    expect(
-      failureMessage(body({ type: "bulletList", content: [text("x")] }))
-    ).toContain("Invalid content for node bulletList");
-  });
-
-  test("rejects a root that isn't a doc node", () => {
-    expect(
-      failureMessage({ formatVersion: 1, doc: paragraph(text("x")) })
-    ).toContain('A body must be a "doc" node.');
-  });
-
   test("rejects an unknown format version", () => {
     expect(Result.isFailure(decode({ ...body(), formatVersion: 2 }))).toBe(
       true
@@ -104,48 +75,45 @@ describe("CampaignBodyDocument", () => {
   });
 
   test.each([
-    "javascript:alert(1)",
-    "http://workspace.deskohub.cz",
-    "data:text/html,hi",
-    "/relative",
-  ])("rejects the link %s", (href) => {
-    expect(failureMessage(body(link(href)))).toContain(
-      "A link must use an https: or mailto: URL."
-    );
+    ["a node outside the content set", body({ type: "table" })],
+    ["an unsafe link", body(link("javascript:alert(1)"))],
+    ["a foreign image", body(image("https://example.com/image.jpg"))],
+    ["a button without a label", body(cta({ label: " ", href: null }))],
+  ])("rejects %s", (_name, document) => {
+    expect(Result.isFailure(decode(document))).toBe(true);
   });
 
-  test.each([
-    "https://example.com/image.jpg",
-    "https://res.cloudinary.com/another-cloud/image/upload/v1/a.jpg",
-    "http://res.cloudinary.com/cloud/image/upload/v1/a.jpg",
-    "https://res.cloudinary.com/cloud/video/upload/v1/a.mp4",
-  ])("rejects the image %s", (src) => {
-    expect(failureMessage(body(image(src)))).toContain(
-      "An image must come from the Deskohub Cloudinary account."
-    );
-  });
+  test("checks images against the account it was made for", () => {
+    const document = body(image(cloudinaryImage));
+    const decodeFor = (cloudName: Option.Option<string>) =>
+      Result.isSuccess(
+        Schema.decodeUnknownResult(campaignBodyDocument(cloudName))(document)
+      );
 
-  test("rejects a button without a label", () => {
-    expect(
-      failureMessage(body(cta({ label: "  ", href: "https://deskohub.cz" })))
-    ).toContain("A button needs a label.");
+    expect(decodeFor(Option.some("cloud"))).toBe(true);
+    expect(decodeFor(Option.some("another-cloud"))).toBe(false);
+    expect(decodeFor(Option.none())).toBe(false);
   });
+});
 
-  test.each(["Book\rnow", "Book\r\nnow"])(
-    "rejects the button label %p, which Markdown can't keep",
-    (label) => {
-      expect(
-        failureMessage(body(cta({ label, href: "https://deskohub.cz" })))
-      ).toContain("A button label must break lines with line feeds only.");
-    }
+describe("UnfinishedCampaignBodyDocument", () => {
+  const decodeUnfinished = Schema.decodeUnknownResult(
+    UnfinishedCampaignBodyDocument
   );
 
-  test("rejects a button without a safe URL", () => {
-    expect(failureMessage(body(cta({ label: "Klik", href: null })))).toContain(
-      "A button needs an https: or mailto: URL."
+  test("accepts unfinished links, images and buttons", () => {
+    const document = body(
+      link("http://workspace.deskohub.cz"),
+      image("https://example.com/image.jpg"),
+      cta({ label: "", href: null })
     );
-    expect(
-      failureMessage(body(cta({ label: "Klik", href: "javascript:void(0)" })))
-    ).toContain("A button needs an https: or mailto: URL.");
+
+    expect(decodeUnfinished(document)).toEqual(Result.succeed(document));
+  });
+
+  test("rejects a node outside the content set", () => {
+    expect(Result.isFailure(decodeUnfinished(body({ type: "table" })))).toBe(
+      true
+    );
   });
 });

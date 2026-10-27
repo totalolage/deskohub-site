@@ -3,11 +3,12 @@ import {
   AdministrationCampaignBodyNode as CampaignBodyNode,
   campaignBodyFormatVersion,
 } from "@deskohub/workspace-admin-api";
-import { Schema } from "effect";
+import { type Option, Schema } from "effect";
 import {
   type CampaignBodyIssue,
   campaignBodyIssues,
   campaignBodyStructureIssues,
+  englishCampaignBodyIssueMessage,
 } from "./campaign-body-rules";
 
 /** The contract defines the node and its format version. */
@@ -25,23 +26,30 @@ const versionedCampaignBody = (
     formatVersion: Schema.Literal(campaignBodyFormatVersion),
     doc: CampaignBodyNode.check(
       Schema.makeFilter((doc) =>
-        issues(doc).map(({ path, issue }) => ({ path, issue }))
+        issues(doc).map((issue) => ({
+          path: issue.path,
+          issue: englishCampaignBodyIssueMessage(issue),
+        }))
       )
     ),
   });
 
 /**
  * One locale's campaign body: a versioned TipTap document. Decoding checks the
- * document against the campaign content set.
+ * document against the campaign content set, with images from the Cloudinary
+ * account `imageCloudName`.
  */
-export const CampaignBodyDocument = versionedCampaignBody(
-  campaignBodyIssues
-).annotate({
-  identifier: "CampaignBodyDocument",
-  description: "A campaign email body stored as versioned TipTap JSON.",
-});
+export const campaignBodyDocument = (imageCloudName: Option.Option<string>) =>
+  versionedCampaignBody((doc) =>
+    campaignBodyIssues(doc, imageCloudName)
+  ).annotate({
+    identifier: "CampaignBodyDocument",
+    description: "A campaign email body stored as versioned TipTap JSON.",
+  });
 
-export type CampaignBodyDocument = typeof CampaignBodyDocument.Type;
+export type CampaignBodyDocument = ReturnType<
+  typeof campaignBodyDocument
+>["Type"];
 
 /**
  * A body still being written, as a preview renders it. Decoding checks only

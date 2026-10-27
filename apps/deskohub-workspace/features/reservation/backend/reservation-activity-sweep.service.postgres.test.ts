@@ -443,7 +443,7 @@ describe.skipIf(!testDatabase)(
         "select attempts, last_error_code, status from email_campaign_automation_work_units where kind = 'sweep-page' and key like '%:15'"
       );
       expect(failedPage).toEqual([
-        { attempts: 2, last_error_code: "dotypos-503", status: "done" },
+        { attempts: 2, last_error_code: "dotypos-unavailable", status: "done" },
       ]);
       expect(await visitEvents(labels)).toHaveLength(120);
       expect(await cursorOf("reservation-activity")).toEqual({

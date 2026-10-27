@@ -2042,9 +2042,9 @@ describe("DotyposService customer page", () => {
         reason: "invalid-response",
         operation: "getCustomersPage",
         request: "customers.page",
-        httpStatus: 502,
       },
     });
+    expect(result).not.toHaveProperty("failure.httpStatus");
     expect(customerListRequests(fetchMock)).toHaveLength(1);
   });
 });
@@ -2250,9 +2250,9 @@ describe("DotyposService reservation page", () => {
           reason: "invalid-response",
           operation: "listReservationsPage",
           request: "reservations.page",
-          httpStatus: 502,
         },
       });
+      expect(result).not.toHaveProperty("failure.httpStatus");
       expect(reservationListRequests(fetchMock)).toHaveLength(1);
     }
   );
@@ -2486,9 +2486,9 @@ describe("DotyposService active reservation page", () => {
           reason: "invalid-response",
           operation: "listActiveReservationsPage",
           request: "reservations.page",
-          httpStatus: 502,
         },
       });
+      expect(result).not.toHaveProperty("failure.httpStatus");
       expect(reservationListRequests(fetchMock)).toHaveLength(1);
     }
   );
@@ -4247,9 +4247,6 @@ const failureOutcomeExpectation = (
     case "invalid-identifier":
       tag = spec.kind === "read" ? "DotyposRejected" : "DotyposUncertain";
       reason = "invalid-response";
-      // A blank created id fails the returned-id check, which never carried a
-      // status; entity decoding keeps its synthetic 502.
-      httpStatus = operation === "createReservation" ? undefined : 502;
       break;
     case "non-json":
       tag = spec.kind === "read" ? "DotyposRejected" : "DotyposUncertain";
@@ -4263,7 +4260,6 @@ const failureOutcomeExpectation = (
     case "empty-array":
       tag = "DotyposUnavailable";
       reason = "empty-response";
-      httpStatus = 502;
       break;
     case "fetch-failed":
       tag = spec.kind === "read" ? "DotyposUnavailable" : "DotyposUncertain";
@@ -4566,7 +4562,6 @@ const creationRetryScenarios: readonly CreationRetryScenario[] = [
     expectedPostCount: 4,
     expectedTag: "DotyposUnavailable",
     expectedReason: "empty-response",
-    expectedHttpStatus: 502,
   },
   {
     label: "503 once",
@@ -4781,11 +4776,14 @@ describe("DotyposService creation retry guard", () => {
           reason: scenario.expectedReason,
           operation: "createCustomer",
           request: "customer.create",
-          ...(scenario.expectedHttpStatus !== undefined && {
-            httpStatus: scenario.expectedHttpStatus,
-          }),
         },
       });
+      if (!Predicate.isTagged(result, "Failure")) return;
+      const failure = result.failure as { readonly httpStatus?: number };
+      expect(failure.httpStatus).toBe(scenario.expectedHttpStatus);
+      expect(Object.hasOwn(failure, "httpStatus")).toBe(
+        scenario.expectedHttpStatus !== undefined
+      );
     }
   );
 
@@ -5365,12 +5363,9 @@ describe("DotyposService read retry boundary", () => {
           reason: "invalid-response",
           operation: "getReservation",
           request: "reservation.get",
-          httpStatus: 502,
         },
       });
-      if (Predicate.isTagged(result, "Failure")) {
-        expect(result.failure.httpStatus).toBe(502);
-      }
+      expect(result).not.toHaveProperty("failure.httpStatus");
       expect(customerReads).toBe(0);
     }
     expect(reservationReads).toBe(1);

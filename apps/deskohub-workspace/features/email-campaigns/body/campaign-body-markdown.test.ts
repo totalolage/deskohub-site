@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Effect, Exit, Result, Schema } from "effect";
+import { Effect, Exit, Option, Result, Schema } from "effect";
 import {
-  CampaignBodyDocument,
+  campaignBodyDocument,
   UnfinishedCampaignBodyDocument,
 } from "./campaign-body-document";
 import {
@@ -88,7 +88,9 @@ describe("campaign body Markdown", () => {
   ])(
     "keeps a button with %s through export and import",
     async (_name, label, href) => {
-      const body = Schema.decodeUnknownSync(CampaignBodyDocument)({
+      const body = Schema.decodeUnknownSync(
+        campaignBodyDocument(Option.some("cloud"))
+      )({
         formatVersion: 1,
         doc: {
           type: "doc",
