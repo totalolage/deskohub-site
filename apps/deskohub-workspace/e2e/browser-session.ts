@@ -26,6 +26,7 @@ import {
 import { withinWorkspaceE2EDeadline } from "./polling";
 import { primePreviewAccess } from "./preview-access";
 import { redact, redactJsonValue } from "./redaction";
+import { workspaceE2ETimeouts } from "./timeouts";
 
 /** What the session captured from every page of its context, redacted. */
 type E2EBrowserDiagnostics = {
@@ -84,7 +85,8 @@ export type E2EBrowserSession = {
    * when the export fails. The first call decides the export and cannot be
    * interrupted; later calls wait for it and share its outcome, and fail when
    * they ask for a HAR the first call did not write. The Scope finalizer
-   * closes the context and deletes the raw file too.
+   * closes the context and deletes the raw file too, waiting for the close
+   * at most one browser action.
    */
   readonly close: (options?: {
     readonly harPath?: string;
@@ -287,7 +289,15 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
         )
       )
     );
-  yield* Effect.addFinalizer(() => close().pipe(Effect.ignore));
+  // A stalled close must not hold up the Scope: the finalizer waits for it
+  // at most one browser action, and the detached close still finishes and
+  // removes the raw HAR.
+  yield* Effect.addFinalizer(() =>
+    close().pipe(
+      Effect.timeout(`${workspaceE2ETimeouts.browserAction} millis`),
+      Effect.ignore
+    )
+  );
 
   return {
     activate: (page) =>
