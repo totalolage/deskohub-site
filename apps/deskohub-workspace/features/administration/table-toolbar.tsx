@@ -53,7 +53,7 @@ export function AdministrationTableToolbar({
       <div
         className={
           {
-            inline: "flex flex-wrap items-end gap-4",
+            inline: "flex flex-wrap items-center gap-4",
             stacked:
               "grid gap-4 2xl:grid-cols-[minmax(0,1fr)_auto] 2xl:items-center",
             unfiltered:
