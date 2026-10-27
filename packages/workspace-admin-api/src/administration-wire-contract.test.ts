@@ -19,7 +19,8 @@ import { WorkspaceAdminApi } from "./workspace-admin-http-api";
  * when each binary shipped, so the contract recorded here may only change on
  * purpose. Regenerate it with
  * `UPDATE_WIRE_CONTRACT=1 bun test src/administration-wire-contract.test.ts`
- * and format it with `bunx biome format --write <fixture>`, then review the diff.
+ * and review the diff. The test writes the fixture in its committed form;
+ * Biome skips it as larger than its size limit.
  */
 const fixture = new URL(
   "./administration-wire-contract.golden.json",
