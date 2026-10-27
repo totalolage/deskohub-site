@@ -670,7 +670,16 @@ describe("CheckoutStatusService", () => {
     expect(status.table?.name).not.toContain("Monitored sentinel");
   });
 
-  test("reconstructs meeting-room timing from Dotypos", async () => {
+  const getMeetingRoomStatus = async ({
+    reservationDetails,
+    startDate,
+  }: {
+    readonly reservationDetails: {
+      readonly kind: "meeting-room";
+      readonly earlySetup?: boolean;
+    };
+    readonly startDate: string;
+  }) => {
     const { CheckoutStatusService } = await import("./checkout-status.service");
     const { ProviderPaymentFinalizationService } = await import(
       "../payment/provider-payment-finalization.service"
@@ -686,7 +695,7 @@ describe("CheckoutStatusService", () => {
       findById: mock(() =>
         Effect.succeed(
           makeReservation({
-            reservationDetails: { kind: "meeting-room" },
+            reservationDetails,
             productTier: null,
             productCoffee: false,
             productMonitorOption: null,
@@ -710,7 +719,7 @@ describe("CheckoutStatusService", () => {
           id: "dotypos-reservation-id",
           _customerId: "customer-id",
           _tableId: "meeting-room-table",
-          startDate: "2026-06-20T07:00:00.000Z",
+          startDate,
           endDate: "2026-06-20T11:00:00.000Z",
           seats: "12",
           status: "CONFIRMED",
@@ -731,7 +740,7 @@ describe("CheckoutStatusService", () => {
       ),
     });
 
-    const status = await Effect.gen(function* () {
+    return await Effect.gen(function* () {
       const service = yield* CheckoutStatusService;
       return yield* service.getStatus({
         orderId: "reservation-provider-return",
@@ -757,6 +766,13 @@ describe("CheckoutStatusService", () => {
       ),
       Effect.runPromise
     );
+  };
+
+  test("reconstructs meeting-room timing from Dotypos", async () => {
+    const status = await getMeetingRoomStatus({
+      reservationDetails: { kind: "meeting-room" },
+      startDate: "2026-06-20T07:00:00.000Z",
+    });
 
     expect(status).toMatchObject({
       kind: "meeting-room",
@@ -777,6 +793,21 @@ describe("CheckoutStatusService", () => {
       "2026-06-20T11:00:00Z"
     );
     expect(JSON.stringify(status)).not.toContain("customer-access-code");
+    expect(status.summary).not.toHaveProperty("setupFrom");
+  });
+
+  test("reports the booked time and setup start of an early-setup meeting room", async () => {
+    const status = await getMeetingRoomStatus({
+      reservationDetails: { kind: "meeting-room", earlySetup: true },
+      startDate: "2026-06-20T06:45:00.000Z",
+    });
+
+    expect(status.kind).toBe("meeting-room");
+    const summary = status.kind === "meeting-room" ? status.summary : undefined;
+    expect(summary?.reservedFrom.toString()).toBe("2026-06-20T07:00:00Z");
+    expect(summary?.reservedUntil.toString()).toBe("2026-06-20T11:00:00Z");
+    expect(summary?.setupFrom?.toString()).toBe("2026-06-20T06:45:00Z");
+    expect(summary?.earlySetup).toBe(true);
   });
 
   test.each([

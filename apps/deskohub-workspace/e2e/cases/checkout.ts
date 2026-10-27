@@ -761,6 +761,7 @@ export const assertWholeDayMeetingRoomEmailPreviews = ({
         reservationTitle: "Meeting Room",
         dateLabel: "Reservation date",
         timeLabel: "Reservation time",
+        setupLabel: "Setup from",
         wholeDay: "whole day",
       }
     );
@@ -772,6 +773,7 @@ export const assertWholeDayMeetingRoomEmailPreviews = ({
         reservationTitle: "Zasedací místnost",
         dateLabel: "Datum rezervace",
         timeLabel: "Čas rezervace",
+        setupLabel: "Příprava od",
         wholeDay: "celý den",
       }
     );

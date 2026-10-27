@@ -155,6 +155,11 @@ export type CustomerReservationSummary = {
   readonly product: CustomerReservationProduct;
   readonly startsAt: string | null;
   readonly endsAt: string | null;
+  /**
+   * When the customer of a meeting room booked with early setup may arrive,
+   * before `startsAt`.
+   */
+  readonly setupStartsAt?: string;
   readonly seats: number | null;
   readonly status: CustomerReservationStatus;
 };
