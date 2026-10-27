@@ -64,7 +64,10 @@
     "./lint/no-wildcard-reexport.grit",
     "./lint/prefer-effect-when.grit",
     "./lint/prefer-effect-fn.grit",
-    "./lint/prefer-effect-value.grit"
+    "./lint/prefer-effect-value.grit",
+    "./lint/workspace-database-clients.grit",
+    "./lint/workspace-transaction-concurrency.grit",
+    "./lint/workspace-transaction-entry.grit"
   ],
   "linter": {
     "rules": {

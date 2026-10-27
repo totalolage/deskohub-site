@@ -63,7 +63,7 @@ describe.skipIf(!testDatabase)("RequestBudget on disposable Postgres", () => {
   const otherInstanceDatabase = Layer.effect(
     WorkspaceDatabase,
     makeDatabaseClient(otherInstancePool).pipe(
-      Effect.map((db) => WorkspaceDatabase.of({ db }))
+      Effect.map((db) => WorkspaceDatabase.make(db))
     )
   );
 
@@ -190,7 +190,7 @@ describe("RequestBudget without a reachable database", () => {
     const unreachableDatabase = Layer.effect(
       WorkspaceDatabase,
       makeDatabaseClient(unreachablePool).pipe(
-        Effect.map((db) => WorkspaceDatabase.of({ db }))
+        Effect.map((db) => WorkspaceDatabase.make(db))
       )
     );
 

@@ -85,7 +85,7 @@ const loadLastReservation = async (
       Layer.mergeAll(
         Layer.succeed(
           WorkspaceDatabase,
-          WorkspaceDatabase.of({ db: testDatabase!.db })
+          WorkspaceDatabase.make(testDatabase!.db)
         ),
         Layer.mock(DotyposService, {
           listReservations,

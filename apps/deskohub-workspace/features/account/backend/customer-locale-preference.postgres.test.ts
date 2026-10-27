@@ -34,7 +34,7 @@ let currentTestSession: CustomerAccountSession | null = null;
 const makeRepositoryLayer = () => {
   const testDatabaseLayer = Layer.succeed(
     WorkspaceDatabase,
-    WorkspaceDatabase.of({ db: testDatabase!.db })
+    WorkspaceDatabase.make(testDatabase!.db)
   );
 
   // The link repository must see the disposable test database and the test
@@ -176,7 +176,7 @@ describe.skipIf(!testDatabase)(
     test("capture fills only a missing locale, and the lookup resolves the magic-link delivery locale", async () => {
       const dbLayer = Layer.succeed(
         WorkspaceDatabase,
-        WorkspaceDatabase.of({ db: testDatabase!.db })
+        WorkspaceDatabase.make(testDatabase!.db)
       );
       const verifiedEmail = testEmailAddress(`lookup-${crypto.randomUUID()}`);
       const unverifiedEmail = testEmailAddress(

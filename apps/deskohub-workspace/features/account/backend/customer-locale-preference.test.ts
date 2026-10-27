@@ -79,7 +79,7 @@ const makeTestLayers = (options: {
 
   const DbLayer = Layer.succeed(
     WorkspaceDatabase,
-    WorkspaceDatabase.of({ db: fakeDb as never })
+    WorkspaceDatabase.make(fakeDb as never)
   );
 
   const Dependencies = Layer.mergeAll(DbLayer, LinksLayer, AuthenticationLayer);
