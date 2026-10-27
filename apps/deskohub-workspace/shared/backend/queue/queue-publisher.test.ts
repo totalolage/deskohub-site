@@ -17,7 +17,9 @@ const publication = {
 };
 
 const publish = () =>
-  QueuePublisher.use((publisher) => publisher.publish(publication)).pipe(
+  Effect.flatMap(QueuePublisher, (publisher) =>
+    publisher.publish(publication)
+  ).pipe(
     Effect.provide(QueuePublisher.Default),
     Effect.result,
     Effect.runPromise

@@ -77,7 +77,7 @@ const processMessage = (input: {
   );
 
 const enqueue = (queue: Layer.Layer<QueuePublisher>) =>
-  PaidFulfillmentQueueService.use((service) =>
+  Effect.flatMap(PaidFulfillmentQueueService, (service) =>
     service.enqueue({ orderId })
   ).pipe(
     Effect.provide(

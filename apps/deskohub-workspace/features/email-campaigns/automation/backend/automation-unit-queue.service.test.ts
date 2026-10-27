@@ -21,7 +21,7 @@ const enqueue = (
   queue: Layer.Layer<QueuePublisher>,
   units: ReadonlyArray<EnqueuedAutomationUnit>
 ) =>
-  AutomationUnitQueue.use((service) => service.enqueue(units)).pipe(
+  Effect.flatMap(AutomationUnitQueue, (service) => service.enqueue(units)).pipe(
     Effect.provide(AutomationUnitQueue.Default.pipe(Layer.provide(queue))),
     Effect.result,
     Effect.runPromise

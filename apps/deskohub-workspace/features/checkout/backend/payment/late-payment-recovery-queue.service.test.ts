@@ -17,7 +17,7 @@ import {
 const paymentAttemptId = "attempt-id" as PaymentAttemptId;
 
 const enqueue = (queue: Layer.Layer<QueuePublisher>) =>
-  LatePaymentRecoveryQueueService.use((service) =>
+  Effect.flatMap(LatePaymentRecoveryQueueService, (service) =>
     service.enqueue({ paymentAttemptId })
   ).pipe(
     Effect.provide(

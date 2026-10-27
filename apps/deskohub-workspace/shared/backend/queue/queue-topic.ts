@@ -99,7 +99,9 @@ export const defineQueueTopic = <
     message: definition.message,
     publication,
     publish: (input) =>
-      QueuePublisher.use((publisher) => publisher.publish(publication(input))),
+      Effect.flatMap(QueuePublisher, (publisher) =>
+        publisher.publish(publication(input))
+      ),
     consume: (operation, handle, redelivery) =>
       defineQueueConsumer(
         operation,

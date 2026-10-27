@@ -154,7 +154,7 @@ describe("ReservationHoldCleanupScheduleService", () => {
       }),
     ]);
     const enqueue = () =>
-      ReservationHoldCleanupScheduleService.use((service) =>
+      Effect.flatMap(ReservationHoldCleanupScheduleService, (service) =>
         service.enqueueCleanup({
           orderId: "order-id" as WorkspaceReservationId,
           reservationHoldExpiresAt: expiresAt,

@@ -17,7 +17,7 @@ import {
 const sendId = "send-1" as CampaignSendId;
 
 const enqueue = (queue: Layer.Layer<QueuePublisher>, deliveryAttempt: number) =>
-  CampaignSendQueueService.use((service) =>
+  Effect.flatMap(CampaignSendQueueService, (service) =>
     service.enqueue({ sendId, deliveryAttempt })
   ).pipe(
     Effect.provide(CampaignSendQueueService.Default.pipe(Layer.provide(queue))),
