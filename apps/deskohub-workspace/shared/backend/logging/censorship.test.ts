@@ -629,6 +629,24 @@ describe("censorLogValue", () => {
     expect(JSON.stringify(dynamicCensored)).not.toContain(privateValue);
   });
 
+  test("filters an error name like its other classification fields", () => {
+    const privateValue = testEmailAddress("private");
+    const named = Object.assign(new Error("synthetic"), {
+      name: privateValue,
+    });
+    const classified = Object.assign(new Error("synthetic"), {
+      name: "RequestHeadersError",
+    });
+
+    const censored = censorLogValue({ named, classified });
+
+    expect(censored).toMatchObject({
+      named: { errorType: CENSORED_LOG_VALUE },
+      classified: { errorType: "RequestHeadersError" },
+    });
+    expect(JSON.stringify(censored)).not.toContain(privateValue);
+  });
+
   test("retains the classification fields of a logged Dotypos outcome", () => {
     const privateValue = testEmailAddress("private");
     const failure = new DotyposUnavailable({

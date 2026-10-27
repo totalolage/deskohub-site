@@ -10,6 +10,7 @@ import {
   Duration,
   Effect,
   Predicate,
+  Ref,
   References,
   Result,
 } from "effect";
@@ -25,6 +26,10 @@ import {
   type SafeActionFailure,
 } from "../utils/safe-action-client";
 import { BotProtectionService } from "./bot-protection/bot-protection.service";
+import {
+  collectSpanMetadata,
+  continueActiveTrace,
+} from "./observability/trace-correlation";
 import { runStandaloneWorkspaceEffect } from "./standalone-workspace-effect";
 import { RequestHeadersError } from "./utils/request-headers";
 import {
@@ -133,6 +138,7 @@ const createActionClient = <S extends StandardSchemaV1>(
     // standalone one.
     logUnexpectedFailure: (error) =>
       logActionFailure(Cause.die(error)).pipe(
+        continueActiveTrace,
         runStandaloneWorkspaceEffect(options.operation)
       ),
     unexpectedFailure: getFailureCopy(options).unexpected,
@@ -142,13 +148,19 @@ const createActionClient = <S extends StandardSchemaV1>(
  * Logs one "Action failed" entry for an action that ended without a result:
  * its typed failure, or the whole cause of a defect or an interruption, such
  * as the handler interrupted at its deadline. The logger redacts messages and
- * payloads and keeps error classes and stack frames. Next.js control flow is
- * not a failure and stays unlogged.
+ * payloads and keeps error classes and stack frames. The entry carries the
+ * ids of the span it is logged in. Next.js control flow is not a failure and
+ * stays unlogged.
  */
 const logActionFailure = <E>(cause: Cause.Cause<E>) =>
   findNextControlFlow(cause) === undefined
-    ? Effect.logError("Action failed").pipe(
-        Effect.annotateLogs(describeActionFailure(cause))
+    ? Effect.flatMap(collectSpanMetadata, (spanMetadata) =>
+        Effect.logError("Action failed").pipe(
+          Effect.annotateLogs({
+            ...spanMetadata,
+            ...describeActionFailure(cause),
+          })
+        )
       )
     : Effect.void;
 
@@ -227,14 +239,14 @@ const prepareWorkspaceAction = <
   args: WorkspaceActionArgs<S>,
   options: Pick<
     WorkspaceActionOptions<S>,
-    "deadline" | "failureCopy" | "fallback" | "logInput"
+    "deadline" | "failureCopy" | "fallback" | "logInput" | "operation"
   >,
   handler: () => Effect.Effect<A, E, BotProtectionService>
 ) => {
   const inActionLocale = (copy: LocalizedCopy) =>
     copy({}, { locale: args.ctx.locale });
 
-  const logged = Effect.gen(function* () {
+  const handled = Effect.gen(function* () {
     yield* Effect.logDebug("Safe action executed").pipe(
       Effect.annotateLogs({
         locale: args.ctx.locale,
@@ -246,45 +258,59 @@ const prepareWorkspaceAction = <
     );
     yield* Effect.logDebug("Action completed successfully");
     return result;
+  });
+
+  const invocation = Effect.gen(function* () {
+    const failureLogged = yield* Ref.make(false);
+    const logFailureOnce = <F>(cause: Cause.Cause<F>) =>
+      Effect.flatMap(Ref.getAndSet(failureLogged, true), (logged) =>
+        logged ? Effect.void : logActionFailure(cause)
+      );
+
+    return yield* readActionHeaders.pipe(
+      Effect.flatMap((requestHeaders) =>
+        handled.pipe(
+          // Logged inside the request context to keep its annotations.
+          Effect.onError(logFailureOnce),
+          withWorkspaceRequestContext(requestHeaders)
+        )
+      ),
+      // Logs what ended the action before its handler could, such as a header
+      // read that outlived the deadline.
+      Effect.onError(logFailureOnce),
+      // Every failure logged above leaves as a public error, so the safe-action
+      // client logs only what never got here.
+      Effect.catchCause((cause) => {
+        const controlFlow = findNextControlFlow(cause);
+        if (controlFlow !== undefined) return Effect.die(controlFlow);
+
+        // A defect or an interruption stays unexpected, even beside a typed
+        // failure.
+        const typedFailure = Cause.hasDies(cause)
+          ? Result.fail(cause)
+          : Cause.findError(cause);
+        return Result.match(typedFailure, {
+          onFailure: () =>
+            Effect.fail(
+              new PublicSafeActionError({
+                message: inActionLocale(getFailureCopy(options).unexpected),
+              })
+            ),
+          onSuccess: (error) =>
+            Effect.fail(
+              error instanceof PublicSafeActionError
+                ? error
+                : new PublicSafeActionError({
+                    message: inActionLocale(
+                      options.fallback ?? getFailureCopy(options).unexpected
+                    ),
+                    cause: error,
+                  })
+            ),
+        });
+      })
+    );
   }).pipe(
-    Effect.onError(logActionFailure),
-    // Every failure logged above leaves as a public error, so the safe-action
-    // client logs only what never got here.
-    Effect.catchCause((cause) => {
-      const controlFlow = findNextControlFlow(cause);
-      if (controlFlow !== undefined) return Effect.die(controlFlow);
-
-      // A defect or an interruption stays unexpected, even beside a typed
-      // failure.
-      const typedFailure = Cause.hasDies(cause)
-        ? Result.fail(cause)
-        : Cause.findError(cause);
-      return Result.match(typedFailure, {
-        onFailure: () =>
-          Effect.fail(
-            new PublicSafeActionError({
-              message: inActionLocale(getFailureCopy(options).unexpected),
-            })
-          ),
-        onSuccess: (error) =>
-          Effect.fail(
-            error instanceof PublicSafeActionError
-              ? error
-              : new PublicSafeActionError({
-                  message: inActionLocale(
-                    options.fallback ?? getFailureCopy(options).unexpected
-                  ),
-                  cause: error,
-                })
-          ),
-      });
-    })
-  );
-
-  const invocation = readActionHeaders.pipe(
-    Effect.flatMap((requestHeaders) =>
-      logged.pipe(withWorkspaceRequestContext(requestHeaders))
-    ),
     Effect.provideService(References.MinimumLogLevel, "All"),
     withActionDeadline(options.deadline ?? workspaceActionDeadline),
     Effect.mapError((error) =>
@@ -294,10 +320,17 @@ const prepareWorkspaceAction = <
             cause: error,
           })
         : error
-    )
+    ),
+    Effect.withSpan(options.operation, {
+      attributes: { "action.locale": args.ctx.locale },
+    })
   );
 
-  return Effect.andThen(scheduleWorkspaceTelemetryFlush(), invocation);
+  // The runtime may run the action outside the request's async context, so
+  // the request's span is captured here.
+  return Effect.andThen(scheduleWorkspaceTelemetryFlush(), invocation).pipe(
+    continueActiveTrace
+  );
 };
 
 const getWorkspaceActionContext = <S extends StandardSchemaV1>(

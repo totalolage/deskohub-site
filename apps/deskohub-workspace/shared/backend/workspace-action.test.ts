@@ -1,5 +1,7 @@
 import {
+  afterAll,
   afterEach,
+  beforeAll,
   beforeEach,
   describe,
   expect,
@@ -8,7 +10,18 @@ import {
   test,
 } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
-import type { LogRecord } from "@opentelemetry/api-logs";
+import { context, trace } from "@opentelemetry/api";
+import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
+import {
+  InMemoryLogRecordExporter,
+  LoggerProvider,
+  SimpleLogRecordProcessor,
+} from "@opentelemetry/sdk-logs";
+import {
+  BasicTracerProvider,
+  InMemorySpanExporter,
+  SimpleSpanProcessor,
+} from "@opentelemetry/sdk-trace-base";
 import { Duration, Effect, Schema } from "effect";
 import { redirect } from "next/navigation";
 import { m as administrationMessages } from "@/features/administration/i18n";
@@ -17,8 +30,11 @@ import { type Locale, m } from "@/features/i18n";
 let actionHeaderReads = 0;
 let actionRequestHeaders: Record<string, string> = {};
 let failHeaderReads = false;
+/** Replaces the result of the test's nth header read, counted from 1. */
+let overrideHeaderRead = (_read: number): Promise<never> | undefined =>
+  undefined;
 let scheduledTelemetryFlushes = 0;
-const emittedLogRecords: LogRecord[] = [];
+const logExporter = new InMemoryLogRecordExporter();
 
 mock.module("server-only", () => ({}));
 mock.module("./bot-protection/bot-protection.runtime", () => ({
@@ -33,20 +49,17 @@ mock.module("next/server", () => ({
   },
 }));
 mock.module("@/instrumentation", () => ({
-  postHogLoggerProvider: {
-    forceFlush: () => Promise.resolve(),
-    getLogger: () => ({
-      emit: (record: LogRecord) => {
-        emittedLogRecords.push(record);
-      },
-    }),
-  },
+  postHogLoggerProvider: new LoggerProvider({
+    processors: [new SimpleLogRecordProcessor({ exporter: logExporter })],
+  }),
 }));
 
 mock.module("next/headers", () => ({
   cookies: async () => ({ get: () => undefined, getAll: () => [] }),
   headers: async () => {
     actionHeaderReads += 1;
+    const override = overrideHeaderRead(actionHeaderReads);
+    if (override) return override;
     if (failHeaderReads) throw new Error("Synthetic header failure");
     return new Headers({
       referer: "https://deskohub.test/en-US",
@@ -59,6 +72,7 @@ describe("Workspace actions", () => {
   afterEach(() => {
     actionRequestHeaders = {};
     failHeaderReads = false;
+    overrideHeaderRead = () => undefined;
   });
 
   test("starts the lifecycle after validation and provides Bot protection", async () => {
@@ -454,7 +468,7 @@ describe("Workspace actions", () => {
     let consoleError: ReturnType<typeof spyOn<Console, "error">>;
 
     beforeEach(() => {
-      emittedLogRecords.length = 0;
+      logExporter.reset();
       consoleError = spyOn(console, "error").mockImplementation(() => {});
     });
     afterEach(() => {
@@ -478,10 +492,12 @@ describe("Workspace actions", () => {
       );
     /** The "Action failed" records sent to PostHog. */
     const telemetryFailureLogs = (operation: string) =>
-      emittedLogRecords.filter(
-        ({ attributes, body }) =>
-          attributes?.operation === operation && body === "Action failed"
-      );
+      logExporter
+        .getFinishedLogRecords()
+        .filter(
+          ({ attributes, body }) =>
+            attributes?.operation === operation && body === "Action failed"
+        );
     /** The "Action failed" lines written to the console. */
     const consoleFailureLogs = (operation: string) =>
       consoleError.mock.calls
@@ -490,7 +506,13 @@ describe("Workspace actions", () => {
           (line) => line.includes("Action failed") && line.includes(operation)
         );
     const expectRedacted = () => {
-      expect(JSON.stringify(emittedLogRecords)).not.toContain(sensitiveValue);
+      expect(
+        JSON.stringify(
+          logExporter
+            .getFinishedLogRecords()
+            .map(({ attributes, body }) => ({ attributes, body }))
+        )
+      ).not.toContain(sensitiveValue);
       expect(JSON.stringify(consoleError.mock.calls)).not.toContain(
         sensitiveValue
       );
@@ -579,6 +601,48 @@ describe("Workspace actions", () => {
       expect(consoleFailureLogs("test.log-deadline")).toHaveLength(1);
     });
 
+    test("logs a header read interrupted at its deadline once", async () => {
+      const action = await defineFailingAction(
+        "test.log-setup-deadline",
+        () => Effect.die(new Error("unreachable")),
+        Duration.millis(10)
+      );
+      // The locale middleware's read settles; the action's own read hangs.
+      actionHeaderReads = 0;
+      overrideHeaderRead = (read) =>
+        read > 1 ? new Promise<never>(() => {}) : undefined;
+
+      await expect(action("input")).resolves.toEqual({
+        serverError: m.actionTimedOut({}, { locale: "en-US" }),
+      });
+      const [log, ...rest] = telemetryFailureLogs("test.log-setup-deadline");
+      expect(rest).toHaveLength(0);
+      expect(log?.attributes).toMatchObject({
+        boundary: "action",
+        failureKind: "interruption",
+      });
+      expect(consoleFailureLogs("test.log-setup-deadline")).toHaveLength(1);
+    });
+
+    test("logs a failed header read once", async () => {
+      const action = await defineFailingAction("test.log-setup-defect", () =>
+        Effect.die(new Error("unreachable"))
+      );
+      // The locale middleware's read succeeds; the action's own read fails.
+      actionHeaderReads = 0;
+      overrideHeaderRead = (read) =>
+        read > 1
+          ? Promise.reject(new Error(`Header failure for ${sensitiveValue}`))
+          : undefined;
+
+      await expect(action("input")).resolves.toEqual(unexpected);
+      const [log, ...rest] = telemetryFailureLogs("test.log-setup-defect");
+      expect(rest).toHaveLength(0);
+      expect(log?.attributes).toMatchObject({ failureKind: "defect" });
+      expect(consoleFailureLogs("test.log-setup-defect")).toHaveLength(1);
+      expectRedacted();
+    });
+
     test("does not log Next.js control flow", async () => {
       const action = await defineFailingAction("test.log-redirect", () =>
         Effect.sync(() => redirect("/en-US"))
@@ -587,6 +651,76 @@ describe("Workspace actions", () => {
       await expect(action("input")).rejects.toThrow("NEXT_REDIRECT");
       expect(telemetryFailureLogs("test.log-redirect")).toHaveLength(0);
       expect(consoleFailureLogs("test.log-redirect")).toHaveLength(0);
+    });
+
+    describe("inside a request's trace", () => {
+      const spanExporter = new InMemorySpanExporter();
+      const tracerProvider = new BasicTracerProvider({
+        spanProcessors: [new SimpleSpanProcessor(spanExporter)],
+      });
+      const contextManager = new AsyncLocalStorageContextManager();
+
+      beforeAll(() => {
+        expect(
+          context.setGlobalContextManager(contextManager.enable())
+        ).toBeTrue();
+        expect(trace.setGlobalTracerProvider(tracerProvider)).toBeTrue();
+      });
+      afterAll(async () => {
+        trace.disable();
+        context.disable();
+        await tracerProvider.shutdown();
+      });
+
+      /** Calls `action` inside a span standing in for the request's. */
+      const inRequestSpan = (action: () => Promise<unknown>) =>
+        tracerProvider
+          .getTracer("test")
+          .startActiveSpan("POST /en-US", async (requestSpan) => {
+            await action();
+            requestSpan.end();
+            return requestSpan.spanContext();
+          });
+
+      test("logs a failure in the action's span", async () => {
+        const action = await defineFailingAction("test.log-trace", () =>
+          Effect.die(new Error("synthetic"))
+        );
+
+        const requestSpan = await inRequestSpan(() => action("input"));
+
+        const exportedActionSpan = spanExporter
+          .getFinishedSpans()
+          .find(({ name }) => name === "test.log-trace");
+        const actionSpan = exportedActionSpan?.spanContext();
+        const [log, ...rest] = telemetryFailureLogs("test.log-trace");
+        expect(rest).toHaveLength(0);
+        expect(exportedActionSpan?.parentSpanContext?.spanId).toBe(
+          requestSpan.spanId
+        );
+        expect(log?.spanContext).toMatchObject({
+          traceId: requestSpan.traceId,
+          spanId: actionSpan?.spanId,
+        });
+        expect(log?.attributes).toMatchObject({
+          "effect.trace_id": requestSpan.traceId,
+          "effect.span_id": actionSpan?.spanId,
+        });
+      });
+
+      test("logs a failure before the action ran in the request's trace", async () => {
+        const action = await defineFailingAction("test.log-early-trace", () =>
+          Effect.die(new Error("unreachable"))
+        );
+        failHeaderReads = true;
+
+        const requestSpan = await inRequestSpan(() => action("input"));
+
+        const [line, ...rest] = consoleFailureLogs("test.log-early-trace");
+        expect(rest).toHaveLength(0);
+        expect(line).toContain(`effect.trace_id=${requestSpan.traceId}`);
+        expect(line).toContain(`effect.span_id=${requestSpan.spanId}`);
+      });
     });
 
     test("logs a failure before the action ran once", async () => {

@@ -477,7 +477,8 @@ const censorLogValueInternal = <T>(
     if (existing) return existing;
 
     const result: MutableLogAnnotations = {
-      errorType: value.name,
+      // Any code can set `name`, so it passes the same filter as `_tag`.
+      errorType: censorErrorClassificationValue(value.name),
       message: CENSORED_LOG_VALUE,
     };
     seen.set(value, result);
