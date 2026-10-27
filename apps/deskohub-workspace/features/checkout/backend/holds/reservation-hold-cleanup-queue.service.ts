@@ -1,5 +1,4 @@
-import { DuplicateMessageError, send } from "@vercel/queue";
-import { Context, Data, Effect, Layer, Option, Schema } from "effect";
+import { Context, Data, Duration, Effect, Layer, Schema } from "effect";
 import { toStoredInstant } from "@/db/instant";
 import type { WorkspaceReservation } from "@/db/schema";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
@@ -8,6 +7,11 @@ import {
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
 import { QueueRedelivery } from "@/shared/backend/queue/queue-consumer";
+import {
+  QueuePublisher,
+  type QueuePublishOutcome,
+} from "@/shared/backend/queue/queue-publisher";
+import { defineQueueTopic } from "@/shared/backend/queue/queue-topic";
 import { clamp } from "@/shared/utils";
 import { instantStringSchema } from "@/shared/utils/temporal";
 import { ProviderPaymentDeferral } from "../payment/provider-payment-finalization.service";
@@ -16,24 +20,8 @@ import {
   ReservationHoldCleanupService,
 } from "./reservation-hold-cleanup.service";
 
-export const reservationHoldCleanupQueueTopic =
-  "workspace-reservation-hold-cleanup";
-
 export const reservationHoldCleanupScheduleMaxDelaySeconds = 7 * 24 * 60 * 60;
 const reservationHoldCleanupRetryWindowSeconds = 60 * 60;
-
-const reservationHoldCleanupIdempotencyKeySchema = Schema.NonEmptyString.pipe(
-  Schema.brand("ReservationHoldCleanupIdempotencyKey")
-).annotate({
-  identifier: "ReservationHoldCleanupIdempotencyKey",
-  description: "Idempotency key for scheduling one reservation-hold cleanup.",
-});
-type ReservationHoldCleanupIdempotencyKey =
-  typeof reservationHoldCleanupIdempotencyKeySchema.Type;
-
-const makeReservationHoldCleanupIdempotencyKey = Schema.decodeUnknownSync(
-  reservationHoldCleanupIdempotencyKeySchema
-);
 
 const ReservationHoldCleanupSchedulePayloadSchema = Schema.Struct({
   schemaVersion: Schema.Literal(1),
@@ -42,19 +30,56 @@ const ReservationHoldCleanupSchedulePayloadSchema = Schema.Struct({
 });
 
 type ReservationHoldCleanupSchedulePayload =
-  typeof ReservationHoldCleanupSchedulePayloadSchema.Encoded;
+  typeof ReservationHoldCleanupSchedulePayloadSchema.Type;
 
-type ReservationHoldCleanupScheduleMessage = {
-  readonly topic: typeof reservationHoldCleanupQueueTopic;
-  readonly payload: ReservationHoldCleanupSchedulePayload;
-  readonly options: {
-    readonly delaySeconds: number;
-    readonly retentionSeconds: number;
-    readonly idempotencyKey: ReservationHoldCleanupIdempotencyKey;
-  };
+type ReservationHoldCleanupSchedule = {
+  readonly orderId: WorkspaceReservationId;
+  readonly reservationHoldExpiresAt: Temporal.Instant;
 };
 
-type ReservationHoldCleanupEnqueueResult = "duplicate" | "enqueued";
+/**
+ * One message per hold deadline, delivered when the hold expires and kept for
+ * an hour of retries after it.
+ */
+export const reservationHoldCleanupTopic = defineQueueTopic({
+  topic: "workspace-reservation-hold-cleanup",
+  label: "Reservation hold cleanup",
+  message: Schema.toStandardSchemaV1(
+    ReservationHoldCleanupSchedulePayloadSchema
+  ),
+  publish: (
+    input: ReservationHoldCleanupSchedule & { readonly now: Temporal.Instant }
+  ) => {
+    const reservationHoldExpiresAtIso = toStoredInstant(
+      input.reservationHoldExpiresAt
+    ).toString();
+    const delaySeconds = clamp(
+      Math.ceil(
+        (input.reservationHoldExpiresAt.epochMilliseconds -
+          input.now.epochMilliseconds) /
+          1000
+      ),
+      0,
+      reservationHoldCleanupScheduleMaxDelaySeconds
+    );
+    const retentionSeconds = clamp(
+      delaySeconds + reservationHoldCleanupRetryWindowSeconds,
+      60,
+      reservationHoldCleanupScheduleMaxDelaySeconds
+    );
+
+    return {
+      message: {
+        schemaVersion: 1 as const,
+        orderId: input.orderId,
+        reservationHoldExpiresAtIso,
+      },
+      key: `reservation-hold-cleanup:${input.orderId}:${reservationHoldExpiresAtIso}`,
+      delay: Duration.seconds(delaySeconds),
+      retention: Duration.seconds(retentionSeconds),
+    };
+  },
+});
 
 class ReservationHoldCleanupScheduleError extends Data.TaggedError(
   "ReservationHoldCleanupScheduleError"
@@ -75,120 +100,60 @@ class ReservationHoldCleanupDeferredError extends Data.TaggedError(
   readonly abandonmentCutoff: Temporal.Instant;
 }> {}
 
-class ReservationHoldCleanupQueueDuplicateError extends Data.TaggedError(
-  "ReservationHoldCleanupQueueDuplicateError"
-) {}
-
-class ReservationHoldCleanupQueueRequestError extends Data.TaggedError(
-  "ReservationHoldCleanupQueueRequestError"
-)<{
-  readonly cause: unknown;
-}> {}
-
 interface IReservationHoldCleanupScheduleService {
-  readonly enqueueCleanup: (input: {
-    readonly orderId: WorkspaceReservationId;
-    readonly reservationHoldExpiresAt: Temporal.Instant;
-  }) => Effect.Effect<void, ReservationHoldCleanupScheduleError>;
+  readonly enqueueCleanup: (
+    input: ReservationHoldCleanupSchedule
+  ) => Effect.Effect<void, ReservationHoldCleanupScheduleError>;
 }
 
-export const getReservationHoldCleanupScheduleMessage = (
-  input: {
-    readonly orderId: WorkspaceReservationId;
-    readonly reservationHoldExpiresAt: Temporal.Instant;
-  },
-  now = Temporal.Now.instant()
-): ReservationHoldCleanupScheduleMessage => {
-  const reservationHoldExpiresAtIso = toStoredInstant(
-    input.reservationHoldExpiresAt
-  ).toString();
-  const delaySeconds = clamp(
-    Math.ceil(
-      (input.reservationHoldExpiresAt.epochMilliseconds -
-        now.epochMilliseconds) /
-        1000
-    ),
-    0,
-    reservationHoldCleanupScheduleMaxDelaySeconds
-  );
-  const retentionSeconds = clamp(
-    delaySeconds + reservationHoldCleanupRetryWindowSeconds,
-    60,
-    reservationHoldCleanupScheduleMaxDelaySeconds
-  );
-
-  return {
-    topic: reservationHoldCleanupQueueTopic,
-    payload: {
-      schemaVersion: 1,
-      orderId: input.orderId,
-      reservationHoldExpiresAtIso,
-    } satisfies ReservationHoldCleanupSchedulePayload,
-    options: {
-      delaySeconds,
-      retentionSeconds,
-      idempotencyKey: makeReservationHoldCleanupIdempotencyKey(
-        `reservation-hold-cleanup:${input.orderId}:${reservationHoldExpiresAtIso}`
-      ),
-    },
-  };
-};
-
-export function makeReservationHoldCleanupScheduleService(
-  sendMessage: typeof send = send
-): IReservationHoldCleanupScheduleService {
-  return {
-    enqueueCleanup: Effect.fn("reservationHoldCleanupSchedule.enqueueCleanup")(
-      function* (input) {
-        const message = getReservationHoldCleanupScheduleMessage(input);
-        yield* Effect.logInfo("Reservation hold cleanup enqueue started", {
-          message,
-        });
-
-        const result = yield* Effect.tryPromise({
-          try: async () => {
-            await sendMessage(message.topic, message.payload, message.options);
-            return "enqueued" as const;
-          },
-          catch: (cause) =>
-            cause instanceof DuplicateMessageError
-              ? new ReservationHoldCleanupQueueDuplicateError()
-              : new ReservationHoldCleanupQueueRequestError({ cause }),
-        }).pipe(
-          Effect.catchTag("ReservationHoldCleanupQueueDuplicateError", () =>
-            Effect.succeed("duplicate" as const)
-          ),
-          Effect.mapError((error) =>
-            ReservationHoldCleanupScheduleError.fromError(
-              "Reservation hold cleanup could not be enqueued."
-            )(error.cause)
-          )
-        );
-
-        const enqueueResultMessages = {
-          duplicate: "Reservation hold cleanup was already enqueued",
-          enqueued: "Reservation hold cleanup enqueued",
-        } satisfies Record<ReservationHoldCleanupEnqueueResult, string>;
-
-        yield* Effect.logInfo(enqueueResultMessages[result], { message });
-      }
-    ),
-  };
-}
+const enqueueOutcomeMessages = {
+  duplicate: "Reservation hold cleanup was already enqueued",
+  published: "Reservation hold cleanup enqueued",
+} satisfies Record<QueuePublishOutcome, string>;
 
 export class ReservationHoldCleanupScheduleService extends Context.Service<
   ReservationHoldCleanupScheduleService,
   IReservationHoldCleanupScheduleService
 >()("ReservationHoldCleanupScheduleService") {
-  static Default = Layer.succeed(
+  static Default = Layer.effect(
     this,
-    makeReservationHoldCleanupScheduleService()
-  );
-}
+    Effect.gen(function* () {
+      const publisher = yield* QueuePublisher;
+      return {
+        enqueueCleanup: Effect.fn(
+          "reservationHoldCleanupSchedule.enqueueCleanup"
+        )(function* (input) {
+          const schedule = { ...input, now: Temporal.Now.instant() };
+          const publication = reservationHoldCleanupTopic.publication(schedule);
+          // Keeps the log fields these lines had before the topic definition.
+          const message = {
+            topic: publication.topic,
+            payload: publication.message,
+            options: publication.options,
+          };
+          yield* Effect.logInfo("Reservation hold cleanup enqueue started", {
+            message,
+          });
 
-const decodeSchedulePayload = Schema.decodeUnknownOption(
-  ReservationHoldCleanupSchedulePayloadSchema
-);
+          const outcome = yield* reservationHoldCleanupTopic
+            .publish(schedule)
+            .pipe(
+              Effect.provideService(QueuePublisher, publisher),
+              Effect.mapError((error) =>
+                ReservationHoldCleanupScheduleError.fromError(
+                  "Reservation hold cleanup could not be enqueued."
+                )(error.cause)
+              )
+            );
+
+          yield* Effect.logInfo(enqueueOutcomeMessages[outcome], { message });
+        }),
+      };
+    })
+  );
+
+  static Live = this.Default.pipe(Layer.provide(QueuePublisher.Default));
+}
 
 const dueReservationStates = ["held", "cancelling", "cancellation_failed"];
 
@@ -209,17 +174,9 @@ const isDueReservation = (
 export const processReservationHoldCleanupScheduleMessage = Effect.fn(
   "reservationHoldCleanupSchedule.processMessage"
 )(function* (
-  message: Parameters<typeof decodeSchedulePayload>[0],
+  payload: ReservationHoldCleanupSchedulePayload,
   now = Temporal.Now.instant()
 ) {
-  const payload = Option.getOrUndefined(decodeSchedulePayload(message));
-  if (!payload) {
-    yield* Effect.logWarning(
-      "Reservation hold cleanup queue message ignored: invalid payload"
-    );
-    return "ignored" as const;
-  }
-
   const reservationHoldExpiresAt = Temporal.Instant.from(
     payload.reservationHoldExpiresAtIso
   );

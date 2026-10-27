@@ -2,11 +2,11 @@ import { Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   paidFulfillmentRedelivery,
+  paidFulfillmentTopic,
   processPaidFulfillmentMessage,
   WorkspacePaidFulfillmentService,
 } from "@/features/checkout/backend/fulfillment";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
-import { defineQueueConsumer } from "@/shared/backend/queue/queue-consumer";
 
 export const maxDuration = 300;
 
@@ -17,7 +17,7 @@ const ConsumerLive = Layer.mergeAll(
   )
 );
 
-export const POST = defineQueueConsumer(
+export const POST = paidFulfillmentTopic.consume(
   "paidFulfillmentQueue",
   (message) =>
     processPaidFulfillmentMessage(message).pipe(Effect.provide(ConsumerLive)),

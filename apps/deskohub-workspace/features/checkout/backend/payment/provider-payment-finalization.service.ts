@@ -98,7 +98,7 @@ export class ProviderPaymentFinalizationService extends Context.Service<
     Layer.provide(WorkspaceReservationRepository.Default),
     Layer.provide(WorkspaceDatabase.Default),
     Layer.provide(WorkspacePaidFulfillmentService.Live),
-    Layer.provide(PaidFulfillmentQueueService.Default),
+    Layer.provide(PaidFulfillmentQueueService.Live),
     Layer.provide(WorkspaceNexiLayer)
   );
 }

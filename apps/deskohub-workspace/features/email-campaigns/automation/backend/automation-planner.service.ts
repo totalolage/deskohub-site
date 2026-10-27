@@ -428,7 +428,7 @@ export class AutomationPlanner extends Context.Service<
         WorkspaceDatabase.Default,
         WorkspaceDatabaseAdvisoryLock.Default,
         AutomationUnitHandlers.Live,
-        AutomationUnitQueue.Default,
+        AutomationUnitQueue.Live,
         AutomationSweepPlanning.Live,
         AutomationIntakePlanning.Live,
         AutomationTimerPlanning.Live,

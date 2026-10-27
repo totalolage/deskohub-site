@@ -84,7 +84,7 @@ export class NexiWebhookService extends Context.Service<
     Layer.provide(PaymentAttemptRepository.Default),
     Layer.provide(PaymentLifecycleRepository.Default),
     Layer.provide(LatePaymentRecoveryRepository.Default),
-    Layer.provide(LatePaymentRecoveryQueueService.Default),
+    Layer.provide(LatePaymentRecoveryQueueService.Live),
     Layer.provide(PostHogEventService.Live),
     Layer.provide(WorkspaceReservationRepository.Default),
     Layer.provide(

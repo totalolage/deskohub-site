@@ -1,14 +1,14 @@
 import { Context, Effect, Layer } from "effect";
 import {
-  type DatabaseClient,
   makeDatabaseClient,
   makeDatabasePool,
+  type RootDatabaseClient,
 } from "../../db/database-client";
 import type { DatasourceConfig } from "../config";
 import { tryWorkspaceE2EPromise, tryWorkspaceE2ESync } from "../errors";
 
 interface IE2EDatabase {
-  readonly db: DatabaseClient;
+  readonly db: RootDatabaseClient;
 }
 
 export class E2EDatabase extends Context.Service<E2EDatabase, IE2EDatabase>()(

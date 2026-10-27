@@ -24,7 +24,7 @@ const getRequests = () =>
           Layer.mergeAll(
             Layer.succeed(
               WorkspaceDatabase,
-              WorkspaceDatabase.of({ db: testDatabase!.db })
+              WorkspaceDatabase.make(testDatabase!.db)
             ),
             AccountingSnapshotKeyService.Default
           )
