@@ -298,6 +298,30 @@ test.skipIf(!chromiumAvailable)(
 // became a fixed failure of the operation. The C03 annotation and the step's
 // failure stay as they were then.
 const assertion = new AssertionError({ message: "synthetic assertion" });
+const failedAdminStep = [
+  {
+    caseId: "admin-case",
+    failureKind: "error",
+    outcome: "failed",
+    stepId: "admin-step",
+  },
+];
+const describeFailure = (failure: WorkspaceE2EError) => ({
+  cause: failure.cause,
+  causes: failure.causes,
+  diagnosticCode: failure.diagnosticCode,
+  message: failure.message,
+  operation: failure.operation,
+  timeout: isWorkspaceE2ETimeout(failure),
+});
+const baseFailure = (label: string, kept = "") => ({
+  cause: undefined,
+  causes: undefined,
+  diagnosticCode: undefined,
+  message: `${label} failed${kept}`,
+  operation: label,
+  timeout: false,
+});
 const callbackFailures: ReadonlyArray<
   readonly [shape: string, thrown: () => unknown, kept?: string]
 > = [
@@ -351,33 +375,14 @@ test.skipIf(!chromiumAvailable)(
       });
       outcomes.push({
         annotations,
-        failures: failures.map((failure) => ({
-          diagnosticCode: failure.diagnosticCode,
-          message: failure.message,
-          operation: failure.operation,
-          timeout: isWorkspaceE2ETimeout(failure),
-        })),
+        failures: failures.map(describeFailure),
         shape,
       });
     }
     expect(outcomes).toEqual(
       callbackFailures.map(([shape, , kept = ""]) => ({
-        annotations: [
-          {
-            caseId: "admin-case",
-            failureKind: "error",
-            outcome: "failed",
-            stepId: "admin-step",
-          },
-        ],
-        failures: [
-          {
-            diagnosticCode: undefined,
-            message: `${label} failed${kept}`,
-            operation: label,
-            timeout: false,
-          },
-        ],
+        annotations: failedAdminStep,
+        failures: [baseFailure(label, kept)],
         shape,
       }))
     );
@@ -398,29 +403,27 @@ test.skipIf(!chromiumAvailable)(
           undefined
         ),
     });
-    expect({
-      annotations,
-      failures: failures.map(({ diagnosticCode, message, operation }) => ({
-        diagnosticCode,
-        message,
-        operation,
-      })),
-    }).toEqual({
-      annotations: [
-        {
-          caseId: "admin-case",
-          failureKind: "error",
-          outcome: "failed",
-          stepId: "admin-step",
-        },
-      ],
-      failures: [
-        {
-          diagnosticCode: undefined,
-          message: `${label} failed`,
-          operation: label,
-        },
-      ],
+    expect({ annotations, failures: failures.map(describeFailure) }).toEqual({
+      annotations: failedAdminStep,
+      failures: [baseFailure(label)],
+    });
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "reports an admin call cut off by the session's close as it did before the session",
+  async () => {
+    const label = "read the admin title";
+    const { annotations, failures } = await runAdminStep({
+      execute: (session) =>
+        Effect.andThen(
+          session.close(),
+          session.use(label, (page) => page.title())
+        ),
+    });
+    expect({ annotations, failures: failures.map(describeFailure) }).toEqual({
+      annotations: failedAdminStep,
+      failures: [baseFailure(label)],
     });
   }
 );
