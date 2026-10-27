@@ -42,6 +42,16 @@ test("drops cancelled, unassigned, and unreadable-bound reservations", () => {
   ).toEqual([]);
 });
 
+test("drops reservations whose bounds aren't real instants", () => {
+  expect(
+    toTableBookings([
+      makeRecord({ startDate: "2026-02-30T08:00:00Z" }),
+      makeRecord({ startDate: "2026-03-10T24:00:00Z" }),
+      makeRecord({ endDate: "2026-03-10T10:00:00.1234567891Z" }),
+    ])
+  ).toEqual([]);
+});
+
 test("keeps a booking whose bounds are reversed", () => {
   expect(
     toTableBookings([

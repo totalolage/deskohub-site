@@ -70,6 +70,38 @@ describe("decodeBookedReservation bounds", () => {
       expected: { start: null, end: "2026-03-10T10:00:00Z", interval: null },
     },
     {
+      name: "hour 24",
+      startDate: "2026-03-10T24:00:00Z",
+      endDate: "2026-03-11T10:00:00Z",
+      expected: { start: null, end: "2026-03-11T10:00:00Z", interval: null },
+    },
+    {
+      name: "nine fraction digits",
+      startDate: "2026-03-10T08:00:00.123456789Z",
+      endDate: "2026-03-10T10:00:00Z",
+      expected: {
+        start: "2026-03-10T08:00:00.123456789Z",
+        end: "2026-03-10T10:00:00Z",
+        interval: ["2026-03-10T08:00:00.123456789Z", "2026-03-10T10:00:00Z"],
+      },
+    },
+    {
+      name: "more than nine fraction digits",
+      startDate: "2026-03-10T08:00:00.1234567891Z",
+      endDate: "2026-03-10T10:00:00Z",
+      expected: { start: null, end: "2026-03-10T10:00:00Z", interval: null },
+    },
+    {
+      name: "a leap second as the second before it",
+      startDate: "2026-03-10T08:59:60Z",
+      endDate: "2026-03-10T10:00:00Z",
+      expected: {
+        start: "2026-03-10T08:59:59Z",
+        end: "2026-03-10T10:00:00Z",
+        interval: ["2026-03-10T08:59:59Z", "2026-03-10T10:00:00Z"],
+      },
+    },
+    {
       name: "a local time without an offset",
       startDate: "2026-03-10T08:00:00",
       endDate: "2026-03-10T10:00:00Z",
@@ -106,10 +138,21 @@ describe("decodeBookedReservation seats", () => {
   test.each([
     { seats: "1", expected: 1 },
     { seats: "12", expected: 12 },
+    { seats: "02", expected: 2 },
+    // Any spelling JavaScript reads as a positive whole number counts.
+    { seats: " 2", expected: 2 },
+    { seats: "2 ", expected: 2 },
+    { seats: "+3", expected: 3 },
+    { seats: "1.0", expected: 1 },
+    { seats: "1e1", expected: 10 },
+    { seats: "0x10", expected: 16 },
     { seats: "0", expected: null },
     { seats: "-1", expected: null },
     { seats: "1.5", expected: null },
+    { seats: "Infinity", expected: null },
+    { seats: "1_000", expected: null },
     { seats: "abc", expected: null },
+    { seats: " ", expected: null },
     { seats: "", expected: null },
   ])("decodes seats $seats", ({ seats, expected }) => {
     expect(

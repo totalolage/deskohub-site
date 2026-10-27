@@ -286,34 +286,38 @@ describe.skipIf(!testDatabase)(
       expect(listReservations).toHaveBeenCalledTimes(1);
     });
 
-    test("maps a booked office interval and seats to a day count and seats", async () => {
-      const customerId = uniqueCustomerId();
-      const dotyposReservationId = await insertReservation({
-        dotyposCustomerId: customerId,
-        reservationDetails: { kind: "office" },
-        createdAt: "2026-07-01T09:00:00.000Z",
-      });
+    // Any spelling JavaScript reads as a positive whole number counts.
+    test.each([["4"], ["4.0"], ["4e0"]] as const)(
+      "maps a booked office interval and seats %p to a day count and seats",
+      async (seats) => {
+        const customerId = uniqueCustomerId();
+        const dotyposReservationId = await insertReservation({
+          dotyposCustomerId: customerId,
+          reservationDetails: { kind: "office" },
+          createdAt: "2026-07-01T09:00:00.000Z",
+        });
 
-      const { lastReservation } = await loadLastReservation(
-        customerId,
-        "office",
-        [
-          makeDotyposReservation({
-            id: dotyposReservationId,
-            // Prague midnight on 1 July to midnight on 4 July.
-            startDate: "2026-06-30T22:00:00.000Z",
-            endDate: "2026-07-03T22:00:00.000Z",
-            seats: "4",
-          }),
-        ]
-      );
+        const { lastReservation } = await loadLastReservation(
+          customerId,
+          "office",
+          [
+            makeDotyposReservation({
+              id: dotyposReservationId,
+              // Prague midnight on 1 July to midnight on 4 July.
+              startDate: "2026-06-30T22:00:00.000Z",
+              endDate: "2026-07-03T22:00:00.000Z",
+              seats,
+            }),
+          ]
+        );
 
-      expect(lastReservation).toEqual({
-        kind: "office",
-        dayCount: 3,
-        seats: 4,
-      });
-    });
+        expect(lastReservation).toEqual({
+          kind: "office",
+          dayCount: 3,
+          seats: 4,
+        });
+      }
+    );
 
     test.each([
       ["non-numeric seats", "four", "2026-06-30T22:00:00.000Z"],
