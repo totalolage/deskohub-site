@@ -7,12 +7,12 @@ const abortReason = (signal: AbortSignal) =>
  * The shared E2E Effect edge for code that runs outside a case runtime, such
  * as the argv Runner and `runE2EEffect`. It provides no tracer;
  * `runE2EEffect` adds the trace export for a whole run. It settles exactly
- * like `Effect.runPromise`, except that a run its `signal` stopped rejects
- * as soon as the signal aborts, with the signal's reason or an `AbortError`
- * without one; the run's interruption and finalizers finish in the
- * background. An already aborted signal rejects with its reason as is before
- * the run starts. A failing finalizer replaces the interrupt in the cause, so
- * any failure after the abort counts as stopped.
+ * like `Effect.runPromise`, except that a run whose `signal` aborts before it
+ * settles rejects as soon as the signal aborts, with the signal's reason or
+ * an `AbortError` without one; the run's interruption and finalizers finish
+ * in the background. The abort wins even when the run recovers from the
+ * interrupt or a failing finalizer replaces it in the cause. An already
+ * aborted signal rejects with its reason as is before the run starts.
  */
 export const runUntracedE2EEffect = async <A, E>(
   effect: Effect.Effect<A, E>,
@@ -27,7 +27,7 @@ export const runUntracedE2EEffect = async <A, E>(
   const run = Effect.runFork(effect, options);
   // biome-ignore lint/plugin: this is the shared E2E Effect edge.
   const exit = await Effect.runPromiseExit(Fiber.join(run), options);
-  if (Exit.isSuccess(exit)) return exit.value;
   if (signal?.aborted) throw abortReason(signal);
+  if (Exit.isSuccess(exit)) return exit.value;
   throw Cause.squash(exit.cause);
 };

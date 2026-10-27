@@ -24,6 +24,30 @@ describe("E2E Effect edge", () => {
     await expect(runUntracedE2EEffect(Effect.interrupt)).rejects.toStrictEqual(
       interruptedRejection
     );
+    await expect(runUntracedE2EEffect(Effect.die(failure))).rejects.toBe(
+      failure
+    );
+  });
+
+  test("waits for finalizers without a signal like Effect.runPromise", async () => {
+    let finalized = false;
+
+    await expect(
+      runUntracedE2EEffect(
+        Effect.succeed(1).pipe(
+          Effect.ensuring(
+            Effect.promise(() => Bun.sleep(10)).pipe(
+              Effect.andThen(
+                Effect.sync(() => {
+                  finalized = true;
+                })
+              )
+            )
+          )
+        )
+      )
+    ).resolves.toBe(1);
+    expect(finalized).toBe(true);
   });
 
   test("settles an interrupt its signal didn't cause like Effect.runPromise", async () => {
@@ -59,6 +83,30 @@ describe("E2E Effect edge", () => {
     during.abort(reason);
 
     await expect(stopped).rejects.toBe(reason);
+  });
+
+  test("rejects a run that recovers from its signal's interrupt", async () => {
+    const reason = new Error("case stopped");
+    const recovering = new AbortController();
+    const recoveringRun = runUntracedE2EEffect(
+      Effect.never.pipe(Effect.catchCause(() => Effect.succeed(1))),
+      { signal: recovering.signal }
+    );
+    recovering.abort(reason);
+
+    await expect(recoveringRun).rejects.toBe(reason);
+
+    const synchronous = new AbortController();
+
+    await expect(
+      runUntracedE2EEffect(
+        Effect.sync(() => {
+          synchronous.abort(reason);
+          return 1;
+        }),
+        { signal: synchronous.signal }
+      )
+    ).rejects.toBe(reason);
   });
 
   test("rejects an already aborted signal's reason as is", async () => {
