@@ -1,0 +1,26 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Only db/ builds Workspace database clients. A client built elsewhere has its
+// own transaction connection, so its statements silently run outside any
+// Workspace transaction they appear to join. E2E fixtures, scripts and tests
+// that need a second connection on purpose keep their own clients.
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/.*\.(?:ts|tsx)$",
+  not $name <: r".*apps/deskohub-workspace/(?:db|e2e|scripts)/.*",
+  not $name <: r".*\.(?:test|test-utils)\.(?:ts|tsx)$",
+  $body <: r"(?s).*(?:Pool|drizzle|PgClient|makeDatabase).*",
+  $body <: contains bubble or {
+    `new Pool($...)`,
+    `drizzle($...)`,
+    `PgClient.$constructor($...)`,
+    `makeDatabasePool($...)`,
+    `makeDatabaseClient($...)`
+  } as $span where {
+    register_diagnostic(
+      span = $span,
+      message = "Build Workspace database clients only in db/; use `WorkspaceDatabase` so statements join the current transaction.",
+      severity = "error"
+    )
+  }
+}

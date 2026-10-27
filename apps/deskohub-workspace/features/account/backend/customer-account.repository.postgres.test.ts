@@ -40,7 +40,7 @@ describe.skipIf(!testDatabase)(
               Layer.provide(
                 Layer.succeed(
                   WorkspaceDatabase,
-                  WorkspaceDatabase.of({ db: testDatabase!.db })
+                  WorkspaceDatabase.make(testDatabase!.db)
                 )
               )
             )

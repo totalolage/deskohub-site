@@ -1580,7 +1580,7 @@ describe("prepareWorkspacePayState", () => {
         marketingConsentRepository:
           CustomerMarketingConsentRepository.Default.pipe(
             Layer.provide(
-              Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.of({ db }))
+              Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.make(db))
             )
           ),
       });

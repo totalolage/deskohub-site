@@ -135,10 +135,7 @@ const insertWorkspaceReservation = async (input: {
 };
 
 const testDatabaseLayer = () =>
-  Layer.succeed(
-    WorkspaceDatabase,
-    WorkspaceDatabase.of({ db: testDatabase!.db })
-  );
+  Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.make(testDatabase!.db));
 
 /**
  * Stands in for Dotypos: a reservation without a customer belongs to every
@@ -240,7 +237,7 @@ const makeHistoryLayer = (
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({ db: testDatabase!.db })
+                WorkspaceDatabase.make(testDatabase!.db)
               ),
               WorkspaceDatabaseAdvisoryLock.makeLayer(testDatabase!.pool)
             )

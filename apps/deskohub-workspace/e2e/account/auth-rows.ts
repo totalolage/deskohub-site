@@ -160,7 +160,7 @@ export const removeSyntheticAuthUser = (
         )
       ).pipe(
         Effect.provide(CustomerAccountRepository.Default),
-        Effect.provideService(WorkspaceDatabase, WorkspaceDatabase.of({ db }))
+        Effect.provideService(WorkspaceDatabase, WorkspaceDatabase.make(db))
       )
     );
     yield* runDatabaseOperation(
