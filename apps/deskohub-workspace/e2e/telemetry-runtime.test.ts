@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Cause, Effect, Layer } from "effect";
 import { makeTestE2EEnvironment } from "./e2e-env.test-fixture";
-import { makeE2ETelemetryRuntime } from "./telemetry-runtime";
+import { makeE2ETelemetryRuntime, runE2EEffect } from "./telemetry-runtime";
 
 describe("E2E telemetry runtime", () => {
   test("keeps local E2E runnable without PostHog configuration", async () => {
@@ -21,5 +21,16 @@ describe("E2E telemetry runtime", () => {
 
     expect(runtime.telemetryEnabled).toBe(true);
     await expect(Effect.runPromise(runtime.shutdown)).resolves.toBeUndefined();
+  });
+
+  test("rejects an interrupted run like Effect.runPromise", async () => {
+    const telemetry = {
+      ...makeE2ETelemetryRuntime(makeTestE2EEnvironment()),
+      tracingLayer: Layer.effectDiscard(Effect.interrupt),
+    };
+
+    await expect(runE2EEffect(Effect.void, telemetry)).rejects.toStrictEqual(
+      Cause.squash(Cause.interrupt())
+    );
   });
 });

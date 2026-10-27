@@ -33,6 +33,14 @@ Define every Vercel Queue route with `defineQueueConsumer(operation, consume, re
 
 When a run must serve a fallback or react to any failure, such as a `"use cache"` function that calls `cacheLife({ expire: 0 })`, use `runWorkspaceEffectOrElse(operation, { failureCode, orElse })`. The runtime builds its Layer before entering the Effect, so `Effect.catchCause` or `Effect.onExit` inside the program can't see a runtime-build failure, and a Promise `.catch` after `runWorkspaceEffect` is the wrong tool. Make `failureCode` stable and low-cardinality. The function's JSDoc defines how `orElse`, interruption, and Next.js control flow interact.
 
+## E2E runs
+
+E2E code that runs an Effect outside a case or fixture runtime uses the edge in `apps/deskohub-workspace/e2e/`. Don't add another `Effect.run*` call for it.
+
+- `runE2EEffect(effect, telemetry)` (`telemetry-runtime.ts`) runs a whole E2E run with the trace export, shuts the exporter down, and resolves with the run's `Exit`. `scripts/workspace-e2e.ts` uses it.
+- `runUntracedE2EEffect(effect, { signal })` (`effect-edge.ts`) runs everything else without a tracer, such as the argv `Runner` in `runtime.ts`.
+- Both reject exactly like `Effect.runPromise`. A run whose `signal` aborts before it settles rejects as soon as the signal aborts, with the signal's reason or an `AbortError` without one, even when the run recovers from the interrupt or a failing finalizer replaced it in the cause. The run's interruption and finalizers finish in the background, so a stuck Playwright cleanup can't hold up cancellation. An already aborted signal rejects with its reason as is before the run starts. `effect-edge.test.ts` pins this.
+
 ## Browser runs
 
 Client modules run Effects with `runWorkspaceBrowserEffect(operation, { signal })`. It's the only browser module allowed to import `@deskohub/next-effect`. It rejects like the server runner, rethrows Next.js control flow, and interrupts on `signal` abort.
