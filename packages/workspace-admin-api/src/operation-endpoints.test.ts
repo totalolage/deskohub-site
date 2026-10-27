@@ -82,6 +82,13 @@ const noteOperations = defineOperations({
     output: ReceivedInput,
   }),
   archiveNote: mutation({ input: NoteRef, output: ReceivedInput }),
+  renameNote: mutation({
+    input: Schema.Struct({
+      noteId: NoteId,
+      title: Schema.optionalKey(Schema.String),
+    }).annotate(strictParseOptions),
+    output: ReceivedInput,
+  }),
   previewNote: query({
     input: Schema.Struct({
       noteId: NoteId,
@@ -111,6 +118,9 @@ const Notes = operationGroup(
     archiveNote: route.post("/notes/:noteId/archive", {
       behavior: destructiveOperation({ idempotent: true }),
     }),
+    renameNote: route.patch("/notes/:noteId/title", {
+      behavior: writeOperation({ idempotent: true }),
+    }),
     previewNote: route.post("/notes/:noteId/preview", { body: "draft" }),
   },
   { errors: [CliInputInvalid.schema] }
@@ -126,6 +136,7 @@ const inputs = {
   },
   editNote: { noteId: "note-1", text: "Coffee" },
   archiveNote: { noteId: "note-1" },
+  renameNote: { noteId: "note-1", title: "Tea notes" },
   previewNote: { noteId: "note-1", draft: { copyOf: "note-2" } },
 } satisfies {
   readonly [Name in keyof NoteOperations]: OperationInput<NoteOperations[Name]>;
@@ -195,7 +206,10 @@ const notesClient = HttpApiClient.make(api, {
 );
 
 /** What the client sends for `name`'s input, and what the operation receives. */
-const call = (name: keyof NoteOperations) =>
+const call = <Name extends keyof NoteOperations>(
+  name: Name,
+  input: OperationInput<NoteOperations[Name]> = inputs[name]
+) =>
   notesClient.pipe(
     Effect.flatMap((client) =>
       // Each name's method takes that operation's request parts.
@@ -203,7 +217,7 @@ const call = (name: keyof NoteOperations) =>
         client[name] as unknown as (
           request: OperationRequest
         ) => Effect.Effect<string, unknown>
-      )(operationRequest(Notes, name, inputs[name]))
+      )(operationRequest(Notes, name, input))
     ),
     Effect.runPromise
   );
@@ -221,6 +235,10 @@ describe("operation endpoints", () => {
       createNote: { payload: inputs.createNote },
       editNote: { params: { noteId: "note-1" }, payload: { text: "Coffee" } },
       archiveNote: { params: { noteId: "note-1" } },
+      renameNote: {
+        params: { noteId: "note-1" },
+        payload: { title: "Tea notes" },
+      },
       previewNote: {
         params: { noteId: "note-1" },
         payload: { copyOf: "note-2" },
@@ -288,6 +306,26 @@ describe("operation endpoints", () => {
     }
   );
 
+  test("a query or body whose fields are all optional is sent empty", async () => {
+    const withoutText = { folderId: "folder-1" };
+    const withoutTitle = { noteId: "note-1" };
+
+    expect(operationRequest(Notes, "searchNotes", withoutText)).toEqual({
+      params: withoutText,
+      query: {},
+    });
+    expect(operationRequest(Notes, "renameNote", withoutTitle)).toEqual({
+      params: withoutTitle,
+      payload: {},
+    });
+    expect(JSON.parse(await call("searchNotes", withoutText))).toEqual(
+      withoutText
+    );
+    expect(JSON.parse(await call("renameNote", withoutTitle))).toEqual(
+      withoutTitle
+    );
+  });
+
   test("an output adapter answers in place of the operation's output", async () => {
     expect(await call("listNotes")).toBe("adapted {}");
   });
@@ -315,6 +353,10 @@ describe("operation endpoints", () => {
       archiveNote: {
         _tag: "Operation",
         behavior: { kind: "destructive", idempotent: true },
+      },
+      renameNote: {
+        _tag: "Operation",
+        behavior: { kind: "write", idempotent: true },
       },
       previewNote: { _tag: "Operation", behavior: readOperation },
     });
@@ -365,6 +407,9 @@ describe("operation endpoints", () => {
           editNote: route.patch("/notes/:noteId"),
           archiveNote: route.post("/notes/:noteId/archive", {
             behavior: destructiveOperation({ idempotent: true }),
+          }),
+          renameNote: route.patch("/notes/:noteId/title", {
+            behavior: writeOperation({ idempotent: true }),
           }),
           // @ts-expect-error draft has no place beside a body of text
           previewNote: route.post("/notes/:noteId/preview", { body: "text" }),

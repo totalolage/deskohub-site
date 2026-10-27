@@ -69,33 +69,22 @@ type ReadOptions = Pick<RouteOptions, "behavior" | "query">;
 type WriteOptions = Pick<RouteOptions, "behavior" | "body">;
 type NoOptions = Record<never, never>;
 
-const readOn =
-  <Method extends HttpMethod.HttpMethod>(method: Method) =>
-  <
-    const Path extends HttpRouter.PathInput,
-    const Options extends ReadOptions = NoOptions,
-  >(
-    path: Path,
-    options?: Options
-  ): OperationRoute<Method, Path, Options> => ({
-    method,
-    path,
-    options: options ?? ({} as Options),
-  });
+type RouteOn<
+  Method extends HttpMethod.HttpMethod,
+  Allowed extends RouteOptions,
+> = <
+  const Path extends HttpRouter.PathInput,
+  const Options extends Allowed = Extract<NoOptions, Allowed>,
+>(
+  path: Path,
+  options?: Options
+) => OperationRoute<Method, Path, Options>;
 
-const writeOn =
-  <Method extends HttpMethod.HttpMethod>(method: Method) =>
-  <
-    const Path extends HttpRouter.PathInput,
-    const Options extends WriteOptions = NoOptions,
-  >(
-    path: Path,
-    options?: Options
-  ): OperationRoute<Method, Path, Options> => ({
-    method,
-    path,
-    options: options ?? ({} as Options),
-  });
+const routeOn =
+  <Method extends HttpMethod.HttpMethod>(
+    method: Method
+  ): RouteOn<Method, RouteOptions> =>
+  (path, options) => ({ method, path, options: options ?? ({} as never) });
 
 /**
  * Routes for an operation's endpoint. Path parameters are the input fields
@@ -103,12 +92,18 @@ const writeOn =
  * `query: true`; a write's other fields are its body, which is absent when
  * there are none and is the whole input when the path names none.
  */
-export const route = {
-  get: readOn("GET"),
-  post: writeOn("POST"),
-  put: writeOn("PUT"),
-  patch: writeOn("PATCH"),
-  delete: writeOn("DELETE"),
+export const route: {
+  readonly get: RouteOn<"GET", ReadOptions>;
+  readonly post: RouteOn<"POST", WriteOptions>;
+  readonly put: RouteOn<"PUT", WriteOptions>;
+  readonly patch: RouteOn<"PATCH", WriteOptions>;
+  readonly delete: RouteOn<"DELETE", WriteOptions>;
+} = {
+  get: routeOn("GET"),
+  post: routeOn("POST"),
+  put: routeOn("PUT"),
+  patch: routeOn("PATCH"),
+  delete: routeOn("DELETE"),
 };
 
 type FieldsOf<Input> =
@@ -299,17 +294,58 @@ const fieldsOf = (input: Schema.Top): Schema.Struct.Fields =>
     ? (input as Schema.Struct<Schema.Struct.Fields>).fields
     : {};
 
+/** What a route's body carries: one input field, the rest of the input, or nothing. */
+type RequestBody = { readonly field: string } | "rest" | "none";
+
+const bodyOf = (
+  { method, options }: OperationRoute,
+  restKeys: ReadonlyArray<string>
+): RequestBody => {
+  if (!HttpMethod.hasBody(method)) return "none";
+  if (options.body !== undefined) return { field: options.body };
+  return restKeys.length === 0 ? "none" : "rest";
+};
+
+/**
+ * Where a route places its operation's input, from the input's schema: the
+ * path parameters, whether the rest is the query, and what the body is.
+ */
+const requestLayoutOf = (
+  { input }: Operation,
+  operationRoute: OperationRoute
+) => {
+  const fields = fieldsOf(input);
+  const paramKeys = pathParamNamesOf(operationRoute.path);
+  const restKeys = Object.keys(fields).filter(
+    (key) => !paramKeys.includes(key)
+  );
+  return {
+    fields,
+    paramKeys,
+    query: operationRoute.options.query === true,
+    body: bodyOf(operationRoute, restKeys),
+  };
+};
+
+/** The value `body` names in `rest` or one of `fields`, or none. */
+const bodyValue = <A>(
+  body: RequestBody,
+  rest: () => A,
+  field: (name: string) => A
+): A | undefined => {
+  if (body === "none") return undefined;
+  return body === "rest" ? rest() : field(body.field);
+};
+
 const endpointOf = (
   operation: Operation,
-  { method, path, options }: OperationRoute,
+  operationRoute: OperationRoute,
   error: ReadonlyArray<Schema.Top>
 ) => {
   const { input } = operation;
-  const fields = fieldsOf(input);
-  const paramKeys = pathParamNamesOf(path);
-  const params: Schema.Struct.Fields = Struct.pick(fields, paramKeys);
-  const restKeys = Object.keys(fields).filter(
-    (key) => !paramKeys.includes(key)
+  const { fields, paramKeys, query, body } = requestLayoutOf(
+    operation,
+    operationRoute
   );
   const rest = (): Schema.Top =>
     paramKeys.length === 0
@@ -317,22 +353,25 @@ const endpointOf = (
       : (input as Schema.Struct<Schema.Struct.Fields>)
           .mapFields(Struct.omit(paramKeys))
           .annotate(strictParseOptions);
-  const body = (): Schema.Top | undefined => {
-    if (options.body !== undefined) return fields[options.body];
-    return restKeys.length === 0 ? undefined : rest();
-  };
   const behavior =
-    operation.kind === "query" ? readOperation : options.behavior;
+    operation.kind === "query"
+      ? readOperation
+      : operationRoute.options.behavior;
   if (behavior === undefined) {
     throw new Error(`${operation.name} is a mutation without a behavior.`);
   }
-  const endpoint = HttpApiEndpoint.make(method)(operation.name, path, {
-    params: paramKeys.length === 0 ? undefined : params,
-    query: options.query === true ? rest() : undefined,
-    payload: HttpMethod.hasBody(method) ? body() : undefined,
-    success: operation.output,
-    error,
-  }).annotate(AdministrationOperationBehavior, behavior);
+  const endpoint = HttpApiEndpoint.make(operationRoute.method)(
+    operation.name,
+    operationRoute.path,
+    {
+      params:
+        paramKeys.length === 0 ? undefined : Struct.pick(fields, paramKeys),
+      query: query ? rest() : undefined,
+      payload: bodyValue(body, rest, (name) => fields[name]),
+      success: operation.output,
+      error,
+    }
+  ).annotate(AdministrationOperationBehavior, behavior);
   return operation.minimumDhwVersion === undefined
     ? endpoint
     : endpoint.annotate(
@@ -348,7 +387,10 @@ const endpointOf = (
  * and it requires the operation's minimum `dhw`. A query is a read; a
  * mutation's route states its behavior. The group records each action as
  * the authenticated administrator's, refusing an outdated `dhw` before
- * reading its session.
+ * reading its session. The group carries its operations and routes for
+ * `operationGroupHandlers` and `operationRequest`; add it to the API as
+ * returned, since `prefix`, `middleware` and `annotate` copy a group without
+ * them.
  */
 export const operationGroup = <
   const Id extends string,
@@ -414,19 +456,27 @@ export type OperationRequest = {
 
 /** The request parts that carry an operation's input, as its route places them. */
 const requestOf = (
-  { method, path, options }: OperationRoute,
+  operation: Operation,
+  operationRoute: OperationRoute,
   input: Readonly<Record<string, unknown>>
 ): OperationRequest => {
-  const paramKeys = pathParamNamesOf(path);
-  const params =
-    paramKeys.length === 0 ? {} : { params: Struct.pick(input, paramKeys) };
+  const { paramKeys, query, body } = requestLayoutOf(operation, operationRoute);
   const rest = Struct.omit(input, paramKeys);
-  if (options.body !== undefined) {
-    return { ...params, payload: input[options.body] };
-  }
-  if (Object.keys(rest).length === 0) return params;
-  if (options.query === true) return { ...params, query: rest };
-  return HttpMethod.hasBody(method) ? { ...params, payload: rest } : params;
+  return {
+    ...(paramKeys.length === 0
+      ? {}
+      : { params: Struct.pick(input, paramKeys) }),
+    ...(query ? { query: rest } : {}),
+    ...(body === "none"
+      ? {}
+      : {
+          payload: bodyValue(
+            body,
+            () => rest,
+            (name) => input[name]
+          ),
+        }),
+  };
 };
 
 /**
@@ -442,12 +492,17 @@ export const operationRequest = <
   name: Name,
   input: OperationInput<Ops[Name]>
 ): OperationRequest => {
-  const operationRoute: OperationRoute | undefined =
-    group[operationBinding].routes[name];
-  if (operationRoute === undefined) {
+  const { operations, routes } = group[operationBinding];
+  const operation: Operation | undefined = operations[name];
+  const operationRoute: OperationRoute | undefined = routes[name];
+  if (operation === undefined || operationRoute === undefined) {
     throw new Error(`${name} has no route in this group.`);
   }
-  return requestOf(operationRoute, input as Readonly<Record<string, unknown>>);
+  return requestOf(
+    operation,
+    operationRoute,
+    input as Readonly<Record<string, unknown>>
+  );
 };
 
 /** The operation's input from the request parts its route placed it in. */
