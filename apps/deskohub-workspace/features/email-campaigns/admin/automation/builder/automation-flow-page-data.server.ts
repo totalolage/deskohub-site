@@ -6,6 +6,7 @@ import type {
   CalendarExpressionType as CalendarExpression,
 } from "@deskohub/workspace-admin-api";
 import { Effect } from "effect";
+import { runAdministrationPage } from "@/features/administrators/server/administration-request.server";
 import type { Locale } from "@/features/i18n";
 import type {
   AudienceValueLookups,
@@ -14,8 +15,8 @@ import type {
 import { loadAudienceValueLookups } from "../../audiences/audience-value-lookups.server";
 import { describeCampaignOperationFailure } from "../../campaign-operation-failure";
 import {
+  campaignOperationCapabilities,
   invokeCampaignOperation,
-  runCampaignPageQuery,
 } from "../../campaign-operation-query.server";
 import { triggerPreviewKey } from "./automation-flow-editing";
 import {
@@ -130,7 +131,7 @@ export const loadAutomationFlowBuilderData = async (
 ): Promise<AutomationFlowBuilderData> => {
   const [lookups, { savedAudiences, calendarPreviews }] = await Promise.all([
     loadAudienceValueLookups(),
-    runCampaignPageQuery(
+    runAdministrationPage(
       "email-campaigns.admin.load-automation-flow-builder",
       Effect.all(
         {
@@ -138,7 +139,8 @@ export const loadAutomationFlowBuilderData = async (
           calendarPreviews: loadCalendarPreviews(flow, locale),
         },
         { concurrency: "unbounded" }
-      )
+      ),
+      campaignOperationCapabilities
     ),
   ]);
   return { lookups, savedAudiences, calendarPreviews };

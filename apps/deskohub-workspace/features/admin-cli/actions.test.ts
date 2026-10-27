@@ -20,41 +20,31 @@ import { Effect } from "effect";
 import { cliAuthenticationRequests, cliSessions } from "@/db/schema";
 import { cliAuthenticationRequestIdSchema } from "@/features/admin-cli/cli-identifiers";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
+import { mockAdministratorAccess } from "@/features/administrators/server/administrator-access.test-utils";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import {
   connectWorkspacePostgresTestDatabase,
   type WorkspacePostgresTestDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 
-let actingAdministrator: AdministratorAccountActor | null = null;
+const access = mockAdministratorAccess(`cli-action-${crypto.randomUUID()}`);
+const revalidatedPaths: string[] = [];
 
-mock.module(
-  "@/features/administrators/server/administrator-authorization.server",
-  () => ({
-    requireAdministratorAuthorization: Effect.suspend(() =>
-      actingAdministrator === null
-        ? Effect.fail(new Error("Administrator authentication is required."))
-        : Effect.succeed(actingAdministrator)
-    ),
-    authorizeAdministratorPage: async () => {
-      throw new Error("Server Actions use requireAdministratorAuthorization.");
-    },
-  })
-);
 mock.module("next/headers", () => ({
-  cookies: async () => ({ get: () => undefined }),
+  cookies: async () => ({ get: () => undefined, getAll: () => [] }),
   headers: async () => new Headers(),
 }));
-mock.module("next/cache", () => ({
-  revalidatePath: () => {},
-  revalidateTag: () => {},
+mock.module("next/server", () => ({
+  after: () => undefined,
+  connection: () => Promise.resolve(),
+}));
+mock.module("@/features/i18n/server/revalidate-localized-path", () => ({
+  revalidateLocalizedPath: (path: string) => {
+    revalidatedPaths.push(path);
+  },
 }));
 
 const postgresDatabase = await connectWorkspacePostgresTestDatabase();
-
-const actAs = (administrator: AdministratorAccountActor | null) => {
-  actingAdministrator = administrator;
-};
 
 const randomSecret = () =>
   makeCliAuthenticationSecret().pipe(Effect.provide(NodeCrypto.layer));
@@ -91,6 +81,8 @@ describe.skipIf(!postgresDatabase)(
     beforeAll(async () => {
       admin = await Effect.runPromise(
         workspaceFixtures(postgres.db).account("cli-action-admin", {
+          id: access.administrator.accountId,
+          email: access.administrator.email,
           roles: ["administrator"],
         })
       );
@@ -108,6 +100,8 @@ describe.skipIf(!postgresDatabase)(
     );
 
     afterEach(async () => {
+      access.set("administrator");
+      revalidatedPaths.length = 0;
       const requestIds = [...fixtureRequestIds];
       const sessionIds = [...fixtureSessionIds];
       fixtureRequestIds.length = 0;
@@ -161,7 +155,6 @@ describe.skipIf(!postgresDatabase)(
       const adminSessionId = await insertSessionFixture(admin);
       const operatorSessionId = await insertSessionFixture(operator);
 
-      actAs(admin);
       const foreignError = await invokeRedirect(() =>
         revokeCliSession(toFormData({ sessionId: operatorSessionId }))
       );
@@ -177,6 +170,10 @@ describe.skipIf(!postgresDatabase)(
         "/cs-CZ/admin/cli/sessions?result=revoked"
       );
       expect((await loadSessionRow(adminSessionId))?.revokedAt).not.toBeNull();
+      expect(revalidatedPaths).toEqual([
+        "/admin/cli/sessions",
+        "/admin/cli/sessions",
+      ]);
     });
 
     test("renames only the acting administrator's own session", async () => {
@@ -184,7 +181,6 @@ describe.skipIf(!postgresDatabase)(
       const adminSessionId = await insertSessionFixture(admin);
       const operatorSessionId = await insertSessionFixture(operator);
 
-      actAs(admin);
       const foreign = await renameCliSession({
         sessionId: operatorSessionId,
         clientName: "Stolen label",
@@ -202,6 +198,7 @@ describe.skipIf(!postgresDatabase)(
       expect((await loadSessionRow(adminSessionId))?.clientName).toBe(
         "Office Mac"
       );
+      expect(revalidatedPaths).toEqual(["/admin/cli/sessions"]);
     });
 
     const insertPendingRequestFixture = async () => {
@@ -241,7 +238,6 @@ describe.skipIf(!postgresDatabase)(
       );
       const { code, requestId } = await insertPendingRequestFixture();
 
-      actAs(operator);
       const approvedNoEarlierThan = Temporal.Instant.fromEpochMilliseconds(
         Date.now()
       );
@@ -254,8 +250,8 @@ describe.skipIf(!postgresDatabase)(
 
       const row = await loadRequestRow(requestId);
       expect(row?.approvedBy).toBeNull();
-      expect(row?.approvedByAccountId).toBe(operator.accountId);
-      expect(row?.approvedByAccountEmail).toBe(operator.email);
+      expect(row?.approvedByAccountId).toBe(admin.accountId);
+      expect(row?.approvedByAccountEmail).toBe(admin.email);
       expect(row?.approvedAt).not.toBeNull();
       expect(
         row?.approvedAt &&
@@ -278,7 +274,6 @@ describe.skipIf(!postgresDatabase)(
       );
       const { code, requestId } = await insertPendingRequestFixture();
 
-      actAs(operator);
       const error = await invokeRedirect(() =>
         approveCliAuthentication(toFormData({ code, neverExpire: "on" }))
       );
@@ -295,7 +290,6 @@ describe.skipIf(!postgresDatabase)(
       );
       const { code, requestId } = await insertPendingRequestFixture();
 
-      actAs(operator);
       const invalidLifetimes: ReadonlyArray<Record<string, string>> = [
         {},
         { lifetimeAmount: "0", lifetimeUnit: "days" },
@@ -320,7 +314,7 @@ describe.skipIf(!postgresDatabase)(
       const sessionId = await insertSessionFixture(admin);
       const { code, requestId } = await insertPendingRequestFixture();
 
-      actAs(null);
+      access.set("not-administrator");
       const revoke = await invokeRedirect(() =>
         revokeCliSession(toFormData({ sessionId }))
       );
@@ -331,6 +325,7 @@ describe.skipIf(!postgresDatabase)(
       );
       expect(approve.digest).toContain("result=error");
       expect((await loadRequestRow(requestId))?.approvedAt).toBeNull();
+      expect(revalidatedPaths).toEqual([]);
     });
   }
 );

@@ -9,20 +9,20 @@ import {
   type OperationOutput,
 } from "@deskohub/workspace-admin-api";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { Effect, Layer, Match, Schema } from "effect";
+import { Effect, Match, Schema } from "effect";
 import type {
   FlattenedValidationErrors,
   SafeActionResult,
   ValidationErrors,
 } from "next-safe-action";
-import { administrationHref } from "@/features/administration/administration-href";
-import { CurrentAdministrator } from "@/features/administrators/backend/current-administrator";
-import { requireAdministratorAuthorization } from "@/features/administrators/server/administrator-authorization.server";
-import { revalidateLocalizedPath } from "@/features/i18n/server/revalidate-localized-path";
-import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
+import {
+  type AdministrationPath,
+  administrationHref,
+} from "@/features/administration/administration-href";
+import { defineAdministrationAction } from "@/features/administrators/server/administration-request.server";
 import { CampaignOperations } from "../backend/campaign-operations.service";
-import { OperationRequestLedger } from "../backend/operation-request-ledger.service";
 import { emailCampaignsActionFailureCopy } from "./campaign-operation-failure";
+import { campaignOperationCapabilities } from "./campaign-operation-query.server";
 
 const campaignOperationNames = Object.keys(campaignOperations) as [
   CampaignOperationName,
@@ -99,7 +99,51 @@ const administratorRequired: CampaignOperationResult = {
   message: "Administrator authentication is required.",
 };
 
-const campaignOperationAction = defineWorkspaceAction(
+/** Runs the operation through the port, with its failure as data. */
+const operationResult = ({
+  operation,
+  input,
+}: typeof CampaignOperationRequest.Type) =>
+  CampaignOperations.pipe(
+    Effect.flatMap((operations) =>
+      operations.invoke(
+        operation,
+        input as OperationInput<
+          CampaignOperationRegistry[CampaignOperationName]
+        >
+      )
+    ),
+    Effect.match({
+      onFailure: toFailure,
+      onSuccess: (output): CampaignOperationResult => ({
+        _tag: "Success",
+        output,
+      }),
+    })
+  );
+
+/** Every page that lists or shows what a campaign mutation can change. */
+const campaignPages = ({
+  input,
+}: CampaignOperationRequest): readonly AdministrationPath[] => [
+  administrationHref("/[locale]/admin/email-campaigns"),
+  administrationHref("/[locale]/admin/email-audiences"),
+  ...Match.value(input).pipe(
+    Match.when({ campaignId: Match.string }, ({ campaignId }) => [
+      administrationHref("/[locale]/admin/email-campaigns/[campaignId]", {
+        campaignId,
+      }),
+    ]),
+    Match.when({ audienceId: Match.string }, ({ audienceId }) => [
+      administrationHref("/[locale]/admin/email-audiences/[audienceId]", {
+        audienceId,
+      }),
+    ]),
+    Match.orElse(() => [])
+  ),
+];
+
+const campaignOperationAction = defineAdministrationAction(
   {
     operation: "email-campaigns.admin.run-operation",
     schema: Schema.toStandardSchemaV1(CampaignOperationRequest, {
@@ -108,66 +152,17 @@ const campaignOperationAction = defineWorkspaceAction(
     // Inputs can hold test recipients' addresses.
     logInput: false,
     failureCopy: emailCampaignsActionFailureCopy,
+    capabilities: campaignOperationCapabilities,
+    unauthorizedResult: administratorRequired,
+    revalidates: (request, result) =>
+      result._tag === "Success" &&
+      campaignOperations[request.operation].kind === "mutation"
+        ? // The port decoded the input of an operation that succeeded.
+          campaignPages(request as CampaignOperationRequest)
+        : [],
   },
-  ({ operation, input }) =>
-    requireAdministratorAuthorization.pipe(
-      Effect.matchEffect({
-        onFailure: () => Effect.succeed(administratorRequired),
-        onSuccess: (administrator) =>
-          CampaignOperations.pipe(
-            Effect.flatMap((operations) =>
-              operations.invoke(
-                operation,
-                input as OperationInput<
-                  CampaignOperationRegistry[CampaignOperationName]
-                >
-              )
-            ),
-            Effect.match({
-              onFailure: toFailure,
-              onSuccess: (output): CampaignOperationResult => ({
-                _tag: "Success",
-                output,
-              }),
-            }),
-            Effect.provideService(CurrentAdministrator, administrator),
-            Effect.provide(
-              Layer.mergeAll(
-                OperationRequestLedger.unscoped,
-                CampaignOperations.Live
-              )
-            )
-          ),
-      })
-    )
+  operationResult
 );
-
-/** Every page that lists or shows what a campaign mutation can change. */
-const revalidateCampaignPages = (request: CampaignOperationRequest) => {
-  revalidateLocalizedPath(
-    administrationHref("/[locale]/admin/email-campaigns")
-  );
-  revalidateLocalizedPath(
-    administrationHref("/[locale]/admin/email-audiences")
-  );
-  Match.value(request.input).pipe(
-    Match.when({ campaignId: Match.string }, ({ campaignId }) =>
-      revalidateLocalizedPath(
-        administrationHref("/[locale]/admin/email-campaigns/[campaignId]", {
-          campaignId,
-        })
-      )
-    ),
-    Match.when({ audienceId: Match.string }, ({ audienceId }) =>
-      revalidateLocalizedPath(
-        administrationHref("/[locale]/admin/email-audiences/[audienceId]", {
-          audienceId,
-        })
-      )
-    ),
-    Match.orElse(() => undefined)
-  );
-};
 
 /**
  * Runs one campaign operation through the port for the signed-in
@@ -178,11 +173,5 @@ export async function runCampaignOperation<Name extends CampaignOperationName>(
 ) {
   "use server";
   const result = await campaignOperationAction(request);
-  if (
-    result?.data?._tag === "Success" &&
-    campaignOperations[request.operation].kind === "mutation"
-  ) {
-    revalidateCampaignPages(request);
-  }
   return result as CampaignOperationActionResult<Name>;
 }

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { Effect, Option, Schema } from "effect";
+import { runAdministrationPage } from "@/features/administrators/server/administration-request.server";
 import type { CampaignPurpose } from "../../body/campaign-content";
 import type { CampaignId } from "../../campaign-identifiers";
 import {
@@ -12,8 +13,8 @@ import {
   type OnceCampaignStatus,
 } from "../../campaign-states";
 import {
+  campaignOperationCapabilities,
   invokeCampaignOperation,
-  runCampaignPageQuery,
 } from "../campaign-operation-query.server";
 
 export type CampaignListItem = {
@@ -51,7 +52,7 @@ export const loadCampaignListDelivery = async (
 export const loadCampaignList = (
   delivery: Promise<CampaignDelivery | undefined>
 ): Promise<readonly CampaignListItem[]> =>
-  runCampaignPageQuery(
+  runAdministrationPage(
     "email-campaigns.admin.load-campaigns",
     Effect.all(
       [
@@ -88,5 +89,6 @@ export const loadCampaignList = (
           return [];
         });
       })
-    )
+    ),
+    campaignOperationCapabilities
   );

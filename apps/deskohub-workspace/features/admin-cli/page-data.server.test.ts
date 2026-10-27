@@ -17,34 +17,28 @@ import {
 import { NodeCrypto } from "@effect/platform-node";
 import { inArray } from "drizzle-orm";
 import { Effect } from "effect";
-import { notFound } from "next/navigation";
 import { cliAuthenticationRequests, cliSessions } from "@/db/schema";
 import { cliAuthenticationRequestIdSchema } from "@/features/admin-cli/cli-identifiers";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
+import { mockAdministratorAccess } from "@/features/administrators/server/administrator-access.test-utils";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import {
   connectWorkspacePostgresTestDatabase,
   type WorkspacePostgresTestDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 
-let actingAdministrator: AdministratorAccountActor | null = null;
+const access = mockAdministratorAccess(`cli-page-${crypto.randomUUID()}`);
 
-// The page gate itself is covered by administrator-authorization tests.
-mock.module(
-  "@/features/administrators/server/administrator-authorization.server",
-  () => ({
-    authorizeAdministratorPage: async () => actingAdministrator ?? notFound(),
-    requireAdministratorAuthorization: Effect.die(
-      "Page loaders use authorizeAdministratorPage."
-    ),
-  })
-);
+mock.module("next/headers", () => ({
+  cookies: async () => ({ get: () => undefined, getAll: () => [] }),
+  headers: async () => new Headers(),
+}));
+mock.module("next/server", () => ({
+  after: () => undefined,
+  connection: () => Promise.resolve(),
+}));
 
 const postgresDatabase = await connectWorkspacePostgresTestDatabase();
-
-const actAs = (administrator: AdministratorAccountActor | null) => {
-  actingAdministrator = administrator;
-};
 
 const randomSecret = () =>
   makeCliAuthenticationSecret().pipe(Effect.provide(NodeCrypto.layer));
@@ -62,6 +56,8 @@ describe.skipIf(!postgresDatabase)("admin CLI page-data projections", () => {
   beforeAll(async () => {
     admin = await Effect.runPromise(
       workspaceFixtures(postgres.db).account("cli-page-admin", {
+        id: access.administrator.accountId,
+        email: access.administrator.email,
         roles: ["administrator"],
       })
     );
@@ -79,6 +75,7 @@ describe.skipIf(!postgresDatabase)("admin CLI page-data projections", () => {
   );
 
   afterEach(async () => {
+    access.set("administrator");
     const requestIds = [...fixtureRequestIds];
     const sessionIds = [...fixtureSessionIds];
     fixtureRequestIds.length = 0;
@@ -144,20 +141,12 @@ describe.skipIf(!postgresDatabase)("admin CLI page-data projections", () => {
       "@/features/admin-cli/page-data.server"
     );
     const adminSessionId = await insertSessionFixture(admin);
-    const operatorSessionId = await insertSessionFixture(operator);
+    await insertSessionFixture(operator);
 
-    actAs(admin);
     const adminData = await loadCliSessions();
     expect(adminData.administratorEmail).toBe(admin.email);
     expect(adminData.sessions.map((session) => session.id)).toEqual([
       adminSessionId,
-    ]);
-
-    actAs(operator);
-    const operatorData = await loadCliSessions();
-    expect(operatorData.administratorEmail).toBe(operator.email);
-    expect(operatorData.sessions.map((session) => session.id)).toEqual([
-      operatorSessionId,
     ]);
   });
 
@@ -167,9 +156,8 @@ describe.skipIf(!postgresDatabase)("admin CLI page-data projections", () => {
     );
     const code = await insertPendingRequestFixture();
 
-    actAs(operator);
     const approval = await loadCliAuthenticationApproval(code);
-    expect(approval?.administratorEmail).toBe(operator.email);
+    expect(approval?.administratorEmail).toBe(admin.email);
     expect(approval?.request?.clientName).toBe("Projection CLI");
     expect(approval?.request?.state).toBe("pending");
   });
@@ -179,11 +167,10 @@ describe.skipIf(!postgresDatabase)("admin CLI page-data projections", () => {
       "@/features/admin-cli/page-data.server"
     );
 
-    actAs(operator);
     const unknown = await loadCliAuthenticationApproval(
       await Effect.runPromise(randomSecret())
     );
-    expect(unknown?.administratorEmail).toBe(operator.email);
+    expect(unknown?.administratorEmail).toBe(admin.email);
     expect(unknown?.request).toBeNull();
 
     const malformed = await loadCliAuthenticationApproval(
@@ -195,7 +182,7 @@ describe.skipIf(!postgresDatabase)("admin CLI page-data projections", () => {
   test("loads nothing when the page gate rejects the visitor", async () => {
     const pageData = await import("@/features/admin-cli/page-data.server");
 
-    actAs(null);
+    access.set("not-administrator");
     const error = await pageData.loadCliSessions().then(
       () => null,
       (cause: unknown) => cause

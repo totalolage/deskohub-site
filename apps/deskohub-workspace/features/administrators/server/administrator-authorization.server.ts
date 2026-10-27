@@ -14,7 +14,8 @@ import { administrationRequestPathHeader } from "../administration-request-path"
 import { currentAdministratorAccess } from "../backend/current-administrator";
 import { administratorAccessLayer } from "./administrator-access-layer.server";
 
-class AdministratorUnauthorizedError extends Data.TaggedError(
+/** The caller isn't an administrator, or the guard couldn't tell. */
+export class AdministratorUnauthorizedError extends Data.TaggedError(
   "AdministratorUnauthorizedError"
 )<{
   readonly message: string;

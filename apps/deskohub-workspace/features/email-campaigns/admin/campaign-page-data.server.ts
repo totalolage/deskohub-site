@@ -9,7 +9,10 @@ import { Effect, Option, Schema } from "effect";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 import type { CurrentAdministrator } from "@/features/administrators/backend/current-administrator";
-import { authorizeAdministratorPage } from "@/features/administrators/server/administrator-authorization.server";
+import {
+  AdministrationRecordNotFound,
+  runAdministrationPage,
+} from "@/features/administrators/server/administration-request.server";
 import type { CampaignOperations } from "../backend/campaign-operations.service";
 import type { OperationRequestLedger } from "../backend/operation-request-ledger.service";
 import {
@@ -24,8 +27,8 @@ import {
   type OnceCampaignStatus,
 } from "../campaign-states";
 import {
+  campaignOperationCapabilities,
   invokeCampaignOperation,
-  runCampaignPageQuery,
 } from "./campaign-operation-query.server";
 
 /** Decodes a campaign route segment, or renders the not-found page. */
@@ -40,13 +43,21 @@ export const requireAudienceRouteId = (value: string): CampaignAudienceId =>
     notFound()
   );
 
-const findCampaign = cache((campaignId: CampaignId) =>
-  runCampaignPageQuery(
-    "email-campaigns.admin.load-campaign",
-    invokeCampaignOperation("getCampaign", { campaignId }).pipe(
-      Effect.map(Option.some),
-      Effect.catchTag("OperationNotFound", () => Effect.succeedNone)
+/** A campaign the port can't find answers with the not-found page. */
+const recordNotFound = <A, R>(
+  lookup: Effect.Effect<A, CampaignOperationError, R>
+) =>
+  lookup.pipe(
+    Effect.catchTag("OperationNotFound", () =>
+      Effect.fail(new AdministrationRecordNotFound())
     )
+  );
+
+const findCampaign = cache((campaignId: CampaignId) =>
+  runAdministrationPage(
+    "email-campaigns.admin.load-campaign",
+    invokeCampaignOperation("getCampaign", { campaignId }).pipe(recordNotFound),
+    campaignOperationCapabilities
   )
 );
 
@@ -56,13 +67,7 @@ const findCampaign = cache((campaignId: CampaignId) =>
  */
 export const loadCampaignDelivery = async (
   campaignId: CampaignId
-): Promise<CampaignDelivery> => {
-  await authorizeAdministratorPage();
-  return Option.getOrElse(
-    Option.map(await findCampaign(campaignId), ({ delivery }) => delivery),
-    () => notFound()
-  );
-};
+): Promise<CampaignDelivery> => (await findCampaign(campaignId)).delivery;
 
 /** A one-off campaign as the port reports it. */
 export type OnceCampaignDetail = AdministrationCampaignDetailType & {
@@ -81,20 +86,17 @@ const isOnceCampaignDetail = (
 export const loadAdminCampaign = async (
   campaignId: CampaignId
 ): Promise<OnceCampaignDetail> => {
-  await authorizeAdministratorPage();
-  return Option.getOrElse(
-    Option.filter(await findCampaign(campaignId), isOnceCampaignDetail),
-    () => notFound()
-  );
+  const campaign = await findCampaign(campaignId);
+  return isOnceCampaignDetail(campaign) ? campaign : notFound();
 };
 
 const findCampaignEditorContent = cache((campaignId: CampaignId) =>
-  runCampaignPageQuery(
+  runAdministrationPage(
     "email-campaigns.admin.load-editor-content",
     invokeCampaignOperation("getCampaignEditorContent", { campaignId }).pipe(
-      Effect.map(Option.some),
-      Effect.catchTag("OperationNotFound", () => Effect.succeedNone)
-    )
+      recordNotFound
+    ),
+    campaignOperationCapabilities
   )
 );
 
@@ -108,57 +110,51 @@ export const loadCampaignEditorContent = async (
   campaignId: CampaignId,
   delivery: CampaignDelivery
 ): Promise<AdministrationCampaignEditorContentType> => {
-  await authorizeAdministratorPage();
-  return Option.getOrElse(
-    Option.filter(
-      await findCampaignEditorContent(campaignId),
-      (campaign) => campaign.delivery === delivery
-    ),
-    () => notFound()
-  );
+  const campaign = await findCampaignEditorContent(campaignId);
+  return campaign.delivery === delivery ? campaign : notFound();
 };
 
-/** The title an entity's breadcrumb shows, or none when it isn't found. */
-const findTitle = (
+/**
+ * The title an entity's breadcrumb shows, or undefined when its route id is
+ * malformed or it isn't found.
+ */
+const findTitle = <Id>(
   operation: string,
-  lookup: Effect.Effect<
+  id: Option.Option<Id>,
+  lookup: (
+    id: Id
+  ) => Effect.Effect<
     { readonly title: string },
     CampaignOperationError,
     CampaignOperations | CurrentAdministrator | OperationRequestLedger
   >
 ) =>
-  runCampaignPageQuery(
+  runAdministrationPage(
     operation,
-    lookup.pipe(
-      Effect.map(({ title }) => Option.some(title)),
-      Effect.catchTag("OperationNotFound", () => Effect.succeedNone)
-    )
-  ).then(Option.getOrUndefined);
+    Option.match(id, {
+      onNone: () => Effect.undefined,
+      onSome: (decoded) =>
+        lookup(decoded).pipe(
+          Effect.map(({ title }): string | undefined => title),
+          Effect.catchTag("OperationNotFound", () => Effect.undefined)
+        ),
+    }),
+    campaignOperationCapabilities
+  );
 
-const findCampaignTitle = cache((campaignId: CampaignId) =>
+export const loadCampaignBreadcrumbLabel = cache((campaignId: string) =>
   findTitle(
     "email-campaigns.admin.load-campaign-title",
-    invokeCampaignOperation("getCampaign", { campaignId })
+    Schema.decodeOption(campaignIdSchema)(campaignId),
+    (decoded) => invokeCampaignOperation("getCampaign", { campaignId: decoded })
   )
 );
 
-const findAudienceTitle = cache((audienceId: CampaignAudienceId) =>
+export const loadAudienceBreadcrumbLabel = cache((audienceId: string) =>
   findTitle(
     "email-campaigns.admin.load-audience-title",
-    invokeCampaignOperation("getCampaignAudience", { audienceId })
+    Schema.decodeOption(campaignAudienceIdSchema)(audienceId),
+    (decoded) =>
+      invokeCampaignOperation("getCampaignAudience", { audienceId: decoded })
   )
 );
-
-export const loadCampaignBreadcrumbLabel = async (campaignId: string) => {
-  await authorizeAdministratorPage();
-  const decoded = Schema.decodeOption(campaignIdSchema)(campaignId);
-  if (Option.isNone(decoded)) return undefined;
-  return findCampaignTitle(decoded.value);
-};
-
-export const loadAudienceBreadcrumbLabel = async (audienceId: string) => {
-  await authorizeAdministratorPage();
-  const decoded = Schema.decodeOption(campaignAudienceIdSchema)(audienceId);
-  if (Option.isNone(decoded)) return undefined;
-  return findAudienceTitle(decoded.value);
-};

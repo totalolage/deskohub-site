@@ -4,6 +4,7 @@ import {
   getUnprefixedPagePath,
   type LocalizedRoute,
   type LocalizedRouteParams,
+  type UnprefixedRoutePath,
 } from "@/features/i18n/routing";
 
 /** A page or route handler of the administration. */
@@ -11,6 +12,9 @@ type AdministrationRoute = Extract<
   LocalizedRoute,
   "/[locale]/admin" | `/[locale]/admin/${string}`
 >;
+
+/** The unprefixed path of an administration route `administrationHref` built. */
+export type AdministrationPath = UnprefixedRoutePath<AdministrationRoute>;
 
 /**
  * An administration path without a locale prefix, optionally followed by a

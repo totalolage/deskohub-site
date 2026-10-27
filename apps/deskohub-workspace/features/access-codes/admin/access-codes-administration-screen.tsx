@@ -1,3 +1,4 @@
+import { Effect, Layer } from "effect";
 import { Suspense } from "react";
 import {
   AdministrationPage,
@@ -5,7 +6,7 @@ import {
 } from "@/features/administration/components";
 import { m } from "@/features/administration/i18n";
 import { AdministrationPanelLoading } from "@/features/administration/loading";
-import { authorizeAdministratorPage } from "@/features/administrators/server/administrator-authorization.server";
+import { runAdministrationPage } from "@/features/administrators/server/administration-request.server";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { CreateStandaloneAccessCodeForm } from "./create-access-code-form";
 
@@ -38,7 +39,8 @@ export async function AccessCodesAdministrationScreen() {
 }
 
 export async function AuthorizedAccessCodeCard() {
-  await authorizeAdministratorPage();
+  // The form loads nothing, so the page gate is the whole query.
+  await runAdministrationPage("access-codes.form", Effect.void, Layer.empty);
   return (
     <div className="max-w-3xl rounded-xl border border-navy-blue/10 bg-white p-5 sm:p-6">
       <CreateStandaloneAccessCodeForm />

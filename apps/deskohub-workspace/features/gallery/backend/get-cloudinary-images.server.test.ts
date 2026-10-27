@@ -78,9 +78,6 @@ mock.module("@/shared/backend/workspace-effect", () => ({
     <A, E>(effect: Effect.Effect<A, E, never>): Promise<A | B> =>
       Effect.runPromise(effect).catch(orElse),
   defineWorkspaceTask: () => () => Promise.reject(new Error("unused")),
-  defineWorkspacePage: () => () => {
-    throw new Error("unused");
-  },
   scheduleWorkspaceTelemetryFlush: () => Effect.void,
 }));
 

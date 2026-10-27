@@ -2,19 +2,20 @@ import "server-only";
 
 import { Effect } from "effect";
 import { cache } from "react";
+import { runAdministrationPage } from "@/features/administrators/server/administration-request.server";
 import type {
   AudienceCampaignOption,
   AudienceValueLookups,
 } from "../audience-filter-summary";
 import {
+  campaignOperationCapabilities,
   invokeCampaignOperation,
-  runCampaignPageQuery,
 } from "../campaign-operation-query.server";
 import { loadDiscountGroupOptions } from "./discount-group-options.server";
 
 /** Every campaign an audience can count emails of, newest first, by title. */
 const loadCampaignOptions = (): Promise<readonly AudienceCampaignOption[]> =>
-  runCampaignPageQuery(
+  runAdministrationPage(
     "email-campaigns.admin.load-campaign-options",
     invokeCampaignOperation("listCampaigns", {}).pipe(
       Effect.map((campaigns) =>
@@ -25,7 +26,8 @@ const loadCampaignOptions = (): Promise<readonly AudienceCampaignOption[]> =>
           status,
         }))
       )
-    )
+    ),
+    campaignOperationCapabilities
   );
 
 /**

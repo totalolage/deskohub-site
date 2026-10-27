@@ -1,16 +1,12 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
-import { testEmailAddress } from "@deskohub/test-email";
 import { Context, Effect, Layer } from "effect";
-import { customerAccountIdSchema } from "@/features/account/customer-account";
 import type { Locale } from "@/features/i18n";
-import type { AdministratorAccountActor } from "../account-role";
+import { mockAdministratorAccess } from "../server/administrator-access.test-utils";
 
-const actor: AdministratorAccountActor = {
-  accountId: customerAccountIdSchema.make("fixture-administrator"),
-  email: testEmailAddress("roster-page-actor"),
-};
+const access = mockAdministratorAccess("roster-page-actor");
+const actor = access.administrator;
 let requestLocale: Locale = "cs-CZ";
 
 class StubAdministratorRoster extends Context.Service<
@@ -39,10 +35,14 @@ mock.module(
   })
 );
 
-mock.module(
-  "@/features/administrators/server/administrator-authorization.server",
-  () => ({ authorizeAdministratorPage: async () => actor })
-);
+mock.module("next/headers", () => ({
+  cookies: async () => ({ get: () => undefined, getAll: () => [] }),
+  headers: async () => new Headers(),
+}));
+mock.module("next/server", () => ({
+  after: () => undefined,
+  connection: () => Promise.resolve(),
+}));
 
 mock.module("next/root-params", () => ({
   locale: async () => requestLocale,
@@ -66,8 +66,9 @@ describe("loadAdministrators", () => {
     async (locale, label) => {
       requestLocale = locale;
 
-      const { administrators } = await loadAdministrators();
+      const { actorAccountId, administrators } = await loadAdministrators();
 
+      expect(actorAccountId).toBe(actor.accountId);
       expect(administrators[0]?.grantedAt).toBe("2026-10-01T08:00:00Z");
       expect(administrators[0]?.grantedAtLabel.replace(/\s/gu, " ")).toBe(
         label
