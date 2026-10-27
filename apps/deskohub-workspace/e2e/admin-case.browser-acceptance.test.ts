@@ -203,8 +203,12 @@ const annotateAdminStep = async (input: Parameters<typeof runAdminStep>[0]) =>
     outcome,
   }));
 
-const failed = [{ failureKind: "error", outcome: "failed" }];
-const timedOut = [{ failureKind: "timeout", outcome: "timed_out" }];
+const failed = [
+  { failureKind: "error", outcome: "failed" } as const,
+];
+const timedOut = [
+  { failureKind: "timeout", outcome: "timed_out" } as const,
+];
 
 test.skipIf(!chromiumAvailable)(
   "fails an admin step on a Playwright timeout inside it",
@@ -308,7 +312,7 @@ const failedAdminStep = [
     failureKind: "error",
     outcome: "failed",
     stepId: "admin-step",
-  },
+  } as const,
 ];
 const describeFailure = (failure: WorkspaceE2EError) => ({
   cause: failure.cause,
