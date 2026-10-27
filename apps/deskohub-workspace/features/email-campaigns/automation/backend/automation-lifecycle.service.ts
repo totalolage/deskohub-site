@@ -29,12 +29,12 @@ import type { CustomerAccountId } from "@/features/account/customer-account";
 import { currentInstant } from "@/shared/utils/temporal";
 import type { AudienceFilter } from "../../audience-filter";
 import { ensureSavedAudienceFilter } from "../../audience-filter-usage";
-import { campaignBodyToMarkdown } from "../../body/campaign-body-markdown";
 import type {
   CampaignLocalizedContent,
   CampaignPurpose,
   CampaignTemplateKey,
 } from "../../body/campaign-content";
+import { writeCampaignContent } from "../../body/campaign-content-codec";
 import { hashCampaignContent } from "../../body/campaign-content-hash";
 import type {
   CampaignAudienceId,
@@ -1184,11 +1184,6 @@ const toVersionDetail = (version: VersionRow): AutomationVersionDetail => ({
   flow: version.flow,
   purpose: version.purpose,
   templateKey: version.templateKey,
-  content: Object.fromEntries(
-    Object.entries(version.content).map(([locale, { body, ...texts }]) => [
-      locale,
-      { ...texts, bodyMarkdown: campaignBodyToMarkdown(body) },
-    ])
-  ),
+  content: writeCampaignContent(version.content, "markdown"),
   audienceFilter: version.audienceFilter,
 });

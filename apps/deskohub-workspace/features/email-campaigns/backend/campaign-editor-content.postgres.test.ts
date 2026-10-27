@@ -13,7 +13,7 @@ import type { AdministratorAccountActor } from "@/features/administrators/accoun
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { richCampaignBodies } from "../body/campaign-body-document.test-utils";
-import { parseCampaignBodyMarkdown } from "../body/campaign-body-markdown";
+import { markdownCampaignBody } from "../body/campaign-content-codec.test-utils";
 
 const testDatabase = await createWorkspacePostgresSuiteDatabase(
   "campaign_editor_content"
@@ -105,7 +105,7 @@ describe.skipIf(!testDatabase)("campaign editor content", () => {
     const { id } = await createDraft();
     const { content } = await invoke("getCampaign", { campaignId: id });
     const markdown = content["cs-CZ"]?.bodyMarkdown ?? "";
-    const reread = await Effect.runPromise(parseCampaignBodyMarkdown(markdown));
+    const reread = await markdownCampaignBody(markdown);
     expect(reread).not.toEqual(richCampaignBodies["cs-CZ"]);
     const saved = await invoke("getCampaignEditorContent", { campaignId: id });
     expect(saved.content["cs-CZ"]?.bodyDocument).toEqual(
@@ -142,7 +142,7 @@ describe.skipIf(!testDatabase)("campaign editor content", () => {
     const saved = await invoke("getCampaignEditorContent", { campaignId: id });
     expect(saved.content["cs-CZ"]).toEqual(czech);
     expect(saved.content["en-US"]?.bodyDocument).toEqual(
-      await Effect.runPromise(parseCampaignBodyMarkdown("Plain **news**"))
+      await markdownCampaignBody("Plain **news**")
     );
   });
 

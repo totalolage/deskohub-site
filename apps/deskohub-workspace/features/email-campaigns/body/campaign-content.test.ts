@@ -54,12 +54,12 @@ describe("campaign content without Cloudinary config", () => {
     const script = `
       const { Effect, Option, Schema } = await import("effect");
       const { campaignLocalizedContent } = await import("./campaign-content.ts");
-      const { campaignBodyToMarkdown, parseCampaignBodyMarkdown } = await import("./campaign-body-markdown.ts");
-      const body = await Effect.runPromise(parseCampaignBodyMarkdown("Dobrý den\\n\\n[[button: Rezervovat](https://deskohub.cz/book)]"));
-      Schema.decodeUnknownSync(campaignLocalizedContent(Option.none()))({
-        "cs-CZ": { subject: "S", preheader: "P", body },
-      });
-      console.log(campaignBodyToMarkdown(body));
+      const { readCampaignContent, writeCampaignContent } = await import("./campaign-content-codec.ts");
+      const content = await Effect.runPromise(readCampaignContent({
+        "cs-CZ": { subject: "S", preheader: "P", bodyMarkdown: "Dobrý den\\n\\n[[button: Rezervovat](https://deskohub.cz/book)]" },
+      }));
+      Schema.decodeUnknownSync(campaignLocalizedContent(Option.none()))(content);
+      console.log(writeCampaignContent(content, "markdown")["cs-CZ"].bodyMarkdown);
     `;
     const { exitCode, stdout, stderr } = await runCommand(
       [process.execPath, "-e", script],
