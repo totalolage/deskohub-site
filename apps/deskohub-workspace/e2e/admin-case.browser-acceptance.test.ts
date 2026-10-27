@@ -186,7 +186,7 @@ const runAdminStep = async (input: {
           timeoutMs: input.timeoutMs ?? 5000,
         }),
       caseId: "admin-case",
-      watchdogMs: 10_000,
+      watchdogMs: (input.timeoutMs ?? 5000) + 5000,
     }).pipe(Effect.provide(makeE2ETelemetryMock(observations)))
   );
   return {
@@ -292,6 +292,10 @@ test.skipIf(!chromiumAvailable)(
   }
 );
 
+// The parity steps fail on their own, so a generous deadline keeps a slow
+// browser start from turning them into timeouts.
+const parityStepTimeoutMs = 15_000;
+
 // Before the session, admin steps ran their browser callbacks through
 // `sanitizedBrowserOperation`: an `AssertionError` kept its message, and any
 // other thrown value, a `WorkspaceE2EError` and its diagnostic code included,
@@ -360,34 +364,25 @@ const callbackFailures: ReadonlyArray<
   ["a non-Error value", () => "synthetic thrown string"],
 ];
 
-test.skipIf(!chromiumAvailable)(
-  "reports every admin callback failure as it did before the session",
-  async () => {
-    const label = "drive the admin form";
-    const outcomes = [];
-    for (const [shape, thrown] of callbackFailures) {
+for (const [shape, thrown, kept] of callbackFailures) {
+  test.skipIf(!chromiumAvailable)(
+    `reports ${shape} thrown by an admin callback as it did before the session`,
+    async () => {
+      const label = "drive the admin form";
       const { annotations, failures } = await runAdminStep({
         execute: (session) =>
-          session.use(label, async (page) => {
-            await page.goto(`${origin()}/`);
+          session.use(label, async () => {
             throw thrown();
           }),
+        timeoutMs: parityStepTimeoutMs,
       });
-      outcomes.push({
-        annotations,
-        failures: failures.map(describeFailure),
-        shape,
-      });
-    }
-    expect(outcomes).toEqual(
-      callbackFailures.map(([shape, , kept = ""]) => ({
+      expect({ annotations, failures: failures.map(describeFailure) }).toEqual({
         annotations: failedAdminStep,
         failures: [baseFailure(label, kept)],
-        shape,
-      }))
-    );
-  }
-);
+      });
+    }
+  );
+}
 
 test.skipIf(!chromiumAvailable)(
   "reports a failed admin page evaluation as it did before the session",
@@ -402,6 +397,7 @@ test.skipIf(!chromiumAvailable)(
           },
           undefined
         ),
+      timeoutMs: parityStepTimeoutMs,
     });
     expect({ annotations, failures: failures.map(describeFailure) }).toEqual({
       annotations: failedAdminStep,
@@ -420,6 +416,7 @@ test.skipIf(!chromiumAvailable)(
           session.close(),
           session.use(label, (page) => page.title())
         ),
+      timeoutMs: parityStepTimeoutMs,
     });
     expect({ annotations, failures: failures.map(describeFailure) }).toEqual({
       annotations: failedAdminStep,
