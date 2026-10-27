@@ -1107,11 +1107,12 @@ describe("administration operation groups", () => {
 
   test("refuses a minimum nothing checks, a check after a first one, and a CLI-only endpoint", () => {
     const declare =
-      (group: HttpApiGroup.Any, checkFirst = false) =>
+      (
+        group: HttpApiGroup.Any,
+        options?: { readonly checkDhwVersionBeforeAuthentication: true }
+      ) =>
       () =>
-        administrationOperationGroup(group, {
-          checkDhwVersionBeforeAuthentication: checkFirst,
-        });
+        administrationOperationGroup(group, options);
 
     expect(
       declare(
@@ -1135,7 +1136,7 @@ describe("administration operation groups", () => {
         HttpApiGroup.make("checkedTwice").add(
           read("read", "/read").pipe(requiresDhw(minimum))
         ),
-        true
+        { checkDhwVersionBeforeAuthentication: true }
       )
     ).toThrow("checkedTwice.read");
     expect(

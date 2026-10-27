@@ -123,9 +123,33 @@ describe("administration agent tools", () => {
     }
   });
 
+  test("take each change key the contract marks, and only those", () => {
+    const keyed = Object.fromEntries(
+      administrationOperationTools
+        .filter((tool) => tool.changeKeys.length > 0)
+        .map((tool) => [tool.reference, tool.changeKeys])
+    );
+
+    expect(keyed).toMatchObject({
+      "administration.createInvoice": ["invoiceId"],
+      "administration.createStandaloneAccessCode": ["attemptId"],
+      "campaigns.createCampaign": ["requestId"],
+    });
+    for (const reference of [
+      "administration.getInvoice",
+      "administration.getInvoicePdf",
+      "administration.resendInvoice",
+    ]) {
+      expect(keyed[reference]).toBeUndefined();
+    }
+  });
+
   test("require the change key of every operation on a mutation ledger", () => {
     for (const tool of administrationOperationTools) {
-      for (const key of payloadChangeKeys.get(tool.operation) ?? []) {
+      expect(tool.changeKeys).toEqual(
+        payloadChangeKeys.get(tool.operation) ?? []
+      );
+      for (const key of tool.changeKeys) {
         expect(tool.requiredArgumentNames.has(key)).toBe(true);
       }
     }

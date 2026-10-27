@@ -498,7 +498,7 @@ interface AdministrationOperationGroupOptions {
    * Refuses a `dhw` older than an endpoint's `MinimumDhwVersion` on every
    * endpoint before reading its session, in place of `requiresDhw`.
    */
-  readonly checkDhwVersionBeforeAuthentication?: boolean;
+  readonly checkDhwVersionBeforeAuthentication?: true;
 }
 
 type AuthenticatedGroup<Group> = HttpApiGroup.AddMiddleware<
@@ -538,7 +538,7 @@ export const administrationOperationGroup = <
   options?: Options
 ): AdministrationOperationGroup<Group, Options> => {
   const declared = group as unknown as HttpApiGroup.AnyWithProps;
-  const checksFirst = options?.checkDhwVersionBeforeAuthentication === true;
+  const checksFirst = options?.checkDhwVersionBeforeAuthentication ?? false;
   for (const endpoint of Object.values(declared.endpoints)) {
     const reference = `${declared.identifier}.${endpoint.name}`;
     const checksOwn = (endpoint.middlewares as ReadonlySet<unknown>).has(

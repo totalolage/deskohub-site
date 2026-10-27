@@ -70,6 +70,8 @@ export interface AdministrationOperationTool {
   readonly argumentNames: ReadonlySet<string>;
   /** The arguments a call must pass. */
   readonly requiredArgumentNames: ReadonlySet<string>;
+  /** The arguments that identify one intended change across retries. */
+  readonly changeKeys: ReadonlyArray<string>;
   /** The published input schema: one strict object of every argument. */
   readonly input: Schema.Top;
   /** The published output schema: the success results and the errors. */
@@ -463,6 +465,7 @@ const deriveEndpointTools = ({
       name,
       title,
       description: describe({ title, behavior, changeKeys }),
+      changeKeys,
       behavior,
       argumentNames,
       requiredArgumentNames: new Set(properties.filter(isRequired).map(nameOf)),
