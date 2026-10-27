@@ -7,13 +7,14 @@ import {
   AdministrationOperationVariants,
   administrationOperations,
   CliOnly,
+  changeKeyPaths,
   destructiveOperation,
   readOperation,
   readPreview,
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/client/validators/ajv";
-import { Schema, SchemaAST } from "effect";
+import { Schema } from "effect";
 import {
   HttpApi,
   HttpApiEndpoint,
@@ -38,23 +39,18 @@ const inputJsonSchema = (name: string) => {
   });
 };
 
-/** The top-level payload fields of every endpoint, by `<group>.<endpoint>`. */
-const payloadFields = new Map<string, ReadonlySet<string>>();
+/** The top-level payload change keys of every endpoint, by `<group>.<endpoint>`. */
+const payloadChangeKeys = new Map<string, ReadonlyArray<string>>();
 HttpApi.reflect(WorkspaceAdminApi, {
   onGroup: () => undefined,
   onEndpoint: ({ group, endpoint }) => {
-    const fields = [...endpoint.payload.values()]
+    const keys = [...endpoint.payload.values()]
       .flatMap(({ schemas }) => schemas)
-      .flatMap(({ ast }) =>
-        SchemaAST.isObjects(ast)
-          ? ast.propertySignatures.map(({ name }) => String(name))
-          : []
-      );
-    payloadFields.set(`${group.identifier}.${endpoint.name}`, new Set(fields));
+      .flatMap(changeKeyPaths)
+      .flatMap((path) => (path.length === 1 ? path : []));
+    payloadChangeKeys.set(`${group.identifier}.${endpoint.name}`, keys);
   },
 });
-
-const ledgerKeys = ["requestId", "attemptId", "invoiceId"];
 
 describe("administration agent tools", () => {
   test("serve every contract operation and variant except CLI-only ones, and nothing else", () => {
@@ -127,12 +123,33 @@ describe("administration agent tools", () => {
     }
   });
 
+  test("take each change key the contract marks, and only those", () => {
+    const keyed = Object.fromEntries(
+      administrationOperationTools
+        .filter((tool) => tool.changeKeys.length > 0)
+        .map((tool) => [tool.reference, tool.changeKeys])
+    );
+
+    expect(keyed).toMatchObject({
+      "administration.createInvoice": ["invoiceId"],
+      "administration.createStandaloneAccessCode": ["attemptId"],
+      "campaigns.createCampaign": ["requestId"],
+    });
+    for (const reference of [
+      "administration.getInvoice",
+      "administration.getInvoicePdf",
+      "administration.resendInvoice",
+    ]) {
+      expect(keyed[reference]).toBeUndefined();
+    }
+  });
+
   test("require the change key of every operation on a mutation ledger", () => {
     for (const tool of administrationOperationTools) {
-      const keys = ledgerKeys.filter((key) =>
-        payloadFields.get(tool.operation)?.has(key)
+      expect(tool.changeKeys).toEqual(
+        payloadChangeKeys.get(tool.operation) ?? []
       );
-      for (const key of keys) {
+      for (const key of tool.changeKeys) {
         expect(tool.requiredArgumentNames.has(key)).toBe(true);
       }
     }

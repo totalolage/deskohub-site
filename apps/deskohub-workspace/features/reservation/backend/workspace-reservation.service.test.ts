@@ -365,6 +365,20 @@ describe("WorkspaceReservationService", () => {
     });
   });
 
+  test("rejects a Dotypos reservation with unreadable seats", async () => {
+    const error = await Effect.runPromise(
+      Effect.flip(
+        detailsEffect({
+          dotyposReservation: makeDotyposReservation({ seats: "abc" }),
+        })
+      )
+    );
+
+    expect(error).toMatchObject({
+      errorCode: "dotypos_reservation_seats_invalid",
+    });
+  });
+
   test("rejects access recovery unless both local and provider reservations are eligible", async () => {
     for (const effect of [
       accessTargetEffect({

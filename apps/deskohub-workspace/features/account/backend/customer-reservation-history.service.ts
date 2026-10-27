@@ -11,6 +11,7 @@ import { Context, Effect, Layer, Option } from "effect";
 import type { SqlError } from "effect/unstable/sql";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { workspaceReservations } from "@/db/schema";
+import { decodeBookedReservation } from "@/features/reservation/backend/booked-reservation";
 import type { ReservationRecord } from "@/features/reservation/backend/reservation-record";
 import {
   ReservationRecords,
@@ -103,10 +104,11 @@ const getReservationStatus = (
     : "pending";
 };
 
-const startInstantOrder = (reservation: ReservationRecord) => {
-  const time = Date.parse(reservation.startDate ?? "");
-  return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time;
-};
+const startOrder = (reservation: ReservationRecord) =>
+  Option.match(decodeBookedReservation(reservation).start, {
+    onNone: () => Number.NEGATIVE_INFINITY,
+    onSome: (start) => start.epochMilliseconds,
+  });
 
 /**
  * The account's own customer's reservations and the ones the account booked
@@ -122,7 +124,10 @@ const mergeByStartDescending = (
     ...bookedForOthers.filter(
       (reservation) => !reservation.id || !ownIds.has(reservation.id)
     ),
-  ].toSorted((a, b) => startInstantOrder(b) - startInstantOrder(a));
+  ]
+    .map((reservation) => [startOrder(reservation), reservation] as const)
+    .toSorted(([a], [b]) => b - a)
+    .map(([, reservation]) => reservation);
 };
 
 /**
@@ -186,7 +191,8 @@ const toReservationSummary = (
   product: getReservationProduct(row),
   startsAt: reservation.startDate,
   endsAt: reservation.endDate,
-  seats: /^\d+$/.test(reservation.seats) ? Number(reservation.seats) : null,
+  // History shows no seat count when Dotypos's is unreadable.
+  seats: Option.getOrNull(decodeBookedReservation(reservation).seats),
   status: getReservationStatus(reservation, row),
 });
 

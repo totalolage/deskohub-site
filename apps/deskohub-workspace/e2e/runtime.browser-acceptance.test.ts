@@ -8,6 +8,7 @@ import { Effect } from "effect";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import {
   addRedaction,
+  browserSessionFor,
   makePlaywrightBrowserRunner,
   type Runner,
 } from "./runtime";
@@ -19,6 +20,7 @@ let browser: Browser | undefined;
 let server: ReturnType<typeof Bun.serve> | undefined;
 let artifactDir = "";
 const previewProbes: Record<string, string>[] = [];
+const rejectedBypassSecret = "synthetic-rejected-runner-bypass";
 
 beforeAll(async () => {
   if (!chromiumAvailable) return;
@@ -30,8 +32,17 @@ beforeAll(async () => {
       const { pathname } = new URL(request.url);
       if (pathname === "/favicon.svg") {
         previewProbes.push(Object.fromEntries(request.headers));
+        if (
+          request.headers.get("x-vercel-protection-bypass") ===
+          rejectedBypassSecret
+        )
+          return new Response("denied", { status: 401 });
         return new Response("<svg/>", {
-          headers: { "content-type": "image/svg+xml" },
+          headers: {
+            "content-type": "image/svg+xml",
+            "set-cookie":
+              "_vercel_jwt=synthetic-runner-cookie; Path=/; HttpOnly",
+          },
         });
       }
       return new Response(
@@ -57,9 +68,12 @@ const origin = () => {
   return `http://localhost:${server.port}`;
 };
 
-const withRunner = async <A>(body: (run: Runner) => Promise<A>) => {
+const withRunner = async <A>(
+  body: (run: Runner) => Promise<A>,
+  options: Parameters<typeof makePlaywrightBrowserRunner>[1] = {}
+) => {
   if (!browser) throw new Error("Chromium is not running");
-  const run = makePlaywrightBrowserRunner(browser);
+  const run = makePlaywrightBrowserRunner(browser, options);
   try {
     return await body(run);
   } finally {
@@ -89,7 +103,7 @@ test.skipIf(!chromiumAvailable)(
     const outcome = await withRunner(async (run) => {
       await command(run, session, ["open", `${origin()}/`]);
       const browserSession = await Effect.runPromise(
-        run.session?.(session) ?? Effect.die("runner bridge missing")
+        browserSessionFor(run, session)
       );
       const title = await Effect.runPromise(
         browserSession.use("read the title", (page) => page.title())
@@ -101,21 +115,29 @@ test.skipIf(!chromiumAvailable)(
           value: "synthetic-session-value",
         })
       );
-      const cookie = await command(
-        run,
-        session,
-        ["cookie", "get", "--stdin"],
-        JSON.stringify({
+      const cookie = await Effect.runPromise(
+        browserSession.describeCookie({
           name: "session_token",
           url: "https://workspace.example.test/en-US",
           value: "synthetic-session-value",
         })
       );
-      return { cookie, title };
+      // Cookies go through the session only; the argv protocol has none.
+      const argvCookie = await command(
+        run,
+        session,
+        ["cookie", "get", "--stdin"],
+        "{}"
+      ).then(
+        () => "accepted",
+        () => "rejected"
+      );
+      return { argvCookie, cookie, title };
     });
 
     expect(outcome.title).toBe("Checkout");
-    expect(JSON.parse(outcome.cookie)).toEqual({
+    expect(outcome.argvCookie).toBe("rejected");
+    expect(outcome.cookie).toEqual({
       httpOnly: true,
       lifetimeDays: null,
       matches: true,
@@ -124,7 +146,9 @@ test.skipIf(!chromiumAvailable)(
       sameSite: "Lax",
       secure: true,
     });
-    expect(outcome.cookie).not.toContain("synthetic-session-value");
+    expect(JSON.stringify(outcome.cookie)).not.toContain(
+      "synthetic-session-value"
+    );
   }
 );
 
@@ -246,39 +270,153 @@ test.skipIf(!chromiumAvailable)(
   }
 );
 
+// A Workspace deployment origin, the only kind that receives the secret. The
+// runner's `fetch` sends its probe to the local server, and a route answers
+// the navigation, which never leaves the browser.
+const deploymentOrigin =
+  "https://deskohub-workspace-abc123def-synthetic.vercel.app";
+
+const toLocalServer = ((input: string | URL | Request, init?: RequestInit) => {
+  const url = new URL(input instanceof Request ? input.url : input);
+  if (url.origin !== deploymentOrigin)
+    throw new Error("The probe left the deployment origin");
+  return fetch(new URL(`${url.pathname}${url.search}`, origin()), init);
+}) as typeof fetch;
+
 test.skipIf(!chromiumAvailable)(
-  "probes preview access with any --headers map, forwarding every header",
+  "primes preview access from --headers through the session, once per origin",
   async () => {
     previewProbes.length = 0;
-    const headerMaps = [
-      {
-        "e2e-probe-label": "bypass",
+    const sessionId = `headers-${randomUUID()}`;
+    const bypassArgs = [
+      "--headers",
+      JSON.stringify({
         "x-vercel-protection-bypass": "synthetic-runner-bypass",
         "x-vercel-set-bypass-cookie": "true",
-      },
-      { "E2E-Probe-Label": "without-bypass" },
-      {},
+      }),
     ];
-    const openedUrls = await withRunner(async (run) =>
-      Promise.all(
-        headerMaps.map((headers) =>
-          command(run, `headers-${randomUUID()}`, [
-            "--headers",
-            JSON.stringify(headers),
+    const { cookies, opened } = await withRunner(
+      async (run) => {
+        const session = await Effect.runPromise(
+          run.session?.(sessionId) ?? Effect.die("no session bridge")
+        );
+        await Effect.runPromise(
+          session.use("answer the deployment", (page) =>
+            page.context().route(`${deploymentOrigin}/**`, (route) =>
+              route.fulfill({
+                body: "<!doctype html><title>Deployment</title>",
+                contentType: "text/html",
+              })
+            )
+          )
+        );
+        const opened = [
+          await command(run, sessionId, [
+            ...bypassArgs,
+            "open",
+            `${deploymentOrigin}/en-US`,
+          ]),
+          await command(run, sessionId, [
+            ...bypassArgs,
+            "open",
+            `${deploymentOrigin}/cs-CZ`,
+          ]),
+          await command(run, sessionId, [
+            ...bypassArgs,
             "open",
             `${origin()}/`,
-          ])
-        )
-      )
+          ]),
+        ];
+        const cookies = await Effect.runPromise(
+          session.use("read cookies", (page) =>
+            page.context().cookies(deploymentOrigin)
+          )
+        );
+        return { cookies, opened };
+      },
+      { fetch: toLocalServer }
     );
 
-    expect(openedUrls).toEqual(headerMaps.map(() => `${origin()}/`));
-    expect(previewProbes).toHaveLength(headerMaps.length);
-    expect(previewProbes).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining(headerMaps[0]),
-        expect.objectContaining({ "e2e-probe-label": "without-bypass" }),
-      ])
+    expect(opened).toEqual([
+      `${deploymentOrigin}/en-US`,
+      `${deploymentOrigin}/cs-CZ`,
+      `${origin()}/`,
+    ]);
+    expect(previewProbes).toEqual([
+      expect.objectContaining({
+        "x-vercel-protection-bypass": "synthetic-runner-bypass",
+        "x-vercel-set-bypass-cookie": "true",
+      }),
+    ]);
+    expect(cookies.map(({ name }) => name)).toEqual(["_vercel_jwt"]);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "refuses --headers beyond the preview bypass headers",
+  async () => {
+    previewProbes.length = 0;
+    const result = await withRunner((run) =>
+      run(
+        "playwright",
+        [
+          "--session",
+          `headers-${randomUUID()}`,
+          "--headers",
+          JSON.stringify({ "e2e-probe-label": "extra" }),
+          "open",
+          `${origin()}/`,
+        ],
+        { allowFailure: true, logCommand: false, logOutput: false }
+      )
     );
+    expect(result.exitCode).toBe(1);
+    expect(previewProbes).toEqual([]);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "fails closed on a rejected probe without navigating",
+  async () => {
+    previewProbes.length = 0;
+    const sessionId = `rejected-${randomUUID()}`;
+    const navigations: string[] = [];
+    const result = await withRunner(
+      async (run) => {
+        const session = await Effect.runPromise(
+          run.session?.(sessionId) ?? Effect.die("no session bridge")
+        );
+        await Effect.runPromise(
+          session.use("answer the deployment", (page) =>
+            page.context().route(`${deploymentOrigin}/**`, (route) => {
+              navigations.push(route.request().url());
+              return route.fulfill({
+                body: "<!doctype html><title>Deployment</title>",
+                contentType: "text/html",
+              });
+            })
+          )
+        );
+        return run(
+          "playwright",
+          [
+            "--session",
+            sessionId,
+            "--headers",
+            JSON.stringify({
+              "x-vercel-protection-bypass": rejectedBypassSecret,
+            }),
+            "open",
+            `${deploymentOrigin}/en-US`,
+          ],
+          { allowFailure: true, logCommand: false, logOutput: false }
+        );
+      },
+      { fetch: toLocalServer }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(previewProbes).toHaveLength(1);
+    expect(navigations).toEqual([]);
   }
 );

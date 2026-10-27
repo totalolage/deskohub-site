@@ -5,6 +5,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { testEmailAddress } from "@deskohub/test-email";
+import type { Page } from "@playwright/test";
 import { eq } from "drizzle-orm";
 import { Effect, Schema } from "effect";
 import { accountRoleGrants } from "@/db/schema/account-role-grants";
@@ -13,6 +14,7 @@ import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace
 import { removeSyntheticAuthUser } from "../account/auth-rows";
 import { readWorkspaceE2EAccountJournal } from "../account/journal";
 import { workspaceE2ESessionCookieName } from "../account/seeded-session";
+import type { E2EBrowserSession } from "../browser-session";
 import { E2EDatabase } from "../integrations/database.service";
 import { workspaceE2ERunIdSchema } from "../run-identifiers";
 import { makeWorkspaceE2EAdministrationIdentities } from "./identities";
@@ -56,7 +58,7 @@ describe.skipIf(!testDatabase)(
         })
       );
 
-    test("journals each account before seeding it, grants only the requested roles, and signs a context in on the preview origin only", async () => {
+    test("journals each account before seeding it, grants only the requested roles, and signs a session in on the preview origin only", async () => {
       const identities = makeWorkspaceE2EAdministrationIdentities<
         "pg-admin" | "pg-member"
       >({
@@ -83,16 +85,20 @@ describe.skipIf(!testDatabase)(
       );
 
       const cookies: unknown[] = [];
-      await provide(
-        identities.signIn(administrator, {
-          context: {
-            addCookies: async (added) => {
-              cookies.push(...added);
-            },
-          },
-          origin,
-        })
-      );
+      // Only the page's context is driven, to add the seeded cookie.
+      const session = {
+        use: (_label: string, drive: (page: Page) => Promise<unknown>) =>
+          Effect.promise(() =>
+            drive({
+              context: () => ({
+                addCookies: async (added: readonly unknown[]) => {
+                  cookies.push(...added);
+                },
+              }),
+            } as unknown as Page)
+          ),
+      } as unknown as E2EBrowserSession;
+      await provide(identities.signIn(administrator, { origin, session }));
       expect(cookies).toEqual([
         {
           httpOnly: true,

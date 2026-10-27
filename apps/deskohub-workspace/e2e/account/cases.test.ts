@@ -9,9 +9,8 @@ import {
   readAuthCallbackReturnTo,
   signInCallbackReturnParam,
 } from "@/features/account/routes";
-import { accountSectionLabel } from "@/features/account/sections";
+import type { AccountSection } from "@/features/account/sections";
 import { m } from "@/features/i18n";
-import { referralCodeCookieName } from "@/features/referrals/referral-code-cookie";
 import type { WorkspaceE2EStep, WorkspaceE2EStepRunner } from "../case-runner";
 import type { DatasourceConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
@@ -33,6 +32,7 @@ import {
   workspaceE2EReferralOwnerRecipientLabel,
 } from "./config";
 import type { WorkspaceE2EAccountJournal } from "./journal";
+import type { WorkspaceE2EAccountLaneBrowser } from "./lane-browser";
 import type { WorkspaceE2EAccountPasskeys } from "./passkeys";
 import {
   type MagicLinkOperation,
@@ -79,7 +79,6 @@ const czechLanguageLabel = "Preferovaný jazyk";
 const englishFaqTitle = "Frequently Asked Questions";
 const czechFaqTitle = "Často kladené otázky";
 const deleteTriggerSelector = "#delete-account-trigger";
-const accountSectionDataAttribute = "data-account-section";
 const deleteReauthSendSelector = "#delete-account-reauth-send";
 const deleteConfirmCheckboxSelector = "#confirm-account-deletion";
 const deleteConfirmSelector = "#delete-account-confirm";
@@ -1211,6 +1210,23 @@ class FakeBrowser {
     }
   }
 
+  /** Selects a section through the account navigation, as the lane does. */
+  selectSection(section: AccountSection) {
+    if (section === "danger" || section === "billing") {
+      this.selectAccountSection(section);
+      return;
+    }
+    if (section !== "profile") {
+      throw new Error(`the account case selected the ${section} section`);
+    }
+    if (this.pageLocale() !== "en-US") {
+      throw new Error("the English account navigation was clicked in Czech");
+    }
+    this.selectAccountSection("profile");
+    this.pageText = `${this.pageText} ${englishLanguageLabel.toLocaleUpperCase()}`;
+    this.languageControlLabel = englishLanguageLabel;
+  }
+
   open(url: string) {
     const parsed = new URL(url);
     this.external.recordBrowserAction({
@@ -1670,13 +1686,6 @@ class FakeBrowser {
       this.pageText = deletionReauthLinkSent;
       return;
     }
-    if (
-      selector.includes(accountSectionLabel("danger", "en-US")) ||
-      selector.includes(`${accountSectionDataAttribute}="danger"`)
-    ) {
-      this.selectAccountSection("danger");
-      return;
-    }
     if (selector === profileSubmitSelector) {
       if (this.external.submitProfile(this.referralFieldValue) === "saved") {
         this.pageText = "Profile updated.";
@@ -1690,19 +1699,6 @@ class FakeBrowser {
       this.pageText = referralApplied
         ? `Save profile\n${completionReferralApplied}`
         : "Save profile";
-      return;
-    }
-    if (selector.includes(accountSectionLabel("billing", "en-US"))) {
-      this.selectAccountSection("billing");
-      return;
-    }
-    if (selector.includes(accountSectionLabel("profile", "en-US"))) {
-      if (this.pageLocale() !== "en-US") {
-        throw new Error("the English account navigation was clicked in Czech");
-      }
-      this.selectAccountSection("profile");
-      this.pageText = `${this.pageText} ${englishLanguageLabel.toLocaleUpperCase()}`;
-      this.languageControlLabel = englishLanguageLabel;
       return;
     }
     if (selector === languageTriggerSelector) {
@@ -1767,7 +1763,6 @@ class FakeBrowser {
     if (input.includes("validationMessage")) {
       return JSON.stringify({ blocked: this.nativeValidationBlocked });
     }
-    if (input.includes("window.matchMedia")) return "true";
     const cookieWrite =
       /^document\.cookie = "PARAGLIDE_LOCALE=(cs-CZ|en-US); path=\/"$/.exec(
         input
@@ -1860,30 +1855,6 @@ class FakeBrowser {
       }
       return;
     }
-    if (description === "account danger panel hydration") {
-      if (!condition.includes("#delete-account-trigger")) {
-        throw new Error("the danger panel hydration anchor is wrong");
-      }
-      return;
-    }
-    if (description === "account profile panel hydration") {
-      if (!condition.includes("[data-screen='profile-screen']")) {
-        throw new Error("the profile panel hydration anchor is wrong");
-      }
-      return;
-    }
-    if (description === "account billing panel hydration") {
-      if (!condition.includes("[data-screen='profile-screen']")) {
-        throw new Error("the billing panel hydration anchor is wrong");
-      }
-      return;
-    }
-    if (description === "account billing section") {
-      if (this.selectedSection !== "billing") {
-        throw new Error("the billing section is not selected");
-      }
-      return;
-    }
     if (description === "business billing kind") {
       if (this.external.billingKind !== "business") {
         throw new Error("the billing kind is not business");
@@ -1897,12 +1868,6 @@ class FakeBrowser {
       const userId = this.external.currentAuthUserId;
       if (!userId || !this.external.linksByUserId.has(userId)) {
         throw new Error("the linked edit form is not shown");
-      }
-      return;
-    }
-    if (description === "account danger section") {
-      if (this.selectedSection !== "danger") {
-        throw new Error("the danger section is not selected");
       }
       return;
     }
@@ -1937,12 +1902,6 @@ class FakeBrowser {
     if (description === "reauthentication dialog") {
       if (!this.external.reauthenticationDialog) {
         throw new Error("the reauthentication dialog is missing");
-      }
-      return;
-    }
-    if (description === "account profile section") {
-      if (this.selectedSection !== "profile") {
-        throw new Error("the profile section is not selected");
       }
       return;
     }
@@ -2116,25 +2075,6 @@ mock.module("../browser", () => ({
     Effect.sync(() => requireBrowser(browserSession).press(key)),
   readBrowserText: (_run: Runner, browserSession: string) =>
     Effect.sync(() => requireBrowser(browserSession).text()),
-  readBrowserCookie: (
-    _run: Runner,
-    browserSession: string,
-    query: { readonly name: string; readonly value?: string }
-  ) =>
-    Effect.sync(() => {
-      const value = requireBrowser(browserSession).referralCookie;
-      return query.name !== referralCodeCookieName || value === undefined
-        ? { present: false as const }
-        : {
-            httpOnly: false,
-            lifetimeDays: 30,
-            matches: query.value === undefined ? null : query.value === value,
-            path: "/",
-            present: true as const,
-            sameSite: "Lax",
-            secure: true,
-          };
-    }),
   readBrowserUrl: (_run: Runner, browserSession: string) =>
     Effect.sync(() => requireBrowser(browserSession).url()),
   waitForBrowserCondition: (
@@ -2360,6 +2300,21 @@ const makeScenario = (
       }),
   };
   const datasourceConfig = {} as DatasourceConfig;
+  const laneBrowser: WorkspaceE2EAccountLaneBrowser = {
+    selectSection: (section) =>
+      Effect.sync(() => browser.selectSection(section)),
+    waitForNoRememberedReferralCode: Effect.sync(() => {
+      if (browser.referralCookie !== undefined) {
+        throw new Error("the lane browser still remembers a referral code");
+      }
+    }),
+    waitForRememberedReferralCode: (code) =>
+      Effect.sync(() => {
+        if (browser.referralCookie !== code) {
+          throw new Error("the lane browser remembers another referral code");
+        }
+      }),
+  };
   const passkeys: WorkspaceE2EAccountPasskeys = {
     confirmDeletionWithPasskey: Effect.sync(() =>
       external.confirmDeletionWithPasskey()
@@ -2391,6 +2346,7 @@ const makeScenario = (
     datasourceConfig,
     external,
     journalRef,
+    laneBrowser,
     lifecycleHandoff,
     operations,
     passkeys,
@@ -2490,6 +2446,7 @@ const buildCase = async (
       : {}),
     config: scenario.config,
     datasourceConfig: scenario.datasourceConfig,
+    laneBrowser: scenario.laneBrowser,
     lifecycleHandoff: scenario.lifecycleHandoff,
     passkeys: scenario.passkeys,
     previewLogs: scenario.previewLogs,

@@ -40,19 +40,17 @@ import {
 } from "../errors";
 import { pollUntil } from "../polling";
 import {
-  waitForNoRememberedReferralCode,
-  waitForRememberedReferralCode,
-} from "../referrals/referral-cookie";
-import { addRedaction, assert, parseUrl, type Runner } from "../runtime";
+  addRedaction,
+  assert,
+  parseUrl,
+  type Runner,
+} from "../runtime";
 import {
   workspaceE2EPollInitialIntervalMs,
   workspaceE2EPollIntervalMs,
   workspaceE2ETimeouts,
 } from "../timeouts";
-import {
-  accountSectionLandmarks,
-  selectAccountSectionInRunner,
-} from "./account-sections";
+import { accountSectionLandmarks } from "./account-sections";
 import {
   assertNoAuthRows,
   countAccountPasskeys,
@@ -79,6 +77,7 @@ import {
   expireSyntheticCustomerProfile,
   requireSyntheticCustomerProfile,
 } from "./fixtures";
+import type { WorkspaceE2EAccountLaneBrowser } from "./lane-browser";
 import type { WorkspaceE2EAccountPasskeys } from "./passkeys";
 import { workspaceE2EAccountProfileFixture } from "./profile-fixture";
 import type { MagicLinkRateBudget } from "./rate-budget";
@@ -258,6 +257,11 @@ export type WorkspaceE2EAccountCaseInputs = {
   readonly config: WorkspaceE2EAccountConfig;
   readonly datasourceConfig: DatasourceConfig;
   /**
+   * The steps that drive the lane's browser session directly: section
+   * selection and the remembered referral code.
+   */
+  readonly laneBrowser: WorkspaceE2EAccountLaneBrowser;
+  /**
    * The worker-scoped lane fixture owns this mutable handoff once; the case
    * factory is rebuilt for every Playwright test, so a factory-local object
    * could never carry the completed lifecycle between the account cases.
@@ -287,6 +291,7 @@ export const makeWorkspaceE2EAccountCases = ({
   captureSignInHandoffReview,
   config,
   datasourceConfig,
+  laneBrowser,
   lifecycleHandoff,
   passkeys,
   previewLogs,
@@ -542,10 +547,7 @@ export const makeWorkspaceE2EAccountCases = ({
         timeoutMs: uiTransition,
       }
     );
-    yield* waitForRememberedReferralCode(
-      { config, run, session },
-      referralCode
-    );
+    yield* laneBrowser.waitForRememberedReferralCode(referralCode);
     yield* waitSignInForm();
   });
 
@@ -846,7 +848,7 @@ export const makeWorkspaceE2EAccountCases = ({
           step(
             "remember-anonymous-share-link",
             Effect.gen(function* () {
-              yield* waitForNoRememberedReferralCode({ config, run, session });
+              yield* laneBrowser.waitForNoRememberedReferralCode;
               yield* openPage(
                 `${config.baseUrl}${accountSuffix}?ref=${invitation.code}`
               );
@@ -924,10 +926,7 @@ export const makeWorkspaceE2EAccountCases = ({
               yield* openPage(
                 `${config.baseUrl}${getAccountSignInPath(config.locale, selection)}`
               );
-              yield* waitForRememberedReferralCode(
-                { config, run, session },
-                invitation.code
-              );
+              yield* laneBrowser.waitForRememberedReferralCode(invitation.code);
               yield* waitSignInForm();
             }),
             accountPageLoadTimeout
@@ -1278,7 +1277,7 @@ export const makeWorkspaceE2EAccountCases = ({
                 "applied share-link referral notice on the linked account",
                 completionReferralApplied
               );
-              yield* waitForNoRememberedReferralCode({ config, run, session });
+              yield* laneBrowser.waitForNoRememberedReferralCode;
             })
           )
         );
@@ -1321,7 +1320,7 @@ export const makeWorkspaceE2EAccountCases = ({
           step(
             "assert-linked-login-email-read-only",
             Effect.gen(function* () {
-              yield* selectAccountSectionInRunner(run, session, "profile");
+              yield* laneBrowser.selectSection("profile");
               const result = yield* evalBrowserScript(
                 "assert the linked login email display is read-only",
                 run,
@@ -1359,7 +1358,7 @@ export const makeWorkspaceE2EAccountCases = ({
           step(
             "persist-optional-profile-and-billing-fields",
             Effect.gen(function* () {
-              yield* selectAccountSectionInRunner(run, session, "profile");
+              yield* laneBrowser.selectSection("profile");
               yield* fillBrowserField(
                 run,
                 session,
@@ -1374,7 +1373,7 @@ export const makeWorkspaceE2EAccountCases = ({
                 workspaceE2EAccountProfileFixture.phone,
                 { timeoutMs: browserTimeout }
               );
-              yield* selectAccountSectionInRunner(run, session, "billing");
+              yield* laneBrowser.selectSection("billing");
               yield* focusBrowserElement(run, session, billingKindSelector, {
                 timeoutMs: browserTimeout,
               });
@@ -1398,7 +1397,7 @@ export const makeWorkspaceE2EAccountCases = ({
                 billingCompanyFixture,
                 { timeoutMs: browserTimeout }
               );
-              yield* selectAccountSectionInRunner(run, session, "profile");
+              yield* laneBrowser.selectSection("profile");
               const drafts = yield* evalBrowserScript(
                 "assert profile and billing drafts survived section navigation",
                 run,
@@ -1576,7 +1575,7 @@ export const makeWorkspaceE2EAccountCases = ({
             "assert-deletion-marker-state",
             Effect.gen(function* () {
               yield* openPage(localized(accountSuffix));
-              yield* selectAccountSectionInRunner(run, session, "danger");
+              yield* laneBrowser.selectSection("danger");
               yield* setDeletionRequestedAt(userId.userId, new Date());
               yield* setSessionCreatedAt(
                 userId.userId,
@@ -2433,7 +2432,7 @@ export const makeWorkspaceE2EAccountCases = ({
                 (pathname) => pathname === `/en-US${accountSuffix}`
               );
               yield* waitDefaultReservations("reactivated signed-in account");
-              yield* selectAccountSectionInRunner(run, session, "profile");
+              yield* laneBrowser.selectSection("profile");
             }),
             accountPageLoadTimeout
           )
@@ -2569,7 +2568,7 @@ export const makeWorkspaceE2EAccountCases = ({
           step(
             "assert-english-saved-after-switch",
             Effect.gen(function* () {
-              yield* selectAccountSectionInRunner(run, session, "profile");
+              yield* laneBrowser.selectSection("profile");
               yield* requireSelectedLanguage(
                 "English (US)",
                 "switched English (US) option selected"

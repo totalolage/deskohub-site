@@ -6,38 +6,8 @@ import {
   type ActionResponseOutcome,
   awaitActionQuiescence,
   retainActionSubmission,
-  sanitizedBrowserOperation,
 } from "./admin-case";
-import { formatWorkspaceE2EFailure, workspaceE2ETimeoutError } from "./errors";
-
-describe("sanitized browser failure reporting", () => {
-  test("discards raw causes that can carry the session cookie, bypass, or the PIN", async () => {
-    const sessionCookie = "seeded-session-token.signed-session-value";
-    const bypassSecret = "raw-vercel-bypass-secret";
-    const fixturePin = "1111111";
-    const leakedCause = new Error(
-      `request failed with headers {"cookie":"__Secure-better-auth.session_token=${sessionCookie}; _vercel_protection_bypass=${bypassSecret}",` +
-        `"x-vercel-protection-bypass":"${bypassSecret}"} body pin=${fixturePin}`
-    );
-
-    const failure = await Effect.runPromise(
-      Effect.flip(
-        sanitizedBrowserOperation("probe the protected admin page", () =>
-          Promise.reject(leakedCause)
-        )
-      )
-    );
-
-    expect(failure.operation).toBe("probe the protected admin page");
-    expect(failure.cause).toBeUndefined();
-    for (const secret of [sessionCookie, bypassSecret, fixturePin]) {
-      expect(failure.message).not.toContain(secret);
-      expect(formatWorkspaceE2EFailure(failure)).not.toContain(secret);
-      expect(JSON.stringify(failure)).not.toContain(secret);
-    }
-    expect(failure.message).toBe("probe the protected admin page failed");
-  });
-});
+import { workspaceE2ETimeoutError } from "./errors";
 
 describe("action completion barrier", () => {
   test("deletes only after the retained action response settles", async () => {

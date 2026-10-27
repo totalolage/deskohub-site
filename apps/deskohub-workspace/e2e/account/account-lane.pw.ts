@@ -247,6 +247,9 @@ for (const caseId of workspaceE2EAccountCaseIds) {
       const { makeWorkspaceE2EAccountCases } = await import("./cases");
       const { getDatasourceConfig } = await import("../config");
       const { runWorkspaceE2EAccountCase } = await import("./runner");
+      const { makeWorkspaceE2EAccountLaneBrowser } = await import(
+        "./lane-browser"
+      );
       const datasourceConfig = getDatasourceConfig(environment);
       // The language review wrapper hands its capture hook over only when it
       // starts the case, so the case reads it through this slot.
@@ -267,6 +270,11 @@ for (const caseId of workspaceE2EAccountCaseIds) {
           ),
         config: accountLane.config,
         datasourceConfig,
+        laneBrowser: makeWorkspaceE2EAccountLaneBrowser({
+          config: accountLane.config,
+          run: accountLane.run,
+          session: accountLane.session,
+        }),
         lifecycleHandoff: accountLane.lifecycleHandoff,
         passkeys: accountLane.passkeys,
         previewLogs: accountLane.previewLogs,

@@ -10,6 +10,7 @@ import {
   AdministrationOperationVariants,
   administrationOperations,
   CliOnly,
+  changeKeyPaths,
   credentialPaths,
   disclosedCredentials,
 } from "./administration-operation";
@@ -177,16 +178,18 @@ describe("administration operations", () => {
     expect(invalid).toEqual([]);
   });
 
-  test("CLI-only endpoints alone use the CLI's own authentication", () => {
-    const misplaced = endpoints
+  // `administrationOperationGroup` refuses CLI-only endpoints; this finds an
+  // operation in a group declared without it.
+  test("every operation is served by an administration operation group", () => {
+    const unauthenticated = endpoints
       .filter(
         (endpoint) =>
-          endpoint.middleware.has(AdministrationAuthentication) ===
-          isCliOnly(endpoint)
+          !isCliOnly(endpoint) &&
+          !endpoint.middleware.has(AdministrationAuthentication)
       )
       .map(({ reference }) => reference);
 
-    expect(misplaced).toEqual([]);
+    expect(unauthenticated).toEqual([]);
   });
 
   test("operations keep the authentication errors released dhw decodes", () => {
@@ -248,5 +251,37 @@ describe("credentials in operation outputs", () => {
       ["nested", "token"],
       ["list", "*"],
     ]);
+  });
+});
+
+describe("change keys in operation inputs", () => {
+  test("the operations that replay a retried change mark their change keys", () => {
+    const keyed = endpoints.flatMap(({ reference, endpoint }) =>
+      [...endpoint.payload.values()]
+        .flatMap(({ schemas }) => schemas)
+        .flatMap(changeKeyPaths)
+        .map((path) => `${reference} ${path.join(".")}`)
+    );
+
+    expect(keyed).toEqual([
+      "administration.mutateReservationAccess requestId",
+      "administration.previewInvoice invoiceId",
+      "administration.createInvoice invoiceId",
+      "administration.createStandaloneAccessCode attemptId",
+      "administration.mutateDiscounts requestId",
+      "campaigns.createCampaignAudience requestId",
+      "campaigns.createCampaign requestId",
+      "campaigns.duplicateCampaign requestId",
+    ]);
+  });
+
+  test("marks the field, not every value of its type", () => {
+    const Id = Schema.String.check(Schema.isUUID());
+    const schema = Schema.Struct({
+      attemptId: Id.annotateKey({ changeKey: true }),
+      previousAttemptId: Schema.optionalKey(Id),
+    });
+
+    expect(changeKeyPaths(schema)).toEqual([["attemptId"]]);
   });
 });

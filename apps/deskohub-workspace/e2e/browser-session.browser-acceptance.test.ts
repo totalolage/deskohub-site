@@ -4,16 +4,19 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type Browser, chromium } from "@playwright/test";
+import { type Browser, type BrowserContext, chromium } from "@playwright/test";
 import { Effect, Fiber } from "effect";
+import { TestClock } from "effect/testing";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import { E2EBrowserSession } from "./browser-session";
 import {
+  formatWorkspaceE2EFailure,
   isWorkspaceE2ETimeout,
   type WorkspaceE2EError,
   workspaceE2EError,
 } from "./errors";
 import { addRedaction } from "./redaction";
+import { workspaceE2ETimeouts } from "./timeouts";
 
 // The session owns what Playwright does not, so these run against a real
 // Chromium and a local server instead of a scripted adapter.
@@ -23,12 +26,9 @@ let browser: Browser | undefined;
 let server: ReturnType<typeof Bun.serve> | undefined;
 let artifactDir = "";
 const bypassProbes: (string | null)[] = [];
-const bypassHeaders = (secret: string) => ({
-  "x-vercel-protection-bypass": secret,
-  "x-vercel-set-bypass-cookie": "true",
-});
 let heldProbe: PromiseWithResolvers<Response> | undefined;
 let heldProbeArrived: PromiseWithResolvers<void> | undefined;
+let heldProbeAborted = false;
 
 const html = (body: string) =>
   new Response(`<!doctype html><html lang="en">${body}</html>`, {
@@ -64,6 +64,9 @@ beforeAll(async () => {
           const secret = request.headers.get("x-vercel-protection-bypass");
           bypassProbes.push(secret);
           if (secret === "synthetic-held-secret" && heldProbe) {
+            request.signal.addEventListener("abort", () => {
+              heldProbeAborted = true;
+            });
             heldProbeArrived?.resolve();
             return heldProbe.promise;
           }
@@ -335,38 +338,90 @@ test.skipIf(!chromiumAvailable)(
   }
 );
 
+// A Workspace deployment origin, the only kind that receives the secret; the
+// session's `fetch` sends its probe to the local server instead.
+const deploymentOrigin =
+  "https://deskohub-workspace-abc123def-synthetic.vercel.app";
+
+const toLocalServer = ((input: string | URL | Request, init?: RequestInit) => {
+  const url = new URL(input instanceof Request ? input.url : input);
+  if (url.origin !== deploymentOrigin)
+    throw new Error("The probe left the deployment origin");
+  return fetch(new URL(`${url.pathname}${url.search}`, origin()), init);
+}) as typeof fetch;
+
+const withPreviewSession = <A>(
+  body: (session: E2EBrowserSession) => Effect.Effect<A, WorkspaceE2EError>
+) => {
+  if (!browser) throw new Error("Chromium is not running");
+  return Effect.runPromise(
+    Effect.scoped(
+      Effect.flatMap(
+        E2EBrowserSession.open({
+          browser,
+          fetch: toLocalServer,
+          id: `preview-session-test-${randomUUID()}`,
+          recordHar: false,
+        }),
+        body
+      )
+    )
+  );
+};
+
+const holdProbe = () => {
+  heldProbe = Promise.withResolvers<Response>();
+  heldProbeArrived = Promise.withResolvers<void>();
+  return {
+    arrived: heldProbeArrived.promise,
+    release: (response: Response) => {
+      heldProbe?.resolve(response);
+      heldProbe = undefined;
+    },
+  };
+};
+
+const acceptedProbe = () =>
+  new Response(null, {
+    headers: {
+      location: "/favicon.svg",
+      "set-cookie": "_vercel_jwt=synthetic-held-cookie; Path=/; HttpOnly",
+    },
+    status: 307,
+  });
+
 test.skipIf(!chromiumAvailable)(
-  "primes preview access once per origin and fails closed",
+  "primes a deployment origin once and fails closed on a rejected probe",
   async () => {
     bypassProbes.length = 0;
-    const accepted = await withSession((session) =>
+    const accepted = await withPreviewSession((session) =>
       Effect.gen(function* () {
         yield* session.primePreviewAccess(
-          `${origin()}/en-US/reservation`,
-          bypassHeaders(acceptedBypassSecret),
+          `${deploymentOrigin}/en-US/reservation`,
+          acceptedBypassSecret,
           { timeoutMs: 5000 }
         );
         yield* session.primePreviewAccess(
-          `${origin()}/`,
-          bypassHeaders(acceptedBypassSecret),
-          {
-            timeoutMs: 5000,
-          }
+          `${deploymentOrigin}/`,
+          acceptedBypassSecret,
+          { timeoutMs: 5000 }
         );
         return yield* session.use("read cookies", (page) =>
-          page.context().cookies(origin())
+          page.context().cookies(deploymentOrigin)
         );
       })
     );
     expect(bypassProbes).toEqual([acceptedBypassSecret]);
-    expect(accepted.map(({ name }) => name)).toEqual(["_vercel_jwt"]);
+    expect(accepted.map(({ httpOnly, name }) => ({ httpOnly, name }))).toEqual([
+      { httpOnly: true, name: "_vercel_jwt" },
+    ]);
 
     bypassProbes.length = 0;
-    const rejected = await withSession((session) =>
+    const rejected = await withPreviewSession((session) =>
       Effect.gen(function* () {
         const prime = session.primePreviewAccess(
-          `${origin()}/`,
-          bypassHeaders("synthetic-rejected-secret"),
+          `${deploymentOrigin}/`,
+          "synthetic-rejected-secret",
           { timeoutMs: 5000 }
         );
         const first = yield* Effect.flip(prime);
@@ -374,40 +429,144 @@ test.skipIf(!chromiumAvailable)(
         return first;
       })
     );
-    expect(rejected.message).toBe("Preview bypass probe failed with 401");
+    expect(rejected.message).toBe(
+      "The Vercel protection bypass probe failed with 401"
+    );
+    expect(isWorkspaceE2ETimeout(rejected)).toBe(false);
     expect(bypassProbes).toHaveLength(2);
   }
 );
 
 test.skipIf(!chromiumAvailable)(
-  "stops waiting for a held bypass probe when interrupted",
+  "counts an origin outside the deployments as primed without sending the secret",
   async () => {
-    heldProbe = Promise.withResolvers<Response>();
-    heldProbeArrived = Promise.withResolvers<void>();
+    bypassProbes.length = 0;
+    const cookies = await withSession((session) =>
+      Effect.gen(function* () {
+        yield* session.primePreviewAccess(
+          `${origin()}/`,
+          acceptedBypassSecret,
+          { timeoutMs: 5000 }
+        );
+        yield* session.primePreviewAccess(`${origin()}/`, undefined, {
+          timeoutMs: 5000,
+        });
+        yield* goto(session, "/");
+        return yield* session.use("read cookies", (page) =>
+          page.context().cookies()
+        );
+      })
+    );
+    expect(bypassProbes).toEqual([]);
+    expect(cookies).toEqual([]);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "shares one probe between concurrent primes and stops only an interrupted wait",
+  async () => {
+    bypassProbes.length = 0;
+    const held = holdProbe();
     try {
-      const interruptMs = await withSession((session) =>
+      const outcome = await withPreviewSession((session) =>
         Effect.gen(function* () {
-          const probing = yield* Effect.forkChild(
-            session.primePreviewAccess(
-              `${origin()}/`,
-              bypassHeaders("synthetic-held-secret"),
-              {
-                timeoutMs: 10_000,
-              }
-            )
+          const prime = session.primePreviewAccess(
+            `${deploymentOrigin}/`,
+            "synthetic-held-secret",
+            { timeoutMs: 10_000 }
           );
-          yield* Effect.promise(
-            () => heldProbeArrived?.promise ?? Promise.resolve()
-          );
+          const interrupted = yield* Effect.forkChild(prime, {
+            startImmediately: true,
+          });
+          const waiting = yield* Effect.forkChild(prime, {
+            startImmediately: true,
+          });
+          yield* Effect.promise(() => held.arrived);
           const interruptedAt = Date.now();
-          yield* Fiber.interrupt(probing);
-          return Date.now() - interruptedAt;
+          yield* Fiber.interrupt(interrupted);
+          const interruptMs = Date.now() - interruptedAt;
+          held.release(acceptedProbe());
+          yield* Fiber.join(waiting);
+          const cookies = yield* session.use("read cookies", (page) =>
+            page.context().cookies(deploymentOrigin)
+          );
+          return { cookies, interruptMs };
         })
       );
-      expect(interruptMs).toBeLessThan(1000);
+      expect(outcome.interruptMs).toBeLessThan(1000);
+      expect(outcome.cookies.map(({ name }) => name)).toEqual(["_vercel_jwt"]);
+      expect(bypassProbes).toEqual(["synthetic-held-secret"]);
     } finally {
-      heldProbe.resolve(new Response("late", { status: 401 }));
-      heldProbe = undefined;
+      held.release(new Response("late", { status: 401 }));
+    }
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "classifies a probe that outlives its timeout as a timeout",
+  async () => {
+    const held = holdProbe();
+    try {
+      const failure = await withPreviewSession((session) =>
+        Effect.flip(
+          session.primePreviewAccess(
+            `${deploymentOrigin}/`,
+            "synthetic-held-secret",
+            { timeoutMs: 200 }
+          )
+        )
+      );
+      expect(isWorkspaceE2ETimeout(failure)).toBe(true);
+      expect(failure.message).toBe(
+        "The Vercel protection bypass request timed out"
+      );
+    } finally {
+      held.release(new Response("late", { status: 401 }));
+    }
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "aborts a held probe when the session closes and fails its waiters as cut off",
+  async () => {
+    const held = holdProbe();
+    heldProbeAborted = false;
+    try {
+      const failure = await withPreviewSession((session) =>
+        Effect.gen(function* () {
+          const waiting = yield* Effect.forkChild(
+            Effect.flip(
+              session.primePreviewAccess(
+                `${deploymentOrigin}/`,
+                "synthetic-held-secret",
+                { timeoutMs: 10_000 }
+              )
+            ),
+            { startImmediately: true }
+          );
+          yield* Effect.promise(() => held.arrived);
+          yield* session.close();
+          const failure = yield* Fiber.join(waiting);
+          const afterClose = yield* Effect.flip(
+            session.primePreviewAccess(
+              `${deploymentOrigin}/`,
+              acceptedBypassSecret,
+              { timeoutMs: 5000 }
+            )
+          );
+          return { afterClose, failure };
+        })
+      );
+      expect(failure.failure.message).toBe(
+        "prime preview access stopped because the browser session closed"
+      );
+      expect(failure.afterClose.message).toBe(
+        "prime preview access stopped because the browser session closed"
+      );
+      await Bun.sleep(50);
+      expect(heldProbeAborted).toBe(true);
+    } finally {
+      held.release(new Response("late", { status: 401 }));
     }
   }
 );
@@ -434,6 +593,123 @@ test.skipIf(!chromiumAvailable)(
     await probe.close();
 
     expect(browser.contexts().length).toBe(before);
+  }
+);
+
+/**
+ * A browser whose contexts hold `close()` until the test lets go, optionally
+ * failing to open their first page.
+ */
+const stallingContextClose = (options: { readonly failNewPage: boolean }) => {
+  if (!browser) throw new Error("Chromium is not running");
+  const realBrowser = browser;
+  const closeRequested = Promise.withResolvers<void>();
+  const held = Promise.withResolvers<void>();
+  const contexts: BrowserContext[] = [];
+  const stalling = {
+    newContext: async (
+      contextOptions?: Parameters<Browser["newContext"]>[0]
+    ) => {
+      const context = await realBrowser.newContext(contextOptions);
+      contexts.push(context);
+      context.close = () => {
+        closeRequested.resolve();
+        return held.promise;
+      };
+      if (options.failNewPage)
+        context.newPage = () =>
+          Promise.reject(new Error("synthetic page failure"));
+      return context;
+    },
+  } as unknown as Browser;
+  return {
+    browser: stalling,
+    closeRequested: closeRequested.promise,
+    release: async () => {
+      await Promise.all(
+        contexts.map((context) =>
+          Reflect.apply(
+            Object.getPrototypeOf(context).close as BrowserContext["close"],
+            context,
+            []
+          )
+        )
+      );
+      held.resolve();
+    },
+  };
+};
+
+/**
+ * Closes the session's Scope while `context.close()` stalls, moves the clock
+ * to just short of one browser action and then past it, and reports whether
+ * the Scope was still waiting before the bound and settled after it. When the
+ * session opened, it lets the close go and reports the raw HAR files left.
+ */
+const settleScopeOverStalledClose = async (options: {
+  readonly failNewPage: boolean;
+}) => {
+  const stalling = stallingContextClose(options);
+  const id = `session-stalled-close-${randomUUID()}`;
+  let opened: E2EBrowserSession | undefined;
+  const observed = await Effect.runPromise(
+    Effect.gen(function* () {
+      // Detached, so a Scope stuck in its finalizers cannot hold the test.
+      const scoped = yield* Effect.forkDetach(
+        Effect.scoped(
+          Effect.flatMap(
+            E2EBrowserSession.open({ browser: stalling.browser, id }),
+            (session) => {
+              opened = session;
+              return goto(session, "/");
+            }
+          )
+        )
+      );
+      yield* Effect.promise(() => stalling.closeRequested);
+      yield* TestClock.adjust(
+        `${workspaceE2ETimeouts.browserAction - 1000} millis`
+      );
+      // Real time, which the TestClock does not control, lets anything the
+      // clock released run before the fiber is inspected.
+      yield* Effect.promise(() => Bun.sleep(100));
+      const waitingBeforeBound = scoped.pollUnsafe() === undefined;
+      yield* TestClock.adjust("2 seconds");
+      const settled = yield* Effect.raceFirst(
+        Fiber.await(scoped),
+        Effect.promise(() => Bun.sleep(2000)).pipe(Effect.as("stalled"))
+      );
+      return {
+        settled: settled === "stalled" ? settled : settled._tag,
+        waitingBeforeBound,
+      };
+    }).pipe(Effect.provide(TestClock.layer()))
+  ).finally(stalling.release);
+  if (!opened) return observed;
+  // The detached close finishes once the context really closes; a later
+  // close shares its outcome, raw HAR removal included.
+  await Effect.runPromise(Effect.ignore(opened.close()));
+  return { ...observed, rawHars: await rawHarFiles(id) };
+};
+
+test.skipIf(!chromiumAvailable)(
+  "waits for a stalled context close at most one browser action",
+  async () => {
+    expect(await settleScopeOverStalledClose({ failNewPage: false })).toEqual({
+      rawHars: [],
+      settled: "Success",
+      waitingBeforeBound: true,
+    });
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "bounds the close of a context whose first page failed to open",
+  async () => {
+    expect(await settleScopeOverStalledClose({ failNewPage: true })).toEqual({
+      settled: "Failure",
+      waitingBeforeBound: true,
+    });
   }
 );
 
@@ -515,6 +791,32 @@ test.skipIf(!chromiumAvailable)(
 );
 
 test.skipIf(!chromiumAvailable)(
+  "keeps the session cookie, bypass, and PIN out of every rendering of a failure",
+  async () => {
+    const sessionCookie = "seeded-session-token.signed-session-value";
+    const bypassSecret = "raw-vercel-bypass-secret";
+    const fixturePin = "1111111";
+    const failure = await withSession((session) =>
+      Effect.flip(
+        session.use("probe the protected admin page", async () => {
+          throw new Error(
+            `request failed with headers {"cookie":"__Secure-better-auth.session_token=${sessionCookie}; _vercel_protection_bypass=${bypassSecret}",` +
+              `"x-vercel-protection-bypass":"${bypassSecret}"} body pin=${fixturePin}`
+          );
+        })
+      )
+    );
+
+    expect(failure.operation).toBe("probe the protected admin page");
+    expect(failure.message).toBe("probe the protected admin page failed");
+    for (const secret of [sessionCookie, bypassSecret, fixturePin]) {
+      expect(formatWorkspaceE2EFailure(failure)).not.toContain(secret);
+      expect(JSON.stringify(failure)).not.toContain(secret);
+    }
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
   "stops waiting when interrupted and reports work cut off by close",
   async () => {
     const outcome = await withSession((session) =>
@@ -577,6 +879,107 @@ test.skipIf(!chromiumAvailable)(
     );
 
     expect(total).toBe(1 + 2 + "Session".length);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "describes a cookie by its attributes and expected value, never the value",
+  async () => {
+    const siteUrl = "https://workspace.example.test";
+    const value = "synthetic-remembered-code";
+    const outcome = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const session = yield* openSession();
+          yield* session.use("add cookies", (page) =>
+            page.context().addCookies([
+              {
+                expires: Math.round(Date.now() / 1000) + 30 * 86_400,
+                httpOnly: false,
+                name: "remembered",
+                sameSite: "Lax",
+                secure: true,
+                url: siteUrl,
+                value,
+              },
+            ])
+          );
+          yield* session.setSessionCookie({
+            name: "session_token",
+            url: siteUrl,
+            value: "synthetic-session",
+          });
+          const described = yield* Effect.all({
+            absent: session.describeCookie({ name: "absent", url: siteUrl }),
+            differs: session.describeCookie({
+              name: "remembered",
+              url: `${siteUrl}/en-US/account`,
+              value: "another-code",
+            }),
+            matches: session.describeCookie({
+              name: "remembered",
+              url: siteUrl,
+              value,
+            }),
+            sessionCookie: session.describeCookie({
+              name: "session_token",
+              url: siteUrl,
+            }),
+          });
+          const invalidQuery = yield* Effect.flip(
+            session.describeCookie({ name: "remembered", url: "not a url" })
+          );
+          yield* session.close();
+          const afterClose = yield* Effect.flip(
+            session.describeCookie({ name: "remembered", url: siteUrl })
+          );
+          return { afterClose, described, invalidQuery };
+        })
+      )
+    );
+
+    expect(outcome.described).toEqual({
+      absent: { present: false },
+      differs: {
+        httpOnly: false,
+        lifetimeDays: 30,
+        matches: false,
+        path: "/",
+        present: true,
+        sameSite: "Lax",
+        secure: true,
+      },
+      matches: {
+        httpOnly: false,
+        lifetimeDays: 30,
+        matches: true,
+        path: "/",
+        present: true,
+        sameSite: "Lax",
+        secure: true,
+      },
+      sessionCookie: {
+        httpOnly: true,
+        lifetimeDays: null,
+        matches: null,
+        path: "/",
+        present: true,
+        sameSite: "Lax",
+        secure: true,
+      },
+    });
+    for (const failure of [outcome.invalidQuery, outcome.afterClose]) {
+      expect(failure.operation).toBe("read browser cookie");
+      expect(isWorkspaceE2ETimeout(failure)).toBe(false);
+    }
+    expect(outcome.afterClose.message).toContain("browser session closed");
+    expect(
+      JSON.stringify([
+        outcome.described,
+        outcome.invalidQuery,
+        outcome.afterClose,
+      ])
+    ).not.toContain(value);
   }
 );
 

@@ -17,6 +17,12 @@ declare module "effect/Schema" {
        * `disclosedCredentials` may return one.
        */
       readonly credential?: true | undefined;
+      /**
+       * Marks an input field that identifies one intended change across
+       * retries, such as a request ID: a retry repeats it, a new change
+       * takes a new one.
+       */
+      readonly changeKey?: true | undefined;
     }
   }
 }
@@ -147,22 +153,28 @@ export const disclosedCredentials: ReadonlyArray<{
   },
 ];
 
-const isCredentialCheck = (check: SchemaAST.Check<unknown>): boolean =>
-  check.annotations?.credential === true ||
-  (check._tag === "FilterGroup" && check.checks.some(isCredentialCheck));
+type Mark = "credential" | "changeKey";
+
+const isMarkedCheck =
+  (mark: Mark) =>
+  (check: SchemaAST.Check<unknown>): boolean =>
+    check.annotations?.[mark] === true ||
+    (check._tag === "FilterGroup" && check.checks.some(isMarkedCheck(mark)));
 
 /**
- * The mark can sit on the node or on any of its checks: annotating a checked
- * schema stores it on the last check, and a later `.check` appends another.
+ * The mark can sit on the node, on any of its checks, or on the key that
+ * holds it: annotating a checked schema stores it on the last check, a later
+ * `.check` appends another, and `annotateKey` marks one field of a type
+ * other fields share unmarked.
  */
-const isCredential = (ast: SchemaAST.AST) =>
-  ast.annotations?.credential === true ||
-  (ast.checks?.some(isCredentialCheck) ?? false);
+const isMarked = (mark: Mark) => (ast: SchemaAST.AST) =>
+  ast.annotations?.[mark] === true ||
+  ast.context?.annotations?.[mark] === true ||
+  (ast.checks?.some(isMarkedCheck(mark)) ?? false);
 
-/** The property paths at which a value of the schema can hold a credential. */
-export const credentialPaths = (
-  schema: Schema.Top
-): ReadonlyArray<ReadonlyArray<string>> => {
+/** The property paths at which a value of the schema holds a `mark`ed value. */
+const markedPaths = (mark: Mark, schema: Schema.Top) => {
+  const isMarkedNode = isMarked(mark);
   const paths: Array<ReadonlyArray<string>> = [];
   const visit = (
     ast: SchemaAST.AST,
@@ -174,7 +186,7 @@ export const credentialPaths = (
       return;
     }
     const within = new Set(ancestors).add(ast);
-    if (isCredential(ast)) {
+    if (isMarkedNode(ast)) {
       paths.push(path);
       return;
     }
@@ -210,6 +222,19 @@ export const credentialPaths = (
       paths.findIndex((other) => other.join(".") === path.join(".")) === index
   );
 };
+
+/** The property paths at which a value of the schema can hold a credential. */
+export const credentialPaths = (
+  schema: Schema.Top
+): ReadonlyArray<ReadonlyArray<string>> => markedPaths("credential", schema);
+
+/**
+ * The property paths of the schema's change keys, the input fields that
+ * identify one intended change across retries.
+ */
+export const changeKeyPaths = (
+  schema: Schema.Top
+): ReadonlyArray<ReadonlyArray<string>> => markedPaths("changeKey", schema);
 
 /** How one endpoint, or one variant of a generic mutation endpoint, is served. */
 export type AdministrationOperationAccess =

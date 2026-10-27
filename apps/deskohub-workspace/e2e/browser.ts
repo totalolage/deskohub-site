@@ -340,66 +340,6 @@ export const waitForBrowserReactFormSubmit = (
   ).pipe(Effect.asVoid);
 };
 
-/**
- * Adds one HTTP-only cookie for the preview origin to the session's own
- * browser context. The value travels on the command input, never in logged
- * arguments; callers register it with the redactor first.
- */
-export const setBrowserCookie = (
-  run: Runner,
-  session: string,
-  cookie: {
-    readonly name: string;
-    readonly url: string;
-    readonly value: string;
-  }
-) =>
-  runBrowserCommand(
-    "set browser cookie",
-    run,
-    session,
-    ["cookie", "set", "--stdin"],
-    {
-      input: JSON.stringify(cookie),
-      logOutput: false,
-    }
-  ).pipe(Effect.asVoid);
-
-export type BrowserCookieDescription = ReturnType<
-  typeof import("./runtime").describeCookie
->;
-
-/**
- * Reads one cookie of the session's browser context for an origin: its
- * attributes and whether it holds the expected value, never the value.
- */
-export const readBrowserCookie = (
-  run: Runner,
-  session: string,
-  query: {
-    readonly name: string;
-    readonly url: string;
-    readonly value?: string;
-  }
-) =>
-  runBrowserCommand(
-    "read browser cookie",
-    run,
-    session,
-    ["cookie", "get", "--stdin"],
-    {
-      input: JSON.stringify(query),
-      logOutput: false,
-    }
-  ).pipe(
-    Effect.flatMap(({ stdout }) =>
-      tryWorkspaceE2ESync(
-        "parse browser cookie",
-        () => JSON.parse(stdout) as BrowserCookieDescription
-      )
-    )
-  );
-
 export const evalBrowserScript = (
   operation: string,
   run: Runner,

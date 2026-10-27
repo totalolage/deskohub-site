@@ -1,11 +1,31 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Effect, Schema } from "effect";
+import { Context, Effect, Layer, Option, Schema } from "effect";
+import { HttpRouter, HttpServer } from "effect/unstable/http";
+import {
+  HttpApi,
+  HttpApiBuilder,
+  HttpApiEndpoint,
+  HttpApiGroup,
+} from "effect/unstable/httpapi";
+import {
+  AdministrationOperationBehavior,
+  CliOnly,
+  readOperation,
+} from "./administration-operation";
+import {
+  DhwVersion,
+  MinimumDhwVersion,
+  OutdatedDhwRefusal,
+} from "./dhw-version";
 import { AdministrationCampaignDetail } from "./email-campaigns";
 import {
   AdminCliAdministrationApi,
   AdminCliInfo,
+  AdministrationAccountId,
+  AdministrationActionRecord,
   AdministrationActorEmail,
+  AdministrationAuthentication,
   AdministrationCustomerProfile,
   AdministrationCustomerQuery,
   AdministrationCustomerReservationsQuery,
@@ -36,11 +56,15 @@ import {
   AdministrationStandaloneAccessCodeResult,
   AdministrationVoucher,
   AdministrationWorkspaceSiteLocalWholeHourDateTime,
+  administrationOperationGroup,
   CliBuildTarget,
+  CliClientCompatibility,
   CliClientName,
   CliSession,
   CliSessionId,
+  CurrentAdministrationCaller,
   isStandaloneAccessCodeWindowWithinContractDuration,
+  requiresDhw,
   toAdministrationActorName,
 } from "./workspace-admin-api";
 
@@ -956,5 +980,181 @@ describe("CLI session contract", () => {
 
     expect<string>(toAdministrationActorName(email)).toBe(`${"a".repeat(78)}…`);
     expect<string>(toAdministrationActorName(shortEmail)).toBe(shortEmail);
+  });
+});
+
+describe("administration operation groups", () => {
+  const minimum = DhwVersion.make("1.2.3");
+  const read = <const Name extends string, const Path extends `/${string}`>(
+    name: Name,
+    path: Path
+  ) =>
+    HttpApiEndpoint.get(name, path, { success: Schema.String }).annotate(
+      AdministrationOperationBehavior,
+      readOperation
+    );
+
+  const SampleApi = HttpApi.make("sampleApi")
+    .add(
+      administrationOperationGroup(
+        HttpApiGroup.make("checkedFirst").add(
+          read("read", "/first").annotate(
+            MinimumDhwVersion,
+            Option.some(minimum)
+          )
+        ),
+        { checkDhwVersionBeforeAuthentication: true }
+      )
+    )
+    .add(
+      HttpApiGroup.make("checkedPerEndpoint")
+        .add(read("read", "/unversioned"))
+        .add(read("readVersioned", "/versioned").pipe(requiresDhw(minimum)))
+        .pipe(administrationOperationGroup)
+    );
+
+  const ran: Array<string> = [];
+  const recording =
+    (name: string) =>
+    <A, E, R>(httpEffect: Effect.Effect<A, E, R>) =>
+      Effect.andThen(
+        Effect.sync(() => ran.push(name)),
+        httpEffect
+      );
+  const answered = Effect.succeed("answered");
+
+  const server = HttpRouter.toWebHandler(
+    HttpApiBuilder.layer(SampleApi).pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          HttpApiBuilder.group(SampleApi, "checkedFirst", (handlers) =>
+            handlers.handle("read", () => answered)
+          ),
+          HttpApiBuilder.group(SampleApi, "checkedPerEndpoint", (handlers) =>
+            handlers
+              .handle("read", () => answered)
+              .handle("readVersioned", () => answered)
+          )
+        )
+      ),
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.succeed(AdministrationAuthentication, {
+            bearer: (httpEffect) =>
+              recording("authentication")(
+                Effect.provideService(httpEffect, CurrentAdministrationCaller, {
+                  actor: {
+                    accountId: AdministrationAccountId.make("account-1"),
+                    email: syntheticAddress,
+                  },
+                  channel: {
+                    _tag: "CliSession",
+                    sessionId: CliSessionId.make(
+                      "01980000-0000-7000-8000-000000000000"
+                    ),
+                  },
+                })
+              ),
+          }),
+          Layer.succeed(AdministrationActionRecord, recording("action record")),
+          Layer.succeed(CliClientCompatibility, recording("dhw version check"))
+        )
+      ),
+      Layer.provide(HttpServer.layerServices)
+    ),
+    { disableLogger: true }
+  );
+  afterAll(() => server.dispose());
+
+  test.each([
+    ["/first", ["dhw version check", "authentication", "action record"]],
+    ["/unversioned", ["authentication", "action record"]],
+    ["/versioned", ["authentication", "action record", "dhw version check"]],
+  ])(
+    "serves %s under the CLI prefix, recording inside authentication",
+    async (path, expected) => {
+      ran.length = 0;
+      const response = await server.handler(
+        new Request(`https://workspace.deskohub.test/api/v1/cli${path}`)
+      );
+
+      expect(response.status).toBe(200);
+      expect(ran).toEqual(expected);
+    }
+  );
+
+  test("an endpoint requiring a dhw names its refusal only when given one", () => {
+    const defaulted = read("read", "/read").pipe(requiresDhw(minimum));
+    const unavailable = read("read", "/read").pipe(
+      requiresDhw(minimum, "CliServiceUnavailable")
+    );
+
+    expect(Context.get(defaulted.annotations, MinimumDhwVersion)).toEqual(
+      Option.some(minimum)
+    );
+    expect(defaulted.annotations.mapUnsafe.has(OutdatedDhwRefusal.key)).toBe(
+      false
+    );
+    expect(Context.get(unavailable.annotations, OutdatedDhwRefusal)).toBe(
+      "CliServiceUnavailable"
+    );
+    expect(
+      [defaulted, unavailable].map(({ middlewares }) =>
+        middlewares.has(CliClientCompatibility)
+      )
+    ).toEqual([true, true]);
+  });
+
+  test("refuses a minimum nothing checks, a check after a first one, and a CLI-only endpoint", () => {
+    const declare =
+      (
+        group: HttpApiGroup.Any,
+        options?: { readonly checkDhwVersionBeforeAuthentication: true }
+      ) =>
+      () =>
+        administrationOperationGroup(group, options);
+
+    expect(
+      declare(
+        HttpApiGroup.make("unchecked").add(
+          read("read", "/read").annotate(
+            MinimumDhwVersion,
+            Option.some(minimum)
+          )
+        )
+      )
+    ).toThrow("unchecked.read");
+    expect(
+      declare(
+        HttpApiGroup.make("unchecked")
+          .add(read("read", "/read"))
+          .annotate(MinimumDhwVersion, Option.some(minimum))
+      )
+    ).toThrow("unchecked.read");
+    expect(
+      declare(
+        HttpApiGroup.make("checkedTwice").add(
+          read("read", "/read").pipe(requiresDhw(minimum))
+        ),
+        { checkDhwVersionBeforeAuthentication: true }
+      )
+    ).toThrow("checkedTwice.read");
+    expect(
+      declare(
+        HttpApiGroup.make("cli").add(
+          HttpApiEndpoint.get("handshake", "/handshake", {
+            success: Schema.String,
+          }).annotate(CliOnly, { reason: "Signs the CLI in." })
+        )
+      )
+    ).toThrow("cli.handshake");
+    // An endpoint's own annotation overrides its group's.
+    expect(
+      declare(
+        HttpApiGroup.make("exempt")
+          .add(read("read", "/read").annotate(MinimumDhwVersion, Option.none()))
+          .annotate(MinimumDhwVersion, Option.some(minimum))
+      )
+    ).not.toThrow();
   });
 });
