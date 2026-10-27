@@ -17,9 +17,18 @@ export type AutomationUnitQueueFakeMessage = {
   readonly idempotencyKey: string;
 };
 
+// Each publication maps to one fake message, so a message keeps its identity
+// across reads and is decoded once.
+const fakeMessages = new WeakMap<
+  QueuePublication,
+  AutomationUnitQueueFakeMessage
+>();
+
 const toFakeMessage = (
   publication: QueuePublication
 ): AutomationUnitQueueFakeMessage => {
+  const known = fakeMessages.get(publication);
+  if (known !== undefined) return known;
   const message = decodeStandardSchema(
     automationUnitTopic.message,
     publication.message
@@ -27,10 +36,12 @@ const toFakeMessage = (
   if (message === undefined) {
     throw new Error("The automation unit queue holds an invalid message");
   }
-  return {
+  const fakeMessage = {
     unitId: message.unitId,
     idempotencyKey: publication.options.idempotencyKey,
   };
+  fakeMessages.set(publication, fakeMessage);
+  return fakeMessage;
 };
 
 /**
@@ -58,11 +69,13 @@ export const makeAutomationUnitQueueFake = () => {
     },
     /** Puts a message back at the end, as a redelivery after a failure. */
     redeliver: (message: AutomationUnitQueueFakeMessage) => {
-      queue.redeliver({
+      const publication = {
         topic: automationUnitTopic.topic,
         message: { unitId: message.unitId },
         options: { idempotencyKey: message.idempotencyKey },
-      });
+      };
+      fakeMessages.set(publication, message);
+      queue.redeliver(publication);
     },
     /** Loses every pending message, as an expired or lost publish. */
     dropPending: queue.dropPending,
