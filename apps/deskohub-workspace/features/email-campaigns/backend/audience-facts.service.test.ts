@@ -532,6 +532,34 @@ describe("AudienceFactsService evaluation time", () => {
     });
   });
 
+  test("fails visit resolution for a reversed Dotypos interval", async () => {
+    const { exit } = await resolveFacts({
+      filter: {
+        attribute: "lastVisit",
+        _tag: "Condition",
+        operator: "in",
+        value: lastDay,
+      },
+      visits: [
+        {
+          ...visit("reversed", now.toString()),
+          endDate: instant(now.toString()).subtract({ hours: 1 }).toString(),
+        },
+      ],
+      booked: [
+        {
+          dotyposReservationId: reservationId("reversed"),
+          dotyposCustomerId: customerId("a"),
+        },
+      ],
+    });
+
+    expect(Exit.isFailure(exit) && Cause.squash(exit.cause)).toMatchObject({
+      _tag: "CampaignRecipientResolutionError",
+      source: "dotypos",
+    });
+  });
+
   test("ends visit-dated counts at the evaluation time, inclusive", async () => {
     const { listReservations } = await resolveFacts({
       filter: reservations({ dateBasis: "visit", period: lastDay }),

@@ -247,6 +247,28 @@ describe.skipIf(!testDatabase)(
       });
     });
 
+    test("returns null when a booked meeting-room end is unreadable", async () => {
+      const customerId = uniqueCustomerId();
+      const dotyposReservationId = await insertReservation({
+        dotyposCustomerId: customerId,
+        reservationDetails: { kind: "meeting-room" },
+        createdAt: "2026-07-01T09:00:00.000Z",
+      });
+      const reservation = makeDotyposReservation({
+        id: dotyposReservationId,
+        startDate: "2026-07-01T08:00:00.000Z",
+        endDate: "2026-07-01T12:00:00.000Z",
+      });
+
+      const { lastReservation } = await loadLastReservation(
+        customerId,
+        "meeting-room",
+        [{ ...reservation, endDate: "not-a-date" }]
+      );
+
+      expect(lastReservation).toBeNull();
+    });
+
     test("returns null when Dotypos no longer lists the booked meeting room", async () => {
       const customerId = uniqueCustomerId();
       await insertReservation({
