@@ -460,10 +460,10 @@ export class AdministrationAuthentication extends HttpApiMiddleware.Service<
 
 /**
  * Records each `write` and `destructive` operation with its caller and
- * outcome. Add it before `AdministrationAuthentication`, so it runs inside
- * it and sees the caller. It fails with `CliServiceUnavailable`, which every
- * authenticated endpoint already declares, when it can't record the call
- * before the operation runs.
+ * outcome. `administrationOperationGroup` runs it inside
+ * `AdministrationAuthentication`, so it sees the caller. It fails with
+ * `CliServiceUnavailable`, which every authenticated endpoint already
+ * declares, when it can't record the call before the operation runs.
  */
 export class AdministrationActionRecord extends HttpApiMiddleware.Service<
   AdministrationActionRecord,
@@ -471,6 +471,116 @@ export class AdministrationActionRecord extends HttpApiMiddleware.Service<
 >()("@deskohub/workspace-admin-api/AdministrationActionRecord", {
   error: CliServiceUnavailable.schema,
 }) {}
+
+/**
+ * Requires `minimum` of the calling `dhw` on an endpoint, refusing an older
+ * one after authentication with `refusal`, or `OutdatedDhwRefusal`'s
+ * default. An endpoint that gains a minimum after release refuses with
+ * `CliServiceUnavailable` unless it declared `CliInputInvalid` from the start.
+ */
+export const requiresDhw =
+  (minimum: DhwVersion, refusal?: (typeof OutdatedDhwRefusal)["Service"]) =>
+  <Endpoint extends HttpApiEndpoint.Any>(
+    endpoint: Endpoint
+  ): HttpApiEndpoint.AddMiddleware<Endpoint, CliClientCompatibility> => {
+    const required = (endpoint as unknown as HttpApiEndpoint.AnyWithProps)
+      .annotate(MinimumDhwVersion, Option.some(minimum))
+      .middleware(CliClientCompatibility);
+    return (
+      refusal === undefined
+        ? required
+        : required.annotate(OutdatedDhwRefusal, refusal)
+    ) as never;
+  };
+
+interface AdministrationOperationGroupOptions {
+  /**
+   * Refuses a `dhw` older than an endpoint's `MinimumDhwVersion` on every
+   * endpoint before reading its session, in place of `requiresDhw`.
+   */
+  readonly checkDhwVersionBeforeAuthentication?: boolean;
+}
+
+type AuthenticatedGroup<Group> = HttpApiGroup.AddMiddleware<
+  HttpApiGroup.AddMiddleware<Group, AdministrationActionRecord>,
+  AdministrationAuthentication
+>;
+
+export type AdministrationOperationGroup<
+  Group,
+  Options extends AdministrationOperationGroupOptions,
+> = HttpApiGroup.AddPrefix<
+  Options["checkDhwVersionBeforeAuthentication"] extends true
+    ? HttpApiGroup.AddMiddleware<
+        AuthenticatedGroup<Group>,
+        CliClientCompatibility
+      >
+    : AuthenticatedGroup<Group>,
+  "/api/v1/cli"
+>;
+
+/**
+ * `group` served as administration operations under `/api/v1/cli`: each runs
+ * as the authenticated administrator's, and each change is recorded. Add
+ * every endpoint before declaring the group, since later ones get neither.
+ * Throws on a CLI-only endpoint, which the CLI authenticates itself, on an
+ * endpoint whose minimum `dhw` nothing checks, and on one that checks its
+ * own in a group that checks every endpoint's first.
+ */
+export const administrationOperationGroup = <
+  Group extends HttpApiGroup.Any,
+  const Options extends AdministrationOperationGroupOptions = Record<
+    never,
+    never
+  >,
+>(
+  group: Group,
+  options?: Options
+): AdministrationOperationGroup<Group, Options> => {
+  const declared = group as unknown as HttpApiGroup.AnyWithProps;
+  const checksFirst = options?.checkDhwVersionBeforeAuthentication === true;
+  for (const endpoint of Object.values(declared.endpoints)) {
+    const reference = `${declared.identifier}.${endpoint.name}`;
+    const checksOwn = (endpoint.middlewares as ReadonlySet<unknown>).has(
+      CliClientCompatibility
+    );
+    const annotations = Context.merge(
+      declared.annotations,
+      endpoint.annotations
+    );
+    const minimum = Context.get(annotations, MinimumDhwVersion);
+    if (Option.isSome(Context.getOption(annotations, CliOnly))) {
+      throw new Error(
+        `${reference} is CLI-only and can't be an administration operation.`
+      );
+    }
+    if (checksFirst && checksOwn) {
+      throw new Error(
+        `${reference} checks its dhw version after authentication in a group that checks it first.`
+      );
+    }
+    if (!checksFirst && !checksOwn && Option.isSome(minimum)) {
+      throw new Error(
+        `${reference} requires a minimum dhw that nothing checks; declare it with requiresDhw.`
+      );
+    }
+  }
+  // Each middleware added later runs outside the earlier ones.
+  const middleware: ReadonlyArray<
+    Context.Key<HttpApiMiddleware.AnyId, unknown>
+  > = [
+    AdministrationActionRecord,
+    AdministrationAuthentication,
+    ...(checksFirst ? [CliClientCompatibility] : []),
+  ];
+  return middleware
+    .reduce(
+      (served, service) =>
+        served.middleware(service) as unknown as HttpApiGroup.AnyWithProps,
+      declared
+    )
+    .prefix("/api/v1/cli") as never;
+};
 
 export const AdministrationOverviewMetric = Schema.Struct({
   completed: Schema.Number,
@@ -2417,7 +2527,10 @@ export const AdminCliApi = HttpApiGroup.make("cli")
 
 /**
  * The first `dhw` that decodes every invoice `source`, including invoices
- * issued through an AI assistant.
+ * issued through an AI assistant. Released binaries fail to decode a
+ * `source` they don't know, such as `assistant`, and declared no
+ * `CliInputInvalid` on the invoice reads, so an older one is refused with a
+ * `CliServiceUnavailable` it prints.
  */
 export const invoicesMinimumDhwVersion = DhwVersion.make("1.25.0");
 
@@ -2620,12 +2733,7 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
       success: AdministrationInvoicePage,
     })
       .annotate(AdministrationOperationBehavior, readOperation)
-      // Released binaries fail to decode an invoice `source` they don't
-      // know, such as `assistant`. They declared no `CliInputInvalid` here,
-      // so an older one is refused with a `CliServiceUnavailable` it prints.
-      .annotate(MinimumDhwVersion, Option.some(invoicesMinimumDhwVersion))
-      .annotate(OutdatedDhwRefusal, "CliServiceUnavailable")
-      .middleware(CliClientCompatibility)
+      .pipe(requiresDhw(invoicesMinimumDhwVersion, "CliServiceUnavailable"))
   )
   .add(
     HttpApiEndpoint.get("getInvoice", "/invoices/:invoiceId", {
@@ -2634,12 +2742,7 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
       error: [CliResourceNotFound.schema, CliServiceUnavailable.schema],
     })
       .annotate(AdministrationOperationBehavior, readOperation)
-      // Released binaries fail to decode an invoice `source` they don't
-      // know, such as `assistant`. They declared no `CliInputInvalid` here,
-      // so an older one is refused with a `CliServiceUnavailable` it prints.
-      .annotate(MinimumDhwVersion, Option.some(invoicesMinimumDhwVersion))
-      .annotate(OutdatedDhwRefusal, "CliServiceUnavailable")
-      .middleware(CliClientCompatibility)
+      .pipe(requiresDhw(invoicesMinimumDhwVersion, "CliServiceUnavailable"))
   )
   .add(
     HttpApiEndpoint.get("getInvoicePdf", "/invoices/:invoiceId/pdf", {
@@ -2759,6 +2862,4 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
       })
     )
   )
-  .middleware(AdministrationActionRecord)
-  .middleware(AdministrationAuthentication)
-  .prefix("/api/v1/cli");
+  .pipe(administrationOperationGroup);

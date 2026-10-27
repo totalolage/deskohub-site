@@ -18,11 +18,7 @@ import type {
   Operations,
 } from "./campaign-operations";
 import { MinimumDhwVersion } from "./dhw-version";
-import {
-  AdministrationActionRecord,
-  AdministrationAuthentication,
-  CliClientCompatibility,
-} from "./workspace-admin-api";
+import { administrationOperationGroup } from "./workspace-admin-api";
 
 const strictParseOptions = {
   parseOptions: { errors: "all", onExcessProperty: "error" },
@@ -408,14 +404,10 @@ export const operationGroup = <
   ) as unknown as Arr.NonEmptyReadonlyArray<
     OperationGroupEndpoints<Ops, Routes, Errors[number]>
   >;
-  const group = HttpApiGroup.make(identifier)
-    .add(...endpoints)
-    .middleware(AdministrationActionRecord)
-    .middleware(AdministrationAuthentication)
-    // Added last, so it runs first: an outdated `dhw` is refused before its
-    // session is read.
-    .middleware(CliClientCompatibility)
-    .prefix("/api/v1/cli");
+  const group = administrationOperationGroup(
+    HttpApiGroup.make(identifier).add(...endpoints),
+    { checkDhwVersionBeforeAuthentication: true }
+  );
   const binding: OperationBinding<Ops, Routes> = {
     [operationBinding]: { operations, routes },
   };

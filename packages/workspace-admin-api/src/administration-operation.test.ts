@@ -178,16 +178,18 @@ describe("administration operations", () => {
     expect(invalid).toEqual([]);
   });
 
-  test("CLI-only endpoints alone use the CLI's own authentication", () => {
-    const misplaced = endpoints
+  // `administrationOperationGroup` refuses CLI-only endpoints; this finds an
+  // operation in a group declared without it.
+  test("every operation is served by an administration operation group", () => {
+    const unauthenticated = endpoints
       .filter(
         (endpoint) =>
-          endpoint.middleware.has(AdministrationAuthentication) ===
-          isCliOnly(endpoint)
+          !isCliOnly(endpoint) &&
+          !endpoint.middleware.has(AdministrationAuthentication)
       )
       .map(({ reference }) => reference);
 
-    expect(misplaced).toEqual([]);
+    expect(unauthenticated).toEqual([]);
   });
 
   test("operations keep the authentication errors released dhw decodes", () => {
