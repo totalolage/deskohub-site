@@ -92,17 +92,22 @@ export const readOperation: AdministrationOperationBehavior["Service"] = {
   idempotent: true,
 };
 
-export const writeOperation = (options: {
-  readonly idempotent: boolean;
-}): AdministrationOperationBehavior["Service"] => ({
-  kind: "write",
-  ...options,
-});
+/** A write; its type keeps whether it is idempotent. */
+export const writeOperation = <
+  const Options extends { readonly idempotent: boolean },
+>(
+  options: Options
+): { readonly kind: "write" } & Options => ({ kind: "write", ...options });
 
-export const destructiveOperation = (options: {
-  readonly idempotent: boolean;
-  readonly preview?: AdministrationOperationPreview;
-}): AdministrationOperationBehavior["Service"] => ({
+/** A destructive operation; its type keeps whether it is idempotent. */
+export const destructiveOperation = <
+  const Options extends {
+    readonly idempotent: boolean;
+    readonly preview?: AdministrationOperationPreview;
+  },
+>(
+  options: Options
+): { readonly kind: "destructive" } & Options => ({
   kind: "destructive",
   ...options,
 });

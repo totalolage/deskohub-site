@@ -1,8 +1,10 @@
 import type { HttpApiEndpoint } from "effect/unstable/httpapi";
 import { HttpApi, type HttpApiGroup } from "effect/unstable/httpapi";
 import { AdminCliAdministratorsApi } from "./administrators";
-import { AdminCliAutomationsApi } from "./email-automations";
-import { AdminCliCampaignsApi } from "./email-campaigns";
+import {
+  AdminCliAutomationsApi,
+  AdminCliCampaignsApi,
+} from "./campaign-operation-endpoints";
 import {
   AdminCliAdministrationApi,
   AdminCliApi,
