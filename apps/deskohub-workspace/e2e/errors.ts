@@ -1,5 +1,5 @@
 import { Data, Effect } from "effect";
-import { redact, redactDiagnosticText } from "./runtime";
+import { redact, redactDiagnosticText } from "./redaction";
 
 const nexiWebhookDiagnosticCodes = [
   "nexi_webhook_parse_failed",
