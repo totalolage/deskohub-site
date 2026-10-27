@@ -23,8 +23,6 @@ type WorkspaceE2ECaseBrowser = {
   readonly artifactDir: string;
   failureCause?: Cause.Cause<WorkspaceE2EError>;
   readonly run: Runner;
-  /** Set once diagnostics start; unset when the browser failed to open. */
-  session?: E2EBrowserSession;
   readonly sessionId: string;
   readonly testCase: WorkspaceE2ECase;
 };
@@ -101,26 +99,34 @@ export const runWorkspaceE2ECase = ({
     });
   });
 
+/**
+ * The case's session from the runner, which opens it on first use and keeps
+ * its outcome: every later call shares the same session, waits for an
+ * opening still in progress, or fails with the same opening failure.
+ */
+const caseSession = (
+  browser: WorkspaceE2ECaseBrowser
+): Effect.Effect<E2EBrowserSession, WorkspaceE2EError> =>
+  browserSessionFor(browser.run, browser.sessionId);
+
 // A browser that fails to open is logged, not fatal: the case's first browser
-// step fails with the same cached opening failure, so it keeps its step id.
+// step fails with the same opening failure, so it keeps its step id.
 const startCaseBrowser = (
   browser: WorkspaceE2ECaseBrowser
 ): Effect.Effect<void> =>
-  browserSessionFor(browser.run, browser.sessionId).pipe(
-    Effect.tap((session) =>
+  caseSession(browser).pipe(
+    Effect.flatMap((session) =>
       Effect.forEach(
         ["console", "errors", "requests"] as const,
         session.clearDiagnostics,
         { discard: true }
       )
     ),
-    Effect.match({
-      onFailure: () =>
-        log("Browser HAR capture unavailable; continuing workspace e2e"),
-      onSuccess: (session) => {
-        browser.session = session;
-      },
-    })
+    Effect.catch(() =>
+      Effect.sync(() =>
+        log("Browser HAR capture unavailable; continuing workspace e2e")
+      )
+    )
   );
 
 const captureFailureArtifacts = (
@@ -129,7 +135,7 @@ const captureFailureArtifacts = (
   timeouts: WorkspaceE2ETimeouts
 ): Effect.Effect<void, never> =>
   Effect.gen(function* () {
-    const { artifactDir, session } = browser;
+    const { artifactDir } = browser;
     const failure = Cause.squash(failureCause);
     yield* writeArtifactText(
       artifactDir,
@@ -137,6 +143,11 @@ const captureFailureArtifacts = (
       failure instanceof Error
         ? (failure.stack ?? failure.message)
         : String(failure)
+    );
+    // A browser still opening is waited for within the capture's bound; one
+    // that failed to open has nothing more to capture.
+    const session = yield* caseSession(browser).pipe(
+      Effect.orElseSucceed(() => undefined)
     );
     if (session) {
       yield* writeArtifactText(
@@ -209,7 +220,7 @@ const finalizeCaseBrowser = (
       `${browser.testCase.id} browser close`,
       runFinalizer(
         `${browser.testCase.id} browser close`,
-        browserSessionFor(browser.run, browser.sessionId).pipe(
+        caseSession(browser).pipe(
           Effect.flatMap((session) => session.close()),
           Effect.ignore
         ),

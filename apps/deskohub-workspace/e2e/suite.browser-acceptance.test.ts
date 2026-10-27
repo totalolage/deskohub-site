@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -254,26 +255,28 @@ test.skipIf(!chromiumAvailable)(
 test.skipIf(!chromiumAvailable)(
   "captures failure artifacts from the open page, then exports the HAR",
   async () => {
-    let context: BrowserContext | undefined;
-    let openDuringCapture = false;
+    const id = `case-${randomUUID()}`;
+    let snapshotBeforeClose = false;
     const result = await runCase({
+      id,
       execute:
         ({ run }) =>
         ({ runStep, session }) =>
           runStep({
             execute: Effect.gen(function* () {
-              yield* openPage(run, session, `${origin()}/?token=${pageSecret}`);
-              context = yield* caseContext(run, session);
+              const context = yield* caseContext(run, session);
               const [page] = context.pages();
               if (!page) return yield* workspaceE2EError("no checkout page");
-              yield* Effect.promise(() =>
-                page.waitForResponse((response) =>
-                  response.url().includes("/api")
-                )
+              // Listening before the navigation, which starts the request.
+              const answered = page.waitForResponse((response) =>
+                response.url().includes("/api")
               );
-              // Snapshot reads happen before the capture closes the context.
+              yield* openPage(run, session, `${origin()}/?token=${pageSecret}`);
+              yield* Effect.promise(() => answered);
               context.once("close", () => {
-                openDuringCapture = true;
+                snapshotBeforeClose = existsSync(
+                  join(artifactRoot, id, "snapshot-interactive.txt")
+                );
               });
               return yield* workspaceE2EError("synthetic checkout failure");
             }),
@@ -293,7 +296,7 @@ test.skipIf(!chromiumAvailable)(
         stepId: "submit-checkout",
       },
     ]);
-    expect(openDuringCapture).toBe(true);
+    expect(snapshotBeforeClose).toBe(true);
     expect(await artifactFiles(result.artifactDir)).toEqual([
       "browser-diagnostics.txt",
       "console.txt",
@@ -325,6 +328,102 @@ test.skipIf(!chromiumAvailable)(
     for (const name of await artifactFiles(result.artifactDir))
       expect(await read(name)).not.toContain(pageSecret);
     expect(await rawHarFiles(`${sessionPrefix}-${result.id}`)).toEqual([]);
+  },
+  caseTestTimeoutMs
+);
+
+test.skipIf(!chromiumAvailable)(
+  "annotates a step timeout with its step and a typed failure with its code",
+  async () => {
+    const timedOut = await runCase({
+      execute:
+        ({ run }) =>
+        ({ runStep, session }) =>
+          runStep({
+            execute: openPage(run, session, `${origin()}/`).pipe(
+              Effect.andThen(Effect.never)
+            ),
+            id: "wait-for-checkout",
+            timeoutMs: 1000,
+          }),
+    });
+    await timedOut.closeScope();
+    const coded = await runCase({
+      execute:
+        ({ run }) =>
+        ({ runStep, session }) =>
+          runStep({
+            execute: openPage(run, session, `${origin()}/`).pipe(
+              Effect.andThen(
+                workspaceE2EError("synthetic provider session failure", {
+                  diagnosticCode:
+                    "provider_session_row_read_failed_after_redirect",
+                })
+              )
+            ),
+            id: "read-provider-session",
+            timeoutMs: 10_000,
+          }),
+    });
+    await coded.closeScope();
+
+    expect(annotation(timedOut.observations)).toEqual([
+      {
+        caseId: timedOut.id,
+        failureKind: "timeout",
+        outcome: "timed_out",
+        scope: "annotation",
+        stepId: "wait-for-checkout",
+      },
+    ]);
+    expect(annotation(coded.observations)).toEqual([
+      {
+        caseId: coded.id,
+        diagnosticCode: "provider_session_row_read_failed_after_redirect",
+        failureKind: "error",
+        outcome: "failed",
+        scope: "annotation",
+        stepId: "read-provider-session",
+      },
+    ]);
+  },
+  caseTestTimeoutMs
+);
+
+test.skipIf(!chromiumAvailable)(
+  "captures a browser that opens only after diagnostics start timed out",
+  async () => {
+    const real = realBrowser();
+    const slowOpening = {
+      newContext: async (options?: Parameters<Browser["newContext"]>[0]) => {
+        await Bun.sleep(1500);
+        return real.newContext(options);
+      },
+    } as unknown as Browser;
+    const result = await runCase({
+      browser: slowOpening,
+      execute: () => () => Effect.void,
+      timeouts: testTimeouts({ browserAction: 500 }),
+    });
+    await result.closeScope();
+
+    expect(annotation(result.observations)).toEqual([
+      {
+        caseId: result.id,
+        failureKind: "timeout",
+        outcome: "timed_out",
+        scope: "annotation",
+      },
+    ]);
+    expect(await artifactFiles(result.artifactDir)).toEqual([
+      "browser-diagnostics.txt",
+      "console.txt",
+      "error.txt",
+      "errors.txt",
+      "network-requests.txt",
+      "network.har",
+      "snapshot-interactive.txt",
+    ]);
   },
   caseTestTimeoutMs
 );
