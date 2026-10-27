@@ -91,10 +91,7 @@ export type TestAuthOptions = {
 
 /** The migrated disposable database as the Workspace database service. */
 const testDatabaseLayer = () =>
-  Layer.succeed(
-    WorkspaceDatabase,
-    WorkspaceDatabase.of({ db: testDatabase!.db })
-  );
+  Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.make(testDatabase!.db));
 
 /** The real sign-in capture against the migrated disposable database. */
 const realCapture: WorkspaceAuthConfig["captureAccountLocalePreference"] = (
@@ -103,10 +100,7 @@ const realCapture: WorkspaceAuthConfig["captureAccountLocalePreference"] = (
 ) =>
   captureAccountLocalePreference(accountId, locale).pipe(
     Effect.provide(
-      Layer.succeed(
-        WorkspaceDatabase,
-        WorkspaceDatabase.of({ db: testDatabase!.db })
-      )
+      Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.make(testDatabase!.db))
     )
   );
 

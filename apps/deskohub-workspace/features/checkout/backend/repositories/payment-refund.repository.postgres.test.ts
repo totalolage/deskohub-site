@@ -345,7 +345,7 @@ describe.skipIf(!testDatabase)(
           }).pipe(
             Effect.provide(PaymentRefundRepository.Default),
             Effect.provide(
-              Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.of({ db }))
+              Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.make(db))
             )
           )
         );

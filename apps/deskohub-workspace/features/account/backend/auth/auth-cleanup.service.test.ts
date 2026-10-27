@@ -378,7 +378,7 @@ describe("AuthCleanupService failures", () => {
     } as never;
     const failingDatabase = Layer.succeed(
       WorkspaceDatabase,
-      WorkspaceDatabase.of({ db: failingDb })
+      WorkspaceDatabase.make(failingDb)
     );
 
     const failingService = AuthCleanupService.Default.pipe(

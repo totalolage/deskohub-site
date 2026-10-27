@@ -5,14 +5,12 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Effect, Layer } from "effect";
 import { Client, type Pool, type PoolClient } from "pg";
-import {
-  WorkspaceDatabase,
-  type WorkspaceDatabaseClient,
-} from "@/db/database.service";
+import { WorkspaceDatabase } from "@/db/database.service";
 import {
   databaseClientServices,
   makeDatabaseClient,
   makeDatabasePool,
+  type RootDatabaseClient,
 } from "@/db/database-client";
 import { databasePoolTimeouts } from "@/db/database-pool-timeouts";
 import { relations } from "@/db/relations";
@@ -20,7 +18,7 @@ import { createScratchPostgresDatabase } from "./postgres-scratch-database.test-
 import { fixtureReservationAuthorId } from "./workspace-fixtures.test-utils";
 
 export interface WorkspacePostgresTestDatabase {
-  readonly db: WorkspaceDatabaseClient;
+  readonly db: RootDatabaseClient;
   readonly layer: Layer.Layer<WorkspaceDatabase>;
   readonly pool: Pool;
   readonly close: () => Promise<void>;
@@ -69,7 +67,7 @@ const connectWorkspacePostgres = async (
 
   return {
     db,
-    layer: Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.of({ db })),
+    layer: Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.make(db)),
     pool,
     close: () => pool.end(),
   };
@@ -139,7 +137,7 @@ export const createWorkspacePostgresSuiteDatabase = async (
  */
 export const withHeldTransaction = <A, E, R>(
   connection: PoolClient,
-  use: (db: WorkspaceDatabaseClient) => Effect.Effect<A, E, R>
+  use: (db: RootDatabaseClient) => Effect.Effect<A, E, R>
 ) =>
   Effect.gen(function* () {
     const db = yield* make({ relations });

@@ -10,6 +10,7 @@ The repository pins `effect` 4.0.0-beta.85 with a local patch. V4 APIs differ fr
 Read the references that match the change. For a broad service or feature refactor, read all of them before you edit.
 
 - Services, Layers, capabilities, module layout, mocks, outbound HTTP, provider calls, operation naming, concurrency, and barrels: [references/services-and-layers.md](references/services-and-layers.md).
+- Workspace transactions, writers that commit with their caller, and clients that never join: [references/workspace-transactions.md](references/workspace-transactions.md).
 - Server actions, routes, pages, tasks, queue topics and consumers, the shared runtime, fail-open runs, and browser runs: [references/workspace-runners.md](references/workspace-runners.md).
 - Multi-step workflows, `Effect.fn`, conditionals, and error recovery inside a pipeline: [references/declarative-workflows.md](references/declarative-workflows.md).
 - Schemas, brands, validation, error mapping, discriminated unions, and `Match`: [references/schemas-errors-and-unions.md](references/schemas-errors-and-unions.md).

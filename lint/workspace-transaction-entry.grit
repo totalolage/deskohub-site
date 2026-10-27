@@ -1,0 +1,61 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// One way into a Workspace transaction: `transaction` destructured from
+// `yield* WorkspaceDatabase` (db/database.service.ts). It wraps the Drizzle
+// client's own `transaction`, provides `WorkspaceTransaction` and runs the
+// effect one step at a time. This rejects:
+// - in app/, features/ and shared/ source (tests, test-utils, e2e/ and
+//   scripts/ own other clients and are exempt), every member access
+//   `.transaction` or `.withTransaction`, called or not, whatever the
+//   receiver, and
+//   destructuring `transaction` from anything but `yield* WorkspaceDatabase`;
+// - anywhere in the app, tests included, building or providing
+//   `WorkspaceTransaction`, and building `WorkspaceDatabase` with `of` or a
+//   literal: use `WorkspaceDatabase.make(db)`. Test files are not
+//   type-checked, so only this rule stops a hand-built service there.
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/.*\.(?:ts|tsx)$",
+  not $name <: r".*apps/deskohub-workspace/db/database\.service\.ts$",
+  $body <: r"(?s).*(?:ransaction|WorkspaceDatabase).*",
+  $body <: contains bubble or {
+    or {
+      `$receiver.transaction`,
+      `$receiver.withTransaction`,
+      JsComputedMemberExpression() as $access where {
+        $access <: r"(?s).*\[\s*['\"`](?:transaction|withTransaction)['\"`]\s*\]$"
+      },
+      JsVariableDeclarator() as $declarator where {
+        $declarator <: r"(?s)^\{[^}]*\btransaction\b[^}]*\}.*",
+        not $declarator <: r"(?s)^\{[^}]*\}\s*=\s*yield\s*\*\s*WorkspaceDatabase\s*$"
+      }
+    } as $span where {
+      $filename <: r".*apps/deskohub-workspace/(?:app|features|shared)/.*",
+      not $filename <: r".*\.(?:test|test-utils)\.(?:ts|tsx)$",
+      // Raw transactions not yet migrated. Each migration stage deletes its
+      // files; the closing stage deletes this clause.
+      not $filename <: r".*apps/deskohub-workspace/(?:features/(?:access-codes/backend/standalone-access-code-attempt-log\.repository|account/backend/(?:auth/administration-agent-access|customer-account-link\.repository)|accounting/(?:admin/manual-invoice-creation-requests\.service|backend/invoice\.repository)|admin-cli/(?:cli-authentication\.service|cli-mutation-idempotency\.service)|administrators/backend/(?:administrator-roster\.service|legacy-administrator-backfill\.service)|checkout/backend/repositories/(?:late-payment-recovery\.repository|payment-lifecycle\.repository|payment-refund\.repository)|discounts/admin/discount-administration\.service|email-campaigns/automation/backend/(?:automation-condition-planning\.service|automation-dry-run\.service|automation-intake-planning\.service|automation-lifecycle\.service|automation-planner\.service|automation-preview-unit|automation-schedule-planning\.service|automation-send-planning\.service|automation-sweep-planning\.service|automation-timer-planning\.service|automation-unit-slots|fire-chunk|intake)|email-campaigns/backend/(?:campaign-audience\.service|campaign-confirmation-code\.service|campaign-delivery\.service|campaign-send\.service|campaign\.service)|legal/backend/marketing-management\.service|referrals/referral\.service|reservation/backend/workspace-reservation\.repository|review-accounts/backend/review-sandbox\.service)|shared/backend/request-budget/request-budget\.service)\.ts$"
+    },
+    or {
+      `WorkspaceTransaction.of($...)`,
+      `WorkspaceTransaction.context($...)`,
+      `WorkspaceDatabase.of($...)`,
+      `Layer.$constructor(WorkspaceDatabase, $value)` where {
+        $constructor <: r"^(?:succeed|sync)$",
+        $value <: r"(?s)^\{.*"
+      },
+      `Effect.provideService($effect, WorkspaceTransaction, $service)`,
+      `Effect.provideServiceEffect($effect, WorkspaceTransaction, $service)`,
+      `Context.add($context, WorkspaceTransaction, $service)`,
+      JsCallExpression() as $call where {
+        $call <: r"(?s)^[\w$.]*\.(?:provideService|provideServiceEffect|succeed|sync|effect|mock|make|add)\s*\(\s*WorkspaceTransaction\b.*"
+      }
+    } as $span
+  } where {
+    register_diagnostic(
+      span = $span,
+      message = "Open Workspace transactions only with `transaction` from `yield* WorkspaceDatabase`; it alone provides WorkspaceTransaction. Build the service with `WorkspaceDatabase.make(db)`.",
+      severity = "error"
+    )
+  }
+}
