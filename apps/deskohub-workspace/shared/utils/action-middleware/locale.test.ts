@@ -59,7 +59,10 @@ async function createLocaleReader(
 ) {
   const { createWorkspaceActionClient } = await import("../safe-action-client");
   const { m } = await import("@/features/i18n");
-  const actionClient = createWorkspaceActionClient(m.actionFailedUnexpectedly);
+  const actionClient = createWorkspaceActionClient({
+    logUnexpectedFailure: async () => {},
+    unexpectedFailure: m.actionFailedUnexpectedly,
+  });
   const { getLocale } = await import("@/features/i18n/paraglide/runtime.js");
 
   return actionClient.action(async ({ ctx }) => {

@@ -1,6 +1,16 @@
-import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
+import type { LogRecord } from "@opentelemetry/api-logs";
 import { Duration, Effect, Schema } from "effect";
+import { redirect } from "next/navigation";
 import { m as administrationMessages } from "@/features/administration/i18n";
 import { type Locale, m } from "@/features/i18n";
 
@@ -8,6 +18,7 @@ let actionHeaderReads = 0;
 let actionRequestHeaders: Record<string, string> = {};
 let failHeaderReads = false;
 let scheduledTelemetryFlushes = 0;
+const emittedLogRecords: LogRecord[] = [];
 
 mock.module("server-only", () => ({}));
 mock.module("./bot-protection/bot-protection.runtime", () => ({
@@ -24,7 +35,11 @@ mock.module("next/server", () => ({
 mock.module("@/instrumentation", () => ({
   postHogLoggerProvider: {
     forceFlush: () => Promise.resolve(),
-    getLogger: () => ({ emit: () => undefined }),
+    getLogger: () => ({
+      emit: (record: LogRecord) => {
+        emittedLogRecords.push(record);
+      },
+    }),
   },
 }));
 
@@ -305,19 +320,25 @@ describe("Workspace actions", () => {
     // A runtime that cannot start rejects the action's run before it enters
     // the Effect, which the safe-action client sees as a thrown error.
     test.each(locales)(
-      "reports a run that rejects before the Effect starts in %s",
+      "reports and logs a run that rejects before the Effect starts in %s",
       async (locale) => {
         const { createWorkspaceActionClient } = await import(
           "../utils/safe-action-client"
         );
-        const action = createWorkspaceActionClient(
-          m.actionFailedUnexpectedly
-        ).action(() => Promise.reject(new Error("Runtime could not start")));
+        const runtimeFailure = new Error("Runtime could not start");
+        const logged: Error[] = [];
+        const action = createWorkspaceActionClient({
+          logUnexpectedFailure: async (error) => {
+            logged.push(error);
+          },
+          unexpectedFailure: m.actionFailedUnexpectedly,
+        }).action(() => Promise.reject(runtimeFailure));
         requestFrom(locale);
 
         await expect(action()).resolves.toEqual({
           serverError: m.actionFailedUnexpectedly({}, { locale }),
         });
+        expect(logged).toEqual([runtimeFailure]);
       }
     );
 
@@ -425,6 +446,159 @@ describe("Workspace actions", () => {
       await expect(publicFailure("input")).resolves.toEqual({
         serverError: "Public failure",
       });
+    });
+  });
+
+  describe("failure logging", () => {
+    const sensitiveValue = testEmailAddress("action-defect");
+    let consoleError: ReturnType<typeof spyOn<Console, "error">>;
+
+    beforeEach(() => {
+      emittedLogRecords.length = 0;
+      consoleError = spyOn(console, "error").mockImplementation(() => {});
+    });
+    afterEach(() => {
+      consoleError.mockRestore();
+    });
+
+    const defineFailingAction = (
+      operation: string,
+      handler: () => Effect.Effect<never, Error>,
+      deadline?: Duration.Input
+    ) =>
+      import("./workspace-action").then(({ defineWorkspaceAction }) =>
+        defineWorkspaceAction(
+          {
+            ...(deadline !== undefined && { deadline }),
+            operation,
+            schema: Schema.toStandardSchemaV1(Schema.String),
+          },
+          handler
+        )
+      );
+    /** The "Action failed" records sent to PostHog. */
+    const telemetryFailureLogs = (operation: string) =>
+      emittedLogRecords.filter(
+        ({ attributes, body }) =>
+          attributes?.operation === operation && body === "Action failed"
+      );
+    /** The "Action failed" lines written to the console. */
+    const consoleFailureLogs = (operation: string) =>
+      consoleError.mock.calls
+        .map((call) => call.join(" "))
+        .filter(
+          (line) => line.includes("Action failed") && line.includes(operation)
+        );
+    const expectRedacted = () => {
+      expect(JSON.stringify(emittedLogRecords)).not.toContain(sensitiveValue);
+      expect(JSON.stringify(consoleError.mock.calls)).not.toContain(
+        sensitiveValue
+      );
+    };
+    const unexpected = {
+      serverError: m.actionFailedUnexpectedly({}, { locale: "en-US" }),
+    };
+
+    test("logs a typed failure once", async () => {
+      const action = await defineFailingAction("test.log-failure", () =>
+        Effect.fail(new Error(`Internal failure for ${sensitiveValue}`))
+      );
+
+      await expect(action("input")).resolves.toEqual(unexpected);
+      const [log, ...rest] = telemetryFailureLogs("test.log-failure");
+      expect(rest).toHaveLength(0);
+      expect(log?.attributes).toMatchObject({ failureKind: "failure" });
+      expect(consoleFailureLogs("test.log-failure")).toHaveLength(1);
+      expectRedacted();
+    });
+
+    test.each([
+      [
+        "an error",
+        () => Effect.die(new TypeError(`Cannot render ${sensitiveValue}`)),
+        "TypeError",
+      ],
+      [
+        "a thrown string",
+        () =>
+          Effect.sync((): never => {
+            throw `Cannot render ${sensitiveValue}`;
+          }),
+        undefined,
+      ],
+      [
+        "a plain object",
+        () => Effect.die({ attrs: { title: sensitiveValue } }),
+        undefined,
+      ],
+    ])(
+      "logs a defect from %s once with its cause redacted",
+      async (_, handler, errorType) => {
+        const action = await defineFailingAction("test.log-defect", handler);
+
+        await expect(action("input")).resolves.toEqual(unexpected);
+        const [log, ...rest] = telemetryFailureLogs("test.log-defect");
+        expect(rest).toHaveLength(0);
+        expect(log?.attributes).toMatchObject({
+          boundary: "action",
+          failureKind: "defect",
+        });
+        if (errorType)
+          expect(String(log?.attributes?.cause)).toContain(errorType);
+        expect(consoleFailureLogs("test.log-defect")).toHaveLength(1);
+        expectRedacted();
+      }
+    );
+
+    test("logs an interruption once", async () => {
+      const action = await defineFailingAction(
+        "test.log-interruption",
+        () => Effect.interrupt
+      );
+
+      await expect(action("input")).resolves.toEqual(unexpected);
+      const [log, ...rest] = telemetryFailureLogs("test.log-interruption");
+      expect(rest).toHaveLength(0);
+      expect(log?.attributes).toMatchObject({ failureKind: "interruption" });
+      expect(consoleFailureLogs("test.log-interruption")).toHaveLength(1);
+    });
+
+    test("logs a handler interrupted at its deadline once", async () => {
+      const action = await defineFailingAction(
+        "test.log-deadline",
+        () => Effect.never,
+        Duration.millis(10)
+      );
+
+      await expect(action("input")).resolves.toEqual({
+        serverError: m.actionTimedOut({}, { locale: "en-US" }),
+      });
+      const [log, ...rest] = telemetryFailureLogs("test.log-deadline");
+      expect(rest).toHaveLength(0);
+      expect(log?.attributes).toMatchObject({ failureKind: "interruption" });
+      expect(consoleFailureLogs("test.log-deadline")).toHaveLength(1);
+    });
+
+    test("does not log Next.js control flow", async () => {
+      const action = await defineFailingAction("test.log-redirect", () =>
+        Effect.sync(() => redirect("/en-US"))
+      );
+
+      await expect(action("input")).rejects.toThrow("NEXT_REDIRECT");
+      expect(telemetryFailureLogs("test.log-redirect")).toHaveLength(0);
+      expect(consoleFailureLogs("test.log-redirect")).toHaveLength(0);
+    });
+
+    test("logs a failure before the action ran once", async () => {
+      const action = await defineFailingAction("test.log-early-failure", () =>
+        Effect.die(new Error("unreachable"))
+      );
+      failHeaderReads = true;
+
+      await expect(action("input")).resolves.toMatchObject({
+        serverError: expect.any(String),
+      });
+      expect(consoleFailureLogs("test.log-early-failure")).toHaveLength(1);
     });
   });
 

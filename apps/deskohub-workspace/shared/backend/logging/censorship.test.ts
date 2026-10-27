@@ -988,6 +988,25 @@ describe("censorLoggerOptions", () => {
     expect(serialized).not.toContain("accounting storage failed");
     expect(serialized).not.toContain("driver echoed");
   });
+
+  test("censors a defect that is not an error whole", () => {
+    const privateValue = "private-defect-payload";
+    const options = {
+      message: "action failed",
+      logLevel: "Error",
+      cause: Cause.die({ attrs: { title: privateValue } }),
+      date: new Date(0),
+      fiber: {
+        id: 1,
+        getRef: () => [],
+      },
+    } as Logger.Options<unknown>;
+
+    const serialized = JSON.stringify(censorLoggerOptions(options).cause);
+
+    expect(serialized).toContain(CENSORED_LOG_VALUE);
+    expect(serialized).not.toContain(privateValue);
+  });
 });
 
 describe("createCensoredOtelLogger", () => {
