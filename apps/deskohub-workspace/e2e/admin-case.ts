@@ -1,4 +1,5 @@
-import type { Browser, BrowserContext, Request } from "@playwright/test";
+import { AssertionError } from "node:assert";
+import type { Browser, BrowserContext, Page, Request } from "@playwright/test";
 import { Effect } from "effect";
 import { E2EBrowserSession } from "./browser-session";
 import {
@@ -8,6 +9,7 @@ import {
 } from "./errors";
 import { withinWorkspaceE2EDeadline } from "./polling";
 import { primePreviewAccess } from "./preview-access";
+import { redact } from "./redaction";
 
 /**
  * Admin cases count only a step's own deadline as a timeout. A timeout inside
@@ -23,6 +25,21 @@ const asAdminFailure = (
     ? workspaceE2EError(`${operation} failed`, { operation })
     : error;
 
+/**
+ * Admin callbacks keep only a code-owned assertion's message. Anything else a
+ * callback throws, a `WorkspaceE2EError` and its diagnostic code included,
+ * becomes a fixed failure of the call, so a case reports only codes its
+ * runner owns.
+ */
+const adminCallbackFailure =
+  (label: string) =>
+  (cause: unknown): WorkspaceE2EError =>
+    cause instanceof AssertionError
+      ? workspaceE2EError(`${label} failed: ${redact(cause.message)}`, {
+          operation: label,
+        })
+      : workspaceE2EError(`${label} failed`, { operation: label });
+
 const withinAdminDeadline = <A>(
   attempt: Effect.Effect<A, WorkspaceE2EError>,
   label: string,
@@ -34,8 +51,8 @@ const withinAdminDeadline = <A>(
 
 /**
  * Opens an isolated, signed-out admin browser session for the preview origin,
- * bound to the caller's Scope, with the admin failure policy
- * (`asAdminFailure`). The case primes preview access and signs it in as a
+ * bound to the caller's Scope, with the admin failure policies
+ * (`asAdminFailure`, `adminCallbackFailure`). The case primes preview access and signs it in as a
  * seeded synthetic administrator (`e2e/administrators/identities.ts`) before
  * it opens an admin page. Admin cases have no HAR consumer, so the session
  * records none; Playwright still keeps its failure screenshot.
@@ -66,14 +83,41 @@ export const openAdminSession = Effect.fn("openAdminSession")(
         asAdminFailure(error, error.operation ?? "open the browser session")
       )
     );
+    // The session lets a callback's own `WorkspaceE2EError` through, so admin
+    // drives the active page under its own callback policy.
+    const use = <A>(
+      label: string,
+      drive: (page: Page) => Promise<A>,
+      timeoutMs: number | undefined
+    ) =>
+      withinAdminDeadline(
+        session
+          .use(label, (page) => Promise.resolve(page))
+          .pipe(
+            Effect.mapError((error) => asAdminFailure(error, label)),
+            Effect.flatMap((page) =>
+              Effect.tryPromise({
+                catch: adminCallbackFailure(label),
+                try: () => drive(page),
+              })
+            )
+          ),
+        label,
+        timeoutMs
+      );
     const adminSession: E2EBrowserSession = {
       ...session,
-      evaluate: (label, fn, arg, deadline) =>
-        withinAdminDeadline(
-          session
-            .evaluate(label, fn, arg)
-            .pipe(Effect.mapError((error) => asAdminFailure(error, label))),
+      evaluate: <A, Arg>(
+        label: string,
+        fn: (arg: Arg) => A | Promise<A>,
+        arg: Arg,
+        deadline?: { readonly timeoutMs?: number }
+      ) =>
+        use(
           label,
+          // Playwright types the argument as its serialized form; plain data
+          // is the same shape.
+          (page) => page.evaluate(fn as (arg: unknown) => A | Promise<A>, arg),
           deadline?.timeoutMs
         ),
       primePreviewAccess: (url, bypassSecret, options) =>
@@ -84,14 +128,7 @@ export const openAdminSession = Effect.fn("openAdminSession")(
               asAdminFailure(error, "prime preview access")
             )
           ),
-      use: (label, drive, deadline) =>
-        withinAdminDeadline(
-          session
-            .use(label, drive)
-            .pipe(Effect.mapError((error) => asAdminFailure(error, label))),
-          label,
-          deadline?.timeoutMs
-        ),
+      use: (label, drive, deadline) => use(label, drive, deadline?.timeoutMs),
     };
     return { origin: new URL(baseURL).origin, session: adminSession };
   }

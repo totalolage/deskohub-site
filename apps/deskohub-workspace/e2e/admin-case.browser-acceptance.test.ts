@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
+import { AssertionError } from "node:assert";
 import { randomUUID } from "node:crypto";
 import { type Browser, chromium, type Page } from "@playwright/test";
 import { Effect } from "effect";
@@ -11,7 +12,12 @@ import {
 } from "./admin-case";
 import { E2EBrowserSession } from "./browser-session";
 import { runE2ECase } from "./case-runner";
-import { isWorkspaceE2ETimeout, type WorkspaceE2EError } from "./errors";
+import {
+  isWorkspaceE2ETimeout,
+  type WorkspaceE2EError,
+  workspaceE2EError,
+  workspaceE2ETimeoutError,
+} from "./errors";
 import {
   type E2ETelemetryObservation,
   makeE2ETelemetryMock,
@@ -146,15 +152,16 @@ const heldProbeFetch = ((_input: string | URL | Request, init?: RequestInit) =>
  * Runs one admin case step through the case runner on an admin session and
  * returns the step's annotation, as the reporter would see it.
  */
-const annotateAdminStep = async (input: {
+const runAdminStep = async (input: {
   readonly browser?: Browser;
   readonly execute: (
     session: E2EBrowserSession
-  ) => Effect.Effect<void, WorkspaceE2EError>;
+  ) => Effect.Effect<unknown, WorkspaceE2EError>;
   readonly timeoutMs?: number;
 }) => {
   if (!browser) throw new Error("Chromium is not running");
   const observations: E2ETelemetryObservation[] = [];
+  const failures: WorkspaceE2EError[] = [];
   await Effect.runPromiseExit(
     runE2ECase({
       body: (step) =>
@@ -169,6 +176,11 @@ const annotateAdminStep = async (input: {
               }),
               ({ session }) => input.execute(session)
             )
+          ).pipe(
+            Effect.tapError((failure) =>
+              Effect.sync(() => failures.push(failure))
+            ),
+            Effect.asVoid
           ),
           id: "admin-step",
           timeoutMs: input.timeoutMs ?? 5000,
@@ -177,10 +189,19 @@ const annotateAdminStep = async (input: {
       watchdogMs: 10_000,
     }).pipe(Effect.provide(makeE2ETelemetryMock(observations)))
   );
-  return observations
-    .filter(({ scope }) => scope === "annotation")
-    .map(({ failureKind, outcome }) => ({ failureKind, outcome }));
+  return {
+    annotations: observations
+      .filter(({ scope }) => scope === "annotation")
+      .map(({ scope: _scope, ...annotation }) => annotation),
+    failures,
+  };
 };
+
+const annotateAdminStep = async (input: Parameters<typeof runAdminStep>[0]) =>
+  (await runAdminStep(input)).annotations.map(({ failureKind, outcome }) => ({
+    failureKind,
+    outcome,
+  }));
 
 const failed = [{ failureKind: "error", outcome: "failed" }];
 const timedOut = [{ failureKind: "timeout", outcome: "timed_out" }];
@@ -268,6 +289,139 @@ test.skipIf(!chromiumAvailable)(
           }),
       }),
     ]).toEqual([timedOut, timedOut]);
+  }
+);
+
+// Before the session, admin steps ran their browser callbacks through
+// `sanitizedBrowserOperation`: an `AssertionError` kept its message, and any
+// other thrown value, a `WorkspaceE2EError` and its diagnostic code included,
+// became a fixed failure of the operation. The C03 annotation and the step's
+// failure stay as they were then.
+const assertion = new AssertionError({ message: "synthetic assertion" });
+const callbackFailures: ReadonlyArray<
+  readonly [shape: string, thrown: () => unknown, kept?: string]
+> = [
+  ["a plain Error", () => new Error("synthetic error")],
+  ["an AssertionError", () => assertion, `: ${assertion.message}`],
+  [
+    "a WorkspaceE2EError with a diagnostic code",
+    () =>
+      workspaceE2EError("synthetic row assertion", {
+        diagnosticCode: "postgres_checkout_row_assertion_failed",
+        operation: "assert the synthetic row",
+      }),
+  ],
+  [
+    "a WorkspaceE2EError without a code",
+    () =>
+      workspaceE2EError("synthetic step failure", {
+        operation: "inspect the synthetic row",
+      }),
+  ],
+  [
+    "a WorkspaceE2EError timeout",
+    () =>
+      workspaceE2ETimeoutError("synthetic wait timed out", {
+        diagnosticCode: "postgres_checkout_row_assertion_failed",
+        operation: "wait for the synthetic row",
+      }),
+  ],
+  [
+    "a Playwright timeout",
+    () =>
+      Object.assign(new Error("synthetic Playwright timeout"), {
+        name: "TimeoutError",
+      }),
+  ],
+  ["a non-Error value", () => "synthetic thrown string"],
+];
+
+test.skipIf(!chromiumAvailable)(
+  "reports every admin callback failure as it did before the session",
+  async () => {
+    const label = "drive the admin form";
+    const outcomes = [];
+    for (const [shape, thrown] of callbackFailures) {
+      const { annotations, failures } = await runAdminStep({
+        execute: (session) =>
+          session.use(label, async (page) => {
+            await page.goto(`${origin()}/`);
+            throw thrown();
+          }),
+      });
+      outcomes.push({
+        annotations,
+        failures: failures.map((failure) => ({
+          diagnosticCode: failure.diagnosticCode,
+          message: failure.message,
+          operation: failure.operation,
+          timeout: isWorkspaceE2ETimeout(failure),
+        })),
+        shape,
+      });
+    }
+    expect(outcomes).toEqual(
+      callbackFailures.map(([shape, , kept = ""]) => ({
+        annotations: [
+          {
+            caseId: "admin-case",
+            failureKind: "error",
+            outcome: "failed",
+            stepId: "admin-step",
+          },
+        ],
+        failures: [
+          {
+            diagnosticCode: undefined,
+            message: `${label} failed${kept}`,
+            operation: label,
+            timeout: false,
+          },
+        ],
+        shape,
+      }))
+    );
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "reports a failed admin page evaluation as it did before the session",
+  async () => {
+    const label = "read the admin form";
+    const { annotations, failures } = await runAdminStep({
+      execute: (session) =>
+        session.evaluate(
+          label,
+          () => {
+            throw new Error("synthetic page error");
+          },
+          undefined
+        ),
+    });
+    expect({
+      annotations,
+      failures: failures.map(({ diagnosticCode, message, operation }) => ({
+        diagnosticCode,
+        message,
+        operation,
+      })),
+    }).toEqual({
+      annotations: [
+        {
+          caseId: "admin-case",
+          failureKind: "error",
+          outcome: "failed",
+          stepId: "admin-step",
+        },
+      ],
+      failures: [
+        {
+          diagnosticCode: undefined,
+          message: `${label} failed`,
+          operation: label,
+        },
+      ],
+    });
   }
 );
 
