@@ -175,71 +175,16 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
         );
   // Registered first so it runs last: Playwright writes the HAR on close.
   if (rawHarPath) yield* Effect.addFinalizer(() => removeFile(rawHarPath));
-
-  let closing: Promise<void> | undefined;
-  const closeContextOf = (context: BrowserContext) => {
-    closing ??= context.close({ reason: "Workspace E2E case complete" });
-    return closing;
-  };
-  // Acquired uninterruptibly, so a context created while the caller was
-  // interrupted still gets its release.
-  const context = yield* Effect.acquireRelease(
-    Effect.tryPromise({
-      catch: (cause) => toSessionFailure("open the browser context", cause),
-      try: () =>
-        options.browser.newContext({
-          baseURL: options.baseURL,
-          recordHar: rawHarPath
-            ? { content: "embed", mode: "full", path: rawHarPath }
-            : undefined,
-          viewport: { height: 900, width: 1440 },
-        }),
-    }),
-    (context) =>
-      Effect.tryPromise(() => closeContextOf(context)).pipe(Effect.ignore)
-  );
-  const closeContext = () => closeContextOf(context);
-
-  const initialPage = yield* Effect.tryPromise({
-    catch: (cause) => toSessionFailure("open the browser page", cause),
-    try: () => context.newPage(),
-  });
-  const state: SessionState = {
-    active: initialPage,
-    onActivate: options.onActivate,
-    diagnostics: { console: [], errors: [], requests: [] },
-    previewAccess: new Map(),
-    registeredPages: new WeakSet(),
-  };
   // Preview access probes outlive the caller that started them; closing the
   // session interrupts them.
   const probes = yield* FiberSet.make<void, WorkspaceE2EError>();
-  context.on("page", (page) => registerPage(state, context, page));
-  registerPage(state, context, initialPage);
-
-  // Closing starts with the first close request, before the context closes.
-  const isClosing = () => closeRequest !== undefined || closing !== undefined;
-
-  const use = <A>(
-    label: string,
-    drive: (page: Page) => Promise<A>,
-    deadline: E2EBrowserDeadline = {}
-  ) => {
-    const attempt = Effect.tryPromise({
-      catch: (cause) => toSessionFailure(label, cause, isClosing()),
-      try: () => drive(state.active),
-    });
-    return deadline.timeoutMs === undefined
-      ? attempt
-      : withinWorkspaceE2EDeadline(attempt, label, deadline.timeoutMs);
-  };
 
   const closeAndExport = Effect.fn("E2EBrowserSession.close")(
-    function* (harPath: string | undefined) {
+    function* (context: BrowserContext, harPath: string | undefined) {
       yield* FiberSet.clear(probes);
       yield* Effect.tryPromise({
         catch: (cause) => toSessionFailure("close the browser context", cause),
-        try: closeContext,
+        try: () => context.close({ reason: "Workspace E2E case complete" }),
       });
       if (!(rawHarPath && harPath)) return;
       const har = yield* Effect.tryPromise({
@@ -256,24 +201,26 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
   );
 
   // The first close runs detached, so an interrupted or timed-out caller
-  // stops only its own wait; every caller, the Scope finalizer included,
-  // shares its outcome.
+  // stops only its own wait; every caller, the Scope included, shares its
+  // outcome.
   const closed = yield* Deferred.make<void, WorkspaceE2EError>();
   let closeRequest: { readonly harPath?: string } | undefined;
-  const startClose = (harPath: string | undefined) =>
+  // Closing starts with the first close request, before the context closes.
+  const isClosing = () => closeRequest !== undefined;
+  const startClose = (context: BrowserContext, harPath: string | undefined) =>
     Effect.uninterruptible(
       Effect.suspend(() => {
         if (closeRequest) return Effect.succeed(closeRequest.harPath);
         closeRequest = { harPath };
         return Effect.forkDetach(
-          closeAndExport(harPath).pipe(
+          closeAndExport(context, harPath).pipe(
             Effect.onExit((exit) => Deferred.done(closed, exit))
           )
         ).pipe(Effect.as(harPath));
       })
     );
-  const close = ({ harPath }: { readonly harPath?: string } = {}) =>
-    startClose(harPath).pipe(
+  const closeSession = (context: BrowserContext, harPath?: string) =>
+    startClose(context, harPath).pipe(
       Effect.flatMap((exportedTo) =>
         Deferred.await(closed).pipe(
           Effect.andThen(
@@ -289,15 +236,60 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
         )
       )
     );
-  // A stalled close must not hold up the Scope: the finalizer waits for it
-  // at most one browser action, and the detached close still finishes and
-  // removes the raw HAR.
-  yield* Effect.addFinalizer(() =>
-    close().pipe(
-      Effect.timeout(`${workspaceE2ETimeouts.browserAction} millis`),
-      Effect.ignore
-    )
+
+  // Acquired uninterruptibly, so a context created while the caller was
+  // interrupted still gets its release. The release, the Scope's only wait
+  // on the browser, waits for the shared close at most one browser action:
+  // a stalled `context.close()` must not hold up the Scope, and the detached
+  // close still finishes and removes the raw HAR.
+  const context = yield* Effect.acquireRelease(
+    Effect.tryPromise({
+      catch: (cause) => toSessionFailure("open the browser context", cause),
+      try: () =>
+        options.browser.newContext({
+          baseURL: options.baseURL,
+          recordHar: rawHarPath
+            ? { content: "embed", mode: "full", path: rawHarPath }
+            : undefined,
+          viewport: { height: 900, width: 1440 },
+        }),
+    }),
+    (context) =>
+      closeSession(context).pipe(
+        Effect.timeout(`${workspaceE2ETimeouts.browserAction} millis`),
+        Effect.ignore
+      )
   );
+
+  const initialPage = yield* Effect.tryPromise({
+    catch: (cause) => toSessionFailure("open the browser page", cause),
+    try: () => context.newPage(),
+  });
+  const state: SessionState = {
+    active: initialPage,
+    onActivate: options.onActivate,
+    diagnostics: { console: [], errors: [], requests: [] },
+    previewAccess: new Map(),
+    registeredPages: new WeakSet(),
+  };
+  context.on("page", (page) => registerPage(state, context, page));
+  registerPage(state, context, initialPage);
+
+  const use = <A>(
+    label: string,
+    drive: (page: Page) => Promise<A>,
+    deadline: E2EBrowserDeadline = {}
+  ) => {
+    const attempt = Effect.tryPromise({
+      catch: (cause) => toSessionFailure(label, cause, isClosing()),
+      try: () => drive(state.active),
+    });
+    return deadline.timeoutMs === undefined
+      ? attempt
+      : withinWorkspaceE2EDeadline(attempt, label, deadline.timeoutMs);
+  };
+  const close = ({ harPath }: { readonly harPath?: string } = {}) =>
+    closeSession(context, harPath);
 
   return {
     activate: (page) =>

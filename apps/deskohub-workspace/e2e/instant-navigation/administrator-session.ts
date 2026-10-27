@@ -13,7 +13,8 @@ import {
   resolveWorkspaceE2ESessionSigningSecret,
   signInWorkspaceE2ESyntheticBrowserSession,
 } from "../account/seeded-session";
-import { E2EBrowserSession } from "../browser-session";
+import { openAdminSession } from "../admin-case";
+import type { E2EBrowserSession } from "../browser-session";
 import { getDatasourceConfig } from "../config";
 import { makeWorkspaceE2EEnvironment } from "../e2e-env";
 import type { WorkspaceE2EError } from "../errors";
@@ -118,8 +119,8 @@ export const readInstantNavigationAdministratorRunId = async (): Promise<
 /**
  * Runs `use` with a browser session for one test, primed for the preview and
  * signed in as the administrator the setup project seeded, with a fresh
- * short-lived session. The session closes once `use` settles. It records no
- * HAR: instant navigation keeps no failure artifacts.
+ * short-lived session, under the admin failure policy (`openAdminSession`).
+ * The session closes once `use` settles.
  */
 export const withInstantNavigationAdministratorSession = async (
   input: {
@@ -141,15 +142,13 @@ export const withInstantNavigationAdministratorSession = async (
     );
   }
   const baseURL = requireBaseUrl(input.baseURL);
-  const { origin } = new URL(baseURL);
   await runPromise(
     Effect.scoped(
       Effect.gen(function* () {
-        const session = yield* E2EBrowserSession.open({
+        const { origin, session } = yield* openAdminSession({
           baseURL,
           browser: input.browser,
-          id: "instant-navigation-administrator",
-          recordHar: false,
+          caseName: "instant-navigation-administrator",
         });
         yield* session.primePreviewAccess(
           origin,

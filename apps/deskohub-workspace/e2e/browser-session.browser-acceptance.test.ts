@@ -4,8 +4,9 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type Browser, chromium } from "@playwright/test";
+import { type Browser, type BrowserContext, chromium } from "@playwright/test";
 import { Effect, Fiber } from "effect";
+import { TestClock } from "effect/testing";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import { E2EBrowserSession } from "./browser-session";
 import {
@@ -15,6 +16,7 @@ import {
   workspaceE2EError,
 } from "./errors";
 import { addRedaction } from "./redaction";
+import { workspaceE2ETimeouts } from "./timeouts";
 
 // The session owns what Playwright does not, so these run against a real
 // Chromium and a local server instead of a scripted adapter.
@@ -591,6 +593,107 @@ test.skipIf(!chromiumAvailable)(
     await probe.close();
 
     expect(browser.contexts().length).toBe(before);
+  }
+);
+
+/**
+ * A browser whose contexts hold `close()` until the test lets go, optionally
+ * failing to open their first page.
+ */
+const stallingContextClose = (options: { readonly failNewPage: boolean }) => {
+  if (!browser) throw new Error("Chromium is not running");
+  const realBrowser = browser;
+  const closeRequested = Promise.withResolvers<void>();
+  const held = Promise.withResolvers<void>();
+  const contexts: BrowserContext[] = [];
+  const stalling = {
+    newContext: async (
+      contextOptions?: Parameters<Browser["newContext"]>[0]
+    ) => {
+      const context = await realBrowser.newContext(contextOptions);
+      contexts.push(context);
+      context.close = () => {
+        closeRequested.resolve();
+        return held.promise;
+      };
+      if (options.failNewPage)
+        context.newPage = () =>
+          Promise.reject(new Error("synthetic page failure"));
+      return context;
+    },
+  } as unknown as Browser;
+  return {
+    browser: stalling,
+    closeRequested: closeRequested.promise,
+    release: async () => {
+      await Promise.all(
+        contexts.map((context) =>
+          Reflect.apply(
+            Object.getPrototypeOf(context).close as BrowserContext["close"],
+            context,
+            []
+          )
+        )
+      );
+      held.resolve();
+    },
+  };
+};
+
+/**
+ * Closes the session's Scope while `context.close()` stalls, then moves the
+ * clock past one browser action and reports whether the Scope settled.
+ */
+const settleScopeOverStalledClose = async (options: {
+  readonly failNewPage: boolean;
+}) => {
+  const stalling = stallingContextClose(options);
+  try {
+    return await Effect.runPromise(
+      Effect.gen(function* () {
+        // Detached, so a Scope stuck in its finalizers cannot hold the test.
+        const scoped = yield* Effect.forkDetach(
+          Effect.scoped(
+            Effect.flatMap(
+              E2EBrowserSession.open({
+                browser: stalling.browser,
+                id: `session-stalled-close-${randomUUID()}`,
+              }),
+              (session) => goto(session, "/")
+            )
+          )
+        );
+        yield* Effect.promise(() => stalling.closeRequested);
+        yield* TestClock.adjust(
+          `${workspaceE2ETimeouts.browserAction + 1000} millis`
+        );
+        // Real time, which the TestClock does not control.
+        return yield* Effect.raceFirst(
+          Fiber.await(scoped),
+          Effect.promise(() => Bun.sleep(2000)).pipe(Effect.as("stalled"))
+        );
+      }).pipe(Effect.provide(TestClock.layer()))
+    );
+  } finally {
+    await stalling.release();
+  }
+};
+
+test.skipIf(!chromiumAvailable)(
+  "waits for a stalled context close at most one browser action",
+  async () => {
+    const settled = await settleScopeOverStalledClose({ failNewPage: false });
+
+    expect(settled === "stalled" ? settled : settled._tag).toBe("Success");
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "bounds the close of a context whose first page failed to open",
+  async () => {
+    const settled = await settleScopeOverStalledClose({ failNewPage: true });
+
+    expect(settled === "stalled" ? settled : settled._tag).toBe("Failure");
   }
 );
 

@@ -1,21 +1,52 @@
-import type { Browser, Request } from "@playwright/test";
+import type { Browser, BrowserContext, Request } from "@playwright/test";
 import { Effect } from "effect";
 import { E2EBrowserSession } from "./browser-session";
-import { type WorkspaceE2EError, workspaceE2EError } from "./errors";
+import {
+  isWorkspaceE2ETimeout,
+  WorkspaceE2EError,
+  workspaceE2EError,
+} from "./errors";
 import { withinWorkspaceE2EDeadline } from "./polling";
+import { primePreviewAccess } from "./preview-access";
+
+/**
+ * Admin cases count only a step's own deadline as a timeout. A timeout inside
+ * the step, from a Playwright action, the browser, or the preview access
+ * probe, fails it like any other browser failure, so the case runner reports
+ * it as failed rather than timed out.
+ */
+const asAdminFailure = (
+  error: WorkspaceE2EError,
+  operation: string
+): WorkspaceE2EError =>
+  isWorkspaceE2ETimeout(error)
+    ? workspaceE2EError(`${operation} failed`, { operation })
+    : error;
+
+const withinAdminDeadline = <A>(
+  attempt: Effect.Effect<A, WorkspaceE2EError>,
+  label: string,
+  timeoutMs: number | undefined
+) =>
+  timeoutMs === undefined
+    ? attempt
+    : withinWorkspaceE2EDeadline(attempt, label, timeoutMs);
 
 /**
  * Opens an isolated, signed-out admin browser session for the preview origin,
- * bound to the caller's Scope. The case primes preview access and signs it in
- * as a seeded synthetic administrator (`e2e/administrators/identities.ts`)
- * before it opens an admin page. Admin cases keep no failure artifacts, so
- * the session records no HAR.
+ * bound to the caller's Scope, with the admin failure policy
+ * (`asAdminFailure`). The case primes preview access and signs it in as a
+ * seeded synthetic administrator (`e2e/administrators/identities.ts`) before
+ * it opens an admin page. Admin cases have no HAR consumer, so the session
+ * records none; Playwright still keeps its failure screenshot.
  */
 export const openAdminSession = Effect.fn("openAdminSession")(
   function* (input: {
     readonly baseURL: string | undefined;
     readonly browser: Browser;
     readonly caseName: string;
+    /** The session's preview access `fetch`; tests point it at a local server. */
+    readonly fetch?: typeof fetch;
   }) {
     const { baseURL } = input;
     if (!baseURL) {
@@ -27,12 +58,74 @@ export const openAdminSession = Effect.fn("openAdminSession")(
     const session = yield* E2EBrowserSession.open({
       baseURL,
       browser: input.browser,
+      fetch: input.fetch,
       id: input.caseName,
       recordHar: false,
-    });
-    return { origin: new URL(baseURL).origin, session };
+    }).pipe(
+      Effect.mapError((error) =>
+        asAdminFailure(error, error.operation ?? "open the browser session")
+      )
+    );
+    const adminSession: E2EBrowserSession = {
+      ...session,
+      evaluate: (label, fn, arg, deadline) =>
+        withinAdminDeadline(
+          session
+            .evaluate(label, fn, arg)
+            .pipe(Effect.mapError((error) => asAdminFailure(error, label))),
+          label,
+          deadline?.timeoutMs
+        ),
+      primePreviewAccess: (url, bypassSecret, options) =>
+        session
+          .primePreviewAccess(url, bypassSecret, options)
+          .pipe(
+            Effect.mapError((error) =>
+              asAdminFailure(error, "prime preview access")
+            )
+          ),
+      use: (label, drive, deadline) =>
+        withinAdminDeadline(
+          session
+            .use(label, drive)
+            .pipe(Effect.mapError((error) => asAdminFailure(error, label))),
+          label,
+          deadline?.timeoutMs
+        ),
+    };
+    return { origin: new URL(baseURL).origin, session: adminSession };
   }
 );
+
+const primePreviewBypassOperation = "prime the Vercel protection bypass cookie";
+
+/**
+ * Primes preview access for a browser context outside a session, as the agent
+ * evals' own browser needs, with the admin failure policy. Preview access's
+ * own failures keep their status; any other cause is discarded.
+ */
+export const primePreviewBypass = (input: {
+  readonly bypassSecret: string | undefined;
+  readonly context: BrowserContext;
+  /** Tests point the probe at a local server. */
+  readonly fetch?: typeof fetch;
+  readonly origin: string;
+  readonly timeoutMs?: number;
+}) =>
+  Effect.tryPromise({
+    catch: (cause) =>
+      cause instanceof WorkspaceE2EError
+        ? asAdminFailure(cause, primePreviewBypassOperation)
+        : workspaceE2EError(`${primePreviewBypassOperation} failed`, {
+            operation: primePreviewBypassOperation,
+          }),
+    try: (signal) =>
+      primePreviewAccess(input.context, input.origin, input.bypassSecret, {
+        fetch: input.fetch,
+        signal,
+        timeoutMs: input.timeoutMs,
+      }),
+  });
 
 export type ActionResponseOutcome =
   | { readonly kind: "responded" }

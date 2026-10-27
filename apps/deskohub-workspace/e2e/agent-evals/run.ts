@@ -23,13 +23,9 @@ import {
   seedWorkspaceE2ESyntheticAccount,
   signInWorkspaceE2ESyntheticBrowserContext,
 } from "../account/seeded-session";
+import { primePreviewBypass } from "../admin-case";
 import type { DatasourceConfig } from "../config";
-import {
-  tryWorkspaceE2EPromise,
-  WorkspaceE2EError,
-  workspaceE2EError,
-} from "../errors";
-import { primePreviewAccess } from "../preview-access";
+import { tryWorkspaceE2EPromise } from "../errors";
 import { workspaceE2ERunIdSchema } from "../run-identifiers";
 import { workspaceAgentEvalTimeouts, workspaceE2ETimeouts } from "../timeouts";
 import { type AgentEvalBrowser, launchAgentEvalBrowser } from "./browser";
@@ -297,18 +293,10 @@ export const runAgentEvalCase = async ({
     );
     const { context } = browser;
     await runtime.runPromise(
-      Effect.tryPromise({
-        // Only preview access's own failures name their status; any other
-        // cause is discarded.
-        catch: (cause) =>
-          cause instanceof WorkspaceE2EError
-            ? cause
-            : workspaceE2EError(
-                "prime the Vercel protection bypass cookie failed",
-                { operation: "prime the Vercel protection bypass cookie" }
-              ),
-        try: () =>
-          primePreviewAccess(context, config.baseUrl, config.bypassSecret),
+      primePreviewBypass({
+        bypassSecret: config.bypassSecret,
+        context,
+        origin: config.baseUrl,
       })
     );
     await runtime.runPromise(

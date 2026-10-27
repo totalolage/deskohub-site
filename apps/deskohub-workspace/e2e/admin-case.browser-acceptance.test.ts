@@ -5,10 +5,13 @@ import { Effect } from "effect";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import {
   type ActionResponseOutcome,
+  openAdminSession,
+  primePreviewBypass,
   retainServerActionSubmission,
 } from "./admin-case";
 import { E2EBrowserSession } from "./browser-session";
 import { runE2ECase } from "./case-runner";
+import { isWorkspaceE2ETimeout, type WorkspaceE2EError } from "./errors";
 import {
   type E2ETelemetryObservation,
   makeE2ETelemetryMock,
@@ -16,7 +19,8 @@ import {
 
 // Admin cleanup closes the session before it awaits a retained Server Action
 // submission, so no late request can leave the browser. These pin how a
-// retained submission settles around that close against a real Chromium.
+// retained submission settles around that close, and how the case runner
+// classifies an admin step's failures, against a real Chromium.
 const chromiumAvailable = await playwrightChromiumAvailable();
 let browser: Browser | undefined;
 let server: ReturnType<typeof Bun.serve> | undefined;
@@ -129,48 +133,148 @@ test.skipIf(!chromiumAvailable)(
   }
 );
 
+// A Workspace deployment origin, the only kind that receives the secret; the
+// probe's `fetch` holds it until the probe gives up.
+const deploymentOrigin =
+  "https://deskohub-workspace-abc123def-synthetic.vercel.app";
+const heldProbeFetch = ((_input: string | URL | Request, init?: RequestInit) =>
+  new Promise<Response>((_resolve, reject) => {
+    init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+  })) as typeof fetch;
+
+/**
+ * Runs one admin case step through the case runner on an admin session and
+ * returns the step's annotation, as the reporter would see it.
+ */
+const annotateAdminStep = async (input: {
+  readonly browser?: Browser;
+  readonly execute: (
+    session: E2EBrowserSession
+  ) => Effect.Effect<void, WorkspaceE2EError>;
+  readonly timeoutMs?: number;
+}) => {
+  if (!browser) throw new Error("Chromium is not running");
+  const observations: E2ETelemetryObservation[] = [];
+  await Effect.runPromiseExit(
+    runE2ECase({
+      body: (step) =>
+        step({
+          execute: Effect.scoped(
+            Effect.flatMap(
+              openAdminSession({
+                baseURL: origin(),
+                browser: input.browser ?? browser,
+                caseName: `admin-case-test-${randomUUID()}`,
+                fetch: heldProbeFetch,
+              }),
+              ({ session }) => input.execute(session)
+            )
+          ),
+          id: "admin-step",
+          timeoutMs: input.timeoutMs ?? 5000,
+        }),
+      caseId: "admin-case",
+      watchdogMs: 10_000,
+    }).pipe(Effect.provide(makeE2ETelemetryMock(observations)))
+  );
+  return observations
+    .filter(({ scope }) => scope === "annotation")
+    .map(({ failureKind, outcome }) => ({ failureKind, outcome }));
+};
+
+const failed = [{ failureKind: "error", outcome: "failed" }];
+const timedOut = [{ failureKind: "timeout", outcome: "timed_out" }];
+
 test.skipIf(!chromiumAvailable)(
-  "reports an admin step's Playwright timeout as a timed-out case",
+  "fails an admin step on a Playwright timeout inside it",
+  async () => {
+    expect(
+      await annotateAdminStep({
+        execute: (session) =>
+          session.use("wait for the admin form", async (page) => {
+            await page.goto(`${origin()}/`);
+            await page.locator("#missing").waitFor({ timeout: 50 });
+          }),
+      })
+    ).toEqual(failed);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "fails an admin step when opening its browser times out",
+  async () => {
+    const timingOut = {
+      newContext: () =>
+        Promise.reject(
+          Object.assign(new Error("synthetic browser timeout"), {
+            name: "TimeoutError",
+          })
+        ),
+    } as unknown as Browser;
+    expect(
+      await annotateAdminStep({
+        browser: timingOut,
+        execute: () => Effect.void,
+      })
+    ).toEqual(failed);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "fails an admin step when its preview access probe times out",
+  async () => {
+    expect(
+      await annotateAdminStep({
+        execute: (session) =>
+          session.primePreviewAccess(
+            `${deploymentOrigin}/en-US/admin`,
+            "synthetic-held-bypass",
+            { timeoutMs: 50 }
+          ),
+      })
+    ).toEqual(failed);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "still times out an admin step at its own deadline",
+  async () => {
+    expect(
+      await annotateAdminStep({
+        execute: (session) =>
+          session.use("wait for the admin form", async (page) => {
+            await page.goto(`${origin()}/`);
+            await page.locator("#missing").waitFor({ timeout: 5000 });
+          }),
+        timeoutMs: 200,
+      })
+    ).toEqual(timedOut);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "fails a context's preview access priming instead of timing it out",
   async () => {
     if (!browser) throw new Error("Chromium is not running");
-    const opening = E2EBrowserSession.open({
-      browser,
-      id: `admin-case-test-${randomUUID()}`,
-      recordHar: false,
-    });
-    const observations: E2ETelemetryObservation[] = [];
-    await Effect.runPromiseExit(
-      Effect.scoped(
-        Effect.gen(function* () {
-          const session = yield* opening;
-          yield* runE2ECase({
-            body: (step) =>
-              step({
-                execute: session.use(
-                  "wait for the admin form",
-                  async (page) => {
-                    await page.goto(`${origin()}/`);
-                    await page.locator("#missing").waitFor({ timeout: 50 });
-                  }
-                ),
-                id: "wait-for-admin-form",
-                timeoutMs: 5000,
-              }),
-            caseId: "admin-timeout",
-            watchdogMs: 10_000,
-          });
-        })
-      ).pipe(Effect.provide(makeE2ETelemetryMock(observations)))
-    );
-
-    expect(observations.filter(({ scope }) => scope === "annotation")).toEqual([
-      {
-        caseId: "admin-timeout",
-        failureKind: "timeout",
-        outcome: "timed_out",
-        scope: "annotation",
-        stepId: "wait-for-admin-form",
-      },
-    ]);
+    const context = await browser.newContext();
+    try {
+      const failure = await Effect.runPromise(
+        Effect.flip(
+          primePreviewBypass({
+            bypassSecret: "synthetic-held-bypass",
+            context,
+            fetch: heldProbeFetch,
+            origin: deploymentOrigin,
+            timeoutMs: 50,
+          })
+        )
+      );
+      expect(isWorkspaceE2ETimeout(failure)).toBe(false);
+      expect(failure.operation).toBe(
+        "prime the Vercel protection bypass cookie"
+      );
+    } finally {
+      await context.close();
+    }
   }
 );

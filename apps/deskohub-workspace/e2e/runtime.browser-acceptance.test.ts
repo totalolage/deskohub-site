@@ -19,6 +19,7 @@ let browser: Browser | undefined;
 let server: ReturnType<typeof Bun.serve> | undefined;
 let artifactDir = "";
 const previewProbes: Record<string, string>[] = [];
+const rejectedBypassSecret = "synthetic-rejected-runner-bypass";
 
 beforeAll(async () => {
   if (!chromiumAvailable) return;
@@ -30,6 +31,11 @@ beforeAll(async () => {
       const { pathname } = new URL(request.url);
       if (pathname === "/favicon.svg") {
         previewProbes.push(Object.fromEntries(request.headers));
+        if (
+          request.headers.get("x-vercel-protection-bypass") ===
+          rejectedBypassSecret
+        )
+          return new Response("denied", { status: 401 });
         return new Response("<svg/>", {
           headers: {
             "content-type": "image/svg+xml",
@@ -355,5 +361,51 @@ test.skipIf(!chromiumAvailable)(
     );
     expect(result.exitCode).toBe(1);
     expect(previewProbes).toEqual([]);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "fails closed on a rejected probe without navigating",
+  async () => {
+    previewProbes.length = 0;
+    const sessionId = `rejected-${randomUUID()}`;
+    const navigations: string[] = [];
+    const result = await withRunner(
+      async (run) => {
+        const session = await Effect.runPromise(
+          run.session?.(sessionId) ?? Effect.die("no session bridge")
+        );
+        await Effect.runPromise(
+          session.use("answer the deployment", (page) =>
+            page.context().route(`${deploymentOrigin}/**`, (route) => {
+              navigations.push(route.request().url());
+              return route.fulfill({
+                body: "<!doctype html><title>Deployment</title>",
+                contentType: "text/html",
+              });
+            })
+          )
+        );
+        return run(
+          "playwright",
+          [
+            "--session",
+            sessionId,
+            "--headers",
+            JSON.stringify({
+              "x-vercel-protection-bypass": rejectedBypassSecret,
+            }),
+            "open",
+            `${deploymentOrigin}/en-US`,
+          ],
+          { allowFailure: true, logCommand: false, logOutput: false }
+        );
+      },
+      { fetch: toLocalServer }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(previewProbes).toHaveLength(1);
+    expect(navigations).toEqual([]);
   }
 );
