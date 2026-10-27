@@ -3,18 +3,9 @@ import {
   DotyposService,
   getCustomerDisplayName,
 } from "@deskohub/dotypos";
-import type { Customer, Reservation } from "@deskohub/dotypos/generated";
+import type { Customer } from "@deskohub/dotypos/generated";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import {
-  Clock,
-  Context,
-  Duration,
-  Effect,
-  Layer,
-  Match,
-  Option,
-  Schema,
-} from "effect";
+import { Clock, Context, Duration, Effect, Layer, Match, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import type {
   FulfillmentState,
@@ -33,6 +24,10 @@ import {
 } from "@/features/feature-flags/backend";
 import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
 import { SharedAvailabilityInventoryLive } from "@/features/reservation/backend/availability-inventory-cache.server";
+import {
+  type BookedReservation,
+  decodeBookedReservation,
+} from "@/features/reservation/backend/booked-reservation";
 import { ReservationRecords } from "@/features/reservation/backend/reservation-records";
 import {
   type CustomerReservationTable,
@@ -54,7 +49,6 @@ import type { StoredOfficeReservationDetails } from "@/features/reservation/offi
 import { getStoredOfficeReservationSelectionSearchParams } from "@/features/reservation/office-reservation-checkout-query";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import type { ReservationSelectionSearchParams } from "@/features/reservation/reservation-checkout-query";
-import { dotyposReservationSeatsSchema } from "@/features/reservation/reservation-seats";
 import { ReviewSandbox } from "@/features/review-accounts";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { nexiRequestTimeout } from "@/shared/backend/config/nexi.config";
@@ -328,11 +322,11 @@ const getRetryDotyposReservationId = (reservation: WorkspaceReservation) =>
 /** Projects the booked selection onto the family's reservation-page link. */
 const getRetrySelectionSearchParams = ({
   reservation,
-  dotyposReservation,
+  booked,
   timing,
 }: {
   readonly reservation: WorkspaceReservation;
-  readonly dotyposReservation: Pick<Reservation, "seats">;
+  readonly booked: Pick<BookedReservation, "seats">;
   readonly timing: Effect.Success<
     ReturnType<typeof getDotyposReservationTiming>
   >;
@@ -350,12 +344,8 @@ const getRetrySelectionSearchParams = ({
           ...timing,
         }),
       office: (details) => {
-        const seats =
-          Option.getOrUndefined(
-            Schema.decodeUnknownOption(dotyposReservationSeatsSchema)(
-              dotyposReservation.seats
-            )
-          ) ?? details.seats;
+        // Unreadable Dotypos seats fall back to the stored selection's.
+        const seats = Option.getOrUndefined(booked.seats) ?? details.seats;
 
         return seats === undefined
           ? undefined
@@ -544,9 +534,10 @@ const implementation = Effect.gen(function* () {
         ? getWorkspaceTableMap(dotyposReservation, tables)
         : undefined;
 
+      const booked = decodeBookedReservation(dotyposReservation);
       const timing = yield* getDotyposReservationTiming({
         reservationId: reservation.id,
-        reservation: dotyposReservation,
+        reservation: booked,
       }).pipe(
         Effect.tapError((cause) =>
           Effect.logWarning(
@@ -588,12 +579,9 @@ const implementation = Effect.gen(function* () {
             },
           }),
           office: (details) => {
-            const seats = Option.getOrUndefined(
-              Schema.decodeUnknownOption(dotyposReservationSeatsSchema)(
-                dotyposReservation.seats
-              )
-            );
-            if (!seats) return { kind: "office" as const };
+            // Unreadable Dotypos seats leave the office summary out.
+            if (Option.isNone(booked.seats)) return { kind: "office" as const };
+            const seats = booked.seats.value;
 
             return {
               kind: "office" as const,
@@ -675,13 +663,15 @@ const implementation = Effect.gen(function* () {
       readonly dotyposReservationId: DotyposReservationId;
     }) =>
       Effect.succeed(input).pipe(
-        Effect.bind("dotyposReservation", ({ dotyposReservationId }) =>
-          records.get(dotyposReservationId)
+        Effect.bind("booked", ({ dotyposReservationId }) =>
+          records
+            .get(dotyposReservationId)
+            .pipe(Effect.map(decodeBookedReservation))
         ),
-        Effect.bind("timing", ({ reservation, dotyposReservation }) =>
+        Effect.bind("timing", ({ reservation, booked }) =>
           getDotyposReservationTiming({
             reservationId: reservation.id,
-            reservation: dotyposReservation,
+            reservation: booked,
           })
         ),
         Effect.map(getRetrySelectionSearchParams),

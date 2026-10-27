@@ -1,6 +1,6 @@
 import { type DotyposCustomerId, DotyposService } from "@deskohub/dotypos";
 import { and, asc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
-import { Context, Effect, Layer, Schema } from "effect";
+import { Context, Effect, Layer, Option, Schema } from "effect";
 import {
   WorkspaceDatabase,
   type WorkspaceDatabaseClient,
@@ -37,6 +37,7 @@ import { generatePromotionCode } from "@/features/discounts/promotion-code";
 import type { DiscountCandidate } from "@/features/discounts/provider";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
+import { decodeBookedReservation } from "@/features/reservation/backend/booked-reservation";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import type { Money } from "@/shared/money/money";
 import {
@@ -316,7 +317,12 @@ export class ReferralService extends Context.Service<
                       dotyposStatus: reservation.status,
                       reservationState: local?.reservationState,
                     }),
-                    endsAt: Temporal.Instant.from(reservation.endDate),
+                    // The Dotypos contract only returns readable ends, so an
+                    // unreadable one is a defect.
+                    endsAt: Option.getOrThrowWith(
+                      decodeBookedReservation(reservation).end,
+                      () => new Error("Dotypos reservation end is unreadable.")
+                    ),
                   };
                 });
               const hasLocalPaidBooking = localReservations.some(
