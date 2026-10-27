@@ -32,6 +32,9 @@ export const workspaceE2ETimeouts = {
   authDelivery: 2 * MINUTE,
   browserAction: 30 * SECOND,
   browserNavigation: 60 * SECOND,
+  // Releasing a probe response's body, so a stuck release can't hold up the
+  // session's cleanup.
+  browserResponseDisposal: 30 * SECOND,
   // One MCP exchange, with room for a cold advisory snapshot to fill from
   // Dotypos (one full Dotypos request timeout).
   customerMcpRequest: 60 * SECOND,
