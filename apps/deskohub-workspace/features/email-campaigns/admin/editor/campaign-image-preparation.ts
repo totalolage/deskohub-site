@@ -1,11 +1,8 @@
 import { Effect, Option, Result } from "effect";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
-import {
-  type ImageFit,
-  imageFitsAsIs,
-  shrinkImageToFit,
-} from "@/shared/browser/image-shrinking";
+import { type ImageFit, imageFitsAsIs } from "@/shared/browser/image-fit";
+import { shrinkImageToFit } from "@/shared/browser/image-shrinking";
 import { reportWorkspaceBrowserFailure } from "@/shared/browser/workspace-browser-logs";
 import { campaignBodyColumnWidth } from "../../body/campaign-image";
 import {
@@ -17,7 +14,9 @@ import {
 
 /**
  * A body image fits when it's within the upload limit. One that has to be
- * shrunk keeps twice the body column's width, sharp on high-density screens.
+ * shrunk becomes at most twice the body column's width: sharp on high-density
+ * screens, and no heavier than needed, since every recipient downloads the
+ * uploaded file as it is.
  */
 const campaignImageFit: ImageFit = {
   maxBytes: campaignImageMaxBytes,
