@@ -1,5 +1,6 @@
-import { afterAll, afterEach, describe, expect, mock, test } from "bun:test";
-import { act, cleanup, render, within } from "@testing-library/react";
+import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
+import { within } from "@testing-library/react";
+import { prerender } from "react-dom/static";
 import { m } from "@/features/administration/i18n";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import {
@@ -20,22 +21,32 @@ mock.module("next/navigation", () => ({
   unstable_rethrow: () => {},
 }));
 
-registerWorkspaceComponentTestEnv();
-
-const { CampaignListPage } = await import("./campaign-list-page");
+async function prerenderCampaignListPage() {
+  const { CampaignListPage } = await import("./campaign-list-page");
+  const { prelude } = await prerender(
+    <RouteLocaleProvider locale={locale}>
+      <CampaignListPage
+        campaigns={Promise.resolve([])}
+        delivery={Promise.resolve(undefined)}
+      />
+    </RouteLocaleProvider>,
+    // Inline every completed boundary instead of streaming hidden segments.
+    { progressiveChunkSize: Number.POSITIVE_INFINITY }
+  );
+  const container = document.createElement("div");
+  container.innerHTML = await new Response(prelude).text();
+  return within(container);
+}
 
 describe("CampaignListPage", () => {
-  afterEach(() => cleanup());
-  afterAll(() => unregisterWorkspaceComponentTestEnv());
+  beforeAll(() => registerWorkspaceComponentTestEnv());
+  afterAll(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await unregisterWorkspaceComponentTestEnv();
+  });
 
   test("keeps the delivery filter and the new-campaign action on the count's row", async () => {
-    const page = await CampaignListPage({
-      campaigns: Promise.resolve([]),
-      delivery: Promise.resolve(undefined),
-    });
-    const view = await act(async () =>
-      render(<RouteLocaleProvider locale={locale}>{page}</RouteLocaleProvider>)
-    );
+    const view = await prerenderCampaignListPage();
     const region = view.getByRole("region", {
       name: m.emailCampaignsListTableControls({}, { locale }),
     });
@@ -52,7 +63,7 @@ describe("CampaignListPage", () => {
     expect(row?.classList.contains("flex-wrap")).toBe(true);
     expect(
       countGroup?.contains(
-        await within(region).findByLabelText(
+        within(region).getByLabelText(
           m.emailCampaignsListCount({ count: 0 }, { locale })
         )
       )
