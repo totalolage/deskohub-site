@@ -93,9 +93,9 @@ import {
   minimumDhwVersions,
 } from "./cli-client-version";
 import {
-  CliMutationIdempotency,
+  AdministrationRequestLedger,
   mutationScopeOf,
-} from "./cli-mutation-idempotency.service";
+} from "./administration-request-ledger.service";
 import { AdminCliAutomationsApiHandlers } from "./email-automations-api.server";
 import { AdminCliCampaignsApiHandlers } from "./email-campaigns-api.server";
 
@@ -156,7 +156,7 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
     const discounts = yield* DiscountAdministration;
     const invoices = yield* InvoiceAdministrationService;
     const standaloneAccessCodes = yield* StandaloneAccessCodeAdministration;
-    const mutationIdempotency = yield* CliMutationIdempotency;
+    const ledger = yield* AdministrationRequestLedger;
     const productDetailsBackfill = yield* ReservationProductDetailsBackfill;
     return handlers
       .handle("getOverview", () =>
@@ -223,7 +223,7 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
               mutation: payload.mutation,
             },
           };
-          const claim = yield* mutationIdempotency
+          const claim = yield* ledger
             .claim(request)
             .pipe(mapServiceFailure);
           const applyMutation = reservationAccess
@@ -236,20 +236,20 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
               Effect.tapError((cause) =>
                 cause.reason === "recovery_failed"
                   ? Effect.void
-                  : mutationIdempotency
+                  : ledger
                       .release(request)
                       .pipe(Effect.catch(() => Effect.void))
               ),
               mapAdministrationApiFailure(mapReservationAccessMutationFailure),
               Effect.tap((result) =>
-                mutationIdempotency
+                ledger
                   .complete({ ...request, result })
                   .pipe(mapServiceFailure)
               )
             );
           const resumeInterruptedMutation = Effect.gen(function* () {
             const reclaimedAt = Temporal.Now.instant();
-            const reclaimed = yield* mutationIdempotency
+            const reclaimed = yield* ledger
               .reclaimStale({
                 ...request,
                 reclaimedAt,
@@ -271,7 +271,7 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
               .pipe(
                 Effect.map(toCliReservationAccessGrant),
                 Effect.tapError(() =>
-                  mutationIdempotency
+                  ledger
                     .release(request)
                     .pipe(Effect.catch(() => Effect.void))
                 ),
@@ -279,7 +279,7 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
                   mapReservationAccessMutationFailure
                 ),
                 Effect.tap((result) =>
-                  mutationIdempotency
+                  ledger
                     .complete({ ...request, result })
                     .pipe(mapServiceFailure)
                 )
@@ -518,13 +518,13 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
                 cause instanceof CliServiceUnavailable ||
                 cause instanceof CliStandaloneAccessCodeCleanupRequired ||
                 cause instanceof CliStandaloneAccessCodeReconciled
-                  ? mutationIdempotency
+                  ? ledger
                       .release(request)
                       .pipe(Effect.catch(() => Effect.void))
                   : Effect.void
               ),
               Effect.tap((outcome) =>
-                mutationIdempotency
+                ledger
                   .complete({
                     ...request,
                     result: toStandaloneAccessCodeResult(outcome),
@@ -541,7 +541,7 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
                         }
                       ).pipe(
                         Effect.andThen(
-                          mutationIdempotency
+                          ledger
                             .release(request)
                             .pipe(Effect.catch(() => Effect.void))
                         )
@@ -552,7 +552,7 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
             );
           const resumeInterruptedCreation = Effect.gen(function* () {
             const reclaimedAt = Temporal.Now.instant();
-            const reclaimed = yield* mutationIdempotency
+            const reclaimed = yield* ledger
               .reclaimStale({
                 ...request,
                 reclaimedAt,
@@ -572,7 +572,7 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
             return yield* executeCreation;
           });
 
-          const claim = yield* mutationIdempotency
+          const claim = yield* ledger
             .claim(request)
             .pipe(mapServiceFailure);
 
@@ -628,7 +628,7 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
             requestId: payload.requestId,
             mutation: payload.mutation,
           };
-          const claim = yield* mutationIdempotency
+          const claim = yield* ledger
             .claim(request)
             .pipe(mapServiceFailure);
 
@@ -644,13 +644,13 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
                   Effect.tapError((cause) =>
                     cause instanceof CliResourceNotFound ||
                     cause instanceof CliMutationRejected
-                      ? mutationIdempotency
+                      ? ledger
                           .release(request)
                           .pipe(Effect.catch(() => Effect.void))
                       : Effect.void
                   ),
                   Effect.tap((result) =>
-                    mutationIdempotency
+                    ledger
                       .complete({ ...request, result })
                       .pipe(mapServiceFailure)
                   )
@@ -1100,7 +1100,7 @@ export const provideWorkspaceAdminApiServices = <A, E, R>(
     Layer.provide(DiscountAdministration.Live),
     Layer.provide(InvoiceAdministrationService.Live),
     Layer.provide(StandaloneAccessCodeAdministration.Live),
-    Layer.provide(CliMutationIdempotency.Live),
+    Layer.provide(AdministrationRequestLedger.Live),
     Layer.provide(AdministrationActionLog.Live),
     Layer.provide(CampaignOperations.Live),
     Layer.provide(CliAuthenticationAdmission.Default),

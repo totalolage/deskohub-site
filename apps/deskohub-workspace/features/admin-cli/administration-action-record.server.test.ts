@@ -41,7 +41,7 @@ import {
 import { CliAuthentication } from "./cli-authentication.service";
 import { CliAuthenticationAdmission } from "./cli-authentication-admission.service";
 import { CliClientCompatibilityLive } from "./cli-client-version";
-import { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
+import { AdministrationRequestLedger } from "./administration-request-ledger.service";
 import { makeWorkspaceAdminApiLayer } from "./workspace-admin-api.server";
 
 const sessionChannel: AdministrationChannel = {
@@ -123,7 +123,7 @@ const serve = ({
   readonly channel?: AdministrationChannel;
   readonly actionLog: Layer.Layer<AdministrationActionLog>;
   readonly authentication?: Partial<CliAuthentication["Service"]>;
-  readonly idempotency?: Partial<CliMutationIdempotency["Service"]>;
+  readonly idempotency?: Partial<AdministrationRequestLedger["Service"]>;
   readonly invoices?: Partial<InvoiceAdministrationService["Service"]>;
   readonly standalone?: Partial<StandaloneAccessCodeAdministration["Service"]>;
   readonly backfill?: Partial<ReservationProductDetailsBackfill["Service"]>;
@@ -141,8 +141,8 @@ const serve = ({
             ...({} as CliAuthentication["Service"]),
             ...authentication,
           }),
-          Layer.succeed(CliMutationIdempotency, {
-            ...({} as CliMutationIdempotency["Service"]),
+          Layer.succeed(AdministrationRequestLedger, {
+            ...({} as AdministrationRequestLedger["Service"]),
             ...idempotency,
           }),
           Layer.succeed(InvoiceAdministrationService, {

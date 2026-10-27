@@ -701,8 +701,8 @@ const handleCliRequest = await (async () => {
   const { CliClientCompatibilityLive } = await import(
     "@/features/admin-cli/cli-client-version"
   );
-  const { CliMutationIdempotency } = await import(
-    "@/features/admin-cli/cli-mutation-idempotency.service"
+  const { AdministrationRequestLedger } = await import(
+    "@/features/admin-cli/administration-request-ledger.service"
   );
   const { UnrecordedAdministrationActions, UnusedCliSessionAuthentication } =
     await import("@/features/admin-cli/cli-api.test-utils");
@@ -730,7 +730,7 @@ const handleCliRequest = await (async () => {
           CliClientCompatibilityLive,
           UnrecordedAdministrationActions,
           CampaignOperations.Live,
-          CliMutationIdempotency.Default.pipe(Layer.provide(testDatabase.layer))
+          AdministrationRequestLedger.Default.pipe(Layer.provide(testDatabase.layer))
         )
       ),
       Layer.provide(NodeHttpServer.layerHttpServices)

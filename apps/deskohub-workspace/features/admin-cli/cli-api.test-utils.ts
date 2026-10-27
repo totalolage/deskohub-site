@@ -15,7 +15,7 @@ import { HttpApiMiddleware } from "effect/unstable/httpapi";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
 import { AdministrationActionLog } from "./administration-action-log.service";
-import { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
+import { AdministrationRequestLedger } from "./administration-request-ledger.service";
 
 /** The test client's `dhw`: every request sends this version. */
 export const cliClientVersion = (version: string) =>
@@ -67,8 +67,9 @@ export const GrantedAdministrator = Layer.mock(AccountRoleGrants, {
 });
 
 /** Every mutation is new; Postgres suites cover replays. */
-export const ClaimEveryCliMutation = Layer.succeed(CliMutationIdempotency, {
+export const ClaimEveryCliMutation = Layer.succeed(AdministrationRequestLedger, {
   applyOnce: ({ apply }) => apply,
+  applyOnceWithEffects: ({ apply }) => apply,
   claim: () => Effect.succeed({ kind: "claimed" as const }),
   complete: () => Effect.void,
   reclaimStale: () => Effect.succeed(false),

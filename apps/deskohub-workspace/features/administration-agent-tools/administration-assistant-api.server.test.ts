@@ -31,7 +31,7 @@ import { AdministrationActionLog } from "@/features/admin-cli/administration-act
 import { CliAuthentication } from "@/features/admin-cli/cli-authentication.service";
 import { CliAuthenticationAdmission } from "@/features/admin-cli/cli-authentication-admission.service";
 import { CliClientCompatibilityLive } from "@/features/admin-cli/cli-client-version";
-import { CliMutationIdempotency } from "@/features/admin-cli/cli-mutation-idempotency.service";
+import { AdministrationRequestLedger } from "@/features/admin-cli/administration-request-ledger.service";
 import {
   CliBearerAuthenticationLive,
   CliSessionAdministrationAuthenticationLive,
@@ -299,7 +299,7 @@ const makeInstanceServices = () => {
           return [];
         }),
     }),
-    Layer.succeed(CliMutationIdempotency, {
+    Layer.succeed(AdministrationRequestLedger, {
       applyOnce: () => Effect.die("Unused CLI mutation ledger"),
       claim: () => Effect.succeed({ kind: "in-progress" as const }),
       complete: () => Effect.void,
