@@ -279,6 +279,36 @@ describe.skipIf(!testDatabase)(
       expect(dotypos.requests()).toBe(1);
     });
 
+    test("fails counted reservations with a reversed Dotypos interval", async () => {
+      const customer = customerId("reversed-interval");
+      await insert([{ label: "reversed-interval", customer }]);
+      const reservation = dotyposReservation({
+        label: "reversed-interval",
+        customer,
+        startsAt: at(9),
+      });
+      const dotypos = countedDotyposReservationReads([
+        { ...reservation, endDate: at(8).toString() },
+      ]);
+
+      const failure = await Effect.runPromise(
+        withVisits(
+          dotypos,
+          Effect.gen(function* () {
+            const reservationVisits = yield* ReservationVisits;
+            return yield* Effect.flip(
+              reservationVisits.ofCustomers([customer])
+            );
+          })
+        )
+      );
+
+      expect(failure).toMatchObject({
+        _tag: "ReservationVisitsUnavailable",
+        cause: { _tag: "InvalidDotyposReservationInterval" },
+      });
+    });
+
     test("never returns unconfirmed, Workspace-cancelled, or non-Workspace reservations", async () => {
       const customer = customerId("excluded");
       const excluded = [

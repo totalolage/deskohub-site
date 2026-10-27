@@ -7,7 +7,7 @@
 - Client code never imports `@/shared/polyfills/temporal` or `@js-temporal/polyfill`; either would ship the polyfill to every browser. When code calls a Temporal entry point the list lacks, add it to `requiredTemporalApis`; `temporal-runtime.test.ts` fails until you do.
 - A module that reads `Temporal` while it loads (a top-level const, a static field, an immediately invoked function) breaks the build: Next collects page data without running instrumentation. A server-only module imports `@/shared/polyfills/temporal` itself. A module client code loads can't, so it reads `Temporal` only inside functions. [`shared/polyfills/temporal.test.ts`](../../../../apps/deskohub-workspace/shared/polyfills/temporal.test.ts) enforces both.
 - Type each formatter to the representation it formats. Reservation facts use `Temporal.Instant`. Raw plain-date strings belong only in named form or input adapters. Never mix `Date`, `string`, and Temporal values in one reservation display formatter.
-- Decode Dotypos reservation start and end values through the canonical reservation interval schema before projecting them. Don't add a parallel timestamp parser or accept response shapes the generated Dotypos client rejects.
+- Decode a Dotypos reservation's start, end, interval, and seats with `decodeBookedReservation` ([`features/reservation/backend/booked-reservation.ts`](../../../../apps/deskohub-workspace/features/reservation/backend/booked-reservation.ts)), which applies the canonical instant, reservation interval, and seat schemas. Callers keep only their own fallback for a value it can't read. Don't add a parallel timestamp or seat parser or accept response shapes the generated Dotypos client rejects.
 
 ## Stored instant precision
 

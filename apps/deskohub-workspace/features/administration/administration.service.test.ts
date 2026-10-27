@@ -7,7 +7,7 @@ import {
 } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Cause, Effect, Layer, Option } from "effect";
+import { Cause, Effect, Exit, Layer, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   type ReservationAuthor,
@@ -1723,10 +1723,14 @@ describe("AdministrationService", () => {
     expect(result.dates).toBeNull();
   });
 
-  const loadOverviewReservationActivity = (input: {
+  type OverviewReservationActivityInput = {
     readonly linkedIds: readonly string[];
     readonly listReservations: DotyposService["Service"]["listReservations"];
-  }) =>
+  };
+
+  const provideOverviewReservationActivity = (
+    input: OverviewReservationActivityInput
+  ) =>
     Effect.gen(function* () {
       const administration = yield* AdministrationService;
       return yield* administration.loadReservationActivity();
@@ -1756,9 +1760,40 @@ describe("AdministrationService", () => {
             )
           )
         )
-      ),
-      Effect.runPromise
+      )
     );
+
+  const loadOverviewReservationActivity = (
+    input: OverviewReservationActivityInput
+  ) => Effect.runPromise(provideOverviewReservationActivity(input));
+
+  test("dies when Dotypos lists a reservation with an unreadable start", async () => {
+    setSystemTime(new Date("2026-08-26T12:00:00Z"));
+    const booking = {
+      _branchId: "branch",
+      _cloudId: "cloud",
+      _customerId: "dotypos-customer",
+      id: "booking-unreadable",
+      endDate: "2026-08-10T23:00:00Z",
+      seats: "1",
+      status: "CONFIRMED" as const,
+    };
+
+    for (const startDate of ["not-a-date", "2026-02-30T08:00:00Z"]) {
+      const exit = await Effect.runPromiseExit(
+        provideOverviewReservationActivity({
+          linkedIds: [booking.id],
+          listReservations: () => Effect.succeed([{ ...booking, startDate }]),
+        })
+      );
+
+      expect(
+        Exit.isFailure(exit) &&
+          Cause.hasDies(exit.cause) &&
+          !Cause.hasFails(exit.cause)
+      ).toBe(true);
+    }
+  });
 
   test("counts every linked reservation in the overview reservation activity", async () => {
     setSystemTime(new Date("2026-08-26T12:00:00Z"));

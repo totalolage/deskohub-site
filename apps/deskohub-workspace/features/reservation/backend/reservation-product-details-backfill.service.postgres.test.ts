@@ -315,5 +315,25 @@ describe.skipIf(!testDatabase)(
       expect(sortById(rerun.unresolved)).toEqual(sortById(expectedUnresolved));
       expect(await loadRows()).toEqual(after);
     });
+
+    test("leaves a meeting-room row unresolved for a reversed Dotypos interval", async () => {
+      const reservationId = await insert({
+        label: "reversed-interval",
+        details: { kind: "meeting-room" },
+        dotypos: {
+          startDate: "2026-03-10T12:00:00Z",
+          endDate: "2026-03-10T10:00:00Z",
+          seats: "1",
+        },
+      });
+
+      const { unresolved } = await runBackfill(true);
+
+      expect(unresolved).toContainEqual({
+        reservationId,
+        family: "meeting-room",
+        reason: "dotypos_interval_invalid",
+      });
+    });
   }
 );

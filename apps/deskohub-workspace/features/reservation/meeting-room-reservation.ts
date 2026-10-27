@@ -1,8 +1,11 @@
 import { Effect, Option, Schema, SchemaGetter, SchemaIssue } from "effect";
+import { workspaceMeetingRoomCatalog } from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
 import {
   getMeetingRoomReservationDuration,
   getMeetingRoomReservationDurationKey,
+  isMeetingRoomWholeDayReservationDuration,
+  type MeetingRoomReservationDuration,
   meetingRoomReservationDurationKeySchema,
   meetingRoomReservationDurationSchema,
 } from "@/features/reservation/meeting-room-reservation-duration";
@@ -22,7 +25,6 @@ import {
   reservationCustomerSchema,
 } from "@/features/reservation/reservation-contact";
 import {
-  getMeetingRoomDurationValidationMessage,
   getReservationIntervalNormalization,
   hasReservationIntervalEnded,
   reservationTimestampInputSchema,
@@ -209,6 +211,23 @@ export const getStoredMeetingRoomReservationDetails = ({
   kind: meetingRoomReservationKind,
   duration,
 });
+
+const getMeetingRoomDurationMessage = (
+  duration: MeetingRoomReservationDuration
+) => {
+  if (isMeetingRoomWholeDayReservationDuration(duration)) {
+    return m.reservationMeetingRoomDurationWholeDay();
+  }
+
+  return m.reservationMeetingRoomDurationHours({ count: duration.amount });
+};
+
+const getMeetingRoomDurationValidationMessage = () =>
+  m.reservationValidationMeetingRoomDuration({
+    durations: workspaceMeetingRoomCatalog
+      .map(({ duration }) => getMeetingRoomDurationMessage(duration))
+      .join(", "),
+  });
 
 const intervalMatchesMeetingRoomReservationDuration = (
   reservation: MeetingRoomReservationOrderInput,
