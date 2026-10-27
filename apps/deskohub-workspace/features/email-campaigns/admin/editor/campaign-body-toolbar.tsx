@@ -1,7 +1,7 @@
 "use client";
 
 import { type Editor, useEditorState } from "@tiptap/react";
-import { Option } from "effect";
+import { Effect, Option, Result } from "effect";
 import {
   AlignHorizontalJustifyCenter,
   AlignHorizontalJustifyEnd,
@@ -18,10 +18,11 @@ import {
   Redo2,
   Undo2,
 } from "lucide-react";
-import { type ReactNode, useId, useRef, useState } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
+import { runWorkspaceBrowserEffectUntilAbort } from "@/shared/browser/workspace-browser-effect";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
@@ -54,9 +55,9 @@ import {
 } from "../../body/campaign-image";
 import { uploadCampaignImage } from "./actions";
 import {
-  campaignImageMediaTypes,
-  campaignImageUploadIssue,
-} from "./campaign-image-upload";
+  campaignImageNeedsShrinking,
+  prepareCampaignImage,
+} from "./campaign-image-preparation";
 import { normalizeCampaignLinkHref } from "./campaign-link-href";
 import { CtaButtonDialog, type CtaButtonValues } from "./cta-button-dialog";
 
@@ -565,6 +566,7 @@ function ImageUploadControl({
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string>();
+  const [shrinking, setShrinking] = useState(false);
   const upload = useWorkspaceAction(uploadCampaignImage, {
     onSuccess: ({ data }) => {
       setError(undefined);
@@ -581,51 +583,81 @@ function ImageUploadControl({
           m.emailCampaignsImageUploadFailed({}, { locale })
       ),
   });
+  const progress = shrinking
+    ? m.emailCampaignsImageShrinking({}, { locale })
+    : upload.isExecuting && m.emailCampaignsImageUploading({}, { locale });
+
+  // Leaving the editor while an image is still being shrunk drops it, so no
+  // upload starts for an editor that's gone.
+  const lifetime = useRef<AbortSignal>(undefined);
+  useEffect(() => {
+    const mounted = new AbortController();
+    lifetime.current = mounted.signal;
+    return () => mounted.abort();
+  }, []);
+
+  const uploadImage = (file: File) => {
+    if (!lifetime.current) return;
+    setError(undefined);
+    // A file that already fits goes straight to the upload, so it skips the
+    // shrinking message.
+    setShrinking(campaignImageNeedsShrinking(file));
+    void prepareCampaignImage(file, locale).pipe(
+      Effect.flatMap((prepared) =>
+        Effect.sync(() => {
+          setShrinking(false);
+          Result.match(prepared, {
+            onSuccess: (image) => {
+              const formData = new FormData();
+              formData.set("file", image);
+              upload.execute(formData);
+            },
+            onFailure: setError,
+          });
+        })
+      ),
+      runWorkspaceBrowserEffectUntilAbort(
+        "email-campaigns.admin.prepare-image",
+        lifetime.current
+      )
+    );
+  };
 
   return (
     <>
       <ToolbarButton
-        disabled={disabled || upload.isExecuting}
-        label={
-          upload.isExecuting
-            ? m.emailCampaignsImageUploading({}, { locale })
-            : m.emailCampaignsImageUploadInsert({}, { locale })
-        }
+        disabled={disabled || Boolean(progress)}
+        label={progress || m.emailCampaignsImageUploadInsert({}, { locale })}
         onClick={() => fileInput.current?.click()}
       >
-        {upload.isExecuting ? (
+        {progress ? (
           <Loader2 aria-hidden className="size-4 animate-spin" />
         ) : (
           <ImagePlus aria-hidden className="size-4" />
         )}
       </ToolbarButton>
       <input
-        accept={campaignImageMediaTypes.join(",")}
+        // Any picture the browser can decode; the editor converts the ones
+        // the upload doesn't take.
+        accept="image/*"
         className="sr-only"
         onChange={(event) => {
           const file = event.target.files?.[0];
           event.target.value = "";
-          if (!file) return;
-          const issue = campaignImageUploadIssue(file, locale);
-          if (Option.isSome(issue)) {
-            setError(issue.value);
-            return;
-          }
-          const formData = new FormData();
-          formData.set("file", file);
-          upload.execute(formData);
+          if (file) uploadImage(file);
         }}
         ref={fileInput}
         tabIndex={-1}
         type="file"
       />
       <span
-        className={cn("text-burned-orange-ink text-xs", !error && "sr-only")}
+        className={cn(
+          "text-burned-orange-ink text-xs",
+          !(progress || error) && "sr-only"
+        )}
         role="status"
       >
-        {upload.isExecuting
-          ? m.emailCampaignsImageUploading({}, { locale })
-          : error}
+        {progress || error}
       </span>
     </>
   );

@@ -2,6 +2,9 @@ import type { JSONContent, MarkdownToken } from "@tiptap/core";
 import Image from "@tiptap/extension-image";
 import type { CampaignBodyAttributeValue } from "./campaign-body-document";
 
+/** The width of the template's body column, in CSS pixels. */
+export const campaignBodyColumnWidth = 534;
+
 /** Where an image sits across the body column. */
 const campaignImageAlignments = ["left", "center", "right"] as const;
 export type CampaignImageAlignment = (typeof campaignImageAlignments)[number];

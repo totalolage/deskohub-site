@@ -18,6 +18,7 @@ import {
 } from "./campaign-body-extensions";
 import {
   type CampaignImageAlignment,
+  campaignBodyColumnWidth,
   defaultCampaignImageAlignment,
   isCampaignImageAlignment,
   isCampaignImageWidth,
@@ -38,9 +39,6 @@ const isInListItem = (parent: ProseMirrorNode | undefined): boolean =>
   parent?.type.name === "listItem";
 
 const listClassName = "m-0 mt-4 pl-6 text-[16px] leading-[25px] text-[#373a59]";
-
-/** The width of the template's body column, in CSS pixels. */
-const bodyColumnWidth = 534;
 
 /**
  * Outlook's Word engine aligns by the cell's `align` and ignores auto margins;
@@ -68,7 +66,7 @@ const CampaignBodyImage = ({ node }: { readonly node: ProseMirrorNode }) => {
         alt={node.attrs.alt ?? ""}
         className="mt-4 block h-auto w-full max-w-full rounded-2xl"
         src={node.attrs.src}
-        width={bodyColumnWidth}
+        width={campaignBodyColumnWidth}
       />
     );
   }
@@ -85,7 +83,7 @@ const CampaignBodyImage = ({ node }: { readonly node: ProseMirrorNode }) => {
           alt={node.attrs.alt ?? ""}
           className={`block h-auto max-w-full rounded-2xl ${classNames.image}`}
           src={node.attrs.src}
-          width={Math.min(node.attrs.width, bodyColumnWidth)}
+          width={Math.min(node.attrs.width, campaignBodyColumnWidth)}
         />
       </Column>
     </Row>

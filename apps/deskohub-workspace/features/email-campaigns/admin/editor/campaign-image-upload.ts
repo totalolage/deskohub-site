@@ -9,16 +9,16 @@ const bytesPerMegabyte = 1024 * 1024;
 const uploadEnvelopeBytes = 64 * 1024;
 
 /**
- * The largest body image, in whole megabytes, whose upload still fits in a
- * Server Action body. A larger one would fail before the action could explain
- * why.
+ * The largest body image whose upload still fits in a Server Action body. A
+ * larger one would fail before the action could explain why. The editor
+ * shrinks a larger image to this size before it uploads.
  */
-export const campaignImageMaxMegabytes = Math.floor(
-  (serverActionBodySizeLimitBytes - uploadEnvelopeBytes) / bytesPerMegabyte
-);
-
 export const campaignImageMaxBytes =
-  campaignImageMaxMegabytes * bytesPerMegabyte;
+  serverActionBodySizeLimitBytes - uploadEnvelopeBytes;
+
+/** The limit in megabytes, rounded down to a tenth so it never overstates. */
+export const campaignImageMaxMegabytes =
+  Math.floor((campaignImageMaxBytes / bytesPerMegabyte) * 10) / 10;
 
 export const campaignImageMediaTypes = [
   "image/png",
@@ -26,6 +26,17 @@ export const campaignImageMediaTypes = [
   "image/gif",
   "image/webp",
 ] as const;
+
+/** Says how large a body image may be, in the admin's language. */
+export const campaignImageTooLargeMessage = (locale: Locale): string =>
+  m.emailCampaignsImageUploadTooLarge(
+    {
+      maxMegabytes: new Intl.NumberFormat(locale, {
+        maximumFractionDigits: 1,
+      }).format(campaignImageMaxMegabytes),
+    },
+    { locale }
+  );
 
 /**
  * Why a body image can't be uploaded, in the admin's language. The editor
@@ -44,12 +55,7 @@ export const campaignImageUploadIssue = (
     );
   }
   if (file.size > campaignImageMaxBytes) {
-    return Option.some(
-      m.emailCampaignsImageUploadTooLarge(
-        { maxMegabytes: campaignImageMaxMegabytes },
-        { locale }
-      )
-    );
+    return Option.some(campaignImageTooLargeMessage(locale));
   }
   return Option.none();
 };
