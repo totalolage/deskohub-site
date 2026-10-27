@@ -23,6 +23,10 @@ import { AutomationDryRun } from "../automation/backend/automation-dry-run.servi
 import { AutomationEngineHealth } from "../automation/backend/automation-engine-health.service";
 import { AutomationLifecycle } from "../automation/backend/automation-lifecycle.service";
 import { AutomationRunLog } from "../automation/backend/automation-run-log.service";
+import {
+  readCampaignContent,
+  readCampaignDraftContent,
+} from "../body/campaign-content-codec";
 import { campaignTemplates } from "../body/campaign-templates";
 import { renderCampaignEmailPreview } from "../body/render-campaign-email-preview";
 import { CampaignService } from "./campaign.service";
@@ -41,9 +45,6 @@ import {
   toAdministrationCampaignEditorContent,
   toAdministrationCampaignSummary,
   toAdministrationSendStatus,
-  toCampaignLocaleContent,
-  toCampaignLocalizedContent,
-  toUnfinishedCampaignLocaleContent,
 } from "./campaign-operation-projections";
 import { CampaignRecipientService } from "./campaign-recipient.service";
 import { CampaignSendService } from "./campaign-send.service";
@@ -224,34 +225,35 @@ const makeCampaignOperationHandlers = Effect.gen(function* () {
   const runLog = yield* AutomationRunLog;
   const engineHealth = yield* AutomationEngineHealth;
 
-  /** Unsaved texts, texts still being written, or a saved campaign's locale. */
+  /**
+   * The previewed locale of unsaved texts, texts still being written, or a
+   * saved campaign.
+   */
   const loadPreviewSource = (
     preview: CampaignTemplatePreviewInputType["preview"]
   ) =>
     Match.value(preview).pipe(
       Match.tagsExhaustive({
         Content: ({ purpose, locale, content }) =>
-          toCampaignLocaleContent(locale, content).pipe(
-            Effect.map((parsed) => ({ purpose, content: parsed }))
+          readCampaignContent({ [locale]: content }).pipe(
+            Effect.map((read) => ({ purpose, content: read }))
           ),
         UnfinishedContent: ({ purpose, locale, content }) =>
-          toUnfinishedCampaignLocaleContent(locale, content).pipe(
-            Effect.map((parsed) => ({ purpose, content: parsed }))
+          readCampaignDraftContent({ [locale]: content }).pipe(
+            Effect.map((read) => ({ purpose, content: read }))
           ),
-        Campaign: ({ campaignId, locale }) =>
-          campaigns.get(campaignId).pipe(
-            Effect.flatMap((campaign) => {
-              const content = campaign.content[locale];
-              return content === undefined
-                ? Effect.fail(
-                    new OperationInputInvalid({
-                      code: "content-locale-missing",
-                      message: `The campaign has no ${locale} content.`,
-                    })
-                  )
-                : Effect.succeed({ purpose: campaign.purpose, content });
-            })
-          ),
+        Campaign: ({ campaignId }) => campaigns.get(campaignId),
+      }),
+      Effect.flatMap(({ purpose, content }) => {
+        const localeContent = content[preview.locale];
+        return localeContent === undefined
+          ? Effect.fail(
+              new OperationInputInvalid({
+                code: "content-locale-missing",
+                message: `The campaign has no ${preview.locale} content.`,
+              })
+            )
+          : Effect.succeed({ purpose, content: localeContent });
       })
     );
 
@@ -353,7 +355,7 @@ const makeCampaignOperationHandlers = Effect.gen(function* () {
         .get(campaignId)
         .pipe(Effect.map(toAdministrationCampaignEditorContent)),
     createCampaign: ({ campaign }) =>
-      toCampaignLocalizedContent(campaign.content).pipe(
+      readCampaignContent(campaign.content).pipe(
         Effect.flatMap((content) =>
           campaigns.create({
             title: campaign.title,

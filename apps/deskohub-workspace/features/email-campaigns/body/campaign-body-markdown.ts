@@ -1,18 +1,17 @@
+import type { JSONContent } from "@tiptap/core";
 import { MarkdownManager } from "@tiptap/markdown";
-import { Effect, Schema } from "effect";
+import { Effect } from "effect";
 import { Marked } from "marked";
 import {
   type CampaignBodyDocument,
-  campaignBodyDocument,
+  type CampaignBodyNode,
   campaignBodyFormatVersion,
-  UnfinishedCampaignBodyDocument,
 } from "./campaign-body-document";
 import {
   campaignBodyExtensions,
   campaignBodySchema,
 } from "./campaign-body-extensions";
 import { emptyCampaignBody } from "./campaign-body-rules";
-import { campaignImageCloudName } from "./campaign-image-account";
 import { InvalidCampaignBody } from "./invalid-campaign-body";
 
 /**
@@ -30,7 +29,9 @@ const markdownManager = new MarkdownManager({
 });
 
 /** The TipTap document Markdown spells, not yet checked against any rules. */
-const markdownDoc = (markdown: string) =>
+const markdownDoc = (
+  markdown: string
+): Effect.Effect<CampaignBodyNode | JSONContent, InvalidCampaignBody> =>
   markdown.trim() === ""
     ? Effect.succeed(emptyCampaignBody)
     : Effect.try({
@@ -38,41 +39,15 @@ const markdownDoc = (markdown: string) =>
         catch: InvalidCampaignBody.fromCause,
       });
 
-const decodeUnfinishedCampaignBodyDocument = Schema.decodeUnknownEffect(
-  UnfinishedCampaignBodyDocument
-);
-
 /**
- * Parses a Markdown body into a validated campaign body. Besides CommonMark,
- * a line `[[button: Label](https://example.com)]` makes a button.
+ * Spells a Markdown body as a versioned TipTap document, not yet checked
+ * against any content rules. Besides CommonMark, a line
+ * `[[button: Label](https://example.com)]` makes a button.
  */
-export const parseCampaignBodyMarkdown = Effect.fn("parseCampaignBodyMarkdown")(
-  function* (markdown: string) {
-    const doc = yield* markdownDoc(markdown);
-    const imageCloudName = yield* campaignImageCloudName;
-    return yield* Schema.decodeUnknownEffect(
-      campaignBodyDocument(imageCloudName)
-    )({
-      formatVersion: campaignBodyFormatVersion,
-      doc,
-    }).pipe(Effect.mapError(InvalidCampaignBody.fromCause));
-  }
-);
-
-/**
- * Parses a Markdown body still being written: like
- * `parseCampaignBodyMarkdown`, but its links, buttons and images may be
- * unfinished.
- */
-export const parseUnfinishedCampaignBodyMarkdown = Effect.fn(
-  "parseUnfinishedCampaignBodyMarkdown"
-)(function* (markdown: string) {
-  const doc = yield* markdownDoc(markdown);
-  return yield* decodeUnfinishedCampaignBodyDocument({
-    formatVersion: campaignBodyFormatVersion,
-    doc,
-  }).pipe(Effect.mapError(InvalidCampaignBody.fromCause));
-});
+export const campaignBodyFromMarkdown = (markdown: string) =>
+  markdownDoc(markdown).pipe(
+    Effect.map((doc) => ({ formatVersion: campaignBodyFormatVersion, doc }))
+  );
 
 /** Serializes a campaign body back to the Markdown the parser accepts. */
 export const campaignBodyToMarkdown = (body: CampaignBodyDocument): string =>
