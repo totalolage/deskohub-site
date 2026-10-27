@@ -7,6 +7,8 @@ import {
 } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { testEmailAddress } from "@deskohub/test-email";
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 import { Cause, Effect, Exit, Layer, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -27,7 +29,10 @@ import {
 import { PaymentAdministrationServiceMock } from "./payment-administration.service.mock";
 import { PostHogReservationHistory } from "./posthog-reservation-history";
 
-const makeQuery = <A>(rows: readonly A[]) => {
+const makeQuery = <A>(
+  rows: readonly A[],
+  onWhere?: (condition: SQL | undefined) => void
+) => {
   const query = Effect.succeed(rows) as Effect.Effect<readonly A[]> & {
     from: () => typeof query;
     groupBy: () => typeof query;
@@ -35,7 +40,7 @@ const makeQuery = <A>(rows: readonly A[]) => {
     limit: () => typeof query;
     offset: () => typeof query;
     orderBy: () => typeof query;
-    where: () => typeof query;
+    where: (condition?: SQL) => typeof query;
   };
   query.from = () => query;
   query.groupBy = () => query;
@@ -43,7 +48,10 @@ const makeQuery = <A>(rows: readonly A[]) => {
   query.limit = () => query;
   query.offset = () => query;
   query.orderBy = () => query;
-  query.where = () => query;
+  query.where = (condition) => {
+    onWhere?.(condition);
+    return query;
+  };
   return query;
 };
 
@@ -161,12 +169,106 @@ describe("AdministrationService", () => {
 
     expect(listInputs).toEqual([
       {
-        startsAtOrAfter: "2026-08-05T22:00:00Z",
+        startsAtOrAfter: "2026-08-05T21:45:00Z",
         startsBefore: "2026-08-12T22:00:00Z",
         order: "startDateAscending",
       },
     ]);
     expect(result.total).toBe(0);
+  });
+
+  test("filters early-setup bookings by their booked date", async () => {
+    // Prague is UTC+2 in August. Bookings held from 23:45 or later may belong
+    // to the next date, so only they read their stored details.
+    const heldStarts = {
+      "midnight-early": "2026-08-09T21:45:00Z",
+      "midnight-on-time": "2026-08-09T21:50:00Z",
+      noon: "2026-08-10T10:00:00Z",
+      "late-early": "2026-08-10T21:45:00Z",
+      "late-on-time": "2026-08-10T21:50:00Z",
+    };
+    const earlySetup = { kind: "meeting-room", earlySetup: true } as const;
+    const rows = [
+      [
+        {
+          dotyposReservationId: "midnight-early",
+          reservationDetails: earlySetup,
+        },
+        { dotyposReservationId: "late-early", reservationDetails: earlySetup },
+      ],
+      [{ value: 0 }],
+      [],
+    ] as const;
+    const conditionParams: unknown[] = [];
+    let selectCall = 0;
+    const database = {
+      select: () =>
+        makeQuery(rows[selectCall++] ?? [], (condition) => {
+          if (condition) {
+            conditionParams.push(
+              ...new PgDialect().sqlToQuery(condition).params
+            );
+          }
+        }),
+    };
+
+    const result = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.listReservations({
+        from: "2026-08-10",
+        to: "2026-08-10",
+      });
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({ db: database as never })
+              ),
+              DotyposServiceMock({
+                listReservations: () =>
+                  Effect.succeed(
+                    Object.entries(heldStarts).map(([id, startDate]) => ({
+                      _branchId: "branch",
+                      _cloudId: "cloud",
+                      _customerId: "customer",
+                      id,
+                      startDate,
+                      endDate: "2026-08-11T06:00:00Z",
+                      seats: "1",
+                      status: "CONFIRMED" as const,
+                    }))
+                  ),
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              reservationAuthorsMock(),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(result.dateFilterUnavailable).toBe(false);
+    expect(conditionParams).toContainEqual([
+      "midnight-early",
+      "midnight-on-time",
+      "late-early",
+      "late-on-time",
+    ]);
+    expect(conditionParams).toContainEqual([
+      "midnight-early",
+      "noon",
+      "late-on-time",
+    ]);
   });
 
   test("keeps single-sided provider date ranges open", async () => {
@@ -214,7 +316,7 @@ describe("AdministrationService", () => {
 
     expect(listInputs).toEqual([
       {
-        startsAtOrAfter: "2026-08-05T22:00:00Z",
+        startsAtOrAfter: "2026-08-05T21:45:00Z",
         order: "startDateAscending",
       },
       {
@@ -492,6 +594,125 @@ describe("AdministrationService", () => {
     expect(reservationCalls[0]).toHaveLength(24);
     expect(customerCalls).toHaveLength(1);
     expect(customerCalls[0]).toHaveLength(24);
+  });
+
+  test("shows an early-setup meeting room's booked time and setup start", async () => {
+    const instant = Temporal.Instant.from("2026-08-01T08:00:00Z");
+    const reservationRow = (
+      id: string,
+      reservationDetails: { readonly kind: "meeting-room"; earlySetup?: true }
+    ) => ({
+      id: `workspace-${id}`,
+      dotyposCustomerId: "customer",
+      dotyposReservationId: id,
+      reservationState: "confirmed",
+      paymentState: "paid",
+      fulfillmentState: "fulfilled",
+      reservationPurpose: null,
+      reservationDetails,
+      reservationCreatedAt: instant,
+      reservationConfirmedAt: instant,
+      reservationCancelledAt: null,
+      reservationHoldExpiredAt: null,
+      paidAt: instant,
+      fulfilledAt: instant,
+      fulfillmentFailedAt: null,
+      createdAt: instant,
+      updatedAt: instant,
+    });
+    const rows = [
+      [{ value: 2 }],
+      [
+        reservationRow("early-setup", {
+          kind: "meeting-room",
+          earlySetup: true,
+        }),
+        reservationRow("on-time", { kind: "meeting-room" }),
+      ],
+      [],
+      [],
+      [],
+    ] as const;
+    // Dotypos holds the early-setup room from 09:45 for a 10:00 booking.
+    const heldStarts = new Map([
+      ["early-setup", "2026-08-10T09:45:00.000+02:00"],
+      ["on-time", "2026-08-10T10:00:00.000+02:00"],
+    ]);
+    let selectCall = 0;
+
+    const result = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.listReservations({});
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({
+                  db: {
+                    select: () => makeQuery(rows[selectCall++] ?? []),
+                  } as never,
+                })
+              ),
+              DotyposServiceMock({
+                getCustomers: ({ ids = [] }) =>
+                  Effect.succeed(ids.map((id) => ({ id }))),
+                listReservations: (input) =>
+                  Effect.succeed(
+                    (input.ids ?? []).map((id) => ({
+                      _branchId: "branch",
+                      _cloudId: "cloud",
+                      _customerId: "customer",
+                      id,
+                      startDate: heldStarts.get(id) ?? "",
+                      endDate: "2026-08-10T11:00:00.000+02:00",
+                      seats: "1",
+                      status: "CONFIRMED" as const,
+                    }))
+                  ),
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              reservationAuthorsMock(),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    const times = result.items.map(
+      ({ date, endsAt, id, setupStartsAt, startsAt }) => ({
+        date,
+        endsAt,
+        id,
+        setupStartsAt,
+        startsAt,
+      })
+    );
+    expect(times).toEqual([
+      {
+        date: "2026-08-10",
+        endsAt: "2026-08-10T11:00:00.000+02:00",
+        id: "workspace-early-setup",
+        setupStartsAt: "2026-08-10T07:45:00Z",
+        startsAt: "2026-08-10T08:00:00Z",
+      },
+      {
+        date: "2026-08-10",
+        endsAt: "2026-08-10T11:00:00.000+02:00",
+        id: "workspace-on-time",
+        setupStartsAt: null,
+        startsAt: "2026-08-10T10:00:00.000+02:00",
+      },
+    ]);
   });
 
   test("falls back to item customer reads when a batch omits a customer", async () => {

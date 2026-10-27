@@ -116,6 +116,13 @@ import {
   PostHogReservationHistory,
 } from "./posthog-reservation-history";
 import {
+  getAdministrationReservationHeldRangeBounds,
+  getBookedStart,
+  getReservationDate,
+  isAdministrationDateInRange,
+  isHeldFromPreviousDateWithEarlySetup,
+} from "./reservation-booked-date";
+import {
   type AdministrationReservationDateRange,
   getAdministrationOverviewDateRanges,
   getAdministrationReservationDateRange,
@@ -262,8 +269,14 @@ export type AdministrationReservationSummary = {
   readonly customerId: DotyposCustomerId;
   readonly customer: AdministrationCustomer | null;
   readonly liveDetailsAvailable: boolean;
+  /** The booked start, after any early-setup time. */
   readonly startsAt: string | null;
   readonly endsAt: string | null;
+  /**
+   * When the room is held from for a meeting room booked with early setup,
+   * which Dotypos stores as the reservation's start; otherwise null.
+   */
+  readonly setupStartsAt: string | null;
   readonly date: string | null;
   readonly type: "cowork" | "meeting-room" | "office";
   readonly product: AdministrationReservationProduct;
@@ -784,33 +797,10 @@ const getReservationActivityRange = () => {
   return { from: to.subtract({ days: 364 }), to };
 };
 
-/**
- * The reservation's start. The Dotypos contract only returns readable starts,
- * so an unreadable one is a defect.
- */
-const getBookedStart = (
-  reservation: Pick<DotyposReservation, "startDate" | "endDate" | "seats">
-) =>
-  Option.getOrThrowWith(
-    decodeBookedReservation(reservation).start,
-    () => new Error("Dotypos reservation start is unreadable.")
-  );
-
-const getReservationDate = (
-  reservation: Pick<DotyposReservation, "startDate" | "endDate" | "seats">
-) =>
-  getBookedStart(reservation)
-    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
-    .toPlainDate()
-    .toString();
-
 const isReservationInRange = (
   reservation: DotyposReservation,
   range: AdministrationReservationDateRange
-) => {
-  const date = getReservationDate(reservation);
-  return (!range.from || date >= range.from) && (!range.to || date <= range.to);
-};
+) => isAdministrationDateInRange(getReservationDate(reservation), range);
 
 const countLinkedReservations = (input: {
   readonly linkedReservationIds: ReadonlySet<DotyposReservationId>;
@@ -894,6 +884,14 @@ const toReservationSummary = ({
   readonly live: LiveReservationDetails;
   readonly row: SafeReservationRow;
 }): AdministrationReservationSummary => {
+  // An early-setup booking's Dotypos start is its setup start, so show the
+  // booked start beside it. Other bookings keep the provider's values as is.
+  const earlySetup = Option.fromNullishOr(live.reservation).pipe(
+    Option.map((reservation) =>
+      decodeBookedReservation(reservation, row.reservationDetails)
+    ),
+    Option.flatMap(({ setupStart, start }) => Option.all({ setupStart, start }))
+  );
   return {
     id: row.id,
     dotyposReservationId: row.dotyposReservationId,
@@ -902,9 +900,18 @@ const toReservationSummary = ({
       ? toCustomer(live.customer, row.dotyposCustomerId)
       : null,
     liveDetailsAvailable: Boolean(live.reservation),
-    startsAt: live.reservation?.startDate ?? null,
+    startsAt: Option.match(earlySetup, {
+      onNone: () => live.reservation?.startDate ?? null,
+      onSome: ({ start }) => toIsoString(start),
+    }),
     endsAt: live.reservation?.endDate ?? null,
-    date: live.reservation ? getReservationDate(live.reservation) : null,
+    setupStartsAt: Option.match(earlySetup, {
+      onNone: () => null,
+      onSome: ({ setupStart }) => toIsoString(setupStart),
+    }),
+    date: live.reservation
+      ? getReservationDate(live.reservation, row.reservationDetails)
+      : null,
     type: row.reservationDetails.kind,
     product: getAdministrationReservationProduct(row.reservationDetails),
     typeLabel: getReservationTypeLabel(row),
@@ -1845,6 +1852,51 @@ export class AdministrationService extends Context.Service<
           })
         );
 
+      /**
+       * Keeps the bookings whose booked start falls in the range. Only a
+       * booking that early setup would hold from the previous date can
+       * change date, so only those read their stored details.
+       */
+      const keepBookedInRange = Effect.fn(
+        "AdministrationService.keepBookedInRange"
+      )(function* (
+        reservations: ReadonlyMap<DotyposReservationId, DotyposReservation>,
+        range: AdministrationReservationDateRange
+      ) {
+        const shiftedIds = [...reservations].flatMap(([id, reservation]) =>
+          isHeldFromPreviousDateWithEarlySetup(reservation) ? [id] : []
+        );
+        if (shiftedIds.length === 0) return reservations;
+        const detailRows = yield* db
+          .select({
+            dotyposReservationId: workspaceReservations.dotyposReservationId,
+            reservationDetails: workspaceReservations.reservationDetails,
+          })
+          .from(workspaceReservations)
+          .where(
+            equalsAny(workspaceReservations.dotyposReservationId, shiftedIds)
+          );
+        const detailsById = new Map(
+          detailRows.map((row) => [
+            row.dotyposReservationId,
+            row.reservationDetails,
+          ])
+        );
+        return new Map(
+          [...reservations].filter(([id, reservation]) =>
+            isAdministrationDateInRange(
+              getReservationDate(reservation, detailsById.get(id)),
+              range
+            )
+          )
+        );
+      });
+
+      /**
+       * The Dotypos bookings whose booked start falls in the range, by ID, in
+       * Dotypos start order. Dotypos holds an early-setup meeting room from
+       * before its booked start, so the read starts that much earlier.
+       */
       const loadReservationRangeMap = <E = never>(
         range: AdministrationReservationDateRange | undefined,
         policy: ProviderFailurePolicy<E> = degradeOnProviderFailure
@@ -1852,7 +1904,7 @@ export class AdministrationService extends Context.Service<
         if (!range) return Effect.succeed(undefined);
         return dotypos
           .listReservations({
-            ...getAdministrationReservationDateRangeBounds(range),
+            ...getAdministrationReservationHeldRangeBounds(range),
             order: "startDateAscending",
           })
           .pipe(
@@ -1879,6 +1931,11 @@ export class AdministrationService extends Context.Service<
                 },
                 null
               )
+            ),
+            Effect.flatMap((reservations) =>
+              reservations
+                ? keepBookedInRange(reservations, range)
+                : Effect.succeed(reservations)
             )
           );
       };
@@ -2225,7 +2282,10 @@ export class AdministrationService extends Context.Service<
 
         let sameDateRows: readonly SafeReservationRow[] = [];
         if (live.reservation) {
-          const date = getReservationDate(live.reservation);
+          const date = getReservationDate(
+            live.reservation,
+            row.reservationDetails
+          );
           const dateReservations = yield* loadReservationRangeMap({
             from: date,
             to: date,

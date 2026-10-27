@@ -517,6 +517,49 @@ describe("dhw mutation commands", () => {
     ]);
   });
 
+  test("shows when an early-setup meeting room is held from", async () => {
+    const output: string[] = [];
+    const capturedOutput = Layer.succeed(Console.Console, {
+      ...globalThis.console,
+      log: (...args: ReadonlyArray<unknown>) => {
+        output.push(args.join(" "));
+      },
+    } satisfies Console.Console);
+    const detail = (setupStartsAt: string | null) =>
+      ({
+        author: null,
+        accessGrant: null,
+        discounts: [],
+        orders: [],
+        paymentAttempts: [],
+        reservation: {
+          id: reservationId,
+          customerId: "meeting-room-customer",
+          customer: null,
+          date: "2026-08-10",
+          startsAt: "2026-08-10T08:00:00Z",
+          endsAt: "2026-08-10T09:00:00Z",
+          setupStartsAt,
+          typeLabel: "Meeting Room",
+          status: { label: "Paid" },
+        },
+      }) as unknown as AdministrationReservationDetailType;
+
+    for (const setupStartsAt of ["2026-08-10T07:45:00Z", null]) {
+      const { layer } = makeCommandLayer({
+        getReservation: () => Effect.succeed(detail(setupStartsAt)),
+      });
+      await runCommand(
+        ["reservations", "get", reservationId],
+        Layer.mergeAll(layer, capturedOutput)
+      ).pipe(Effect.runPromise);
+    }
+
+    expect(output.filter((line) => line.startsWith("Early setup"))).toEqual([
+      "Early setup: from 2026-08-10T07:45:00Z, booked 2026-08-10T08:00:00Z to 2026-08-10T09:00:00Z",
+    ]);
+  });
+
   test("dry-runs the product-details backfill across every batch without confirmation", async () => {
     const requests: unknown[] = [];
     const nextReservationId = Schema.decodeUnknownSync(
