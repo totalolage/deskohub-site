@@ -698,7 +698,7 @@ export const writeArtifactText = (
  * Redacts registered secrets, query values, the bypass header, and long
  * token-like runs from text bound for a failure artifact.
  */
-export const sanitizeArtifactText = (text: string) =>
+const sanitizeArtifactText = (text: string) =>
   sanitizeArtifactUrlText(redact(text))
     .replace(/([?&][^=&#\s]+)=[^&\s",}]+/g, "$1=[redacted]")
     .replace(/((?:%3F|%26)[^=%&\s]+)(?:%3D|=)[^%&\s",}]+/gi, "$1%3D[redacted]")
