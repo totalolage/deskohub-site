@@ -36,9 +36,9 @@ When a run must serve a fallback or react to any failure, such as a `"use cache"
 
 E2E code that runs an Effect outside a case or fixture runtime uses the edge in `apps/deskohub-workspace/e2e/`. Don't add another `Effect.run*` call for it.
 
-- `runE2EEffect(effect, telemetry)` (`telemetry-runtime.ts`) runs a whole E2E run with the trace export, then shuts the exporter down. `scripts/workspace-e2e.ts` uses it.
+- `runE2EEffect(effect, telemetry)` (`telemetry-runtime.ts`) runs a whole E2E run with the trace export, shuts the exporter down, and resolves with the run's `Exit`. `scripts/workspace-e2e.ts` uses it.
 - `runUntracedE2EEffect(effect, { signal })` (`effect-edge.ts`) runs everything else without a tracer, such as the argv `Runner` in `runtime.ts`.
-- Both settle exactly like `Effect.runPromise`. A run its `signal` stopped rejects with the signal's reason instead, even when a failing finalizer replaced the interrupt in the cause. `effect-edge.test.ts` pins this.
+- Both reject exactly like `Effect.runPromise`. A run its `signal` stopped rejects with the signal's reason instead, even when a failing finalizer replaced the interrupt in the cause, and an already aborted signal rejects before the run starts. `effect-edge.test.ts` pins this.
 
 ## Browser runs
 

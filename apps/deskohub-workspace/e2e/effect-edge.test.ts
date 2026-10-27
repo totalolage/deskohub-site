@@ -34,10 +34,17 @@ describe("E2E Effect edge", () => {
     const reason = new Error("case stopped");
     const before = new AbortController();
     before.abort(reason);
+    let ran = false;
 
     await expect(
-      runUntracedE2EEffect(Effect.never, { signal: before.signal })
+      runUntracedE2EEffect(
+        Effect.sync(() => {
+          ran = true;
+        }),
+        { signal: before.signal }
+      )
     ).rejects.toBe(reason);
+    expect(ran).toBe(false);
 
     const during = new AbortController();
     const stopped = runUntracedE2EEffect(
