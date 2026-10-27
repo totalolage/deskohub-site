@@ -32,9 +32,9 @@ export function AdministrationTableToolbar({
   readonly exportHref?: Promise<AdministrationHref>;
   /**
    * Where `filters` sit. `stacked` gives a wide filter grid its own row below
-   * the count until the 2xl breakpoint. `inline` keeps a compact filter, such
-   * as one select, on the count's row and wraps it below only when it doesn't
-   * fit.
+   * the count until the 2xl breakpoint. `inline` keeps a compact filter row,
+   * such as a date range, on the count's row and wraps it below only when it
+   * doesn't fit.
    */
   readonly filterLayout?: "inline" | "stacked";
   readonly filters?: ReactNode;
