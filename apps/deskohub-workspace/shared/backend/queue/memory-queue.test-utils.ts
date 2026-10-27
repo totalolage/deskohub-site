@@ -48,8 +48,6 @@ export const makeMemoryQueue = () => {
   };
 };
 
-export type MemoryQueue = ReturnType<typeof makeMemoryQueue>;
-
 /** A queue that rejects every publish, as an unavailable queue would. */
 export const unavailableQueue = (cause?: unknown) =>
   Layer.succeed(QueuePublisher, {
