@@ -1,58 +1,71 @@
+import { decodeStandardSchema } from "@deskohub/standard-schema";
 import { Effect, Layer, Result } from "effect";
+import { makeMemoryQueue } from "@/shared/backend/queue/memory-queue.test-utils";
+import type { QueuePublication } from "@/shared/backend/queue/queue-publisher";
 import type { AutomationWorkUnitId } from "../automation-identifiers";
 import {
   type AutomationUnitOutcome,
   AutomationUnitProcessor,
 } from "./automation-unit-processor.service";
-import { AutomationUnitQueue } from "./automation-unit-queue.service";
+import {
+  AutomationUnitQueue,
+  automationUnitTopic,
+} from "./automation-unit-queue.service";
 
 export type AutomationUnitQueueFakeMessage = {
   readonly unitId: AutomationWorkUnitId;
   readonly idempotencyKey: string;
 };
 
+const toFakeMessage = (
+  publication: QueuePublication
+): AutomationUnitQueueFakeMessage => {
+  const message = decodeStandardSchema(
+    automationUnitTopic.message,
+    publication.message
+  );
+  if (message === undefined) {
+    throw new Error("The automation unit queue holds an invalid message");
+  }
+  return {
+    unitId: message.unitId,
+    idempotencyKey: publication.options.idempotencyKey,
+  };
+};
+
 /**
- * An in-process unit queue. It records every published message, drops a
- * repeated idempotency key as the real queue does, and lets a test deliver,
- * redeliver, drop or duplicate pending messages.
+ * The automation unit queue over an in-process queue. It records every
+ * published message, drops a repeated idempotency key as the real queue
+ * does, and lets a test deliver, redeliver, drop or duplicate pending
+ * messages.
  */
 export const makeAutomationUnitQueueFake = () => {
-  const keys = new Set<string>();
-  const published: Array<AutomationUnitQueueFakeMessage> = [];
-  const pending: Array<AutomationUnitQueueFakeMessage> = [];
-
-  const layer = Layer.succeed(AutomationUnitQueue, {
-    enqueue: (units) =>
-      Effect.sync(() => {
-        for (const unit of units) {
-          const idempotencyKey = `email-automation-unit:${unit.unitId}:${unit.enqueueGeneration}`;
-          if (keys.has(idempotencyKey)) continue;
-          keys.add(idempotencyKey);
-          const message = { unitId: unit.unitId, idempotencyKey };
-          published.push(message);
-          pending.push(message);
-        }
-      }),
-  });
+  const queue = makeMemoryQueue();
+  const layer = AutomationUnitQueue.Default.pipe(Layer.provide(queue.layer));
 
   return {
     layer,
     /** Every message ever published, in order. */
-    published: (): ReadonlyArray<AutomationUnitQueueFakeMessage> => [
-      ...published,
-    ],
+    published: (): ReadonlyArray<AutomationUnitQueueFakeMessage> =>
+      queue.published().map(toFakeMessage),
     /** Messages not yet taken, in delivery order. */
-    pending: (): ReadonlyArray<AutomationUnitQueueFakeMessage> => [...pending],
+    pending: (): ReadonlyArray<AutomationUnitQueueFakeMessage> =>
+      queue.pending().map(toFakeMessage),
     /** Removes and returns the next pending message. */
-    take: () => pending.shift(),
+    take: () => {
+      const publication = queue.take();
+      return publication === undefined ? undefined : toFakeMessage(publication);
+    },
     /** Puts a message back at the end, as a redelivery after a failure. */
     redeliver: (message: AutomationUnitQueueFakeMessage) => {
-      pending.push(message);
+      queue.redeliver({
+        topic: automationUnitTopic.topic,
+        message: { unitId: message.unitId },
+        options: { idempotencyKey: message.idempotencyKey },
+      });
     },
     /** Loses every pending message, as an expired or lost publish. */
-    dropPending: () => {
-      pending.length = 0;
-    },
+    dropPending: queue.dropPending,
   };
 };
 

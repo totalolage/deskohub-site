@@ -1,13 +1,6 @@
-import { Effect, Option, Schema } from "effect";
-import { campaignSendIdSchema } from "../campaign-identifiers";
+import { Effect } from "effect";
 import { CampaignDeliveryService } from "./campaign-delivery.service";
-
-const payloadSchema = Schema.Struct({
-  sendId: campaignSendIdSchema,
-  deliveryAttempt: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
-});
-
-const decodePayload = Schema.decodeUnknownOption(payloadSchema);
+import type { CampaignDeliveryAttempt } from "./campaign-send-queue.service";
 
 /**
  * Delivers one queued attempt. A failure (an unavailable database, or an
@@ -16,15 +9,7 @@ const decodePayload = Schema.decodeUnknownOption(payloadSchema);
  */
 export const processCampaignSendMessage = Effect.fn(
   "campaignSendQueue.processMessage"
-)(function* (message: Parameters<typeof decodePayload>[0]) {
-  const payload = Option.getOrUndefined(decodePayload(message));
-  if (!payload) {
-    yield* Effect.logWarning(
-      "Campaign send queue message ignored: invalid payload"
-    );
-    return "ignored" as const;
-  }
-
+)(function* (attempt: CampaignDeliveryAttempt) {
   const delivery = yield* CampaignDeliveryService;
-  return yield* delivery.deliverAttempt(payload);
+  return yield* delivery.deliverAttempt(attempt);
 });

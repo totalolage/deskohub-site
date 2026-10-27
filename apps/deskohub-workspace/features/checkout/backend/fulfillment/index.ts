@@ -1,4 +1,5 @@
 export { WorkspacePaidFulfillmentService } from "./paid-fulfillment.service";
+export { paidFulfillmentTopic } from "./paid-fulfillment-queue.service";
 export {
   paidFulfillmentRedelivery,
   processPaidFulfillmentMessage,
