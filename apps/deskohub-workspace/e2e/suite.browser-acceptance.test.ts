@@ -4,10 +4,16 @@ import { existsSync } from "node:fs";
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type Browser, type BrowserContext, chromium } from "@playwright/test";
+import {
+  type Browser,
+  type BrowserContext,
+  chromium,
+  type Page,
+} from "@playwright/test";
 import { Cause, Effect, Exit, Fiber, Layer, Scope } from "effect";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import { runBrowserCommand } from "./browser";
+import { sanitizeHarArtifact } from "./browser-session";
 import type { DatasourceConfig } from "./config";
 import { WorkspaceE2EHostedPaymentPermitServiceMock } from "./coordination/hosted-payment-permit.service.mock";
 import { WorkspaceE2EProviderVerificationPermitServiceMock } from "./coordination/provider-verification-permit.service.mock";
@@ -328,6 +334,98 @@ test.skipIf(!chromiumAvailable)(
     for (const name of await artifactFiles(result.artifactDir))
       expect(await read(name)).not.toContain(pageSecret);
     expect(await rawHarFiles(`${sessionPrefix}-${result.id}`)).toEqual([]);
+  },
+  caseTestTimeoutMs
+);
+
+/** Settles once the page's `/api` response body has fully arrived. */
+const apiRequestFinished = (page: Page) =>
+  page.waitForEvent("requestfinished", (request) =>
+    request.url().includes("/api")
+  );
+
+/**
+ * The HAR the argv failure capture exported for the same page: the session's
+ * recording options, sanitized by the session's close and again by the
+ * capture.
+ */
+const recordArgvCaptureHar = async (url: string) => {
+  const path = join(artifactRoot, `reference-${randomUUID()}.har`);
+  const context = await realBrowser().newContext({
+    recordHar: { content: "embed", mode: "full", path },
+  });
+  try {
+    const page = await context.newPage();
+    const finished = apiRequestFinished(page);
+    await page.goto(url);
+    await finished;
+  } finally {
+    await context.close();
+  }
+  const har = await readFile(path, "utf8");
+  await rm(path, { force: true });
+  return sanitizeHarArtifact(sanitizeHarArtifact(har));
+};
+
+type HarEntry = {
+  readonly request: { readonly url: string };
+  readonly response: {
+    readonly content: {
+      readonly mimeType?: string;
+      readonly size?: number;
+      readonly text?: string;
+    };
+    readonly status: number;
+  };
+};
+
+/** The page's own exchanges, without timings and page ids. */
+const harExchanges = (har: string, pageOrigin: string) =>
+  (JSON.parse(har) as { log: { entries: HarEntry[] } }).log.entries
+    .filter(({ request }) => request.url.startsWith(pageOrigin))
+    .map(({ request, response }) => ({ request, response }))
+    .sort((left, right) => left.request.url.localeCompare(right.request.url));
+
+test.skipIf(!chromiumAvailable)(
+  "exports the settled responses the argv failure capture exported",
+  async () => {
+    const result = await runCase({
+      execute:
+        ({ run }) =>
+        ({ runStep, session }) =>
+          runStep({
+            execute: Effect.gen(function* () {
+              const context = yield* caseContext(run, session);
+              const [page] = context.pages();
+              if (!page) return yield* workspaceE2EError("no checkout page");
+              // Listening before the navigation, which starts the request.
+              const finished = apiRequestFinished(page);
+              yield* openPage(run, session, `${origin()}/`);
+              yield* Effect.promise(() => finished);
+              return yield* workspaceE2EError("synthetic checkout failure");
+            }),
+            id: "submit-checkout",
+            timeoutMs: 10_000,
+          }),
+    });
+    await result.closeScope();
+    const har = await readFile(join(result.artifactDir, "network.har"), "utf8");
+    const reference = await recordArgvCaptureHar(`${origin()}/`);
+
+    expect(Exit.isFailure(result.exit)).toBe(true);
+    const exchanges = harExchanges(har, origin());
+    expect(exchanges).toEqual(harExchanges(reference, origin()));
+    expect(
+      exchanges.map(({ request }) => new URL(request.url).pathname)
+    ).toEqual(["/", "/api"]);
+    // The JSON response keeps its body, sanitized, not just its headers.
+    const api = exchanges.find(({ request }) => request.url.includes("/api"));
+    expect(api?.response.status).toBe(200);
+    expect(api?.response.content.mimeType).toContain("application/json");
+    expect(api?.response.content.size).toBeGreaterThan(0);
+    expect(api?.response.content.text).toBeString();
+    expect(api?.response.content.text).not.toBe("");
+    expect(har).not.toContain(pageSecret);
   },
   caseTestTimeoutMs
 );
