@@ -5,14 +5,9 @@ import {
   accountSectionLabel,
 } from "@/features/account/sections";
 import { m } from "@/features/i18n";
-import {
-  clickBrowserElement,
-  evalBrowserScript,
-  waitForBrowserCondition,
-} from "../browser";
-import { tryWorkspaceE2ESync, type WorkspaceE2EError } from "../errors";
+import type { E2EBrowserSession } from "../browser-session";
+import { type WorkspaceE2EError, withoutWorkspaceE2ETimeout } from "../errors";
 import { waitForReactClickHandler } from "../react-handlers";
-import type { Runner } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
 
 /** The pages these helpers drive render in English. */
@@ -146,12 +141,6 @@ const makeAccountSectionWaitInput = (
   };
 };
 
-const makeAccountSectionWaitCondition = (
-  section: AccountSection,
-  desktop: boolean | null
-) =>
-  `(${accountSectionIsReady.toString()})(${JSON.stringify(makeAccountSectionWaitInput(section, desktop))})`;
-
 /**
  * After a document load the account content streams in its own Suspense
  * boundary. Clicking a section before React reveals and hydrates that boundary
@@ -190,27 +179,21 @@ const accountSectionLinkSelector = (section: AccountSection) =>
 const accountMobileSectionLinkSelector = (section: AccountSection) =>
   `${accountMobileNavigationSelector} a[${accountSectionDataAttribute}=${JSON.stringify(section)}]`;
 
+const readDesktopModeOperation = "read account navigation viewport mode";
+
 const readDesktopMode = (
-  run: Runner,
-  session: string
+  session: E2EBrowserSession
 ): Effect.Effect<boolean, WorkspaceE2EError> =>
-  evalBrowserScript(
-    "read account navigation viewport mode",
-    run,
-    session,
-    `window.matchMedia("(min-width: ${desktopBreakpoint}px)").matches`,
-    { logOutput: false, timeoutMs: workspaceE2ETimeouts.browserAction }
-  ).pipe(
-    Effect.flatMap((result) =>
-      tryWorkspaceE2ESync("parse account navigation viewport mode", () => {
-        const value = result.stdout.trim();
-        if (value !== "true" && value !== "false") {
-          throw new Error("account navigation viewport mode was not boolean");
-        }
-        return value === "true";
-      })
+  session
+    .evaluate(
+      readDesktopModeOperation,
+      (breakpoint) => window.matchMedia(`(min-width: ${breakpoint}px)`).matches,
+      desktopBreakpoint,
+      { timeoutMs: workspaceE2ETimeouts.browserAction }
     )
-  );
+    // The bound only keeps a stalled page from hanging the step, which owns
+    // the timing contract.
+    .pipe(withoutWorkspaceE2ETimeout(readDesktopModeOperation));
 
 /**
  * Sections the account navigation shows only while their feature flag is on:
@@ -288,48 +271,46 @@ export const waitForSelectedAccountSection = async (
   );
 };
 
-export const selectAccountSectionInRunner = (
-  run: Runner,
-  session: string,
+/**
+ * Selects `section` in the session's active page: waits for its panel to
+ * hydrate, clicks the visible desktop or mobile link, and waits until the
+ * section is selected. Each browser operation is its own step, so an
+ * interrupted selection starts no further operation.
+ */
+export const selectAccountSectionInSession = (
+  session: E2EBrowserSession,
   section: AccountSection
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const desktop = yield* readDesktopMode(run, session);
+    const desktop = yield* readDesktopMode(session);
 
     const hydrationAnchor = accountSectionHydrationAnchors[section];
     if (hydrationAnchor !== undefined) {
-      yield* waitForBrowserCondition(
-        run,
-        session,
-        `account ${section} panel hydration`,
-        `(${accountSectionPanelIsHydrated.toString()})(${JSON.stringify(hydrationAnchor)})`,
-        { timeoutMs: workspaceE2ETimeouts.uiTransition }
+      yield* session.use(
+        `wait for account ${section} panel hydration`,
+        (page) =>
+          page.waitForFunction(accountSectionPanelIsHydrated, hydrationAnchor, {
+            timeout: workspaceE2ETimeouts.uiTransition,
+          })
       );
     }
 
-    if (desktop) {
-      yield* clickBrowserElement(
-        run,
-        session,
-        accountSectionLinkSelector(section),
-        { timeoutMs: workspaceE2ETimeouts.browserAction }
-      );
-    } else {
-      yield* clickBrowserElement(
-        run,
-        session,
-        accountMobileSectionLinkSelector(section),
-        {
-          timeoutMs: workspaceE2ETimeouts.browserAction,
-        }
-      );
-    }
+    yield* session.use("click browser element", (page) =>
+      page
+        .locator(
+          desktop
+            ? accountSectionLinkSelector(section)
+            : accountMobileSectionLinkSelector(section)
+        )
+        .filter({ visible: true })
+        .click({ timeout: workspaceE2ETimeouts.browserAction })
+    );
 
-    yield* waitForBrowserCondition(
-      run,
-      session,
-      `account ${section} section`,
-      makeAccountSectionWaitCondition(section, desktop),
-      { timeoutMs: workspaceE2ETimeouts.uiTransition }
+    yield* session.use(`wait for account ${section} section`, (page) =>
+      page.waitForFunction(
+        accountSectionIsReady,
+        makeAccountSectionWaitInput(section, desktop),
+        { timeout: workspaceE2ETimeouts.uiTransition }
+      )
     );
   });
