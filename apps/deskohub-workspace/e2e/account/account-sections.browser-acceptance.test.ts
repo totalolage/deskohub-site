@@ -1,61 +1,40 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { type Browser, chromium } from "@playwright/test";
 import { Effect } from "effect";
 import { getAccountSectionPath } from "@/features/account/routes";
 import type { AccountSection } from "@/features/account/sections";
 import { m } from "@/features/i18n";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
-import { compileWorkspaceAppStyles } from "@/shared/testing/workspace-app-styles.test-utils";
 import { E2EBrowserSession } from "../browser-session";
 import { runE2ECase } from "../case-runner";
-import type { WorkspaceE2EError } from "../errors";
+import { isWorkspaceE2ETimeout, type WorkspaceE2EError } from "../errors";
 import {
   type E2ETelemetryObservation,
   makeE2ETelemetryMock,
 } from "../services/telemetry.mock";
+import { workspaceE2ETimeouts } from "../timeouts";
 import {
   accountSectionLandmarks,
   selectAccountSectionInSession,
 } from "./account-sections";
+import { buildAccountSectionsHarness } from "./account-sections.browser-harness.test-utils";
 
 // The account lane selects sections in a real, hydrated AccountShell, so
 // these drive the session helper against one in Chromium.
 const chromiumAvailable = await playwrightChromiumAvailable();
 const navigationLabel = m.accountNavigationLabel({}, { locale: "en-US" });
 let browser: Browser | undefined;
-let buildDirectory = "";
-let harnessBundlePath = "";
-let appStyles = "";
+let harness = { script: "", styles: "" };
 
 beforeAll(async () => {
   if (!chromiumAvailable) return;
-  buildDirectory = await mkdtemp(join(tmpdir(), "account-sections-browser-"));
-  const build = await Bun.build({
-    entrypoints: [
-      join(import.meta.dir, "account-sections.browser-harness.tsx"),
-    ],
-    format: "iife",
-    minify: true,
-    naming: "account-sections-harness.js",
-    outdir: buildDirectory,
-    target: "browser",
-  });
-  if (!build.success) {
-    throw new Error(build.logs.map(({ message }) => message).join("\n"));
-  }
-  harnessBundlePath = join(buildDirectory, "account-sections-harness.js");
-  appStyles = await compileWorkspaceAppStyles();
+  harness = await buildAccountSectionsHarness();
   browser = await chromium.launch({ headless: true });
 });
 
 afterAll(async () => {
   await browser?.close();
-  if (buildDirectory)
-    await rm(buildDirectory, { force: true, recursive: true });
 });
 
 type SectionClick = { readonly href: string | null; readonly mobile: boolean };
@@ -77,8 +56,8 @@ const openAccountSections = (viewport?: {
       await page.setContent(
         '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="account-sections-test-root"></div></body></html>'
       );
-      await page.addStyleTag({ content: appStyles });
-      await page.addScriptTag({ path: harnessBundlePath });
+      await page.addStyleTag({ content: harness.styles });
+      await page.addScriptTag({ content: harness.script });
       await page.getByRole("navigation", { name: navigationLabel }).waitFor();
       await page.evaluate(() => {
         const clicks: { href: string | null; mobile: boolean }[] = [];
@@ -275,4 +254,140 @@ test.skipIf(!chromiumAvailable)(
       getAccountSectionPath("en-US", "reservations"),
     ]);
   }
+);
+
+/**
+ * Selects `section` as the one step of a case, with a step deadline beyond
+ * the selection's own browser-action bounds, and returns the annotations and
+ * the step's failures as the reporter would see them.
+ */
+const runBoundedSelection = (
+  session: E2EBrowserSession,
+  section: AccountSection,
+  caseId: string
+) =>
+  Effect.gen(function* () {
+    const observations: E2ETelemetryObservation[] = [];
+    const failures: WorkspaceE2EError[] = [];
+    yield* Effect.exit(
+      runE2ECase({
+        body: (step) =>
+          step({
+            execute: selectAccountSectionInSession(session, section).pipe(
+              Effect.tapError((failure) =>
+                Effect.sync(() => failures.push(failure))
+              )
+            ),
+            id: "select-section",
+            timeoutMs: workspaceE2ETimeouts.browserAction + 10_000,
+          }),
+        caseId,
+        watchdogMs: workspaceE2ETimeouts.browserAction + 20_000,
+      }).pipe(Effect.provide(makeE2ETelemetryMock(observations)))
+    );
+    return {
+      annotations: observations
+        .filter(({ scope }) => scope === "annotation")
+        .map(({ scope: _scope, ...annotation }) => annotation),
+      failures: failures.map((failure) => ({
+        operation: failure.operation,
+        timeout: isWorkspaceE2ETimeout(failure),
+      })),
+    };
+  });
+
+// Both cases wait out a full browser action, so they run side by side; the
+// test allows for the watchdog and each Scope's bounded session close.
+test.skipIf(!chromiumAvailable)(
+  "fails an overrunning viewport read and times out a blocked section click",
+  async () => {
+    const [viewport, click] = await Effect.runPromise(
+      Effect.all(
+        [
+          Effect.scoped(
+            Effect.gen(function* () {
+              const session = yield* openAccountSections();
+              // The read's own bound passes before the page answers.
+              yield* session.use("stall the viewport read", (page) =>
+                page.evaluate((stallMs) => {
+                  const matchMedia = window.matchMedia.bind(window);
+                  window.matchMedia = (query) => {
+                    const until = Date.now() + stallMs;
+                    while (Date.now() < until) {
+                      // Holds the page's thread past the read's bound.
+                    }
+                    return matchMedia(query);
+                  };
+                }, workspaceE2ETimeouts.browserAction + 1000)
+              );
+              const result = yield* runBoundedSelection(
+                session,
+                "billing",
+                "account-sections-viewport"
+              );
+              return {
+                ...result,
+                after: yield* readSelection(session, "billing"),
+              };
+            })
+          ),
+          Effect.scoped(
+            Effect.gen(function* () {
+              const session = yield* openAccountSections();
+              // A layer over the page takes every pointer event, so the
+              // visible link never becomes clickable.
+              yield* session.use("cover the account navigation", (page) =>
+                page.evaluate(() => {
+                  const cover = document.createElement("div");
+                  cover.style.cssText =
+                    "position:fixed;inset:0;z-index:2147483647";
+                  document.body.append(cover);
+                })
+              );
+              const result = yield* runBoundedSelection(
+                session,
+                "billing",
+                "account-sections-click"
+              );
+              return {
+                ...result,
+                after: yield* readSelection(session, "billing"),
+              };
+            })
+          ),
+        ],
+        { concurrency: "unbounded" }
+      )
+    );
+
+    expect(viewport.annotations).toEqual([
+      expect.objectContaining({
+        caseId: "account-sections-viewport",
+        failureKind: "error",
+        outcome: "failed",
+        stepId: "select-section",
+      }),
+    ]);
+    expect(viewport.failures).toEqual([
+      { operation: "read account navigation viewport mode", timeout: false },
+    ]);
+    expect(viewport.after.clicks).toEqual([]);
+
+    expect(click.annotations).toEqual([
+      expect.objectContaining({
+        caseId: "account-sections-click",
+        failureKind: "timeout",
+        outcome: "timed_out",
+        stepId: "select-section",
+      }),
+    ]);
+    expect(click.failures).toEqual([
+      { operation: "click account billing section link", timeout: true },
+    ]);
+    expect(click.after.clicks).toEqual([]);
+    expect(click.after.currentHrefs).toEqual([
+      getAccountSectionPath("en-US", "reservations"),
+    ]);
+  },
+  workspaceE2ETimeouts.browserAction * 2 + 25_000
 );

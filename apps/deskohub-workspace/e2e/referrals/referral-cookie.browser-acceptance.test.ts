@@ -65,6 +65,13 @@ const config = {
   timeouts: { ...workspaceE2ETimeouts, uiTransition: 3000 },
 };
 const caseId = "referral-cookie";
+// Covers opening the page and both 15-second steps.
+const caseWatchdogMs = 35_000;
+// A watchdog that fires interrupts the case, whose Scope then waits up to one
+// browser action for the session to close. Under load that sum overruns the
+// suite's 30-second per-test default, so each test allows for both.
+const testTimeoutMs =
+  caseWatchdogMs + workspaceE2ETimeouts.browserAction + 5000;
 const stepId = "referral-cookie-step";
 const sharedCode = "RFLSYNTHETICSHARED";
 const otherCode = "RFLSYNTHETICOTHER";
@@ -151,7 +158,7 @@ const runCookieStep = async ({
           })
         ),
       caseId,
-      watchdogMs: 35_000,
+      watchdogMs: caseWatchdogMs,
     }).pipe(Effect.provide(makeE2ETelemetryMock(observations)))
   );
   const annotations = observations
@@ -191,7 +198,8 @@ test.skipIf(!chromiumAvailable)(
     });
 
     expect(result).toEqual(passed);
-  }
+  },
+  testTimeoutMs
 );
 
 test.skipIf(!chromiumAvailable)(
@@ -203,7 +211,8 @@ test.skipIf(!chromiumAvailable)(
     });
 
     expect(result).toEqual(passed);
-  }
+  },
+  testTimeoutMs
 );
 
 // The timeouts below first wait, as a step of their own, until the shared
@@ -220,7 +229,8 @@ test.skipIf(!chromiumAvailable)(
     expect(result).toEqual(timedOut("remembered referral code cookie"));
     expect(reported).not.toContain(sharedCode);
     expect(reported).not.toContain(otherCode);
-  }
+  },
+  testTimeoutMs
 );
 
 test.skipIf(!chromiumAvailable)(
@@ -234,5 +244,6 @@ test.skipIf(!chromiumAvailable)(
 
     expect(result).toEqual(timedOut("no remembered referral code cookie"));
     expect(reported).not.toContain(sharedCode);
-  }
+  },
+  testTimeoutMs
 );
