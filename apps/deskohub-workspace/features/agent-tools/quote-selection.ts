@@ -80,6 +80,8 @@ export type SelectedReservation =
       readonly reservationDate: string;
       readonly startsAt: ReservationInterval["startsAt"];
       readonly endsAt: ReservationInterval["endsAt"];
+      /** Set only by a booking, never by a quote: setup costs nothing. */
+      readonly earlySetup?: true;
     }
   | {
       readonly kind: "office";

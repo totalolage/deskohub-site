@@ -95,7 +95,13 @@ export type CheckoutCoworkStatusSummary = CheckoutStatusSummaryBase &
   StoredCoworkReservationDetails;
 
 export type CheckoutMeetingRoomStatusSummary = CheckoutStatusSummaryBase &
-  StoredMeetingRoomReservationDetails;
+  StoredMeetingRoomReservationDetails & {
+    /**
+     * When an early-setup meeting room is held from, before `reservedFrom`.
+     * The customer may arrive then.
+     */
+    readonly setupFrom?: Temporal.Instant;
+  };
 
 export type CheckoutOfficeStatusSummary = CheckoutStatusSummaryBase &
   StoredOfficeReservationDetails & { readonly seats: number };
@@ -578,6 +584,10 @@ const implementation = Effect.gen(function* () {
             summary: {
               ...details,
               ...timing,
+              ...Option.match(booked.setupStart, {
+                onNone: () => ({}),
+                onSome: (setupFrom) => ({ setupFrom }),
+              }),
               price: attempt.amount,
             },
           }),
