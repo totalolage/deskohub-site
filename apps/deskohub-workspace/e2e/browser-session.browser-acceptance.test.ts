@@ -53,7 +53,7 @@ beforeAll(async () => {
         case "/noisy": {
           const count = Number(url.searchParams.get("count"));
           return html(
-            `<body><script>
+            `<body><h1>Noisy</h1><script>
               for (let index = 0; index < ${count}; index += 1) console.log("entry " + index);
               console.log("${url.searchParams.get("echo") ?? ""}");
               setTimeout(() => { throw new Error("synthetic page failure"); });
@@ -179,6 +179,87 @@ test.skipIf(!chromiumAvailable)(
     expect(afterClose.message).toBe(
       "read the title after close stopped because the browser session closed"
     );
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "captures failure artifacts from the active page, then exports the HAR",
+  async () => {
+    const secret = "synthetic-capture-query-secret";
+    addRedaction(secret);
+    const id = `session-capture-${randomUUID()}`;
+    const directory = join(artifactDir, id);
+    const afterCapture = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const session = yield* E2EBrowserSession.open({
+            browser: browser as Browser,
+            id,
+          });
+          yield* session.use("open the noisy page", async (page) => {
+            const failed = page.waitForEvent("pageerror");
+            await page.goto(`${origin()}/noisy?count=2&echo=${secret}`);
+            await failed;
+          });
+          yield* session.captureFailureArtifacts(directory);
+          return yield* Effect.flip(
+            session.use("read the title after capture", (page) => page.title())
+          );
+        })
+      )
+    );
+    const read = (name: string) => readFile(join(directory, name), "utf8");
+
+    expect((await readdir(directory)).sort()).toEqual([
+      "console.txt",
+      "errors.txt",
+      "network-requests.txt",
+      "network.har",
+      "snapshot-interactive.txt",
+    ]);
+    expect(await read("console.txt")).toStartWith(
+      "exitCode: 0\n\nstdout:\n[log] entry 0\n[log] entry 1\n"
+    );
+    expect(await read("errors.txt")).toContain("synthetic page failure");
+    expect(await read("network-requests.txt")).toContain("/noisy?count=");
+    expect(await read("snapshot-interactive.txt")).toContain("Noisy");
+    const har = await read("network.har");
+    expect(JSON.parse(har).log.entries.length).toBeGreaterThan(0);
+    for (const name of await readdir(directory))
+      expect(await read(name)).not.toContain(secret);
+    expect(afterCapture.message).toBe(
+      "read the title after capture stopped because the browser session closed"
+    );
+    expect(await rawHarFiles(id)).toEqual([]);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "writes an unreadable snapshot empty and no HAR the session never recorded",
+  async () => {
+    const directory = join(artifactDir, `session-capture-${randomUUID()}`);
+    const contextsBefore = browser?.contexts().length;
+    await withSession(
+      (session) =>
+        Effect.gen(function* () {
+          yield* goto(session, "/");
+          yield* session.use("close the only page", (page) => page.close());
+          yield* session.captureFailureArtifacts(directory);
+          // The capture closed the context before the Scope did.
+          expect(browser?.contexts().length).toBe(contextsBefore);
+        }),
+      { recordHar: false }
+    );
+
+    expect((await readdir(directory)).sort()).toEqual([
+      "console.txt",
+      "errors.txt",
+      "network-requests.txt",
+      "snapshot-interactive.txt",
+    ]);
+    expect(
+      await readFile(join(directory, "snapshot-interactive.txt"), "utf8")
+    ).toBe("\n");
   }
 );
 

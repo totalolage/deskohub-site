@@ -1,5 +1,5 @@
 import { AssertionError } from "node:assert";
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import type {
@@ -95,6 +95,20 @@ type E2EBrowserDeadline = {
  */
 export type E2EBrowserSession = {
   readonly activate: (page: Page) => Effect.Effect<void, WorkspaceE2EError>;
+  /**
+   * Saves what the browser saw into `directory` for failure triage, then
+   * closes the session: `network-requests.txt`, `console.txt` and
+   * `errors.txt` from the capture, the active page's
+   * `snapshot-interactive.txt`, and, when the session records a HAR,
+   * `network.har`, which the close exports. Every artifact is sanitized. A
+   * snapshot that can't be read is written empty and a failed close leaves no
+   * HAR; only a failed write fails the capture. The snapshot read and the
+   * close are not bounded here beyond Playwright's own timeouts, so the
+   * caller bounds the whole capture.
+   */
+  readonly captureFailureArtifacts: (
+    directory: string
+  ) => Effect.Effect<void, WorkspaceE2EError>;
   readonly clearDiagnostics: (
     kind: keyof E2EBrowserDiagnostics
   ) => Effect.Effect<void>;
@@ -174,6 +188,7 @@ type SessionState = {
 };
 
 const maximumDiagnosticEntries = 500;
+const snapshotTimeoutMs = 60_000;
 
 const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
   /** Resolves relative `page.goto` URLs, as Playwright's `baseURL` does. */
@@ -221,7 +236,7 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
       });
       yield* Effect.tryPromise({
         catch: (cause) => toSessionFailure("write the browser HAR", cause),
-        try: () => writeFile(harPath, sanitizeHarArtifact(har)),
+        try: () => writeFile(harPath, `${sanitizeHarArtifact(har)}\n`),
       });
     },
     (effect) =>
@@ -318,8 +333,51 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
   };
   const close = ({ harPath }: { readonly harPath?: string } = {}) =>
     closeSession(context, harPath);
+  const diagnostics = Effect.sync(() => ({
+    console: state.diagnostics.console.map(redact),
+    errors: state.diagnostics.errors.map(redact),
+    requests: state.diagnostics.requests.map(redact),
+  }));
 
   return {
+    captureFailureArtifacts: Effect.fn(
+      "E2EBrowserSession.captureFailureArtifacts"
+    )(function* (directory: string) {
+      const captured = yield* diagnostics;
+      yield* writeArtifactText(
+        directory,
+        "network-requests.txt",
+        asCapturedLog(captured.requests.join("\n"))
+      );
+      yield* writeArtifactText(
+        directory,
+        "console.txt",
+        asCapturedLog(captured.console.join("\n"))
+      );
+      yield* writeArtifactText(
+        directory,
+        "errors.txt",
+        asCapturedLog(captured.errors.join("\n\n"))
+      );
+      const snapshot = yield* use(
+        "read interactive browser snapshot",
+        async (page) => {
+          const body = page.locator("body");
+          await body.waitFor({
+            state: "attached",
+            timeout: snapshotTimeoutMs,
+          });
+          return body.ariaSnapshot({
+            mode: "ai",
+            timeout: snapshotTimeoutMs,
+          });
+        }
+      ).pipe(Effect.orElseSucceed(() => ""));
+      yield* writeArtifactText(directory, "snapshot-interactive.txt", snapshot);
+      yield* close(
+        rawHarPath ? { harPath: resolve(directory, "network.har") } : {}
+      ).pipe(Effect.ignore);
+    }),
     activate: (page) =>
       Effect.suspend(() => {
         if (page.isClosed())
@@ -362,11 +420,7 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
           )
         );
       }),
-    diagnostics: Effect.sync(() => ({
-      console: state.diagnostics.console.map(redact),
-      errors: state.diagnostics.errors.map(redact),
-      requests: state.diagnostics.requests.map(redact),
-    })),
+    diagnostics,
     evaluate: <A, Arg>(
       label: string,
       fn: (arg: Arg) => A | Promise<A>,
@@ -495,8 +549,17 @@ const describeCookie = (
         secure: cookie.secure,
       };
 
+// The capture logs keep the layout the argv runner gave them, which failure
+// triage reads: an exit code, then the log when it has entries.
+const asCapturedLog = (text: string) =>
+  text ? `exitCode: 0\n\nstdout:\n${text}` : "exitCode: 0";
+
+// Bounded like the context release, so a stuck filesystem can't hold a Scope.
 const removeFile = (path: string) =>
-  Effect.tryPromise(() => rm(path, { force: true })).pipe(Effect.ignore);
+  Effect.tryPromise(() => rm(path, { force: true })).pipe(
+    Effect.timeout(`${workspaceE2ETimeouts.browserAction} millis`),
+    Effect.ignore
+  );
 
 const registerPage = (
   state: SessionState,
@@ -611,6 +674,25 @@ const toSessionFailure = (
     ? workspaceE2ETimeoutError(`${label} timed out`, options)
     : workspaceE2EError(`${label} failed`, options);
 };
+
+/**
+ * Writes one sanitized failure artifact, creating its directory when needed.
+ */
+export const writeArtifactText = (
+  directory: string,
+  fileName: string,
+  text: string
+): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.tryPromise({
+    catch: (cause) => toSessionFailure(`write ${fileName} artifact`, cause),
+    try: async () => {
+      await mkdir(directory, { recursive: true });
+      await writeFile(
+        resolve(directory, fileName),
+        `${sanitizeArtifactText(text.trim())}\n`
+      );
+    },
+  });
 
 /**
  * Redacts registered secrets, query values, the bypass header, and long
