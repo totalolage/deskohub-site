@@ -10,6 +10,7 @@ import {
   AdministrationOperationVariants,
   administrationOperations,
   CliOnly,
+  changeKeyPaths,
   credentialPaths,
   disclosedCredentials,
 } from "./administration-operation";
@@ -248,5 +249,37 @@ describe("credentials in operation outputs", () => {
       ["nested", "token"],
       ["list", "*"],
     ]);
+  });
+});
+
+describe("change keys in operation inputs", () => {
+  test("the operations that replay a retried change mark their change keys", () => {
+    const keyed = endpoints.flatMap(({ reference, endpoint }) =>
+      [...endpoint.payload.values()]
+        .flatMap(({ schemas }) => schemas)
+        .flatMap(changeKeyPaths)
+        .map((path) => `${reference} ${path.join(".")}`)
+    );
+
+    expect(keyed).toEqual([
+      "administration.mutateReservationAccess requestId",
+      "administration.previewInvoice invoiceId",
+      "administration.createInvoice invoiceId",
+      "administration.createStandaloneAccessCode attemptId",
+      "administration.mutateDiscounts requestId",
+      "campaigns.createCampaignAudience requestId",
+      "campaigns.createCampaign requestId",
+      "campaigns.duplicateCampaign requestId",
+    ]);
+  });
+
+  test("marks the field, not every value of its type", () => {
+    const Id = Schema.String.check(Schema.isUUID());
+    const schema = Schema.Struct({
+      attemptId: Id.annotateKey({ changeKey: true }),
+      previousAttemptId: Schema.optionalKey(Id),
+    });
+
+    expect(changeKeyPaths(schema)).toEqual([["attemptId"]]);
   });
 });

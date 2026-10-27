@@ -81,7 +81,7 @@ export type AdministrationAssistantConnectionId =
 
 export const CliMutationRequestId = uuidSchema
   .pipe(Schema.brand("CliMutationRequestId"))
-  .annotate({ identifier: "CliMutationRequestId" });
+  .annotate({ identifier: "CliMutationRequestId", changeKey: true });
 export type CliMutationRequestId = typeof CliMutationRequestId.Type;
 
 export const AdministrationStandaloneAccessCodeAttemptId = uuidSchema
@@ -707,7 +707,8 @@ export type AdministrationInvoiceCustomerInput =
   typeof AdministrationInvoiceCustomerInput.Type;
 
 export const AdministrationInvoiceCreateInput = Schema.Struct({
-  invoiceId: AdministrationInvoiceId,
+  /** Chosen by the caller, so a retried creation names the same invoice. */
+  invoiceId: AdministrationInvoiceId.annotateKey({ changeKey: true }),
   customer: AdministrationInvoiceCustomerInput,
   locale: Schema.Literals(["cs-CZ", "en-US"]),
   serviceDate: administrationCalendarDate,
@@ -1457,7 +1458,9 @@ export type AdministrationStandaloneAccessCodeCreateInput =
   typeof AdministrationStandaloneAccessCodeCreateInput.Type;
 
 export const AdministrationStandaloneAccessCodeCreateRequest = Schema.Struct({
-  attemptId: AdministrationStandaloneAccessCodeAttemptId,
+  attemptId: AdministrationStandaloneAccessCodeAttemptId.annotateKey({
+    changeKey: true,
+  }),
   input: AdministrationStandaloneAccessCodeCreateInput,
   providerCredentialRemovedAttemptId: Schema.optionalKey(
     AdministrationStandaloneAccessCodeAttemptId
