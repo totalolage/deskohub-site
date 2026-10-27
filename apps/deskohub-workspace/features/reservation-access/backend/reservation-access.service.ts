@@ -3,12 +3,10 @@ import {
   type IgloohomeRequestError,
   IgloohomeService,
 } from "@deskohub/igloohome";
-import { Context, Data, Effect, Layer, Match, Schema } from "effect";
+import { Context, Data, Effect, Layer, Match, Option, Schema } from "effect";
 import { env } from "@/env";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { WorkspaceIgloohomeLayer } from "@/shared/backend/config/igloohome.config";
-import { workspaceSiteConstants } from "@/shared/utils";
-import { ceilToWholeHour, floorToWholeHour } from "@/shared/utils/temporal";
 import type {
   IssuedReservationAccess,
   ReservationAccessGrant,
@@ -18,11 +16,13 @@ import {
   reservationAccessProvisioningStaleAfterMilliseconds,
 } from "../reservation-access";
 import {
+  getIgloohomeAccessWindow,
+  isSameIgloohomeAccessWindow,
+} from "./igloohome-access-window";
+import {
   ReservationAccessRepository,
   type ReservationAccessStorageError,
 } from "./reservation-access.repository";
-
-const maximumHourlyAlgoPinDurationHours = 672;
 
 export type ReservationAccessIssuanceOutcome = "rejected" | "uncertain";
 
@@ -35,6 +35,11 @@ export class ReservationAccessIssuanceError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
+/**
+ * The access a reservation's door code grants. Workspace records the exact
+ * span the reservation holds; the Igloohome window is the whole-hour span the
+ * lock is programmed with, which only the provider request uses.
+ */
 export interface ReservationAccessInterval {
   readonly scheduledStartsAt: Temporal.Instant;
   readonly startsAt: Temporal.Instant;
@@ -51,7 +56,6 @@ export const getReservationAccessInterval = (input: {
 }): Effect.Effect<ReservationAccessInterval, ReservationAccessIssuanceError> =>
   Effect.gen(function* () {
     const now = input.now ?? Temporal.Now.instant();
-    const schedule = getReservationAccessSchedule(input);
 
     if (Temporal.Instant.compare(now, input.reservedUntil) >= 0) {
       return yield* new ReservationAccessIssuanceError({
@@ -61,24 +65,12 @@ export const getReservationAccessInterval = (input: {
       });
     }
 
-    const currentHour = floorToWholeHour(
-      now.toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
-    );
-    const accessStart =
-      Temporal.ZonedDateTime.compare(schedule.startsAt, currentHour) >= 0
-        ? schedule.startsAt
-        : currentHour;
-    const accessStartsAt = accessStart.toInstant();
-    const accessEndsAt = schedule.endsAt.toInstant();
-    const durationHours =
-      (accessEndsAt.epochMilliseconds - accessStartsAt.epochMilliseconds) /
-      3_600_000;
-
-    if (
-      !Number.isInteger(durationHours) ||
-      durationHours < 1 ||
-      durationHours > maximumHourlyAlgoPinDurationHours
-    ) {
+    const window = getIgloohomeAccessWindow({
+      startsAt: input.reservedFrom,
+      endsAt: input.reservedUntil,
+      now,
+    });
+    if (Option.isNone(window)) {
       return yield* new ReservationAccessIssuanceError({
         reservationId: input.reservationId,
         outcome: "rejected",
@@ -87,30 +79,13 @@ export const getReservationAccessInterval = (input: {
     }
 
     return {
-      scheduledStartsAt: schedule.startsAt.toInstant(),
-      startsAt: accessStartsAt,
-      endsAt: accessEndsAt,
-      providerStartsAt: accessStart.toString({
-        smallestUnit: "second",
-        timeZoneName: "never",
-      }),
-      providerEndsAt: schedule.endsAt.toString({
-        smallestUnit: "second",
-        timeZoneName: "never",
-      }),
+      scheduledStartsAt: input.reservedFrom,
+      startsAt: input.reservedFrom,
+      endsAt: input.reservedUntil,
+      providerStartsAt: window.value.startsAt,
+      providerEndsAt: window.value.endsAt,
     };
   });
-
-const getReservationAccessSchedule = (input: {
-  readonly reservedFrom: Temporal.Instant;
-  readonly reservedUntil: Temporal.Instant;
-}) => {
-  const timeZone = workspaceSiteConstants.location.timeZone;
-  return {
-    startsAt: floorToWholeHour(input.reservedFrom.toZonedDateTimeISO(timeZone)),
-    endsAt: ceilToWholeHour(input.reservedUntil.toZonedDateTimeISO(timeZone)),
-  };
-};
 
 export interface IReservationAccessService {
   readonly loadGrant: (
@@ -182,7 +157,6 @@ export class ReservationAccessService extends Context.Service<
         issueForReservation: Effect.fn(
           "ReservationAccessService.issueForReservation"
         )(function* (input) {
-          const schedule = getReservationAccessSchedule(input);
           const existingGrant = yield* repository
             .findByReservationId(input.reservationId)
             .pipe(
@@ -221,11 +195,16 @@ export class ReservationAccessService extends Context.Service<
                 message: "Reservation access device changed after issuance.",
               });
             }
+            // Grants issued before Workspace recorded exact spans hold the
+            // whole hours they were programmed with, which compare the same.
             if (
-              existingGrant.scheduledAccessStartsAt.equals(
-                schedule.startsAt.toInstant()
-              ) &&
-              existingGrant.accessEndsAt.equals(schedule.endsAt.toInstant())
+              isSameIgloohomeAccessWindow(
+                {
+                  startsAt: existingGrant.scheduledAccessStartsAt,
+                  endsAt: existingGrant.accessEndsAt,
+                },
+                { startsAt: input.reservedFrom, endsAt: input.reservedUntil }
+              )
             ) {
               const accessCode = yield* repository
                 .loadIssuedCode({

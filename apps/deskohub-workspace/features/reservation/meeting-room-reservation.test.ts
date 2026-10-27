@@ -66,6 +66,7 @@ describe("meetingRoomReservationSchema", () => {
       startDateTime: "",
       duration: "hour:1",
       ...customer,
+      earlySetup: false,
       marketingConsent: false,
     });
 
@@ -79,6 +80,7 @@ describe("meetingRoomReservationSchema", () => {
       startDateTime: "2099-06-10T12:00",
       duration: "hour:1",
       ...customer,
+      earlySetup: false,
       marketingConsent: false,
     });
     const issues = Effect.runSync(
@@ -132,6 +134,7 @@ describe("meetingRoomReservationSchema", () => {
         startDateTime,
         duration: "hour:1",
         ...customer,
+        earlySetup: false,
         marketingConsent: false,
       });
 
@@ -155,6 +158,7 @@ describe("meetingRoomReservationSchema", () => {
       duration: "hour:4",
       ...customer,
       billing: { purpose: "personal", invoice: "none" },
+      earlySetup: false,
       marketingConsent: false,
     });
     expect(
@@ -221,6 +225,7 @@ describe("meetingRoomReservationSchema", () => {
       startDateTime: "2099-06-10T15:00",
       duration: "day:1",
       ...customer,
+      earlySetup: false,
       marketingConsent: false,
     });
 
