@@ -22,6 +22,7 @@ import {
 import { getAdministrationCustomerName } from "./customer-presentation";
 import {
   formatAdministrationDateTime,
+  formatAdministrationEarlySetup,
   formatAdministrationReservationDate,
 } from "./formatters";
 import { m } from "./i18n";
@@ -245,6 +246,11 @@ export function RelatedReservationLink({
               locale
             )}
         </span>
+        {reservation.setupStartsAt && (
+          <span className="mt-0.5 block text-xs text-navy-blue/65">
+            {formatAdministrationEarlySetup(reservation, locale)}
+          </span>
+        )}
         <span className="mt-2 block text-sm font-medium">
           {reservation.customer
             ? getAdministrationCustomerName(reservation.customer, locale)
