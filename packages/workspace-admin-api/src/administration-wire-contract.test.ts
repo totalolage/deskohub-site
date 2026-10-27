@@ -15,18 +15,17 @@ import {
 import { WorkspaceAdminApi } from "./workspace-admin-http-api";
 
 /**
- * Released `dhw` binaries decode the campaign and automation endpoints as
- * they were when each binary shipped, so the contract recorded here may only
- * change on purpose. Regenerate it with
- * `UPDATE_WIRE_CONTRACT=1 bun test src/campaign-operation-wire-contract.test.ts`
- * and format it with `bunx biome format --write <fixture>`, then review the diff.
+ * Released `dhw` binaries decode every administration endpoint as it was
+ * when each binary shipped, so the contract recorded here may only change on
+ * purpose. Regenerate it with
+ * `UPDATE_WIRE_CONTRACT=1 bun test src/administration-wire-contract.test.ts`
+ * and review the diff. The test writes the fixture in its committed form;
+ * Biome skips it as larger than its size limit.
  */
 const fixture = new URL(
-  "./campaign-operation-wire-contract.golden.json",
+  "./administration-wire-contract.golden.json",
   import.meta.url
 );
-
-const recordedGroups = ["campaigns", "automations"] as const;
 
 type Json =
   | null
@@ -120,25 +119,22 @@ const reachableComponents = (
 };
 
 /**
- * The wire contract of every endpoint in `groupNames` of `api`: its OpenAPI
+ * The wire contract of every endpoint of `api`: its OpenAPI
  * operation (method, path and query parameters, body, success and error
  * responses), the parse options of each request part, its middleware in
  * declaration order (the last declared runs first), and the annotations
  * `dhw`, the MCP tools and the middleware read.
  */
 const wireContractOf = <Id extends string, Groups extends HttpApiGroup.Any>(
-  api: HttpApi.HttpApi<Id, Groups>,
-  groupNames: ReadonlyArray<string>
+  api: HttpApi.HttpApi<Id, Groups>
 ) => {
   const spec = OpenApi.fromApi(api);
-  const groups: Record<string, Record<string, unknown>> = Object.fromEntries(
-    groupNames.map((name) => [name, {}])
-  );
+  const groups: Record<string, Record<string, unknown>> = {};
   const operations: Array<OpenApi.OpenAPISpecOperation> = [];
   HttpApi.reflect(api, {
-    predicate: ({ group }) =>
-      groupNames.some((name) => name === group.identifier),
-    onGroup: () => undefined,
+    onGroup: ({ group }) => {
+      groups[group.identifier] = {};
+    },
     onEndpoint: ({ group, endpoint, mergedAnnotations, middleware }) => {
       const reference = `${group.identifier}.${endpoint.name}`;
       const openApiPath = endpoint.path.replace(/:(\w+)\??/g, "{$1}");
@@ -636,16 +632,13 @@ const sampleContract = ({
             error: errors,
           })
         )
-      ),
-      ["sample"]
+      )
     )
   );
 
-describe("campaign operation wire contract", () => {
-  test("every campaign and automation endpoint keeps its recorded wire contract", async () => {
-    const current = recordedFormOf(
-      wireContractOf(WorkspaceAdminApi, recordedGroups)
-    );
+describe("administration wire contract", () => {
+  test("every administration endpoint keeps its recorded wire contract", async () => {
+    const current = recordedFormOf(wireContractOf(WorkspaceAdminApi));
     if (process.env.UPDATE_WIRE_CONTRACT === "1") {
       await Bun.write(fixture, `${JSON.stringify(current, null, 2)}\n`);
     }

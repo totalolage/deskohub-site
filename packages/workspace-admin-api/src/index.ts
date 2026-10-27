@@ -11,6 +11,7 @@ export {
   administrationOperations,
   administrationOperationVariantOf,
   CliOnly,
+  changeKeyPaths,
   credentialPaths,
   destructiveOperation,
   disclosedCredentials,

@@ -188,23 +188,6 @@ describe("dhw client version", () => {
     }
   });
 
-  test("checks the version on every campaign operation and wherever a minimum is set", () => {
-    const unchecked: string[] = [];
-    HttpApi.reflect(WorkspaceAdminApi, {
-      onGroup: () => undefined,
-      onEndpoint: ({ group, endpoint, mergedAnnotations, middleware }) => {
-        const mustCheck =
-          group.identifier === "campaigns" ||
-          Option.isSome(Context.get(mergedAnnotations, MinimumDhwVersion));
-        if (mustCheck && !middleware.has(CliClientCompatibility)) {
-          unchecked.push(`${group.identifier}.${endpoint.name}`);
-        }
-      },
-    });
-
-    expect(unchecked).toEqual([]);
-  });
-
   test("lists each operation's minimum by group and endpoint", () => {
     expect(collectMinimumDhwVersions(TestApi)).toEqual({
       "campaigns.listCampaigns": minimum,
