@@ -260,9 +260,7 @@ test("labels and links breadcrumbs in the route locale", async () => {
   currentPathname = "/cs-CZ/admin/reservations/reservation-id";
   const { AdministrationBreadcrumbs } = await import("./admin-shell");
   const view = renderInRoute(
-    <AdministrationBreadcrumbs
-      segments={["admin", "reservations", "reservation-id"]}
-    />
+    <AdministrationBreadcrumbs segments={["reservations", "reservation-id"]} />
   );
   const breadcrumbs = view.getByRole("navigation", {
     name: "Drobečková navigace",

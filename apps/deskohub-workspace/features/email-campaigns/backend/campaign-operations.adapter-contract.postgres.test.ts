@@ -2,6 +2,8 @@ import "@/shared/testing/workspace-test-env";
 
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import {
+  AdminCliAutomationsApi,
+  AdminCliCampaignsApi,
   AdministrationAuthentication,
   AdministrationLegacyUsername,
   type CampaignOperationError,
@@ -10,13 +12,13 @@ import {
   CliMutationRequestId,
   CliSessionId,
   CurrentAdministrationCaller,
-  campaignOperationEndpoints,
   campaignOperations,
   dhwVersionHeader,
   digestCliAuthenticationSecret,
   makeCliAuthenticationSecret,
   type OperationInput,
   type Operations,
+  operationRequest,
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
 import { NodeCrypto, NodeHttpServer } from "@effect/platform-node";
@@ -983,27 +985,31 @@ describe.skipIf(!testDatabase)("campaign operation adapters", () => {
     },
   };
 
-  /** The endpoint's request: path params from the input, the rest as body. */
+  /** The endpoint's request, carrying the input as the binding places it. */
   const cliRequest = (
     name: CampaignOperationName,
     input: AnyOperationInput
   ) => {
-    const endpoint = campaignOperationEndpoints[name];
-    const fields = new Map(Object.entries(input));
-    const path = endpoint.path.replace(/:(\w+)/g, (_, param: string) => {
-      const value = String(fields.get(param));
-      fields.delete(param);
-      return encodeURIComponent(value);
-    });
-    const body =
-      name === "previewCampaignTemplate"
-        ? fields.get("preview")
-        : Object.fromEntries(fields);
-    // A GET carries the rest of its input as query parameters.
+    const group = [AdminCliCampaignsApi, AdminCliAutomationsApi].find(
+      (candidate) => Object.hasOwn(candidate.endpoints, name)
+    );
+    const endpoint = group?.endpoints[name as never];
+    if (group === undefined || endpoint === undefined) {
+      throw new Error(`${name} has no CLI endpoint.`);
+    }
+    const parts = operationRequest(
+      group as never,
+      name as never,
+      input as never
+    );
+    const params = new Map(Object.entries(parts.params ?? {}));
+    const path = endpoint.path.replace(/:(\w+)/g, (_, param: string) =>
+      encodeURIComponent(String(params.get(param)))
+    );
     const query =
-      endpoint.method === "GET" && fields.size > 0
-        ? `?${new URLSearchParams([...fields].map(([key, value]) => [key, String(value)]))}`
-        : "";
+      parts.query === undefined
+        ? ""
+        : `?${new URLSearchParams(Object.entries(parts.query).map(([key, value]) => [key, String(value)]))}`;
     return new Request(`https://workspace.deskohub.test${path}${query}`, {
       method: endpoint.method,
       headers: {
@@ -1012,9 +1018,7 @@ describe.skipIf(!testDatabase)("campaign operation adapters", () => {
         [dhwVersionHeader]: currentDhwVersion,
       },
       body:
-        endpoint.method === "GET" || endpoint.method === "DELETE"
-          ? undefined
-          : JSON.stringify(body),
+        parts.payload === undefined ? undefined : JSON.stringify(parts.payload),
     });
   };
 

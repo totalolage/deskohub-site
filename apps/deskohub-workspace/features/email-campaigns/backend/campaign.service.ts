@@ -33,7 +33,7 @@ import {
 import {
   type CampaignContentChanges,
   changeCampaignContent,
-} from "../body/campaign-content-change";
+} from "../body/campaign-content-codec";
 import { campaignImageCloudName } from "../body/campaign-image-account";
 import type { CampaignAudienceId, CampaignId } from "../campaign-identifiers";
 import {

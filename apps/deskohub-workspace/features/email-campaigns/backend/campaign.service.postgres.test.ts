@@ -5,7 +5,7 @@ import { EmailServiceTag } from "@deskohub/email";
 import { Cause, Effect, Exit, Layer } from "effect";
 import { waitForPostgresLockWaiter } from "@/shared/testing/workspace-postgres-lock-waiters.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import { parseCampaignBodyMarkdown } from "../body/campaign-body-markdown";
+import { markdownCampaignBody } from "../body/campaign-content-codec.test-utils";
 import {
   type CampaignAudienceId,
   type CampaignId,
@@ -452,7 +452,7 @@ describe.skipIf(!testDatabase)("CampaignService on disposable Postgres", () => {
     const english = {
       subject: "News",
       preheader: "",
-      body: await Effect.runPromise(parseCampaignBodyMarkdown("Hello")),
+      body: await markdownCampaignBody("Hello"),
     };
     const added = succeeded(
       await patch({

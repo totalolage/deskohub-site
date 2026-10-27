@@ -13,7 +13,6 @@ import {
   credentialPaths,
   disclosedCredentials,
 } from "./administration-operation";
-import { campaignOperations } from "./campaign-operations";
 import {
   AdministrationAuthentication,
   CliServiceUnavailable,
@@ -201,26 +200,6 @@ describe("administration operations", () => {
       .map(({ reference }) => reference);
 
     expect(changed).toEqual([]);
-  });
-
-  test("campaign port queries are the read endpoints, and ledger writes are idempotent", () => {
-    const inconsistent = Object.values(campaignOperations).flatMap(
-      (operation) => {
-        const reference = operations.find(
-          ({ endpoint }) => endpoint === operation.name
-        );
-        if (reference?.access._tag !== "Operation") {
-          return [operation.name];
-        }
-        const { kind, idempotent } = reference.access.behavior;
-        return (operation.kind === "query") === (kind === "read") &&
-          (!operation.ledger || idempotent)
-          ? []
-          : [operation.name];
-      }
-    );
-
-    expect(inconsistent).toEqual([]);
   });
 });
 

@@ -42,8 +42,8 @@ import { CampaignRecipientService } from "@/features/email-campaigns/backend/cam
 import { CampaignSendService } from "@/features/email-campaigns/backend/campaign-send.service";
 import { CampaignSendQueueService } from "@/features/email-campaigns/backend/campaign-send-queue.service";
 import { CampaignSendStatusService } from "@/features/email-campaigns/backend/campaign-send-status.service";
-import { parseCampaignBodyMarkdown } from "@/features/email-campaigns/body/campaign-body-markdown";
 import type { CampaignLocalizedContent } from "@/features/email-campaigns/body/campaign-content";
+import { markdownCampaignBody as parseBody } from "@/features/email-campaigns/body/campaign-content-codec.test-utils";
 import {
   CampaignAudienceInUse,
   CampaignAudienceNotFound,
@@ -79,9 +79,6 @@ const createdAt = Temporal.Instant.from("2026-10-14T08:00:00Z");
 const testDhwVersion = "1.20.0";
 const AuthorizedCliRequest = authorizedCliRequest();
 const TestDhwVersionHeader = cliClientVersion(testDhwVersion);
-
-const parseBody = (markdown: string) =>
-  Effect.runPromise(parseCampaignBodyMarkdown(markdown));
 
 const campaignRow = (overrides: Partial<CampaignRow> = {}): CampaignRow => ({
   id: campaignId,

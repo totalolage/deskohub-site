@@ -1,12 +1,4 @@
-import { Array as Arr, Option, Order, Schema, Struct } from "effect";
-import { HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
-import {
-  AdministrationOperationBehavior,
-  destructiveOperation,
-  readOperation,
-  readPreview,
-  writeOperation,
-} from "./administration-operation";
+import { Array as Arr, Order, Schema } from "effect";
 import { ReservationProductFilter } from "./audience-attribute-kinds";
 import {
   type AudienceCondition,
@@ -24,7 +16,7 @@ import {
   AdministrationCampaignLocale,
   AdministrationCampaignPurpose,
 } from "./campaign-locale-and-purpose";
-import { DhwVersion, MinimumDhwVersion } from "./dhw-version";
+import { DhwVersion } from "./dhw-version";
 import { emailAutomationScheduleMinutes } from "./email-automation-cadence";
 import {
   AdministrationCampaignContent,
@@ -32,15 +24,9 @@ import {
   AdministrationCampaignRecipientSkipReason,
   AdministrationCampaignSendId,
   AdministrationCampaignTemplateKey,
-  campaignErrors,
 } from "./email-campaigns";
 import { fieldWithDefault, listField, nullableField } from "./response-fields";
-import {
-  AdministrationActionRecord,
-  AdministrationAuthentication,
-  AdministrationDotyposCustomerId,
-  CliClientCompatibility,
-} from "./workspace-admin-api";
+import { AdministrationDotyposCustomerId } from "./workspace-admin-api";
 
 /** Stable id of a flow step. A run's position is a step id, not an index. */
 export const AutomationStepId = Schema.String.check(
@@ -872,209 +858,3 @@ export const automationEngineWarningDhwVersions = {
   "schedule-lagging": automationsMinimumDhwVersion,
   "falling-behind": automationsMinimumDhwVersion,
 } satisfies Record<AutomationEngineWarning, DhwVersion>;
-
-/** An input without its path parameters: what an endpoint's body or query carries. */
-const withoutPathParams = <
-  Fields extends Schema.Struct.Fields,
-  const Keys extends ReadonlyArray<keyof Fields>,
->(
-  input: Schema.Struct<Fields>,
-  keys: Keys
-) => input.mapFields(Struct.omit(keys)).annotate(strictParseOptions);
-
-const automationParams = { campaignId: AdministrationCampaignId };
-const automationVersionParams = {
-  campaignId: AdministrationCampaignId,
-  versionNumber: AutomationVersionNumber,
-};
-
-export const AdminCliAutomationsApi = HttpApiGroup.make("automations")
-  .add(
-    HttpApiEndpoint.get("getAutomation", "/automations/:campaignId/flow", {
-      params: automationParams,
-      success: AutomationDetail,
-      error: campaignErrors,
-    }).annotate(AdministrationOperationBehavior, readOperation)
-  )
-  .add(
-    HttpApiEndpoint.put(
-      "updateAutomationFlow",
-      "/automations/:campaignId/flow",
-      {
-        params: automationParams,
-        payload: withoutPathParams(AutomationFlowUpdate, ["campaignId"]),
-        success: AutomationDetail,
-        error: campaignErrors,
-      }
-    ).annotate(
-      AdministrationOperationBehavior,
-      writeOperation({ idempotent: true })
-    )
-  )
-  .add(
-    HttpApiEndpoint.post(
-      "dryRunAutomation",
-      "/automations/:campaignId/dry-run",
-      {
-        params: automationParams,
-        success: AutomationPreviewStatus,
-        error: campaignErrors,
-      }
-    ).annotate(
-      AdministrationOperationBehavior,
-      writeOperation({ idempotent: false })
-    )
-  )
-  .add(
-    HttpApiEndpoint.get(
-      "getAutomationDryRun",
-      "/automation-dry-runs/:previewId",
-      {
-        params: { previewId: AutomationPreviewId },
-        query: withoutPathParams(AutomationPreviewRef, ["previewId"]),
-        success: AutomationDryRun,
-        error: campaignErrors,
-      }
-    ).annotate(AdministrationOperationBehavior, readOperation)
-  )
-  .add(
-    HttpApiEndpoint.post(
-      "activateAutomation",
-      "/automations/:campaignId/activate",
-      {
-        params: automationParams,
-        payload: withoutPathParams(AutomationActivateInput, ["campaignId"]),
-        success: AutomationVersionSummary,
-        error: campaignErrors,
-      }
-    ).annotate(
-      AdministrationOperationBehavior,
-      destructiveOperation({
-        idempotent: true,
-        preview: readPreview("automations.getAutomation"),
-      })
-    )
-  )
-  .add(
-    HttpApiEndpoint.post("pauseAutomation", "/automations/:campaignId/pause", {
-      params: automationParams,
-      success: AutomationDetail,
-      error: campaignErrors,
-    }).annotate(
-      AdministrationOperationBehavior,
-      destructiveOperation({
-        idempotent: true,
-        preview: readPreview("automations.getAutomation"),
-      })
-    )
-  )
-  .add(
-    HttpApiEndpoint.post(
-      "resumeAutomation",
-      "/automations/:campaignId/resume",
-      {
-        params: automationParams,
-        success: AutomationDetail,
-        error: campaignErrors,
-      }
-    ).annotate(
-      AdministrationOperationBehavior,
-      destructiveOperation({
-        idempotent: true,
-        preview: readPreview("automations.getAutomation"),
-      })
-    )
-  )
-  .add(
-    HttpApiEndpoint.post(
-      "archiveAutomation",
-      "/automations/:campaignId/archive",
-      {
-        params: automationParams,
-        success: AutomationDetail,
-        error: campaignErrors,
-      }
-    ).annotate(
-      AdministrationOperationBehavior,
-      destructiveOperation({
-        idempotent: true,
-        preview: readPreview("automations.getAutomation"),
-      })
-    )
-  )
-  .add(
-    HttpApiEndpoint.get(
-      "listAutomationVersions",
-      "/automations/:campaignId/versions",
-      {
-        params: automationParams,
-        success: Schema.Array(AutomationVersionSummary),
-        error: campaignErrors,
-      }
-    ).annotate(AdministrationOperationBehavior, readOperation)
-  )
-  .add(
-    HttpApiEndpoint.get(
-      "getAutomationVersion",
-      "/automations/:campaignId/versions/:versionNumber",
-      {
-        params: automationVersionParams,
-        success: AutomationVersionDetail,
-        error: campaignErrors,
-      }
-    ).annotate(AdministrationOperationBehavior, readOperation)
-  )
-  .add(
-    HttpApiEndpoint.get(
-      "getAutomationRunStats",
-      "/automations/:campaignId/runs/stats",
-      {
-        params: automationParams,
-        query: withoutPathParams(AutomationRunStatsInput, ["campaignId"]),
-        success: AutomationRunStats,
-        error: campaignErrors,
-      }
-    ).annotate(AdministrationOperationBehavior, readOperation)
-  )
-  .add(
-    HttpApiEndpoint.get("listAutomationRuns", "/automations/:campaignId/runs", {
-      params: automationParams,
-      query: withoutPathParams(AutomationRunListInput, ["campaignId"]),
-      success: AutomationRunPage,
-      error: campaignErrors,
-    }).annotate(AdministrationOperationBehavior, readOperation)
-  )
-  .add(
-    HttpApiEndpoint.get("getAutomationRun", "/automation-runs/:runId", {
-      params: { runId: AutomationRunId },
-      success: AutomationRunDetail,
-      error: campaignErrors,
-    }).annotate(AdministrationOperationBehavior, readOperation)
-  )
-  .add(
-    HttpApiEndpoint.post(
-      "previewCalendarExpression",
-      "/calendar-expressions/preview",
-      {
-        payload: CalendarPreviewInput,
-        success: CalendarPreview,
-        error: campaignErrors,
-      }
-    ).annotate(AdministrationOperationBehavior, readOperation)
-  )
-  .add(
-    HttpApiEndpoint.get(
-      "getAutomationEngineHealth",
-      "/automations/engine-health",
-      {
-        success: AutomationEngineHealth,
-        error: campaignErrors,
-      }
-    ).annotate(AdministrationOperationBehavior, readOperation)
-  )
-  .annotate(MinimumDhwVersion, Option.some(automationsMinimumDhwVersion))
-  .middleware(AdministrationActionRecord)
-  .middleware(AdministrationAuthentication)
-  // Added last, so it runs first, as in the campaigns group.
-  .middleware(CliClientCompatibility)
-  .prefix("/api/v1/cli");
