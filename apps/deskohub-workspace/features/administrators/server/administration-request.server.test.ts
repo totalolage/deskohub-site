@@ -10,7 +10,10 @@ import { mockAdministratorAccess } from "./administrator-access.test-utils";
 
 const access = mockAdministratorAccess();
 const revalidatedPaths: string[] = [];
+const refreshedNotes: string[] = [];
 let settledRuns = 0;
+let revalidationFailure: Error | undefined;
+let refreshFailure: Error | undefined;
 
 mock.module("server-only", () => ({}));
 mock.module("next/headers", () => ({
@@ -36,6 +39,7 @@ mock.module("@/features/i18n/server/revalidate-localized-path", () => ({
     // Recorded with the number of runs settled so far, to prove the
     // revalidation came after the action's fiber finished.
     revalidatedPaths.push(`${settledRuns}:${path}`);
+    if (revalidationFailure) throw revalidationFailure;
   },
 }));
 
@@ -88,6 +92,9 @@ beforeEach(() => {
   notebookBuilds = 0;
   settledRuns = 0;
   revalidatedPaths.length = 0;
+  refreshedNotes.length = 0;
+  revalidationFailure = undefined;
+  refreshFailure = undefined;
 });
 
 describe("runAdministrationPage", () => {
@@ -175,6 +182,10 @@ describe("defineAdministrationAction", () => {
         fallback: m.administrationReservationCancellationFailed,
         capabilities: notebookLive,
         revalidates: ({ reservationId }) => [reservationPath(reservationId)],
+        refreshes: ({ reservationId }) => {
+          refreshedNotes.push(`${settledRuns}:${reservationId}`);
+          if (refreshFailure) throw refreshFailure;
+        },
       },
       () =>
         Effect.gen(function* () {
@@ -184,13 +195,36 @@ describe("defineAdministrationAction", () => {
         }).pipe(Effect.ensuring(Effect.sync(() => (settledRuns += 1))))
     );
 
-  test("runs as the administrator and revalidates after it settles", async () => {
+  test("runs as the administrator and revalidates and refreshes after it settles", async () => {
     const result = await writeNote()({ reservationId: "reservation-1" });
 
     expect(result).toEqual({
       data: { owner: access.administrator.accountId },
     });
     expect(revalidatedPaths).toEqual([`1:${reservationPath("reservation-1")}`]);
+    expect(refreshedNotes).toEqual(["1:reservation-1"]);
+  });
+
+  test("keeps the result when a refresh fails", async () => {
+    refreshFailure = new Error("refresh refused");
+
+    const result = await writeNote()({ reservationId: "reservation-1" });
+
+    expect(result).toEqual({
+      data: { owner: access.administrator.accountId },
+    });
+    expect(revalidatedPaths).toEqual([`1:${reservationPath("reservation-1")}`]);
+  });
+
+  test("answers a refused revalidation with the unexpected-failure copy", async () => {
+    revalidationFailure = new Error("revalidation refused");
+
+    const result = await writeNote()({ reservationId: "reservation-1" });
+
+    expect(result).toEqual({
+      serverError: failureCopy.unexpected({}, { locale: "en-US" }),
+    });
+    expect(refreshedNotes).toEqual(["1:reservation-1"]);
   });
 
   test.each(["not-administrator", "signed-out", "unavailable"] as const)(
@@ -204,6 +238,7 @@ describe("defineAdministrationAction", () => {
       expect(result).not.toHaveProperty("data");
       expect(notebookBuilds).toBe(0);
       expect(revalidatedPaths).toEqual([]);
+      expect(refreshedNotes).toEqual([]);
     }
   );
 
@@ -261,6 +296,7 @@ describe("defineAdministrationAction", () => {
       ),
     });
     expect(revalidatedPaths).toEqual([]);
+    expect(refreshedNotes).toEqual([]);
   });
 
   test("passes a handler's public error through", async () => {

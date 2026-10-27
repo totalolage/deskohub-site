@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { Data, Effect, Layer, Option, Predicate } from "effect";
+import { Data, Effect, Layer, Option, Predicate, Result } from "effect";
 import { notFound } from "next/navigation";
 import type {
   FlattenedValidationErrors,
@@ -18,7 +18,10 @@ import {
   type WorkspaceActionFailureCopy,
   type WorkspaceActionOptions,
 } from "@/shared/backend/workspace-action";
-import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
+import {
+  runWorkspaceEffect,
+  runWorkspaceEffectOrElse,
+} from "@/shared/backend/workspace-effect";
 import {
   PublicSafeActionError,
   type SafeActionFailure,
@@ -41,6 +44,20 @@ export class AdministrationRecordNotFound extends Data.TaggedError(
 const isAdministrationRecordNotFound = Predicate.isTagged(
   "AdministrationRecordNotFound"
 );
+
+/** Next.js refused to revalidate a page a successful action changed. */
+class AdministrationRevalidationError extends Data.TaggedError(
+  "AdministrationRevalidationError"
+)<{
+  readonly cause: unknown;
+}> {}
+
+/** A cache refresh a successful action asked for could not start. */
+class AdministrationRefreshError extends Data.TaggedError(
+  "AdministrationRefreshError"
+)<{
+  readonly cause: unknown;
+}> {}
 
 const actingAs = <R, LE>(
   capabilities: Layer.Layer<R, LE, CurrentAdministrator>,
@@ -108,12 +125,23 @@ export interface AdministrationActionOptions<
    * in every locale after the action settles, outside its fiber: a fiber
    * resumed by a database callback can run under another request's Next.js
    * work store, where `revalidatePath` throws because that request is
-   * rendering.
+   * rendering. If Next.js refuses one, the action answers with
+   * `failureCopy.unexpected`, although the change itself was made.
    */
   readonly revalidates?: (
     input: StandardSchemaV1.InferOutput<S>,
     result: A
   ) => readonly AdministrationPath[];
+  /**
+   * Starts refreshing what a successful run made stale besides its pages,
+   * such as a tagged data cache. It runs after the action settles, outside its
+   * fiber, for the same reason as `revalidates`. A refresh is best effort: if
+   * it throws, the failure is logged and the action still succeeds.
+   */
+  readonly refreshes?: (
+    input: StandardSchemaV1.InferOutput<S>,
+    result: A
+  ) => void;
 }
 
 type AdministrationValidationErrors<S extends StandardSchemaV1> =
@@ -129,15 +157,37 @@ type AdministrationAction<S extends StandardSchemaV1, A> = SingleInputActionFn<
 
 interface SettledAdministrationAction<A> {
   readonly result: A;
+  readonly locale: Locale;
   readonly revalidates: readonly AdministrationPath[];
+  readonly refresh: () => void;
 }
+
+/**
+ * Applies what a successful run changed. It runs synchronously in the
+ * action's own async context, so Next.js sees the request that ran the action.
+ */
+const applySettledChanges = <A>({
+  refresh,
+  revalidates,
+}: SettledAdministrationAction<A>) => ({
+  refreshed: Result.try({
+    try: refresh,
+    catch: (cause) => new AdministrationRefreshError({ cause }),
+  }),
+  revalidated: Result.try({
+    try: () => {
+      for (const path of revalidates) revalidateLocalizedPath(path);
+    },
+    catch: (cause) => new AdministrationRevalidationError({ cause }),
+  }),
+});
 
 /**
  * Defines an operator action of the Admin UI. The handler runs only for an
  * administrator: anyone else fails closed, without a redirect, before the
  * handler or its capabilities start. The handler acts as that
  * `CurrentAdministrator`, its failures are worded through `publicFailure`,
- * and the pages it changed are revalidated after it settles.
+ * and the pages and caches it changed are refreshed after it settles.
  */
 export const defineAdministrationAction = <
   S extends StandardSchemaV1,
@@ -155,6 +205,7 @@ export const defineAdministrationAction = <
   const {
     capabilities,
     publicFailure,
+    refreshes,
     revalidates,
     unauthorizedResult,
     ...workspaceOptions
@@ -181,7 +232,9 @@ export const defineAdministrationAction = <
             Effect.map(
               (result): SettledAdministrationAction<A> => ({
                 result,
+                locale: context.locale,
                 revalidates: revalidates?.(input, result) ?? [],
+                refresh: () => refreshes?.(input, result),
               })
             ),
             Effect.provide(actingAs(capabilities, administrator))
@@ -194,7 +247,9 @@ export const defineAdministrationAction = <
           () =>
             Effect.succeed<SettledAdministrationAction<A>>({
               result: unauthorizedResult as A,
+              locale: context.locale,
               revalidates: [],
+              refresh: () => undefined,
             })
         ),
         Effect.mapError(toPublicFailure(context.locale))
@@ -204,17 +259,50 @@ export const defineAdministrationAction = <
       >
   );
 
+  type ActionResult = SafeActionResult<
+    string,
+    S,
+    AdministrationValidationErrors<S>,
+    A
+  >;
+
   const administrationAction: AdministrationAction<S, A> = async (input) => {
     const { data, ...settled } = await action(
       input as Parameters<typeof action>[0]
     );
-    if (data !== undefined) {
-      for (const path of data.revalidates) revalidateLocalizedPath(path);
+    if (data === undefined) return settled as ActionResult;
+
+    const { refreshed, revalidated } = applySettledChanges(data);
+    if (Result.isFailure(refreshed) || Result.isFailure(revalidated)) {
+      await Effect.gen(function* () {
+        if (Result.isFailure(refreshed)) {
+          yield* Effect.logWarning("Administration cache refresh failed").pipe(
+            Effect.annotateLogs({ error: refreshed.failure })
+          );
+        }
+        if (Result.isFailure(revalidated)) {
+          yield* Effect.logError("Action failed").pipe(
+            Effect.annotateLogs({ error: revalidated.failure })
+          );
+        }
+      }).pipe(
+        // The change was made, so logging must not change the answer.
+        runWorkspaceEffectOrElse(workspaceOptions.operation, {
+          boundary: "action",
+          failureCode: "administration_settlement_log_failed",
+          orElse: () => undefined,
+        })
+      );
     }
-    return {
-      ...settled,
-      ...(data !== undefined && { data: data.result }),
-    } as SafeActionResult<string, S, AdministrationValidationErrors<S>, A>;
+    if (Result.isFailure(revalidated)) {
+      return {
+        serverError: workspaceOptions.failureCopy.unexpected(
+          {},
+          { locale: data.locale }
+        ),
+      } as ActionResult;
+    }
+    return { ...settled, data: data.result } as ActionResult;
   };
   return administrationAction;
 };

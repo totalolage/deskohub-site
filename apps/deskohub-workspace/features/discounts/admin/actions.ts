@@ -6,7 +6,7 @@ import { m } from "@/features/administration/i18n";
 import { defineAdministrationAction } from "@/features/administrators/server/administration-request.server";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceActionFailureCopy } from "@/shared/backend/workspace-action";
-import { refreshCalendarDiscountSourceAfterMutation } from "./calendar-discount-source-maintenance.server";
+import { startCalendarDiscountSourceRefresh } from "./calendar-discount-source-maintenance.server";
 import {
   type DiscountAdminCustomerSearch,
   type DiscountAdminMutation,
@@ -50,7 +50,6 @@ const executeDiscountAdminActionMutation = Effect.fn(
   "DiscountAdministration.executeActionMutation"
 )(function* (input: DiscountAdminMutation, locale: Locale) {
   const result = yield* executeDiscountAdminMutation(input);
-  yield* refreshCalendarDiscountSourceAfterMutation(input);
 
   return {
     ...(result.createdDiscountId && {
@@ -86,6 +85,7 @@ const discountAdminMutationAction = defineAdministrationAction(
     capabilities: DiscountAdministration.Live,
     publicFailure: getDiscountAdminMutationErrorMessage,
     revalidates: getMutatedCustomerPaths,
+    refreshes: startCalendarDiscountSourceRefresh,
   },
   (input, { locale }) => executeDiscountAdminActionMutation(input, locale)
 );

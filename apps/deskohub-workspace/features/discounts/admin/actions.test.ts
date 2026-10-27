@@ -1,22 +1,39 @@
 import "@/shared/testing/workspace-test-env";
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
-import { Effect, Layer, Predicate } from "effect";
+import { Effect, Fiber, Layer, Predicate } from "effect";
 import { administrationHref } from "@/features/administration/administration-href";
 import { m } from "@/features/administration/i18n";
 import { mockAdministratorAccess } from "@/features/administrators/server/administrator-access.test-utils";
 
 const access = mockAdministratorAccess("discount-administration-actions");
 const revalidatedPaths: string[] = [];
+// The mutation and every tag invalidation and `after` callback, each with
+// whether it ran inside a fiber. The action's own telemetry flush schedules
+// `after` callbacks before the mutation.
+const timeline: string[] = [];
+const fiberState = () =>
+  Fiber.getCurrent() === undefined ? "outside" : "inside";
+const sinceMutation = () => timeline.slice(timeline.indexOf("inside:mutate"));
 
 mock.module("server-only", () => ({}));
+mock.module("next/cache", () => ({
+  cacheLife: () => undefined,
+  cacheTag: () => undefined,
+  revalidatePath: () => undefined,
+  revalidateTag: (tag: string) => {
+    timeline.push(`${fiberState()}:revalidate:${tag}`);
+  },
+}));
 mock.module("next/headers", () => ({
   cookies: async () => ({ get: () => undefined, getAll: () => [] }),
   headers: async () =>
     new Headers({ referer: "https://deskohub.test/en-US/admin" }),
 }));
 mock.module("next/server", () => ({
-  after: () => undefined,
+  after: () => {
+    timeline.push(`${fiberState()}:after`);
+  },
   connection: () => Promise.resolve(),
 }));
 mock.module("next/root-params", () => ({
@@ -39,6 +56,9 @@ const { DiscountAdministration, DiscountAdminNotFoundError } = await import(
 );
 const { getDiscountAdminMutationErrorMessage } = await import(
   "./mutation-error-message"
+);
+const { calendarDiscountSourceTag } = await import(
+  "../calendar-discount-source.server"
 );
 
 type Administration = DiscountAdministration["Service"];
@@ -85,6 +105,12 @@ const customerCode = {
   },
 } as const;
 
+const recordMutation = <A, E>(mutation: Effect.Effect<A, E>) =>
+  Effect.andThen(
+    Effect.sync(() => timeline.push(`${fiberState()}:mutate`)),
+    mutation
+  );
+
 afterAll(() => {
   DiscountAdministration.Live = originalLive;
 });
@@ -94,13 +120,14 @@ beforeEach(() => {
   administration = {};
   calls.length = 0;
   revalidatedPaths.length = 0;
+  timeline.length = 0;
 });
 
 describe("mutateDiscountAdmin", () => {
   test("revalidates the customer page a customer code was created for", async () => {
     administration = {
       createCustomerCode: () =>
-        Effect.succeed("019c91dd-c560-7e55-b9d8-c95065efd51f"),
+        recordMutation(Effect.succeed("019c91dd-c560-7e55-b9d8-c95065efd51f")),
     };
 
     const result = await mutateDiscountAdmin(customerCode);
@@ -112,6 +139,25 @@ describe("mutateDiscountAdmin", () => {
         customerId: "customer-id",
       }),
     ]);
+    expect(sinceMutation()).toEqual(["inside:mutate"]);
+  });
+
+  test("refreshes the calendar discounts after a discount change settles", async () => {
+    administration = {
+      deleteDiscount: () => recordMutation(Effect.void),
+    };
+
+    const result = await mutateDiscountAdmin({
+      kind: "delete-discount",
+      id: "019c91dd-c560-7e55-b9d8-c95065efd51d",
+    });
+
+    expect(result).toHaveProperty("data");
+    expect(sinceMutation()).toEqual([
+      "inside:mutate",
+      `outside:revalidate:${calendarDiscountSourceTag}`,
+      "outside:after",
+    ]);
   });
 
   test("words a failed mutation for the operator and revalidates nothing", async () => {
@@ -119,7 +165,9 @@ describe("mutateDiscountAdmin", () => {
       resource: { kind: "Dotypos customer", id: "customer-id" as never },
       message: "missing",
     });
-    administration = { createCustomerCode: () => Effect.fail(missing) };
+    administration = {
+      createCustomerCode: () => recordMutation(Effect.fail(missing)),
+    };
 
     const result = await mutateDiscountAdmin(customerCode);
 
@@ -127,6 +175,7 @@ describe("mutateDiscountAdmin", () => {
       serverError: getDiscountAdminMutationErrorMessage(missing, "en-US"),
     });
     expect(revalidatedPaths).toEqual([]);
+    expect(sinceMutation()).toEqual(["inside:mutate"]);
   });
 
   test("refuses an account without the grant before any mutation", async () => {
