@@ -8,6 +8,7 @@ import { Effect } from "effect";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import {
   addRedaction,
+  browserSessionFor,
   makePlaywrightBrowserRunner,
   type Runner,
 } from "./runtime";
@@ -102,7 +103,7 @@ test.skipIf(!chromiumAvailable)(
     const outcome = await withRunner(async (run) => {
       await command(run, session, ["open", `${origin()}/`]);
       const browserSession = await Effect.runPromise(
-        run.session?.(session) ?? Effect.die("runner bridge missing")
+        browserSessionFor(run, session)
       );
       const title = await Effect.runPromise(
         browserSession.use("read the title", (page) => page.title())
@@ -114,21 +115,29 @@ test.skipIf(!chromiumAvailable)(
           value: "synthetic-session-value",
         })
       );
-      const cookie = await command(
-        run,
-        session,
-        ["cookie", "get", "--stdin"],
-        JSON.stringify({
+      const cookie = await Effect.runPromise(
+        browserSession.describeCookie({
           name: "session_token",
           url: "https://workspace.example.test/en-US",
           value: "synthetic-session-value",
         })
       );
-      return { cookie, title };
+      // Cookies go through the session only; the argv protocol has none.
+      const argvCookie = await command(
+        run,
+        session,
+        ["cookie", "get", "--stdin"],
+        "{}"
+      ).then(
+        () => "accepted",
+        () => "rejected"
+      );
+      return { argvCookie, cookie, title };
     });
 
     expect(outcome.title).toBe("Checkout");
-    expect(JSON.parse(outcome.cookie)).toEqual({
+    expect(outcome.argvCookie).toBe("rejected");
+    expect(outcome.cookie).toEqual({
       httpOnly: true,
       lifetimeDays: null,
       matches: true,
@@ -137,7 +146,9 @@ test.skipIf(!chromiumAvailable)(
       sameSite: "Lax",
       secure: true,
     });
-    expect(outcome.cookie).not.toContain("synthetic-session-value");
+    expect(JSON.stringify(outcome.cookie)).not.toContain(
+      "synthetic-session-value"
+    );
   }
 );
 

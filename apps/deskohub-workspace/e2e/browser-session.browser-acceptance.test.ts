@@ -883,6 +883,107 @@ test.skipIf(!chromiumAvailable)(
 );
 
 test.skipIf(!chromiumAvailable)(
+  "describes a cookie by its attributes and expected value, never the value",
+  async () => {
+    const siteUrl = "https://workspace.example.test";
+    const value = "synthetic-remembered-code";
+    const outcome = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const session = yield* openSession();
+          yield* session.use("add cookies", (page) =>
+            page.context().addCookies([
+              {
+                expires: Math.round(Date.now() / 1000) + 30 * 86_400,
+                httpOnly: false,
+                name: "remembered",
+                sameSite: "Lax",
+                secure: true,
+                url: siteUrl,
+                value,
+              },
+            ])
+          );
+          yield* session.setSessionCookie({
+            name: "session_token",
+            url: siteUrl,
+            value: "synthetic-session",
+          });
+          const described = yield* Effect.all({
+            absent: session.describeCookie({ name: "absent", url: siteUrl }),
+            differs: session.describeCookie({
+              name: "remembered",
+              url: `${siteUrl}/en-US/account`,
+              value: "another-code",
+            }),
+            matches: session.describeCookie({
+              name: "remembered",
+              url: siteUrl,
+              value,
+            }),
+            sessionCookie: session.describeCookie({
+              name: "session_token",
+              url: siteUrl,
+            }),
+          });
+          const invalidQuery = yield* Effect.flip(
+            session.describeCookie({ name: "remembered", url: "not a url" })
+          );
+          yield* session.close();
+          const afterClose = yield* Effect.flip(
+            session.describeCookie({ name: "remembered", url: siteUrl })
+          );
+          return { afterClose, described, invalidQuery };
+        })
+      )
+    );
+
+    expect(outcome.described).toEqual({
+      absent: { present: false },
+      differs: {
+        httpOnly: false,
+        lifetimeDays: 30,
+        matches: false,
+        path: "/",
+        present: true,
+        sameSite: "Lax",
+        secure: true,
+      },
+      matches: {
+        httpOnly: false,
+        lifetimeDays: 30,
+        matches: true,
+        path: "/",
+        present: true,
+        sameSite: "Lax",
+        secure: true,
+      },
+      sessionCookie: {
+        httpOnly: true,
+        lifetimeDays: null,
+        matches: null,
+        path: "/",
+        present: true,
+        sameSite: "Lax",
+        secure: true,
+      },
+    });
+    for (const failure of [outcome.invalidQuery, outcome.afterClose]) {
+      expect(failure.operation).toBe("read browser cookie");
+      expect(isWorkspaceE2ETimeout(failure)).toBe(false);
+    }
+    expect(outcome.afterClose.message).toContain("browser session closed");
+    expect(
+      JSON.stringify([
+        outcome.described,
+        outcome.invalidQuery,
+        outcome.afterClose,
+      ])
+    ).not.toContain(value);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
   "sets only HTTP-only session cookies bound to an HTTPS origin",
   async () => {
     const siteUrl = "https://workspace.example.test";
