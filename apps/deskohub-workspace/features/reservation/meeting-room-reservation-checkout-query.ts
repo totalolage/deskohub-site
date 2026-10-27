@@ -1,5 +1,6 @@
 import { decodeStandardSchema } from "@deskohub/standard-schema";
 import { Schema } from "effect";
+import type { MeetingRoomEarlySetup } from "@/features/reservation/meeting-room-early-setup";
 import {
   getMeetingRoomReservationDefaultValues,
   type MeetingRoomReservationInput,
@@ -73,21 +74,33 @@ export const getMeetingRoomReservationDefaultValuesFromSearchParams = (
     ...decodeReservationCheckoutCustomer(searchParams),
     duration: getMeetingRoomReservationDurationKey(duration),
     startDateTime: startDateTimeOrEarliest,
+    // Only a link that asks for setup time turns it on; it is never filled
+    // from the last reservation.
+    earlySetup:
+      getTrimmedSearchParam(searchParams, earlySetupQueryParam) ===
+      earlySetupQueryValue,
     marketingConsent: false,
   };
 };
 
+const earlySetupQueryParam = "earlySetup";
+const earlySetupQueryValue = "true";
+
 /** The meeting-room selection as the link parameters the parser above reads. */
 export const getMeetingRoomReservationSelectionSearchParams = (
-  selection: Pick<MeetingRoomReservationInput, "startDateTime" | "duration">
+  selection: Pick<MeetingRoomReservationInput, "startDateTime" | "duration"> &
+    MeetingRoomEarlySetup
 ): ReservationSelectionSearchParams => ({
   startDateTime: selection.startDateTime || undefined,
   duration: selection.duration,
+  [earlySetupQueryParam]:
+    selection.earlySetup === true ? earlySetupQueryValue : undefined,
 });
 
 /**
  * A stored meeting-room reservation's selection as link parameters, so a
- * retried checkout reopens the form on the same start and duration. A row
+ * retried checkout reopens the form on the same start, duration, and setup
+ * choice. `reservedFrom` is the booked start, after any setup time. A row
  * without a recorded duration takes the one its interval matches.
  */
 export const getStoredMeetingRoomReservationSelectionSearchParams = (
@@ -108,6 +121,7 @@ export const getStoredMeetingRoomReservationSelectionSearchParams = (
     getMeetingRoomReservationSelectionSearchParams({
       startDateTime: getMeetingRoomStartDateTime(reservation.reservedFrom),
       duration: getMeetingRoomReservationDurationKey(duration),
+      earlySetup: reservation.earlySetup,
     })
   );
 };
@@ -133,7 +147,7 @@ export const getMeetingRoomRestoredReservationValues = (
     return restoredValues;
   }
 
-  const { startDateTime, duration } =
+  const { startDateTime, duration, earlySetup } =
     getMeetingRoomReservationDefaultValuesFromSearchParams(searchParams, now);
-  return { ...restoredValues, startDateTime, duration };
+  return { ...restoredValues, startDateTime, duration, earlySetup };
 };

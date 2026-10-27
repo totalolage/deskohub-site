@@ -28,7 +28,7 @@ The [reservation product specification](../../../../apps/deskohub-workspace/docs
 
 ## Persistence
 
-Dotypos owns reservation facts. Local stored details for meeting rooms and offices contain only the family discriminator, such as `{ kind: "office" }`. Project confirmed timing and seats from Dotypos. Transient signed checkout details carry duration and seats into pricing and hold creation. Don't persist them to duplicate provider state.
+Dotypos owns reservation facts. Local stored details for offices contain only the family discriminator, `{ kind: "office" }`. Meeting-room details add the optional purchased `duration` and the optional `earlySetup` flag, which says how to read the Dotypos interval (see [Meeting rooms](#meeting-rooms)). Project confirmed timing and seats from Dotypos. Transient signed checkout details carry duration and seats into pricing and hold creation. Don't persist them to duplicate provider state.
 
 Keep historical and provider-owned projections structural, so current purchase limits never make older data undecodable. Historical cowork tiers stay decodable.
 
@@ -39,6 +39,8 @@ Keep historical and provider-owned projections structural, so current purchase l
 - Never infer the product or price from an interval, and never normalize a rolling 24 hours into a day. Confirmed reservation display may classify a provider interval as a whole day only when it spans consecutive Prague midnights.
 - Use `Temporal.PlainDate` and `Temporal.ZonedDateTime` for the arithmetic. Don't serialize `Temporal.Duration` as the identity, because it loses the midnight anchor. Never derive a minute-count identity.
 - Eligibility checks the exclusive end, not the start.
+- Early setup (`earlySetup`, `features/reservation/meeting-room-early-setup.ts`) holds the room from 15 minutes before the booked start. Dotypos stores that occupied interval; read the booked interval back through `decodeBookedReservation` with the stored details, and build the occupied one with `getMeetingRoomOccupiedInterval`. Overlap, `ensureAvailable`, and table assignment use the occupied interval; price, discounts, eligibility, and cancellation use the booked one. Details without the flag keep their booked interval.
+- Each start-times entry carries `earlySetupAvailable`, the occupied interval evaluated by the same single-interval rule as the booked one. Meeting-room inventory starts the day before the start date, so a midnight start sees the previous evening's bookings. The form enables the checkbox only for a listed start whose setup is free, fetches the start list for a whole day too (its single midnight entry), and clears the choice once the list settles on a start that rules it out. Selection links write `earlySetup=true` only when chosen; absence means off.
 
 ## Offices
 

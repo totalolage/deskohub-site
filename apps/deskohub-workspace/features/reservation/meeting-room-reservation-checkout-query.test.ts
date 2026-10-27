@@ -44,6 +44,7 @@ describe("getMeetingRoomReservationDefaultValuesFromSearchParams", () => {
     expect(values).toEqual({
       startDateTime: "2099-08-12T09:00",
       duration: "hour:1",
+      earlySetup: false,
       name: "Ada Lovelace",
       email: adaEmail,
       phone: "+420777777777",
@@ -92,6 +93,7 @@ describe("getMeetingRoomReservationDefaultValuesFromSearchParams", () => {
     ).toEqual({
       startDateTime: "2099-07-30T10:00",
       duration: "hour:1",
+      earlySetup: false,
       name: "Ada Lovelace",
       email: adaEmail,
       phone: "",
@@ -253,9 +255,13 @@ describe("customer last reservation defaults", () => {
 
 describe("getMeetingRoomReservationSelectionSearchParams", () => {
   test.each([
-    { startDateTime: "2099-08-12T09:00", duration: "hour:1" },
-    { startDateTime: "2099-08-13T14:00", duration: "hour:4" },
-    { startDateTime: "2099-08-14T08:00", duration: "day:1" },
+    {
+      startDateTime: "2099-08-12T09:00",
+      duration: "hour:1",
+      earlySetup: false,
+    },
+    { startDateTime: "2099-08-13T14:00", duration: "hour:4", earlySetup: true },
+    { startDateTime: "2099-08-14T08:00", duration: "day:1", earlySetup: true },
   ] as const)("the parser reads back the written selection %o", (selection) => {
     const searchParams = new URLSearchParams(
       "duration=hour:4&discountCode=SPRING"
@@ -272,6 +278,35 @@ describe("getMeetingRoomReservationSelectionSearchParams", () => {
       )
     ).toEqual(expect.objectContaining(selection));
     expect(searchParams.get("discountCode")).toBe("SPRING");
+  });
+
+  test("turns a written setup choice off again", () => {
+    const searchParams = new URLSearchParams();
+    const selection = {
+      startDateTime: "2099-08-12T09:00",
+      duration: "hour:1",
+    } as const;
+    setReservationSelectionSearchParams(
+      searchParams,
+      getMeetingRoomReservationSelectionSearchParams({
+        ...selection,
+        earlySetup: true,
+      })
+    );
+    setReservationSelectionSearchParams(
+      searchParams,
+      getMeetingRoomReservationSelectionSearchParams({
+        ...selection,
+        earlySetup: false,
+      })
+    );
+
+    expect(
+      getMeetingRoomReservationDefaultValuesFromSearchParams(
+        searchParams,
+        deterministicNow()
+      ).earlySetup
+    ).toBe(false);
   });
 
   const ongoingNow = workspaceInstant("2099-07-30T10:30");
@@ -331,6 +366,36 @@ describe("getMeetingRoomReservationSelectionSearchParams", () => {
       })
     );
   });
+
+  test("a Pay restoration keeps the signed setup choice unless the URL edits the selection", () => {
+    const restoredReservation: NormalizedMeetingRoomReservationOrder = {
+      kind: "meeting-room",
+      duration: { unit: "hour", amount: 4 },
+      reservationDate: "2099-07-30",
+      startsAt: "2099-07-30T07:00:00Z",
+      endsAt: "2099-07-30T11:00:00Z",
+      earlySetup: true,
+      name: "Ada Lovelace",
+      email: adaEmail,
+      phone: "+420777777777",
+      billing: { purpose: "personal", invoice: "none" },
+    };
+
+    expect(
+      getMeetingRoomRestoredReservationValues(
+        restoredReservation,
+        new URLSearchParams("payState=signed"),
+        ongoingNow
+      )?.earlySetup
+    ).toBe(true);
+    expect(
+      getMeetingRoomRestoredReservationValues(
+        restoredReservation,
+        writeSelection(new URLSearchParams("payState=signed")),
+        ongoingNow
+      )?.earlySetup
+    ).toBe(false);
+  });
 });
 
 describe("getStoredMeetingRoomReservationSelectionSearchParams", () => {
@@ -376,6 +441,23 @@ describe("getStoredMeetingRoomReservationSelectionSearchParams", () => {
       ).toEqual(expect.objectContaining(selection));
     }
   );
+
+  test("keeps a stored setup choice", () => {
+    const stored = {
+      kind: "meeting-room",
+      duration: { unit: "hour", amount: 1 },
+      reservedFrom: workspaceInstant("2099-08-12T09:00"),
+      reservedUntil: workspaceInstant("2099-08-12T10:00"),
+    } as const;
+
+    expect(readBack({ ...stored, earlySetup: true })).toEqual(
+      expect.objectContaining({
+        startDateTime: "2099-08-12T09:00",
+        earlySetup: true,
+      })
+    );
+    expect(readBack(stored).earlySetup).toBe(false);
+  });
 
   test("takes the duration from the interval when the row has none", () => {
     expect(
