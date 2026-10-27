@@ -1,6 +1,6 @@
 ---
 name: deskohub-effect-v4
-description: Effect V4 code, Context.Service, Layer, Effect.fn, Effect.Do workflow, Effect Schema, typed errors, retry and timeout, Match, tagged unions, runWorkspaceEffect, runWorkspaceEffectOrElse, runWorkspaceBrowserEffect, defineWorkspaceAction, defineWorkspaceRoute, browser failure reporting, Effect bundle size.
+description: Effect V4 code, Context.Service, Layer, Effect.fn, Effect.Do workflow, Effect Schema, typed errors, retry and timeout, Match, tagged unions, runWorkspaceEffect, runWorkspaceEffectOrElse, runWorkspaceBrowserEffect, defineWorkspaceAction, defineWorkspaceRoute, Vercel Queue topic, defineQueueTopic, QueuePublisher, queue consumer, browser failure reporting, Effect bundle size.
 ---
 
 # Deskohub Effect V4
@@ -11,7 +11,7 @@ Read the references that match the change. For a broad service or feature refact
 
 - Services, Layers, capabilities, module layout, mocks, outbound HTTP, provider calls, operation naming, concurrency, and barrels: [references/services-and-layers.md](references/services-and-layers.md).
 - Workspace transactions, writers that commit with their caller, and clients that never join: [references/workspace-transactions.md](references/workspace-transactions.md).
-- Server actions, routes, pages, tasks, the shared runtime, fail-open runs, and browser runs: [references/workspace-runners.md](references/workspace-runners.md).
+- Server actions, routes, pages, tasks, queue topics and consumers, the shared runtime, fail-open runs, and browser runs: [references/workspace-runners.md](references/workspace-runners.md).
 - Multi-step workflows, `Effect.fn`, conditionals, and error recovery inside a pipeline: [references/declarative-workflows.md](references/declarative-workflows.md).
 - Schemas, brands, validation, error mapping, discriminated unions, and `Match`: [references/schemas-errors-and-unions.md](references/schemas-errors-and-unions.md).
 

@@ -2,8 +2,9 @@ import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Logger } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "./reservation-hold-cleanup.service";
 
 const now = Temporal.Instant.from("2026-06-01T10:00:00.000Z");
@@ -99,34 +100,36 @@ const duePayload = {
 describe("ReservationHoldCleanupScheduleService", () => {
   test("builds bounded delayed queue messages with idempotency", async () => {
     const {
-      getReservationHoldCleanupScheduleMessage,
       reservationHoldCleanupScheduleMaxDelaySeconds,
-      reservationHoldCleanupQueueTopic,
+      reservationHoldCleanupTopic,
     } = await import("./reservation-hold-cleanup-queue.service");
 
-    const message = getReservationHoldCleanupScheduleMessage(
-      { orderId: "order-id", reservationHoldExpiresAt: expiresAt },
-      now
-    );
+    const message = reservationHoldCleanupTopic.publication({
+      orderId: "order-id" as WorkspaceReservationId,
+      reservationHoldExpiresAt: expiresAt,
+      now,
+    });
     expect(message).toEqual({
-      topic: reservationHoldCleanupQueueTopic,
-      payload: duePayload,
+      topic: "workspace-reservation-hold-cleanup",
+      message: duePayload,
       options: {
         delaySeconds: 600,
         retentionSeconds: 4200,
-        idempotencyKey: `reservation-hold-cleanup:order-id:${expiresAt.toString()}`,
+        idempotencyKey:
+          "reservation-hold-cleanup:order-id:2026-06-01T10:10:00Z",
       },
     });
-
-    const clamped = getReservationHoldCleanupScheduleMessage(
-      {
-        orderId: "order-id",
-        reservationHoldExpiresAt: Temporal.Instant.from(
-          "2026-06-09T10:00:01.000Z"
-        ),
-      },
-      now
+    expect(JSON.stringify(message.message)).toBe(
+      '{"schemaVersion":1,"orderId":"order-id","reservationHoldExpiresAtIso":"2026-06-01T10:10:00Z"}'
     );
+
+    const clamped = reservationHoldCleanupTopic.publication({
+      orderId: "order-id" as WorkspaceReservationId,
+      reservationHoldExpiresAt: Temporal.Instant.from(
+        "2026-06-09T10:00:01.000Z"
+      ),
+      now,
+    });
     expect(clamped.options.delaySeconds).toBe(
       reservationHoldCleanupScheduleMaxDelaySeconds
     );
@@ -136,31 +139,80 @@ describe("ReservationHoldCleanupScheduleService", () => {
   });
 
   test("treats duplicate queue messages as already enqueued", async () => {
-    const { makeReservationHoldCleanupScheduleService } = await import(
+    const { ReservationHoldCleanupScheduleService } = await import(
       "./reservation-hold-cleanup-queue.service"
     );
-    const { DuplicateMessageError } = await import("@vercel/queue");
-    const service = makeReservationHoldCleanupScheduleService(
-      mock(() =>
-        Promise.reject(new DuplicateMessageError("duplicate"))
-      ) as never
+    const { makeMemoryQueue } = await import(
+      "@/shared/backend/queue/memory-queue.test-utils"
     );
+    const queue = makeMemoryQueue();
+    const logs: Array<{ message: unknown; fields: unknown }> = [];
+    const captureLogs = Logger.layer([
+      Logger.make(({ message }) => {
+        const [text, fields] = Array.isArray(message) ? message : [message];
+        logs.push({ message: text, fields });
+      }),
+    ]);
+    const enqueue = () =>
+      Effect.flatMap(ReservationHoldCleanupScheduleService, (service) =>
+        service.enqueueCleanup({
+          orderId: "order-id" as WorkspaceReservationId,
+          reservationHoldExpiresAt: expiresAt,
+        })
+      ).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            ReservationHoldCleanupScheduleService.Default.pipe(
+              Layer.provide(queue.layer)
+            ),
+            captureLogs
+          )
+        ),
+        Effect.runPromise
+      );
 
-    // A duplicate rejection is swallowed: enqueue resolves instead of
-    // failing with a schedule error.
-    await Effect.runPromise(
-      service.enqueueCleanup({
-        orderId: "order-id",
-        reservationHoldExpiresAt: expiresAt,
-      })
-    );
+    // The second enqueue resolves instead of failing with a schedule error.
+    await enqueue();
+    await enqueue();
+    expect(queue.published()).toHaveLength(1);
+    expect(logs.map(({ message }) => message)).toEqual([
+      "Reservation hold cleanup enqueue started",
+      "Reservation hold cleanup enqueued",
+      "Reservation hold cleanup enqueue started",
+      "Reservation hold cleanup was already enqueued",
+    ]);
+    // The logged message keeps its pre-topic shape.
+    expect(logs[0]?.fields).toEqual({
+      message: {
+        topic: "workspace-reservation-hold-cleanup",
+        payload: duePayload,
+        options: queue.published()[0]?.options,
+      },
+    });
   });
 
-  test("ignores invalid, not-due, changed-expiry, and completed reservations", async () => {
-    const invalid = await runProcessMessage({ schemaVersion: 2 });
-    expect(invalid.result).toBe("ignored");
-    expect(invalid.findById).not.toHaveBeenCalled();
+  test("decodes only well-formed messages", async () => {
+    const { reservationHoldCleanupTopic } = await import(
+      "./reservation-hold-cleanup-queue.service"
+    );
+    const { decodeStandardSchema } = await import("@deskohub/standard-schema");
 
+    for (const message of [
+      { ...duePayload, schemaVersion: 2 },
+      { ...duePayload, orderId: "" },
+      { ...duePayload, reservationHoldExpiresAtIso: "tomorrow" },
+      { schemaVersion: 1, orderId: "order-id" },
+    ]) {
+      expect(
+        decodeStandardSchema(reservationHoldCleanupTopic.message, message)
+      ).toBeUndefined();
+    }
+    expect(
+      decodeStandardSchema(reservationHoldCleanupTopic.message, duePayload)
+    ).toEqual(duePayload);
+  });
+
+  test("ignores not-due, changed-expiry, and completed reservations", async () => {
     const notDue = mock(() =>
       Effect.succeed(
         makeReservation({
@@ -226,7 +278,7 @@ describe("ReservationHoldCleanupScheduleService", () => {
   });
 
   test("cancels a due hold whose deadline came from the nanosecond clock", async () => {
-    const { getReservationHoldCleanupScheduleMessage } = await import(
+    const { reservationHoldCleanupTopic } = await import(
       "./reservation-hold-cleanup-queue.service"
     );
     const { toStoredInstant } = await import("@/db/instant");
@@ -237,16 +289,17 @@ describe("ReservationHoldCleanupScheduleService", () => {
     const storedReservation = makeReservation({
       reservationHoldExpiresAt: toStoredInstant(clockExpiresAt),
     });
-    const message = getReservationHoldCleanupScheduleMessage(
-      { orderId: "order-id", reservationHoldExpiresAt: clockExpiresAt },
-      now
-    );
-    expect(message.payload.reservationHoldExpiresAtIso).toBe(
+    const { message } = reservationHoldCleanupTopic.publication({
+      orderId: "order-id" as WorkspaceReservationId,
+      reservationHoldExpiresAt: clockExpiresAt,
+      now,
+    });
+    expect(message.reservationHoldExpiresAtIso).toBe(
       "2026-06-01T10:10:00.123456Z"
     );
 
     for (const payload of [
-      message.payload,
+      message,
       // Messages enqueued before the payload was stored-precision.
       { ...duePayload, reservationHoldExpiresAtIso: clockExpiresAt.toString() },
     ]) {
@@ -297,25 +350,5 @@ describe("ReservationHoldCleanupScheduleService", () => {
       orderId: "order-id",
       checkedAt: retryNow,
     });
-  });
-
-  test("vercel config wires the queue topic to its route", async () => {
-    const { reservationHoldCleanupQueueTopic } = await import(
-      "./reservation-hold-cleanup-queue.service"
-    );
-    const config = await Bun.file(
-      new URL("../../../../vercel.json", import.meta.url)
-    ).json();
-
-    expect(
-      config.functions[
-        "app/api/queues/workspace/reservation-hold-cleanup/route.ts"
-      ].experimentalTriggers
-    ).toContainEqual(
-      expect.objectContaining({
-        type: "queue/v2beta",
-        topic: reservationHoldCleanupQueueTopic,
-      })
-    );
   });
 });
