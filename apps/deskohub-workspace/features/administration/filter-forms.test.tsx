@@ -22,6 +22,7 @@ import {
   OrdersAdministrationFilterForm,
   ReservationsAdministrationFilterForm,
 } from "./filter-forms";
+import { operationListQuery } from "./operation-list-query";
 import { orderListQuery } from "./order-list-query";
 import type { ReservationListQuery } from "./reservation-list-query";
 
@@ -178,8 +179,12 @@ describe("administration filter forms", () => {
     test("uses changed server dates and provider criteria after navigation", async () => {
       const view = render(
         <OperationsAdministrationFilterForm
-          input={{ channel: "BACKOFFICE", operationType: "REFUND" }}
-          range={{ from: "2026-07-01", to: "2026-08-01" }}
+          query={operationListQuery.parse({
+            channel: "BACKOFFICE",
+            operationType: "REFUND",
+            from: "2026-07-01",
+            to: "2026-08-01",
+          })}
         />
       );
       const from = view.getByLabelText("From") as HTMLInputElement;
@@ -188,8 +193,12 @@ describe("administration filter forms", () => {
       fireEvent.change(channel, { target: { value: "ECOMMERCE" } });
       view.rerender(
         <OperationsAdministrationFilterForm
-          input={{ channel: "BACKOFFICE", operationType: "REFUND" }}
-          range={{ from: "2026-07-01", to: "2026-08-01" }}
+          query={operationListQuery.parse({
+            channel: "BACKOFFICE",
+            operationType: "REFUND",
+            from: "2026-07-01",
+            to: "2026-08-01",
+          })}
         />
       );
       expect(from.value).toBe("2026-07-02");
@@ -197,8 +206,12 @@ describe("administration filter forms", () => {
 
       view.rerender(
         <OperationsAdministrationFilterForm
-          input={{ channel: "ECOMMERCE", operationType: "CAPTURE" }}
-          range={{ from: "2026-07-03", to: "2026-08-03" }}
+          query={operationListQuery.parse({
+            channel: "ECOMMERCE",
+            operationType: "CAPTURE",
+            from: "2026-07-03",
+            to: "2026-08-03",
+          })}
         />
       );
 
@@ -502,8 +515,10 @@ describe("administration filter forms", () => {
           }}
         />
         <OperationsAdministrationFilterForm
-          input={{}}
-          range={{ from: "2026-07-01", to: "2026-07-08" }}
+          query={operationListQuery.parse({
+            from: "2026-07-01",
+            to: "2026-07-08",
+          })}
         />
       </RouteLocaleProvider>
     );

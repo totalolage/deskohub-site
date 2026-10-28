@@ -1,6 +1,5 @@
 "use client";
 
-import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
 import type { FormEvent } from "react";
 import { useForm } from "react-hook-form";
@@ -28,11 +27,11 @@ import {
   AdministrationFilterInput,
   AdministrationFilterSelect,
 } from "./filter-controls";
-import {
-  type OperationFilterValues,
-  operationFilterSchema,
-} from "./filter-schemas";
 import { m } from "./i18n";
+import {
+  type OperationListQuery,
+  operationListQuery,
+} from "./operation-list-query";
 import { type OrderListQuery, orderListQuery } from "./order-list-query";
 import {
   nexiOperationChannels,
@@ -47,11 +46,6 @@ import {
   type ReservationListQuery,
   reservationListQuery,
 } from "./reservation-list-query";
-
-type DateRangeDefaults = {
-  readonly from: string;
-  readonly to: string;
-};
 
 type ReservationDateShortcuts = {
   readonly today: AdministrationReservationClosedDateRange;
@@ -208,27 +202,17 @@ export function BookingsAdministrationFilterForm({
 }
 
 export function OperationsAdministrationFilterForm({
-  input,
-  range,
+  query,
 }: {
-  readonly input: {
-    readonly channel?: (typeof nexiOperationChannels)[number];
-    readonly operationType?: (typeof nexiOperationTypes)[number];
-  };
-  readonly range: DateRangeDefaults;
+  readonly query: OperationListQuery;
 }) {
   const locale = useRouteLocale();
-  const values: OperationFilterValues = {
-    from: range.from,
-    to: range.to,
-    channel: input.channel ?? "",
-    operationType: input.operationType ?? "",
-  };
-  const form = useForm<OperationFilterValues>({
+  const values = operationListQuery.formValues(query);
+  const form = useForm({
     defaultValues: values,
     mode: "onSubmit",
     reValidateMode: "onChange",
-    resolver: effectSchemaResolver(operationFilterSchema),
+    resolver: standardSchemaResolver(operationListQuery.formSchema),
     values,
   });
 
@@ -248,7 +232,7 @@ export function OperationsAdministrationFilterForm({
         <AdministrationFilterInput
           {...form.register("from")}
           aria-invalid={form.formState.errors.from ? true : undefined}
-          defaultValue={range.from}
+          defaultValue={values.from}
           id="operation-from"
           type="date"
         />
@@ -260,7 +244,7 @@ export function OperationsAdministrationFilterForm({
         <AdministrationFilterInput
           {...form.register("to")}
           aria-invalid={form.formState.errors.to ? true : undefined}
-          defaultValue={range.to}
+          defaultValue={values.to}
           id="operation-to"
           type="date"
         />
@@ -272,7 +256,7 @@ export function OperationsAdministrationFilterForm({
         <AdministrationFilterSelect
           {...form.register("channel")}
           aria-invalid={form.formState.errors.channel ? true : undefined}
-          defaultValue={input.channel ?? ""}
+          defaultValue={values.channel}
           id="operation-channel"
         >
           <option value="">
@@ -292,7 +276,7 @@ export function OperationsAdministrationFilterForm({
         <AdministrationFilterSelect
           {...form.register("operationType")}
           aria-invalid={form.formState.errors.operationType ? true : undefined}
-          defaultValue={input.operationType ?? ""}
+          defaultValue={values.operationType}
           id="operation-operationType"
         >
           <option value="">

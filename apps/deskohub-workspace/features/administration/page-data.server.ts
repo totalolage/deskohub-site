@@ -17,11 +17,8 @@ import {
 import { bookingListQuery } from "./booking-list-query";
 import { customerListQuery } from "./customer-list-query";
 import { formatAdministrationDateTime } from "./formatters";
+import { operationListQuery } from "./operation-list-query";
 import { orderListQuery } from "./order-list-query";
-import {
-  getAdministrationOperationFilters,
-  getAdministrationPaymentDateTimeBounds,
-} from "./payment-administration-filters";
 import { reservationListQuery } from "./reservation-list-query";
 import { getAdministrationReservationProductTitle } from "./reservation-product";
 import {
@@ -326,33 +323,22 @@ export const loadAdministrationOrder = cache((orderId: string) =>
 
 const getAdministrationOperationListInput = async (
   searchParams: AdministrationSearchParams
-) => {
-  const params = await searchParams;
-  const range = getAdministrationPaymentDateTimeBounds(
-    firstParam(params.from),
-    firstParam(params.to)
-  );
-  const { channel, operationType } = getAdministrationOperationFilters({
-    channel: firstParam(params.channel),
-    operationType: firstParam(params.operationType),
-  });
-  return { input: { channel, operationType }, range };
-};
+) => operationListQuery.parse(await searchParams);
 
 const loadAdministrationOperationList = async (
   criteria: ReturnType<typeof getAdministrationOperationListInput>
 ) => {
-  const { input, range } = await criteria;
+  const query = await criteria;
   return runAdministration(
     "administration.operations",
     Effect.gen(function* () {
       const administration = yield* AdministrationService;
       return yield* administration.listOperations({
-        fromTime: range.fromTime,
-        toTime: range.toTime,
+        fromTime: query.fromTime,
+        toTime: query.toTime,
         maxRecords: 100,
-        channel: input.channel,
-        operationType: input.operationType,
+        channel: query.channel,
+        operationType: query.operationType,
       });
     })
   );
