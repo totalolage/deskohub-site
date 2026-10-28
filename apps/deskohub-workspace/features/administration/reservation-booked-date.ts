@@ -106,20 +106,23 @@ export const isHeldFromPreviousDateWithEarlySetup = (
 export const getEarlySetupOrderCandidates = <Booking extends BookedFacts>(
   bookings: readonly Booking[]
 ) => {
-  const startsWithinLead = (
-    booking: Booking | undefined,
-    next: Booking | undefined
-  ) =>
-    booking !== undefined &&
-    next !== undefined &&
-    Temporal.Instant.compare(
-      getBookedStart(next),
-      getMeetingRoomBookedStart(getBookedStart(booking))
-    ) <= 0;
+  // Exports list tens of thousands of bookings, so each start decodes once.
+  const heldStarts = bookings.map((booking) => getBookedStart(booking));
+  const nextStartsWithinLead = (index: number) => {
+    const heldStart = heldStarts[index];
+    const nextHeldStart = heldStarts[index + 1];
+    return (
+      heldStart !== undefined &&
+      nextHeldStart !== undefined &&
+      Temporal.Instant.compare(
+        nextHeldStart,
+        getMeetingRoomBookedStart(heldStart)
+      ) <= 0
+    );
+  };
   return bookings.filter(
-    (booking, index) =>
-      startsWithinLead(booking, bookings[index + 1]) ||
-      startsWithinLead(bookings[index - 1], booking)
+    (_, index) =>
+      nextStartsWithinLead(index) || nextStartsWithinLead(index - 1)
   );
 };
 
