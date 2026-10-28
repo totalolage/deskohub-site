@@ -1,7 +1,6 @@
 "use client";
 
 import { type ReactNode, useEffect } from "react";
-import type { CustomerProfile } from "@/features/account/backend/customer-dotypos-adapter.service";
 import { useAccountLayout } from "@/features/account/components/account-layout-shell";
 import { CustomerAgentConnectionsSection } from "@/features/account/components/customer-agent-connections/customer-agent-connections-section";
 import { DeleteAccountCard } from "@/features/account/components/delete-account-card";
@@ -12,6 +11,7 @@ import { ProfileForm } from "@/features/account/components/profile-form";
 import { ReferralScreen } from "@/features/account/components/referral-screen";
 import type {
   CustomerAvatarPresentation,
+  CustomerProfile,
   ProfileCompletionReferralOutcome,
 } from "@/features/account/contracts";
 import type { CustomerAgentConnection } from "@/features/account/customer-agent-connections";

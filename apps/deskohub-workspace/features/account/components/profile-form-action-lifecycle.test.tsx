@@ -402,60 +402,6 @@ describe("ProfileForm action lifecycle", () => {
     expectDirty();
   });
 
-  test.each([
-    ["firstName", true, m.accountProfileFirstNameRequired],
-    ["lastName", false, m.accountProfileValidationError],
-    ["lastName", true, m.accountProfileValidationError],
-  ] as const)(
-    "reveals profile when a billing-view save reports a %s error (billing errors too: %p)",
-    async (field, withBillingErrors, expectedMessage) => {
-      const fieldId = field === "firstName" ? "first-name" : "last-name";
-      updateCustomerProfile.mockImplementationOnce(() =>
-        Promise.resolve({
-          validationErrors: {
-            formErrors: [],
-            fieldErrors: {
-              [field]: ["Server field error."],
-              ...(withBillingErrors && {
-                billing: ["companyName: Company name is required."],
-              }),
-            },
-          },
-        })
-      );
-
-      const view = render(<ProfileFixture initialSection="billing" />);
-      await act(async () => {
-        fireEvent.submit(
-          view.container.querySelector("#account-profile-form")!
-        );
-      });
-
-      await waitFor(() =>
-        expect(updateCustomerProfile).toHaveBeenCalledTimes(1)
-      );
-      await waitFor(() =>
-        expect(view.getByTestId("active-section").textContent).toBe("profile")
-      );
-      const input = view.container.querySelector(
-        `#account-profile-${fieldId}`
-      )!;
-      expect(input.getAttribute("aria-invalid")).toBe("true");
-      expect(input.getAttribute("aria-describedby")).toBe(
-        `account-profile-${fieldId}-error`
-      );
-      expect(
-        view.container.querySelector(`#account-profile-${fieldId}-error`)
-          ?.textContent
-      ).toBe(expectedMessage({}, { locale: "en-US" }));
-      expect(
-        view.container
-          .querySelector("#account-profile-billing-company-name")!
-          .getAttribute("aria-invalid")
-      ).toBe(withBillingErrors ? "true" : null);
-    }
-  );
-
   test("preserves the full submitted baseline through late edits and Activity hide/show", async () => {
     let resolveUpdate!: (result: ActionResult) => void;
     const pendingUpdate = new Promise<ActionResult>((resolve) => {

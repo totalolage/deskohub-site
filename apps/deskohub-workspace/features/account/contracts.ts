@@ -63,12 +63,33 @@ const customerProfileBillingSchema = Schema.Union([
   }),
 ]);
 
+/** A customer's billing details as read from Dotypos. */
+type CustomerProfileBilling = {
+  readonly kind: "personal" | "business";
+  readonly addressLine1: string | null;
+  readonly addressLine2: string | null;
+  readonly city: string | null;
+  readonly zip: string | null;
+  readonly country: string | null;
+  readonly companyName: string | null;
+  readonly companyId: string | null;
+  readonly vatId: string | null;
+};
+
+/** A customer's profile as read from Dotypos. */
+export type CustomerProfile = {
+  readonly firstName: string;
+  readonly lastName: string | null;
+  readonly phone: string | null;
+  readonly billing: CustomerProfileBilling | null;
+};
+
 /**
  * Dotypos owns the customer profile, so the login email is deliberately
  * absent from the profile input: the verified email is the immutable
  * reservation-linking trust boundary and is never an editable field.
  */
-const updateCustomerProfileSchema = Schema.Struct({
+export const updateCustomerProfileSchema = Schema.Struct({
   firstName: customerProfileNameFieldSchema,
   lastName: trimmedOptionalText(100),
   phone: Schema.optional(customerProfilePhoneFieldSchema),
@@ -89,7 +110,7 @@ export type CustomerProfileInput = typeof updateCustomerProfileSchema.Type;
  * code the form was prefilled with from the shared link; a submitted code
  * equal to it came from the link rather than from typing.
  */
-const completeCustomerProfileSchema = Schema.Struct({
+export const completeCustomerProfileSchema = Schema.Struct({
   ...updateCustomerProfileSchema.fields,
   referralCode: trimmedOptionalText(64),
   prefilledReferralCode: trimmedOptionalText(64),

@@ -3,6 +3,7 @@ import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer, Result } from "effect";
 import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import { NoReviewAccounts } from "@/features/review-accounts/backend/review-accounts.repository.mock";
+import type { CustomerProfile } from "../contracts";
 import {
   CustomerAccountAccessError,
   customerAccountIdSchema,
@@ -13,7 +14,6 @@ import {
   type CustomerAccountSession,
   CustomerAuthentication,
 } from "./customer-authentication.service";
-import type { CustomerProfile } from "./customer-dotypos-adapter.service";
 import { CustomerProfileService } from "./customer-profile.service";
 
 const customerEmail = testEmailAddress("ada");

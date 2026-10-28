@@ -8,7 +8,7 @@ import {
   getReviewAccountContact,
   ReviewAccounts,
 } from "@/features/review-accounts";
-import type { CustomerProfileInput } from "../contracts";
+import type { CustomerProfile, CustomerProfileInput } from "../contracts";
 import {
   type CustomerAccountAccessError,
   type CustomerAccountId,
@@ -20,7 +20,6 @@ import {
   type CustomerAccountSession,
   CustomerAuthentication,
 } from "./customer-authentication.service";
-import type { CustomerProfile } from "./customer-dotypos-adapter.service";
 import { CustomerProfileService } from "./customer-profile.service";
 
 /**
