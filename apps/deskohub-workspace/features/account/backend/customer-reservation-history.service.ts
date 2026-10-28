@@ -22,6 +22,7 @@ import {
 } from "@/features/reservation/backend/reservation-records";
 import { ReviewAccounts, ReviewSandbox } from "@/features/review-accounts";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
+import { temporalInstantToIsoString } from "@/shared/utils/temporal";
 import type {
   CustomerReservationHistory,
   CustomerReservationParty,
@@ -182,7 +183,8 @@ const toReservationParty = (
 
 /**
  * The booked start, and the setup start of an early-setup meeting room, whose
- * Dotypos start is the setup start. Other reservations keep Dotypos's start.
+ * Dotypos start is the setup start. Other reservations keep Dotypos's start;
+ * derived instants use its millisecond ISO format, so every start reads alike.
  */
 const getBookedStartFields = (
   reservation: ReservationRecord,
@@ -193,8 +195,8 @@ const getBookedStartFields = (
     {
       onNone: () => ({ startsAt: reservation.startDate }),
       onSome: ({ setupStart, start }) => ({
-        startsAt: start.toString(),
-        setupStartsAt: setupStart.toString(),
+        startsAt: temporalInstantToIsoString(start),
+        setupStartsAt: temporalInstantToIsoString(setupStart),
       }),
     }
   );

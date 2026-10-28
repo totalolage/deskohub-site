@@ -702,8 +702,8 @@ describe("AdministrationService", () => {
         date: "2026-08-10",
         endsAt: "2026-08-10T11:00:00.000+02:00",
         id: "workspace-early-setup",
-        setupStartsAt: "2026-08-10T07:45:00Z",
-        startsAt: "2026-08-10T08:00:00Z",
+        setupStartsAt: "2026-08-10T07:45:00.000Z",
+        startsAt: "2026-08-10T08:00:00.000Z",
       },
       {
         date: "2026-08-10",

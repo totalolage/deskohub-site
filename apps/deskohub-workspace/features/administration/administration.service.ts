@@ -91,7 +91,10 @@ import { getReservationAccessName } from "@/features/reservation-access";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import type { Money } from "@/shared/money/money";
 import { workspaceSiteConstants } from "@/shared/utils";
-import { instantStringSchema } from "@/shared/utils/temporal";
+import {
+  instantStringSchema,
+  temporalInstantToIsoString,
+} from "@/shared/utils/temporal";
 import type { AdministrationCustomerMarketingConsentState } from "./customer-list-filters";
 import {
   type AdministrationCustomerName,
@@ -885,7 +888,8 @@ const toReservationSummary = ({
   readonly row: SafeReservationRow;
 }): AdministrationReservationSummary => {
   // An early-setup booking's Dotypos start is its setup start, so show the
-  // booked start beside it. Other bookings keep the provider's values as is.
+  // booked start beside it. Other bookings keep the provider's values as is;
+  // derived starts use the provider's millisecond ISO format.
   const earlySetup = Option.fromNullishOr(live.reservation).pipe(
     Option.map((reservation) =>
       decodeBookedReservation(reservation, row.reservationDetails)
@@ -902,12 +906,12 @@ const toReservationSummary = ({
     liveDetailsAvailable: Boolean(live.reservation),
     startsAt: Option.match(earlySetup, {
       onNone: () => live.reservation?.startDate ?? null,
-      onSome: ({ start }) => toIsoString(start),
+      onSome: ({ start }) => temporalInstantToIsoString(start),
     }),
     endsAt: live.reservation?.endDate ?? null,
     setupStartsAt: Option.match(earlySetup, {
       onNone: () => null,
-      onSome: ({ setupStart }) => toIsoString(setupStart),
+      onSome: ({ setupStart }) => temporalInstantToIsoString(setupStart),
     }),
     date: live.reservation
       ? getReservationDate(live.reservation, row.reservationDetails)
