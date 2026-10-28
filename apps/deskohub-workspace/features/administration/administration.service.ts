@@ -81,6 +81,7 @@ import {
   discountApplicationIdSchema,
 } from "@/features/discounts/persistence-contracts";
 import { decodeBookedReservation } from "@/features/reservation/backend/booked-reservation";
+import { loadEarlySetupDetails } from "@/features/reservation/backend/early-setup-details";
 import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
@@ -116,17 +117,20 @@ import {
   PostHogReservationHistory,
 } from "./posthog-reservation-history";
 import {
+  type EarlySetupDetailsById,
   getAdministrationReservationHeldRangeBounds,
   getBookedStart,
+  getEarlySetupDetails,
+  getEarlySetupOrderCandidates,
   getReservationDate,
   isAdministrationDateInRange,
   isHeldFromPreviousDateWithEarlySetup,
+  sortByBookedStart,
 } from "./reservation-booked-date";
 import {
   type AdministrationReservationDateRange,
   getAdministrationOverviewDateRanges,
   getAdministrationReservationDateRange,
-  getAdministrationReservationDateRangeBounds,
 } from "./reservation-date-range";
 import { getUniqueReservationId } from "./reservation-lookup.server";
 import {
@@ -569,14 +573,20 @@ type AdministrationOverviewRow = Pick<
   readonly customerId: DotyposCustomerId;
 };
 
+/**
+ * Linked Dotypos bookings booked in a range, with the stored details of those
+ * early setup could hold from the previous date.
+ */
+type AdministrationLinkedBookings = {
+  readonly items: readonly DotyposReservation[];
+  readonly earlySetupDetails: EarlySetupDetailsById;
+};
+
 export type AdministrationOverviewSource = {
   readonly currentDate: Temporal.PlainDate;
   readonly ranges: ReturnType<typeof getAdministrationOverviewDateRanges>;
   readonly reservations:
-    | {
-        readonly kind: "available";
-        readonly items: readonly DotyposReservation[];
-      }
+    | ({ readonly kind: "available" } & AdministrationLinkedBookings)
     | { readonly kind: "unavailable" };
   readonly rows: readonly AdministrationOverviewRow[];
 };
@@ -799,13 +809,22 @@ const getReservationActivityRange = () => {
 
 const isReservationInRange = (
   reservation: DotyposReservation,
-  range: AdministrationReservationDateRange
-) => isAdministrationDateInRange(getReservationDate(reservation), range);
+  range: AdministrationReservationDateRange,
+  earlySetupDetails: EarlySetupDetailsById
+) =>
+  isAdministrationDateInRange(
+    getReservationDate(
+      reservation,
+      getEarlySetupDetails(reservation, earlySetupDetails)
+    ),
+    range
+  );
 
 const countLinkedReservations = (input: {
   readonly linkedReservationIds: ReadonlySet<DotyposReservationId>;
   readonly range: AdministrationReservationDateRange;
   readonly reservations: readonly DotyposReservation[];
+  readonly earlySetupDetails: EarlySetupDetailsById;
   readonly status?: DotyposReservation["status"];
 }) =>
   new Set(
@@ -815,7 +834,11 @@ const countLinkedReservations = (input: {
       );
       return id &&
         input.linkedReservationIds.has(id) &&
-        isReservationInRange(reservation, input.range) &&
+        isReservationInRange(
+          reservation,
+          input.range,
+          input.earlySetupDetails
+        ) &&
         (!input.status || reservation.status === input.status)
         ? [id]
         : [];
@@ -1867,21 +1890,7 @@ export class AdministrationService extends Context.Service<
           isHeldFromPreviousDateWithEarlySetup(reservation) ? [id] : []
         );
         if (shiftedIds.length === 0) return reservations;
-        const detailRows = yield* db
-          .select({
-            dotyposReservationId: workspaceReservations.dotyposReservationId,
-            reservationDetails: workspaceReservations.reservationDetails,
-          })
-          .from(workspaceReservations)
-          .where(
-            equalsAny(workspaceReservations.dotyposReservationId, shiftedIds)
-          );
-        const detailsById = new Map(
-          detailRows.map((row) => [
-            row.dotyposReservationId,
-            row.reservationDetails,
-          ])
-        );
+        const detailsById = yield* loadEarlySetupDetails(db, shiftedIds);
         return new Map(
           [...reservations].filter(([id, reservation]) =>
             isAdministrationDateInRange(
@@ -1940,6 +1949,30 @@ export class AdministrationService extends Context.Service<
           );
       };
 
+      /**
+       * The IDs of bookings given in Dotypos start order, earliest first, in
+       * booked-start order in the direction. Early setup holds a meeting room
+       * from before its booked start, so Dotypos start order can put it ahead
+       * of a booking that starts in between.
+       */
+      const orderByBookedStart = Effect.fn(
+        "AdministrationService.orderByBookedStart"
+      )(function* (
+        bookings: readonly (DotyposReservation & {
+          readonly id: DotyposReservationId;
+        })[],
+        direction: AdministrationReservationExportInput["direction"]
+      ) {
+        const earlySetupDetails = yield* loadEarlySetupDetails(
+          db,
+          getEarlySetupOrderCandidates(bookings).map(({ id }) => id)
+        );
+        const ids = sortByBookedStart(bookings, earlySetupDetails).map(
+          ({ id }) => id
+        );
+        return direction === "asc" ? ids : ids.toReversed();
+      });
+
       const loadReservationDateOrder = Effect.fn(
         "AdministrationService.loadReservationDateOrder"
       )(function* <E>(
@@ -1953,12 +1986,15 @@ export class AdministrationService extends Context.Service<
       ) {
         if (hasDateRange) {
           if (!dateReservations) return null;
-          const providerIds = [...dateReservations.keys()];
-          return input.direction === "asc"
-            ? providerIds
-            : providerIds.toReversed();
+          return yield* orderByBookedStart(
+            [...dateReservations].map(([id, reservation]) => ({
+              ...reservation,
+              id,
+            })),
+            input.direction
+          );
         }
-        return yield* dotypos
+        const bookings = yield* dotypos
           .listReservations({
             ...(input.customerId && { customerId: input.customerId }),
             order:
@@ -1968,11 +2004,11 @@ export class AdministrationService extends Context.Service<
           })
           .pipe(
             Effect.map((reservations) =>
-              reservations.flatMap(({ id }) => {
-                const reservationId = Option.getOrUndefined(
-                  decodeDotyposReservationId(id)
+              reservations.flatMap((reservation) => {
+                const id = Option.getOrUndefined(
+                  decodeDotyposReservationId(reservation.id)
                 );
-                return reservationId ? [reservationId] : [];
+                return id ? [{ ...reservation, id }] : [];
               })
             ),
             Effect.catch(
@@ -1986,6 +2022,12 @@ export class AdministrationService extends Context.Service<
               )
             )
           );
+        if (!bookings) return null;
+        // Dotypos ordered them in the requested direction.
+        return yield* orderByBookedStart(
+          input.direction === "asc" ? bookings : bookings.toReversed(),
+          input.direction
+        );
       });
 
       const countReservationsNeedingRefund = Effect.fn(
@@ -3221,13 +3263,11 @@ export class AdministrationService extends Context.Service<
         "AdministrationService.loadCustomerReservationActivity"
       )(function* (customerId: DotyposCustomerId) {
         const { from, to } = getReservationActivityRange();
+        const range = { from: from.toString(), to: to.toString() };
         const reservations = yield* dotypos
           .listReservations({
             customerId,
-            ...getAdministrationReservationDateRangeBounds({
-              from: from.toString(),
-              to: to.toString(),
-            }),
+            ...getAdministrationReservationHeldRangeBounds(range),
             order: "startDateAscending",
           })
           .pipe(
@@ -3302,7 +3342,10 @@ export class AdministrationService extends Context.Service<
             continue;
           }
           const reservationDetails = row.reservationDetails;
-          const date = getReservationDate(reservation);
+          const date = getReservationDate(reservation, reservationDetails);
+          if (!isAdministrationDateInRange(date, range)) {
+            continue;
+          }
           const category =
             reservationDetails.kind === "cowork"
               ? (`cowork-${reservationDetails.entryTier}` as const)
@@ -3361,10 +3404,10 @@ export class AdministrationService extends Context.Service<
               ...range,
             }).pipe(Effect.as(null));
           }),
-          Effect.tap((items) =>
+          Effect.tap((bookings) =>
             Effect.annotateCurrentSpan({
-              reservationCount: items?.length ?? 0,
-              unavailable: items === null,
+              reservationCount: bookings?.items.length ?? 0,
+              unavailable: bookings === null,
             })
           ),
           Effect.withSpan(
@@ -3380,8 +3423,11 @@ export class AdministrationService extends Context.Service<
         }
 
         const countByDate = new Map<string, number>();
-        for (const reservation of reservations) {
-          const date = getReservationDate(reservation);
+        for (const reservation of reservations.items) {
+          const date = getReservationDate(
+            reservation,
+            getEarlySetupDetails(reservation, reservations.earlySetupDetails)
+          );
           countByDate.set(date, (countByDate.get(date) ?? 0) + 1);
         }
 
@@ -3425,9 +3471,9 @@ export class AdministrationService extends Context.Service<
           linkedRows.flatMap(({ id }) => (id ? [id] : [])),
           overviewRange
         ).pipe(
-          Effect.map((items) => ({
+          Effect.map((bookings) => ({
             kind: "available" as const,
-            items,
+            ...bookings,
           })),
           Effect.catch((cause) => {
             unstable_rethrow(cause);
@@ -3457,16 +3503,21 @@ export class AdministrationService extends Context.Service<
       });
 
       /**
-       * Reads the linked bookings that start in the range, in id filter
-       * batches. Listing every Dotypos booking in a range instead costs
-       * hundreds of sequential pages on a busy cloud.
+       * Reads the linked bookings booked in the range, in id filter batches.
+       * Listing every Dotypos booking in a range instead costs hundreds of
+       * sequential pages on a busy cloud. Dotypos holds an early-setup
+       * meeting room from before its booked start, so the read starts that
+       * much earlier, and the bookings early setup could hold from the
+       * previous date read their stored details to decide what stays.
        */
-      const listLinkedBookings = (
+      const listLinkedBookings = Effect.fn(
+        "AdministrationService.listLinkedBookings"
+      )(function* (
         ids: readonly DotyposReservationId[],
         range: AdministrationReservationDateRange
-      ) => {
-        const bounds = getAdministrationReservationDateRangeBounds(range);
-        return readInIdFilterBatches(
+      ) {
+        const bounds = getAdministrationReservationHeldRangeBounds(range);
+        const held = (yield* readInIdFilterBatches(
           ids.toSorted(),
           (batchIds) =>
             dotypos.listReservations({
@@ -3475,8 +3526,22 @@ export class AdministrationService extends Context.Service<
               order: "startDateAscending",
             }),
           { concurrency: 3 }
-        ).pipe(Effect.map((batches) => batches.flat()));
-      };
+        )).flat();
+        const earlySetupDetails = yield* loadEarlySetupDetails(
+          db,
+          held.flatMap((reservation) =>
+            isHeldFromPreviousDateWithEarlySetup(reservation)
+              ? Option.toArray(decodeDotyposReservationId(reservation.id))
+              : []
+          )
+        );
+        return {
+          items: held.filter((reservation) =>
+            isReservationInRange(reservation, range, earlySetupDetails)
+          ),
+          earlySetupDetails,
+        } satisfies AdministrationLinkedBookings;
+      });
 
       const loadOverview = Effect.fn("AdministrationService.loadOverview")(
         function* (source: AdministrationOverviewSource) {
@@ -3504,6 +3569,7 @@ export class AdministrationService extends Context.Service<
                   qualifyingReservationIds,
                   range: ranges.lastSevenDays,
                   reservations: reservations.items,
+                  earlySetupDetails: reservations.earlySetupDetails,
                 })
               : [];
           const customersById = yield* loadCustomers(uniqueCustomerIds);
@@ -3632,6 +3698,7 @@ export function getAdministrationReservationOverview({
       linkedReservationIds: completedReservationIds,
       range,
       reservations: reservations.items,
+      earlySetupDetails: reservations.earlySetupDetails,
       status: "CONFIRMED",
     }),
     unavailable: false,
@@ -3639,6 +3706,7 @@ export function getAdministrationReservationOverview({
       linkedReservationIds,
       range,
       reservations: reservations.items,
+      earlySetupDetails: reservations.earlySetupDetails,
     }),
   });
   return {
@@ -3657,6 +3725,7 @@ function getUniqueCustomerIds(input: {
   readonly qualifyingReservationIds: ReadonlySet<DotyposReservationId>;
   readonly range: AdministrationReservationDateRange;
   readonly reservations: readonly DotyposReservation[];
+  readonly earlySetupDetails: EarlySetupDetailsById;
 }) {
   const latestBookingByCustomerId = new Map<
     DotyposCustomerId,
@@ -3674,14 +3743,17 @@ function getUniqueCustomerIds(input: {
       !fallbackCustomerId ||
       reservation.status !== "CONFIRMED" ||
       !input.qualifyingReservationIds.has(reservationId) ||
-      !isReservationInRange(reservation, input.range)
+      !isReservationInRange(reservation, input.range, input.earlySetupDetails)
     )
       continue;
 
     const customerId =
       Option.getOrUndefined(decodeDotyposCustomerId(reservation._customerId)) ??
       fallbackCustomerId;
-    const startsAt = getBookedStart(reservation);
+    const startsAt = getBookedStart(
+      reservation,
+      input.earlySetupDetails.get(reservationId)
+    );
     const latestBooking = latestBookingByCustomerId.get(customerId);
     if (!latestBooking || Temporal.Instant.compare(startsAt, latestBooking) > 0)
       latestBookingByCustomerId.set(customerId, startsAt);

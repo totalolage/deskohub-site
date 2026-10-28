@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   getAdministrationReservationHeldRangeBounds,
+  getEarlySetupOrderCandidates,
   getReservationDate,
   isAdministrationDateInRange,
   isHeldFromPreviousDateWithEarlySetup,
+  sortByBookedStart,
 } from "./reservation-booked-date";
 
 // Prague is UTC+2 in August.
@@ -58,5 +60,31 @@ describe("administration booked dates", () => {
     expect(
       isAdministrationDateInRange("2026-08-13", { from: "2026-08-10" })
     ).toBe(true);
+  });
+
+  test("orders bookings by booked start, keeping ties in order", () => {
+    const booking = (id: string, startDate: string) => ({
+      ...held(startDate, "2026-08-10T12:00:00Z"),
+      id,
+    });
+    // Dotypos start order: the early-setup room is held from 23:45 for a
+    // midnight booking.
+    const bookings = [
+      booking("setup", "2026-08-09T21:45:00Z"),
+      booking("unflagged", "2026-08-09T21:45:00Z"),
+      booking("on-time", "2026-08-09T21:50:00Z"),
+      booking("midnight", "2026-08-09T22:00:00Z"),
+      booking("later", "2026-08-10T08:00:00Z"),
+    ];
+
+    expect(
+      getEarlySetupOrderCandidates(bookings).map(({ id }) => id)
+    ).toEqual(["setup", "unflagged", "on-time"]);
+    expect(
+      sortByBookedStart(bookings, new Map([["setup", earlySetup]])).map(
+        ({ id }) => id
+      )
+    ).toEqual(["unflagged", "on-time", "setup", "midnight", "later"]);
+    expect(sortByBookedStart(bookings, new Map())).toEqual(bookings);
   });
 });
