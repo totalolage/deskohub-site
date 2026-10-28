@@ -1,8 +1,8 @@
 import {
   CliMutationInProgress,
   CliMutationRejected,
-  campaignOperations,
   CurrentAdministrationCaller,
+  campaignOperations,
   OperationConflict,
   OperationInProgress,
 } from "@deskohub/workspace-admin-api";

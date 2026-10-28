@@ -20,12 +20,12 @@ import {
   Schema,
 } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import type { DatabaseQueryError } from "@/db/sql-constraint";
 import {
   type CliStoredMutation,
   type CliStoredMutationResult,
   cliMutationRequests,
 } from "@/db/schema";
+import type { DatabaseQueryError } from "@/db/sql-constraint";
 import { CurrentAdministrationAction } from "./administration-action";
 import { mapServiceFailure } from "./administration-api-failure";
 
@@ -36,12 +36,15 @@ type LedgerRequest = {
   readonly mutation: CliStoredMutation;
 };
 
-type DatabaseMutation<A extends CliStoredMutationResult, E, R> =
-  LedgerRequest & {
-    readonly result: Schema.Decoder<A>;
-    /** Writes only through the Workspace database; it joins the transaction. */
-    readonly apply: Effect.Effect<A, E, R>;
-  };
+type DatabaseMutation<
+  A extends CliStoredMutationResult,
+  E,
+  R,
+> = LedgerRequest & {
+  readonly result: Schema.Decoder<A>;
+  /** Writes only through the Workspace database; it joins the transaction. */
+  readonly apply: Effect.Effect<A, E, R>;
+};
 
 /**
  * How a mutation's result is recorded and replayed. The stored form is a
@@ -75,7 +78,7 @@ type Completion = "required" | "best-effort";
 /** What a retry does with a claim whose attempt never recorded a result. */
 type Interruption<E> = Data.TaggedEnum<{
   /** The claim stays in progress until its attempt settles. */
-  StaysInProgress: {};
+  StaysInProgress: Record<never, never>;
   /**
    * A retry takes over a claim untouched for `staleAfter` and resumes the
    * mutation; a resumed failure releases the claim when `releasesOn` holds.
@@ -140,22 +143,26 @@ export const RecoveryPolicy = {
   }),
 };
 
-type MutationWithEffects<A, S extends CliStoredMutationResult, E, R> =
-  LedgerRequest & {
-    readonly stored: StoredResult<A, S>;
-    /** The first attempt. Its external effects don't roll back. */
-    readonly apply: Effect.Effect<A, E, R>;
-    /** Finishes an interrupted attempt the policy resumes; defaults to `apply`. */
-    readonly resume?: Effect.Effect<A, E, R>;
-    readonly recovery: RecoveryPolicy<NoInfer<E>>;
-    /**
-     * Runs once the result is known, applied or replayed, before an applied
-     * result is recorded.
-     */
-    readonly afterSettled?: Effect.Effect<void, never, R>;
-    /** The answer while another attempt holds the claim. */
-    readonly inProgressMessage?: string;
-  };
+type MutationWithEffects<
+  A,
+  S extends CliStoredMutationResult,
+  E,
+  R,
+> = LedgerRequest & {
+  readonly stored: StoredResult<A, S>;
+  /** The first attempt. Its external effects don't roll back. */
+  readonly apply: Effect.Effect<A, E, R>;
+  /** Finishes an interrupted attempt the policy resumes; defaults to `apply`. */
+  readonly resume?: Effect.Effect<A, E, R>;
+  readonly recovery: RecoveryPolicy<NoInfer<E>>;
+  /**
+   * Runs once the result is known, applied or replayed, before an applied
+   * result is recorded.
+   */
+  readonly afterSettled?: Effect.Effect<void, never, R>;
+  /** The answer while another attempt holds the claim. */
+  readonly inProgressMessage?: string;
+};
 
 interface IAdministrationRequestLedger {
   /**
@@ -192,22 +199,6 @@ interface IAdministrationRequestLedger {
     E | CliMutationInProgress | CliMutationRejected | CliServiceUnavailable,
     R | CurrentAdministrationCaller
   >;
-  // TRANSITIONAL: removed once every handler uses applyOnceWithEffects.
-  readonly claim: (
-    entry: LedgerEntry
-  ) => Effect.Effect<Claim, DatabaseQueryError>;
-  readonly complete: (
-    entry: LedgerEntry & { readonly result: CliStoredMutationResult }
-  ) => Effect.Effect<void, DatabaseQueryError>;
-  readonly release: (
-    entry: LedgerEntry
-  ) => Effect.Effect<void, DatabaseQueryError>;
-  readonly reclaimStale: (
-    entry: LedgerEntry & {
-      readonly reclaimedAt: Temporal.Instant;
-      readonly staleBefore: Temporal.Instant;
-    }
-  ) => Effect.Effect<boolean, DatabaseQueryError>;
 }
 
 /** Where a request ID is unique and its result replays. */
@@ -313,28 +304,28 @@ export class AdministrationRequestLedger extends Context.Service<
       );
 
       /** Takes over a claim untouched since `staleBefore`. */
-      const reclaimStale = Effect.fn("AdministrationRequestLedger.reclaimStale")(
-        (entry: LedgerEntry, staleAfter: Duration.Duration) => {
-          const reclaimedAt = Temporal.Now.instant();
-          return db
-            .update(cliMutationRequests)
-            .set({ createdAt: reclaimedAt })
-            .where(
-              and(
-                isEntry(entry),
-                isNull(cliMutationRequests.result),
-                lte(
-                  cliMutationRequests.createdAt,
-                  reclaimedAt.subtract({
-                    milliseconds: Duration.toMillis(staleAfter),
-                  })
-                )
+      const reclaimStale = Effect.fn(
+        "AdministrationRequestLedger.reclaimStale"
+      )((entry: LedgerEntry, staleAfter: Duration.Duration) => {
+        const reclaimedAt = Temporal.Now.instant();
+        return db
+          .update(cliMutationRequests)
+          .set({ createdAt: reclaimedAt })
+          .where(
+            and(
+              isEntry(entry),
+              isNull(cliMutationRequests.result),
+              lte(
+                cliMutationRequests.createdAt,
+                reclaimedAt.subtract({
+                  milliseconds: Duration.toMillis(staleAfter),
+                })
               )
             )
-            .returning({ requestId: cliMutationRequests.requestId })
-            .pipe(Effect.map((rows) => rows.length > 0));
-        }
-      );
+          )
+          .returning({ requestId: cliMutationRequests.requestId })
+          .pipe(Effect.map((rows) => rows.length > 0));
+      });
 
       const stillInProgress = (entry: LedgerEntry, message: string) =>
         new CliMutationInProgress({ requestId: entry.requestId, message });
@@ -493,18 +484,6 @@ export class AdministrationRequestLedger extends Context.Service<
       return {
         applyOnce,
         applyOnceWithEffects,
-        // TRANSITIONAL: removed once every handler uses applyOnceWithEffects.
-        claim,
-        complete: (entry) => complete(entry, entry.result),
-        release,
-        reclaimStale: (entry) =>
-          reclaimStale(
-            entry,
-            Duration.millis(
-              entry.reclaimedAt.epochMilliseconds -
-                entry.staleBefore.epochMilliseconds
-            )
-          ),
       } satisfies IAdministrationRequestLedger;
     })
   );
@@ -522,11 +501,6 @@ const entryOf = (request: LedgerRequest) =>
       mutation: request.mutation,
     })
   );
-
-// TRANSITIONAL: removed once every handler uses applyOnceWithEffects.
-export type AdministrationMutationScope = AdministrationRequestScope;
-export const mutationScopeOf = (channel: AdministrationChannel) =>
-  scopeOf(channel);
 
 const scopeOf = (channel: AdministrationChannel): AdministrationRequestScope =>
   Match.value(channel).pipe(

@@ -2,8 +2,8 @@ import "@/shared/testing/workspace-test-env";
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
-  type AdministrationChannel,
   AdministrationCampaignAudience,
+  type AdministrationChannel,
   AdministrationDiscountMutationResult,
   AdministrationReservationAccessGrant,
   AdministrationStandaloneAccessCodeResult,
@@ -25,9 +25,9 @@ import { NodeCrypto } from "@effect/platform-node";
 import { Cause, Effect, Exit, Layer, Option, Ref, Schema } from "effect";
 import type { CliStoredMutation } from "@/db/schema";
 import { cliSessions } from "@/db/schema";
+import { ReservationAccessAdministrationError } from "@/features/administration/reservation-access-administration.service";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import { AdministratorAssistantConnections } from "@/features/administrators/backend/administrator-assistant-connections.service";
-import { ReservationAccessAdministrationError } from "@/features/administration/reservation-access-administration.service";
 import { CampaignService } from "@/features/email-campaigns/backend/campaign.service";
 import { CampaignAudienceService } from "@/features/email-campaigns/backend/campaign-audience.service";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
@@ -596,9 +596,8 @@ describe.skipIf(!testDatabase)("administration request ledger", () => {
     });
     const inProgressMessage =
       "This reservation access mutation is still being applied. Retrying with the same request identifier is safe.";
-    const failure = (
-      reason: ReservationAccessAdministrationError["reason"]
-    ) => new ReservationAccessAdministrationError({ reason, message: reason });
+    const failure = (reason: ReservationAccessAdministrationError["reason"]) =>
+      new ReservationAccessAdministrationError({ reason, message: reason });
     const reservationAccess = () =>
       mutationWithEffects({
         mutation,
@@ -609,20 +608,19 @@ describe.skipIf(!testDatabase)("administration request ledger", () => {
         withResume: true,
       });
 
-    test.each([
-      "not_found",
-      "invalid_state",
-      "retryable_failure",
-    ] as const)("frees the request ID after a %s failure", async (reason) => {
-      const requestId = newRequestId();
-      const { run } = await reservationAccess();
+    test.each(["not_found", "invalid_state", "retryable_failure"] as const)(
+      "frees the request ID after a %s failure",
+      async (reason) => {
+        const requestId = newRequestId();
+        const { run } = await reservationAccess();
 
-      const failed = await run(requestId, {
-        apply: Effect.fail(failure(reason)),
-      });
-      expect(failureOf(failed)).toEqual(failure(reason));
-      expect(await ledgerEntry(requestId)).toBeUndefined();
-    });
+        const failed = await run(requestId, {
+          apply: Effect.fail(failure(reason)),
+        });
+        expect(failureOf(failed)).toEqual(failure(reason));
+        expect(await ledgerEntry(requestId)).toBeUndefined();
+      }
+    );
 
     test("keeps the claim when recovery failed, until the stale window passes", async () => {
       const requestId = newRequestId();

@@ -10,7 +10,6 @@ import {
   CliStandaloneAccessCodeCleanupRequired,
   CliStandaloneAccessCodeReconciled,
 } from "@deskohub/workspace-admin-api";
-import { Function } from "effect";
 import { standaloneAccessCodeAttemptStaleAfterMilliseconds } from "@/features/access-codes";
 import type { ReservationAccessAdministrationError } from "@/features/administration/reservation-access-administration.service";
 import { reservationAccessProvisioningStaleAfterMilliseconds } from "@/features/reservation-access";
@@ -46,7 +45,7 @@ export const reservationAccessRecovery = RecoveryPolicy.resumeAfter(
   {
     releasesOn: (failure: ReservationAccessAdministrationError) =>
       failure.reason !== "recovery_failed",
-    resumeReleasesOn: Function.constTrue,
+    resumeReleasesOn: () => true,
     completion: "required",
   }
 );

@@ -730,7 +730,9 @@ const handleCliRequest = await (async () => {
           CliClientCompatibilityLive,
           UnrecordedAdministrationActions,
           CampaignOperations.Live,
-          AdministrationRequestLedger.Default.pipe(Layer.provide(testDatabase.layer))
+          AdministrationRequestLedger.Default.pipe(
+            Layer.provide(testDatabase.layer)
+          )
         )
       ),
       Layer.provide(NodeHttpServer.layerHttpServices)
