@@ -9,11 +9,11 @@ import {
 import type { AudienceAttributeOfKind } from "@deskohub/workspace-admin-api";
 import { Array as Arr, Context, Effect, Layer, Match, Option } from "effect";
 import { decodeBookedReservation } from "@/features/reservation/backend/booked-reservation";
-import { getMeetingRoomSetupStart } from "@/features/reservation/meeting-room-early-setup";
 import {
   InvalidDotyposReservationInterval,
   type ReservationVisit,
 } from "@/features/reservation/backend/reservation-visits.service";
+import { getMeetingRoomSetupStart } from "@/features/reservation/meeting-room-early-setup";
 import type { StoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import {
