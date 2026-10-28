@@ -21,7 +21,6 @@ import {
   AdministrationFilterSelect,
 } from "@/features/administration/filter-controls";
 import { m } from "@/features/administration/i18n";
-import type { AdministrationListParams } from "@/features/administration/list-href";
 import {
   AdministrationTableCount,
   AdministrationTableToolbar,
@@ -36,6 +35,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/shared/components/ui/table";
+import type { SearchParamValues } from "@/shared/utils/search-params";
 import { upperCaseFirst } from "@/shared/utils/text-case";
 import { automationTriggerLabel } from "../automation-trigger-labels";
 import { AutomationRunCustomer } from "./automation-run-customer";
@@ -366,7 +366,7 @@ export function AutomationRunList({
   readonly flow: AutomationFlow | null;
   readonly flows: AutomationFlowsByVersion;
   /** The run list with the current filters and `params`. */
-  readonly href: (params: AdministrationListParams) => AdministrationHref;
+  readonly href: (params: SearchParamValues) => AdministrationHref;
   readonly locale: Locale;
   readonly nextCursor: string | null;
   readonly runs: readonly AutomationRunSummary[];

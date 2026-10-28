@@ -100,7 +100,7 @@ async function OperationFiltersContent({
 }: {
   readonly criteria: Promise<OperationCriteria>;
 }) {
-  return <OperationsAdministrationFilterForm {...(await criteria)} />;
+  return <OperationsAdministrationFilterForm query={await criteria} />;
 }
 
 async function OperationResultsContent({

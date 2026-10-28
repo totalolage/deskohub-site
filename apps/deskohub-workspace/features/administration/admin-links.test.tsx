@@ -67,6 +67,7 @@ afterAll(async () => {
 test("does not prefetch live administration routes", async () => {
   const { AdminShell } = await import("./admin-shell");
   const { AdministrationCustomerTable } = await import("./customer-table");
+  const { customerListQuery } = await import("./customer-list-query");
   const customerId =
     "customer-id" as AdministrationCustomerSummary["customerId"];
 
@@ -82,7 +83,7 @@ test("does not prefetch live administration routes", async () => {
             reservationCount: 1,
           },
         ]}
-        sorting={{ direction: "desc", field: "activity" }}
+        query={customerListQuery.parse({})}
       />
     </AdminShell>
   );
@@ -90,9 +91,9 @@ test("does not prefetch live administration routes", async () => {
   expect(capturedLinks.length).toBeGreaterThan(0);
   expect(capturedLinks.every(({ prefetch }) => prefetch === false)).toBe(true);
   expect(capturedLinks.map(({ href }) => href)).toContain(
-    "/en-US/admin/customers?sort=reservations&direction=asc"
+    "/en-US/admin/customers?direction=asc&sort=reservations"
   );
   expect(capturedLinks.map(({ href }) => href)).toContain(
-    "/en-US/admin/customers?sort=activity&direction=asc"
+    "/en-US/admin/customers?direction=asc&sort=activity"
   );
 });

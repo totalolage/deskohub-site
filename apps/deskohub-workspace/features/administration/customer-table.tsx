@@ -6,12 +6,13 @@ import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { AdministrationLink as Link } from "./admin-link";
-import type {
-  AdministrationCustomerSort,
-  AdministrationCustomerSummary,
-} from "./administration.service";
+import type { AdministrationCustomerSummary } from "./administration.service";
 import { administrationHref } from "./administration-href";
-import type { AdministrationCustomerMarketingConsentState } from "./customer-list-filters";
+import {
+  type AdministrationCustomerMarketingConsentState,
+  type CustomerListQuery,
+  customerListQuery,
+} from "./customer-list-query";
 import {
   getAdministrationCustomerMarketingConsentLabel,
   getAdministrationCustomerName,
@@ -23,10 +24,6 @@ import {
 import { EmptyState } from "./empty-state";
 import { formatAdministrationDateTime } from "./formatters";
 import { m } from "./i18n";
-import {
-  type AdministrationTableSorting,
-  getAdministrationTableSortHref,
-} from "./table-sort";
 
 const getColumns = (
   locale: Locale
@@ -139,12 +136,13 @@ function CustomerMarketingConsentBadge({
 export function AdministrationCustomerTable({
   customers,
   filtered = false,
-  sorting,
+  query,
 }: {
   readonly customers: readonly AdministrationCustomerSummary[];
   /** Whether filters narrowed the list, which changes the empty message. */
   readonly filtered?: boolean;
-  readonly sorting?: AdministrationTableSorting<AdministrationCustomerSort>;
+  /** The list's query, whose order the table shows and its headers change. */
+  readonly query?: CustomerListQuery;
 }) {
   const locale = useRouteLocale();
   const columns = useMemo(() => getColumns(locale), [locale]);
@@ -165,17 +163,7 @@ export function AdministrationCustomerTable({
       columns={columns}
       data={customers}
       getRowId={(item) => item.customerId}
-      getSortHref={
-        sorting
-          ? (field, direction) =>
-              getAdministrationTableSortHref({
-                basePath: administrationHref("/[locale]/admin/customers"),
-                direction,
-                field,
-                params: sorting.params,
-              })
-          : undefined
-      }
+      {...(query && customerListQuery.tableSorting(query))}
       mobile={
         <ul className="divide-y divide-navy-blue/10">
           {customers.map((item) => (
@@ -226,11 +214,6 @@ export function AdministrationCustomerTable({
             </li>
           ))}
         </ul>
-      }
-      sorting={
-        sorting
-          ? [{ id: sorting.field, desc: sorting.direction === "desc" }]
-          : undefined
       }
       tableClassName="min-w-[1000px]"
     />

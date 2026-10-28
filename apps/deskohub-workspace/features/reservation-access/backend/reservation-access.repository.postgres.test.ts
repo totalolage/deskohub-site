@@ -7,7 +7,7 @@ import {
   IgloohomePinIdSchema,
 } from "@deskohub/igloohome";
 import { NodeCrypto } from "@effect/platform-node";
-import { Effect } from "effect";
+import { Effect, Result } from "effect";
 import { reservationAccessGrants } from "@/db/schema";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
@@ -78,6 +78,8 @@ describe.skipIf(!testDatabase)(
           repository.claim({
             id: grant.id,
             reservationId,
+            scheduledAccessStartsAt: target.scheduledAccessStartsAt,
+            accessEndsAt: target.accessEndsAt,
             accessName: `Deskohub ${grant.id}`,
             startedAt,
           })
@@ -118,6 +120,8 @@ describe.skipIf(!testDatabase)(
         repository.claim({
           id: ensured.id,
           reservationId,
+          scheduledAccessStartsAt: target.scheduledAccessStartsAt,
+          accessEndsAt: target.accessEndsAt,
           accessName: `Deskohub ${ensured.id}`,
           startedAt: Temporal.Now.instant(),
         })
@@ -143,7 +147,12 @@ describe.skipIf(!testDatabase)(
       expect(ensured.accessName).toBe(`Deskohub ${grant.id}`);
       expect(
         await run((repository) =>
-          repository.loadIssuedCode({ id: grant.id, reservationId })
+          repository.loadIssuedCode({
+            id: grant.id,
+            reservationId,
+            scheduledAccessStartsAt: target.scheduledAccessStartsAt,
+            accessEndsAt: target.accessEndsAt,
+          })
         )
       ).toBe(accessCode);
     });
@@ -169,6 +178,88 @@ describe.skipIf(!testDatabase)(
       // The replaced credential stays findable in the Igloohome app until the
       // replacement's request records its own name.
       expect(ensured.accessName).toBe(`Deskohub ${ensured.id}`);
+    });
+
+    test("lets only a request with the current scheduled bounds claim a grant and load its PIN", async () => {
+      const reservationId = await insertReservation();
+      const moved = {
+        ...target,
+        scheduledAccessStartsAt: Temporal.Instant.from("2030-03-04T10:00:00Z"),
+        accessStartsAt: Temporal.Instant.from("2030-03-04T10:00:00Z"),
+        accessEndsAt: Temporal.Instant.from("2030-03-04T19:00:00Z"),
+      };
+      // The stale request read the original hours, then an operator moved
+      // the booking and a second request reset the grant to the new hours.
+      const stale = await run((repository) =>
+        repository.ensure({ reservationId, ...target })
+      );
+      const current = await run((repository) =>
+        repository.ensure({ reservationId, ...moved })
+      );
+      expect(current.id).toBe(stale.id);
+
+      const claimFor = (bounds: typeof target) =>
+        run((repository) =>
+          repository.claim({
+            id: stale.id,
+            reservationId,
+            scheduledAccessStartsAt: bounds.scheduledAccessStartsAt,
+            accessEndsAt: bounds.accessEndsAt,
+            accessName: `Deskohub ${stale.id}`,
+            startedAt: Temporal.Now.instant(),
+          })
+        );
+      // Each bound alone decides the claim, whatever order requests run in.
+      const staleStart = {
+        ...moved,
+        scheduledAccessStartsAt: target.scheduledAccessStartsAt,
+      };
+      const staleEnd = { ...moved, accessEndsAt: target.accessEndsAt };
+      expect(await claimFor(staleStart)).toBe(false);
+      expect(await claimFor(staleEnd)).toBe(false);
+      const [staleClaimed, currentClaimed] = await Promise.all([
+        claimFor(target),
+        claimFor(moved),
+      ]);
+      expect(staleClaimed).toBe(false);
+      expect(currentClaimed).toBe(true);
+
+      const accessCode = AlgoPinSchema.make("987654321");
+      await run((repository) =>
+        repository.markIssued({
+          id: current.id,
+          reservationId,
+          accessCode,
+          pinId: IgloohomePinIdSchema.make("synthetic-moved-pin"),
+          issuedAt: Temporal.Now.instant(),
+        })
+      );
+
+      const loadFor = (bounds: typeof target) =>
+        run((repository) =>
+          repository
+            .loadIssuedCode({
+              id: current.id,
+              reservationId,
+              scheduledAccessStartsAt: bounds.scheduledAccessStartsAt,
+              accessEndsAt: bounds.accessEndsAt,
+            })
+            .pipe(Effect.result)
+        );
+      const [staleLoad, staleStartLoad, staleEndLoad, currentLoad] =
+        await Promise.all([
+          loadFor(target),
+          loadFor(staleStart),
+          loadFor(staleEnd),
+          loadFor(moved),
+        ]);
+      expect(Result.isFailure(staleLoad)).toBe(true);
+      expect(Result.isFailure(staleStartLoad)).toBe(true);
+      expect(Result.isFailure(staleEndLoad)).toBe(true);
+      expect(Result.isSuccess(currentLoad)).toBe(true);
+      if (Result.isSuccess(currentLoad)) {
+        expect(currentLoad.success).toBe(accessCode);
+      }
     });
   }
 );

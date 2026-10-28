@@ -6,6 +6,7 @@ import {
   expect,
   test,
 } from "bun:test";
+import type { DotyposCustomerId } from "@deskohub/dotypos/types";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { m } from "@/features/i18n";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
@@ -13,7 +14,7 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
-import { getAdministrationCustomerListParams } from "./customer-list-filters";
+import type { CustomerListQuery } from "./customer-list-query";
 import {
   BookingsAdministrationFilterForm,
   CustomersAdministrationFilterForm,
@@ -21,6 +22,9 @@ import {
   OrdersAdministrationFilterForm,
   ReservationsAdministrationFilterForm,
 } from "./filter-forms";
+import { operationListQuery } from "./operation-list-query";
+import { orderListQuery } from "./order-list-query";
+import type { ReservationListQuery } from "./reservation-list-query";
 
 async function expectNativeGetSubmission(form: HTMLFormElement) {
   let submitted = false;
@@ -51,26 +55,30 @@ const reservationShortcuts = {
   past: { to: "2026-08-11" },
 } as const;
 
-type ReservationFilterInput = Parameters<
-  typeof ReservationsAdministrationFilterForm
->[0]["input"];
-
-const reservationFilterForm = (input: ReservationFilterInput) => (
+// The list's own order and first page, with the filters a test sets.
+const reservationFilterForm = ({
+  customerId,
+  ...query
+}: Partial<Omit<ReservationListQuery, "customerId">> & {
+  readonly customerId?: string;
+}) => (
   <ReservationsAdministrationFilterForm
     defaultFrom="2026-01-01"
-    input={input}
+    query={{
+      direction: "desc",
+      page: 1,
+      sort: "created",
+      ...query,
+      ...(customerId && { customerId: customerId as DotyposCustomerId }),
+    }}
     shortcuts={reservationShortcuts}
   />
 );
 
-type CustomerFilterInput = Parameters<
-  typeof CustomersAdministrationFilterForm
->[0]["input"];
-
-const customerFilterForm = (input: CustomerFilterInput) => (
+// The list's own order and first page, with the filters a test sets.
+const customerFilterForm = (query: Partial<CustomerListQuery>) => (
   <CustomersAdministrationFilterForm
-    input={input}
-    params={getAdministrationCustomerListParams(input)}
+    query={{ direction: "desc", page: 1, sort: "activity", ...query }}
     shortcuts={reservationShortcuts}
   />
 );
@@ -87,7 +95,7 @@ describe("administration filter forms", () => {
     test("replaces dirty dates with the new server range before GET", async () => {
       const view = render(
         <OrdersAdministrationFilterForm
-          range={{ from: "2026-08-03", to: "2026-08-10" }}
+          query={orderListQuery.parse({ from: "2026-08-03", to: "2026-08-10" })}
         />
       );
       const from = view.getByLabelText("From") as HTMLInputElement;
@@ -96,7 +104,7 @@ describe("administration filter forms", () => {
       fireEvent.change(to, { target: { value: "2026-08-11" } });
       view.rerender(
         <OrdersAdministrationFilterForm
-          range={{ from: "2026-08-03", to: "2026-08-10" }}
+          query={orderListQuery.parse({ from: "2026-08-03", to: "2026-08-10" })}
         />
       );
       expect(from.value).toBe("2026-08-04");
@@ -104,7 +112,7 @@ describe("administration filter forms", () => {
 
       view.rerender(
         <OrdersAdministrationFilterForm
-          range={{ from: "2026-08-05", to: "2026-08-12" }}
+          query={orderListQuery.parse({ from: "2026-08-05", to: "2026-08-12" })}
         />
       );
 
@@ -123,21 +131,36 @@ describe("administration filter forms", () => {
     test("replaces dirty criteria with the new server selection before GET", async () => {
       const view = render(
         <BookingsAdministrationFilterForm
-          input={{ date: "2026-08-10", direction: "desc", sort: "status" }}
+          query={{
+            date: "2026-08-10",
+            direction: "desc",
+            sort: "status",
+            page: 1,
+          }}
         />
       );
       const date = view.getByLabelText("Booking date") as HTMLInputElement;
       fireEvent.change(date, { target: { value: "2026-08-11" } });
       view.rerender(
         <BookingsAdministrationFilterForm
-          input={{ date: "2026-08-10", direction: "desc", sort: "status" }}
+          query={{
+            date: "2026-08-10",
+            direction: "desc",
+            sort: "status",
+            page: 1,
+          }}
         />
       );
       expect(date.value).toBe("2026-08-11");
 
       view.rerender(
         <BookingsAdministrationFilterForm
-          input={{ date: "2026-08-14", direction: "asc", sort: "booking" }}
+          query={{
+            date: "2026-08-14",
+            direction: "asc",
+            sort: "booking",
+            page: 1,
+          }}
         />
       );
 
@@ -150,14 +173,44 @@ describe("administration filter forms", () => {
       ]);
       await expectNativeGetSubmission(form);
     });
+
+    test("keeps an invalid day from submitting and marks the field", async () => {
+      const view = render(
+        <BookingsAdministrationFilterForm
+          query={{
+            date: "2026-02-30",
+            direction: "asc",
+            page: 1,
+            sort: "booking",
+          }}
+        />
+      );
+      const form = getForm(view.container);
+      const date = view.getByLabelText("Booking date") as HTMLInputElement;
+      let submitted = false;
+      form.submit = () => {
+        submitted = true;
+      };
+
+      fireEvent.submit(form);
+
+      await waitFor(() =>
+        expect(date.getAttribute("aria-invalid")).toBe("true")
+      );
+      expect(submitted).toBe(false);
+    });
   });
 
   describe("operations", () => {
     test("uses changed server dates and provider criteria after navigation", async () => {
       const view = render(
         <OperationsAdministrationFilterForm
-          input={{ channel: "BACKOFFICE", operationType: "REFUND" }}
-          range={{ from: "2026-07-01", to: "2026-08-01" }}
+          query={operationListQuery.parse({
+            channel: "BACKOFFICE",
+            operationType: "REFUND",
+            from: "2026-07-01",
+            to: "2026-08-01",
+          })}
         />
       );
       const from = view.getByLabelText("From") as HTMLInputElement;
@@ -166,8 +219,12 @@ describe("administration filter forms", () => {
       fireEvent.change(channel, { target: { value: "ECOMMERCE" } });
       view.rerender(
         <OperationsAdministrationFilterForm
-          input={{ channel: "BACKOFFICE", operationType: "REFUND" }}
-          range={{ from: "2026-07-01", to: "2026-08-01" }}
+          query={operationListQuery.parse({
+            channel: "BACKOFFICE",
+            operationType: "REFUND",
+            from: "2026-07-01",
+            to: "2026-08-01",
+          })}
         />
       );
       expect(from.value).toBe("2026-07-02");
@@ -175,8 +232,12 @@ describe("administration filter forms", () => {
 
       view.rerender(
         <OperationsAdministrationFilterForm
-          input={{ channel: "ECOMMERCE", operationType: "CAPTURE" }}
-          range={{ from: "2026-07-03", to: "2026-08-03" }}
+          query={operationListQuery.parse({
+            channel: "ECOMMERCE",
+            operationType: "CAPTURE",
+            from: "2026-07-03",
+            to: "2026-08-03",
+          })}
         />
       );
 
@@ -461,7 +522,9 @@ describe("administration filter forms", () => {
     ).toBeDefined();
     expect(
       view.getByRole("link", { name: "Nadcházející" }).getAttribute("href")
-    ).toBe("/cs-CZ/admin/reservations?from=2026-08-13&status=cancelled");
+    ).toBe(
+      "/cs-CZ/admin/reservations?direction=desc&from=2026-08-13&sort=created&status=cancelled"
+    );
     expect(view.getByRole("link", { name: "Vymazat" })).toBeDefined();
     expect(view.getByRole("button", { name: "Použít filtry" })).toBeDefined();
   });
@@ -470,11 +533,18 @@ describe("administration filter forms", () => {
     const view = render(
       <RouteLocaleProvider locale="cs-CZ">
         <BookingsAdministrationFilterForm
-          input={{ date: "2026-08-11", direction: "asc", sort: "booking" }}
+          query={{
+            date: "2026-08-11",
+            direction: "asc",
+            sort: "booking",
+            page: 1,
+          }}
         />
         <OperationsAdministrationFilterForm
-          input={{}}
-          range={{ from: "2026-07-01", to: "2026-07-08" }}
+          query={operationListQuery.parse({
+            from: "2026-07-01",
+            to: "2026-07-08",
+          })}
         />
       </RouteLocaleProvider>
     );
