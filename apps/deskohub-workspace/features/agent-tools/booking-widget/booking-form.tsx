@@ -445,6 +445,8 @@ export function BookingForm({
                     checked.selection &&
                     onReserve(checked.selection, earlySetup)
                   }
+                  // A running check replaces the selection and its choices.
+                  disabled={AsyncResult.isWaiting(check)}
                   pending={AsyncResult.isWaiting(reservation)}
                   type="button"
                 >

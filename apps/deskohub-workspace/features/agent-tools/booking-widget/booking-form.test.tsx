@@ -301,6 +301,22 @@ describe("BookingForm", () => {
     expect(earlySetupChoice().disabled).toBe(false);
   });
 
+  test("holds Reserve and the setup choice while a new check runs", () => {
+    const check = meetingRoomCheck({ earlySetupAvailable: true });
+    const { onReserve, rerender } = renderForm({ check });
+    fireEvent.click(earlySetupChoice());
+
+    rerender({ check: AsyncResult.waiting(check) });
+    expect(earlySetupChoice().disabled).toBe(true);
+    reserve();
+    expect(onReserve).not.toHaveBeenCalled();
+
+    rerender({ check: meetingRoomCheck({ earlySetupAvailable: true }) });
+    expect(earlySetupChoice().checked).toBe(false);
+    reserve();
+    expect(onReserve).toHaveBeenCalledWith(meetingRoomSelection, false);
+  });
+
   test("keeps the setup choice of a held booking and stops changes to it", () => {
     const check = meetingRoomCheck({ earlySetupAvailable: true });
     const { rerender } = renderForm({ check });
