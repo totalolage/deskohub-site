@@ -27,7 +27,6 @@ const customerId = "dotypos-customer-paid";
 const targetStatusPath = `/en-US/reservation/status/${orderId}`;
 const signInPath = "/en-US/auth/sign-in";
 const bookingSession = "meeting-room-paid-test";
-const signedOutSession = `${bookingSession}-signed-out`;
 const signedInCookie = "workspace-e2e-signed-in";
 const caseId = "reservation-status-isolation";
 const stepId = "assert-reservation-status-isolation";
@@ -147,7 +146,11 @@ afterAll(async () => {
   await server.stop(true);
 });
 
-const makeDatabase = () => {
+/**
+ * `cleanupConverges: false` keeps the isolation fixture's reservation after
+ * its delete, so the fixture's cleanup check fails.
+ */
+const makeDatabase = ({ cleanupConverges = true } = {}) => {
   const rows = new Map<string, unknown>([[orderId, targetRow]]);
   let lastInsertedId: string | undefined;
 
@@ -201,7 +204,7 @@ const makeDatabase = () => {
     delete: () => ({
       where: () =>
         Effect.sync(() => {
-          if (lastInsertedId) rows.delete(lastInsertedId);
+          if (cleanupConverges && lastInsertedId) rows.delete(lastInsertedId);
         }),
     }),
     insert,
@@ -280,10 +283,12 @@ const runIsolation = async (
   isolationMode: IsolationMode = "scoped",
   {
     caseConfig = config,
+    cleanupConverges,
     signedOutContext,
     stepTimeoutMs: isolationStepTimeoutMs = stepTimeoutMs,
   }: {
     readonly caseConfig?: WorkspaceE2EConfig;
+    readonly cleanupConverges?: boolean;
     readonly signedOutContext?: SignedOutContextHold;
     readonly stepTimeoutMs?: number;
   } = {}
@@ -294,10 +299,11 @@ const runIsolation = async (
   mode = isolationMode;
   requests.length = 0;
   authorizedStatusRequestedAt = undefined;
-  const database = makeDatabase();
+  const database = makeDatabase({ cleanupConverges });
   const run = makePlaywrightBrowserRunner(held.browser, { recordHar: false });
   const observations: E2ETelemetryObservation[] = [];
   const failures: WorkspaceE2EError[] = [];
+  const startedAt = Date.now();
   try {
     const exit = await Effect.runPromiseExit(
       runE2ECase({
@@ -334,6 +340,7 @@ const runIsolation = async (
         watchdogMs: caseWatchdogMs,
       }).pipe(Effect.provide(makeE2ETelemetryMock(observations)))
     );
+    const elapsedMs = Date.now() - startedAt;
     const finalUrl = await Effect.runPromise(
       Effect.flatMap(browserSessionFor(run, bookingSession), (booking) =>
         booking.use("read the final URL", async (page) => page.url())
@@ -345,6 +352,7 @@ const runIsolation = async (
     return {
       annotations,
       database,
+      elapsedMs,
       failures: failures.map((failure) => ({
         operation: failure.operation,
         timeout: isWorkspaceE2ETimeout(failure),
@@ -358,6 +366,10 @@ const runIsolation = async (
           ? undefined
           : authorizedStatusRequestedAt - (held.closeStartedAt() ?? 0),
       openContexts: opened.contexts().length,
+      // The settled step spans, with their outcomes.
+      steps: observations.flatMap(({ scope, ...observation }) =>
+        scope === "step" ? [observation] : []
+      ),
       reported: JSON.stringify({
         annotations,
         messages: failures.map(({ message }) => message),
@@ -479,19 +491,76 @@ test.skipIf(!chromiumAvailable)(
       stepTimeoutMs: 8_000,
     });
 
+    // The step times out at its own deadline, without a diagnostic code. The
+    // argv close awaited the pending open, so the step was cancelled only
+    // after the case watchdog fired.
     expect({
       annotations: result.annotations,
+      steps: result.steps,
       succeeded: result.succeeded,
     }).toEqual({
       annotations: failedWith("", "timeout").annotations,
+      steps: [
+        {
+          caseId,
+          failureKind: "timeout",
+          outcome: "timed_out",
+          stepId,
+          timeoutMs: 8_000,
+        },
+      ],
       succeeded: false,
     });
+    expect(result.elapsedMs).toBeLessThan(caseWatchdogMs);
     expect(new URL(result.finalUrl).pathname).toBe("/en-US/contact");
     expect(result.database.hasOnlyTarget()).toBe(true);
     expect(requests).not.toContainEqual({
       path: targetStatusPath,
       signedIn: false,
     });
+  },
+  testTimeoutMs
+);
+
+test.skipIf(!chromiumAvailable)(
+  "annotates the diagnostic code of a fixture cleanup that does not converge",
+  async () => {
+    const result = await runIsolation("scoped", { cleanupConverges: false });
+
+    expect({
+      annotations: result.annotations,
+      failures: result.failures,
+      steps: result.steps,
+      succeeded: result.succeeded,
+    }).toEqual({
+      annotations: [
+        {
+          caseId,
+          diagnosticCode: "postgres_account_fixture_convergence_failed",
+          failureKind: "error",
+          outcome: "failed",
+          stepId,
+        },
+      ],
+      failures: [
+        {
+          operation: "verify local reservation fixture cleanup",
+          timeout: false,
+        },
+      ],
+      steps: [
+        {
+          caseId,
+          failureKind: "error",
+          outcome: "failed",
+          stepId,
+          timeoutMs: stepTimeoutMs,
+        },
+      ],
+      succeeded: false,
+    });
+    expect(new URL(result.finalUrl).pathname).toBe("/en-US/contact");
+    expect(result.openContexts).toBe(1);
   },
   testTimeoutMs
 );
