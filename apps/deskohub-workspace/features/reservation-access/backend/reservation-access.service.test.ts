@@ -498,6 +498,7 @@ describe("ReservationAccessService", () => {
       expect.objectContaining({
         reservationId,
         accessEndsAt: movedReservation.reservedUntil,
+        replacingIssued: grant,
       })
     );
     expect(issueHourlyAlgoPin).toHaveBeenCalledWith({

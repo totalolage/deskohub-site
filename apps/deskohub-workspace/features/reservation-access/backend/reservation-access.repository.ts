@@ -5,7 +5,7 @@ import type {
 } from "@deskohub/igloohome";
 import { AlgoPinSchema } from "@deskohub/igloohome";
 import { NodeCrypto } from "@effect/platform-node";
-import { and, eq, inArray, lte, ne, or } from "drizzle-orm";
+import { and, eq, inArray, lte, or } from "drizzle-orm";
 import { Context, Crypto, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { reservationAccessGrants } from "@/db/schema";
@@ -59,13 +59,29 @@ interface ReservationAccessBounds {
   readonly accessEndsAt: Temporal.Instant;
 }
 
+const hasBounds = (bounds: ReservationAccessBounds) =>
+  and(
+    eq(
+      reservationAccessGrants.scheduledAccessStartsAt,
+      bounds.scheduledAccessStartsAt
+    ),
+    eq(reservationAccessGrants.accessStartsAt, bounds.accessStartsAt),
+    eq(reservationAccessGrants.accessEndsAt, bounds.accessEndsAt)
+  );
+
 export interface IReservationAccessRepository {
+  /**
+   * Creates the grant, or resets a retryable one, for a target. An issued
+   * grant is reset only when it still holds `replacingIssued`, the bounds of
+   * the issued grant the caller read and decided to replace.
+   */
   readonly ensure: (input: {
     readonly reservationId: WorkspaceReservationId;
     readonly deviceId: IgloohomeDeviceId;
     readonly scheduledAccessStartsAt: Temporal.Instant;
     readonly accessStartsAt: Temporal.Instant;
     readonly accessEndsAt: Temporal.Instant;
+    readonly replacingIssued: ReservationAccessBounds | null;
   }) => Effect.Effect<ReservationAccessGrant, ReservationAccessStorageError>;
   readonly findByReservationId: (
     reservationId: WorkspaceReservationId
@@ -100,8 +116,8 @@ export interface IReservationAccessRepository {
   }) => Effect.Effect<void, ReservationAccessStorageError>;
   /**
    * Records a reservation span that moved within the hours its issued
-   * credential covers. Returns null when the grant no longer holds the span
-   * the caller compared, because a concurrent request moved or reset it.
+   * credential covers. Returns null when the grant holds neither span,
+   * because a concurrent request moved or reset it.
    */
   readonly rescheduleIssued: (input: {
     readonly id: ReservationAccessGrantId;
@@ -203,25 +219,18 @@ export class ReservationAccessRepository extends Context.Service<
                   failedAt: null,
                   failureCode: null,
                 },
-                // Reset an issued grant only for a moved schedule. A request
-                // that raced a concurrent issuance for the same target must
-                // reuse the stored PIN rather than wipe it and provision a
-                // second credential.
+                // Reset an issued grant only for the moved schedule the
+                // caller read. A request that raced a concurrent issuance or
+                // reschedule must reuse the stored PIN rather than wipe it
+                // and provision a second credential.
                 setWhere: or(
                   inArray(reservationAccessGrants.state, ["pending", "failed"]),
-                  and(
-                    eq(reservationAccessGrants.state, "issued"),
-                    or(
-                      ne(
-                        reservationAccessGrants.scheduledAccessStartsAt,
-                        input.scheduledAccessStartsAt
-                      ),
-                      ne(
-                        reservationAccessGrants.accessEndsAt,
-                        input.accessEndsAt
+                  input.replacingIssued
+                    ? and(
+                        eq(reservationAccessGrants.state, "issued"),
+                        hasBounds(input.replacingIssued)
                       )
-                    )
-                  )
+                    : undefined
                 ),
               })
               .pipe(
@@ -419,15 +428,8 @@ export class ReservationAccessRepository extends Context.Service<
               and(
                 eq(reservationAccessGrants.id, input.id),
                 eq(reservationAccessGrants.state, "issued"),
-                eq(
-                  reservationAccessGrants.scheduledAccessStartsAt,
-                  input.from.scheduledAccessStartsAt
-                ),
-                eq(
-                  reservationAccessGrants.accessStartsAt,
-                  input.from.accessStartsAt
-                ),
-                eq(reservationAccessGrants.accessEndsAt, input.from.accessEndsAt)
+                // A concurrent request recording the same span succeeds too.
+                or(hasBounds(input.from), hasBounds(input.to))
               )
             )
             .returning(reservationAccessGrantSelection)

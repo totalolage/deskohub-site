@@ -291,6 +291,9 @@ export class ReservationAccessService extends Context.Service<
               scheduledAccessStartsAt: interval.scheduledStartsAt,
               accessStartsAt: interval.startsAt,
               accessEndsAt: interval.endsAt,
+              // Only an issued grant moved to other hours reaches here.
+              replacingIssued:
+                existingGrant?.state === "issued" ? existingGrant : null,
             })
             .pipe(
               Effect.mapError(
