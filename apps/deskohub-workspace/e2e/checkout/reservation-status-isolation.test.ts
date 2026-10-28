@@ -1,41 +1,40 @@
 import "../../shared/polyfills/temporal";
 
-import { expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
-import type { Browser } from "@playwright/test";
-import { Effect } from "effect";
+import { type Browser, chromium } from "@playwright/test";
+import { Effect, Exit } from "effect";
 import { customerAccounts } from "@/db/schema/customer-accounts";
-import { browserTextScript } from "../browser-scripts";
+import { m } from "@/features/i18n";
+import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
+import { runE2ECase } from "../case-runner";
 import type { WorkspaceE2EConfig } from "../config";
+import { isWorkspaceE2ETimeout, type WorkspaceE2EError } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
-import { makePlaywrightBrowserRunner, type Runner } from "../runtime";
+import { browserSessionFor, makePlaywrightBrowserRunner } from "../runtime";
+import {
+  type E2ETelemetryObservation,
+  makeE2ETelemetryMock,
+} from "../services/telemetry.mock";
 import { workspaceE2ETimeouts } from "../timeouts";
 import type { CheckoutRow } from "../types";
 import { assertReservationStatusIsolation } from "./reservation-status-isolation";
 
-const baseUrl = "https://workspace.test";
+const chromiumAvailable = await playwrightChromiumAvailable();
+
 const orderId = "019f70bd-0131-7f30-9f8a-48e768f00292";
 const customerId = "dotypos-customer-paid";
 const targetStatusPath = `/en-US/reservation/status/${orderId}`;
-const targetStatusUrl = `${baseUrl}${targetStatusPath}`;
-const signInUrl = `${baseUrl}/en-US/auth/sign-in?${new URLSearchParams({
-  returnTo: targetStatusPath,
-  for: "reservation",
-})}`;
-const originalUrl = `${baseUrl}/en-US/contact?email=${encodeURIComponent(testEmailAddress("synthetic"))}&message=${orderId}`;
-
-const config: WorkspaceE2EConfig = {
-  baseUrl,
-  bypassSecret: undefined,
-  expectedHost: "workspace.test",
-  timeouts: {
-    ...workspaceE2ETimeouts,
-    browserAction: 1_000,
-    browserNavigation: 1_000,
-    datasource: 1_000,
-    uiTransition: 1_000,
-  },
-};
+const signInPath = "/en-US/auth/sign-in";
+const bookingSession = "meeting-room-paid-test";
+const signedInCookie = "workspace-e2e-signed-in";
+const caseId = "reservation-status-isolation";
+const stepId = "assert-reservation-status-isolation";
+const stepTimeoutMs = 45_000;
+const caseWatchdogMs = 60_000;
+// The watchdog, then the case Scope's bounded browser close, with headroom.
+const testTimeoutMs =
+  caseWatchdogMs + workspaceE2ETimeouts.browserAction + 15_000;
 
 const targetRow = {
   dotypos_customer_id: customerId,
@@ -44,132 +43,114 @@ const targetRow = {
   reservation_id: orderId,
 } as CheckoutRow;
 
+/**
+ * How the synthetic Workspace answers status requests: `scoped` is the real
+ * contract; the others each break one isolation rule.
+ */
 type IsolationMode =
   | "scoped"
   | "session-reads-every-order"
-  | "signed-out-reads-status";
+  | "signed-out-reads-status"
+  | "status-url-drifts";
 
-const matchesLocation = (condition: string, url: string): boolean =>
-  new Function("location", `return ${condition}`)(new URL(url));
+let mode: IsolationMode = "scoped";
+const requests: { readonly path: string; readonly signedIn: boolean }[] = [];
+// When the booking session first asked for the target status after the
+// signed-out check, which is where the case resumes after that browser's close.
+let authorizedStatusRequestedAt: number | undefined;
 
-const makeRunner = (mode: IsolationMode) => {
-  const calls: Array<{
-    readonly command: string;
-    readonly options: Parameters<Runner>[2];
-    readonly session: string;
-  }> = [];
-  const outputs: string[] = [];
-  const rawBrowserTexts: string[] = [];
-  const rawOpenedUrls: string[] = [];
-  const waits: Array<{ readonly condition: string; readonly url: string }> = [];
-
-  // The first context is the signed-in booking session; later ones are
-  // signed out.
-  const makeContext = (signedIn: boolean) => {
-    let currentUrl = signedIn ? originalUrl : "about:blank";
-    const frame = {
-      evaluate: async (input: string) => {
-        if (input === browserTextScript) {
-          let text = `We couldn't deliver your confirmation. Your payment went through and your reservation is saved, but your confirmation and access link didn't reach your email. Send support request. Order reference ${orderId}.`;
-          if (currentUrl.includes("local-reservation-")) {
-            text =
-              "We could not find this order. Please check the link or start a new reservation.";
-          }
-          if (currentUrl.includes("/auth/sign-in")) {
-            text = "Sign in to see your reservation. Email.";
-          }
-          rawBrowserTexts.push(text);
-          return text;
-        }
-        if (input.includes('document.querySelectorAll("dd")')) {
-          return !currentUrl.includes("local-reservation-");
-        }
-        if (input.includes("signed-out") || input.includes("innerText")) {
-          if (currentUrl.includes("/auth/sign-in")) return true;
-        }
-        if (input.includes("#checkout-status-support-contact")) {
-          return (
-            !currentUrl.includes("local-reservation-") ||
-            mode !== "session-reads-every-order"
-          );
-        }
-        return true;
-      },
-      waitForFunction: async (condition: string) => {
-        waits.push({ condition, url: currentUrl });
-        if (!matchesLocation(condition, currentUrl))
-          throw new Error(
-            `browser wait condition does not match ${currentUrl}`
-          );
-        return true;
-      },
-    };
-    const page = {
-      goto: async (url: string) => {
-        rawOpenedUrls.push(url);
-        currentUrl =
-          !signedIn &&
-          url === targetStatusUrl &&
-          mode !== "signed-out-reads-status"
-            ? signInUrl
-            : url;
-      },
-      mainFrame: () => frame,
-      on: () => undefined,
-      url: () => currentUrl,
-    };
-    return {
-      context: {
-        close: async () => undefined,
-        newPage: async () => page,
-        on: () => undefined,
-        request: {
-          get: async (url: string) => {
-            throw new Error(`unexpected browser request: ${url}`);
-          },
-        },
-      },
-      currentUrl: () => currentUrl,
-    };
-  };
-  const booking = makeContext(true);
-  let contexts = 0;
-  const actualRun = makePlaywrightBrowserRunner({
-    newContext: async () => {
-      contexts += 1;
-      return contexts === 1 ? booking.context : makeContext(false).context;
-    },
-  } as Browser);
-  const run: Runner = async (command, args, options) => {
-    const session = args[1];
-    if (!session) throw new Error("browser session missing");
-    const operation = ["request", "get", "open", "wait", "eval", "close"].find(
-      (value) => args.includes(value)
-    );
-    if (!operation)
-      throw new Error(`unexpected browser command: ${args.join(" ")}`);
-    calls.push({ command: operation, options, session });
-    const result = await actualRun(command, args, options);
-    outputs.push(result.stdout);
-    return result;
-  };
-  Object.defineProperty(run, "close", {
-    enumerable: true,
-    value: () => actualRun.close?.(),
+const page = (body: string) =>
+  new Response(`<!doctype html><html lang="en"><body>${body}</body></html>`, {
+    headers: { "content-type": "text/html; charset=utf-8" },
   });
 
-  return {
-    calls,
-    currentUrl: booking.currentUrl,
-    outputs,
-    rawBrowserTexts,
-    rawOpenedUrls,
-    run,
-    waits,
-  };
+const supportStatus = (shownOrderId: string) =>
+  page(`<h1>We couldn't deliver your confirmation.</h1>
+    <p>Your payment went through and your reservation is saved, but your confirmation and access link didn't reach your email.</p>
+    <dl><dt>Order reference</dt><dd>${shownOrderId}</dd></dl>
+    <a id="checkout-status-support-contact" href="/en-US/contact">Send support request</a>`);
+
+const server = Bun.serve({
+  fetch: (request) => {
+    const url = new URL(request.url);
+    const signedIn =
+      request.headers.get("cookie")?.includes(`${signedInCookie}=1`) ?? false;
+    requests.push({ path: url.pathname, signedIn });
+    if (signedIn && url.pathname === targetStatusPath)
+      authorizedStatusRequestedAt ??= Date.now();
+    if (url.pathname === "/en-US/contact") return page("<h1>Contact</h1>");
+    if (url.pathname === signInPath)
+      return page(
+        `<h1>${m.accountSignInReservationTitle({}, { locale: "en-US" })}</h1>`
+      );
+    const statusOrderId = url.pathname.match(
+      /^\/en-US\/reservation\/status\/([^/]+)$/
+    )?.[1];
+    if (!statusOrderId) return new Response("Not found", { status: 404 });
+    if (mode === "status-url-drifts" && !url.searchParams.has("drifted"))
+      return Response.redirect(
+        new URL(`${url.pathname}?drifted=1`, url).toString(),
+        307
+      );
+    // A leaking page still says it found nothing but links the order's
+    // support request.
+    if (statusOrderId !== orderId)
+      return page(
+        `<h1>We could not find this order.</h1>${
+          mode === "session-reads-every-order"
+            ? '<a id="checkout-status-support-contact" href="/en-US/contact">Send support request</a>'
+            : ""
+        }`
+      );
+    if (!signedIn && mode !== "signed-out-reads-status")
+      return Response.redirect(
+        new URL(
+          `${signInPath}?${new URLSearchParams({
+            for: "reservation",
+            returnTo: url.pathname,
+          })}`,
+          url
+        ).toString(),
+        307
+      );
+    return supportStatus(orderId);
+  },
+  hostname: "127.0.0.1",
+  port: 0,
+});
+const baseUrl = server.url.origin;
+const originalUrl = `${baseUrl}/en-US/contact?email=${encodeURIComponent(testEmailAddress("synthetic"))}&message=${orderId}`;
+
+const config: WorkspaceE2EConfig = {
+  baseUrl,
+  bypassSecret: undefined,
+  expectedHost: new URL(baseUrl).host,
+  timeouts: {
+    ...workspaceE2ETimeouts,
+    // Long enough for a loaded machine; the failure paths wait them out.
+    browserAction: 10_000,
+    browserNavigation: 10_000,
+    uiTransition: 10_000,
+  },
 };
 
-const makeDatabase = () => {
+let browser: Browser | undefined;
+
+beforeAll(async () => {
+  if (!chromiumAvailable) return;
+  browser = await chromium.launch({ headless: true });
+});
+
+afterAll(async () => {
+  await browser?.close();
+  await server.stop(true);
+});
+
+/**
+ * `cleanupConverges: false` keeps the isolation fixture's reservation after
+ * its delete, so the fixture's cleanup check fails.
+ */
+const makeDatabase = ({ cleanupConverges = true } = {}) => {
   const rows = new Map<string, unknown>([[orderId, targetRow]]);
   let lastInsertedId: string | undefined;
 
@@ -223,7 +204,7 @@ const makeDatabase = () => {
     delete: () => ({
       where: () =>
         Effect.sync(() => {
-          if (lastInsertedId) rows.delete(lastInsertedId);
+          if (cleanupConverges && lastInsertedId) rows.delete(lastInsertedId);
         }),
     }),
     insert,
@@ -239,94 +220,378 @@ const makeDatabase = () => {
   };
 };
 
-const runIsolation = async (mode: IsolationMode = "scoped") => {
-  const runner = makeRunner(mode);
-  const database = makeDatabase();
-  const exit = await Effect.runPromiseExit(
-    assertReservationStatusIsolation({
-      config,
-      customerId: customerId as never,
-      data: { locale: "en-US" },
-      orderId: orderId as never,
-      run: runner.run,
-      session: "meeting-room-paid-test",
-    }).pipe(Effect.provideService(E2EDatabase, E2EDatabase.of(database)))
-  ).finally(() => runner.run.close?.());
+/**
+ * Holds one step of the signed-out visitor's context, the second one the
+ * runner opens, over real Chromium: its opening, or its close, which either
+ * fails or never settles. `release` lets held work finish and closes a context
+ * whose close failed, so nothing outlives the test.
+ */
+type SignedOutContextHold = "close-fails" | "close-held" | "open-held";
 
-  return { database, exit, runner };
+const holdSignedOutContext = (
+  real: Browser,
+  hold: SignedOutContextHold | undefined
+) => {
+  const released = Promise.withResolvers<void>();
+  const failedCloses: (() => Promise<void>)[] = [];
+  let closeStartedAt: number | undefined;
+  let contexts = 0;
+  const newContext: Browser["newContext"] = async (options) => {
+    contexts += 1;
+    if (contexts !== 2 || hold === undefined) return real.newContext(options);
+    if (hold === "open-held") await released.promise;
+    const context = await real.newContext(options);
+    const close = context.close.bind(context);
+    context.close = async (closeOptions) => {
+      closeStartedAt ??= Date.now();
+      if (hold === "close-fails") {
+        failedCloses.push(() => close(closeOptions));
+        throw new Error("context close failed");
+      }
+      if (hold === "close-held") await released.promise;
+      return close(closeOptions);
+    };
+    return context;
+  };
+  const browser = new Proxy(real, {
+    get: (target, property) => {
+      if (property === "newContext") return newContext;
+      const value: unknown = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  return {
+    browser,
+    closeStartedAt: () => closeStartedAt,
+    release: async () => {
+      released.resolve();
+      await Promise.allSettled(
+        failedCloses.map((closeContext) => closeContext())
+      );
+    },
+  };
 };
 
-test("checks target authorization, other-order isolation, and signed-out sign-in", async () => {
-  const result = await runIsolation();
-
-  expect(result.exit._tag).toBe("Success");
-  expect(new Set(result.runner.calls.map(({ session }) => session))).toEqual(
-    new Set(["meeting-room-paid-test", "meeting-room-paid-test-signed-out"])
-  );
-  expect(
-    result.runner.calls.some(
-      ({ command, session }) =>
-        command === "close" && session === "meeting-room-paid-test-signed-out"
-    )
-  ).toBe(true);
-  expect(result.runner.waits.some(({ url }) => url === signInUrl)).toBe(true);
-  expect(result.runner.calls.some(({ command }) => command === "request")).toBe(
-    false
-  );
-  expect(result.runner.currentUrl()).toBe(`${baseUrl}/en-US/contact`);
-  expect(result.database.hasOnlyTarget()).toBe(true);
-  expect(
-    result.runner.rawBrowserTexts.some((text) => text.includes(orderId))
-  ).toBe(true);
-  expect(result.runner.rawOpenedUrls).toContain(targetStatusUrl);
-  expect(
-    result.runner.outputs.every(
-      (output) => !output.includes(orderId) && !output.includes(targetStatusUrl)
-    )
-  ).toBe(true);
-  const contactWaits = result.runner.waits.filter(
-    ({ url }) => new URL(url).pathname === "/en-US/contact"
-  );
-  const exactWaits = result.runner.waits.filter(({ url }) => {
-    const { pathname } = new URL(url);
-    return pathname !== "/en-US/contact" && pathname !== "/en-US/auth/sign-in";
-  });
-  expect(contactWaits.length).toBeGreaterThan(0);
-  expect(exactWaits.length).toBeGreaterThan(0);
-  for (const { condition } of contactWaits) {
-    // The support link carries the email and message in the query string.
-    expect(matchesLocation(condition, originalUrl)).toBe(true);
-    expect(matchesLocation(condition, `${baseUrl}/en-US/contact#form`)).toBe(
-      false
+/**
+ * Runs the isolation check as one step through the case runner, with the
+ * booking session signed in on the support contact page it starts from.
+ * Returns the C03 annotation, the step's failures with their operation and
+ * timeout class, everything reported, the page the booking session ends on,
+ * how many browser contexts are still open, and the database state.
+ */
+const runIsolation = async (
+  isolationMode: IsolationMode = "scoped",
+  {
+    caseConfig = config,
+    cleanupConverges,
+    signedOutContext,
+    stepTimeoutMs: isolationStepTimeoutMs = stepTimeoutMs,
+  }: {
+    readonly caseConfig?: WorkspaceE2EConfig;
+    readonly cleanupConverges?: boolean;
+    readonly signedOutContext?: SignedOutContextHold;
+    readonly stepTimeoutMs?: number;
+  } = {}
+) => {
+  if (!browser) throw new Error("Chromium is not running");
+  const opened = browser;
+  const held = holdSignedOutContext(opened, signedOutContext);
+  mode = isolationMode;
+  requests.length = 0;
+  authorizedStatusRequestedAt = undefined;
+  const database = makeDatabase({ cleanupConverges });
+  const run = makePlaywrightBrowserRunner(held.browser, { recordHar: false });
+  const observations: E2ETelemetryObservation[] = [];
+  const failures: WorkspaceE2EError[] = [];
+  const startedAt = Date.now();
+  try {
+    const exit = await Effect.runPromiseExit(
+      runE2ECase({
+        body: (step) =>
+          Effect.gen(function* () {
+            const booking = yield* browserSessionFor(run, bookingSession);
+            yield* booking.use("sign the booking session in", async (page) => {
+              await page
+                .context()
+                .addCookies([
+                  { name: signedInCookie, url: baseUrl, value: "1" },
+                ]);
+              await page.goto(originalUrl);
+            });
+            yield* step({
+              execute: assertReservationStatusIsolation({
+                config: caseConfig,
+                customerId: customerId as never,
+                data: { locale: "en-US" },
+                orderId: orderId as never,
+                run,
+                session: bookingSession,
+              }).pipe(
+                Effect.tapError((failure) =>
+                  Effect.sync(() => failures.push(failure))
+                ),
+                Effect.provideService(E2EDatabase, E2EDatabase.of(database))
+              ),
+              id: stepId,
+              timeoutMs: isolationStepTimeoutMs,
+            });
+          }),
+        caseId,
+        watchdogMs: caseWatchdogMs,
+      }).pipe(Effect.provide(makeE2ETelemetryMock(observations)))
     );
-    expect(matchesLocation(condition, "https://other.test/en-US/contact")).toBe(
-      false
+    const elapsedMs = Date.now() - startedAt;
+    const finalUrl = await Effect.runPromise(
+      Effect.flatMap(browserSessionFor(run, bookingSession), (booking) =>
+        booking.use("read the final URL", async (page) => page.url())
+      )
     );
+    const annotations = observations
+      .filter(({ scope }) => scope === "annotation")
+      .map(({ scope: _scope, ...annotation }) => annotation);
+    return {
+      annotations,
+      database,
+      elapsedMs,
+      failures: failures.map((failure) => ({
+        operation: failure.operation,
+        timeout: isWorkspaceE2ETimeout(failure),
+      })),
+      finalUrl,
+      // How long the case waited for the signed-out browser's close before
+      // it went on to the booking session's checks.
+      closeWaitMs:
+        authorizedStatusRequestedAt === undefined ||
+        held.closeStartedAt() === undefined
+          ? undefined
+          : authorizedStatusRequestedAt - (held.closeStartedAt() ?? 0),
+      openContexts: opened.contexts().length,
+      // The settled step spans, with their outcomes.
+      steps: observations.flatMap(({ scope, ...observation }) =>
+        scope === "step" ? [observation] : []
+      ),
+      reported: JSON.stringify({
+        annotations,
+        messages: failures.map(({ message }) => message),
+      }),
+      succeeded: Exit.isSuccess(exit),
+    };
+  } finally {
+    await held.release();
+    await run.close?.();
   }
-  for (const { condition, url } of exactWaits) {
-    expect(matchesLocation(condition, `${url}?unexpected=1`)).toBe(false);
-    expect(matchesLocation(condition, `${url}#other`)).toBe(false);
-  }
+};
+
+const failedWith = (operation: string, failureKind: "error" | "timeout") => ({
+  annotations: [
+    failureKind === "timeout"
+      ? { caseId, failureKind, outcome: "timed_out" as const, stepId }
+      : { caseId, failureKind, outcome: "failed" as const, stepId },
+  ],
+  failures: [{ operation, timeout: failureKind === "timeout" }],
+  succeeded: false,
 });
 
-test("fails when the booking session reads every order", async () => {
-  const result = await runIsolation("session-reads-every-order");
-
-  expect(result.exit._tag).toBe("Failure");
-  expect(String(result.exit)).toContain(
-    "other reservation details were exposed to the booking session"
-  );
-  expect(result.runner.currentUrl()).toBe(`${baseUrl}/en-US/contact`);
+const expectBookingSessionRestored = (
+  result: Awaited<ReturnType<typeof runIsolation>>
+) => {
+  expect(new URL(result.finalUrl).pathname).toBe("/en-US/contact");
+  // The signed-out visitor's browser is closed; the booking one stays open.
+  expect(result.openContexts).toBe(1);
   expect(result.database.hasOnlyTarget()).toBe(true);
-});
+  expect(result.reported).not.toContain(orderId);
+};
 
-test("fails when a signed-out visitor reads the status page", async () => {
-  const result = await runIsolation("signed-out-reads-status");
+test.skipIf(!chromiumAvailable)(
+  "checks target authorization, other-order isolation, and signed-out sign-in",
+  async () => {
+    const result = await runIsolation();
 
-  expect(result.exit._tag).toBe("Failure");
-  expect(String(result.exit)).toContain(
-    "signed-out reservation status sign-in URL"
-  );
-  expect(result.runner.currentUrl()).toBe(`${baseUrl}/en-US/contact`);
-  expect(result.database.hasOnlyTarget()).toBe(true);
-});
+    expect({
+      annotations: result.annotations,
+      failures: result.failures,
+      succeeded: result.succeeded,
+    }).toEqual({ annotations: [], failures: [], succeeded: true });
+    expectBookingSessionRestored(result);
+    // The signed-out visitor asked for the target status without the
+    // booking session's sign-in and landed on the reservation sign-in.
+    expect(requests).toContainEqual({
+      path: targetStatusPath,
+      signedIn: false,
+    });
+    expect(requests).toContainEqual({ path: signInPath, signedIn: false });
+    expect(requests).toContainEqual({ path: targetStatusPath, signedIn: true });
+  },
+  testTimeoutMs
+);
+
+test.skipIf(!chromiumAvailable)(
+  "fails when the booking session reads every order",
+  async () => {
+    const result = await runIsolation("session-reads-every-order");
+
+    expect({
+      annotations: result.annotations,
+      failures: result.failures,
+      succeeded: result.succeeded,
+    }).toEqual(failedWith("assert other reservation remains private", "error"));
+    expect(result.reported).toContain(
+      "other reservation details were exposed to the booking session"
+    );
+    expectBookingSessionRestored(result);
+  },
+  testTimeoutMs
+);
+
+test.skipIf(!chromiumAvailable)(
+  "times out when a signed-out visitor reads the status page",
+  async () => {
+    const result = await runIsolation("signed-out-reads-status");
+
+    expect({
+      annotations: result.annotations,
+      failures: result.failures,
+      succeeded: result.succeeded,
+    }).toEqual(
+      failedWith(
+        "wait for signed-out reservation status sign-in URL",
+        "timeout"
+      )
+    );
+    expectBookingSessionRestored(result);
+  },
+  testTimeoutMs
+);
+
+test.skipIf(!chromiumAvailable)(
+  "times out unless the status page keeps the exact link",
+  async () => {
+    const result = await runIsolation("status-url-drifts");
+
+    expect({
+      annotations: result.annotations,
+      failures: result.failures,
+      succeeded: result.succeeded,
+    }).toEqual(
+      failedWith("wait for authorized reservation status URL", "timeout")
+    );
+    expectBookingSessionRestored(result);
+  },
+  testTimeoutMs
+);
+
+test.skipIf(!chromiumAvailable)(
+  "times out at the step deadline while the signed-out browser opens",
+  async () => {
+    const result = await runIsolation("scoped", {
+      signedOutContext: "open-held",
+      stepTimeoutMs: 8_000,
+    });
+
+    // The step times out at its own deadline, without a diagnostic code. The
+    // argv close awaited the pending open, so the step was cancelled only
+    // after the case watchdog fired.
+    expect({
+      annotations: result.annotations,
+      steps: result.steps,
+      succeeded: result.succeeded,
+    }).toEqual({
+      annotations: failedWith("", "timeout").annotations,
+      steps: [
+        {
+          caseId,
+          failureKind: "timeout",
+          outcome: "timed_out",
+          stepId,
+          timeoutMs: 8_000,
+        },
+      ],
+      succeeded: false,
+    });
+    expect(result.elapsedMs).toBeLessThan(caseWatchdogMs);
+    expect(new URL(result.finalUrl).pathname).toBe("/en-US/contact");
+    expect(result.database.hasOnlyTarget()).toBe(true);
+    expect(requests).not.toContainEqual({
+      path: targetStatusPath,
+      signedIn: false,
+    });
+  },
+  testTimeoutMs
+);
+
+test.skipIf(!chromiumAvailable)(
+  "annotates the diagnostic code of a fixture cleanup that does not converge",
+  async () => {
+    const result = await runIsolation("scoped", { cleanupConverges: false });
+
+    expect({
+      annotations: result.annotations,
+      failures: result.failures,
+      steps: result.steps,
+      succeeded: result.succeeded,
+    }).toEqual({
+      annotations: [
+        {
+          caseId,
+          diagnosticCode: "postgres_account_fixture_convergence_failed",
+          failureKind: "error",
+          outcome: "failed",
+          stepId,
+        },
+      ],
+      failures: [
+        {
+          operation: "verify local reservation fixture cleanup",
+          timeout: false,
+        },
+      ],
+      steps: [
+        {
+          caseId,
+          failureKind: "error",
+          outcome: "failed",
+          stepId,
+          timeoutMs: stepTimeoutMs,
+        },
+      ],
+      succeeded: false,
+    });
+    expect(new URL(result.finalUrl).pathname).toBe("/en-US/contact");
+    expect(result.openContexts).toBe(1);
+  },
+  testTimeoutMs
+);
+
+test.skipIf(!chromiumAvailable)(
+  "ignores a signed-out browser close that fails",
+  async () => {
+    const result = await runIsolation("scoped", {
+      signedOutContext: "close-fails",
+    });
+
+    expect(result.succeeded).toBe(true);
+    expect(result.annotations).toEqual([]);
+  },
+  testTimeoutMs
+);
+
+test.skipIf(!chromiumAvailable)(
+  "stops waiting for a signed-out browser close after its bound",
+  async () => {
+    const result = await runIsolation("scoped", {
+      caseConfig: {
+        ...config,
+        timeouts: { ...config.timeouts, browserSessionClose: 1_000 },
+      },
+      signedOutContext: "close-held",
+    });
+
+    expect(result.succeeded).toBe(true);
+    expect(result.annotations).toEqual([]);
+    // The configured second, well short of the fixture's 10-second browser
+    // action bound that would also end the wait.
+    expect(result.closeWaitMs).toBeGreaterThanOrEqual(900);
+    expect(result.closeWaitMs).toBeLessThan(8_000);
+  },
+  testTimeoutMs
+);

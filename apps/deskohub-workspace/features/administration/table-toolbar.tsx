@@ -16,6 +16,7 @@ export function AdministrationTableToolbar({
   actions,
   count,
   exportHref,
+  filterLayout = "stacked",
   filters,
   label,
   search,
@@ -29,6 +30,13 @@ export function AdministrationTableToolbar({
    * export control to the actions and shows its failures below the controls.
    */
   readonly exportHref?: Promise<AdministrationHref>;
+  /**
+   * Where `filters` sit. `stacked` gives a wide filter grid its own row below
+   * the count until the 2xl breakpoint. `inline` keeps a compact filter row,
+   * such as a date range, on the count's row and wraps it below only when it
+   * doesn't fit.
+   */
+  readonly filterLayout?: "inline" | "stacked";
   readonly filters?: ReactNode;
   /** The accessible name of the controls section, such as "Order table controls". */
   readonly label: string;
@@ -36,25 +44,41 @@ export function AdministrationTableToolbar({
 }) {
   const [exportFailure, setExportFailure] =
     useState<AdministrationListExportFailure | null>(null);
+  const layout = filters ? filterLayout : "unfiltered";
   return (
     <section
       aria-label={label}
       className="mb-5 rounded-xl border border-navy-blue/10 bg-white p-4"
     >
       <div
-        className={cn(
-          "grid gap-4",
-          filters
-            ? "2xl:grid-cols-[minmax(0,1fr)_auto] 2xl:items-center"
-            : "grid-cols-[minmax(0,1fr)_auto] items-center"
-        )}
+        className={
+          {
+            inline: "flex flex-wrap items-center gap-4",
+            stacked:
+              "grid gap-4 2xl:grid-cols-[minmax(0,1fr)_auto] 2xl:items-center",
+            unfiltered:
+              "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4",
+          }[layout]
+        }
       >
-        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
+        <div
+          className={cn(
+            "flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center",
+            layout === "inline" &&
+              "min-h-10 flex-auto justify-center sm:justify-start"
+          )}
+        >
           {count}
           {search && <div className="w-full sm:max-w-[32rem]">{search}</div>}
         </div>
         {(filters || actions || exportHref) && (
-          <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-end 2xl:justify-end">
+          <div
+            className={
+              layout === "inline"
+                ? "ml-auto flex flex-wrap items-end justify-end gap-3"
+                : "flex flex-col gap-3 2xl:flex-row 2xl:items-end 2xl:justify-end"
+            }
+          >
             {filters}
             {(actions || exportHref) && (
               <div className="flex items-start gap-2 self-end">

@@ -39,7 +39,7 @@ Paths are relative to `apps/deskohub-workspace` unless they start with
   The only exceptions are the two gated magic-link lines in
   [magic-link delivery](references/magic-link-delivery-and-e2e.md).
 - Serialize account mutations with the account advisory lock
-  (`CustomerAccountLinkRepository.withAccountLock`). The lock isn't reentrant: under
+  (`CustomerAccountLinkRepository.withAccountLock`). The lock isn't reentrant (requesting it again inside the section is a defect, not a hang): under
   `OptionalAccountActivityGuard`, read the contact with
   `CustomerAccountContactService.current` and never call
   `resolveCurrentCustomerAccount`.

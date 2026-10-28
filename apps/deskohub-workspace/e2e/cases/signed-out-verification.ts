@@ -29,15 +29,15 @@ import { resolveWorkspaceE2ESessionSigningSecret } from "../account/seeded-sessi
 import { resolveWorkspaceE2EPreviewLogs } from "../account/vercel-log-retrieval";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
 import {
-  activateHydratedBrowserElement,
-  fillBrowserField,
-  openBrowserPage,
-  waitForBrowserCondition,
-  waitForBrowserReactHandler,
-  waitForBrowserText,
-  waitForBrowserUrl,
+  activateHydratedElement,
+  openPage,
+  waitForPageCondition,
+  waitForPageText,
+  waitForPageUrl,
+  waitForReactHandler,
 } from "../browser";
 import { getSubmitCoworkReservationScript } from "../browser-scripts";
+import type { E2EBrowserSession } from "../browser-session";
 import {
   makeCoworkCheckoutData,
   requireCheckoutDate,
@@ -64,7 +64,13 @@ import {
 import { waitForCheckoutRow } from "../integrations/database";
 import { E2EDatabase } from "../integrations/database.service";
 import type { WorkspaceE2ECaseBinder } from "../playwright-checkout/fixtures";
-import { addRedaction, assert, parseUrl, type Runner } from "../runtime";
+import {
+  addRedaction,
+  assert,
+  browserSessionFor,
+  parseUrl,
+  type Runner,
+} from "../runtime";
 import type {
   CheckoutData,
   CheckoutFlowState,
@@ -269,11 +275,14 @@ const executeSignedOutVerification = Effect.fn("SignedOutVerification.execute")(
     const { locale } = data;
     const recipient = data.email;
     const reservationScript = getSubmitCoworkReservationScript(data);
+    // Each step reaches the session itself, so a browser that fails to open
+    // fails the step that needed it.
+    const browser = browserSessionFor(run, session);
     state.startedAt = new Date();
 
     yield* runStep({
       execute: Effect.gen(function* () {
-        yield* openBrowserPage(config, run, session, data.checkoutUrl, {
+        yield* openPage(yield* browser, config, data.checkoutUrl, {
           timeoutMs: config.timeouts.browserNavigation,
         });
         yield* prepareReservationSelection({
@@ -293,7 +302,9 @@ const executeSignedOutVerification = Effect.fn("SignedOutVerification.execute")(
       timeoutMs: config.timeouts.checkoutStart,
     });
     yield* runStep({
-      execute: assertSignedOutContactStep({ config, locale, run, session }),
+      execute: Effect.flatMap(browser, (opened) =>
+        assertSignedOutContactStep({ config, locale, session: opened })
+      ),
       id: "assert-signed-out-contact-step",
       timeoutMs: config.timeouts.uiTransition,
     });
@@ -319,18 +330,15 @@ const executeSignedOutVerification = Effect.fn("SignedOutVerification.execute")(
     const sentAt = yield* runStep({
       execute: Effect.gen(function* () {
         const startedAt = new Date();
-        yield* activateHydratedBrowserElement(
-          run,
-          session,
-          reservationSubmitSelector,
-          { timeoutMs: config.timeouts.browserAction }
-        );
-        yield* waitForBrowserUrl({
+        const opened = yield* browser;
+        yield* activateHydratedElement(opened, reservationSubmitSelector, {
+          timeoutMs: config.timeouts.browserAction,
+        });
+        yield* waitForPageUrl({
           description: "sign-in verification modal",
           matches: (currentUrl) =>
             parseUrl(currentUrl)?.pathname === getAuthVerifyPath(locale),
-          run,
-          session,
+          session: opened,
           timeoutMs: config.timeouts.uiTransition,
         });
         return startedAt;
@@ -339,7 +347,9 @@ const executeSignedOutVerification = Effect.fn("SignedOutVerification.execute")(
       timeoutMs: config.timeouts.uiTransition,
     });
     const confirmation = yield* runStep({
-      execute: waitSignInAccepted({ config, locale, run, session }),
+      execute: Effect.flatMap(browser, (opened) =>
+        waitSignInAccepted({ config, locale, session: opened })
+      ),
       id: "wait-sign-in-email-accepted",
       timeoutMs: config.timeouts.uiTransition,
     });
@@ -362,9 +372,14 @@ const executeSignedOutVerification = Effect.fn("SignedOutVerification.execute")(
         });
         yield* runStep({
           // The code step submits by itself once the sixth digit is in.
-          execute: fillBrowserField(run, session, signInCodeSelector, code, {
-            timeoutMs: config.timeouts.browserAction,
-          }),
+          execute: Effect.flatMap(browser, (opened) =>
+            opened.use("fill browser field", (page) =>
+              page
+                .locator(signInCodeSelector)
+                .filter({ visible: true })
+                .fill(code, { timeout: config.timeouts.browserAction })
+            )
+          ),
           id: "enter-sign-in-code",
           timeoutMs: config.timeouts.browserAction,
         });
@@ -380,9 +395,11 @@ const executeSignedOutVerification = Effect.fn("SignedOutVerification.execute")(
           timeoutMs: config.timeouts.authDelivery,
         });
         yield* runStep({
-          execute: openBrowserPage(config, run, session, link, {
-            timeoutMs: config.timeouts.browserNavigation,
-          }).pipe(Effect.asVoid),
+          execute: Effect.flatMap(browser, (opened) =>
+            openPage(opened, config, link, {
+              timeoutMs: config.timeouts.browserNavigation,
+            })
+          ),
           id: "open-sign-in-link",
           timeoutMs: config.timeouts.browserNavigation,
         });
@@ -391,19 +408,20 @@ const executeSignedOutVerification = Effect.fn("SignedOutVerification.execute")(
       yield* runStep({
         // The page may already have continued to the pay page by the time it
         // is polled; reaching it means the return already happened.
-        execute: waitForBrowserUrl({
-          description: "verified return to the reservation contact step",
-          matches: (currentUrl) => {
-            redactSealedContact(currentUrl);
-            return (
-              isVerifiedContactReturnUrl(currentUrl, data.checkoutUrl) ||
-              isPayPageUrl(currentUrl)
-            );
-          },
-          run,
-          session,
-          timeoutMs: config.timeouts.providerTransition,
-        }),
+        execute: Effect.flatMap(browser, (opened) =>
+          waitForPageUrl({
+            description: "verified return to the reservation contact step",
+            matches: (currentUrl) => {
+              redactSealedContact(currentUrl);
+              return (
+                isVerifiedContactReturnUrl(currentUrl, data.checkoutUrl) ||
+                isPayPageUrl(currentUrl)
+              );
+            },
+            session: opened,
+            timeoutMs: config.timeouts.providerTransition,
+          })
+        ),
         id: "return-to-reservation-contact-step",
         timeoutMs: config.timeouts.providerTransition,
       });
@@ -482,37 +500,61 @@ const executeSignedOutVerification = Effect.fn("SignedOutVerification.execute")(
 const assertSignedOutContactStep = ({
   config,
   locale,
-  run,
   session,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly locale: CheckoutData["locale"];
-  readonly run: Runner;
-  readonly session: string;
+  readonly session: E2EBrowserSession;
 }) => {
   const prompt = getSignedOutContactPrompt(locale);
-  return waitForBrowserCondition(
-    run,
+  return waitForPageCondition(
     session,
     "signed-out contact step with the sign-in prompt",
-    `(() => {
-      const form = document.querySelector(${JSON.stringify(reservationSubmitSelector)})?.closest('form');
-      if (!(form instanceof HTMLFormElement)) return false;
-      const editable = ['name', 'email', 'phone'].every((name) => {
-        const field = form.querySelector('input[name="' + name + '"]');
-        return field instanceof HTMLInputElement && !field.readOnly && !field.disabled;
-      });
-      const normalize = (text) => (text ?? '').replace(/\\s+/g, ' ').trim();
-      const prompt = [...document.querySelectorAll('p')].find(
-        (element) => normalize(element.textContent) === ${JSON.stringify(prompt.text)}
-      );
-      const link = prompt?.querySelector('a[href]');
-      return editable &&
-        link instanceof HTMLAnchorElement &&
-        normalize(link.textContent) === ${JSON.stringify(prompt.signInLabel)} &&
-        new URL(link.href).pathname === ${JSON.stringify(prompt.signInPathname)};
-    })()`,
+    isSignedOutContactStep,
+    {
+      signInLabel: prompt.signInLabel,
+      signInPathname: prompt.signInPathname,
+      submitSelector: reservationSubmitSelector,
+      text: prompt.text,
+    },
     { timeoutMs: config.timeouts.uiTransition }
+  );
+};
+
+/**
+ * Runs in the browser: whether the contact step's name, email and phone are
+ * editable and the page shows the sign-in prompt with its link.
+ */
+export const isSignedOutContactStep = ({
+  signInLabel,
+  signInPathname,
+  submitSelector,
+  text,
+}: {
+  readonly signInLabel: string;
+  readonly signInPathname: string;
+  readonly submitSelector: string;
+  readonly text: string;
+}) => {
+  const form = document.querySelector(submitSelector)?.closest("form");
+  if (!(form instanceof HTMLFormElement)) return false;
+  const editable = ["name", "email", "phone"].every((name) => {
+    const field = form.querySelector(`input[name="${name}"]`);
+    return (
+      field instanceof HTMLInputElement && !field.readOnly && !field.disabled
+    );
+  });
+  const normalize = (value: string | null) =>
+    (value ?? "").replace(/\s+/g, " ").trim();
+  const prompt = [...document.querySelectorAll("p")].find(
+    (element) => normalize(element.textContent) === text
+  );
+  const link = prompt?.querySelector("a[href]");
+  return (
+    editable &&
+    link instanceof HTMLAnchorElement &&
+    normalize(link.textContent) === signInLabel &&
+    new URL(link.href).pathname === signInPathname
   );
 };
 
@@ -526,32 +568,25 @@ const waitSignInAccepted = Effect.fn(
 )(function* ({
   config,
   locale,
-  run,
   session,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly locale: CheckoutData["locale"];
-  readonly run: Runner;
-  readonly session: string;
+  readonly session: E2EBrowserSession;
 }) {
   const acceptedTitle = m.accountSignInAcceptedTitle({}, { locale });
   const codeTitle = m.accountSignInCodeTitle({}, { locale });
-  const pageText = yield* waitForBrowserText({
+  const pageText = yield* waitForPageText({
     description: "accepted sign-in email",
     matches: (text) => text.includes(acceptedTitle) || text.includes(codeTitle),
-    run,
     session,
     timeoutMs: config.timeouts.uiTransition,
   });
   if (!pageText.includes(codeTitle))
     return "inbox" satisfies SignInConfirmation;
-  yield* waitForBrowserReactHandler(
-    run,
-    session,
-    signInCodeSelector,
-    "onChange",
-    { timeoutMs: config.timeouts.browserAction }
-  );
+  yield* waitForReactHandler(session, signInCodeSelector, "onChange", {
+    timeoutMs: config.timeouts.browserAction,
+  });
   return "code" satisfies SignInConfirmation;
 });
 

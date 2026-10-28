@@ -54,6 +54,7 @@ async function BookingsAdministration({
             <BookingCount locale={locale} result={result} />
           </Suspense>
         }
+        filterLayout="inline"
         filters={
           <Suspense fallback={<AdministrationFiltersLoading fields={1} />}>
             <BookingFiltersContent input={input} />

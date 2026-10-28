@@ -53,6 +53,7 @@ async function OperationsAdministration({
             <OperationCount locale={locale} result={result} />
           </Suspense>
         }
+        filterLayout="inline"
         filters={
           <Suspense fallback={<AdministrationFiltersLoading fields={4} />}>
             <OperationFiltersContent criteria={criteria} />

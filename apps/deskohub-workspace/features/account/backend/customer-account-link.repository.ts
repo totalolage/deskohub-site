@@ -11,6 +11,7 @@ import {
 import { customerAccounts } from "@/db/schema";
 import { authUser } from "@/db/schema/auth";
 import { findViolatedConstraint } from "@/db/sql-constraint";
+import { WorkspaceLockSections } from "@/db/workspace-locks";
 import {
   insertReferralSignupIntent,
   type ReferralSignupIntent,
@@ -203,7 +204,9 @@ export class CustomerAccountLinkRepository extends Context.Service<
 
       const withAccountLock: ICustomerAccountLinkRepository["withAccountLock"] =
         (accountId, effect) =>
-          advisoryLock.withLock(customerAccountLockKey(accountId), effect);
+          WorkspaceLockSections.customerAccount(accountId)(effect).pipe(
+            Effect.provideService(WorkspaceDatabaseAdvisoryLock, advisoryLock)
+          );
 
       return {
         claim,

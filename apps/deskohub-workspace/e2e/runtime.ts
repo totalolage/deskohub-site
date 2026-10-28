@@ -13,6 +13,7 @@ import {
   workspaceE2ETimeoutError,
 } from "./errors";
 import { redact } from "./redaction";
+import { argvCommandTimeoutMs } from "./timeouts";
 
 export {
   addDatabaseUrlRedactions,
@@ -212,7 +213,7 @@ const execute = (
   getSession: (id: string) => Promise<ArgvSession>,
   args: string[],
   input: string | undefined,
-  timeoutMs = 120_000,
+  timeoutMs = argvCommandTimeoutMs,
   signal?: AbortSignal
 ) => {
   const sessionId = args[0] === "--session" ? args[1] : undefined;
