@@ -46,7 +46,6 @@ export { AdministrationCustomerTable } from "./customer-table";
 export {
   AdministrationDataTable,
   type AdministrationDataTableColumn,
-  type AdministrationDataTableSorting,
 } from "./data-table";
 export {
   AdministrationDetailSection,
