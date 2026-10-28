@@ -25,7 +25,10 @@ type LockKey =
 type Lock = LockKey & { readonly name: string; readonly rank: number };
 
 export type LockWait = {
-  /** A wait that may exceed the rank order; it fails with a lock timeout instead of deadlocking. */
+  /**
+   * Bounds the wait, in rank order or not: past it the lock fails with a lock
+   * timeout instead of waiting on. Only a bounded wait may exceed the rank order.
+   */
   readonly boundedWait?: Duration.Input;
 };
 
@@ -240,8 +243,8 @@ export const takeTransactionLock = ({
         heldAbove
       );
     }
-    // An in-order lock waits as long as it must; ranks rule out a deadlock.
-    if (heldAbove.length > 0 && Option.isSome(timeoutMillis)) {
+    // A given bounded wait always bounds the wait, in rank order or not.
+    if (Option.isSome(timeoutMillis)) {
       yield* ledger.savepoint(
         withLockTimeout(db, timeoutMillis.value, db.execute(statement))
       );

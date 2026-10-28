@@ -114,10 +114,9 @@ describe("PaymentLifecycleRepository", () => {
 
     const result = await Effect.runPromise(
       Effect.gen(function* () {
-        const { db } = yield* WorkspaceDatabase;
-        return yield* db.transaction((tx) =>
+        const { transaction } = yield* WorkspaceDatabase;
+        return yield* transaction(
           redeemCodeClaim(
-            tx,
             "attempt-1" as never,
             Temporal.Instant.from("2026-01-01T00:00:00Z"),
             true
@@ -148,10 +147,9 @@ describe("PaymentLifecycleRepository", () => {
 
     const result = await Effect.runPromise(
       Effect.gen(function* () {
-        const { db } = yield* WorkspaceDatabase;
-        return yield* db.transaction((tx) =>
+        const { transaction } = yield* WorkspaceDatabase;
+        return yield* transaction(
           redeemCodeClaim(
-            tx,
             "attempt-1" as never,
             Temporal.Instant.from("2026-01-01T00:00:00Z"),
             true

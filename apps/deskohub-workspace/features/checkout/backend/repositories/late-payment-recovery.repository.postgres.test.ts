@@ -30,7 +30,6 @@ import {
   promotionCodeIdSchema,
   storedDiscountIdSchema,
 } from "@/features/discounts/persistence-contracts";
-import { referralFirstBookingLockKey } from "@/features/referrals/advisory-locks";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { rejectCustomerEventInserts } from "@/shared/backend/customer-events/customer-event-outbox.test-utils";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
@@ -362,9 +361,10 @@ describe.skipIf(!testDatabase)(
       });
       await startAndClaim(checkout);
 
-      const [namespace, lockKey] = referralFirstBookingLockKey(
-        checkout.dotyposCustomerId
-      );
+      const [namespace, lockKey] = [
+        "referral-first-booking",
+        checkout.dotyposCustomerId,
+      ];
       const blocker = await testDatabase.pool.connect();
       let waitersObserved = false;
       let attemptRowAvailable = false;
