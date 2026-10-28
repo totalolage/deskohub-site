@@ -10,7 +10,7 @@ import {
 import { NexiOrderIdSchema } from "@deskohub/nexi";
 import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-flags/node";
 import { testEmailAddress } from "@deskohub/test-email";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { Cause, Effect, Exit, Layer, Predicate, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { makeDatabaseClient, makeDatabasePool } from "@/db/database-client";
@@ -29,6 +29,7 @@ import {
   vouchers,
   workspaceReservations,
 } from "@/db/schema";
+import { WorkspaceLockSections } from "@/db/workspace-locks";
 import { CustomerAccountLinkRepository } from "@/features/account/backend/customer-account-link.repository";
 import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
@@ -71,7 +72,6 @@ import {
 import type { DiscountCandidate } from "@/features/discounts/provider";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import { type Locale, m } from "@/features/i18n";
-import { referralGraphAdvisoryLockKey } from "@/features/referrals/advisory-locks";
 import { getReferralInvitationDiscountId } from "@/features/referrals/discount-identifiers";
 import { ReferralService } from "@/features/referrals/referral.service";
 import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
@@ -137,6 +137,14 @@ const makeRepository = async (
         PaymentLifecycleRepository.Default.pipe(Layer.provide(databaseLayer))
       )
     )
+  );
+
+/** Runs `effect` inside an account's lock section, as checkout's account guard does. */
+const inAccountGuard = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+  WorkspaceLockSections.customerAccount(
+    customerAccountIdSchema.make(`account-${uniqueId()}`)
+  )(effect).pipe(
+    Effect.provide(WorkspaceDatabaseAdvisoryLock.makeLayer(testDatabase!.pool))
   );
 
 const makeReferralService = async (input?: {
@@ -1840,14 +1848,18 @@ describe.skipIf(!testDatabase)(
           ...fixture,
           creditCandidates: [voucher.candidate],
         });
+        // Checkout completes it inside the account guard, which holds the
+        // account lock in a section on another connection.
         const completeInternalPayment = () =>
-          repository.completeInternalPayment({
-            workspaceReservationId: reservation.id,
-            amount: fullyCovered.admission.amount,
-            commitment: fullyCovered.admission.commitment,
-            locale: fullyCovered.locale,
-            accountingSnapshot: fullyCovered.snapshot,
-          });
+          inAccountGuard(
+            repository.completeInternalPayment({
+              workspaceReservationId: reservation.id,
+              amount: fullyCovered.admission.amount,
+              commitment: fullyCovered.admission.commitment,
+              locale: fullyCovered.locale,
+              accountingSnapshot: fullyCovered.snapshot,
+            })
+          );
         const readPaymentRows = async () => ({
           reservation: (
             await testDatabase!.pool.query(
@@ -1960,6 +1972,68 @@ describe.skipIf(!testDatabase)(
         await voucher?.cleanup();
       }
     });
+
+    test("restores the transaction's previous lock_timeout after the bounded graph-lock wait", async () => {
+      const repository = await makeRepository();
+      const fixture = await createInvitedCustomer(false);
+      let voucher: Awaited<ReturnType<typeof createVoucher>> | undefined;
+      try {
+        const reservation = await createHeldReservation(
+          fixture.invitedDotyposCustomerId
+        );
+        const referralOnly = makeReferralAdmission({ reservation, ...fixture });
+        voucher = await createVoucher(
+          fixture.invitedDotyposCustomerId,
+          referralOnly.admission.amount.value
+        );
+        const fullyCovered = makeReferralAdmission({
+          reservation,
+          ...fixture,
+          creditCandidates: [voucher.candidate],
+        });
+
+        const [transition, lockTimeout] = await Effect.runPromise(
+          inAccountGuard(
+            Effect.gen(function* () {
+              const { db, transaction } = yield* WorkspaceDatabase;
+              return yield* transaction(
+                Effect.gen(function* () {
+                  yield* db.execute(sql`set local lock_timeout = '7s'`);
+                  const transition = yield* repository.completeInternalPayment({
+                    workspaceReservationId: reservation.id,
+                    amount: fullyCovered.admission.amount,
+                    commitment: fullyCovered.admission.commitment,
+                    locale: fullyCovered.locale,
+                    accountingSnapshot: fullyCovered.snapshot,
+                  });
+                  const { rows } = yield* db.execute<{
+                    readonly lock_timeout: string;
+                  }>(
+                    sql`select current_setting('lock_timeout') as lock_timeout`
+                  );
+                  return [transition, rows[0]?.lock_timeout] as const;
+                })
+              );
+            }).pipe(Effect.provide(testDatabase!.layer))
+          )
+        );
+
+        expect(transition.changed).toBe(true);
+        expect(transition.attempt.state).toBe("paid");
+        expect(lockTimeout).toBe("7s");
+        expect(
+          await readAttributions(fixture.invitedDotyposCustomerId)
+        ).toEqual([
+          {
+            referrer: fixture.referrerDotyposCustomerId,
+            code: fixture.promotionCodeId,
+          },
+        ]);
+      } finally {
+        await fixture.cleanup();
+        await voucher?.cleanup();
+      }
+    });
   }
 );
 
@@ -2004,10 +2078,10 @@ describe.skipIf(!testDatabase)(
               .pipe(Effect.provide(flagLayer))
           );
           // The admitted referral is honored: payment waits for the graph.
-          await waitForAdvisoryLockWaiter(
-            testDatabase!.pool,
-            referralGraphAdvisoryLockKey
-          );
+          await waitForAdvisoryLockWaiter(testDatabase!.pool, [
+            "referral-attribution",
+            "graph",
+          ]);
           await graphLock.release();
           graphLock = undefined;
 

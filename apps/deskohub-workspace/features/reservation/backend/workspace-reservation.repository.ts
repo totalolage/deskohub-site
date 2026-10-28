@@ -31,6 +31,7 @@ import {
   workspaceReservations,
 } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
+import { WorkspaceLocks } from "@/db/workspace-locks";
 import type { CustomerAgentClientId } from "@/features/account";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import { releaseCodeClaim } from "@/features/checkout/backend/repositories/payment-lifecycle.repository";
@@ -448,7 +449,7 @@ export class WorkspaceReservationRepository extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const { db } = yield* WorkspaceDatabase;
+      const { db, transaction } = yield* WorkspaceDatabase;
 
       // A paid reservation whose active attempt is under late-payment
       // recovery is fulfilled by that recovery, not by paid fulfillment.
@@ -490,14 +491,14 @@ export class WorkspaceReservationRepository extends Context.Service<
       return {
         createDraft: Effect.fn("workspaceReservations.createDraft")(
           function* (input) {
-            return yield* db.transaction(
-              Effect.fn(function* (tx) {
-                yield* tx.execute(
-                  sql`select pg_advisory_xact_lock(${input.checkoutSessionLockKey.toString()}::bigint)`
+            return yield* transaction(
+              Effect.gen(function* () {
+                yield* WorkspaceLocks.checkoutSession(
+                  input.checkoutSessionLockKey
                 );
 
                 const findAttemptRow = () =>
-                  tx
+                  db
                     .select()
                     .from(workspaceReservations)
                     .where(
@@ -514,7 +515,7 @@ export class WorkspaceReservationRepository extends Context.Service<
                   return yield* decodeWorkspaceReservation(existingAttempt);
                 }
 
-                const [storedSession] = yield* tx
+                const [storedSession] = yield* db
                   .select({
                     checkoutSessionKey:
                       workspaceReservations.checkoutSessionKey,
@@ -531,7 +532,7 @@ export class WorkspaceReservationRepository extends Context.Service<
                 const checkoutSessionKey =
                   storedSession?.checkoutSessionKey ?? input.checkoutSessionKey;
                 const findCurrentSessionRow = () =>
-                  tx
+                  db
                     .select()
                     .from(workspaceReservations)
                     .where(
@@ -551,7 +552,7 @@ export class WorkspaceReservationRepository extends Context.Service<
                   return yield* decodeWorkspaceReservation(currentSessionRow);
                 }
 
-                const [inserted] = yield* tx
+                const [inserted] = yield* db
                   .insert(workspaceReservations)
                   .values({
                     id: postgresUuidV7,
@@ -898,10 +899,10 @@ export class WorkspaceReservationRepository extends Context.Service<
         claimAdministrationCancellation: Effect.fn(
           "workspaceReservations.claimAdministrationCancellation"
         )(function* (input) {
-          const transaction = db.transaction(
-            Effect.fn(function* (tx) {
+          const claim = transaction(
+            Effect.gen(function* () {
               const now = Temporal.Now.instant();
-              const [grant] = yield* tx
+              const [grant] = yield* db
                 .select({
                   id: reservationAccessGrants.id,
                   state: reservationAccessGrants.state,
@@ -939,7 +940,7 @@ export class WorkspaceReservationRepository extends Context.Service<
                 return null;
               }
 
-              const [claimed] = yield* tx
+              const [claimed] = yield* db
                 .update(workspaceReservations)
                 .set({
                   reservationState: "cancelling",
@@ -987,7 +988,7 @@ export class WorkspaceReservationRepository extends Context.Service<
               if (!claimed) return null;
 
               if (input.pendingPaymentCancellation) {
-                const [attempt] = yield* tx
+                const [attempt] = yield* db
                   .update(paymentAttempts)
                   .set({
                     state: "cancelled",
@@ -1019,7 +1020,6 @@ export class WorkspaceReservationRepository extends Context.Service<
                   });
                 }
                 yield* releaseCodeClaim(
-                  tx,
                   input.pendingPaymentCancellation.paymentAttemptId,
                   now,
                   input.pendingPaymentCancellation.failureCode
@@ -1030,7 +1030,7 @@ export class WorkspaceReservationRepository extends Context.Service<
                 grant &&
                 ["issued", "uncertain", "provisioning"].includes(grant.state)
               ) {
-                yield* tx
+                yield* db
                   .update(reservationAccessGrants)
                   .set({
                     state: "expired",
@@ -1042,7 +1042,7 @@ export class WorkspaceReservationRepository extends Context.Service<
               return yield* decodeWorkspaceReservation(claimed);
             })
           );
-          return yield* transaction;
+          return yield* claim;
         }),
         markCancelled: Effect.fn("workspaceReservations.markCancelled")(
           function* (input) {
@@ -1074,10 +1074,10 @@ export class WorkspaceReservationRepository extends Context.Service<
         markAdministrationCancelled: Effect.fn(
           "workspaceReservations.markAdministrationCancelled"
         )(function* (input) {
-          const transaction = db.transaction(
-            Effect.fn(function* (tx) {
+          const cancellation = transaction(
+            Effect.gen(function* () {
               const updatedAt = Temporal.Now.instant();
-              const updated = yield* tx
+              const updated = yield* db
                 .update(workspaceReservations)
                 .set({
                   reservationState: "cancelled",
@@ -1108,14 +1108,14 @@ export class WorkspaceReservationRepository extends Context.Service<
               // Only a booked reservation's cancellation is a customer event;
               // an unconfirmed one was never booked.
               if (cancelled?.reservationConfirmedAt) {
-                yield* recordCustomerEvent(tx, {
+                yield* recordCustomerEvent(db, {
                   kind: "reservation-cancelled",
                   occurredAt: input.cancelledAt,
                   dotyposCustomerId: cancelled.dotyposCustomerId,
                   workspaceReservationId: input.id,
                 });
               }
-              yield* tx
+              yield* db
                 .update(paymentAttempts)
                 .set({ refundState: "required", updatedAt })
                 .where(
@@ -1129,14 +1129,14 @@ export class WorkspaceReservationRepository extends Context.Service<
                 );
             })
           );
-          yield* transaction;
+          yield* cancellation;
         }),
         completeSupersessionAndCreateDraft: Effect.fn(
           "workspaceReservations.completeSupersessionAndCreateDraft"
         )(function* (input) {
-          const transaction = db.transaction(
-            Effect.fn(function* (tx) {
-              const [cancelled] = yield* tx
+          const supersession = transaction(
+            Effect.gen(function* () {
+              const [cancelled] = yield* db
                 .update(workspaceReservations)
                 .set({
                   reservationState: "cancelled",
@@ -1164,7 +1164,7 @@ export class WorkspaceReservationRepository extends Context.Service<
                 });
               }
 
-              const [replacement] = yield* tx
+              const [replacement] = yield* db
                 .insert(workspaceReservations)
                 .values({
                   id: postgresUuidV7,
@@ -1197,7 +1197,7 @@ export class WorkspaceReservationRepository extends Context.Service<
             })
           );
 
-          return yield* transaction.pipe(
+          return yield* supersession.pipe(
             Effect.flatMap(decodeWorkspaceReservation)
           );
         }),
@@ -1678,9 +1678,9 @@ export class WorkspaceReservationRepository extends Context.Service<
         markReservationConfirmed: Effect.fn(
           "workspaceReservations.markReservationConfirmed"
         )(function* (input) {
-          const transaction = db.transaction(
-            Effect.fn(function* (tx) {
-              const updated = yield* tx
+          const confirmation = transaction(
+            Effect.gen(function* () {
+              const updated = yield* db
                 .update(workspaceReservations)
                 .set({
                   reservationState: "confirmed",
@@ -1707,7 +1707,7 @@ export class WorkspaceReservationRepository extends Context.Service<
               );
               const [confirmed] = updated;
               if (confirmed) {
-                yield* recordCustomerEvent(tx, {
+                yield* recordCustomerEvent(db, {
                   kind: "reservation-booked",
                   occurredAt: input.confirmedAt,
                   dotyposCustomerId: confirmed.dotyposCustomerId,
@@ -1716,7 +1716,7 @@ export class WorkspaceReservationRepository extends Context.Service<
               }
             })
           );
-          yield* transaction;
+          yield* confirmation;
         }),
         selectExpiredHolds: Effect.fn(
           "workspaceReservations.selectExpiredHolds"
@@ -1741,8 +1741,7 @@ export class WorkspaceReservationRepository extends Context.Service<
               .pipe(retryDatabaseRead);
             return yield* Effect.forEach(
               reservations,
-              decodeWorkspaceReservation,
-              { concurrency: "inherit" }
+              decodeWorkspaceReservation
             );
           },
           (effect, input) => effect.pipe(Effect.annotateLogs(input))

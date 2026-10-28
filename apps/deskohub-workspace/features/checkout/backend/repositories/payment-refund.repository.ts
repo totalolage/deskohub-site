@@ -97,7 +97,7 @@ export class PaymentRefundRepository extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const { db } = yield* WorkspaceDatabase;
+      const { db, transaction } = yield* WorkspaceDatabase;
 
       const claimRefundChecks = Effect.fn(
         "PaymentRefundRepository.claimRefundChecks"
@@ -112,9 +112,9 @@ export class PaymentRefundRepository extends Context.Service<
         // skips the rows already updated, so the claim would exceed `limit`.
         // Every read happens before the commit, so a caller interrupted while
         // claiming either gets the claim back or leaves nothing stamped.
-        const { batch, claimed, correlationIds } = yield* db.transaction(
-          Effect.fn(function* (tx) {
-            const batch = yield* tx
+        const { batch, claimed, correlationIds } = yield* transaction(
+          Effect.gen(function* () {
+            const batch = yield* db
               .select({
                 id: paymentAttempts.id,
                 previousCheckedAt: paymentAttempts.refundCheckedAt,
@@ -166,7 +166,7 @@ export class PaymentRefundRepository extends Context.Service<
                 >(),
               };
             }
-            const claimed = yield* tx
+            const claimed = yield* db
               .update(paymentAttempts)
               .set({ refundCheckedAt: input.checkedAt })
               .where(
@@ -176,7 +176,7 @@ export class PaymentRefundRepository extends Context.Service<
                 )
               )
               .returning();
-            const reservations = yield* tx
+            const reservations = yield* db
               .select({
                 id: workspaceReservations.id,
                 correlationId: workspaceReservations.correlationId,

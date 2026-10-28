@@ -104,7 +104,7 @@ State types and check constraints are in `db/schema`. Repositories guard every t
 Lookup keys survive `CHECKOUT_PAY_STATE_KEYS` rotation. Each configured key derives an HKDF subkey; new rows store the active key's `<kid>:<hex>` digest. Lookups accept every configured key's prefixed digest plus the legacy ring-keyed digest: an unprefixed hex HMAC keyed by the whole configured string. Never look up a single freshly derived key.
 
 - Every row of a session stores the same session key. Before inserting, resolve the session's latest stored key under any accepted derivation and reuse it.
-- Draft creation runs in one transaction behind `pg_advisory_xact_lock` on a rotation-independent key derived from the raw session ID (`deriveCheckoutSessionLockKey`), then inserts only if neither the attempt nor the session exists under any derivation.
+- Draft creation runs in one transaction behind `WorkspaceLocks.checkoutSession` on a rotation-independent key derived from the raw session ID (`deriveCheckoutSessionLockKey`), then inserts only if neither the attempt nor the session exists under any derivation.
 
 ### Rotating `CHECKOUT_PAY_STATE_KEYS`
 
