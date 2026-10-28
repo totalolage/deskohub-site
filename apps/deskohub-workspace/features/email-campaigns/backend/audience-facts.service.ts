@@ -13,6 +13,8 @@ import {
   InvalidDotyposReservationInterval,
   type ReservationVisit,
 } from "@/features/reservation/backend/reservation-visits.service";
+import { getMeetingRoomSetupStart } from "@/features/reservation/meeting-room-early-setup";
+import type { StoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import {
   type AudienceCountRequest,
@@ -129,11 +131,16 @@ export const audienceDotyposReads = (
   };
 };
 
-/** A visit's start; a visit without a readable interval fails the resolution. */
+/**
+ * A visit's booked start, read with its stored details when early setup
+ * holds it from before then; a visit without a readable interval fails the
+ * resolution.
+ */
 const visitStart = (
-  reservation: DotyposReservation
+  reservation: DotyposReservation,
+  details?: StoredWorkspaceReservationDetails
 ): Effect.Effect<Temporal.Instant, CampaignRecipientResolutionError> =>
-  Option.match(decodeBookedReservation(reservation).interval, {
+  Option.match(decodeBookedReservation(reservation, details).interval, {
     onNone: () =>
       Effect.fail(
         CampaignRecipientResolutionError.dotypos(
@@ -200,6 +207,30 @@ export class AudienceFactsService extends Context.Service<
         Effect.mapError(CampaignRecipientResolutionError.database)
       );
 
+      /** Each visit's booked start, with the stored details early setup needs. */
+      const bookedStarts = (visits: readonly DotyposReservation[]) =>
+        candidates
+          .earlySetupDetails(
+            visits.flatMap(({ id }) => (id === undefined ? [] : [id]))
+          )
+          .pipe(
+            Effect.mapError(CampaignRecipientResolutionError.database),
+            Effect.flatMap((details) =>
+              Effect.forEach(visits, (visit) =>
+                visitStart(
+                  visit,
+                  visit.id === undefined ? undefined : details.get(visit.id)
+                ).pipe(Effect.map((startsAt) => [visit.id, startsAt] as const))
+              )
+            )
+          );
+
+      /**
+       * The visits booked in the bounds, by ID, with their booked starts.
+       * Dotypos holds an early-setup meeting room from before its booked
+       * start, so the query starts that much earlier and the booked starts
+       * decide what stays.
+       */
       const listVisitsIn = (bounds: DatePeriodBounds) =>
         visitLowerBound.pipe(
           Effect.map((lowerBound) => bounds.startsAtOrAfter ?? lowerBound),
@@ -208,7 +239,8 @@ export class AudienceFactsService extends Context.Service<
               ? Effect.succeed([])
               : dotypos
                   .listReservations({
-                    startsAtOrAfter: startsAtOrAfter.toString(),
+                    startsAtOrAfter:
+                      getMeetingRoomSetupStart(startsAtOrAfter).toString(),
                     ...Option.match(
                       Option.fromNullishOr(dotyposStartsBefore(bounds)),
                       {
@@ -220,30 +252,25 @@ export class AudienceFactsService extends Context.Service<
                     ),
                   })
                   .pipe(
-                    Effect.mapError(CampaignRecipientResolutionError.dotypos)
+                    Effect.mapError(CampaignRecipientResolutionError.dotypos),
+                    Effect.flatMap(bookedStarts)
                   )
-          )
-        );
-
-      /** Every visit that has begun by `asOf`, with its start, in one query. */
-      const visitsBegunBy = (asOf: Temporal.Instant) =>
-        listVisitsIn({ startsAtOrBefore: asOf }).pipe(
-          Effect.flatMap((visits) =>
-            Effect.forEach(visits, (visit) =>
-              visitStart(visit).pipe(
-                Effect.map((startsAt) => [visit.id, startsAt] as const)
-              )
-            )
           ),
           Effect.map(
             (starts) =>
               new Map(
                 starts.flatMap(([id, startsAt]) =>
-                  id === undefined ? [] : [[id, startsAt] as const]
+                  id !== undefined && isWithinDatePeriodBounds(bounds, startsAt)
+                    ? [[id, startsAt] as const]
+                    : []
                 )
               )
           )
         );
+
+      /** Every visit that has begun by `asOf`, with its booked start, in one query. */
+      const visitsBegunBy = (asOf: Temporal.Instant) =>
+        listVisitsIn({ startsAtOrBefore: asOf });
 
       /**
        * Live visit reads: range queries, and the past visits of each
@@ -263,9 +290,7 @@ export class AudienceFactsService extends Context.Service<
             return {
               visitsIn: (bounds) =>
                 listVisitsIn(bounds).pipe(
-                  Effect.map((visits) =>
-                    visits.flatMap(({ id }) => (id === undefined ? [] : [id]))
-                  )
+                  Effect.map((visits) => [...visits.keys()])
                 ),
               pastVisits: (asOf) =>
                 byInstant.get(asOf.toString()) ?? visitsBegunBy(asOf),
