@@ -102,7 +102,7 @@ async function OrderFiltersContent({
 }: {
   readonly range: Promise<OrdersData["range"]>;
 }) {
-  return <OrdersAdministrationFilterForm range={await range} />;
+  return <OrdersAdministrationFilterForm query={await range} />;
 }
 
 async function OrderResultsContent({

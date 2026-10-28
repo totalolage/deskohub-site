@@ -6,12 +6,12 @@ import {
 } from "@/features/administration/administration-href";
 import { AdministrationAlert } from "@/features/administration/components";
 import { m } from "@/features/administration/i18n";
-import {
-  type AdministrationListParams,
-  getAdministrationListHref,
-} from "@/features/administration/list-href";
 import type { Locale } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
+import {
+  getHrefWithSearchParams,
+  type SearchParamValues,
+} from "@/shared/utils/search-params";
 import { describeCampaignOperationFailure } from "../../campaign-operation-failure";
 import type { AutomatedCampaign } from "../automated-campaign.server";
 import { AutomationEngineHealthIndicator } from "./automation-engine-health";
@@ -82,10 +82,10 @@ export async function AutomationRunLogPage({
     { campaignId: automated.campaign.id }
   );
   const current = automationRunFilterParams(filters);
-  const listHref = (params: AdministrationListParams) =>
-    getAdministrationListHref(basePath, { ...current, ...params });
-  const countsHref = (params: AdministrationListParams) =>
-    getAdministrationListHref(basePath, {
+  const listHref = (params: SearchParamValues) =>
+    getHrefWithSearchParams(basePath, { ...current, ...params });
+  const countsHref = (params: SearchParamValues) =>
+    getHrefWithSearchParams(basePath, {
       version: current.version,
       ...params,
     });

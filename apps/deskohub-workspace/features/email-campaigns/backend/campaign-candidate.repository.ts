@@ -4,7 +4,10 @@ import type {
   DotyposCustomerId,
   DotyposReservationId,
 } from "@deskohub/dotypos";
-import type { ReservationProductFilterType } from "@deskohub/workspace-admin-api";
+import type {
+  AdministrationReservationStatusFilter,
+  ReservationProductFilterType,
+} from "@deskohub/workspace-admin-api";
 import {
   and,
   count,
@@ -36,7 +39,6 @@ import {
   workspaceReservations,
 } from "@/db/schema";
 import { authUser } from "@/db/schema/auth";
-import type { AdministrationReservationStatusFilter } from "@/features/administration/administration.service";
 import {
   bookedReservationConditionAt,
   type ReservationStatusRead,

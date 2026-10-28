@@ -1,5 +1,5 @@
 import type { Locale } from "@/features/i18n";
-import type { AdministrationCustomerMarketingConsentState } from "./customer-list-filters";
+import type { AdministrationCustomerMarketingConsentState } from "./customer-list-query";
 import type { AdministrationCustomerName } from "./customer-name";
 import { m } from "./i18n";
 

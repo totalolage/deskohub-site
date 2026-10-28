@@ -9,13 +9,15 @@ import {
   WorkspaceRouteFailure,
 } from "@/shared/backend/workspace-route";
 import { type CsvColumn, createCsvDownloadResponse } from "@/shared/utils/csv";
-import { getSearchParamsRecord } from "@/shared/utils/search-params";
+import {
+  getSearchParamsRecord,
+  type SearchParamsRecord,
+} from "@/shared/utils/search-params";
 import {
   AdministrationListSourceUnavailableError,
   AdministrationService,
 } from "./administration.service";
 import { administrationListSourceUnavailableCode } from "./list-export";
-import type { AdministrationSearchParams } from "./page-data.server";
 
 // An export that couldn't read Dotypos answers 503 with a stable code a client
 // can explain; anything else is an internal failure.
@@ -55,7 +57,7 @@ export const defineAdministrationListExportRoute = <Row, E>({
   /** Names the operation and the file, such as `reservations`. */
   readonly name: string;
   readonly rows: (
-    params: Awaited<AdministrationSearchParams>
+    params: SearchParamsRecord
   ) => Effect.Effect<readonly Row[], E, AdministrationService>;
 }) =>
   defineWorkspaceRoute(
