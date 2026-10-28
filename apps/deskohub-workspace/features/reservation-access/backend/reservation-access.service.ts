@@ -87,6 +87,17 @@ export const getReservationAccessInterval = (input: {
     };
   });
 
+const hasReservationAccessBounds = (
+  grant: ReservationAccessGrant,
+  bounds: Pick<
+    ReservationAccessGrant,
+    "scheduledAccessStartsAt" | "accessStartsAt" | "accessEndsAt"
+  >
+) =>
+  grant.scheduledAccessStartsAt.equals(bounds.scheduledAccessStartsAt) &&
+  grant.accessStartsAt.equals(bounds.accessStartsAt) &&
+  grant.accessEndsAt.equals(bounds.accessEndsAt);
+
 export interface IReservationAccessService {
   readonly loadGrant: (
     reservationId: WorkspaceReservationId
@@ -196,7 +207,8 @@ export class ReservationAccessService extends Context.Service<
               });
             }
             // Grants issued before Workspace recorded exact spans hold the
-            // whole hours they were programmed with, which compare the same.
+            // whole hours they were programmed with, which compare the same
+            // and take the exact span when reused.
             if (
               isSameIgloohomeAccessWindow(
                 {
@@ -206,9 +218,49 @@ export class ReservationAccessService extends Context.Service<
                 { startsAt: input.reservedFrom, endsAt: input.reservedUntil }
               )
             ) {
+              // A Dotypos timing change within the same hours keeps the PIN,
+              // and the grant records the span the reservation now holds.
+              const bounds = {
+                scheduledAccessStartsAt: input.reservedFrom,
+                accessStartsAt: input.reservedFrom,
+                accessEndsAt: input.reservedUntil,
+              };
+              const grant = hasReservationAccessBounds(existingGrant, bounds)
+                ? existingGrant
+                : yield* repository
+                    .rescheduleIssued({
+                      id: existingGrant.id,
+                      reservationId: input.reservationId,
+                      from: existingGrant,
+                      to: bounds,
+                      rescheduledAt: Temporal.Now.instant(),
+                    })
+                    .pipe(
+                      Effect.mapError(
+                        () =>
+                          new ReservationAccessIssuanceError({
+                            reservationId: input.reservationId,
+                            outcome: "rejected",
+                            message:
+                              "Rescheduled reservation access could not be recorded.",
+                          })
+                      ),
+                      Effect.flatMap((rescheduled) =>
+                        rescheduled
+                          ? Effect.succeed(rescheduled)
+                          : Effect.fail(
+                              new ReservationAccessIssuanceError({
+                                reservationId: input.reservationId,
+                                outcome: "rejected",
+                                message:
+                                  "Reservation access grant changed concurrently.",
+                              })
+                            )
+                      )
+                    );
               const accessCode = yield* repository
                 .loadIssuedCode({
-                  id: existingGrant.id,
+                  id: grant.id,
                   reservationId: input.reservationId,
                 })
                 .pipe(
@@ -223,10 +275,10 @@ export class ReservationAccessService extends Context.Service<
                   )
                 );
               return {
-                grantId: existingGrant.id,
+                grantId: grant.id,
                 accessCode,
-                accessStartsAt: existingGrant.accessStartsAt,
-                accessEndsAt: existingGrant.accessEndsAt,
+                accessStartsAt: grant.accessStartsAt,
+                accessEndsAt: grant.accessEndsAt,
               };
             }
           }

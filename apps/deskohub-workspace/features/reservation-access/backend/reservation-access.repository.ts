@@ -47,10 +47,17 @@ export class ReservationAccessStorageError extends Data.TaggedError(
     | "mark_failed"
     | "mark_issued"
     | "mark_uncertain"
-    | "reconcile_uncertain";
+    | "reconcile_uncertain"
+    | "reschedule_issued";
   readonly reservationId?: WorkspaceReservationId;
   readonly message: string;
 }> {}
+
+interface ReservationAccessBounds {
+  readonly scheduledAccessStartsAt: Temporal.Instant;
+  readonly accessStartsAt: Temporal.Instant;
+  readonly accessEndsAt: Temporal.Instant;
+}
 
 export interface IReservationAccessRepository {
   readonly ensure: (input: {
@@ -91,6 +98,21 @@ export interface IReservationAccessRepository {
     readonly failureCode: string;
     readonly failedAt: Temporal.Instant;
   }) => Effect.Effect<void, ReservationAccessStorageError>;
+  /**
+   * Records a reservation span that moved within the hours its issued
+   * credential covers. Returns null when the grant no longer holds the span
+   * the caller compared, because a concurrent request moved or reset it.
+   */
+  readonly rescheduleIssued: (input: {
+    readonly id: ReservationAccessGrantId;
+    readonly reservationId: WorkspaceReservationId;
+    readonly from: ReservationAccessBounds;
+    readonly to: ReservationAccessBounds;
+    readonly rescheduledAt: Temporal.Instant;
+  }) => Effect.Effect<
+    ReservationAccessGrant | null,
+    ReservationAccessStorageError
+  >;
   readonly loadIssuedCode: (input: {
     readonly id: ReservationAccessGrantId;
     readonly reservationId: WorkspaceReservationId;
@@ -382,6 +404,46 @@ export class ReservationAccessRepository extends Context.Service<
               );
           }
         ),
+        rescheduleIssued: Effect.fn(
+          "ReservationAccessRepository.rescheduleIssued"
+        )(function* (input) {
+          const [grant] = yield* db
+            .update(reservationAccessGrants)
+            .set({
+              scheduledAccessStartsAt: input.to.scheduledAccessStartsAt,
+              accessStartsAt: input.to.accessStartsAt,
+              accessEndsAt: input.to.accessEndsAt,
+              updatedAt: input.rescheduledAt,
+            })
+            .where(
+              and(
+                eq(reservationAccessGrants.id, input.id),
+                eq(reservationAccessGrants.state, "issued"),
+                eq(
+                  reservationAccessGrants.scheduledAccessStartsAt,
+                  input.from.scheduledAccessStartsAt
+                ),
+                eq(
+                  reservationAccessGrants.accessStartsAt,
+                  input.from.accessStartsAt
+                ),
+                eq(reservationAccessGrants.accessEndsAt, input.from.accessEndsAt)
+              )
+            )
+            .returning(reservationAccessGrantSelection)
+            .pipe(
+              Effect.mapError(
+                () =>
+                  new ReservationAccessStorageError({
+                    operation: "reschedule_issued",
+                    reservationId: input.reservationId,
+                    message:
+                      "Rescheduled reservation access could not be recorded.",
+                  })
+              )
+            );
+          return grant ?? null;
+        }),
         reconcileUncertain: Effect.fn(
           "ReservationAccessRepository.reconcileUncertain"
         )(function* (input) {

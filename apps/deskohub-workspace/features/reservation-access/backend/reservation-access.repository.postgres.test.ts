@@ -170,5 +170,100 @@ describe.skipIf(!testDatabase)(
       // replacement's request records its own name.
       expect(ensured.accessName).toBe(`Deskohub ${ensured.id}`);
     });
+
+    test("records a moved span on an issued grant and keeps its PIN", async () => {
+      const reservationId = await insertReservation();
+      const { accessCode, grant } = await issueGrant(reservationId);
+      const moved = {
+        scheduledAccessStartsAt: Temporal.Instant.from("2030-03-04T08:30:00Z"),
+        accessStartsAt: Temporal.Instant.from("2030-03-04T08:30:00Z"),
+        accessEndsAt: Temporal.Instant.from("2030-03-04T16:45:00Z"),
+      };
+
+      const rescheduled = await run((repository) =>
+        repository.rescheduleIssued({
+          id: grant.id,
+          reservationId,
+          from: target,
+          to: moved,
+          rescheduledAt: Temporal.Now.instant(),
+        })
+      );
+
+      expect(rescheduled?.id).toBe(grant.id);
+      expect(rescheduled?.state).toBe("issued");
+      const stored = await run((repository) =>
+        repository.findByReservationId(reservationId)
+      );
+      expect(
+        stored?.scheduledAccessStartsAt.equals(moved.scheduledAccessStartsAt)
+      ).toBe(true);
+      expect(stored?.accessStartsAt.equals(moved.accessStartsAt)).toBe(true);
+      expect(stored?.accessEndsAt.equals(moved.accessEndsAt)).toBe(true);
+      expect(
+        await run((repository) =>
+          repository.loadIssuedCode({ id: grant.id, reservationId })
+        )
+      ).toBe(accessCode);
+    });
+
+    test("leaves a grant that changed since it was read", async () => {
+      const reservationId = await insertReservation();
+      const { grant } = await issueGrant(reservationId);
+      const staleRead = {
+        ...target,
+        scheduledAccessStartsAt: Temporal.Instant.from("2030-03-04T08:15:00Z"),
+      };
+
+      const rescheduled = await run((repository) =>
+        repository.rescheduleIssued({
+          id: grant.id,
+          reservationId,
+          from: staleRead,
+          to: {
+            ...target,
+            scheduledAccessStartsAt: Temporal.Instant.from(
+              "2030-03-04T08:30:00Z"
+            ),
+          },
+          rescheduledAt: Temporal.Now.instant(),
+        })
+      );
+
+      expect(rescheduled).toBeNull();
+      const stored = await run((repository) =>
+        repository.findByReservationId(reservationId)
+      );
+      expect(
+        stored?.scheduledAccessStartsAt.equals(target.scheduledAccessStartsAt)
+      ).toBe(true);
+    });
+
+    test("leaves a grant that is no longer issued", async () => {
+      const reservationId = await insertReservation();
+      const grant = await run((repository) =>
+        repository.ensure({ reservationId, ...target })
+      );
+
+      const rescheduled = await run((repository) =>
+        repository.rescheduleIssued({
+          id: grant.id,
+          reservationId,
+          from: target,
+          to: {
+            ...target,
+            accessEndsAt: Temporal.Instant.from("2030-03-04T16:30:00Z"),
+          },
+          rescheduledAt: Temporal.Now.instant(),
+        })
+      );
+
+      expect(rescheduled).toBeNull();
+      const stored = await run((repository) =>
+        repository.findByReservationId(reservationId)
+      );
+      expect(stored?.state).toBe("pending");
+      expect(stored?.accessEndsAt.equals(target.accessEndsAt)).toBe(true);
+    });
   }
 );
