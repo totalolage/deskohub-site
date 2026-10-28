@@ -16,7 +16,6 @@ import {
 } from "./administration-href";
 import { type BookingListQuery, bookingListQuery } from "./booking-list-query";
 import {
-  AdministrationCustomerMarketingConsentState,
   type CustomerListQuery,
   customerListQuery,
 } from "./customer-list-query";
@@ -489,7 +488,7 @@ export function CustomersAdministrationFilterForm({
           <option value="">
             {m.administrationFilterCustomerMarketingConsentAll({}, { locale })}
           </option>
-          {AdministrationCustomerMarketingConsentState.literals.map((state) => (
+          {customerListQuery.marketingConsentStates.map((state) => (
             <option key={state} value={state}>
               {getAdministrationCustomerMarketingConsentLabel(state, locale)}
             </option>

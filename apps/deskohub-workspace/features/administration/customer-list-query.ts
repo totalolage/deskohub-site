@@ -17,7 +17,7 @@ import { getAdministrationReservationDateRange } from "./reservation-date-range"
  * A customer's current marketing consent: an active grant, a withdrawn grant,
  * or no grant ever recorded.
  */
-export const AdministrationCustomerMarketingConsentState = Schema.Literals([
+const AdministrationCustomerMarketingConsentState = Schema.Literals([
   "granted",
   "withdrawn",
   "never",
@@ -73,6 +73,8 @@ export type CustomerListQuery = ReturnType<typeof customerListParams.parse>;
  */
 export const customerListQuery = {
   ...customerListParams,
+  /** The consent states the list can filter by, in the filter's order. */
+  marketingConsentStates: AdministrationCustomerMarketingConsentState.literals,
   formSchema: customerFilterFormSchema,
   formValues: (
     query: CustomerListQuery

@@ -173,6 +173,32 @@ describe("administration filter forms", () => {
       ]);
       await expectNativeGetSubmission(form);
     });
+
+    test("keeps an invalid day from submitting and marks the field", async () => {
+      const view = render(
+        <BookingsAdministrationFilterForm
+          query={{
+            date: "2026-02-30",
+            direction: "asc",
+            page: 1,
+            sort: "booking",
+          }}
+        />
+      );
+      const form = getForm(view.container);
+      const date = view.getByLabelText("Booking date") as HTMLInputElement;
+      let submitted = false;
+      form.submit = () => {
+        submitted = true;
+      };
+
+      fireEvent.submit(form);
+
+      await waitFor(() =>
+        expect(date.getAttribute("aria-invalid")).toBe("true")
+      );
+      expect(submitted).toBe(false);
+    });
   });
 
   describe("operations", () => {
