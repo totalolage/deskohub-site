@@ -132,11 +132,13 @@ describe("reservation access interval", () => {
 
 interface ScheduledBounds {
   readonly scheduledAccessStartsAt: Temporal.Instant;
+  readonly accessStartsAt: Temporal.Instant;
   readonly accessEndsAt: Temporal.Instant;
 }
 
 const formatBounds = (bounds: ScheduledBounds | undefined) => ({
   scheduledAccessStartsAt: bounds?.scheduledAccessStartsAt.toString(),
+  accessStartsAt: bounds?.accessStartsAt.toString(),
   accessEndsAt: bounds?.accessEndsAt.toString(),
 });
 
@@ -258,6 +260,7 @@ describe("ReservationAccessService", () => {
     // PIN issued for other hours.
     expect(formatBounds(loadIssuedCode.mock.calls[0]?.[0])).toEqual({
       scheduledAccessStartsAt: "2099-07-01T08:00:00Z",
+      accessStartsAt: "2099-07-01T08:00:00Z",
       accessEndsAt: "2099-07-01T17:00:00Z",
     });
     expect(markUncertain).not.toHaveBeenCalled();
@@ -325,9 +328,11 @@ describe("ReservationAccessService", () => {
     expect(claim).toHaveBeenCalledWith(
       expect.objectContaining({ accessName: `Deskohub ${grantId}` })
     );
-    // The claim is a compare-and-set on the bounds this request read.
+    // The claim is a compare-and-set on the bounds this request read and
+    // sends to Igloohome.
     expect(formatBounds(claim.mock.calls[0]?.[0])).toEqual({
       scheduledAccessStartsAt: "2099-07-01T08:00:00Z",
+      accessStartsAt: "2099-07-01T08:00:00Z",
       accessEndsAt: "2099-07-01T17:00:00Z",
     });
     expect(markIssued).toHaveBeenCalledWith(
