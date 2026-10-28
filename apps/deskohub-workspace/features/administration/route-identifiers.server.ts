@@ -54,6 +54,3 @@ export const decodeNexiOrderRouteId = (input: string | undefined) =>
 
 export const decodeNexiOperationRouteId = (input: string | undefined) =>
   decodeRouteIdentifier(decodeNexiOperationId, input);
-
-export const getDotyposCustomerRouteId = (input: string | undefined) =>
-  Option.getOrUndefined(decodeDotyposCustomerId(input));

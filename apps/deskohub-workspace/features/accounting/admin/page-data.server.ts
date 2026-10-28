@@ -5,16 +5,11 @@ import {
   AdministrationRecordNotFound,
   runAdministrationPage,
 } from "@/features/administrators/server/administration-request.server";
-import {
-  type InvoiceAdministrationListQuery,
-  InvoiceAdministrationService,
-} from "./invoice-administration.service";
+import type { SearchParamsRecord } from "@/shared/utils/search-params";
+import { InvoiceAdministrationService } from "./invoice-administration.service";
+import { invoiceListQuery } from "./invoice-list-query";
 
-export type InvoiceAdministrationSearchParams = Promise<{
-  readonly sort?: string;
-  readonly direction?: string;
-  readonly page?: string;
-}>;
+export type InvoiceAdministrationSearchParams = Promise<SearchParamsRecord>;
 
 const invoiceNotFound = () => Effect.fail(new AdministrationRecordNotFound());
 
@@ -24,12 +19,9 @@ export const loadInvoiceAdministrationList = (
   runAdministrationPage(
     "invoice-administration.list",
     Effect.gen(function* () {
-      const params = yield* Effect.promise(() => searchParams);
-      const query: InvoiceAdministrationListQuery = {
-        ...(isSort(params.sort) && { sort: params.sort }),
-        ...(isDirection(params.direction) && { direction: params.direction }),
-        ...(isPage(params.page) && { page: Number(params.page) }),
-      };
+      const query = invoiceListQuery.parse(
+        yield* Effect.promise(() => searchParams)
+      );
       const administration = yield* InvoiceAdministrationService;
       return { items: yield* administration.list(query), query };
     }),
@@ -69,19 +61,3 @@ export const loadInvoiceAdministrationPdf = (invoiceId: string) =>
     ),
     InvoiceAdministrationService.Live
   );
-
-const isSort = (
-  value: string | undefined
-): value is NonNullable<InvoiceAdministrationListQuery["sort"]> =>
-  value === "invoiceNumber" ||
-  value === "issuedAt" ||
-  value === "customer" ||
-  value === "total" ||
-  value === "paymentStatus" ||
-  value === "source" ||
-  value === "delivery";
-
-const isDirection = (value: string | undefined): value is "asc" | "desc" =>
-  value === "asc" || value === "desc";
-const isPage = (value: string | undefined) =>
-  Boolean(value && /^\d+$/.test(value) && Number(value) >= 1);

@@ -22,6 +22,12 @@ import {
   NexiOrderIdSchema,
   NexiWebhookEventIdSchema,
 } from "@deskohub/nexi";
+import type {
+  AdministrationReservationFamily,
+  AdministrationReservationSort,
+  AdministrationReservationSortDirection,
+  AdministrationReservationStatusFilter,
+} from "@deskohub/workspace-admin-api";
 import {
   and,
   asc,
@@ -92,7 +98,7 @@ import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import type { Money } from "@/shared/money/money";
 import { workspaceSiteConstants } from "@/shared/utils";
 import { instantStringSchema } from "@/shared/utils/temporal";
-import type { AdministrationCustomerMarketingConsentState } from "./customer-list-filters";
+import type { AdministrationCustomerMarketingConsentState } from "./customer-list-query";
 import {
   type AdministrationCustomerName,
   unnamedCustomerDisplayName,
@@ -139,7 +145,6 @@ import {
 } from "./reservation-product";
 import {
   type AdministrationReservationStatusNote,
-  type AdministrationStatusGroup,
   canCancelReservation,
   getAdministrationReservationLifecycle,
   getAdministrationReservationStatus,
@@ -168,14 +173,10 @@ const paymentAttemptStateLabels = {
 } as const;
 
 /**
- * Reservation list filters: the durable workflow status groups plus the
- * payment-attempt refund work queue shared by late payments and operator
- * cancellations.
+ * The reservation list's criteria. `status` is a durable workflow status group
+ * or the payment-attempt refund work queue shared by late payments and
+ * operator cancellations.
  */
-export type AdministrationReservationStatusFilter =
-  | Exclude<AdministrationStatusGroup, "attention">
-  | "needs_refund";
-
 export type AdministrationReservationListInput = {
   readonly customerId?: DotyposCustomerId;
   readonly date?: string;
@@ -185,18 +186,10 @@ export type AdministrationReservationListInput = {
   readonly sort?: AdministrationReservationSort;
   readonly status?: AdministrationReservationStatusFilter;
   readonly to?: string;
-  readonly type?: "cowork" | "meeting-room" | "office";
+  readonly type?: AdministrationReservationFamily;
 };
 
-export type AdministrationReservationSort =
-  | "created"
-  | "date"
-  | "reservation"
-  | "status";
-
 type AdministrationSortDirection = "asc" | "desc";
-
-type AdministrationReservationSortDirection = AdministrationSortDirection;
 
 type ReservationListInput = AdministrationReservationListInput & {
   readonly pageSize?: number;
@@ -246,7 +239,7 @@ export type AdministrationCustomerExportInput = Omit<
   "page"
 >;
 
-export type AdministrationCustomerSort = "reservations" | "activity";
+type AdministrationCustomerSort = "reservations" | "activity";
 
 export type AdministrationBookingListInput = {
   readonly date: string;
@@ -255,7 +248,7 @@ export type AdministrationBookingListInput = {
   readonly sort?: AdministrationBookingSort;
 };
 
-export type AdministrationBookingSort = "booking" | "status";
+type AdministrationBookingSort = "booking" | "status";
 
 type AdministrationCustomer = {
   readonly id: DotyposCustomerId;

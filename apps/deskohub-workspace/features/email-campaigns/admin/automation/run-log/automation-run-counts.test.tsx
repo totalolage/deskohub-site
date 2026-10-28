@@ -1,13 +1,13 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import type { AutomationFlow } from "@deskohub/workspace-admin-api";
 import { m } from "@/features/administration/i18n";
-import type { AdministrationListParams } from "@/features/administration/list-href";
 import type { Locale } from "@/features/i18n";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
+import type { SearchParamValues } from "@/shared/utils/search-params";
 import { automationFlowFixture } from "../activation/automation-detail.test-utils";
 import { automationRunStatsFixture } from "./automation-run.test-utils";
 
@@ -65,7 +65,7 @@ const statsFixture = (
     bySkipReason: { ...zeroSkipReasons, ...overrides.bySkipReason },
   });
 
-const href = (params: AdministrationListParams) => {
+const href = (params: SearchParamValues) => {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined) search.set(key, String(value));

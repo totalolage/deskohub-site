@@ -9,12 +9,18 @@ import type {
 } from "@deskohub/nexi";
 import { and, count, eq, inArray, ne, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Data, Effect, Layer, Match, Option, Schema } from "effect";
-import type { SqlError } from "effect/unstable/sql/SqlError";
 import {
-  WorkspaceDatabase,
-  type WorkspaceDatabaseClient,
-} from "@/db/database.service";
+  Context,
+  Data,
+  Duration,
+  Effect,
+  Layer,
+  Match,
+  Option,
+  Schema,
+} from "effect";
+import type { SqlError } from "effect/unstable/sql/SqlError";
+import { WorkspaceDatabase, WorkspaceTransaction } from "@/db/database.service";
 import {
   accountingDocumentSnapshots,
   discountApplications,
@@ -37,6 +43,7 @@ import {
   findViolatedConstraint,
 } from "@/db/sql-constraint";
 import { postgresUuidV7 } from "@/db/uuid-v7";
+import { WorkspaceLocks } from "@/db/workspace-locks";
 import {
   type AccountingDocumentSnapshot,
   accountingDocumentSnapshotSchema,
@@ -74,11 +81,6 @@ import { getWorkspaceProductTargetsCovering } from "@/features/discounts/product
 import { getPromotionTiming } from "@/features/discounts/promotion-code";
 import type { DiscountClaimInstruction } from "@/features/discounts/provider";
 import { type Locale, m } from "@/features/i18n";
-import {
-  referralAdvisoryLockStatement,
-  referralFirstBookingLockStatement,
-  referralGraphAdvisoryLockKey,
-} from "@/features/referrals/advisory-locks";
 import { evaluateReferralAttribution } from "@/features/referrals/attribution";
 import { getReferralInvitationDiscountId } from "@/features/referrals/discount-identifiers";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
@@ -195,7 +197,7 @@ export class PaymentLifecycleRepository extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const { db } = yield* WorkspaceDatabase;
+      const { db, transaction } = yield* WorkspaceDatabase;
       const accountingSnapshotKeys = yield* AccountingSnapshotKeyService;
 
       const createPendingNexiAttempt = Effect.fn(
@@ -237,185 +239,175 @@ export class PaymentLifecycleRepository extends Context.Service<
         const claimedApplications =
           yield* validateDiscountCommitment(commitment);
 
-        return yield* db
-          .transaction(
-            Effect.fn(function* (tx) {
-              const [reservationIdentity] = yield* tx
-                .select({
-                  dotyposCustomerId: workspaceReservations.dotyposCustomerId,
-                })
-                .from(workspaceReservations)
-                .where(
-                  eq(workspaceReservations.id, input.workspaceReservationId)
-                )
-                .limit(1);
-              if (!reservationIdentity) {
-                return yield* lifecycleStateError(
-                  "createPendingNexiAttempt",
-                  {
-                    type: "workspaceReservationId",
-                    id: input.workspaceReservationId,
-                  },
-                  "The payment reservation was not found."
-                );
-              }
-              yield* tx.execute(
-                referralFirstBookingLockStatement(
-                  reservationIdentity.dotyposCustomerId
-                )
+        return yield* transaction(
+          Effect.gen(function* () {
+            const [reservationIdentity] = yield* db
+              .select({
+                dotyposCustomerId: workspaceReservations.dotyposCustomerId,
+              })
+              .from(workspaceReservations)
+              .where(eq(workspaceReservations.id, input.workspaceReservationId))
+              .limit(1);
+            if (!reservationIdentity) {
+              return yield* lifecycleStateError(
+                "createPendingNexiAttempt",
+                {
+                  type: "workspaceReservationId",
+                  id: input.workspaceReservationId,
+                },
+                "The payment reservation was not found."
               );
+            }
+            yield* WorkspaceLocks.referralFirstBooking(
+              reservationIdentity.dotyposCustomerId
+            );
 
-              const [reservation] = yield* tx
-                .select({
-                  id: workspaceReservations.id,
-                  dotyposCustomerId: workspaceReservations.dotyposCustomerId,
-                  dotyposReservationId:
-                    workspaceReservations.dotyposReservationId,
-                  reservationHoldExpiresAt:
-                    workspaceReservations.reservationHoldExpiresAt,
-                })
-                .from(workspaceReservations)
-                .where(
-                  and(
-                    eq(workspaceReservations.id, input.workspaceReservationId),
-                    eq(workspaceReservations.reservationState, "held"),
-                    inArray(workspaceReservations.paymentState, [
-                      "not_started",
-                      "failed",
-                      "cancelled",
-                      "expired",
-                    ])
-                  )
+            const [reservation] = yield* db
+              .select({
+                id: workspaceReservations.id,
+                dotyposCustomerId: workspaceReservations.dotyposCustomerId,
+                dotyposReservationId:
+                  workspaceReservations.dotyposReservationId,
+                reservationHoldExpiresAt:
+                  workspaceReservations.reservationHoldExpiresAt,
+              })
+              .from(workspaceReservations)
+              .where(
+                and(
+                  eq(workspaceReservations.id, input.workspaceReservationId),
+                  eq(workspaceReservations.reservationState, "held"),
+                  inArray(workspaceReservations.paymentState, [
+                    "not_started",
+                    "failed",
+                    "cancelled",
+                    "expired",
+                  ])
                 )
-                .limit(1)
-                .for("update");
+              )
+              .limit(1)
+              .for("update");
 
-              const now = Temporal.Now.instant();
-              if (
-                !reservation?.reservationHoldExpiresAt ||
-                Temporal.Instant.compare(
-                  reservation.reservationHoldExpiresAt,
-                  now
-                ) <= 0
-              ) {
-                return yield* new PaymentLifecycleStateError({
-                  operation:
-                    "PaymentLifecycleRepository.createPendingNexiAttempt",
-                  paymentReference: {
-                    type: "providerOrderId",
-                    id: input.providerOrderId,
-                  },
-                  message:
-                    "Payment attempts can only be created for a current held reservation.",
-                });
-              }
-
-              yield* validateFirstBookingPaymentAdmission({
-                tx,
-                dotyposCustomerId: reservation.dotyposCustomerId,
-                workspaceReservationId: input.workspaceReservationId,
-                hasReferralClaim: claimedApplications.referral !== undefined,
-                operation: "createPendingNexiAttempt",
-              });
-
-              yield* validateAccountingDocumentSnapshotProviderIdentity({
-                snapshot: accountingSnapshot,
+            const now = Temporal.Now.instant();
+            if (
+              !reservation?.reservationHoldExpiresAt ||
+              Temporal.Instant.compare(
+                reservation.reservationHoldExpiresAt,
+                now
+              ) <= 0
+            ) {
+              return yield* new PaymentLifecycleStateError({
+                operation:
+                  "PaymentLifecycleRepository.createPendingNexiAttempt",
                 paymentReference: {
                   type: "providerOrderId",
                   id: input.providerOrderId,
                 },
-                dotyposCustomerId: reservation.dotyposCustomerId,
-                dotyposReservationId: reservation.dotyposReservationId,
+                message:
+                  "Payment attempts can only be created for a current held reservation.",
               });
+            }
 
-              const [attemptRow] = yield* tx
-                .insert(paymentAttempts)
-                .values({
-                  id: postgresUuidV7,
-                  workspaceReservationId: input.workspaceReservationId,
-                  provider: "nexi",
-                  providerOrderId: input.providerOrderId,
-                  state: "created",
-                  amountValue: input.amount.value,
-                  amountExponent: input.amount.exponent,
-                  currency: input.amount.currency,
-                })
-                .returning();
+            yield* validateFirstBookingPaymentAdmission({
+              dotyposCustomerId: reservation.dotyposCustomerId,
+              workspaceReservationId: input.workspaceReservationId,
+              hasReferralClaim: claimedApplications.referral !== undefined,
+              operation: "createPendingNexiAttempt",
+            });
 
-              if (!attemptRow) {
-                return yield* Effect.die(
-                  "Payment attempt insert returned no row."
-                );
-              }
+            yield* validateAccountingDocumentSnapshotProviderIdentity({
+              snapshot: accountingSnapshot,
+              paymentReference: {
+                type: "providerOrderId",
+                id: input.providerOrderId,
+              },
+              dotyposCustomerId: reservation.dotyposCustomerId,
+              dotyposReservationId: reservation.dotyposReservationId,
+            });
 
-              yield* persistAccountingDocumentSnapshot({
-                tx,
-                paymentAttemptId: attemptRow.id,
+            const [attemptRow] = yield* db
+              .insert(paymentAttempts)
+              .values({
+                id: postgresUuidV7,
                 workspaceReservationId: input.workspaceReservationId,
-                snapshot: accountingSnapshot,
-                key: accountingSnapshotKey,
-              });
+                provider: "nexi",
+                providerOrderId: input.providerOrderId,
+                state: "created",
+                amountValue: input.amount.value,
+                amountExponent: input.amount.exponent,
+                currency: input.amount.currency,
+              })
+              .returning();
 
-              const [linked] = yield* tx
-                .update(workspaceReservations)
-                .set({
-                  activePaymentAttemptId: attemptRow.id,
-                  paymentState: "pending",
-                  updatedAt: now,
-                })
-                .where(
-                  and(
-                    eq(workspaceReservations.id, input.workspaceReservationId),
-                    eq(workspaceReservations.reservationState, "held"),
-                    inArray(workspaceReservations.paymentState, [
-                      "not_started",
-                      "failed",
-                      "cancelled",
-                      "expired",
-                    ])
-                  )
+            if (!attemptRow) {
+              return yield* Effect.die(
+                "Payment attempt insert returned no row."
+              );
+            }
+
+            yield* persistAccountingDocumentSnapshot({
+              paymentAttemptId: attemptRow.id,
+              workspaceReservationId: input.workspaceReservationId,
+              snapshot: accountingSnapshot,
+              key: accountingSnapshotKey,
+            });
+
+            const [linked] = yield* db
+              .update(workspaceReservations)
+              .set({
+                activePaymentAttemptId: attemptRow.id,
+                paymentState: "pending",
+                updatedAt: now,
+              })
+              .where(
+                and(
+                  eq(workspaceReservations.id, input.workspaceReservationId),
+                  eq(workspaceReservations.reservationState, "held"),
+                  inArray(workspaceReservations.paymentState, [
+                    "not_started",
+                    "failed",
+                    "cancelled",
+                    "expired",
+                  ])
                 )
-                .returning({ id: workspaceReservations.id });
+              )
+              .returning({ id: workspaceReservations.id });
 
-              if (!linked) {
-                return yield* new PaymentLifecycleStateError({
-                  operation:
-                    "PaymentLifecycleRepository.createPendingNexiAttempt",
-                  paymentReference: {
-                    type: "paymentAttemptId",
-                    id: attemptRow.id,
-                  },
-                  message:
-                    "Payment attempts can only be linked to held unpaid reservations.",
-                });
-              }
-
-              const applicationRows = yield* persistDiscountApplications({
-                tx,
-                commitment,
-                paymentAttemptId: attemptRow.id,
-                workspaceReservationId: input.workspaceReservationId,
+            if (!linked) {
+              return yield* new PaymentLifecycleStateError({
+                operation:
+                  "PaymentLifecycleRepository.createPendingNexiAttempt",
+                paymentReference: {
+                  type: "paymentAttemptId",
+                  id: attemptRow.id,
+                },
+                message:
+                  "Payment attempts can only be linked to held unpaid reservations.",
               });
-              yield* reserveCommittedClaims({
-                tx,
-                claimedApplications,
-                applicationRows,
-                paymentAttemptId: attemptRow.id,
-                workspaceReservationId: input.workspaceReservationId,
-                locale: input.locale,
-                reservationCustomerId: reservation.dotyposCustomerId,
-                reservationExpiresAt: reservation.reservationHoldExpiresAt,
-              });
+            }
 
-              return toPaymentAttempt(attemptRow);
-            })
-          )
-          .pipe(
-            Effect.catchTags({
-              EffectDrizzleQueryError: failActiveClaimConflict,
-              SqlError: failActiveClaimConflict,
-            })
-          );
+            const applicationRows = yield* persistDiscountApplications({
+              commitment,
+              paymentAttemptId: attemptRow.id,
+              workspaceReservationId: input.workspaceReservationId,
+            });
+            yield* reserveCommittedClaims({
+              claimedApplications,
+              applicationRows,
+              paymentAttemptId: attemptRow.id,
+              workspaceReservationId: input.workspaceReservationId,
+              locale: input.locale,
+              reservationCustomerId: reservation.dotyposCustomerId,
+              reservationExpiresAt: reservation.reservationHoldExpiresAt,
+            });
+
+            return toPaymentAttempt(attemptRow);
+          })
+        ).pipe(
+          Effect.catchTags({
+            EffectDrizzleQueryError: failActiveClaimConflict,
+            SqlError: failActiveClaimConflict,
+          })
+        );
       });
 
       const completeInternalPayment = Effect.fn(
@@ -455,258 +447,249 @@ export class PaymentLifecycleRepository extends Context.Service<
           );
         }
 
-        return yield* db
-          .transaction(
-            Effect.fn(function* (tx) {
-              const [reservationIdentity] = yield* tx
-                .select({
-                  dotyposCustomerId: workspaceReservations.dotyposCustomerId,
-                })
-                .from(workspaceReservations)
-                .where(
-                  eq(workspaceReservations.id, input.workspaceReservationId)
-                )
-                .limit(1);
-              if (!reservationIdentity) {
-                return yield* lifecycleStateError(
-                  "completeInternalPayment",
-                  {
-                    type: "workspaceReservationId",
-                    id: input.workspaceReservationId,
-                  },
-                  "The payment reservation was not found."
-                );
-              }
-              yield* lockReferralFirstBooking({
-                tx,
-                dotyposCustomerId: reservationIdentity.dotyposCustomerId,
-                recordsAttribution: claimedApplications.referral !== undefined,
-                // Checkout completes an internal payment inside the account
-                // guard, whose account lock is held on another connection.
-                // acceptReferral takes the graph lock before account locks,
-                // so an unbounded wait here could hang both; a bounded one
-                // fails this payment instead and the customer retries.
-                boundedGraphWait: true,
-              });
-
-              const [reservation] = yield* tx
-                .select({
-                  id: workspaceReservations.id,
-                  activePaymentAttemptId:
-                    workspaceReservations.activePaymentAttemptId,
-                  dotyposCustomerId: workspaceReservations.dotyposCustomerId,
-                  dotyposReservationId:
-                    workspaceReservations.dotyposReservationId,
-                  paidAt: workspaceReservations.paidAt,
-                  paymentState: workspaceReservations.paymentState,
-                  reservationHoldExpiresAt:
-                    workspaceReservations.reservationHoldExpiresAt,
-                  reservationState: workspaceReservations.reservationState,
-                })
-                .from(workspaceReservations)
-                .where(
-                  eq(workspaceReservations.id, input.workspaceReservationId)
-                )
-                .limit(1)
-                .for("update");
-
-              const paidAt = Temporal.Now.instant();
-
-              if (
-                reservation?.paymentState === "paid" &&
-                reservation.activePaymentAttemptId
-              ) {
-                const [existingAttempt] = yield* tx
-                  .select()
-                  .from(paymentAttempts)
-                  .where(
-                    and(
-                      eq(
-                        paymentAttempts.id,
-                        reservation.activePaymentAttemptId
-                      ),
-                      eq(
-                        paymentAttempts.workspaceReservationId,
-                        input.workspaceReservationId
-                      ),
-                      eq(paymentAttempts.provider, "internal"),
-                      eq(paymentAttempts.state, "paid")
-                    )
-                  )
-                  .limit(1);
-
-                if (
-                  existingAttempt &&
-                  moneyEquals(
-                    toPaymentAttempt(existingAttempt).amount,
-                    input.amount
-                  )
-                ) {
-                  return {
-                    attempt: toPaymentAttempt(existingAttempt),
-                    changed: false,
-                    timestamp: reservation.paidAt ?? existingAttempt.updatedAt,
-                  };
-                }
-              }
-
-              if (
-                reservation?.reservationState !== "held" ||
-                !reservation.reservationHoldExpiresAt ||
-                Temporal.Instant.compare(
-                  reservation.reservationHoldExpiresAt,
-                  paidAt
-                ) <= 0 ||
-                !["not_started", "failed", "cancelled", "expired"].includes(
-                  reservation.paymentState
-                )
-              ) {
-                return yield* lifecycleStateError(
-                  "completeInternalPayment",
-                  {
-                    type: "workspaceReservationId",
-                    id: input.workspaceReservationId,
-                  },
-                  "Internal payments can only complete a current held unpaid reservation."
-                );
-              }
-
-              yield* validateFirstBookingPaymentAdmission({
-                tx,
-                dotyposCustomerId: reservation.dotyposCustomerId,
-                workspaceReservationId: input.workspaceReservationId,
-                hasReferralClaim: claimedApplications.referral !== undefined,
-                operation: "completeInternalPayment",
-              });
-
-              yield* validateAccountingDocumentSnapshotProviderIdentity({
-                snapshot: accountingSnapshot,
-                paymentReference: {
+        return yield* transaction(
+          Effect.gen(function* () {
+            const [reservationIdentity] = yield* db
+              .select({
+                dotyposCustomerId: workspaceReservations.dotyposCustomerId,
+              })
+              .from(workspaceReservations)
+              .where(eq(workspaceReservations.id, input.workspaceReservationId))
+              .limit(1);
+            if (!reservationIdentity) {
+              return yield* lifecycleStateError(
+                "completeInternalPayment",
+                {
                   type: "workspaceReservationId",
                   id: input.workspaceReservationId,
                 },
-                dotyposCustomerId: reservation.dotyposCustomerId,
-                dotyposReservationId: reservation.dotyposReservationId,
+                "The payment reservation was not found."
+              );
+            }
+            if (claimedApplications.referral !== undefined) {
+              // A signed-in checkout completes an internal payment inside
+              // the account guard, whose account lock is held on another
+              // connection. acceptReferral takes the graph lock before
+              // account locks, so an unbounded wait here could hang both; a
+              // bounded one fails this payment instead and the customer
+              // retries. The bound also allows the out-of-order graph lock
+              // under that section. A guest payment has no section and
+              // waits within the same bound.
+              yield* WorkspaceLocks.referralGraph({
+                boundedWait: Duration.seconds(5),
               });
+            }
+            yield* WorkspaceLocks.referralFirstBooking(
+              reservationIdentity.dotyposCustomerId
+            );
 
-              const accountingSnapshotKey =
-                yield* accountingSnapshotKeys.getActive.pipe(
-                  Effect.mapError(
-                    () =>
-                      new AccountingDocumentSnapshotStorageError({
-                        operation: "encrypt",
-                        paymentReference: {
-                          type: "workspaceReservationId",
-                          id: input.workspaceReservationId,
-                        },
-                        message:
-                          "Accounting snapshot encryption key is unavailable.",
-                      })
-                  )
-                );
+            const [reservation] = yield* db
+              .select({
+                id: workspaceReservations.id,
+                activePaymentAttemptId:
+                  workspaceReservations.activePaymentAttemptId,
+                dotyposCustomerId: workspaceReservations.dotyposCustomerId,
+                dotyposReservationId:
+                  workspaceReservations.dotyposReservationId,
+                paidAt: workspaceReservations.paidAt,
+                paymentState: workspaceReservations.paymentState,
+                reservationHoldExpiresAt:
+                  workspaceReservations.reservationHoldExpiresAt,
+                reservationState: workspaceReservations.reservationState,
+              })
+              .from(workspaceReservations)
+              .where(eq(workspaceReservations.id, input.workspaceReservationId))
+              .limit(1)
+              .for("update");
 
-              const [attemptRow] = yield* tx
-                .insert(paymentAttempts)
-                .values({
-                  id: postgresUuidV7,
-                  workspaceReservationId: input.workspaceReservationId,
-                  provider: "internal",
-                  providerOrderId: null,
-                  state: "paid",
-                  amountValue: input.amount.value,
-                  amountExponent: input.amount.exponent,
-                  currency: input.amount.currency,
-                  createdAt: paidAt,
-                  updatedAt: paidAt,
-                })
-                .returning();
+            const paidAt = Temporal.Now.instant();
 
-              if (!attemptRow) {
-                return yield* Effect.die(
-                  "Internal payment attempt insert returned no row."
-                );
-              }
-
-              yield* persistAccountingDocumentSnapshot({
-                tx,
-                paymentAttemptId: attemptRow.id,
-                workspaceReservationId: input.workspaceReservationId,
-                snapshot: accountingSnapshot,
-                key: accountingSnapshotKey,
-              });
-
-              const [completedReservation] = yield* tx
-                .update(workspaceReservations)
-                .set({
-                  activePaymentAttemptId: attemptRow.id,
-                  paymentState: "paid",
-                  paidAt,
-                  failureCode: null,
-                  updatedAt: paidAt,
-                })
+            if (
+              reservation?.paymentState === "paid" &&
+              reservation.activePaymentAttemptId
+            ) {
+              const [existingAttempt] = yield* db
+                .select()
+                .from(paymentAttempts)
                 .where(
                   and(
-                    eq(workspaceReservations.id, input.workspaceReservationId),
-                    eq(workspaceReservations.reservationState, "held"),
-                    inArray(workspaceReservations.paymentState, [
-                      "not_started",
-                      "failed",
-                      "cancelled",
-                      "expired",
-                    ])
+                    eq(paymentAttempts.id, reservation.activePaymentAttemptId),
+                    eq(
+                      paymentAttempts.workspaceReservationId,
+                      input.workspaceReservationId
+                    ),
+                    eq(paymentAttempts.provider, "internal"),
+                    eq(paymentAttempts.state, "paid")
                   )
                 )
-                .returning({ id: workspaceReservations.id });
+                .limit(1);
 
-              if (!completedReservation) {
-                return yield* lifecycleStateError(
-                  "completeInternalPayment",
-                  { type: "paymentAttemptId", id: attemptRow.id },
-                  "Internal payment could not atomically complete the held reservation."
-                );
+              if (
+                existingAttempt &&
+                moneyEquals(
+                  toPaymentAttempt(existingAttempt).amount,
+                  input.amount
+                )
+              ) {
+                return {
+                  attempt: toPaymentAttempt(existingAttempt),
+                  changed: false,
+                  timestamp: reservation.paidAt ?? existingAttempt.updatedAt,
+                };
               }
+            }
 
-              const applicationRows = yield* persistDiscountApplications({
-                tx,
-                commitment,
-                paymentAttemptId: attemptRow.id,
+            if (
+              reservation?.reservationState !== "held" ||
+              !reservation.reservationHoldExpiresAt ||
+              Temporal.Instant.compare(
+                reservation.reservationHoldExpiresAt,
+                paidAt
+              ) <= 0 ||
+              !["not_started", "failed", "cancelled", "expired"].includes(
+                reservation.paymentState
+              )
+            ) {
+              return yield* lifecycleStateError(
+                "completeInternalPayment",
+                {
+                  type: "workspaceReservationId",
+                  id: input.workspaceReservationId,
+                },
+                "Internal payments can only complete a current held unpaid reservation."
+              );
+            }
+
+            yield* validateFirstBookingPaymentAdmission({
+              dotyposCustomerId: reservation.dotyposCustomerId,
+              workspaceReservationId: input.workspaceReservationId,
+              hasReferralClaim: claimedApplications.referral !== undefined,
+              operation: "completeInternalPayment",
+            });
+
+            yield* validateAccountingDocumentSnapshotProviderIdentity({
+              snapshot: accountingSnapshot,
+              paymentReference: {
+                type: "workspaceReservationId",
+                id: input.workspaceReservationId,
+              },
+              dotyposCustomerId: reservation.dotyposCustomerId,
+              dotyposReservationId: reservation.dotyposReservationId,
+            });
+
+            const accountingSnapshotKey =
+              yield* accountingSnapshotKeys.getActive.pipe(
+                Effect.mapError(
+                  () =>
+                    new AccountingDocumentSnapshotStorageError({
+                      operation: "encrypt",
+                      paymentReference: {
+                        type: "workspaceReservationId",
+                        id: input.workspaceReservationId,
+                      },
+                      message:
+                        "Accounting snapshot encryption key is unavailable.",
+                    })
+                )
+              );
+
+            const [attemptRow] = yield* db
+              .insert(paymentAttempts)
+              .values({
+                id: postgresUuidV7,
                 workspaceReservationId: input.workspaceReservationId,
-              });
-              const claimedAt = yield* reserveCommittedClaims({
-                tx,
-                claimedApplications,
-                applicationRows,
-                paymentAttemptId: attemptRow.id,
-                workspaceReservationId: input.workspaceReservationId,
-                locale: input.locale,
-                reservationCustomerId: reservation.dotyposCustomerId,
-                reservationExpiresAt: reservation.reservationHoldExpiresAt,
-              });
-              if (claimedAt.code) {
-                yield* redeemCodeClaim(tx, attemptRow.id, claimedAt.code);
-              }
-              if (claimedAt.referral) {
-                yield* redeemReferralInvitationClaim(
-                  tx,
-                  attemptRow.id,
-                  input.workspaceReservationId,
-                  claimedAt.referral
-                );
-              }
+                provider: "internal",
+                providerOrderId: null,
+                state: "paid",
+                amountValue: input.amount.value,
+                amountExponent: input.amount.exponent,
+                currency: input.amount.currency,
+                createdAt: paidAt,
+                updatedAt: paidAt,
+              })
+              .returning();
 
-              return {
-                attempt: toPaymentAttempt(attemptRow),
-                changed: true,
-                timestamp: paidAt,
-              };
-            })
-          )
-          .pipe(
-            Effect.catchTags({
-              EffectDrizzleQueryError: failActiveClaimConflict,
-              SqlError: failActiveClaimConflict,
-            })
-          );
+            if (!attemptRow) {
+              return yield* Effect.die(
+                "Internal payment attempt insert returned no row."
+              );
+            }
+
+            yield* persistAccountingDocumentSnapshot({
+              paymentAttemptId: attemptRow.id,
+              workspaceReservationId: input.workspaceReservationId,
+              snapshot: accountingSnapshot,
+              key: accountingSnapshotKey,
+            });
+
+            const [completedReservation] = yield* db
+              .update(workspaceReservations)
+              .set({
+                activePaymentAttemptId: attemptRow.id,
+                paymentState: "paid",
+                paidAt,
+                failureCode: null,
+                updatedAt: paidAt,
+              })
+              .where(
+                and(
+                  eq(workspaceReservations.id, input.workspaceReservationId),
+                  eq(workspaceReservations.reservationState, "held"),
+                  inArray(workspaceReservations.paymentState, [
+                    "not_started",
+                    "failed",
+                    "cancelled",
+                    "expired",
+                  ])
+                )
+              )
+              .returning({ id: workspaceReservations.id });
+
+            if (!completedReservation) {
+              return yield* lifecycleStateError(
+                "completeInternalPayment",
+                { type: "paymentAttemptId", id: attemptRow.id },
+                "Internal payment could not atomically complete the held reservation."
+              );
+            }
+
+            const applicationRows = yield* persistDiscountApplications({
+              commitment,
+              paymentAttemptId: attemptRow.id,
+              workspaceReservationId: input.workspaceReservationId,
+            });
+            const claimedAt = yield* reserveCommittedClaims({
+              claimedApplications,
+              applicationRows,
+              paymentAttemptId: attemptRow.id,
+              workspaceReservationId: input.workspaceReservationId,
+              locale: input.locale,
+              reservationCustomerId: reservation.dotyposCustomerId,
+              reservationExpiresAt: reservation.reservationHoldExpiresAt,
+            });
+            if (claimedAt.code) {
+              yield* redeemCodeClaim(attemptRow.id, claimedAt.code);
+            }
+            if (claimedAt.referral) {
+              yield* redeemReferralInvitationClaim(
+                attemptRow.id,
+                input.workspaceReservationId,
+                claimedAt.referral
+              );
+            }
+
+            return {
+              attempt: toPaymentAttempt(attemptRow),
+              changed: true,
+              timestamp: paidAt,
+            };
+          })
+        ).pipe(
+          Effect.catchTags({
+            EffectDrizzleQueryError: failActiveClaimConflict,
+            SqlError: failActiveClaimConflict,
+          })
+        );
       });
 
       const attachProviderSession = Effect.fn(
@@ -755,9 +738,9 @@ export class PaymentLifecycleRepository extends Context.Service<
           readonly providerStatus?: string;
           readonly paidAt: Temporal.Instant;
         }) {
-          return yield* db.transaction(
-            Effect.fn(function* (tx) {
-              const [reservationIdentity] = yield* tx
+          return yield* transaction(
+            Effect.gen(function* () {
+              const [reservationIdentity] = yield* db
                 .select({
                   dotyposCustomerId: workspaceReservations.dotyposCustomerId,
                 })
@@ -776,19 +759,21 @@ export class PaymentLifecycleRepository extends Context.Service<
                   "The payment reservation was not found."
                 );
               }
-              yield* lockReferralFirstBooking({
-                tx,
-                dotyposCustomerId: reservationIdentity.dotyposCustomerId,
-                recordsAttribution: yield* attemptRecordsReferral(tx, input.id),
-              });
+              // A transition that may record a referral attribution takes the
+              // graph lock first, matching acceptReferral's lock order.
+              if (yield* attemptRecordsReferral(input.id)) {
+                yield* WorkspaceLocks.referralGraph();
+              }
+              yield* WorkspaceLocks.referralFirstBooking(
+                reservationIdentity.dotyposCustomerId
+              );
               yield* ensureReferralFirstPaidTransition({
-                tx,
                 dotyposCustomerId: reservationIdentity.dotyposCustomerId,
                 workspaceReservationId: input.workspaceReservationId,
                 paymentAttemptId: input.id,
               });
 
-              const [attempt] = yield* tx
+              const [attempt] = yield* db
                 .update(paymentAttempts)
                 .set({
                   state: "paid",
@@ -822,7 +807,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                 );
               }
 
-              const [reservation] = yield* tx
+              const [reservation] = yield* db
                 .update(workspaceReservations)
                 .set({
                   paymentState: "paid",
@@ -841,9 +826,8 @@ export class PaymentLifecycleRepository extends Context.Service<
                 .returning({ paidAt: workspaceReservations.paidAt });
 
               if (reservation) {
-                yield* redeemCodeClaim(tx, input.id, input.paidAt);
+                yield* redeemCodeClaim(input.id, input.paidAt);
                 yield* redeemReferralInvitationClaim(
-                  tx,
                   input.id,
                   input.workspaceReservationId,
                   input.paidAt
@@ -855,7 +839,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                 };
               }
 
-              const [consistent] = yield* tx
+              const [consistent] = yield* db
                 .select({ paidAt: workspaceReservations.paidAt })
                 .from(workspaceReservations)
                 .where(
@@ -875,9 +859,8 @@ export class PaymentLifecycleRepository extends Context.Service<
                 );
               }
 
-              yield* redeemCodeClaim(tx, input.id, input.paidAt);
+              yield* redeemCodeClaim(input.id, input.paidAt);
               yield* redeemReferralInvitationClaim(
-                tx,
                 input.id,
                 input.workspaceReservationId,
                 input.paidAt
@@ -909,9 +892,9 @@ export class PaymentLifecycleRepository extends Context.Service<
             "pending",
           ];
 
-          return yield* db.transaction(
-            Effect.fn(function* (tx) {
-              const [reservationIdentity] = yield* tx
+          return yield* transaction(
+            Effect.gen(function* () {
+              const [reservationIdentity] = yield* db
                 .select({
                   dotyposCustomerId: workspaceReservations.dotyposCustomerId,
                 })
@@ -930,13 +913,11 @@ export class PaymentLifecycleRepository extends Context.Service<
                   "The payment reservation was not found."
                 );
               }
-              yield* tx.execute(
-                referralFirstBookingLockStatement(
-                  reservationIdentity.dotyposCustomerId
-                )
+              yield* WorkspaceLocks.referralFirstBooking(
+                reservationIdentity.dotyposCustomerId
               );
 
-              const [attempt] = yield* tx
+              const [attempt] = yield* db
                 .update(paymentAttempts)
                 .set({
                   state: input.state,
@@ -969,7 +950,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                 );
               }
 
-              const [reservation] = yield* tx
+              const [reservation] = yield* db
                 .update(workspaceReservations)
                 .set({
                   paymentState: input.state,
@@ -988,13 +969,11 @@ export class PaymentLifecycleRepository extends Context.Service<
 
               if (reservation) {
                 yield* releaseCodeClaim(
-                  tx,
                   input.id,
                   terminalAt,
                   input.failureCode
                 );
                 yield* releaseReferralInvitationClaim(
-                  tx,
                   input.id,
                   terminalAt,
                   input.failureCode
@@ -1006,7 +985,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                 };
               }
 
-              const [consistent] = yield* tx
+              const [consistent] = yield* db
                 .select({ updatedAt: workspaceReservations.updatedAt })
                 .from(workspaceReservations)
                 .where(
@@ -1026,14 +1005,8 @@ export class PaymentLifecycleRepository extends Context.Service<
                 );
               }
 
-              yield* releaseCodeClaim(
-                tx,
-                input.id,
-                terminalAt,
-                input.failureCode
-              );
+              yield* releaseCodeClaim(input.id, terminalAt, input.failureCode);
               yield* releaseReferralInvitationClaim(
-                tx,
                 input.id,
                 terminalAt,
                 input.failureCode
@@ -1205,39 +1178,6 @@ const discountAdjustmentsEqual = (
   return false;
 };
 
-type TransactionClient = Parameters<
-  Parameters<WorkspaceDatabaseClient["transaction"]>[0]
->[0];
-
-/**
- * Takes the invited customer's first-booking lock. A transition that may
- * record a referral attribution takes the referral graph lock first, matching
- * acceptReferral's graph → accounts → first-booking order.
- */
-export const lockReferralFirstBooking = Effect.fn(
-  "PaymentLifecycle.lockReferralFirstBooking"
-)(function* (input: {
-  readonly tx: TransactionClient;
-  readonly dotyposCustomerId: DotyposCustomerId;
-  readonly recordsAttribution: boolean;
-  readonly boundedGraphWait?: boolean;
-}) {
-  if (input.recordsAttribution) {
-    if (input.boundedGraphWait) {
-      yield* input.tx.execute(sql`set local lock_timeout = '5s'`);
-    }
-    yield* input.tx.execute(
-      referralAdvisoryLockStatement(referralGraphAdvisoryLockKey)
-    );
-    if (input.boundedGraphWait) {
-      yield* input.tx.execute(sql`set local lock_timeout to default`);
-    }
-  }
-  yield* input.tx.execute(
-    referralFirstBookingLockStatement(input.dotyposCustomerId)
-  );
-});
-
 /**
  * Whether the attempt reserved an invitation from a checkout referral, whose
  * attribution its paid transition records. Claim referral columns are
@@ -1245,8 +1185,9 @@ export const lockReferralFirstBooking = Effect.fn(
  */
 export const attemptRecordsReferral = Effect.fn(
   "PaymentLifecycle.attemptRecordsReferral"
-)(function* (tx: TransactionClient, paymentAttemptId: PaymentAttemptId) {
-  const [claim] = yield* tx
+)(function* (paymentAttemptId: PaymentAttemptId) {
+  const { db } = yield* WorkspaceTransaction;
+  const [claim] = yield* db
     .select({
       referrerDotyposCustomerId:
         referralInvitationClaims.referrerDotyposCustomerId,
@@ -1258,30 +1199,31 @@ export const attemptRecordsReferral = Effect.fn(
 });
 
 const findActiveInvitationClaim = (
-  tx: TransactionClient,
   dotyposCustomerId: DotyposCustomerId,
   exceptPaymentAttemptId?: PaymentAttemptId
 ) =>
-  tx
-    .select({ id: referralInvitationClaims.id })
-    .from(referralInvitationClaims)
-    .where(
-      and(
-        eq(
-          referralInvitationClaims.invitedDotyposCustomerId,
-          dotyposCustomerId
-        ),
-        inArray(referralInvitationClaims.state, ["reserved", "redeemed"]),
-        exceptPaymentAttemptId === undefined
-          ? undefined
-          : ne(
-              referralInvitationClaims.paymentAttemptId,
-              exceptPaymentAttemptId
-            )
+  Effect.flatMap(WorkspaceTransaction, ({ db }) =>
+    db
+      .select({ id: referralInvitationClaims.id })
+      .from(referralInvitationClaims)
+      .where(
+        and(
+          eq(
+            referralInvitationClaims.invitedDotyposCustomerId,
+            dotyposCustomerId
+          ),
+          inArray(referralInvitationClaims.state, ["reserved", "redeemed"]),
+          exceptPaymentAttemptId === undefined
+            ? undefined
+            : ne(
+                referralInvitationClaims.paymentAttemptId,
+                exceptPaymentAttemptId
+              )
+        )
       )
-    )
-    .limit(1)
-    .pipe(Effect.map(([claim]) => claim));
+      .limit(1)
+      .pipe(Effect.map(([claim]) => claim))
+  );
 
 /**
  * A customer is invited once attributed or once a checkout referral holds
@@ -1291,13 +1233,13 @@ const findActiveInvitationClaim = (
 const validateFirstBookingPaymentAdmission = Effect.fn(
   "PaymentLifecycle.validateFirstBookingPaymentAdmission"
 )(function* (input: {
-  readonly tx: TransactionClient;
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly workspaceReservationId: WorkspaceReservationId;
   readonly hasReferralClaim: boolean;
   readonly operation: "createPendingNexiAttempt" | "completeInternalPayment";
 }) {
-  const [attribution] = yield* input.tx
+  const { db } = yield* WorkspaceTransaction;
+  const [attribution] = yield* db
     .select({
       invitedDotyposCustomerId: referralAttributions.invitedDotyposCustomerId,
     })
@@ -1306,14 +1248,11 @@ const validateFirstBookingPaymentAdmission = Effect.fn(
       eq(referralAttributions.invitedDotyposCustomerId, input.dotyposCustomerId)
     )
     .limit(1);
-  const activeClaim = yield* findActiveInvitationClaim(
-    input.tx,
-    input.dotyposCustomerId
-  );
+  const activeClaim = yield* findActiveInvitationClaim(input.dotyposCustomerId);
 
   if (!attribution && !activeClaim && !input.hasReferralClaim) return;
 
-  const [previousPayment] = yield* input.tx
+  const [previousPayment] = yield* db
     .select({ id: workspaceReservations.id })
     .from(workspaceReservations)
     .where(
@@ -1352,7 +1291,7 @@ const validateFirstBookingPaymentAdmission = Effect.fn(
     );
   }
 
-  const [pendingPayment] = yield* input.tx
+  const [pendingPayment] = yield* db
     .select({ id: workspaceReservations.id })
     .from(workspaceReservations)
     .where(
@@ -1382,12 +1321,12 @@ const validateFirstBookingPaymentAdmission = Effect.fn(
 export const ensureReferralFirstPaidTransition = Effect.fn(
   "PaymentLifecycle.ensureReferralFirstPaidTransition"
 )(function* (input: {
-  readonly tx: TransactionClient;
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly workspaceReservationId: WorkspaceReservationId;
   readonly paymentAttemptId: PaymentAttemptId;
 }) {
-  const [claim] = yield* input.tx
+  const { db } = yield* WorkspaceTransaction;
+  const [claim] = yield* db
     .select({
       state: referralInvitationClaims.state,
       referrerDotyposCustomerId:
@@ -1401,7 +1340,7 @@ export const ensureReferralFirstPaidTransition = Effect.fn(
     .for("update");
   if (claim?.state === "redeemed") return;
 
-  const [attribution] = yield* input.tx
+  const [attribution] = yield* db
     .select({
       invitedDotyposCustomerId: referralAttributions.invitedDotyposCustomerId,
     })
@@ -1411,7 +1350,6 @@ export const ensureReferralFirstPaidTransition = Effect.fn(
     )
     .limit(1);
   const otherActiveClaim = yield* findActiveInvitationClaim(
-    input.tx,
     input.dotyposCustomerId,
     input.paymentAttemptId
   );
@@ -1426,7 +1364,7 @@ export const ensureReferralFirstPaidTransition = Effect.fn(
     });
   }
 
-  const [previousPayment] = yield* input.tx
+  const [previousPayment] = yield* db
     .select({ id: workspaceReservations.id })
     .from(workspaceReservations)
     .where(
@@ -1447,7 +1385,7 @@ export const ensureReferralFirstPaidTransition = Effect.fn(
     });
   }
 
-  const [otherPendingPayment] = yield* input.tx
+  const [otherPendingPayment] = yield* db
     .select({ id: workspaceReservations.id })
     .from(workspaceReservations)
     .where(
@@ -1561,17 +1499,17 @@ const validateAccountingDocumentSnapshotProviderIdentity = Effect.fn(
 const persistAccountingDocumentSnapshot = Effect.fn(
   "PaymentLifecycle.persistAccountingDocumentSnapshot"
 )(function* (input: {
-  readonly tx: TransactionClient;
   readonly paymentAttemptId: PaymentAttemptId;
   readonly workspaceReservationId: WorkspaceReservationId;
   readonly snapshot: AccountingDocumentSnapshot;
   readonly key: AccountingSnapshotKey;
 }) {
+  const { db } = yield* WorkspaceTransaction;
   const snapshotJson = JSON.stringify(
     encodeStoredAccountingDocumentSnapshot(input.snapshot)
   );
 
-  yield* input.tx
+  yield* db
     .insert(accountingDocumentSnapshots)
     .values({
       paymentAttemptId: input.paymentAttemptId,
@@ -1628,16 +1566,16 @@ type PersistedApplication = {
 const persistDiscountApplications = Effect.fn(
   "PaymentLifecycle.persistDiscountApplications"
 )(function* (input: {
-  readonly tx: TransactionClient;
   readonly commitment: CommitmentPayload;
   readonly paymentAttemptId: PaymentAttemptId;
   readonly workspaceReservationId: WorkspaceReservationId;
 }) {
+  const { db } = yield* WorkspaceTransaction;
   if (input.commitment.applications.length === 0) {
     return [] satisfies PersistedApplication[];
   }
 
-  return yield* input.tx
+  return yield* db
     .insert(discountApplications)
     .values(
       input.commitment.applications.map(
@@ -1677,7 +1615,6 @@ const persistDiscountApplications = Effect.fn(
 const reserveCommittedClaims = Effect.fn(
   "PaymentLifecycle.reserveCommittedClaims"
 )(function* (input: {
-  readonly tx: TransactionClient;
   readonly claimedApplications: ClaimedApplications;
   readonly applicationRows: readonly PersistedApplication[];
   readonly paymentAttemptId: PaymentAttemptId;
@@ -1705,7 +1642,6 @@ const reserveCommittedClaims = Effect.fn(
       );
     }
     code = yield* reserveCodeClaim({
-      tx: input.tx,
       claim: claimed.claim,
       application: claimed.application,
       applicationId,
@@ -1729,7 +1665,6 @@ const reserveCommittedClaims = Effect.fn(
       );
     }
     referral = yield* reserveReferralInvitationClaim({
-      tx: input.tx,
       claim: claimed.claim,
       application: claimed.application,
       applicationId,
@@ -1746,7 +1681,6 @@ const reserveCommittedClaims = Effect.fn(
 const reserveReferralInvitationClaim = Effect.fn(
   "PaymentLifecycle.reserveReferralInvitationClaim"
 )(function* (input: {
-  readonly tx: TransactionClient;
   readonly claim: ReferralInvitationClaim;
   readonly application: AppliedDiscount;
   readonly applicationId: DiscountApplicationId;
@@ -1755,6 +1689,7 @@ const reserveReferralInvitationClaim = Effect.fn(
   readonly reservationExpiresAt: Temporal.Instant;
   readonly locale: Locale;
 }) {
+  const { db } = yield* WorkspaceTransaction;
   if (input.reservationCustomerId !== input.claim.invitedDotyposCustomerId) {
     return yield* claimError(
       "reserve",
@@ -1766,7 +1701,7 @@ const reserveReferralInvitationClaim = Effect.fn(
 
   // The first-booking lock serializes this with acceptReferral, so an
   // attribution recorded since pricing is seen here.
-  const [attribution] = yield* input.tx
+  const [attribution] = yield* db
     .select({
       referrerDotyposCustomerId: referralAttributions.referrerDotyposCustomerId,
       promotionCodeId: referralAttributions.promotionCodeId,
@@ -1828,7 +1763,7 @@ const reserveReferralInvitationClaim = Effect.fn(
     );
   }
 
-  yield* input.tx.insert(referralInvitationClaims).values({
+  yield* db.insert(referralInvitationClaims).values({
     invitedDotyposCustomerId: input.claim.invitedDotyposCustomerId,
     referrerDotyposCustomerId: input.claim.referrerDotyposCustomerId,
     promotionCodeId: input.claim.promotionCodeId,
@@ -1844,7 +1779,6 @@ const reserveReferralInvitationClaim = Effect.fn(
 
 const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
   function* (input: {
-    readonly tx: TransactionClient;
     readonly claim: OrdinaryPromotionClaim;
     readonly application: AppliedDiscount;
     readonly applicationId: DiscountApplicationId;
@@ -1853,6 +1787,7 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
     readonly reservationCustomerId: DotyposCustomerId;
     readonly reservationExpiresAt: Temporal.Instant;
   }) {
+    const { db } = yield* WorkspaceTransaction;
     if (input.reservationCustomerId !== input.claim.dotyposCustomerId) {
       return yield* claimError(
         "reserve",
@@ -1865,7 +1800,7 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
     const stored = yield* Match.value(input.claim).pipe(
       Match.discriminatorsExhaustive("kind")({
         discount_code: Effect.fn(function* (claim) {
-          const rows = yield* input.tx
+          const rows = yield* db
             .select({ promotion: promotionCodes, code: discountCodes })
             .from(discountCodes)
             .innerJoin(
@@ -1880,7 +1815,7 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
             : undefined;
         }),
         voucher: Effect.fn(function* (claim) {
-          const rows = yield* input.tx
+          const rows = yield* db
             .select({ promotion: promotionCodes, voucher: vouchers })
             .from(vouchers)
             .innerJoin(
@@ -1949,12 +1884,12 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
       );
     }
 
-    const [allowlist] = yield* input.tx
+    const [allowlist] = yield* db
       .select({ count: count() })
       .from(promotionCodeCustomers)
       .where(eq(promotionCodeCustomers.promotionCodeId, stored.promotion.id));
     if ((allowlist?.count ?? 0) > 0) {
-      const [customer] = yield* input.tx
+      const [customer] = yield* db
         .select({ promotionCodeId: promotionCodeCustomers.promotionCodeId })
         .from(promotionCodeCustomers)
         .where(
@@ -1997,7 +1932,7 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
     );
 
     if (stored.kind === "discount_code") {
-      const [customerUses] = yield* input.tx
+      const [customerUses] = yield* db
         .select({ count: count() })
         .from(discountCodeRedemptions)
         .where(
@@ -2022,7 +1957,7 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
         );
       }
     } else {
-      const [customerUse] = yield* input.tx
+      const [customerUse] = yield* db
         .select({ state: voucherRedemptions.state })
         .from(voucherRedemptions)
         .where(
@@ -2047,7 +1982,7 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
     }
 
     if (stored.kind === "discount_code" && stored.code.maxUses !== null) {
-      const [uses] = yield* input.tx
+      const [uses] = yield* db
         .select({ count: count() })
         .from(discountCodeRedemptions)
         .where(
@@ -2079,7 +2014,7 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
     yield* Match.value(stored).pipe(
       Match.discriminatorsExhaustive("kind")({
         discount_code: ({ code }) =>
-          input.tx
+          db
             .insert(discountCodeRedemptions)
             .values({
               ...claimValues,
@@ -2087,7 +2022,7 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
             })
             .pipe(Effect.asVoid),
         voucher: ({ voucher }) =>
-          input.tx
+          db
             .insert(voucherRedemptions)
             .values({
               ...claimValues,
@@ -2103,7 +2038,6 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
 const validateStoredDiscountClaim = Effect.fn(
   "PaymentLifecycle.validateStoredDiscountClaim"
 )(function* (input: {
-  readonly tx: TransactionClient;
   readonly claim: Extract<
     DiscountClaimInstruction,
     { readonly kind: "discount_code" }
@@ -2113,7 +2047,8 @@ const validateStoredDiscountClaim = Effect.fn(
   readonly application: AppliedDiscount;
   readonly locale: Locale;
 }) {
-  const [definition] = yield* input.tx
+  const { db } = yield* WorkspaceTransaction;
+  const [definition] = yield* db
     .select()
     .from(discounts)
     .where(eq(discounts.id, input.claim.storedDiscountId))
@@ -2128,7 +2063,7 @@ const validateStoredDiscountClaim = Effect.fn(
     );
   }
 
-  const [target] = yield* input.tx
+  const [target] = yield* db
     .select({
       discountId: discountProductTargets.discountId,
       productTarget: discountProductTargets.productTarget,
@@ -2197,7 +2132,6 @@ const validateStoredDiscountClaim = Effect.fn(
 
 const validateVoucherClaim = Effect.fn("PaymentLifecycle.validateVoucherClaim")(
   function* (input: {
-    readonly tx: TransactionClient;
     readonly claim: Extract<
       DiscountClaimInstruction,
       { readonly kind: "voucher" }
@@ -2207,7 +2141,8 @@ const validateVoucherClaim = Effect.fn("PaymentLifecycle.validateVoucherClaim")(
     readonly application: AppliedDiscount;
     readonly locale: Locale;
   }) {
-    const [usage] = yield* input.tx
+    const { db } = yield* WorkspaceTransaction;
+    const [usage] = yield* db
       .select({
         value: sql<number>`coalesce(sum(${discountApplications.appliedAmountValue}), 0)::integer`,
       })
@@ -2256,13 +2191,13 @@ const validateVoucherClaim = Effect.fn("PaymentLifecycle.validateVoucherClaim")(
 
 export const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
   function* (
-    tx: TransactionClient,
     paymentAttemptId: PaymentAttemptId,
     redeemedAt: Temporal.Instant,
     allowReleased = false
   ) {
+    const { db } = yield* WorkspaceTransaction;
     const [discountClaims, voucherClaims] = yield* Effect.all([
-      tx
+      db
         .select({
           dotyposCustomerId: discountCodeRedemptions.dotyposCustomerId,
           id: discountCodeRedemptions.codeId,
@@ -2272,7 +2207,7 @@ export const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
         .where(eq(discountCodeRedemptions.paymentAttemptId, paymentAttemptId))
         .limit(1)
         .for("update"),
-      tx
+      db
         .select({
           applicationId: voucherRedemptions.applicationId,
           id: voucherRedemptions.voucherId,
@@ -2299,7 +2234,7 @@ export const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
     }
     if (claim.state === "redeemed") return;
     if (claim.state === "released" && claim.kind === "discount") {
-      const [code] = yield* tx
+      const [code] = yield* db
         .select({
           maxUses: discountCodes.maxUses,
           maxUsesPerCustomer: discountCodes.maxUsesPerCustomer,
@@ -2320,7 +2255,7 @@ export const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
       // Mirror admission: only the configured per-customer limit (null is
       // unlimited) restricts how many active uses one customer may hold.
       if (code.maxUsesPerCustomer !== null) {
-        const [customerUses] = yield* tx
+        const [customerUses] = yield* db
           .select({ count: count() })
           .from(discountCodeRedemptions)
           .where(
@@ -2344,7 +2279,7 @@ export const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
       }
 
       if (code.maxUses !== null) {
-        const [uses] = yield* tx
+        const [uses] = yield* db
           .select({ count: count() })
           .from(discountCodeRedemptions)
           .where(
@@ -2365,7 +2300,7 @@ export const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
     }
 
     if (claim.state === "released" && claim.kind === "voucher") {
-      const [voucher] = yield* tx
+      const [voucher] = yield* db
         .select()
         .from(vouchers)
         .where(eq(vouchers.id, claim.id))
@@ -2381,7 +2316,7 @@ export const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
       }
 
       const [[application], [usage]] = yield* Effect.all([
-        tx
+        db
           .select({
             currency: discountApplications.appliedAmountCurrency,
             exponent: discountApplications.appliedAmountExponent,
@@ -2390,7 +2325,7 @@ export const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
           .from(discountApplications)
           .where(eq(discountApplications.id, claim.applicationId))
           .limit(1),
-        tx
+        db
           .select({
             value: sql<number>`coalesce(sum(${discountApplications.appliedAmountValue}), 0)::integer`,
           })
@@ -2436,7 +2371,7 @@ export const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
     yield* Match.value(claim).pipe(
       Match.discriminatorsExhaustive("kind")({
         discount: () =>
-          tx
+          db
             .update(discountCodeRedemptions)
             .set(values)
             .where(
@@ -2447,7 +2382,7 @@ export const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
             )
             .pipe(Effect.asVoid),
         voucher: () =>
-          tx
+          db
             .update(voucherRedemptions)
             .set(values)
             .where(
@@ -2465,13 +2400,13 @@ export const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
 export const redeemReferralInvitationClaim = Effect.fn(
   "PaymentLifecycle.redeemReferralInvitationClaim"
 )(function* (
-  tx: TransactionClient,
   paymentAttemptId: PaymentAttemptId,
   workspaceReservationId: WorkspaceReservationId,
   redeemedAt: Temporal.Instant,
   allowReleased = false
 ) {
-  const [claim] = yield* tx
+  const { db } = yield* WorkspaceTransaction;
+  const [claim] = yield* db
     .select({
       invitedDotyposCustomerId:
         referralInvitationClaims.invitedDotyposCustomerId,
@@ -2495,7 +2430,7 @@ export const redeemReferralInvitationClaim = Effect.fn(
   }
 
   if (claim.state === "released") {
-    const [previousPayment] = yield* tx
+    const [previousPayment] = yield* db
       .select({ id: workspaceReservations.id })
       .from(workspaceReservations)
       .where(
@@ -2509,7 +2444,7 @@ export const redeemReferralInvitationClaim = Effect.fn(
         )
       )
       .limit(1);
-    const [otherActiveClaim] = yield* tx
+    const [otherActiveClaim] = yield* db
       .select({ id: referralInvitationClaims.id })
       .from(referralInvitationClaims)
       .where(
@@ -2536,7 +2471,7 @@ export const redeemReferralInvitationClaim = Effect.fn(
   const claimableStates = allowReleased
     ? (["reserved", "released"] as const)
     : (["reserved"] as const);
-  yield* tx
+  yield* db
     .update(referralInvitationClaims)
     .set({
       state: "redeemed",
@@ -2553,7 +2488,7 @@ export const redeemReferralInvitationClaim = Effect.fn(
     );
 
   if (claim.referrerDotyposCustomerId && claim.promotionCodeId) {
-    yield* recordClaimAttribution(tx, {
+    yield* recordClaimAttribution({
       invitedDotyposCustomerId: claim.invitedDotyposCustomerId,
       referrerDotyposCustomerId: claim.referrerDotyposCustomerId,
       promotionCodeId: claim.promotionCodeId,
@@ -2569,15 +2504,13 @@ export const redeemReferralInvitationClaim = Effect.fn(
  */
 const recordClaimAttribution = Effect.fn(
   "PaymentLifecycle.recordClaimAttribution"
-)(function* (
-  tx: TransactionClient,
-  referral: {
-    readonly invitedDotyposCustomerId: DotyposCustomerId;
-    readonly referrerDotyposCustomerId: DotyposCustomerId;
-    readonly promotionCodeId: PromotionCodeId;
-  }
-) {
-  const graph = yield* tx
+)(function* (referral: {
+  readonly invitedDotyposCustomerId: DotyposCustomerId;
+  readonly referrerDotyposCustomerId: DotyposCustomerId;
+  readonly promotionCodeId: PromotionCodeId;
+}) {
+  const { db } = yield* WorkspaceTransaction;
+  const graph = yield* db
     .select({
       invitedDotyposCustomerId: referralAttributions.invitedDotyposCustomerId,
       referrerDotyposCustomerId: referralAttributions.referrerDotyposCustomerId,
@@ -2601,18 +2534,18 @@ const recordClaimAttribution = Effect.fn(
     );
     return;
   }
-  yield* tx.insert(referralAttributions).values(referral);
+  yield* db.insert(referralAttributions).values(referral);
 });
 
 export const releaseCodeClaim = Effect.fn("PaymentLifecycle.releaseCodeClaim")(
   function* (
-    tx: TransactionClient,
     paymentAttemptId: PaymentAttemptId,
     releasedAt: Temporal.Instant,
     releaseReason: string
   ) {
+    const { db } = yield* WorkspaceTransaction;
     const [discountClaims, voucherClaims] = yield* Effect.all([
-      tx
+      db
         .select({
           id: discountCodeRedemptions.codeId,
           state: discountCodeRedemptions.state,
@@ -2621,7 +2554,7 @@ export const releaseCodeClaim = Effect.fn("PaymentLifecycle.releaseCodeClaim")(
         .where(eq(discountCodeRedemptions.paymentAttemptId, paymentAttemptId))
         .limit(1)
         .for("update"),
-      tx
+      db
         .select({
           id: voucherRedemptions.voucherId,
           state: voucherRedemptions.state,
@@ -2656,7 +2589,7 @@ export const releaseCodeClaim = Effect.fn("PaymentLifecycle.releaseCodeClaim")(
     yield* Match.value(claim).pipe(
       Match.discriminatorsExhaustive("kind")({
         discount: () =>
-          tx
+          db
             .update(discountCodeRedemptions)
             .set(values)
             .where(
@@ -2667,7 +2600,7 @@ export const releaseCodeClaim = Effect.fn("PaymentLifecycle.releaseCodeClaim")(
             )
             .pipe(Effect.asVoid),
         voucher: () =>
-          tx
+          db
             .update(voucherRedemptions)
             .set(values)
             .where(
@@ -2685,12 +2618,12 @@ export const releaseCodeClaim = Effect.fn("PaymentLifecycle.releaseCodeClaim")(
 const releaseReferralInvitationClaim = Effect.fn(
   "PaymentLifecycle.releaseReferralInvitationClaim"
 )(function* (
-  tx: TransactionClient,
   paymentAttemptId: PaymentAttemptId,
   releasedAt: Temporal.Instant,
   releaseReason: string
 ) {
-  const [claim] = yield* tx
+  const { db } = yield* WorkspaceTransaction;
+  const [claim] = yield* db
     .select({ state: referralInvitationClaims.state })
     .from(referralInvitationClaims)
     .where(eq(referralInvitationClaims.paymentAttemptId, paymentAttemptId))
@@ -2706,7 +2639,7 @@ const releaseReferralInvitationClaim = Effect.fn(
   }
   if (claim.state === "released") return;
 
-  yield* tx
+  yield* db
     .update(referralInvitationClaims)
     .set({
       state: "released",

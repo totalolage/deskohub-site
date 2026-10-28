@@ -13,6 +13,7 @@ import {
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 import type { AdministrationCustomerSummary } from "./administration.service";
+import { customerListQuery } from "./customer-list-query";
 import { AdministrationCustomerTable } from "./customer-table";
 import { formatAdministrationDateTime } from "./formatters";
 
@@ -125,17 +126,11 @@ describe("AdministrationCustomerTable", () => {
       <RouteLocaleProvider locale="en-US">
         <AdministrationCustomerTable
           customers={[customerSummary("one", 1)]}
-          sorting={{
-            direction: "desc",
-            field: "activity",
-            params: {
-              direction: "desc",
-              from: "2026-10-01",
-              marketingConsent: "granted",
-              sort: "activity",
-              to: "2026-10-31",
-            },
-          }}
+          query={customerListQuery.parse({
+            from: "2026-10-01",
+            marketingConsent: "granted",
+            to: "2026-10-31",
+          })}
         />
       </RouteLocaleProvider>
     );

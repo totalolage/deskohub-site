@@ -1,6 +1,6 @@
 import "server-only";
 
-import { Effect, Layer, Option, Predicate } from "effect";
+import { Effect, Layer, Option, Schema } from "effect";
 import { cache } from "react";
 import type { CurrentAdministrator } from "@/features/administrators/backend/current-administrator";
 import {
@@ -8,28 +8,22 @@ import {
   runAdministrationPage,
 } from "@/features/administrators/server/administration-request.server";
 import type { Locale } from "@/features/i18n";
-import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
-import { parsePlainDate } from "@/shared/utils/temporal";
 import {
-  type AdministrationBookingListInput,
-  type AdministrationCustomerExportInput,
-  type AdministrationCustomerListInput,
-  type AdministrationReservationExportInput,
+  getSearchParamsDecoder,
+  type SearchParamsRecord,
+} from "@/shared/utils/search-params";
+import {
   type AdministrationReservationListInput,
   AdministrationService,
   getAdministrationReservationOverview,
 } from "./administration.service";
-import { parseAdministrationCustomerMarketingConsentState } from "./customer-list-filters";
+import { bookingListQuery } from "./booking-list-query";
+import { customerListQuery } from "./customer-list-query";
 import { formatAdministrationDateTime } from "./formatters";
-import {
-  getAdministrationOperationFilters,
-  getAdministrationOrderDateTimeBounds,
-  getAdministrationPaymentDateTimeBounds,
-} from "./payment-administration-filters";
-import {
-  getAdministrationReservationDateRange,
-  getAdministrationReservationListDateRange,
-} from "./reservation-date-range";
+import { listPageParam } from "./list-query";
+import { operationListQuery } from "./operation-list-query";
+import { orderListQuery } from "./order-list-query";
+import { reservationListQuery } from "./reservation-list-query";
 import { getAdministrationReservationProductTitle } from "./reservation-product";
 import {
   decodeDotyposCustomerRouteId,
@@ -37,65 +31,13 @@ import {
   decodeNexiOperationRouteId,
   decodeNexiOrderRouteId,
   decodeWorkspaceReservationRouteId,
-  getDotyposCustomerRouteId,
 } from "./route-identifiers.server";
 
-export type AdministrationSearchParams = Promise<
-  Record<string, string | readonly string[] | undefined>
->;
+export type AdministrationSearchParams = Promise<SearchParamsRecord>;
 
-const firstParam = (value: string | readonly string[] | undefined) =>
-  Predicate.isString(value) ? value : value?.[0];
-
-const parsePage = (value: string | undefined) => {
-  const page = Number(value);
-  return Number.isSafeInteger(page) && page > 0 ? page : 1;
-};
-
-const parseDate = (value: string | undefined) =>
-  Option.fromNullishOr(value)
-    .pipe(
-      Option.flatMap(parsePlainDate),
-      Option.getOrElse(() => getCurrentWorkspaceDate())
-    )
-    .toString();
-
-const parseStatus = (
-  value: string | undefined
-): AdministrationReservationListInput["status"] =>
-  value === "in_progress" ||
-  value === "complete" ||
-  value === "cancelled" ||
-  value === "needs_refund"
-    ? value
-    : undefined;
-
-const parseReservationSort = (
-  value: string | undefined
-): NonNullable<AdministrationReservationListInput["sort"]> =>
-  value === "date" || value === "reservation" || value === "status"
-    ? value
-    : "created";
-
-const parseBookingSort = (
-  value: string | undefined
-): NonNullable<AdministrationBookingListInput["sort"]> =>
-  value === "status" ? value : "booking";
-
-const parseCustomerSort = (
-  value: string | undefined
-): NonNullable<AdministrationCustomerListInput["sort"]> =>
-  value === "reservations" ? value : "activity";
-
-const parseSortDirection = (
-  value: string | undefined
-): NonNullable<AdministrationReservationListInput["direction"]> =>
-  value === "asc" ? "asc" : "desc";
-
-const parseBookingSortDirection = (
-  value: string | undefined
-): NonNullable<AdministrationBookingListInput["direction"]> =>
-  value === "desc" ? "desc" : "asc";
+const decodeCustomerReservationsPage = getSearchParamsDecoder(
+  Schema.Struct({ reservationsPage: listPageParam })
+);
 
 /** Runs an administration page query against the administration service. */
 const runAdministration = <A, E>(
@@ -154,55 +96,13 @@ export const loadAdministrationReservationOverview = async () => {
   );
 };
 
-/**
- * The reservation list input that the page and its export derive from the
- * same URL, including the default date range.
- */
-export const parseAdministrationReservationListSearchParams = (
-  params: Awaited<AdministrationSearchParams>
-) => {
-  const typeValue = firstParam(params.type);
-  const customerId = getDotyposCustomerRouteId(firstParam(params.customerId));
-  const status = parseStatus(firstParam(params.status));
-  const dateRange = getAdministrationReservationListDateRange({
-    customerId,
-    date: firstParam(params.date),
-    from: firstParam(params.from),
-    status,
-    to: firstParam(params.to),
-  });
-  return {
-    customerId,
-    ...dateRange,
-    direction: parseSortDirection(firstParam(params.direction)),
-    page: parsePage(firstParam(params.page)),
-    sort: parseReservationSort(firstParam(params.sort)),
-    status,
-    type:
-      typeValue === "cowork" ||
-      typeValue === "meeting-room" ||
-      typeValue === "office"
-        ? typeValue
-        : undefined,
-  } satisfies AdministrationReservationListInput;
-};
-
-/** The reservation export reads the list's filters and order, but no page. */
-export const parseAdministrationReservationExportSearchParams = (
-  params: Awaited<AdministrationSearchParams>
-): AdministrationReservationExportInput => {
-  const { page: _, ...input } =
-    parseAdministrationReservationListSearchParams(params);
-  return input;
-};
-
 const getAdministrationReservationListInput = (
   searchParams: AdministrationSearchParams
 ) =>
   runAdministrationPage(
     "administration.reservations-input",
     Effect.promise(() => searchParams).pipe(
-      Effect.map(parseAdministrationReservationListSearchParams)
+      Effect.map(reservationListQuery.parse)
     ),
     Layer.empty
   );
@@ -256,15 +156,7 @@ export const loadAdministrationReservationBreadcrumbLabel = cache(
 
 const getAdministrationBookingListInput = async (
   searchParams: AdministrationSearchParams
-) => {
-  const params = await searchParams;
-  return {
-    date: parseDate(firstParam(params.date)),
-    direction: parseBookingSortDirection(firstParam(params.direction)),
-    page: parsePage(firstParam(params.page)),
-    sort: parseBookingSort(firstParam(params.sort)),
-  } satisfies AdministrationBookingListInput;
-};
+) => bookingListQuery.parse(await searchParams);
 
 const loadAdministrationBookingList = async (
   input: ReturnType<typeof getAdministrationBookingListInput>
@@ -316,42 +208,13 @@ export const loadAdministrationBookingBreadcrumbLabel = cache(
   }
 );
 
-/**
- * Parses the customer list's URL parameters. The list has no default date
- * range: without `from` or `to` it covers every customer.
- */
-export const parseAdministrationCustomerListSearchParams = (
-  params: Awaited<AdministrationSearchParams>
-) =>
-  ({
-    ...getAdministrationReservationDateRange({
-      from: firstParam(params.from),
-      to: firstParam(params.to),
-    }),
-    direction: parseSortDirection(firstParam(params.direction)),
-    marketingConsent: parseAdministrationCustomerMarketingConsentState(
-      firstParam(params.marketingConsent)
-    ),
-    page: parsePage(firstParam(params.page)),
-    sort: parseCustomerSort(firstParam(params.sort)),
-  }) satisfies AdministrationCustomerListInput;
-
-/** The customer export reads the list's filters and order, but no page. */
-export const parseAdministrationCustomerExportSearchParams = (
-  params: Awaited<AdministrationSearchParams>
-): AdministrationCustomerExportInput => {
-  const { page: _, ...input } =
-    parseAdministrationCustomerListSearchParams(params);
-  return input;
-};
-
 const getAdministrationCustomerListInput = (
   searchParams: AdministrationSearchParams
 ) =>
   runAdministrationPage(
     "administration.customers-input",
     Effect.promise(() => searchParams).pipe(
-      Effect.map(parseAdministrationCustomerListSearchParams)
+      Effect.map(customerListQuery.parse)
     ),
     Layer.empty
   );
@@ -388,7 +251,9 @@ export const loadAdministrationCustomerReservations = (
       const administration = yield* AdministrationService;
       return yield* administration.loadCustomerReservations({
         customerId: decodedCustomerId,
-        page: parsePage(firstParam(params.reservationsPage)),
+        // The page falls back to the first, so decoding never fails.
+        page: Option.getOrThrow(decodeCustomerReservationsPage(params))
+          .reservationsPage,
       });
     })
   );
@@ -421,13 +286,7 @@ export const loadAdministrationCustomerReservationActivity = cache(
 
 const getAdministrationOrderRange = async (
   searchParams: AdministrationSearchParams
-) => {
-  const params = await searchParams;
-  return getAdministrationOrderDateTimeBounds(
-    firstParam(params.from),
-    firstParam(params.to)
-  );
-};
+) => orderListQuery.parse(await searchParams);
 
 const loadAdministrationOrderList = async (
   range: ReturnType<typeof getAdministrationOrderRange>
@@ -466,33 +325,22 @@ export const loadAdministrationOrder = cache((orderId: string) =>
 
 const getAdministrationOperationListInput = async (
   searchParams: AdministrationSearchParams
-) => {
-  const params = await searchParams;
-  const range = getAdministrationPaymentDateTimeBounds(
-    firstParam(params.from),
-    firstParam(params.to)
-  );
-  const { channel, operationType } = getAdministrationOperationFilters({
-    channel: firstParam(params.channel),
-    operationType: firstParam(params.operationType),
-  });
-  return { input: { channel, operationType }, range };
-};
+) => operationListQuery.parse(await searchParams);
 
 const loadAdministrationOperationList = async (
   criteria: ReturnType<typeof getAdministrationOperationListInput>
 ) => {
-  const { input, range } = await criteria;
+  const query = await criteria;
   return runAdministration(
     "administration.operations",
     Effect.gen(function* () {
       const administration = yield* AdministrationService;
       return yield* administration.listOperations({
-        fromTime: range.fromTime,
-        toTime: range.toTime,
+        fromTime: query.fromTime,
+        toTime: query.toTime,
         maxRecords: 100,
-        channel: input.channel,
-        operationType: input.operationType,
+        channel: query.channel,
+        operationType: query.operationType,
       });
     })
   );

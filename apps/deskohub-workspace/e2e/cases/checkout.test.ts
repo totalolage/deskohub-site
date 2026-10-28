@@ -19,7 +19,6 @@ import { workspaceE2ETimeouts } from "../timeouts";
 import type { CheckoutData, CheckoutFlowState, CheckoutRow } from "../types";
 import {
   assertFreshPaymentAttempt,
-  assertFulfilledStatusPage,
   completeHostedCheckoutPayment,
   executeCheckoutFlow,
 } from "./checkout";
@@ -46,7 +45,7 @@ const checkoutRow = {
     duration: { unit: "day", amount: 1 },
   },
   reservation_id: "workspace-reservation-id",
-} as const;
+} as CheckoutRow;
 
 const wholeDayData = {
   expectedReservationDetails: {
@@ -59,7 +58,7 @@ const wholeDayData = {
     endsAt: "2027-03-28T22:00:00Z",
     startDateTime: "2027-03-28T00:00",
   },
-} as const;
+} as Pick<CheckoutData, "expectedReservationDetails" | "meetingRoom">;
 
 describe("whole-day meeting-room checkout proof", () => {
   test("renders both shared email detail projections from the confirmed DST calendar day", async () => {
@@ -105,51 +104,6 @@ describe("whole-day meeting-room checkout proof", () => {
   });
 });
 
-test("observes fulfillment across server and runner whitespace variants", async () => {
-  const commands: string[][] = [];
-  const run = (async (_command: string, args: string[]) => {
-    commands.push(args);
-    const readsUrl = args.at(-2) === "get" && args.at(-1) === "url";
-
-    return {
-      exitCode: 0,
-      stderr: "",
-      stdout: readsUrl
-        ? "https://workspace.test/en-US/reservation/status/order-id?outcome=success"
-        : "Your reservation is confirmed. Your payment is complete and we've emailed you the secure access link. Tuesday, August 25, 2026 10:00\u202fAM\u2009–\u20092:00\u202fPM CZK\u00a00",
-    };
-  }) as Runner;
-
-  await Effect.runPromise(
-    assertFulfilledStatusPage({
-      checkoutRow: {
-        amount_exponent: 2,
-        amount_value: 0,
-        currency: "CZK",
-      } as CheckoutRow,
-      config: {
-        expectedHost: "workspace.test",
-        timeouts: workspaceE2ETimeouts,
-      } as WorkspaceE2EConfig,
-      data: {
-        locale: "en-US",
-        meetingRoom: {},
-      } as CheckoutData,
-      dotyposReservation: {
-        reservedFrom: Temporal.Instant.from("2026-08-25T08:00:00Z"),
-        reservedUntil: Temporal.Instant.from("2026-08-25T12:00:00Z"),
-      } as never,
-      orderId: "order-id",
-      run,
-      session: "existing-status-page",
-    }).pipe(
-      Effect.provideService(E2EDatabase, E2EDatabase.of({ db: {} as never }))
-    )
-  );
-
-  expect(commands.some((args) => args.includes("open"))).toBe(false);
-});
-
 const runCheckoutFlowSteps = async (
   options: Pick<
     Parameters<typeof executeCheckoutFlow>[0],
@@ -190,10 +144,16 @@ const runCheckoutFlowSteps = async (
   const state: CheckoutFlowState = { data };
   const httpClientLayer = FetchHttpClient.layer.pipe(
     Layer.provide(
-      Layer.succeed(FetchHttpClient.Fetch, (() =>
-        Promise.reject(
-          new Error("HTTP must not execute in the step contract test")
-        )) as typeof globalThis.fetch)
+      Layer.succeed(
+        FetchHttpClient.Fetch,
+        Object.assign(
+          () =>
+            Promise.reject(
+              new Error("HTTP must not execute in the step contract test")
+            ),
+          { preconnect: globalThis.fetch.preconnect }
+        )
+      )
     )
   );
 
@@ -339,7 +299,7 @@ describe("Nexi sandbox payment restart", () => {
       completeHostedCheckoutPayment({
         config: { timeouts: workspaceE2ETimeouts } as WorkspaceE2EConfig,
         data,
-        orderId: "order-id",
+        orderId: "order-id" as CheckoutRow["reservation_id"],
         run: (() =>
           Promise.reject(new Error("runner must not execute"))) as Runner,
         runStep,

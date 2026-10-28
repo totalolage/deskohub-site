@@ -4,13 +4,11 @@ import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer, Option } from "effect";
 import type { SqlError } from "effect/unstable/sql";
 import { WorkspaceDatabase } from "@/db/database.service";
-import {
-  type PostgresAdvisoryLockKey,
-  WorkspaceDatabaseAdvisoryLock,
-} from "@/db/postgres-advisory-lock";
+import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { customerAccounts } from "@/db/schema";
 import { authUser } from "@/db/schema/auth";
 import { findViolatedConstraint } from "@/db/sql-constraint";
+import { WorkspaceLockSections } from "@/db/workspace-locks";
 import {
   insertReferralSignupIntent,
   type ReferralSignupIntent,
@@ -43,10 +41,6 @@ export type CustomerAccountActivityState =
 export type CustomerAccountLinkError =
   | EffectDrizzleQueryError
   | SqlError.SqlError;
-
-export const customerAccountLockKey = (
-  accountId: CustomerAccountId
-): PostgresAdvisoryLockKey => ["customer-account", accountId];
 
 interface ICustomerAccountLinkRepository {
   readonly find: (
@@ -203,7 +197,9 @@ export class CustomerAccountLinkRepository extends Context.Service<
 
       const withAccountLock: ICustomerAccountLinkRepository["withAccountLock"] =
         (accountId, effect) =>
-          advisoryLock.withLock(customerAccountLockKey(accountId), effect);
+          WorkspaceLockSections.customerAccount(accountId)(effect).pipe(
+            Effect.provideService(WorkspaceDatabaseAdvisoryLock, advisoryLock)
+          );
 
       return {
         claim,

@@ -9,10 +9,8 @@ import {
   AdministrationAlert,
   AdministrationDataTable,
   type AdministrationDataTableColumn,
-  type AdministrationDataTableSorting,
 } from "@/features/administration/components";
 import { m } from "@/features/administration/i18n";
-import { getAdministrationTableSortHref } from "@/features/administration/table-sort";
 import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { getLocalizedPagePath } from "@/features/i18n/routing";
@@ -20,12 +18,10 @@ import { Button } from "@/shared/components/ui/button";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { retryAdministrationInvoice } from "./actions";
-import type {
-  InvoiceAdministrationListItem,
-  InvoiceAdministrationListQuery,
-} from "./invoice-administration.service";
+import type { InvoiceAdministrationListItem } from "./invoice-administration.service";
 import { InvoicePaymentStatusBadge } from "./invoice-detail";
 import { getInvoiceSourceLabel } from "./invoice-display";
+import { type InvoiceListQuery, invoiceListQuery } from "./invoice-list-query";
 
 /**
  * A list item with its issue time and total already formatted on the server:
@@ -132,25 +128,16 @@ export function InvoiceAdministrationTable({
   query,
 }: {
   readonly items: readonly InvoiceAdministrationTableRow[];
-  readonly query: InvoiceAdministrationListQuery;
+  readonly query: InvoiceListQuery;
 }) {
   const locale = useRouteLocale();
-  const sorting: AdministrationDataTableSorting = query.sort
-    ? [{ id: query.sort, desc: query.direction === "desc" }]
-    : [];
   return (
     <AdministrationDataTable
       ariaLabel={m.accountingInvoiceTableLabel({}, { locale })}
       columns={getInvoiceColumns(locale)}
       data={items}
       getRowId={(item) => item.id}
-      getSortHref={(field, direction) =>
-        getAdministrationTableSortHref({
-          basePath: administrationHref("/[locale]/admin/invoices"),
-          field,
-          direction,
-        })
-      }
+      {...invoiceListQuery.tableSorting(query)}
       renderActions={(item) => <InvoiceRowActions invoice={item} />}
       mobile={
         <ul className="divide-y divide-navy-blue/10">
@@ -190,7 +177,6 @@ export function InvoiceAdministrationTable({
           ))}
         </ul>
       }
-      sorting={sorting}
       tableClassName="min-w-[1120px]"
     />
   );
