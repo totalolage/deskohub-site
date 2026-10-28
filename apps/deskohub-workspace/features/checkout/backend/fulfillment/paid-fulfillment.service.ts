@@ -424,7 +424,11 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
                 reservationId: reservationForDelivery.id,
                 dotyposReservationId:
                   reservationForDelivery.dotyposReservationId,
-                reservedFrom: reservationForDelivery.reservedFrom,
+                // The door code also covers an early-setup meeting room's
+                // setup time.
+                reservedFrom:
+                  reservationForDelivery.setupFrom ??
+                  reservationForDelivery.reservedFrom,
                 reservedUntil: reservationForDelivery.reservedUntil,
               })
               .pipe(
