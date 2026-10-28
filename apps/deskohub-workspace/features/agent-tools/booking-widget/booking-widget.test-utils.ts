@@ -167,7 +167,9 @@ export const meetingRoomAvailabilityResult = ({
   meeting_room: {
     duration: "hour:1",
     starts_at: `${bookingToday}T${startTime}`,
-    ends_at: `${bookingToday}T${Temporal.PlainTime.from(startTime).add({ hours: 1 }).toString({ smallestUnit: "minute" })}`,
+    ends_at: Temporal.PlainDateTime.from(`${bookingToday}T${startTime}`)
+      .add({ hours: 1 })
+      .toString({ smallestUnit: "minute" }),
     early_setup_available: earlySetupAvailable,
   },
   checked_at: "2099-07-28T08:00:00Z",

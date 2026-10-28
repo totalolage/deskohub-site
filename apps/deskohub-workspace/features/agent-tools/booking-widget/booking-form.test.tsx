@@ -4,7 +4,7 @@ import { Cause, Exit } from "effect";
 import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
 import type { ComponentProps } from "react";
 import { type Locale, m } from "@/features/i18n";
-import { withMeetingRoomEarlySetup } from "@/features/reservation/meeting-room-reservation-checkout-query";
+import { withMeetingRoomEarlySetup } from "@/features/reservation/meeting-room-early-setup-link";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,

@@ -1,6 +1,7 @@
 import { decodeStandardSchema } from "@deskohub/standard-schema";
 import { Schema } from "effect";
 import type { MeetingRoomEarlySetup } from "@/features/reservation/meeting-room-early-setup";
+import { meetingRoomEarlySetupSearchParam } from "@/features/reservation/meeting-room-early-setup-link";
 import {
   getMeetingRoomReservationDefaultValues,
   type MeetingRoomReservationInput,
@@ -77,23 +78,12 @@ export const getMeetingRoomReservationDefaultValuesFromSearchParams = (
     // Only a link that asks for setup time turns it on; it is never filled
     // from the last reservation.
     earlySetup:
-      getTrimmedSearchParam(searchParams, earlySetupQueryParam) ===
-      earlySetupQueryValue,
+      getTrimmedSearchParam(
+        searchParams,
+        meetingRoomEarlySetupSearchParam.name
+      ) === meetingRoomEarlySetupSearchParam.value,
     marketingConsent: false,
   };
-};
-
-const earlySetupQueryParam = "earlySetup";
-const earlySetupQueryValue = "true";
-
-/**
- * A meeting-room reservation-page link that also asks for the setup time, for
- * a customer who chose it after the link was made.
- */
-export const withMeetingRoomEarlySetup = (reservationUrl: string) => {
-  const link = new URL(reservationUrl);
-  link.searchParams.set(earlySetupQueryParam, earlySetupQueryValue);
-  return link.toString();
 };
 
 /** The meeting-room selection as the link parameters the parser above reads. */
@@ -103,8 +93,10 @@ export const getMeetingRoomReservationSelectionSearchParams = (
 ): ReservationSelectionSearchParams => ({
   startDateTime: selection.startDateTime || undefined,
   duration: selection.duration,
-  [earlySetupQueryParam]:
-    selection.earlySetup === true ? earlySetupQueryValue : undefined,
+  [meetingRoomEarlySetupSearchParam.name]:
+    selection.earlySetup === true
+      ? meetingRoomEarlySetupSearchParam.value
+      : undefined,
 });
 
 /**

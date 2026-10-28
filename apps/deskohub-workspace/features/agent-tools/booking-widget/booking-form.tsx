@@ -5,7 +5,7 @@ import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
 import { useId, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { type Locale, m } from "@/features/i18n";
-import { withMeetingRoomEarlySetup } from "@/features/reservation/meeting-room-reservation-checkout-query";
+import { withMeetingRoomEarlySetup } from "@/features/reservation/meeting-room-early-setup-link";
 import { Button } from "@/shared/components/ui/button";
 import { ChoiceCard } from "@/shared/components/ui/choice-card";
 import {
