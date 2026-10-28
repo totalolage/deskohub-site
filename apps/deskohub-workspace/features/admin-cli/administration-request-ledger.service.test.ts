@@ -192,6 +192,15 @@ describe.skipIf(!testDatabase)("administration request ledger", () => {
 
   const newRequestId = () => CliMutationRequestId.make(crypto.randomUUID());
 
+  /** Deletes a claim, as if something else settled it mid-attempt. */
+  const deleteClaim = (requestId: CliMutationRequestIdType) =>
+    Effect.promise(() =>
+      testDatabase.pool.query(
+        "delete from cli_mutation_requests where session_id = $1 and request_id = $2",
+        [sessionId, requestId]
+      )
+    );
+
   const failureOf = (exit: Exit.Exit<unknown, unknown>) =>
     Exit.isFailure(exit)
       ? Option.getOrUndefined(Cause.findErrorOption(exit.cause))
@@ -546,6 +555,54 @@ describe.skipIf(!testDatabase)("administration request ledger", () => {
       expect(await counts()).toEqual({ applied: 1, resumed: 0, settled: 1 });
     });
 
+    test("dies when the claim vanished before its result is recorded", async () => {
+      const requestId = newRequestId();
+      const { run } = await discounts();
+
+      const vanished = await run(requestId, {
+        apply: deleteClaim(requestId).pipe(Effect.as(result)),
+      });
+
+      expect(Exit.isFailure(vanished) && Cause.hasDies(vanished.cause)).toBe(
+        true
+      );
+    });
+
+    test("marks a replay, then answers unavailable, when the stored result is unreadable", async () => {
+      const requestId = newRequestId();
+      const { run } = await discounts();
+      await run(requestId);
+      await testDatabase.pool.query(
+        `update cli_mutation_requests set result = '{"kind": "unreadable"}'::jsonb
+          where session_id = $1 and request_id = $2`,
+        [sessionId, requestId]
+      );
+      const replays = await Effect.runPromise(Ref.make(0));
+
+      const replayed = await runAs(
+        sessionChannel,
+        AdministrationRequestLedger.pipe(
+          Effect.flatMap((ledger) =>
+            ledger.applyOnceWithEffects({
+              requestId,
+              mutation,
+              stored: StoredResult.unchanged(
+                AdministrationDiscountMutationResult
+              ),
+              recovery: discountMutationRecovery,
+              apply: Effect.die("not applied"),
+            })
+          ),
+          Effect.provideService(CurrentAdministrationAction, {
+            markReplayed: Ref.update(replays, (count) => count + 1),
+          })
+        )
+      );
+
+      expect(failureOf(replayed)).toBeInstanceOf(CliServiceUnavailable);
+      expect(await Effect.runPromise(Ref.get(replays))).toBe(1);
+    });
+
     test("replays the stored result and refreshes after both answers", async () => {
       const requestId = newRequestId();
       const { run, counts } = await discounts();
@@ -789,6 +846,19 @@ describe.skipIf(!testDatabase)("administration request ledger", () => {
       expect(await run(requestId)).toEqual(Exit.succeed(created));
       expect(await ledgerEntry(requestId)).toEqual({ result: stored });
       expect(await counts()).toEqual({ applied: 2, resumed: 0, settled: 1 });
+    });
+
+    test("dies, despite best-effort recording, when the claim vanished before its result is recorded", async () => {
+      const requestId = newRequestId();
+      const { run } = await creation();
+
+      const vanished = await run(requestId, {
+        apply: deleteClaim(requestId).pipe(Effect.as(created)),
+      });
+
+      expect(Exit.isFailure(vanished) && Cause.hasDies(vanished.cause)).toBe(
+        true
+      );
     });
 
     test("still answers, and frees the request ID, when the result can't be recorded", async () => {
