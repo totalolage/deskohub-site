@@ -231,6 +231,8 @@ export class ReservationAccessService extends Context.Service<
                 .loadIssuedCode({
                   id: existingGrant.id,
                   reservationId: input.reservationId,
+                  scheduledAccessStartsAt: existingGrant.scheduledAccessStartsAt,
+                  accessEndsAt: existingGrant.accessEndsAt,
                 })
                 .pipe(
                   Effect.mapError(
@@ -277,6 +279,8 @@ export class ReservationAccessService extends Context.Service<
               .loadIssuedCode({
                 id: grant.id,
                 reservationId: input.reservationId,
+                scheduledAccessStartsAt: interval.scheduledStartsAt,
+                accessEndsAt: interval.endsAt,
               })
               .pipe(
                 Effect.mapError(
@@ -342,6 +346,8 @@ export class ReservationAccessService extends Context.Service<
             .claim({
               id: grant.id,
               reservationId: input.reservationId,
+              scheduledAccessStartsAt: interval.scheduledStartsAt,
+              accessEndsAt: interval.endsAt,
               accessName,
               startedAt: claimedAt,
             })
