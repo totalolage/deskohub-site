@@ -107,6 +107,9 @@ describe("campaign image", () => {
     ["width in fractions", { width: 240.5 }, "width"],
     ["width of zero", { width: 0 }, "width"],
     ["width as text", { width: "240" }, "width"],
+    // Markdown would spell it `1e+21`, which doesn't read back as a width.
+    ["width too large to write as digits", { width: 1e21 }, "width"],
+    ["width wider than any picture", { width: 65_536 }, "width"],
   ])("refuses an image with an invalid %s", (_name, attrs, key) => {
     expect(imageIssuePaths(attrs)).toEqual([["ImageLayoutInvalid", key]]);
   });
@@ -117,4 +120,29 @@ describe("campaign image", () => {
       expect(imageIssuePaths(attrs)).toEqual([]);
     }
   );
+
+  test("round-trips the widest accepted width", async () => {
+    const markdown = `![Zasedačka](${cloudinaryImage}){width=65535}`;
+    const read = await readMarkdown(markdown);
+
+    expect(imageIssuePaths(read.doc.content?.[0]?.attrs)).toEqual([]);
+    expect(writeMarkdown(read)).toBe(markdown);
+  });
+
+  test.each([
+    ["a null alignment", null],
+    ["no alignment", undefined],
+  ])("marks an image with %s as centered in the editor", (_name, align) => {
+    const imageType = campaignBodySchema.nodes.image;
+    if (!imageType) throw new Error("The schema has no image node.");
+    const image = imageType.create({
+      src: cloudinaryImage,
+      ...(align !== undefined && { align }),
+    });
+
+    expect(imageType.spec.toDOM?.(image)).toEqual([
+      "img",
+      expect.objectContaining({ "data-align": "center" }),
+    ]);
+  });
 });

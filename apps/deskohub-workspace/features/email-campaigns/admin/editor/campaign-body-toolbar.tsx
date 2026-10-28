@@ -54,10 +54,7 @@ import {
   isCampaignImageWidth,
 } from "../../body/campaign-image";
 import { uploadCampaignImage } from "./actions";
-import {
-  campaignImageNeedsShrinking,
-  prepareCampaignImage,
-} from "./campaign-image-preparation";
+import { prepareCampaignImage } from "./campaign-image-preparation";
 import { normalizeCampaignLinkHref } from "./campaign-link-href";
 import { CtaButtonDialog, type CtaButtonValues } from "./cta-button-dialog";
 
@@ -601,8 +598,11 @@ function ImageUploadControl({
     setError(undefined);
     // A file that already fits goes straight to the upload, so it skips the
     // shrinking message.
-    setShrinking(campaignImageNeedsShrinking(file));
-    void prepareCampaignImage(file, locale).pipe(
+    void prepareCampaignImage(
+      file,
+      locale,
+      Effect.sync(() => setShrinking(true))
+    ).pipe(
       Effect.flatMap((prepared) =>
         Effect.sync(() => {
           setShrinking(false);

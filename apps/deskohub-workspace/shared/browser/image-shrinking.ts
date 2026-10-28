@@ -9,6 +9,7 @@ import type {
   ImageShrinkingReply,
   ImageShrinkingRequest,
 } from "./image-shrinking.worker";
+import { readImageWidth } from "./image-width";
 
 /**
  * Far longer than shrinking takes, so only a worker that died without a word
@@ -17,16 +18,19 @@ import type {
 const workerReplyTimeout = "2 minutes";
 
 /**
- * Returns the file unchanged when its type is accepted and it's within
- * `fit.maxBytes`. Otherwise re-encodes it in a Web Worker, as
- * `reencodeImageToFit` describes, so the page stays responsive. The worker and
- * its WebAssembly codecs load only then, and interrupting stops the worker.
+ * Returns the file unchanged when its type is accepted and its picture is
+ * within both of `fit`'s limits. Otherwise runs `onShrinking`, then
+ * re-encodes the file in a Web Worker, as `reencodeImageToFit` describes, so
+ * the page stays responsive. The worker and its WebAssembly codec load only
+ * then, and interrupting stops the worker.
  */
 export const shrinkImageToFit = Effect.fn("shrinkImageToFit")(function* (
   file: File,
-  fit: ImageFit
+  fit: ImageFit,
+  onShrinking: Effect.Effect<void> = Effect.void
 ) {
-  if (imageFitsAsIs(file, fit)) return file;
+  if (imageFitsAsIs(file, yield* readImageWidth(file), fit)) return file;
+  yield* onShrinking;
   const reply = yield* Effect.acquireUseRelease(
     Effect.sync(
       () =>

@@ -1,7 +1,7 @@
 import { Effect, Option, Result } from "effect";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
-import { type ImageFit, imageFitsAsIs } from "@/shared/browser/image-fit";
+import type { ImageFit } from "@/shared/browser/image-fit";
 import { shrinkImageToFit } from "@/shared/browser/image-shrinking";
 import { reportWorkspaceBrowserFailure } from "@/shared/browser/workspace-browser-logs";
 import { campaignBodyColumnWidth } from "../../body/campaign-image";
@@ -13,10 +13,9 @@ import {
 } from "./campaign-image-upload";
 
 /**
- * A body image fits when it's within the upload limit. One that has to be
- * shrunk becomes at most twice the body column's width: sharp on high-density
- * screens, and no heavier than needed, since every recipient downloads the
- * uploaded file as it is.
+ * A body image fits when it's within the upload limit and at most twice the
+ * body column's width: sharp on high-density screens, and no heavier than
+ * needed, since every recipient downloads the uploaded file as it is.
  */
 const campaignImageFit: ImageFit = {
   maxBytes: campaignImageMaxBytes,
@@ -26,20 +25,18 @@ const campaignImageFit: ImageFit = {
 
 const preparationFailureCode = "email-campaigns.admin.image-preparation.failed";
 
-/** Whether the admin's file has to be shrunk before it can be uploaded. */
-export const campaignImageNeedsShrinking = (file: File): boolean =>
-  !imageFitsAsIs(file, campaignImageFit);
-
 /**
- * The image to upload, or the admin message why there's none. A file that's
- * already within the limit is uploaded as it is; a larger one, or one in a
- * format the upload doesn't take, is shrunk in the browser until it fits.
+ * The image to upload, or the admin message why there's none. A file that
+ * already fits is uploaded as it is; a larger or wider one, or one in a
+ * format the upload doesn't take, is shrunk in the browser until it fits,
+ * once `onShrinking` has run.
  */
 export const prepareCampaignImage = (
   file: File,
-  locale: Locale
+  locale: Locale,
+  onShrinking: Effect.Effect<void> = Effect.void
 ): Effect.Effect<Result.Result<File, string>> =>
-  shrinkImageToFit(file, campaignImageFit).pipe(
+  shrinkImageToFit(file, campaignImageFit, onShrinking).pipe(
     Effect.map((image) =>
       Option.match(campaignImageUploadIssue(image, locale), {
         onNone: () => Result.succeed(image),

@@ -1,3 +1,4 @@
+import { initializeImageMagick } from "@imagemagick/magick-wasm";
 import { Cause, Effect, Exit, Result } from "effect";
 import type {
   ImageDecodeError,
@@ -31,7 +32,7 @@ interface ImageShrinkingScope {
   postMessage(reply: ImageShrinkingReply): void;
 }
 
-const scope = globalThis as unknown as ImageShrinkingScope;
+const scope: ImageShrinkingScope = self;
 
 const toReply = (
   exit: Exit.Exit<File, ImageDecodeError | ImageTooLargeError>
@@ -45,14 +46,25 @@ const toReply = (
           const defect = Cause.squash(cause);
           return {
             _tag: "Defect",
-            errorName: defect instanceof Error ? defect.name : typeof defect,
+            errorName: defect instanceof Error ? defect.name : "UnknownDefect",
           };
         },
       }),
   });
 
+/**
+ * ImageMagick's WebAssembly build, about 5 MB compressed. Only this worker
+ * loads it, so the editor's page never does.
+ */
+const initializeCodec = Effect.promise(() =>
+  initializeImageMagick(
+    new URL("@imagemagick/magick-wasm/magick.wasm", import.meta.url)
+  )
+);
+
 scope.addEventListener("message", ({ data }) => {
-  void reencodeImageToFit(data.file, data.fit).pipe(
+  void initializeCodec.pipe(
+    Effect.andThen(reencodeImageToFit(data.file, data.fit)),
     Effect.exit,
     Effect.flatMap((exit) =>
       Effect.sync(() => scope.postMessage(toReply(exit)))

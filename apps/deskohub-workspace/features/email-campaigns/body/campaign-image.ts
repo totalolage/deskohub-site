@@ -20,10 +20,19 @@ export const isCampaignImageAlignment = (
 ): value is CampaignImageAlignment =>
   campaignImageAlignments.some((alignment) => alignment === value);
 
+/**
+ * No picture is wider: it's the most JPEG and GIF can store. The bound also
+ * keeps every width a plain run of digits in Markdown, never `1e+21`.
+ */
+const widestPicture = 65_535;
+
 /** An image's width is its natural width in whole CSS pixels. */
 export const isCampaignImageWidth = (
   value: CampaignBodyAttributeValue | undefined
-): value is number => Number.isInteger(value) && Number(value) > 0;
+): value is number =>
+  Number.isInteger(value) &&
+  Number(value) > 0 &&
+  Number(value) <= widestPicture;
 
 // Markdown spells a laid-out image with a Pandoc-style attribute list on its
 // own line: `![Alt](https://…){align=left width=240}`. A plain image line
@@ -78,7 +87,12 @@ export const CampaignImage = Image.extend({
       align: {
         default: defaultCampaignImageAlignment,
         parseHTML: (element) => element.getAttribute("data-align"),
-        renderHTML: (attributes) => ({ "data-align": attributes.align }),
+        // An image saved with a null alignment is centered, as in the email.
+        renderHTML: (attributes) => ({
+          "data-align": isCampaignImageAlignment(attributes.align)
+            ? attributes.align
+            : defaultCampaignImageAlignment,
+        }),
       },
     };
   },

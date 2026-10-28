@@ -7,6 +7,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { Editor } from "@tiptap/core";
+import { Effect, Result } from "effect";
 import { m } from "@/features/administration/i18n";
 import {
   registerWorkspaceComponentTestEnv,
@@ -27,12 +28,31 @@ mock.module("@/features/email-campaigns/admin/editor/actions", () => ({
   uploadCampaignImage,
 }));
 
+/** Prepares an image as the test needs; by default it's used as it is. */
+let prepareImage = (
+  file: File,
+  _onShrinking: Effect.Effect<void>
+): Effect.Effect<Result.Result<File, string>> =>
+  Effect.succeed(Result.succeed(file));
+
+mock.module(
+  "@/features/email-campaigns/admin/editor/campaign-image-preparation",
+  () => ({
+    prepareCampaignImage: (
+      file: File,
+      _locale: string,
+      onShrinking: Effect.Effect<void> = Effect.void
+    ) => prepareImage(file, onShrinking),
+  })
+);
+
 const { CampaignBodyEditor } = await import("./campaign-body-editor");
-const { campaignImageMaxBytes } = await import("./campaign-image-upload");
+const defaultPrepareImage = prepareImage;
 
 afterEach(() => {
   cleanup();
   uploadCampaignImage.mockClear();
+  prepareImage = defaultPrepareImage;
 });
 afterAll(unregisterWorkspaceComponentTestEnv);
 
@@ -181,23 +201,81 @@ test("inserts an uploaded image centered at its width", async () => {
   );
 });
 
-test("refuses an image too large to upload before sending it", async () => {
-  const { view } = await renderEditor();
+const chooseImage = (view: ReturnType<typeof render>, file: File) => {
   const input =
     view.container.querySelector<HTMLInputElement>('input[type="file"]');
+  fireEvent.change(input!, { target: { files: [file] } });
+};
 
-  const tooLarge = new File([new Uint8Array(3)], "big.png", {
-    type: "image/png",
+const insertButton = (view: ReturnType<typeof render>) =>
+  view.queryByRole("button", {
+    name: m.emailCampaignsImageUploadInsert({}, { locale }),
   });
-  // A real file this size makes the DOM shim crawl; only its size matters.
-  Object.defineProperty(tooLarge, "size", { value: campaignImageMaxBytes + 1 });
 
-  fireEvent.change(input!, { target: { files: [tooLarge] } });
+test("uploads the image as prepared, not as chosen", async () => {
+  const shrunk = new File([new Uint8Array(2)], "big.jpg", {
+    type: "image/jpeg",
+  });
+  prepareImage = () => Effect.succeed(Result.succeed(shrunk));
+  const { view } = await renderEditor();
+
+  chooseImage(
+    view,
+    new File([new Uint8Array(3)], "big.png", { type: "image/png" })
+  );
+
+  await waitFor(() => expect(uploadCampaignImage).toHaveBeenCalledTimes(1));
+  expect(uploadCampaignImage.mock.calls[0]?.[0].get("file")).toBe(shrunk);
+});
+
+test("shows the editor busy while it shrinks an image", async () => {
+  const { promise: shrunk, resolve: finishShrinking } =
+    Promise.withResolvers<void>();
+  prepareImage = (file, onShrinking) =>
+    onShrinking.pipe(
+      Effect.andThen(Effect.promise(() => shrunk)),
+      Effect.as(Result.succeed(file))
+    );
+  const { view } = await renderEditor();
+
+  chooseImage(
+    view,
+    new File([new Uint8Array(3)], "big.png", { type: "image/png" })
+  );
+
+  const busy = await waitFor(() => {
+    const button = view.getByRole("button", {
+      name: m.emailCampaignsImageShrinking({}, { locale }),
+    });
+    expect(button).toHaveProperty("disabled", true);
+    return button;
+  });
+  expect(view.getByRole("status").textContent).not.toBe("");
+  expect(uploadCampaignImage).not.toHaveBeenCalled();
+
+  finishShrinking();
+
+  await waitFor(() => expect(uploadCampaignImage).toHaveBeenCalledTimes(1));
+  await waitFor(() =>
+    expect(busy.isConnected && insertButton(view)).toBeTruthy()
+  );
+});
+
+test("says why an image can't be used and uploads nothing", async () => {
+  const reason = "synthetic reason";
+  prepareImage = () => Effect.succeed(Result.fail(reason));
+  const { view } = await renderEditor();
+
+  chooseImage(
+    view,
+    new File([new Uint8Array(3)], "broken.png", { type: "image/png" })
+  );
 
   await waitFor(() =>
-    expect(view.getByRole("status").textContent).not.toBe("")
+    expect(view.getByRole("status").textContent).toBe(reason)
   );
   expect(uploadCampaignImage).not.toHaveBeenCalled();
+  expect(insertButton(view)).toHaveProperty("disabled", false);
 });
 
 test("aligns an image saved without a width at its natural width", async () => {
