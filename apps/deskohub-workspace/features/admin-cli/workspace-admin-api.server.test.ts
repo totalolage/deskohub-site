@@ -2,7 +2,6 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
 import { DotyposRejected } from "@deskohub/dotypos";
-import { IgloohomeService } from "@deskohub/igloohome";
 import { testEmailAddress } from "@deskohub/test-email";
 import {
   AdministrationActorEmail,
@@ -40,23 +39,13 @@ import {
 } from "@deskohub/workspace-admin-api";
 import { NodeHttpServer } from "@effect/platform-node";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import {
-  Effect,
-  Layer,
-  Logger,
-  Option,
-  Redacted,
-  Result,
-  Schema,
-} from "effect";
+import { Effect, Layer, Logger, Redacted, Result, Schema } from "effect";
 import { HttpRouter } from "effect/unstable/http";
 import { HttpApiTest } from "effect/unstable/httpapi";
-import type { CliStoredMutation } from "@/db/schema";
 import {
   StandaloneAccessCodeAdministration,
   StandaloneAccessCodeCreationError,
 } from "@/features/access-codes";
-import { StandaloneAccessCodeAttemptLogRepository } from "@/features/access-codes/backend/standalone-access-code-attempt-log.repository";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import {
   InvoiceAdministrationInProgressError,
@@ -87,6 +76,8 @@ import { workspaceReservationIdSchema } from "@/features/reservation/persistence
 import {
   discountMutationRecovery,
   reservationAccessRecovery,
+  standaloneAccessCodeRecovery,
+  standaloneAccessCodeStoredResult,
 } from "./administration-mutation-recovery";
 import { AdministrationRequestLedger } from "./administration-request-ledger.service";
 import {
@@ -1429,310 +1420,132 @@ describe("standalone access-code CLI endpoint", () => {
       Effect.scoped
     );
 
-  const createAccessCodeError = Effect.gen(function* () {
-    const client = yield* HttpApiTest.groups(WorkspaceAdminApi, [
-      "administration",
-    ]);
-    return yield* client.administration
-      .createStandaloneAccessCode({ payload })
-      .pipe(Effect.flip);
-  });
+  const createAccessCode = (
+    requestPayload: typeof payload & {
+      readonly providerCredentialRemovedAttemptId?: AdministrationStandaloneAccessCodeAttemptIdType;
+    } = payload
+  ) =>
+    Effect.gen(function* () {
+      const client = yield* HttpApiTest.groups(WorkspaceAdminApi, [
+        "administration",
+      ]);
+      return yield* client.administration.createStandaloneAccessCode({
+        payload: requestPayload,
+      });
+    });
+  const createAccessCodeError = (
+    requestPayload?: Parameters<typeof createAccessCode>[0]
+  ) => createAccessCode(requestPayload).pipe(Effect.flip);
 
-  test("discloses the PIN once and stores only PIN-free completion metadata", async () => {
+  test("returns the PIN once and wires the standalone mutation", async () => {
     const creations: unknown[] = [];
-    const completions: unknown[] = [];
-    const completedResults = new Map<string, unknown>();
-    let claimedOnce = false;
     const standalone = Layer.succeed(StandaloneAccessCodeAdministration, {
       create: (input) =>
-        Effect.sync(() => {
-          creations.push(input);
-          return createdOutcome;
-        }),
+        Effect.sync(() => creations.push(input)).pipe(
+          Effect.as(createdOutcome)
+        ),
     });
-    const idempotency = Layer.succeed(AdministrationRequestLedger, {
-      applyOnce: () => Effect.die("Unused CLI mutation ledger"),
-      claim: ({ requestId }) =>
-        Effect.sync(() => {
-          if (completedResults.has(requestId)) {
-            return {
-              kind: "completed" as const,
-              result: completedResults.get(requestId) as never,
-            };
-          }
-          if (claimedOnce) return { kind: "in-progress" as const };
-          claimedOnce = true;
-          return { kind: "claimed" as const };
-        }),
-      complete: ({ requestId, result }) =>
-        Effect.sync(() => {
-          completions.push(result);
-          completedResults.set(requestId, result);
-        }),
-      reclaimStale: () => Effect.succeed(false),
-      release: () => Effect.die("not expected"),
-    });
-
-    const [created, replayed] = await runAdministration(
+    const ledger = recordingRequestLedger();
+    const created = await runAdministration(
       ActorAuthorizedCliRequest,
       standalone,
-      idempotency,
-      Effect.gen(function* () {
-        const client = yield* HttpApiTest.groups(WorkspaceAdminApi, [
-          "administration",
-        ]);
-        const first = yield* client.administration.createStandaloneAccessCode({
-          payload,
-        });
-        const second = yield* client.administration.createStandaloneAccessCode({
-          payload,
-        });
-        return [first, second] as const;
-      })
+      ledger.layer,
+      createAccessCode()
     ).pipe(Effect.runPromise);
 
     expect(created).toMatchObject({ outcome: "created", pin: "7654321" });
-    expect(completions).toHaveLength(1);
-    expect(JSON.stringify(completions[0])).not.toContain("7654321");
-    expect(completions[0]).toEqual({
-      attemptId,
-      providerCredentialId: "pin-1",
-      name: "Booth A",
-      startsAt: "2026-09-10T10:00",
-      endsAt: "2026-09-10T12:00",
-      issuedAt: "2026-09-10T08:00:00Z",
-    });
-    expect(replayed).toMatchObject({ outcome: "already-created" });
-    expect("pin" in replayed).toBe(false);
-    expect(JSON.stringify(replayed)).not.toContain("7654321");
     expect(creations).toHaveLength(1);
     expect(creations[0]).toMatchObject({
       attemptId,
       source: "dhw-cli",
       actor: cliAdministrator,
+      request: payload.input,
     });
+    expect(ledger.requests).toHaveLength(1);
+    expect(ledger.requests[0]).toMatchObject({
+      requestId: attemptId,
+      mutation: { kind: "standalone-access-code", request: payload.input },
+      inProgressMessage:
+        "This standalone access-code creation is still being applied. Retrying with the same attempt identifier is safe.",
+    });
+    expect(ledger.requests[0]?.stored).toBe(standaloneAccessCodeStoredResult);
+    expect(ledger.requests[0]?.recovery).toBe(standaloneAccessCodeRecovery);
   });
 
-  test("returns the created PIN even when the ledger completion write fails", async () => {
-    const releases: unknown[] = [];
-    const logRecords: string[] = [];
-    const capturingLogger = Logger.make<unknown, void>(({ message }) => {
-      logRecords.push(JSON.stringify(message));
-    });
-    const standalone = Layer.succeed(StandaloneAccessCodeAdministration, {
-      create: () => Effect.succeed(createdOutcome),
-    });
-    const idempotency = Layer.succeed(AdministrationRequestLedger, {
-      applyOnce: () => Effect.die("Unused CLI mutation ledger"),
-      claim: () => Effect.succeed({ kind: "claimed" as const }),
-      complete: () =>
-        Effect.fail(
-          new EffectDrizzleQueryError({
-            query: "update cli mutation requests",
-            params: [],
-            cause: new Error("write unavailable"),
-          })
-        ),
-      reclaimStale: () => Effect.succeed(false),
-      release: (request) =>
-        Effect.sync(() => {
-          releases.push(request);
-        }),
-    });
-
-    const created = await runAdministration(
-      ActorAuthorizedCliRequest,
-      standalone,
-      idempotency,
-      Effect.gen(function* () {
-        const client = yield* HttpApiTest.groups(WorkspaceAdminApi, [
-          "administration",
-        ]);
-        return yield* client.administration.createStandaloneAccessCode({
-          payload,
-        });
-      })
-    ).pipe(Effect.withLogger(capturingLogger), Effect.runPromise);
-
-    expect(created).toMatchObject({ outcome: "created", pin: "7654321" });
-    expect(releases).toHaveLength(1);
-    expect(
-      logRecords.some(
-        (record) => record.includes("completion") && record.includes(attemptId)
-      )
-    ).toBe(true);
-    expect(logRecords.join("\n")).not.toContain("7654321");
-  });
-
-  test("fails closed before claiming the mutation ledger when the session's administrator can't be resolved", async () => {
-    let claims = 0;
-    const idempotency = Layer.succeed(AdministrationRequestLedger, {
-      applyOnce: () => Effect.die("Unused CLI mutation ledger"),
-      claim: () =>
-        Effect.sync(() => {
-          claims += 1;
-          return { kind: "claimed" as const };
-        }),
-      complete: () => Effect.void,
-      reclaimStale: () => Effect.succeed(false),
-      release: () => Effect.void,
-    });
-
-    const error = await runAdministration(
-      CliSessionAdministrationAuthenticationLive,
-      UnusedStandaloneAccessCodeAdministration,
-      idempotency,
-      createAccessCodeError,
-      UnresolvableSessionAuthentication
-    ).pipe(Effect.runPromise);
-
-    expect(error).toBeInstanceOf(CliSessionUnauthorized);
-    expect(claims).toBe(0);
-  });
-
-  test("rejects a mismatched attempt identity without calling the provider", async () => {
-    let creations = 0;
-    let releases = 0;
+  test("replays stored metadata without a PIN or another provider call", async () => {
+    let providerCalls = 0;
+    const storedResult = standaloneAccessCodeStoredResult.from(createdOutcome);
     const standalone = Layer.succeed(StandaloneAccessCodeAdministration, {
       create: () =>
         Effect.sync(() => {
-          creations += 1;
+          providerCalls += 1;
           return createdOutcome;
         }),
     });
     const idempotency = Layer.succeed(AdministrationRequestLedger, {
-      applyOnce: () => Effect.die("Unused CLI mutation ledger"),
-      claim: () => Effect.succeed({ kind: "mismatch" as const }),
-      complete: () => Effect.void,
-      reclaimStale: () => Effect.succeed(false),
-      release: () =>
-        Effect.sync(() => {
-          releases += 1;
-        }),
-    });
+      applyOnce: ({ apply }) => apply,
+      applyOnceWithEffects: ({ stored }) =>
+        Effect.succeed(stored.replay(storedResult as never)),
+    } as AdministrationRequestLedger["Service"]);
 
-    const error = await runAdministration(
+    const replayed = await runAdministration(
       ActorAuthorizedCliRequest,
       standalone,
       idempotency,
-      createAccessCodeError
+      createAccessCode()
     ).pipe(Effect.runPromise);
 
-    expect(error).toBeInstanceOf(CliMutationRejected);
-    expect(error.message).toContain("different input");
-    expect(creations).toBe(0);
-    expect(releases).toBe(0);
+    expect(replayed.outcome).toBe("already-created");
+    expect("pin" in replayed).toBe(false);
+    expect(providerCalls).toBe(0);
   });
 
-  test("releases the claim and rejects when creation is definitively rejected", async () => {
-    let releases = 0;
-    let completions = 0;
-    const standalone = Layer.succeed(StandaloneAccessCodeAdministration, {
-      create: () =>
-        Effect.fail(
-          creationFailure(
-            "rejected",
-            "The standalone access-code request was rejected."
-          )
-        ),
-    });
-    const idempotency = Layer.succeed(AdministrationRequestLedger, {
-      applyOnce: () => Effect.die("Unused CLI mutation ledger"),
-      claim: () => Effect.succeed({ kind: "claimed" as const }),
-      complete: () =>
-        Effect.sync(() => {
-          completions += 1;
-        }),
-      reclaimStale: () => Effect.succeed(false),
-      release: () =>
-        Effect.sync(() => {
-          releases += 1;
-        }),
-    });
+  test("maps provider rejection and unavailability", async () => {
+    const runFailure = (
+      outcome: StandaloneAccessCodeCreationError["outcome"],
+      message: string
+    ) => {
+      const standalone = Layer.succeed(StandaloneAccessCodeAdministration, {
+        create: () => Effect.fail(creationFailure(outcome, message)),
+      });
+      return runAdministration(
+        ActorAuthorizedCliRequest,
+        standalone,
+        recordingRequestLedger().layer,
+        createAccessCodeError()
+      ).pipe(Effect.runPromise);
+    };
 
-    const error = await runAdministration(
-      ActorAuthorizedCliRequest,
-      standalone,
-      idempotency,
-      createAccessCodeError
-    ).pipe(Effect.runPromise);
+    const rejected = await runFailure(
+      "rejected",
+      "The standalone access-code request was rejected."
+    );
+    const unavailable = await runFailure(
+      "unavailable",
+      "Standalone access-code creation is temporarily unavailable."
+    );
 
-    expect(error).toBeInstanceOf(CliMutationRejected);
-    expect(error.message).toContain("rejected");
-    expect(releases).toBe(1);
-    expect(completions).toBe(0);
+    expect(rejected).toBeInstanceOf(CliMutationRejected);
+    expect(rejected.message).toContain("rejected");
+    expect(unavailable).toBeInstanceOf(CliServiceUnavailable);
   });
 
-  test("releases the claim and reports unavailability without completion", async () => {
-    let releases = 0;
-    const standalone = Layer.succeed(StandaloneAccessCodeAdministration, {
-      create: () =>
-        Effect.fail(
-          creationFailure(
-            "unavailable",
-            "Standalone access-code creation is temporarily unavailable."
-          )
-        ),
-    });
-    const idempotency = Layer.succeed(AdministrationRequestLedger, {
-      applyOnce: () => Effect.die("Unused CLI mutation ledger"),
-      claim: () => Effect.succeed({ kind: "claimed" as const }),
-      complete: () => Effect.void,
-      reclaimStale: () => Effect.succeed(false),
-      release: () =>
-        Effect.sync(() => {
-          releases += 1;
-        }),
-    });
-
-    const error = await runAdministration(
-      ActorAuthorizedCliRequest,
-      standalone,
-      idempotency,
-      createAccessCodeError
-    ).pipe(Effect.runPromise);
-
-    expect(error).toBeInstanceOf(CliServiceUnavailable);
-    expect(releases).toBe(1);
-  });
-
-  test("keeps the claim and reports uncertainty naming the ambiguous target without a PIN", async () => {
-    let releases = 0;
-    let completions = 0;
+  test("maps ambiguity to reconciliation instructions without disclosing a PIN", async () => {
     const standalone = Layer.succeed(StandaloneAccessCodeAdministration, {
       create: () =>
         Effect.fail(
           creationFailure(
             "ambiguous",
             "The standalone access-code creation outcome is ambiguous.",
-            {
-              cleanupTarget: {
-                attemptId,
-                name: payload.input.name,
-              },
-            }
+            { cleanupTarget: { attemptId, name: payload.input.name } }
           )
         ),
     });
-    const idempotency = Layer.succeed(AdministrationRequestLedger, {
-      applyOnce: () => Effect.die("Unused CLI mutation ledger"),
-      claim: () => Effect.succeed({ kind: "claimed" as const }),
-      complete: () =>
-        Effect.sync(() => {
-          completions += 1;
-        }),
-      reclaimStale: () => Effect.succeed(false),
-      release: () =>
-        Effect.sync(() => {
-          releases += 1;
-        }),
-    });
-
     const error = await runAdministration(
       ActorAuthorizedCliRequest,
       standalone,
-      idempotency,
-      createAccessCodeError
+      recordingRequestLedger().layer,
+      createAccessCodeError()
     ).pipe(Effect.runPromise);
 
     expect(error).toBeInstanceOf(CliMutationUncertain);
@@ -1744,106 +1557,22 @@ describe("standalone access-code CLI endpoint", () => {
       );
     }
     expect(JSON.stringify(error)).not.toContain("7654321");
-    expect(releases).toBe(0);
-    expect(completions).toBe(0);
   });
 
-  test("reports unavailability when the ambiguous outcome carries no cleanup target", async () => {
-    let releases = 0;
+  test("requires cleanup of the stored prior target", async () => {
     const standalone = Layer.succeed(StandaloneAccessCodeAdministration, {
       create: () =>
         Effect.fail(
-          creationFailure(
-            "ambiguous",
-            "The standalone access-code creation outcome is ambiguous."
-          )
+          creationFailure("cleanup-required", "Cleanup is required.", {
+            cleanupTarget: priorCleanupTarget,
+          })
         ),
     });
-    const idempotency = Layer.succeed(AdministrationRequestLedger, {
-      applyOnce: () => Effect.die("Unused CLI mutation ledger"),
-      claim: () => Effect.succeed({ kind: "claimed" as const }),
-      complete: () => Effect.void,
-      reclaimStale: () => Effect.succeed(false),
-      release: () =>
-        Effect.sync(() => {
-          releases += 1;
-        }),
-    });
-
     const error = await runAdministration(
       ActorAuthorizedCliRequest,
       standalone,
-      idempotency,
-      createAccessCodeError
-    ).pipe(Effect.runPromise);
-
-    expect(error).toBeInstanceOf(CliServiceUnavailable);
-    expect(releases).toBe(1);
-  });
-
-  test("reports an unexpired in-progress claim without resuming", async () => {
-    let creations = 0;
-    let reclaims = 0;
-    const standalone = Layer.succeed(StandaloneAccessCodeAdministration, {
-      create: () =>
-        Effect.sync(() => {
-          creations += 1;
-          return createdOutcome;
-        }),
-    });
-    const idempotency = Layer.succeed(AdministrationRequestLedger, {
-      applyOnce: () => Effect.die("Unused CLI mutation ledger"),
-      claim: () => Effect.succeed({ kind: "in-progress" as const }),
-      complete: () => Effect.void,
-      reclaimStale: () =>
-        Effect.sync(() => {
-          reclaims += 1;
-          return false;
-        }),
-      release: () => Effect.void,
-    });
-
-    const error = await runAdministration(
-      ActorAuthorizedCliRequest,
-      standalone,
-      idempotency,
-      createAccessCodeError
-    ).pipe(Effect.runPromise);
-
-    expect(error).toBeInstanceOf(CliMutationInProgress);
-    expect(error.requestId).toBe(attemptId);
-    expect(reclaims).toBe(1);
-    expect(creations).toBe(0);
-  });
-
-  test("reports required at-lock cleanup with the stored prior target and releases the ledger claim", async () => {
-    let releases = 0;
-    const cleanupRequired = Layer.succeed(StandaloneAccessCodeAdministration, {
-      create: () =>
-        Effect.fail(
-          creationFailure(
-            "cleanup-required",
-            "A previous attempt for this window is ambiguous.",
-            { cleanupTarget: priorCleanupTarget }
-          )
-        ),
-    });
-    const idempotency = Layer.succeed(AdministrationRequestLedger, {
-      applyOnce: () => Effect.die("Unused CLI mutation ledger"),
-      claim: () => Effect.succeed({ kind: "claimed" as const }),
-      complete: () => Effect.void,
-      reclaimStale: () => Effect.succeed(false),
-      release: () =>
-        Effect.sync(() => {
-          releases += 1;
-        }),
-    });
-
-    const error = await runAdministration(
-      ActorAuthorizedCliRequest,
-      cleanupRequired,
-      idempotency,
-      createAccessCodeError
+      recordingRequestLedger().layer,
+      createAccessCodeError()
     ).pipe(Effect.runPromise);
 
     expect(error).toBeInstanceOf(CliStandaloneAccessCodeCleanupRequired);
@@ -1859,322 +1588,91 @@ describe("standalone access-code CLI endpoint", () => {
       expect(error.message).not.toContain(attemptId);
     }
     expect(JSON.stringify(error)).not.toContain("7654321");
-    expect(releases).toBe(1);
   });
 
-  test("reports unavailability when the cleanup-required outcome carries no target", async () => {
-    let releases = 0;
-    const cleanupRequired = Layer.succeed(StandaloneAccessCodeAdministration, {
-      create: () =>
-        Effect.fail(
-          creationFailure(
-            "cleanup-required",
-            "A previous attempt for this window is ambiguous."
-          )
-        ),
-    });
-    const idempotency = Layer.succeed(AdministrationRequestLedger, {
-      applyOnce: () => Effect.die("Unused CLI mutation ledger"),
-      claim: () => Effect.succeed({ kind: "claimed" as const }),
-      complete: () => Effect.void,
-      reclaimStale: () => Effect.succeed(false),
-      release: () =>
-        Effect.sync(() => {
-          releases += 1;
-        }),
-    });
+  test("maps cleanup and reconciliation outcomes without targets", async () => {
+    const runFailure = (
+      outcome: StandaloneAccessCodeCreationError["outcome"]
+    ) => {
+      const standalone = Layer.succeed(StandaloneAccessCodeAdministration, {
+        create: () => Effect.fail(creationFailure(outcome, "Cleanup needed.")),
+      });
+      return runAdministration(
+        ActorAuthorizedCliRequest,
+        standalone,
+        recordingRequestLedger().layer,
+        createAccessCodeError()
+      ).pipe(Effect.runPromise);
+    };
 
-    const error = await runAdministration(
-      ActorAuthorizedCliRequest,
-      cleanupRequired,
-      idempotency,
-      createAccessCodeError
-    ).pipe(Effect.runPromise);
+    const ambiguous = await runFailure("ambiguous");
+    const cleanupRequired = await runFailure("cleanup-required");
+    const reconciled = await runFailure("reconciled");
 
-    expect(error).toBeInstanceOf(CliServiceUnavailable);
-    expect(JSON.stringify(error)).not.toContain("Booth A");
-    expect(releases).toBe(1);
+    expect(ambiguous).toBeInstanceOf(CliServiceUnavailable);
+    expect(cleanupRequired).toBeInstanceOf(CliServiceUnavailable);
+    expect(JSON.stringify(cleanupRequired)).not.toContain("Booth A");
+    expect(reconciled).toBeInstanceOf(CliStandaloneAccessCodeReconciled);
+    expect(reconciled.message).toContain("Run the same command again");
   });
 
-  test("reports a confirmed reconciled replay as a typed error and releases the ledger claim", async () => {
-    let releases = 0;
-    const reconciled = Layer.succeed(StandaloneAccessCodeAdministration, {
-      create: () =>
-        Effect.fail(
-          creationFailure(
-            "reconciled",
-            "Your confirmed cleanup was recorded for the earlier ambiguous attempt, which created no access code."
-          )
-        ),
-    } as never);
-    const idempotency = Layer.succeed(AdministrationRequestLedger, {
-      applyOnce: () => Effect.die("Unused CLI mutation ledger"),
-      claim: () => Effect.succeed({ kind: "claimed" as const }),
-      complete: () => Effect.void,
-      reclaimStale: () => Effect.succeed(false),
-      release: () =>
-        Effect.sync(() => {
-          releases += 1;
-        }),
-    });
-
-    const error = await runAdministration(
-      ActorAuthorizedCliRequest,
-      reconciled,
-      idempotency,
-      createAccessCodeError
-    ).pipe(Effect.runPromise);
-
-    expect(error).toBeInstanceOf(CliStandaloneAccessCodeReconciled);
-    expect(error.message).toContain("Run the same command again");
-    expect(releases).toBe(1);
-  });
-
-  test("resumes a stale claim through the standalone attempt log without another provider call", async () => {
-    const providerCredentialId = Schema.decodeUnknownSync(
-      AdministrationProviderCredentialId
-    )("pin-already-issued");
-    const occurredAt = Temporal.Now.instant();
-    let providerCalls = 0;
-    let claimCalls = 0;
-    let appendTerminalCalls = 0;
-    const reclaims: Array<{
-      readonly requestId: string;
-      readonly staleMilliseconds: bigint;
-    }> = [];
-    const completions: unknown[] = [];
-    const attemptLog = Layer.mock(StandaloneAccessCodeAttemptLogRepository, {
-      claim: (input: { readonly attempt: { readonly attemptId: string } }) =>
-        Effect.sync(() => {
-          claimCalls += 1;
-          if (input.attempt.attemptId !== attemptId) {
-            return { kind: "mismatch" } as const;
-          }
-          return {
-            kind: "created" as const,
-            terminal: {
-              name: Schema.decodeUnknownSync(
-                AdministrationStandaloneAccessCodeName
-              )("Booth A"),
-              startsAtLocal: payload.input.startsAt,
-              endsAtLocal: payload.input.endsAt,
-              providerCredentialId,
-              occurredAt,
-            },
-          } as const;
-        }),
-      appendTerminal: () =>
-        Effect.sync(() => {
-          appendTerminalCalls += 1;
-          return { kind: "appended" as const };
-        }),
-    });
-    const igloohome = Layer.mock(IgloohomeService, {
-      issueHourlyAlgoPin: () =>
-        Effect.sync(() => {
-          providerCalls += 1;
-          return { pin: "0000000", pinId: "unexpected" };
-        }),
-    });
-    const standalone = StandaloneAccessCodeAdministration.Default.pipe(
-      Layer.provide(Layer.mergeAll(attemptLog, igloohome))
-    );
-    const idempotency = Layer.succeed(AdministrationRequestLedger, {
-      applyOnce: () => Effect.die("Unused CLI mutation ledger"),
-      claim: () => Effect.succeed({ kind: "in-progress" as const }),
-      complete: ({ result }) =>
-        Effect.sync(() => {
-          completions.push(result);
-        }),
-      reclaimStale: ({ requestId, reclaimedAt, staleBefore }) =>
-        Effect.sync(() => {
-          reclaims.push({
-            requestId,
-            staleMilliseconds:
-              reclaimedAt.epochNanoseconds - staleBefore.epochNanoseconds,
-          });
-          return true;
-        }),
-      release: () => Effect.die("not expected"),
-    });
-
-    const [outcome, storedResult] = await runAdministration(
-      ActorAuthorizedCliRequest,
-      standalone,
-      idempotency,
-      Effect.gen(function* () {
-        const client = yield* HttpApiTest.groups(WorkspaceAdminApi, [
-          "administration",
-        ]);
-        const replayed =
-          yield* client.administration.createStandaloneAccessCode({
-            payload,
-          });
-        return [replayed, completions[0]] as const;
+  test("does not call the provider when the ledger refuses and records explicit cleanup confirmation", async () => {
+    const requestId = Schema.decodeUnknownSync(CliMutationRequestId)(attemptId);
+    const ledger = recordingRequestLedger(
+      new CliMutationInProgress({
+        message:
+          "This standalone access-code creation is still being applied. Retrying with the same attempt identifier is safe.",
+        requestId,
       })
-    ).pipe(Effect.runPromise);
-
-    expect(outcome).toMatchObject({
-      outcome: "already-created",
-      attemptId,
-      providerCredentialId: "pin-already-issued",
-    });
-    expect("pin" in outcome).toBe(false);
-    expect(providerCalls).toBe(0);
-    expect(claimCalls).toBe(1);
-    expect(appendTerminalCalls).toBe(0);
-    expect(reclaims).toEqual([
-      { requestId: attemptId, staleMilliseconds: 60_000_000_000n },
-    ]);
-    expect(storedResult).toEqual({
-      attemptId,
-      providerCredentialId: "pin-already-issued",
-      name: "Booth A",
-      startsAt: "2026-09-10T10:00",
-      endsAt: "2026-09-10T12:00",
-      issuedAt: occurredAt.toString(),
-    });
-    expect(JSON.stringify(storedResult)).not.toContain("7654321");
-  });
-
-  test("rejects a stale retry that confirms a different cleanup target without sharing the claim", async () => {
-    const otherAttemptId = Schema.decodeUnknownSync(
-      AdministrationStandaloneAccessCodeAttemptId
-    )("01980000-0000-7000-8000-000000000043");
+    );
     let creations = 0;
-    const claims: CliStoredMutation[] = [];
-    const reclaims: CliStoredMutation[] = [];
-    const ledger = new Map<
-      string,
-      { readonly mutation: CliStoredMutation; result: unknown }
-    >();
-    const ledgerKey = (request: {
-      readonly scope: { readonly sessionId: string };
-      readonly requestId: string;
-    }) => `${request.scope.sessionId}/${request.requestId}`;
-    const sameStoredMutation = (
-      stored: CliStoredMutation,
-      incoming: CliStoredMutation
-    ) => JSON.stringify(stored) === JSON.stringify(incoming);
-    const idempotency = Layer.succeed(AdministrationRequestLedger, {
-      applyOnce: () => Effect.die("Unused CLI mutation ledger"),
-      claim: (request) =>
-        Effect.sync(() => {
-          claims.push(request.mutation);
-          const row = ledger.get(ledgerKey(request));
-          if (!row) {
-            ledger.set(ledgerKey(request), {
-              mutation: request.mutation,
-              result: null,
-            });
-            return { kind: "claimed" as const };
-          }
-          if (!sameStoredMutation(row.mutation, request.mutation)) {
-            return { kind: "mismatch" as const };
-          }
-          return row.result === null
-            ? { kind: "in-progress" as const }
-            : { kind: "completed" as const, result: row.result as never };
-        }),
-      complete: (request) =>
-        Effect.sync(() => {
-          const row = ledger.get(ledgerKey(request));
-          if (row) row.result = request.result;
-        }),
-      reclaimStale: (request) =>
-        Effect.sync(() => {
-          const row = ledger.get(ledgerKey(request));
-          if (!row || !sameStoredMutation(row.mutation, request.mutation)) {
-            return false;
-          }
-          reclaims.push(request.mutation);
-          row.result = null;
-          return true;
-        }),
-      release: (request) =>
-        Effect.sync(() => {
-          ledger.delete(ledgerKey(request));
-        }),
-    });
     const standalone = Layer.succeed(StandaloneAccessCodeAdministration, {
       create: () =>
-        Effect.suspend(() => {
+        Effect.sync(() => {
           creations += 1;
-          return creations === 1
-            ? Effect.fail(
-                creationFailure(
-                  "ambiguous",
-                  "The standalone access-code creation outcome is ambiguous.",
-                  { cleanupTarget: priorCleanupTarget }
-                )
-              )
-            : Effect.succeed(createdOutcome);
+          return createdOutcome;
         }),
     });
-    const confirmTarget = (
-      cleanupAttemptId: AdministrationStandaloneAccessCodeAttemptIdType
-    ) => ({
+    const confirmedPayload = {
       ...payload,
-      providerCredentialRemovedAttemptId: cleanupAttemptId,
-    });
-
-    const [firstAttempt, secondAttempt, thirdAttempt] = await runAdministration(
+      providerCredentialRemovedAttemptId: priorAttemptId,
+    };
+    const error = await runAdministration(
       ActorAuthorizedCliRequest,
       standalone,
-      idempotency,
-      Effect.gen(function* () {
-        const client = yield* HttpApiTest.groups(WorkspaceAdminApi, [
-          "administration",
-        ]);
-        const first = yield* client.administration
-          .createStandaloneAccessCode({
-            payload: confirmTarget(priorAttemptId),
-          })
-          .pipe(Effect.flip);
-        const second = yield* client.administration
-          .createStandaloneAccessCode({
-            payload: confirmTarget(otherAttemptId),
-          })
-          .pipe(Effect.flip);
-        const third = yield* client.administration
-          .createStandaloneAccessCode({
-            payload: confirmTarget(priorAttemptId),
-          })
-          .pipe(Effect.result);
-        return [first, second, third] as const;
-      })
+      ledger.layer,
+      createAccessCodeError(confirmedPayload)
     ).pipe(Effect.runPromise);
 
-    expect(firstAttempt).toBeInstanceOf(CliMutationUncertain);
-    expect(secondAttempt).toBeInstanceOf(CliMutationRejected);
-    expect(secondAttempt.message).toContain("different input");
-    expect(Result.isSuccess(thirdAttempt)).toBe(true);
-    if (Result.isSuccess(thirdAttempt)) {
-      expect(
-        Option.getOrUndefined(Result.getSuccess(thirdAttempt))
-      ).toMatchObject({
-        outcome: "created",
-        attemptId,
-      });
-    }
-    expect(creations).toBe(2);
-    expect(claims).toEqual([
-      {
-        kind: "standalone-access-code",
-        request: payload.input,
-        providerCredentialRemovedAttemptId: priorAttemptId,
-      },
-      {
-        kind: "standalone-access-code",
-        request: payload.input,
-        providerCredentialRemovedAttemptId: otherAttemptId,
-      },
-      {
-        kind: "standalone-access-code",
-        request: payload.input,
-        providerCredentialRemovedAttemptId: priorAttemptId,
-      },
-    ]);
-    expect(reclaims).toEqual([claims[0]]);
+    expect(error).toBeInstanceOf(CliMutationInProgress);
+    expect(creations).toBe(0);
+    expect(ledger.requests[0]?.mutation).toEqual({
+      kind: "standalone-access-code",
+      request: payload.input,
+      providerCredentialRemovedAttemptId: priorAttemptId,
+    });
+  });
+
+  test("fails closed before the ledger when the session's administrator can't be resolved", async () => {
+    let calls = 0;
+    const idempotency = Layer.succeed(AdministrationRequestLedger, {
+      applyOnce: () => Effect.die("Unused database-only mutation ledger"),
+      applyOnceWithEffects: () =>
+        Effect.sync(() => {
+          calls += 1;
+          return createdOutcome;
+        }),
+    } as AdministrationRequestLedger["Service"]);
+
+    const error = await runAdministration(
+      CliSessionAdministrationAuthenticationLive,
+      UnusedStandaloneAccessCodeAdministration,
+      idempotency,
+      createAccessCodeError(),
+      UnresolvableSessionAuthentication
+    ).pipe(Effect.runPromise);
+
+    expect(error).toBeInstanceOf(CliSessionUnauthorized);
+    expect(calls).toBe(0);
   });
 });

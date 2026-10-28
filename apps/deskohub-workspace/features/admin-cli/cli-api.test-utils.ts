@@ -74,11 +74,7 @@ export const ClaimEveryCliMutation = Layer.succeed(
   {
     applyOnce: ({ apply }) => apply,
     applyOnceWithEffects: ({ apply }) => apply,
-    claim: () => Effect.succeed({ kind: "claimed" as const }),
-    complete: () => Effect.void,
-    reclaimStale: () => Effect.succeed(false),
-    release: () => Effect.void,
-  }
+  } as AdministrationRequestLedger["Service"]
 );
 
 /** Records the handler's ledger request while applying its first attempt. */
@@ -121,11 +117,7 @@ export const recordingRequestLedger = (
             () => firstAttempt(request.apply)
           )
         ),
-      claim: () => Effect.succeed({ kind: "claimed" as const }),
-      complete: () => Effect.void,
-      reclaimStale: () => Effect.succeed(false),
-      release: () => Effect.void,
-    }),
+    } as AdministrationRequestLedger["Service"]),
     requests,
   };
 };

@@ -312,11 +312,7 @@ const makeInstanceServices = () => {
             ),
           })
         ),
-      claim: () => Effect.succeed({ kind: "in-progress" as const }),
-      complete: () => Effect.void,
-      reclaimStale: () => Effect.succeed(false),
-      release: () => Effect.void,
-    }),
+    } as AdministrationRequestLedger["Service"]),
     Layer.succeed(AdministrationActionLog, {
       start: ({ caller }) =>
         Effect.sync(() => {

@@ -470,8 +470,7 @@ describe("administration action record", () => {
       channel: assistantChannel,
       actionLog: layer,
       idempotency: {
-        claim: () => Effect.succeed({ kind: "claimed" }),
-        release: () => Effect.void,
+        applyOnceWithEffects: ({ apply }) => apply,
       },
       invoices: {
         create: (_input, issuer) =>

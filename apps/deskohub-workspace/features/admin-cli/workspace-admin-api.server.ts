@@ -3,9 +3,6 @@ import {
   type AdministrationChannel,
   AdministrationDiscountMutationResult,
   AdministrationReservationAccessGrant,
-  type AdministrationStandaloneAccessCodeCreationOutcomeType,
-  AdministrationStandaloneAccessCodeResult,
-  type AdministrationStandaloneAccessCodeResultType,
   CliAuthenticationRateLimited,
   CliBearerAuthentication,
   type CliClientCompatibility,
@@ -16,7 +13,6 @@ import {
   type CliMutationRequestIdType,
   CliMutationUncertain,
   CliResourceNotFound,
-  CliServiceUnavailable,
   CliSessionUnauthorized,
   CliStandaloneAccessCodeCleanupRequired,
   CliStandaloneAccessCodeReconciled,
@@ -31,7 +27,6 @@ import { HttpApiBuilder } from "effect/unstable/httpapi";
 import {
   StandaloneAccessCodeAdministration,
   type StandaloneAccessCodeCreationError,
-  standaloneAccessCodeAttemptStaleAfterMilliseconds,
 } from "@/features/access-codes";
 import { InvoiceAdministrationService } from "@/features/accounting/admin/invoice-administration.service";
 import { InvoiceAdministrationNotFoundError } from "@/features/accounting/admin/invoice-administration-identifier";
@@ -87,10 +82,11 @@ import {
 import {
   discountMutationRecovery,
   reservationAccessRecovery,
+  standaloneAccessCodeRecovery,
+  standaloneAccessCodeStoredResult,
 } from "./administration-mutation-recovery";
 import {
   AdministrationRequestLedger,
-  mutationScopeOf,
   StoredResult,
 } from "./administration-request-ledger.service";
 import { AdminCliAdministratorsApiHandlers } from "./administrators-api.server";
@@ -432,113 +428,34 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
           const requestId = Schema.decodeUnknownSync(CliMutationRequestId)(
             payload.attemptId
           );
-          const request = {
-            scope: mutationScopeOf(caller.channel),
+          return yield* ledger.applyOnceWithEffects({
             requestId,
             mutation: {
-              kind: "standalone-access-code" as const,
+              kind: "standalone-access-code",
               request: payload.input,
               ...(payload.providerCredentialRemovedAttemptId !== undefined && {
                 providerCredentialRemovedAttemptId:
                   payload.providerCredentialRemovedAttemptId,
               }),
             },
-          };
-          const executeCreation = standaloneAccessCodes
-            .create({
-              attemptId: payload.attemptId,
-              actor: caller.actor,
-              source: provenanceSourceOf(caller.channel),
-              request: payload.input,
-              providerCredentialRemovedAttemptId:
-                payload.providerCredentialRemovedAttemptId,
-            })
-            .pipe(
-              mapAdministrationApiFailure((cause) =>
-                mapStandaloneAccessCodeCreationFailure(cause, requestId)
-              ),
-              Effect.tapError((cause) =>
-                cause instanceof CliMutationRejected ||
-                cause instanceof CliServiceUnavailable ||
-                cause instanceof CliStandaloneAccessCodeCleanupRequired ||
-                cause instanceof CliStandaloneAccessCodeReconciled
-                  ? ledger
-                      .release(request)
-                      .pipe(Effect.catch(() => Effect.void))
-                  : Effect.void
-              ),
-              Effect.tap((outcome) =>
-                ledger
-                  .complete({
-                    ...request,
-                    result: toStandaloneAccessCodeResult(outcome),
-                  })
-                  .pipe(
-                    Effect.catch((cause) =>
-                      Effect.logWarning(
-                        "Standalone access-code mutation-ledger completion failed after creation concluded",
-                        {
-                          requestId,
-                          channel: caller.channel,
-                          outcome: outcome.outcome,
-                          cause,
-                        }
-                      ).pipe(
-                        Effect.andThen(
-                          ledger
-                            .release(request)
-                            .pipe(Effect.catch(() => Effect.void))
-                        )
-                      )
-                    )
-                  )
-              )
-            );
-          const resumeInterruptedCreation = Effect.gen(function* () {
-            const reclaimedAt = Temporal.Now.instant();
-            const reclaimed = yield* ledger
-              .reclaimStale({
-                ...request,
-                reclaimedAt,
-                staleBefore: reclaimedAt.subtract({
-                  milliseconds:
-                    standaloneAccessCodeAttemptStaleAfterMilliseconds,
-                }),
+            stored: standaloneAccessCodeStoredResult,
+            apply: standaloneAccessCodes
+              .create({
+                attemptId: payload.attemptId,
+                actor: caller.actor,
+                source: provenanceSourceOf(caller.channel),
+                request: payload.input,
+                providerCredentialRemovedAttemptId:
+                  payload.providerCredentialRemovedAttemptId,
               })
-              .pipe(mapServiceFailure);
-            if (!reclaimed) {
-              return yield* new CliMutationInProgress({
-                requestId,
-                message:
-                  "This standalone access-code creation is still being applied. Retrying with the same attempt identifier is safe.",
-              });
-            }
-            return yield* executeCreation;
+              .pipe(
+                mapAdministrationApiFailure((cause) =>
+                  mapStandaloneAccessCodeCreationFailure(cause, requestId)
+                )
+              ),
+            recovery: standaloneAccessCodeRecovery,
+            inProgressMessage: standaloneAccessCodeInProgressMessage,
           });
-
-          const claim = yield* ledger.claim(request).pipe(mapServiceFailure);
-
-          return yield* Match.value(claim).pipe(
-            Match.discriminatorsExhaustive("kind")({
-              claimed: () => executeCreation,
-              completed: ({ result }) =>
-                Schema.decodeUnknownEffect(
-                  AdministrationStandaloneAccessCodeResult
-                )(result).pipe(
-                  mapServiceFailure,
-                  Effect.map((safeResult) => ({
-                    outcome: "already-created" as const,
-                    ...safeResult,
-                  }))
-                ),
-              "in-progress": () => resumeInterruptedCreation,
-              mismatch: () =>
-                new CliMutationRejected({
-                  message:
-                    "This mutation request identifier was already used for different input.",
-                }),
-            })
-          );
         })
       )
       .handle("resendInvoice", ({ params }) =>
@@ -741,6 +658,9 @@ const mapInvoiceMutationFailure = (
     Match.orElse(makeServiceUnavailable)
   );
 
+const standaloneAccessCodeInProgressMessage =
+  "This standalone access-code creation is still being applied. Retrying with the same attempt identifier is safe.";
+
 const mapStandaloneAccessCodeCreationFailure = (
   cause: StandaloneAccessCodeCreationError,
   requestId: CliMutationRequestIdType
@@ -774,8 +694,7 @@ const mapStandaloneAccessCodeCreationFailure = (
       "in-progress",
       () =>
         new CliMutationInProgress({
-          message:
-            "This standalone access-code creation is still being applied. Retrying with the same attempt identifier is safe.",
+          message: standaloneAccessCodeInProgressMessage,
           requestId,
         })
     ),
@@ -787,17 +706,6 @@ const mapStandaloneAccessCodeCreationFailure = (
     Match.exhaustive
   );
 };
-
-const toStandaloneAccessCodeResult = (
-  outcome: AdministrationStandaloneAccessCodeCreationOutcomeType
-): AdministrationStandaloneAccessCodeResultType => ({
-  attemptId: outcome.attemptId,
-  providerCredentialId: outcome.providerCredentialId,
-  name: outcome.name,
-  startsAt: outcome.startsAt,
-  endsAt: outcome.endsAt,
-  issuedAt: outcome.issuedAt,
-});
 
 const mapReservationCancellationFailure = (
   cause: ReservationAdministrationError
