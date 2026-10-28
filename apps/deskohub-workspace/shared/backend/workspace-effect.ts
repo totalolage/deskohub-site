@@ -99,7 +99,7 @@ export const runWorkspaceEffectOrElse =
         Effect.catchCause(
           (cause): Effect.Effect<B, E | WorkspaceFallbackRejection> =>
             Cause.hasInterruptsOnly(cause) ||
-            causeFailures(cause).some(isNextControlFlow)
+            findNextControlFlow(cause) !== undefined
               ? Effect.failCause(cause)
               : Effect.fromResult(answerOnce(Cause.squash(cause))).pipe(
                   Effect.tap(() =>
@@ -164,6 +164,14 @@ const causeFailures = (cause: Cause.Cause<unknown>) =>
 
 const isNextControlFlow = (cause: unknown) =>
   Result.isFailure(Result.try(() => unstable_rethrow(cause)));
+
+/**
+ * The Next.js control flow `cause` carries, such as a redirect, `notFound`,
+ * or a prerender bailout, which must reach Next.js unchanged. Undefined when
+ * the cause holds only real failures and interruptions.
+ */
+export const findNextControlFlow = (cause: Cause.Cause<unknown>) =>
+  causeFailures(cause).find(isNextControlFlow);
 
 export const defineWorkspaceTask =
   <Args extends readonly unknown[], A, E>(

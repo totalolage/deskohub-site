@@ -16,18 +16,33 @@ export class PublicSafeActionError extends Data.TaggedError(
   readonly cause?: SafeActionFailure;
 }> {}
 
+export interface WorkspaceActionClientOptions {
+  /**
+   * Logs a failure the action runtime has not logged, such as one before the
+   * action ran or a runtime that could not start. The runtime turns every
+   * failure it logs into a `PublicSafeActionError`.
+   */
+  readonly logUnexpectedFailure: (error: Error) => Promise<void>;
+  /** Reported for every failure that isn't a `PublicSafeActionError`. */
+  readonly unexpectedFailure: LocalizedCopy;
+}
+
 /**
  * The safe-action client behind one Workspace action. A public error keeps its
  * message; any other failure, including a defect or a runtime that could not
- * start, reports `unexpectedFailure` in the action's locale.
+ * start, is logged and reports `unexpectedFailure` in the action's locale.
  */
-export const createWorkspaceActionClient = (unexpectedFailure: LocalizedCopy) =>
+export const createWorkspaceActionClient = ({
+  logUnexpectedFailure,
+  unexpectedFailure,
+}: WorkspaceActionClientOptions) =>
   createSafeActionClient({
-    handleServerError(error, { ctx }) {
+    async handleServerError(error, { ctx }) {
       if (error instanceof PublicSafeActionError) {
         return error.message;
       }
 
+      await logUnexpectedFailure(error);
       // A failure before the locale middleware ran leaves no locale behind.
       const locale =
         "locale" in ctx && isLocale(ctx.locale) ? ctx.locale : baseLocale;

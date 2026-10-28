@@ -135,10 +135,7 @@ const insertWorkspaceReservation = async (input: {
 };
 
 const testDatabaseLayer = () =>
-  Layer.succeed(
-    WorkspaceDatabase,
-    WorkspaceDatabase.of({ db: testDatabase!.db })
-  );
+  Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.make(testDatabase!.db));
 
 /**
  * Stands in for Dotypos: a reservation without a customer belongs to every
@@ -240,7 +237,7 @@ const makeHistoryLayer = (
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({ db: testDatabase!.db })
+                WorkspaceDatabase.make(testDatabase!.db)
               ),
               WorkspaceDatabaseAdvisoryLock.makeLayer(testDatabase!.pool)
             )
@@ -659,6 +656,9 @@ describe.skipIf(!testDatabase)(
         readonly key: string;
         readonly reservationState: "held" | "confirmed";
         readonly status: "NEW" | "CONFIRMED";
+        readonly startDate?: string;
+        readonly endDate?: string;
+        readonly seats?: string;
       }[]
     ) => {
       const account = customerAccountIdSchema.make(uniqueId());
@@ -687,15 +687,17 @@ describe.skipIf(!testDatabase)(
           authorAccountId: account,
           reservationState: entry.reservationState,
         });
-        reservations.push(
-          makeDotyposReservation({
-            id: dotypos,
-            _customerId: dotyposCustomerId,
-            startDate: `2000-04-0${index + 1}T10:00:00.000Z`,
-            endDate: `2000-04-0${index + 1}T11:00:00.000Z`,
-            status: entry.status,
-          })
-        );
+        const reservation = makeDotyposReservation({
+          id: dotypos,
+          _customerId: dotyposCustomerId,
+          seats: entry.seats ?? "2",
+          status: entry.status,
+        });
+        reservations.push({
+          ...reservation,
+          startDate: entry.startDate ?? `2000-04-0${index + 1}T10:00:00.000Z`,
+          endDate: entry.endDate ?? `2000-04-0${index + 1}T11:00:00.000Z`,
+        });
       }
       const idsOf = (key: string) => {
         const entry = ids.get(key);
@@ -708,6 +710,95 @@ describe.skipIf(!testDatabase)(
         idsOf,
       };
     };
+
+    test("sorts history by readable starts and hides unreadable seats", async () => {
+      const seeded = await seedOwnReservations([
+        {
+          key: "newest",
+          reservationState: "confirmed",
+          status: "CONFIRMED",
+          startDate: "2000-04-03T10:00:00.000Z",
+          endDate: "not-a-date",
+        },
+        {
+          key: "unreadable-end",
+          reservationState: "confirmed",
+          status: "CONFIRMED",
+          startDate: "2000-04-02T10:00:00.000Z",
+          endDate: "not-a-date",
+          seats: "abc",
+        },
+        {
+          key: "unreadable-start",
+          reservationState: "confirmed",
+          status: "CONFIRMED",
+          startDate: "not-a-date",
+          endDate: "not-a-date",
+        },
+      ]);
+
+      const history = await Effect.gen(function* () {
+        const service = yield* CustomerReservationHistoryService;
+        return yield* service.load(seeded.account);
+      }).pipe(
+        Effect.provide(makeHistoryLayer(seeded.reservations)),
+        Effect.runPromise
+      );
+      if (history.kind !== "available") throw new Error("History unavailable");
+
+      expect(history.groups.unavailable.map(({ id }) => id)).toEqual([
+        seeded.idsOf("newest").workspace,
+        seeded.idsOf("unreadable-end").workspace,
+        seeded.idsOf("unreadable-start").workspace,
+      ]);
+      expect(history.groups.unavailable[1]?.seats).toBeNull();
+    });
+
+    test("sorts an impossible start last and reads seats as positive whole numbers", async () => {
+      // Every end is unreadable so the history keeps its order in one group.
+      const seeded = await seedOwnReservations([
+        {
+          key: "impossible-start",
+          reservationState: "confirmed",
+          status: "CONFIRMED",
+          startDate: "2000-04-31T10:00:00.000Z",
+          endDate: "not-a-date",
+        },
+        {
+          key: "newest",
+          reservationState: "confirmed",
+          status: "CONFIRMED",
+          startDate: "2000-04-03T10:00:00.000Z",
+          endDate: "not-a-date",
+          seats: " 2",
+        },
+        {
+          key: "zero-seats",
+          reservationState: "confirmed",
+          status: "CONFIRMED",
+          startDate: "2000-04-02T10:00:00.000Z",
+          endDate: "not-a-date",
+          seats: "0",
+        },
+      ]);
+
+      const history = await Effect.gen(function* () {
+        const service = yield* CustomerReservationHistoryService;
+        return yield* service.load(seeded.account);
+      }).pipe(
+        Effect.provide(makeHistoryLayer(seeded.reservations)),
+        Effect.runPromise
+      );
+      if (history.kind !== "available") throw new Error("History unavailable");
+
+      expect(
+        history.groups.unavailable.map(({ id, seats }) => ({ id, seats }))
+      ).toEqual([
+        { id: seeded.idsOf("newest").workspace, seats: 2 },
+        { id: seeded.idsOf("zero-seats").workspace, seats: null },
+        { id: seeded.idsOf("impossible-start").workspace, seats: 2 },
+      ]);
+    });
 
     // Reservation details may come from a shared snapshot taken before
     // Workspace confirmed the paid hold in Dotypos.

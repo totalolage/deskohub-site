@@ -1,8 +1,24 @@
-import { DuplicateMessageError, send } from "@vercel/queue";
-import { Context, Data, Effect, Layer } from "effect";
-import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import { Context, Data, Duration, Effect, Layer, Schema } from "effect";
+import {
+  type WorkspaceReservationId,
+  workspaceReservationIdSchema,
+} from "@/features/reservation/persistence-contracts";
+import { QueuePublisher } from "@/shared/backend/queue/queue-publisher";
+import { defineQueueTopic } from "@/shared/backend/queue/queue-topic";
 
-export const paidFulfillmentQueueTopic = "workspace-paid-fulfillment";
+/** One message per order: the key is the order's fulfillment idempotency. */
+export const paidFulfillmentTopic = defineQueueTopic({
+  topic: "workspace-paid-fulfillment",
+  label: "Paid fulfillment",
+  message: Schema.toStandardSchemaV1(
+    Schema.Struct({ orderId: workspaceReservationIdSchema })
+  ),
+  publish: (input: { readonly orderId: WorkspaceReservationId }) => ({
+    message: { orderId: input.orderId },
+    key: `paid-fulfillment:${input.orderId}`,
+  }),
+  retention: Duration.hours(24),
+});
 
 export class PaidFulfillmentQueueError extends Data.TaggedError(
   "PaidFulfillmentQueueError"
@@ -10,10 +26,6 @@ export class PaidFulfillmentQueueError extends Data.TaggedError(
   readonly message: string;
   readonly cause?: unknown;
 }> {}
-
-class DuplicatePaidFulfillmentMessageError extends Data.TaggedError(
-  "DuplicatePaidFulfillmentMessageError"
-) {}
 
 interface IPaidFulfillmentQueueService {
   readonly enqueue: (input: {
@@ -24,39 +36,33 @@ interface IPaidFulfillmentQueueService {
 /**
  * Defers paid-order fulfillment to a durable queue so request paths that learn
  * about a payment (the status page, hold cleanup) never run Dotypos, access
- * code, email, and invoice work inline. One message per order: the consumer
- * retries until fulfillment leaves the pending states.
+ * code, email, and invoice work inline. The consumer retries until
+ * fulfillment leaves the pending states.
  */
-export const makePaidFulfillmentQueueService = (
-  sendMessage: typeof send = send
-): IPaidFulfillmentQueueService => ({
-  enqueue: Effect.fn("paidFulfillmentQueue.enqueue")(function* (input) {
-    yield* Effect.tryPromise({
-      try: () =>
-        sendMessage(
-          paidFulfillmentQueueTopic,
-          { orderId: input.orderId },
-          {
-            retentionSeconds: 24 * 60 * 60,
-            idempotencyKey: `paid-fulfillment:${input.orderId}`,
-          }
-        ),
-      catch: (cause) =>
-        cause instanceof DuplicateMessageError
-          ? new DuplicatePaidFulfillmentMessageError()
-          : new PaidFulfillmentQueueError({
-              message: "Paid fulfillment could not be enqueued.",
-              cause,
-            }),
-    }).pipe(
-      Effect.catchTag("DuplicatePaidFulfillmentMessageError", () => Effect.void)
-    );
-  }),
-});
-
 export class PaidFulfillmentQueueService extends Context.Service<
   PaidFulfillmentQueueService,
   IPaidFulfillmentQueueService
 >()("PaidFulfillmentQueueService") {
-  static Default = Layer.succeed(this, makePaidFulfillmentQueueService());
+  static Default = Layer.effect(
+    this,
+    Effect.gen(function* () {
+      const publisher = yield* QueuePublisher;
+      return {
+        enqueue: Effect.fn("paidFulfillmentQueue.enqueue")(function* (input) {
+          yield* paidFulfillmentTopic.publish(input).pipe(
+            Effect.provideService(QueuePublisher, publisher),
+            Effect.mapError(
+              (error) =>
+                new PaidFulfillmentQueueError({
+                  message: "Paid fulfillment could not be enqueued.",
+                  cause: error.cause,
+                })
+            )
+          );
+        }),
+      };
+    })
+  );
+
+  static Live = this.Default.pipe(Layer.provide(QueuePublisher.Default));
 }

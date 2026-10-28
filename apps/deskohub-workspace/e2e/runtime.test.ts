@@ -1,9 +1,12 @@
 import { expect, test } from "bun:test";
 import type { Browser } from "@playwright/test";
+import { Effect } from "effect";
 import {
   addDatabaseUrlRedactions,
   addRedaction,
+  browserSessionFor,
   makePlaywrightBrowserRunner,
+  type Runner,
   redact,
 } from "./runtime";
 
@@ -227,4 +230,15 @@ test("reports destroyed evaluation contexts before the command timeout", async (
   } finally {
     await evalRun.close();
   }
+});
+
+test("fails typed when a runner has no browser sessions to bridge", async () => {
+  const run: Runner = async () => ({ exitCode: 0, stderr: "", stdout: "" });
+
+  const failure = await Effect.runPromise(
+    Effect.flip(browserSessionFor(run, "no-session"))
+  );
+
+  expect(failure.operation).toBe("open browser session");
+  expect(failure.reason).not.toBe("timeout");
 });

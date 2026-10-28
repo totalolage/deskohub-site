@@ -1100,10 +1100,5 @@ describe.skipIf(!testDatabase)(
       );
       expect(lease.delivery_lease_id).toBeNull();
     });
-
-    test("ignores a malformed message", async () => {
-      expect(await consume({ sendId: "", deliveryAttempt: 0 })).toBe("ignored");
-      expect(batchSend.mock.calls).toHaveLength(0);
-    });
   }
 );

@@ -1,7 +1,6 @@
 import {
   type DotyposCustomerId,
   type DotyposReadFailure,
-  type DotyposReservation,
   type DotyposReservationId,
   DotyposService,
 } from "@deskohub/dotypos";
@@ -12,6 +11,10 @@ import type { SqlError } from "effect/unstable/sql/SqlError";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { workspaceReservations } from "@/db/schema";
 import { isWorkspaceCoworkCurrentProductTier } from "@/features/checkout/product-catalog";
+import {
+  type BookedReservation,
+  decodeBookedReservation,
+} from "@/features/reservation/backend/booked-reservation";
 import { getMeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
 import { findMeetingRoomReservationDuration } from "@/features/reservation/meeting-room-reservation-time";
 import { getOfficeReservationSelection } from "@/features/reservation/office-reservation";
@@ -21,21 +24,11 @@ import type {
 } from "@/features/reservation/reservation-existing-customer";
 import type { WorkspaceReservationKind } from "@/features/reservation/reservation-kind";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
-import { parseInstant } from "@/shared/utils/temporal";
 
 type CustomerLastReservationError =
   | EffectDrizzleQueryError
   | SqlError
   | DotyposReadFailure;
-
-const toInstant = (value: string | null | undefined) =>
-  value ? Option.getOrNull(parseInstant(value)) : null;
-
-const getBookedInterval = (reservation: DotyposReservation | undefined) => {
-  const startsAt = toInstant(reservation?.startDate);
-  const endsAt = toInstant(reservation?.endDate);
-  return startsAt && endsAt ? { startsAt, endsAt } : null;
-};
 
 interface ICustomerLastReservationService {
   /**
@@ -61,17 +54,24 @@ export class CustomerLastReservationService extends Context.Service<
       const { db } = yield* WorkspaceDatabase;
       const dotypos = yield* DotyposService;
 
-      const readBookedInterval = (
+      // None when the row has no Dotypos reservation or Dotypos lost it. Both
+      // families then give no last reservation, as does an unreadable
+      // interval, and for offices unreadable seats.
+      const readBooked = (
         dotyposReservationId: DotyposReservationId | null
-      ) =>
+      ): Effect.Effect<Option.Option<BookedReservation>, DotyposReadFailure> =>
         dotyposReservationId
-          ? dotypos.listReservations({ ids: [dotyposReservationId] }).pipe(
-              Effect.map((reservations) => ({
-                interval: getBookedInterval(reservations[0]),
-                seats: reservations[0]?.seats,
-              }))
-            )
-          : Effect.succeed({ interval: null, seats: undefined });
+          ? dotypos
+              .listReservations({ ids: [dotyposReservationId] })
+              .pipe(
+                Effect.map((reservations) =>
+                  Option.map(
+                    Option.fromUndefinedOr(reservations[0]),
+                    decodeBookedReservation
+                  )
+                )
+              )
+          : Effect.succeed(Option.none());
 
       const load = Effect.fn("CustomerLastReservationService.load")(function* (
         dotyposCustomerId: DotyposCustomerId,
@@ -110,33 +110,40 @@ export class CustomerLastReservationService extends Context.Service<
                   : null
               ),
             "meeting-room": () =>
-              readBookedInterval(row.dotyposReservationId).pipe(
-                Effect.map(({ interval }): CustomerLastReservation | null => {
-                  const duration =
-                    interval && findMeetingRoomReservationDuration(interval);
-                  return duration
-                    ? {
+              readBooked(row.dotyposReservationId).pipe(
+                Effect.map((booked): CustomerLastReservation | null =>
+                  booked.pipe(
+                    Option.flatMap(({ interval }) => interval),
+                    Option.flatMapNullishOr(findMeetingRoomReservationDuration),
+                    Option.map(
+                      (duration): CustomerLastReservation => ({
                         kind: "meeting-room",
                         duration:
                           getMeetingRoomReservationDurationKey(duration),
-                      }
-                    : null;
-                })
+                      })
+                    ),
+                    Option.getOrNull
+                  )
+                )
               ),
             office: () =>
-              readBookedInterval(row.dotyposReservationId).pipe(
-                Effect.map(
-                  ({ interval, seats }): CustomerLastReservation | null => {
-                    const selection =
-                      interval &&
-                      seats &&
-                      /^\d+$/.test(seats) &&
-                      getOfficeReservationSelection({
-                        ...interval,
-                        seats: Number(seats),
-                      });
-                    return selection ? { kind: "office", ...selection } : null;
-                  }
+              readBooked(row.dotyposReservationId).pipe(
+                Effect.map((booked): CustomerLastReservation | null =>
+                  booked.pipe(
+                    Option.flatMap(({ interval, seats }) =>
+                      Option.all({ interval, seats })
+                    ),
+                    Option.flatMapNullishOr(({ interval, seats }) =>
+                      getOfficeReservationSelection({ ...interval, seats })
+                    ),
+                    Option.map(
+                      (selection): CustomerLastReservation => ({
+                        kind: "office",
+                        ...selection,
+                      })
+                    ),
+                    Option.getOrNull
+                  )
                 )
               ),
           })

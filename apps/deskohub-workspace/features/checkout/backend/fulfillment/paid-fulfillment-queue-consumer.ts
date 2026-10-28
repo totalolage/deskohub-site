@@ -1,20 +1,11 @@
-import { Data, Effect, Match, Option, Predicate, Result, Schema } from "effect";
+import { Data, Effect, Match, Predicate, Result } from "effect";
 import {
   type PaidFulfillmentProgress,
   WorkspaceReservationRepository,
 } from "@/features/reservation/backend/workspace-reservation.repository";
-import {
-  type WorkspaceReservationId,
-  workspaceReservationIdSchema,
-} from "@/features/reservation/persistence-contracts";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { QueueRedelivery } from "@/shared/backend/queue/queue-consumer";
 import { WorkspacePaidFulfillmentService } from "./paid-fulfillment.service";
-
-const payloadSchema = Schema.Struct({
-  orderId: workspaceReservationIdSchema,
-});
-
-const decodePayload = Schema.decodeUnknownOption(payloadSchema);
 
 type PaidFulfillmentQueueProgress = Data.TaggedEnum<{
   /** No delivery of this message can change the order any more. */
@@ -128,16 +119,7 @@ class PaidFulfillmentSettledFailureError extends Data.TaggedError(
 
 export const processPaidFulfillmentMessage = Effect.fn(
   "paidFulfillmentQueue.processMessage"
-)(function* (message: Parameters<typeof decodePayload>[0]) {
-  const payload = Option.getOrUndefined(decodePayload(message));
-  if (!payload) {
-    yield* Effect.logWarning(
-      "Paid fulfillment queue message ignored: invalid payload"
-    );
-    return "ignored" as const;
-  }
-  const { orderId } = payload;
-
+)(function* ({ orderId }: { readonly orderId: WorkspaceReservationId }) {
   const fulfillment = yield* WorkspacePaidFulfillmentService;
   const run = yield* fulfillment
     .fulfillPaidOrder({ orderId })

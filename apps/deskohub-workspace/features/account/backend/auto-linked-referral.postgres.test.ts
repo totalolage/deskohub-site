@@ -129,7 +129,7 @@ const signIn = (input: {
 }) => {
   const databaseLayer = Layer.succeed(
     WorkspaceDatabase,
-    WorkspaceDatabase.of({ db: testDatabase!.db })
+    WorkspaceDatabase.make(testDatabase!.db)
   );
   const lockLayer = WorkspaceDatabaseAdvisoryLock.makeLayer(testDatabase!.pool);
   const linksLayer = CustomerAccountLinkRepository.Default.pipe(

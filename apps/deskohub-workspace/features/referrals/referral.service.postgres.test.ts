@@ -8,7 +8,7 @@ import {
   DotyposService,
   DotyposUnavailable,
 } from "@deskohub/dotypos";
-import { Effect, Layer } from "effect";
+import { Cause, Effect, Exit, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import {
@@ -133,7 +133,7 @@ const makeReferralLayer = (
 ) => {
   const databaseLayer = Layer.succeed(
     WorkspaceDatabase,
-    WorkspaceDatabase.of({ db: testDatabase!.db })
+    WorkspaceDatabase.make(testDatabase!.db)
   );
   const lockLayer = WorkspaceDatabaseAdvisoryLock.makeLayer(testDatabase!.pool);
   const accountLinksLayer = CustomerAccountLinkRepository.Default.pipe(
@@ -1541,6 +1541,76 @@ describe.skipIf(!testDatabase)(
         );
         expect(attributions.rows).toEqual([]);
       } finally {
+        await testDatabase!.pool.query(
+          'delete from auth."user" where id = $1',
+          [inviteeAccountId]
+        );
+        await testDatabase!.pool.query(
+          "delete from customer_accounts where id = $1",
+          [inviteeAccountId]
+        );
+        await referrer.cleanup();
+      }
+    });
+
+    test("dies on an unreadable Dotypos end inside the attribution transaction without writing", async () => {
+      const referrer = await createActiveReferrer();
+      const inviteeAccountId = customerAccountIdSchema.make(uniqueId());
+      const inviteeCustomerId = uniqueDotyposId();
+      await insertAuthUser(inviteeAccountId, {
+        linkedCustomer: inviteeCustomerId,
+      });
+      try {
+        const identity = {
+          accountId: inviteeAccountId,
+          dotyposCustomerId: inviteeCustomerId,
+        };
+        const accept = (history: readonly DotyposReservation[]) =>
+          Effect.gen(function* () {
+            const referrals = yield* ReferralService;
+            return yield* referrals.acceptReferral({
+              code: referrer.code,
+              customerAccountId: inviteeAccountId,
+              dotyposCustomerId: inviteeCustomerId,
+            });
+          }).pipe(
+            Effect.provide(makeReferralLayer(identity, () => history)),
+            Effect.runPromiseExit
+          );
+
+        for (const endDate of ["not-a-date", "2000-02-30T10:00:00Z"]) {
+          const exit = await accept([
+            makeLiveConfirmedReservation(
+              `unreadable-${uniqueId()}` as DotyposReservationId,
+              endDate
+            ),
+          ]);
+          expect(
+            Exit.isFailure(exit) &&
+              Cause.hasDies(exit.cause) &&
+              !Cause.hasFails(exit.cause)
+          ).toBe(true);
+        }
+        const attributions = await testDatabase!.pool.query(
+          "select 1 from referral_attributions where invited_dotypos_customer_id = $1",
+          [inviteeCustomerId]
+        );
+        expect(attributions.rows).toEqual([]);
+
+        // The transaction and its locks were released: the customer can
+        // still accept once Dotypos lists no booking.
+        const readable = await accept([]);
+        expect(Exit.isSuccess(readable)).toBe(true);
+        const accepted = await testDatabase!.pool.query(
+          "select 1 from referral_attributions where invited_dotypos_customer_id = $1",
+          [inviteeCustomerId]
+        );
+        expect(accepted.rows).toHaveLength(1);
+      } finally {
+        await testDatabase!.pool.query(
+          "delete from referral_attributions where invited_dotypos_customer_id = $1",
+          [inviteeCustomerId]
+        );
         await testDatabase!.pool.query(
           'delete from auth."user" where id = $1',
           [inviteeAccountId]

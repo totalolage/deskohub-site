@@ -28,10 +28,7 @@ const testDatabase = await connectWorkspacePostgresTestDatabase();
 const makeRepositoryLayer = () =>
   CustomerMarketingConsentRepository.Default.pipe(
     Layer.provide(
-      Layer.succeed(
-        WorkspaceDatabase,
-        WorkspaceDatabase.of({ db: testDatabase!.db })
-      )
+      Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.make(testDatabase!.db))
     )
   );
 

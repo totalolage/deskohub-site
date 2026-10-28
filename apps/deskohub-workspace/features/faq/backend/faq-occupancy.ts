@@ -6,10 +6,9 @@ import type {
   Reservation as DotyposReservation,
   Table as DotyposTable,
 } from "@deskohub/dotypos/generated";
-import { Data, Effect, Schema } from "effect";
-import { getDurationMinutes } from "@/features/reservation/reservation-interval-normalization";
+import { Data, Effect, Option, Schema } from "effect";
+import { decodeBookedReservation } from "@/features/reservation/backend/booked-reservation";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
-import { instantStringSchema } from "@/shared/utils/temporal";
 
 const coworkTableTagPrefix = "cowork:";
 
@@ -21,7 +20,6 @@ const decodeReservationId = Schema.decodeUnknownEffect(
   DotyposReservationIdSchema
 );
 const decodeTableId = Schema.decodeUnknownEffect(DotyposTableIdSchema);
-const decodeInstant = Schema.decodeUnknownEffect(instantStringSchema);
 const decodeSeatCount = Schema.decodeUnknownEffect(
   positiveIntegerSeatCountSchema
 );
@@ -183,37 +181,18 @@ const decodeRelevantTableSeats = (table: DotyposTable) =>
     )
   );
 
+/** A confirmed cowork reservation without a readable interval fails the stats. */
 const getConfirmedCoworkReservationStart = Effect.fn(
   "getConfirmedCoworkReservationStart"
 )(function* (reservation: DotyposReservation) {
-  const startsAt = yield* decodeInstant(reservation.startDate).pipe(
-    Effect.mapError(
-      (cause) =>
-        new FaqOccupancyError({
-          message:
-            "Confirmed cowork Dotypos reservation has an invalid interval.",
-          cause,
-        })
-    )
-  );
-  const endsAt = yield* decodeInstant(reservation.endDate).pipe(
-    Effect.mapError(
-      (cause) =>
-        new FaqOccupancyError({
-          message:
-            "Confirmed cowork Dotypos reservation has an invalid interval.",
-          cause,
-        })
-    )
-  );
-
-  if (getDurationMinutes({ startsAt, endsAt }) <= 0) {
+  const interval = decodeBookedReservation(reservation).interval;
+  if (Option.isNone(interval)) {
     return yield* new FaqOccupancyError({
       message: "Confirmed cowork Dotypos reservation has an invalid interval.",
     });
   }
 
-  return Temporal.Instant.from(startsAt);
+  return interval.value.startsAt;
 });
 
 const decodeRelevantReservationId = (reservation: DotyposReservation) =>

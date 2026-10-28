@@ -159,7 +159,10 @@ describe("a review account's reservation history", () => {
           Layer.provide(
             Layer.mergeAll(
               // A database query would throw on this client.
-              Layer.succeed(WorkspaceDatabase, { db: {} } as never),
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.make({} as never)
+              ),
               Layer.mock(DotyposService, {}),
               Layer.mock(ReservationRecords, {}),
               activeLinks,

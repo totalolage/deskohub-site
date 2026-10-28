@@ -3,8 +3,8 @@ import {
   DotyposReservationIdSchema,
   DotyposService,
 } from "@deskohub/dotypos";
-import type { Customer, Reservation } from "@deskohub/dotypos/generated";
-import { Context, Data, Effect, Layer, Schema } from "effect";
+import type { Customer } from "@deskohub/dotypos/generated";
+import { Context, Data, Effect, Layer, Option, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   getWorkspaceTableMap,
@@ -15,12 +15,14 @@ import {
   WorkspaceFeatureFlagService,
 } from "@/features/feature-flags/backend";
 import {
+  type BookedReservation,
+  decodeBookedReservation,
+} from "@/features/reservation/backend/booked-reservation";
+import {
   type WorkspaceReservation,
   WorkspaceReservationRepository,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import { reservationIntervalSchema } from "@/features/reservation/reservation-interval";
-import { dotyposReservationSeatsSchema } from "@/features/reservation/reservation-seats";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 
 import {
@@ -159,24 +161,22 @@ export class WorkspaceReservationService extends Context.Service<
         function* (reservation: WorkspaceReservation) {
           const { dotyposReservationDetails, dotyposReservationId, tables } =
             yield* loadDotyposReservation(reservation);
+          const booked = decodeBookedReservation(
+            dotyposReservationDetails.reservation
+          );
           const { reservedFrom, reservedUntil } =
             yield* getDotyposReservationTiming({
               reservationId: reservation.id,
-              reservation: dotyposReservationDetails.reservation,
+              reservation: booked,
             });
-          const seats = yield* Schema.decodeUnknownEffect(
-            dotyposReservationSeatsSchema
-          )(dotyposReservationDetails.reservation.seats).pipe(
-            Effect.mapError(
-              (cause) =>
-                new WorkspaceReservationDetailsError({
-                  reservationId: reservation.id,
-                  errorCode: "dotypos_reservation_seats_invalid",
-                  message: "Workspace Dotypos reservation seats are invalid.",
-                  cause,
-                })
-            )
-          );
+          if (Option.isNone(booked.seats)) {
+            return yield* new WorkspaceReservationDetailsError({
+              reservationId: reservation.id,
+              errorCode: "dotypos_reservation_seats_invalid",
+              message: "Workspace Dotypos reservation seats are invalid.",
+            });
+          }
+          const seats = booked.seats.value;
 
           const tableName = getReservationTableName(
             dotyposReservationDetails.reservation,
@@ -246,7 +246,9 @@ export class WorkspaceReservationService extends Context.Service<
             }
             return yield* getDotyposReservationTiming({
               reservationId: id,
-              reservation: dotyposReservationDetails.reservation,
+              reservation: decodeBookedReservation(
+                dotyposReservationDetails.reservation
+              ),
             });
           }
         ),
@@ -288,31 +290,21 @@ const accessUnavailable = (reservationId: WorkspaceReservationId) =>
     })
   );
 
+/** A reservation without a readable interval has no timing. */
 export const getDotyposReservationTiming = Effect.fn(
   "dotyposReservation.getTiming"
 )(function* (input: {
   readonly reservationId: WorkspaceReservationId;
-  readonly reservation: Pick<Reservation, "startDate" | "endDate">;
+  readonly reservation: Pick<BookedReservation, "interval">;
 }) {
-  const { startsAt, endsAt } = yield* Schema.decodeUnknownEffect(
-    reservationIntervalSchema
-  )({
-    startsAt: input.reservation.startDate,
-    endsAt: input.reservation.endDate,
-  }).pipe(
-    Effect.mapError(
-      (cause) =>
-        new WorkspaceReservationDetailsError({
-          reservationId: input.reservationId,
-          errorCode: "dotypos_reservation_date_invalid",
-          message: "Workspace Dotypos reservation interval is invalid.",
-          cause,
-        })
-    )
-  );
+  if (Option.isNone(input.reservation.interval)) {
+    return yield* new WorkspaceReservationDetailsError({
+      reservationId: input.reservationId,
+      errorCode: "dotypos_reservation_date_invalid",
+      message: "Workspace Dotypos reservation interval is invalid.",
+    });
+  }
 
-  return {
-    reservedFrom: Temporal.Instant.from(startsAt),
-    reservedUntil: Temporal.Instant.from(endsAt),
-  };
+  const { startsAt, endsAt } = input.reservation.interval.value;
+  return { reservedFrom: startsAt, reservedUntil: endsAt };
 });

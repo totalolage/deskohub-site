@@ -130,7 +130,7 @@ export const makeRecordingWorkspaceDatabase =
     return {
       db,
       statements,
-      layer: Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.of({ db })),
+      layer: Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.make(db)),
       setRows: (next) => {
         rowsQueue = next;
       },

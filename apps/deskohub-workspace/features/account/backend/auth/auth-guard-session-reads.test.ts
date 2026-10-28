@@ -26,10 +26,7 @@ const captureLocalePreference = (
 ) =>
   captureAccountLocalePreference(accountId, locale).pipe(
     Effect.provide(
-      Layer.succeed(
-        WorkspaceDatabase,
-        WorkspaceDatabase.of({ db: testDatabase!.db })
-      )
+      Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.make(testDatabase!.db))
     )
   );
 

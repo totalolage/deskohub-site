@@ -12,9 +12,10 @@ import { memoryAdapter } from "better-auth/adapters/memory";
 import { Effect, Logger, References } from "effect";
 import { authOptions } from "@/features/account/backend/auth/auth-options";
 import { makeDatabaseClient, makeDatabasePool } from "../../db/database-client";
+import type { E2EBrowserSession } from "../browser-session";
 import { WorkspaceE2EError } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
-import { parseHttpsOnlyCookie, redact } from "../runtime";
+import { redact } from "../runtime";
 import {
   resolveWorkspaceE2ESessionSigningSecret,
   signInWorkspaceE2ESyntheticAccount,
@@ -96,6 +97,22 @@ const readSession = (
     }),
   });
 
+const unreachable = Effect.die("the failed insert reached the browser");
+
+/** A browser session the database-log test must never touch. */
+const unreachableBrowserSession: E2EBrowserSession = {
+  activate: () => unreachable,
+  captureFailureArtifacts: () => unreachable,
+  clearDiagnostics: () => unreachable,
+  close: () => unreachable,
+  describeCookie: () => unreachable,
+  diagnostics: unreachable,
+  evaluate: () => unreachable,
+  primePreviewAccess: () => unreachable,
+  setSessionCookie: () => unreachable,
+  use: () => unreachable,
+};
+
 describe("workspace e2e seeded sessions", () => {
   test("Better Auth accepts the seeded cookie signed with the current secret", async () => {
     const { auth, store } = makeDeployedShapeAuth();
@@ -168,32 +185,6 @@ describe("workspace e2e seeded sessions", () => {
     );
   });
 
-  test("cookie input binds one HTTP-only Secure Lax cookie to an HTTPS origin", () => {
-    expect(
-      parseHttpsOnlyCookie(
-        JSON.stringify({
-          name: workspaceE2ESessionCookieName,
-          url: `https://${host}`,
-          value: "signed",
-        })
-      )
-    ).toEqual({
-      httpOnly: true,
-      name: workspaceE2ESessionCookieName,
-      sameSite: "Lax",
-      secure: true,
-      url: `https://${host}`,
-      value: "signed",
-    });
-    for (const url of [`http://${host}`, `https://${host}/account`]) {
-      expect(() =>
-        parseHttpsOnlyCookie(
-          JSON.stringify({ name: "session", url, value: "signed" })
-        )
-      ).toThrow();
-    }
-  });
-
   test("keeps the seeded session token out of database query logs", async () => {
     // The real client and query logger log each statement before it needs a
     // connection, so an unreachable server still yields the logged insert.
@@ -211,9 +202,9 @@ describe("workspace e2e seeded sessions", () => {
         signInWorkspaceE2ESyntheticAccount({
           accountId: "synthetic-account",
           baseUrl: `https://${host}`,
-          run: async () => ({ exitCode: 0, stderr: "", stdout: "" }),
           secret: { value: currentSecret },
-          session: "synthetic-session",
+          // The insert fails first, so the browser is never reached.
+          session: unreachableBrowserSession,
         }).pipe(
           Effect.provideService(E2EDatabase, E2EDatabase.of({ db })),
           Effect.provide(Logger.layer([capture]))

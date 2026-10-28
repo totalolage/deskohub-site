@@ -1,13 +1,13 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type Browser, chromium } from "@playwright/test";
-import { Effect } from "effect";
+import { type Browser, type BrowserContext, chromium } from "@playwright/test";
+import { Effect, Exit, Scope } from "effect";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import {
-  addRedaction,
+  browserSessionFor,
   makePlaywrightBrowserRunner,
   type Runner,
 } from "./runtime";
@@ -102,7 +102,7 @@ test.skipIf(!chromiumAvailable)(
     const outcome = await withRunner(async (run) => {
       await command(run, session, ["open", `${origin()}/`]);
       const browserSession = await Effect.runPromise(
-        run.session?.(session) ?? Effect.die("runner bridge missing")
+        browserSessionFor(run, session)
       );
       const title = await Effect.runPromise(
         browserSession.use("read the title", (page) => page.title())
@@ -114,21 +114,29 @@ test.skipIf(!chromiumAvailable)(
           value: "synthetic-session-value",
         })
       );
-      const cookie = await command(
-        run,
-        session,
-        ["cookie", "get", "--stdin"],
-        JSON.stringify({
+      const cookie = await Effect.runPromise(
+        browserSession.describeCookie({
           name: "session_token",
           url: "https://workspace.example.test/en-US",
           value: "synthetic-session-value",
         })
       );
-      return { cookie, title };
+      // Cookies go through the session only; the argv protocol has none.
+      const argvCookie = await command(
+        run,
+        session,
+        ["cookie", "get", "--stdin"],
+        "{}"
+      ).then(
+        () => "accepted",
+        () => "rejected"
+      );
+      return { argvCookie, cookie, title };
     });
 
     expect(outcome.title).toBe("Checkout");
-    expect(JSON.parse(outcome.cookie)).toEqual({
+    expect(outcome.argvCookie).toBe("rejected");
+    expect(outcome.cookie).toEqual({
       httpOnly: true,
       lifetimeDays: null,
       matches: true,
@@ -137,7 +145,9 @@ test.skipIf(!chromiumAvailable)(
       sameSite: "Lax",
       secure: true,
     });
-    expect(outcome.cookie).not.toContain("synthetic-session-value");
+    expect(JSON.stringify(outcome.cookie)).not.toContain(
+      "synthetic-session-value"
+    );
   }
 );
 
@@ -235,27 +245,128 @@ test.skipIf(!chromiumAvailable)(
 );
 
 test.skipIf(!chromiumAvailable)(
-  "stops the HAR into a sanitized file and closes the session",
+  "no longer serves the capture and HAR commands the session owns",
   async () => {
-    const session = `har-${randomUUID()}`;
-    const secret = "synthetic-runner-har-secret";
-    addRedaction(secret);
-    const harPath = join(artifactDir, `${session}.har`);
-    const afterStop = await withRunner(async (run) => {
-      await command(run, session, ["open", `${origin()}/?token=${secret}`]);
-      await command(run, session, ["network", "har", "stop", harPath]);
-      return run("playwright", ["--session", session, "eval", "--stdin"], {
-        allowFailure: true,
-        input: "document.title",
-        logCommand: false,
-        logOutput: false,
-      });
+    const session = `retired-${randomUUID()}`;
+    const results = await withRunner(async (run) => {
+      await command(run, session, ["open", `${origin()}/`]);
+      return Promise.all(
+        [
+          ["console"],
+          ["console", "--clear"],
+          ["errors"],
+          ["network", "requests", "--clear"],
+          ["network", "har", "start"],
+          ["network", "har", "stop"],
+        ].map((args) =>
+          run("playwright", ["--session", session, ...args], {
+            allowFailure: true,
+            logCommand: false,
+            logOutput: false,
+          })
+        )
+      );
     });
 
-    const har = await readFile(harPath, "utf8");
-    expect(JSON.parse(har).log.entries.length).toBeGreaterThan(0);
-    expect(har).not.toContain(secret);
-    expect(afterStop.exitCode).toBe(1);
+    expect(results.map((result) => result.exitCode)).toEqual([
+      1, 1, 1, 1, 1, 1,
+    ]);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "closes every session with the caller's Scope, one that opens late included",
+  async () => {
+    if (!browser) throw new Error("Chromium is not running");
+    const realBrowser = browser;
+    const contextRequested = Promise.withResolvers<void>();
+    const contextHeld = Promise.withResolvers<void>();
+    const contexts: BrowserContext[] = [];
+    // Holds the second context until the Scope has closed.
+    const holding = {
+      newContext: async (options?: Parameters<Browser["newContext"]>[0]) => {
+        const context = await realBrowser.newContext(options);
+        contexts.push(context);
+        if (contexts.length === 2) {
+          contextRequested.resolve();
+          await contextHeld.promise;
+        }
+        return context;
+      },
+    } as unknown as Browser;
+    const scope = Scope.makeUnsafe("parallel");
+    const run = makePlaywrightBrowserRunner(holding, {
+      recordHar: false,
+      scope,
+    });
+    await command(run, "scoped-first", ["open", `${origin()}/`]);
+    const late = run("playwright", ["--session", "scoped-late", "get", "url"], {
+      allowFailure: true,
+      logCommand: false,
+      logOutput: false,
+    });
+    await contextRequested.promise;
+
+    await Effect.runPromise(Scope.close(scope, Exit.void));
+    const [first, lateContext] = contexts;
+    const firstClosed = !realBrowser
+      .contexts()
+      .includes(first as BrowserContext);
+    const lateClosed = Promise.withResolvers<void>();
+    lateContext?.on("close", () => lateClosed.resolve());
+    contextHeld.resolve();
+    await lateClosed.promise;
+
+    expect(firstClosed).toBe(true);
+    expect((await late).exitCode).toBe(1);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "bounds an argv close by its command timeout",
+  async () => {
+    if (!browser) throw new Error("Chromium is not running");
+    const realBrowser = browser;
+    const held = Promise.withResolvers<void>();
+    const contexts: BrowserContext[] = [];
+    const stalling = {
+      newContext: async (options?: Parameters<Browser["newContext"]>[0]) => {
+        const context = await realBrowser.newContext(options);
+        contexts.push(context);
+        context.close = () => held.promise;
+        return context;
+      },
+    } as unknown as Browser;
+    const run = makePlaywrightBrowserRunner(stalling, { recordHar: false });
+    try {
+      await command(run, "stalled-close", ["open", `${origin()}/`]);
+      const startedAt = Date.now();
+      const closed = await run(
+        "playwright",
+        ["--session", "stalled-close", "close"],
+        {
+          allowFailure: true,
+          logCommand: false,
+          logOutput: false,
+          timeoutMs: 500,
+        }
+      );
+
+      expect(closed.exitCode).toBe(1);
+      expect(closed.stderr).toContain("Timeout 500ms exceeded");
+      expect(Date.now() - startedAt).toBeLessThan(5000);
+    } finally {
+      await Promise.all(
+        contexts.map((context) =>
+          Reflect.apply(
+            Object.getPrototypeOf(context).close as BrowserContext["close"],
+            context,
+            []
+          )
+        )
+      );
+      held.resolve();
+    }
   }
 );
 

@@ -477,7 +477,8 @@ const censorLogValueInternal = <T>(
     if (existing) return existing;
 
     const result: MutableLogAnnotations = {
-      errorType: value.name,
+      // Any code can set `name`, so it passes the same filter as `_tag`.
+      errorType: censorErrorClassificationValue(value.name),
       message: CENSORED_LOG_VALUE,
     };
     seen.set(value, result);
@@ -572,8 +573,12 @@ const censorCauseInternal = (
         );
       }
       if (Cause.isDieReason(reason)) {
+        // A defect can be any thrown value, so only a structured error keeps
+        // its shape; a plain object could be a whole payload.
         return Cause.makeDieReason(
-          censorErrorCauseInternal(reason.defect, seen)
+          isStructuredErrorCause(reason.defect)
+            ? censorLogValueInternal(reason.defect, seen)
+            : CENSORED_LOG_VALUE
         );
       }
       return reason;

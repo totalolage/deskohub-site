@@ -80,6 +80,7 @@ import {
   type DiscountApplicationId,
   discountApplicationIdSchema,
 } from "@/features/discounts/persistence-contracts";
+import { decodeBookedReservation } from "@/features/reservation/backend/booked-reservation";
 import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
@@ -783,8 +784,22 @@ const getReservationActivityRange = () => {
   return { from: to.subtract({ days: 364 }), to };
 };
 
-const getReservationDate = (startsAt: string) =>
-  Temporal.Instant.from(startsAt)
+/**
+ * The reservation's start. The Dotypos contract only returns readable starts,
+ * so an unreadable one is a defect.
+ */
+const getBookedStart = (
+  reservation: Pick<DotyposReservation, "startDate" | "endDate" | "seats">
+) =>
+  Option.getOrThrowWith(
+    decodeBookedReservation(reservation).start,
+    () => new Error("Dotypos reservation start is unreadable.")
+  );
+
+const getReservationDate = (
+  reservation: Pick<DotyposReservation, "startDate" | "endDate" | "seats">
+) =>
+  getBookedStart(reservation)
     .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
     .toPlainDate()
     .toString();
@@ -793,7 +808,7 @@ const isReservationInRange = (
   reservation: DotyposReservation,
   range: AdministrationReservationDateRange
 ) => {
-  const date = getReservationDate(reservation.startDate);
+  const date = getReservationDate(reservation);
   return (!range.from || date >= range.from) && (!range.to || date <= range.to);
 };
 
@@ -889,9 +904,7 @@ const toReservationSummary = ({
     liveDetailsAvailable: Boolean(live.reservation),
     startsAt: live.reservation?.startDate ?? null,
     endsAt: live.reservation?.endDate ?? null,
-    date: live.reservation
-      ? getReservationDate(live.reservation.startDate)
-      : null,
+    date: live.reservation ? getReservationDate(live.reservation) : null,
     type: row.reservationDetails.kind,
     product: getAdministrationReservationProduct(row.reservationDetails),
     typeLabel: getReservationTypeLabel(row),
@@ -2212,7 +2225,7 @@ export class AdministrationService extends Context.Service<
 
         let sameDateRows: readonly SafeReservationRow[] = [];
         if (live.reservation) {
-          const date = getReservationDate(live.reservation.startDate);
+          const date = getReservationDate(live.reservation);
           const dateReservations = yield* loadReservationRangeMap({
             from: date,
             to: date,
@@ -3229,7 +3242,7 @@ export class AdministrationService extends Context.Service<
             continue;
           }
           const reservationDetails = row.reservationDetails;
-          const date = getReservationDate(reservation.startDate);
+          const date = getReservationDate(reservation);
           const category =
             reservationDetails.kind === "cowork"
               ? (`cowork-${reservationDetails.entryTier}` as const)
@@ -3308,7 +3321,7 @@ export class AdministrationService extends Context.Service<
 
         const countByDate = new Map<string, number>();
         for (const reservation of reservations) {
-          const date = getReservationDate(reservation.startDate);
+          const date = getReservationDate(reservation);
           countByDate.set(date, (countByDate.get(date) ?? 0) + 1);
         }
 
@@ -3608,7 +3621,7 @@ function getUniqueCustomerIds(input: {
     const customerId =
       Option.getOrUndefined(decodeDotyposCustomerId(reservation._customerId)) ??
       fallbackCustomerId;
-    const startsAt = Temporal.Instant.from(reservation.startDate);
+    const startsAt = getBookedStart(reservation);
     const latestBooking = latestBookingByCustomerId.get(customerId);
     if (!latestBooking || Temporal.Instant.compare(startsAt, latestBooking) > 0)
       latestBookingByCustomerId.set(customerId, startsAt);
