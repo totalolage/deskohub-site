@@ -24,3 +24,15 @@ A writer whose writes must commit or roll back with its caller reads the client 
 ## Clients that never join
 
 Only `db/`, `e2e/`, `scripts/` and tests build database clients (`workspace-database-clients`). These run outside every Workspace transaction: the Better Auth facade (`db/auth-database-client.ts`), `E2EDatabase`, the E2E coordination `PgClient` layers, and second test pools. Don't call a writer that needs `WorkspaceTransaction` through them.
+
+## Take locks
+
+Take advisory locks with `WorkspaceLocks` (`db/workspace-locks.ts`), inside the transaction. Hold a lock across non-transactional work only with `WorkspaceLockSections`, which hold it on their own connection. Registry operations need `WorkspaceTransaction`, so code still in a raw `db.transaction` keeps its own lock SQL until its file migrates.
+
+- Take locks in ascending rank, and equal ranks in ascending key. The registry checks the order at run time. Lock several accounts with `WorkspaceLocks.customerAccounts(ids)`, which sorts them.
+- Take a lock out of rank order only with a bounded wait (`{ boundedWait: Duration.seconds(5) }`), and only while every higher-ranked lock you hold is held by an enclosing `WorkspaceLockSections` section; any other out-of-order request is a violation. Expect the wait to fail with a lock timeout (`isLockWaitTimeout`) instead of deadlocking. It runs in a savepoint, so the transaction stays usable.
+- A bounded wait must be positive and finite. It rounds up to whole milliseconds, because `lock_timeout` 0 means no timeout.
+- Never request a key that an enclosing section holds, and never enter a section inside a transaction: either way you would wait on your own other connection. The first is a defect. The second is a violation, reported as `workspace-lock-section-in-transaction`.
+- Violations fail under `bun test` and are logged as `workspace-lock-order` in production until enforcement lands.
+- Add a lock by adding a named operation and a rank to the registry. Keep an existing key's encoding byte for byte.
+- Open a lock-taking transaction that shares the advisory-lock pool permit as `advisoryLock.withTransactionPermit(transaction(...))`, never with the permit inside the transaction.
