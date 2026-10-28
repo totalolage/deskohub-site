@@ -3,18 +3,16 @@ import "@/shared/polyfills/temporal";
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
-import type { NormalizedMeetingRoomReservationOrder } from "./meeting-room-reservation";
 import {
-  getMeetingRoomReservationDefaultValuesFromSearchParams,
-  getMeetingRoomReservationSelectionSearchParams,
-  getMeetingRoomRestoredReservationValues,
-  getStoredMeetingRoomReservationSelectionSearchParams,
-} from "./meeting-room-reservation-checkout-query";
+  getMeetingRoomReservationDefaultValues,
+  type NormalizedMeetingRoomReservationOrder,
+} from "./meeting-room-reservation";
 import { getMeetingRoomReservationDuration } from "./meeting-room-reservation-duration";
 import {
   getEarliestMeetingRoomStartDateTime,
   getMeetingRoomReservationInterval,
 } from "./meeting-room-reservation-time";
+import { meetingRoomSelectionLink } from "./meeting-room-selection-link";
 import { setReservationSelectionSearchParams } from "./reservation-checkout-query";
 
 const adaEmail = testEmailAddress("ada");
@@ -28,9 +26,9 @@ const workspaceInstant = (local: string) =>
     })
     .toInstant();
 
-describe("getMeetingRoomReservationDefaultValuesFromSearchParams", () => {
+describe("meetingRoomSelectionLink.read", () => {
   test("prefills a valid future hourly reservation in Workspace time", () => {
-    const values = getMeetingRoomReservationDefaultValuesFromSearchParams(
+    const values = meetingRoomSelectionLink.read(
       {
         duration: "hour:1",
         email: ` ${adaEmail} `,
@@ -38,7 +36,7 @@ describe("getMeetingRoomReservationDefaultValuesFromSearchParams", () => {
         phone: "+420777777777",
         startDateTime: "2099-08-12T09:00",
       },
-      deterministicNow()
+      { now: deterministicNow() }
     );
 
     expect(values).toEqual({
@@ -63,12 +61,12 @@ describe("getMeetingRoomReservationDefaultValuesFromSearchParams", () => {
 
   test("falls back to the earliest start while keeping a valid duration", () => {
     expect(
-      getMeetingRoomReservationDefaultValuesFromSearchParams(
+      meetingRoomSelectionLink.read(
         {
           duration: "hour:4",
           startDateTime: "2099-02-30T09:00",
         },
-        deterministicNow()
+        { now: deterministicNow() }
       )
     ).toMatchObject({
       startDateTime: "2099-07-30T12:00",
@@ -80,14 +78,14 @@ describe("getMeetingRoomReservationDefaultValuesFromSearchParams", () => {
     const now = workspaceInstant("2099-07-30T10:30");
 
     expect(
-      getMeetingRoomReservationDefaultValuesFromSearchParams(
+      meetingRoomSelectionLink.read(
         {
           duration: "hour:1",
           email: adaEmail,
           name: "Ada Lovelace",
           startDateTime: "2099-07-30T10:00",
         },
-        now
+        { now }
       )
     ).toEqual({
       startDateTime: "2099-07-30T10:00",
@@ -100,18 +98,18 @@ describe("getMeetingRoomReservationDefaultValuesFromSearchParams", () => {
     });
 
     expect(
-      getMeetingRoomReservationDefaultValuesFromSearchParams(
+      meetingRoomSelectionLink.read(
         { duration: "hour:4", startDateTime: "2099-07-30T09:00" },
-        now
+        { now }
       )
     ).toMatchObject({
       startDateTime: "2099-07-30T09:00",
       duration: "hour:4",
     });
     expect(
-      getMeetingRoomReservationDefaultValuesFromSearchParams(
+      meetingRoomSelectionLink.read(
         { duration: "day:1", startDateTime: "2099-07-30T00:00" },
-        now
+        { now }
       )
     ).toMatchObject({ startDateTime: "2099-07-30T00:00", duration: "day:1" });
   });
@@ -120,21 +118,21 @@ describe("getMeetingRoomReservationDefaultValuesFromSearchParams", () => {
     const now = workspaceInstant("2099-07-30T10:30");
 
     expect(
-      getMeetingRoomReservationDefaultValuesFromSearchParams(
+      meetingRoomSelectionLink.read(
         { duration: "hour:1", startDateTime: "2099-07-30T09:00" },
-        now
+        { now }
       )
     ).toMatchObject({ startDateTime: "2099-07-30T10:00", duration: "hour:1" });
     expect(
-      getMeetingRoomReservationDefaultValuesFromSearchParams(
+      meetingRoomSelectionLink.read(
         { duration: "hour:4", startDateTime: "2099-07-30T06:00" },
-        now
+        { now }
       )
     ).toMatchObject({ startDateTime: "2099-07-30T07:00", duration: "hour:4" });
     expect(
-      getMeetingRoomReservationDefaultValuesFromSearchParams(
+      meetingRoomSelectionLink.read(
         { duration: "day:1", startDateTime: "2099-07-29T00:00" },
-        now
+        { now }
       )
     ).toMatchObject({ startDateTime: "2099-07-30T00:00", duration: "day:1" });
   });
@@ -143,9 +141,9 @@ describe("getMeetingRoomReservationDefaultValuesFromSearchParams", () => {
     const now = workspaceInstant("2099-07-30T11:00");
 
     expect(
-      getMeetingRoomReservationDefaultValuesFromSearchParams(
+      meetingRoomSelectionLink.read(
         { duration: "hour:4", startDateTime: "2099-07-30T07:00" },
-        now
+        { now }
       )
     ).toMatchObject({ startDateTime: "2099-07-30T07:00", duration: "hour:4" });
     expect(
@@ -157,24 +155,24 @@ describe("getMeetingRoomReservationDefaultValuesFromSearchParams", () => {
     const now = workspaceInstant("2099-07-30T11:00");
 
     expect(
-      getMeetingRoomReservationDefaultValuesFromSearchParams(
+      meetingRoomSelectionLink.read(
         { startDateTime: "2099-07-30T11:00" },
-        now
+        { now }
       )
     ).toMatchObject({ startDateTime: "2099-07-30T11:00" });
   });
 
   test("falls back independently for past and empty starts", () => {
     expect(
-      getMeetingRoomReservationDefaultValuesFromSearchParams(
+      meetingRoomSelectionLink.read(
         { startDateTime: "2099-07-30T09:00" },
-        deterministicNow()
+        { now: deterministicNow() }
       )
     ).toMatchObject({ startDateTime: "2099-07-30T15:00", duration: "hour:1" });
     expect(
-      getMeetingRoomReservationDefaultValuesFromSearchParams(
+      meetingRoomSelectionLink.read(
         { startDateTime: "" },
-        deterministicNow()
+        { now: deterministicNow() }
       )
     ).toMatchObject({ startDateTime: "2099-07-30T15:00" });
   });
@@ -208,20 +206,20 @@ describe("getMeetingRoomReservationDefaultValuesFromSearchParams", () => {
 
     for (const { now, earliest, transition, nearbyValid } of cases) {
       expect(
-        getMeetingRoomReservationDefaultValuesFromSearchParams(
+        meetingRoomSelectionLink.read(
           { startDateTime: `${transition}T02:00` },
-          now
+          { now }
         )
       ).toMatchObject({ startDateTime: earliest });
 
       expect(
-        getMeetingRoomReservationDefaultValuesFromSearchParams(
+        meetingRoomSelectionLink.read(
           {
             email: adaEmail,
             name: "Ada Lovelace",
             startDateTime: `${transition}T${nearbyValid}`,
           },
-          now
+          { now }
         )
       ).toMatchObject({
         startDateTime: `${transition}T${nearbyValid}`,
@@ -235,23 +233,51 @@ describe("getMeetingRoomReservationDefaultValuesFromSearchParams", () => {
 describe("customer last reservation defaults", () => {
   test("fills an open meeting room duration from the last reservation", () => {
     expect(
-      getMeetingRoomReservationDefaultValuesFromSearchParams(
+      meetingRoomSelectionLink.read(
         { startDateTime: "2099-08-12T09:00" },
-        deterministicNow(),
-        { kind: "meeting-room", duration: "hour:4" }
+        {
+          now: deterministicNow(),
+          lastReservation: { kind: "meeting-room", duration: "hour:4" },
+        }
       ).duration
     ).toBe("hour:4");
     expect(
-      getMeetingRoomReservationDefaultValuesFromSearchParams(
+      meetingRoomSelectionLink.read(
         { duration: "hour:1", startDateTime: "2099-08-12T09:00" },
-        deterministicNow(),
-        { kind: "meeting-room", duration: "hour:4" }
+        {
+          now: deterministicNow(),
+          lastReservation: { kind: "meeting-room", duration: "hour:4" },
+        }
       ).duration
     ).toBe("hour:1");
   });
 });
 
-describe("getMeetingRoomReservationSelectionSearchParams", () => {
+describe("meetingRoomSelectionLink.write", () => {
+  test("names the selection in the declared order", () => {
+    expect(
+      Object.entries(
+        meetingRoomSelectionLink.write({
+          duration: "hour:4",
+          startDateTime: "2099-08-13T14:00",
+        })
+      )
+    ).toEqual([
+      ["startDateTime", "2099-08-13T14:00"],
+      ["duration", "hour:4"],
+    ]);
+  });
+
+  test("leaves an open start out of the link", () => {
+    expect(meetingRoomSelectionLink.write({ duration: "day:1" })).toEqual({
+      startDateTime: undefined,
+      duration: "day:1",
+    });
+    expect(
+      meetingRoomSelectionLink.write({ duration: "day:1", startDateTime: "" })
+    ).toEqual({ startDateTime: undefined, duration: "day:1" });
+  });
+
   test.each([
     { startDateTime: "2099-08-12T09:00", duration: "hour:1" },
     { startDateTime: "2099-08-13T14:00", duration: "hour:4" },
@@ -262,14 +288,11 @@ describe("getMeetingRoomReservationSelectionSearchParams", () => {
     );
     setReservationSelectionSearchParams(
       searchParams,
-      getMeetingRoomReservationSelectionSearchParams(selection)
+      meetingRoomSelectionLink.write(selection)
     );
 
     expect(
-      getMeetingRoomReservationDefaultValuesFromSearchParams(
-        searchParams,
-        deterministicNow()
-      )
+      meetingRoomSelectionLink.read(searchParams, { now: deterministicNow() })
     ).toEqual(expect.objectContaining(selection));
     expect(searchParams.get("discountCode")).toBe("SPRING");
   });
@@ -283,7 +306,7 @@ describe("getMeetingRoomReservationSelectionSearchParams", () => {
   const writeSelection = (searchParams: URLSearchParams) => {
     setReservationSelectionSearchParams(
       searchParams,
-      getMeetingRoomReservationSelectionSearchParams(ongoingSelection)
+      meetingRoomSelectionLink.write(ongoingSelection)
     );
     return new URLSearchParams(searchParams.toString());
   };
@@ -297,10 +320,9 @@ describe("getMeetingRoomReservationSelectionSearchParams", () => {
     ).not.toBe(ongoingSelection.startDateTime);
 
     expect(
-      getMeetingRoomReservationDefaultValuesFromSearchParams(
-        writeSelection(new URLSearchParams()),
-        ongoingNow
-      )
+      meetingRoomSelectionLink.read(writeSelection(new URLSearchParams()), {
+        now: ongoingNow,
+      })
     ).toEqual(expect.objectContaining(ongoingSelection));
   });
 
@@ -318,10 +340,10 @@ describe("getMeetingRoomReservationSelectionSearchParams", () => {
     };
 
     expect(
-      getMeetingRoomRestoredReservationValues(
-        restoredReservation,
+      meetingRoomSelectionLink.restore(
+        getMeetingRoomReservationDefaultValues(restoredReservation),
         writeSelection(new URLSearchParams("payState=signed")),
-        ongoingNow
+        { now: ongoingNow }
       )
     ).toEqual(
       expect.objectContaining({
@@ -333,24 +355,23 @@ describe("getMeetingRoomReservationSelectionSearchParams", () => {
   });
 });
 
-describe("getStoredMeetingRoomReservationSelectionSearchParams", () => {
+describe("meetingRoomSelectionLink.fromStored", () => {
   const readBack = (
-    reservation: Parameters<
-      typeof getStoredMeetingRoomReservationSelectionSearchParams
-    >[0]
+    reservation: Parameters<typeof meetingRoomSelectionLink.fromStored>[0]
   ) => {
+    const selection = meetingRoomSelectionLink.fromStored(reservation);
+    expect(selection?.kind).toBe("meeting-room");
     const searchParams = new URLSearchParams();
     setReservationSelectionSearchParams(
       searchParams,
-      getStoredMeetingRoomReservationSelectionSearchParams(reservation) ?? {}
+      meetingRoomSelectionLink.write(selection ?? {})
     );
     for (const contactKey of ["name", "email", "phone", "customer"]) {
       expect(searchParams.has(contactKey)).toBe(false);
     }
-    return getMeetingRoomReservationDefaultValuesFromSearchParams(
-      searchParams,
-      deterministicNow()
-    );
+    return meetingRoomSelectionLink.read(searchParams, {
+      now: deterministicNow(),
+    });
   };
 
   test.each([

@@ -1,5 +1,8 @@
 import { Match, Schema, SchemaGetter } from "effect";
-import type { WorkspaceProductMonitorOption } from "@/features/checkout/product-catalog";
+import {
+  isWorkspaceCoworkCurrentProductTier,
+  type WorkspaceProductMonitorOption,
+} from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
 import {
   coworkReservationProductInputSchema,
@@ -681,6 +684,32 @@ export const coworkReservationDefaultValues: CoworkReservationInput = {
   phone: "",
   billing: defaultReservationBillingSelection,
   marketingConsent: false,
+};
+
+/** The form values a signed cowork restoration opens with. */
+export const getCoworkReservationDefaultValues = (
+  reservation: NormalizedCoworkReservationOrder
+): CoworkReservationInput => {
+  if (!isWorkspaceCoworkCurrentProductTier(reservation.entryTier)) {
+    throw new Error(
+      "Historical cowork tiers cannot be restored into the reservation form.",
+      { cause: reservation.entryTier }
+    );
+  }
+
+  return {
+    entryTier: reservation.entryTier,
+    date: reservation.date,
+    coffee: reservation.coffee,
+    name: reservation.name,
+    email: reservation.email,
+    phone: reservation.phone,
+    billing: reservation.billing,
+    ...(reservation.monitorOption !== undefined && {
+      monitorOption: reservation.monitorOption,
+    }),
+    marketingConsent: false,
+  };
 };
 export type { WorkspaceCoworkProductTier };
 export { getAllowedMonitorOptionsForCoworkTier };

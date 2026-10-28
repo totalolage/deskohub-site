@@ -3,7 +3,7 @@
 import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import { Option, Predicate, Schema } from "effect";
 import { useEffect, useMemo } from "react";
-import { useForm, useWatch } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import {
   type AdvertisedPrice,
   isOfficeAdvertisedPrice,
@@ -33,7 +33,10 @@ import {
 } from "@/features/reservation/components/reservation-type-input";
 import { useAdvertisedPrices } from "@/features/reservation/components/use-advertised-price";
 import { useReservationAvailability } from "@/features/reservation/components/use-reservation-availability";
-import { useReservationSelectionUrl } from "@/features/reservation/components/use-reservation-selection-url";
+import {
+  useReservationSelectionUrl,
+  useWatchedSelection,
+} from "@/features/reservation/components/use-reservation-selection-url";
 import { getOfficeSeatAdvertisedPriceRequests } from "@/features/reservation/office-advertised-price";
 import {
   getOfficeReservationDayCount,
@@ -47,10 +50,7 @@ import {
   officeReservationDetailsSchema,
   officeReservationSchema,
 } from "@/features/reservation/office-reservation";
-import {
-  getOfficeReservationDefaultValuesFromSearchParams,
-  getOfficeReservationSelectionSearchParams,
-} from "@/features/reservation/office-reservation-checkout-query";
+import { officeSelectionLink } from "@/features/reservation/office-selection-link";
 import type { ReservationCheckoutCustomerForm } from "@/features/reservation/reservation-existing-customer";
 import {
   getOfficeAvailabilityQuery,
@@ -119,10 +119,10 @@ export function OfficeReservationForm({
     mode: "onBlur",
     reValidateMode: "onChange",
   });
-  const [startsOn, dayCount, seats] = useWatch({
-    control: form.control,
-    name: ["startsOn", "dayCount", "seats"],
-  });
+  const { startsOn, dayCount, seats } = useWatchedSelection(
+    officeSelectionLink,
+    form.control
+  );
   const selection = useMemo(
     () => getSelection(startsOn, dayCount, seats),
     [dayCount, seats, startsOn]
@@ -205,8 +205,9 @@ export function OfficeReservationForm({
     }
   }, [dayCount, form, maximumDayCount]);
   useReservationSelectionUrl(
+    officeSelectionLink,
     startsOn && Predicate.isNumber(dayCount) && dayCount <= maximumDayCount
-      ? getOfficeReservationSelectionSearchParams({ startsOn, dayCount, seats })
+      ? { startsOn, dayCount, seats }
       : undefined
   );
   const unavailable = Boolean(
@@ -259,15 +260,12 @@ export function OfficeReservationForm({
         locale
       )}
       selection={{
-        kind: "office",
-        fromSearchParams: (searchParams) => {
-          const { startsOn, dayCount, seats } =
-            getOfficeReservationDefaultValuesFromSearchParams(searchParams, {
-              seatCapacity,
-              today,
-            });
-          return { startsOn, dayCount, seats };
-        },
+        kind: officeSelectionLink.kind,
+        fromSearchParams: (searchParams) =>
+          officeSelectionLink.readSelection(searchParams, {
+            seatCapacity,
+            today,
+          }),
       }}
     >
       <fieldset className="flex flex-col gap-y-2">

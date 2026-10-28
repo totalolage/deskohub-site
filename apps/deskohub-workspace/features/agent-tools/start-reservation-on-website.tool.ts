@@ -50,11 +50,10 @@ export const startReservationOnWebsiteTool = defineAgentTool({
       Effect.let("locale", ({ input }) => getAgentToolLocale(input)),
       Effect.bind("now", () => currentInstant),
       Effect.bind("selection", resolveQuoteSelection),
-      Effect.bind("reservationUrl", ({ input, selection }) =>
-        getShareableReservationUrl(
-          input.family,
-          selection.reservationSearchParams
-        ).pipe(Effect.mapError(AgentToolError.unavailable("quote_unavailable")))
+      Effect.bind("reservationUrl", ({ selection }) =>
+        getShareableReservationUrl(selection.reservationSelection).pipe(
+          Effect.mapError(AgentToolError.unavailable("quote_unavailable"))
+        )
       ),
       Effect.map(({ input, locale, reservationUrl }) => ({
         family: input.family,
