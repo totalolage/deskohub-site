@@ -3,15 +3,15 @@ import {
   isMeetingRoomWholeDayReservationDuration,
 } from "@/features/reservation/meeting-room-reservation-duration";
 import {
+  prepareCoworkAdvertisedPrice,
+  toCoworkAdvertisedPriceSelection,
+} from "./checkout/cowork-advertised-price";
+import {
   getOfficeDayCount,
   isPrefilledReservation,
   type PrefilledReservationOptions,
   toPrefilledReservation,
 } from "./checkout/prefilled-reservation";
-import {
-  prepareCoworkAdvertisedPrice,
-  toCoworkAdvertisedPriceSelection,
-} from "./checkout/cowork-advertised-price";
 import { workspaceE2ETimeouts } from "./timeouts";
 import type { CheckoutData } from "./types";
 

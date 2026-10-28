@@ -21,8 +21,8 @@ export type BrowserStepDriver = {
   readonly session: E2EBrowserSession;
 };
 
-export const browserStepCaseId = "browser-step";
-export const browserStepId = "drive-browser-step";
+const browserStepCaseId = "browser-step";
+const browserStepId = "drive-browser-step";
 
 /**
  * Runs `drive` as the one step of a C03 case over a fresh argv runner on

@@ -1578,12 +1578,11 @@ const submitCheckoutPaymentAndWaitForPricingChanged = (
   run: Runner,
   session: string
 ) =>
-  Effect.gen(function* () {
-    // The payment and its argv tab id stay argv until stage 5.
-    const checkoutTabId = yield* submitCheckoutPayment(run, session);
-    yield* switchToBrowserTab(run, session, checkoutTabId);
-    yield* waitForPricingChanged(
-      config,
-      yield* browserSessionFor(run, session)
-    );
-  });
+  // The payment and its argv tab id stay argv until stage 5.
+  submitCheckoutPayment(run, session).pipe(
+    Effect.flatMap((checkoutTabId) =>
+      switchToBrowserTab(run, session, checkoutTabId)
+    ),
+    Effect.andThen(browserSessionFor(run, session)),
+    Effect.flatMap((browser) => waitForPricingChanged(config, browser))
+  );

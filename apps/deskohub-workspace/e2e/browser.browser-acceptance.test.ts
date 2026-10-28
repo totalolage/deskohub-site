@@ -37,11 +37,7 @@ import {
 import { isWorkspaceE2ETimeout, type WorkspaceE2EError } from "./errors";
 import { pollUntil } from "./polling";
 import { addRedaction } from "./redaction";
-import {
-  browserSessionFor,
-  makePlaywrightBrowserRunner,
-  type Runner,
-} from "./runtime";
+import { browserSessionFor, makePlaywrightBrowserRunner } from "./runtime";
 import { argvCommandTimeoutMs } from "./timeouts";
 
 const chromiumAvailable = await playwrightChromiumAvailable();
