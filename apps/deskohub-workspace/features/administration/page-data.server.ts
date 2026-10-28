@@ -1,6 +1,6 @@
 import "server-only";
 
-import { Effect, Layer, Predicate } from "effect";
+import { Effect, Layer, Option, Schema } from "effect";
 import { cache } from "react";
 import type { CurrentAdministrator } from "@/features/administrators/backend/current-administrator";
 import {
@@ -8,7 +8,10 @@ import {
   runAdministrationPage,
 } from "@/features/administrators/server/administration-request.server";
 import type { Locale } from "@/features/i18n";
-import type { SearchParamsRecord } from "@/shared/utils/search-params";
+import {
+  getSearchParamsDecoder,
+  type SearchParamsRecord,
+} from "@/shared/utils/search-params";
 import {
   type AdministrationReservationListInput,
   AdministrationService,
@@ -17,6 +20,7 @@ import {
 import { bookingListQuery } from "./booking-list-query";
 import { customerListQuery } from "./customer-list-query";
 import { formatAdministrationDateTime } from "./formatters";
+import { listPageParam } from "./list-query";
 import { operationListQuery } from "./operation-list-query";
 import { orderListQuery } from "./order-list-query";
 import { reservationListQuery } from "./reservation-list-query";
@@ -31,13 +35,9 @@ import {
 
 export type AdministrationSearchParams = Promise<SearchParamsRecord>;
 
-const firstParam = (value: string | readonly string[] | undefined) =>
-  Predicate.isString(value) ? value : value?.[0];
-
-const parsePage = (value: string | undefined) => {
-  const page = Number(value);
-  return Number.isSafeInteger(page) && page > 0 ? page : 1;
-};
+const decodeCustomerReservationsPage = getSearchParamsDecoder(
+  Schema.Struct({ reservationsPage: listPageParam })
+);
 
 /** Runs an administration page query against the administration service. */
 const runAdministration = <A, E>(
@@ -251,7 +251,9 @@ export const loadAdministrationCustomerReservations = (
       const administration = yield* AdministrationService;
       return yield* administration.loadCustomerReservations({
         customerId: decodedCustomerId,
-        page: parsePage(firstParam(params.reservationsPage)),
+        // The page falls back to the first, so decoding never fails.
+        page: Option.getOrThrow(decodeCustomerReservationsPage(params))
+          .reservationsPage,
       });
     })
   );

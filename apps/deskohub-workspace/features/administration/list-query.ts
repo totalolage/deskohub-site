@@ -80,7 +80,7 @@ type AdministrationListQueryDefinition<Params, Query> = {
  * filter shortcuts and export all go through it, so every view of the list
  * keeps the operator's filters and order.
  */
-export type AdministrationListQuery<Query> = {
+type AdministrationListQuery<Query> = {
   /** Reads the list's query from a page's or route's search params. */
   readonly parse: (searchParams: SearchParamsRecord) => Query;
   /** The list showing `query`, on its first page unless `page` says otherwise. */
@@ -99,7 +99,7 @@ export type AdministrationListQuery<Query> = {
 };
 
 /** The CSV export of a list, which reads the list's query without the page. */
-export type AdministrationListExport<Query> = {
+type AdministrationListExport<Query> = {
   readonly exportHref: (query: Query) => AdministrationHref;
   readonly parseExport: (
     searchParams: SearchParamsRecord

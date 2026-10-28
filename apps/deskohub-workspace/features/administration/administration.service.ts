@@ -228,7 +228,7 @@ export type AdministrationCustomerExportInput = Omit<
   "page"
 >;
 
-export type AdministrationCustomerSort = "reservations" | "activity";
+type AdministrationCustomerSort = "reservations" | "activity";
 
 export type AdministrationBookingListInput = {
   readonly date: string;
@@ -237,7 +237,7 @@ export type AdministrationBookingListInput = {
   readonly sort?: AdministrationBookingSort;
 };
 
-export type AdministrationBookingSort = "booking" | "status";
+type AdministrationBookingSort = "booking" | "status";
 
 type AdministrationCustomer = {
   readonly id: DotyposCustomerId;
