@@ -58,7 +58,12 @@ const toReply = (
  */
 const initializeCodec = Effect.promise(() =>
   initializeImageMagick(
-    new URL("@imagemagick/magick-wasm/magick.wasm", import.meta.url)
+    // Turbopack resolves the asset to a URL relative to the site, which
+    // ImageMagick's loader refuses: it fetches only absolute http(s) URLs.
+    new URL(
+      new URL("@imagemagick/magick-wasm/magick.wasm", import.meta.url).href,
+      self.location.href
+    )
   )
 );
 
