@@ -1,5 +1,4 @@
 import { mkdir, rename, writeFile } from "node:fs/promises";
-import { devNull } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Browser, Frame, Page } from "@playwright/test";
@@ -11,6 +10,7 @@ import {
   toWorkspaceE2EError,
   type WorkspaceE2EError,
   workspaceE2EError,
+  workspaceE2ETimeoutError,
 } from "./errors";
 import { redact } from "./redaction";
 
@@ -86,6 +86,18 @@ type ArgvPageState = {
   readonly pageIds: Map<Page, string>;
 };
 
+type ArgvRunnerOptions = {
+  /** Exchanges the preview bypass secret; see `E2EBrowserSession.open`. */
+  readonly fetch?: typeof fetch;
+  readonly recordHar?: boolean;
+  /**
+   * The caller's Scope, which then owns every session: closing it closes
+   * them, a session whose opening outlives it closes as soon as it opens, and
+   * `close` still closes them early.
+   */
+  readonly scope?: Scope.Scope;
+};
+
 /**
  * The argv browser protocol over `E2EBrowserSession`, kept until every
  * caller drives the session directly. Each `--session` id lazily opens one
@@ -93,11 +105,7 @@ type ArgvPageState = {
  */
 export const makePlaywrightBrowserRunner = (
   browser: Browser,
-  options: {
-    /** Exchanges the preview bypass secret; see `E2EBrowserSession.open`. */
-    readonly fetch?: typeof fetch;
-    readonly recordHar?: boolean;
-  } = {}
+  options: ArgvRunnerOptions = {}
 ): Runner => {
   const sessions = new Map<string, Promise<ArgvSession>>();
   const getSession = (id: string) => {
@@ -176,15 +184,14 @@ export const makePlaywrightBrowserRunner = (
 const openArgvSession = (
   browser: Browser,
   id: string,
-  options: {
-    readonly fetch?: typeof fetch;
-    readonly recordHar?: boolean;
-  }
+  options: ArgvRunnerOptions
 ): Promise<ArgvSession> =>
   runUntracedE2EEffect(
     Effect.gen(function* () {
       const pageState: ArgvPageState = { pageIds: new Map() };
-      const scope = yield* Scope.make();
+      const scope = yield* options.scope
+        ? Scope.fork(options.scope)
+        : Scope.make();
       const browserSession = yield* E2EBrowserSession.open({
         browser,
         fetch: options.fetch,
@@ -399,46 +406,32 @@ const runCommand = (
         return "";
       });
     }
-    case "console":
-      return commandArgs[0] === "--clear"
-        ? browserSession.clearDiagnostics("console").pipe(asDone)
-        : browserSession.diagnostics.pipe(
-            Effect.map(({ console }) => console.join("\n"))
-          );
-    case "errors":
-      return commandArgs[0] === "--clear"
-        ? browserSession.clearDiagnostics("errors").pipe(asDone)
-        : browserSession.diagnostics.pipe(
-            Effect.map(({ errors }) => errors.join("\n\n"))
-          );
     case "network":
-      if (commandArgs[0] === "requests")
-        return commandArgs[1] === "--clear"
-          ? browserSession.clearDiagnostics("requests").pipe(asDone)
-          : browserSession.diagnostics.pipe(
-              Effect.map(({ requests }) => requests.join("\n"))
-            );
-      // The session records its HAR from the start; the argv start command
-      // stays a no-op.
-      if (commandArgs[0] === "har" && commandArgs[1] === "start")
-        return Effect.succeed("");
-      if (commandArgs[0] === "har" && commandArgs[1] === "stop") {
-        const destination = commandArgs[2];
-        return browserSession
-          .close(
-            destination && destination !== devNull
-              ? { harPath: destination }
-              : {}
-          )
-          .pipe(Effect.mapError(toArgvFailure), asDone);
-      }
+      if (commandArgs[0] === "requests" && commandArgs.length === 1)
+        return browserSession.diagnostics.pipe(
+          Effect.map(({ requests }) => requests.join("\n"))
+        );
       throw new Error(
         `Unsupported Playwright network operation: ${commandArgs.join(" ")}`
       );
     case "close":
-      return browserSession
-        .close()
-        .pipe(Effect.mapError(toArgvFailure), asDone);
+      // The close runs on detached, so a timeout stops only this wait.
+      return browserSession.close().pipe(
+        Effect.timeoutOrElse({
+          duration: `${timeoutMs} millis`,
+          orElse: () =>
+            Effect.fail(
+              workspaceE2ETimeoutError(
+                `close: Timeout ${timeoutMs}ms exceeded.`,
+                {
+                  operation: "close",
+                }
+              )
+            ),
+        }),
+        Effect.mapError(toArgvFailure),
+        asDone
+      );
     default:
       throw new Error(
         `Unsupported Playwright browser operation: ${json ? "--json " : ""}${command} ${commandArgs.join(" ")}`.trim()

@@ -1,13 +1,6 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { resolve } from "node:path";
 import { Effect } from "effect";
 import { browserDiagnosticsScript, browserTextScript } from "./browser-scripts";
-import {
-  isPlaywrightTimeout,
-  sanitizeArtifactText,
-  sanitizeHarArtifact,
-} from "./browser-session";
+import { type E2EBrowserSession, isPlaywrightTimeout } from "./browser-session";
 import type { WorkspaceE2EConfig } from "./config";
 import {
   toWorkspaceE2EError,
@@ -18,7 +11,7 @@ import {
 } from "./errors";
 import { pollUntil } from "./polling";
 import type { Runner } from "./runtime";
-import { log, redact, redactDiagnosticText } from "./runtime";
+import { log, redactDiagnosticText } from "./runtime";
 import { workspaceE2EPollIntervalMs } from "./timeouts";
 
 // Playwright reports an exhausted command budget as its TimeoutError; classify
@@ -565,197 +558,6 @@ export const waitForBrowserText = ({
     }
   );
 
-export const startBrowserDiagnostics = (
-  run: Runner,
-  session: string
-): Effect.Effect<boolean, WorkspaceE2EError> =>
-  Effect.gen(function* () {
-    const commands = [
-      ["console", "--clear"],
-      ["errors", "--clear"],
-      ["network", "requests", "--clear"],
-    ];
-
-    yield* Effect.forEach(
-      commands,
-      (args) =>
-        runBrowserCommand(
-          `clear browser ${args.join(" ")}`,
-          run,
-          session,
-          args,
-          {
-            allowFailure: true,
-            logOutput: false,
-            timeoutMs: 30_000,
-          }
-        ),
-      { concurrency: "unbounded", discard: true }
-    );
-
-    const result = yield* runBrowserCommand(
-      "start browser HAR",
-      run,
-      session,
-      ["network", "har", "start"],
-      { allowFailure: true, logOutput: false, timeoutMs: 30_000 }
-    );
-
-    if (result.exitCode !== 0) {
-      log("Browser HAR capture unavailable; continuing workspace e2e");
-      return false;
-    }
-
-    return true;
-  });
-
-export const captureBrowserFailureArtifacts = ({
-  artifactDir,
-  cause,
-  harStarted,
-  run,
-  session,
-}: {
-  artifactDir: string;
-  cause: unknown;
-  harStarted: boolean;
-  run: Runner;
-  session: string;
-}): Effect.Effect<boolean, WorkspaceE2EError> =>
-  Effect.gen(function* () {
-    let harStopped = false;
-
-    yield* tryWorkspaceE2EPromise("create browser artifact directory", () =>
-      mkdir(artifactDir, { recursive: true })
-    );
-    // A failed or interrupted step can leave the session inside an iframe;
-    // diagnostics describe the page the user sees.
-    yield* switchToMainFrame(run, session);
-    yield* writeTextArtifact(
-      artifactDir,
-      "error.txt",
-      cause instanceof Error ? (cause.stack ?? cause.message) : String(cause)
-    );
-    yield* writeTextArtifact(
-      artifactDir,
-      "browser-diagnostics.txt",
-      yield* readBrowserDiagnostics(run, session)
-    );
-    yield* writeCommandArtifact(artifactDir, "network-requests.txt", run, [
-      "--session",
-      session,
-      "network",
-      "requests",
-    ]);
-    yield* writeCommandArtifact(artifactDir, "console.txt", run, [
-      "--session",
-      session,
-      "console",
-    ]);
-    yield* writeCommandArtifact(artifactDir, "errors.txt", run, [
-      "--session",
-      session,
-      "errors",
-    ]);
-    yield* writeTextArtifact(
-      artifactDir,
-      "snapshot-interactive.txt",
-      yield* readInteractiveSnapshot(run, session, true)
-    );
-
-    if (harStarted) {
-      const rawHarPath = resolve(tmpdir(), `${session}-network.har`);
-      harStopped = yield* stopBrowserHar(run, session, rawHarPath);
-      yield* Effect.gen(function* () {
-        if (!harStopped) return;
-        const har = yield* tryWorkspaceE2EPromise(
-          "read browser HAR artifact",
-          () => readFile(rawHarPath, "utf8")
-        );
-        yield* writeSanitizedHarArtifact(artifactDir, sanitizeHarArtifact(har));
-      }).pipe(
-        Effect.ensuring(
-          tryWorkspaceE2EPromise("remove raw browser HAR artifact", () =>
-            rm(rawHarPath, { force: true })
-          ).pipe(Effect.ignore)
-        )
-      );
-    }
-
-    log(`Workspace e2e failure artifacts saved to ${artifactDir}`);
-    return harStopped;
-  }).pipe(
-    Effect.catch((error) =>
-      Effect.sync(() => {
-        log(
-          `Workspace e2e failure artifact capture failed: ${redact(String(error))}`
-        );
-        return false;
-      })
-    )
-  );
-
-export const stopBrowserHar = (
-  run: Runner,
-  session: string,
-  path?: string
-): Effect.Effect<boolean, WorkspaceE2EError> =>
-  runBrowserCommand(
-    "stop browser HAR",
-    run,
-    session,
-    ["network", "har", "stop", ...(path ? [path] : [])],
-    { allowFailure: true, logOutput: false, timeoutMs: 60_000 }
-  ).pipe(Effect.map((result) => result.exitCode === 0));
-
-const writeCommandArtifact = (
-  artifactDir: string,
-  fileName: string,
-  run: Runner,
-  args: string[]
-): Effect.Effect<void, WorkspaceE2EError> =>
-  Effect.gen(function* () {
-    const result = yield* tryWorkspaceE2EPromise(
-      `write ${fileName} artifact`,
-      (signal) =>
-        run("playwright", args, {
-          allowFailure: true,
-          logOutput: false,
-          signal,
-          timeoutMs: 60_000,
-        })
-    );
-    const text = [
-      `exitCode: ${result.exitCode}`,
-      result.stdout ? `stdout:\n${result.stdout}` : undefined,
-      result.stderr ? `stderr:\n${result.stderr}` : undefined,
-    ]
-      .filter(Boolean)
-      .join("\n\n");
-
-    yield* writeTextArtifact(artifactDir, fileName, text);
-  });
-
-const writeTextArtifact = (
-  artifactDir: string,
-  fileName: string,
-  text: string
-): Effect.Effect<void, WorkspaceE2EError> =>
-  tryWorkspaceE2EPromise(`write ${fileName} artifact`, () =>
-    writeFile(
-      resolve(artifactDir, fileName),
-      `${sanitizeArtifactText(text.trim())}\n`
-    )
-  );
-
-const writeSanitizedHarArtifact = (
-  artifactDir: string,
-  text: string
-): Effect.Effect<void, WorkspaceE2EError> =>
-  tryWorkspaceE2EPromise("write network.har artifact", () =>
-    writeFile(resolve(artifactDir, "network.har"), `${text.trim()}\n`)
-  );
-
 // Best-effort switch for cleanup and diagnostics; a failed switch is ignored.
 export const switchToMainFrame = (
   run: Runner,
@@ -1017,7 +819,31 @@ const readBrowserDiagnostics = (
   ).pipe(
     Effect.map((result) =>
       result.exitCode === 0
-        ? `Browser diagnostics:\n${result.stdout}`
-        : "Browser diagnostics unavailable"
+        ? formatBrowserDiagnostics(result.stdout)
+        : unavailableBrowserDiagnostics
     )
   );
+
+/**
+ * The checkout page summary for a failure artifact: URL, title, alerts, and
+ * the reservation action's state. It has no deadline of its own; the caller
+ * bounds it.
+ */
+export const readBrowserPageDiagnostics = (
+  session: E2EBrowserSession
+): Effect.Effect<string> =>
+  session
+    .use("read browser diagnostics", (page) =>
+      page.evaluate(browserDiagnosticsScript)
+    )
+    .pipe(
+      Effect.map((summary) =>
+        formatBrowserDiagnostics(JSON.stringify(summary))
+      ),
+      Effect.orElseSucceed(() => unavailableBrowserDiagnostics)
+    );
+
+const formatBrowserDiagnostics = (summary: string) =>
+  `Browser diagnostics:\n${summary}`;
+
+const unavailableBrowserDiagnostics = "Browser diagnostics unavailable";
