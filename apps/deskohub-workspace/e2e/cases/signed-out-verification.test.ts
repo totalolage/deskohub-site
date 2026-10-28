@@ -51,6 +51,8 @@ test("plans the signed-out checkout on its own date and requires binding", async
   expect(flowStates.at(-1)).toBe(planned.checkoutStates[0]);
   const exit = await Effect.runPromiseExit(
     planned.execute({
+      // The unbound case fails before it could reach a browser.
+      run: undefined as never,
       runStep: (step) => step.execute,
       session: "session",
     }) as Effect.Effect<void, unknown>

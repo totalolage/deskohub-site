@@ -14,11 +14,7 @@ import {
 } from "../playwright-checkout/case-catalog";
 import type { WorkspaceE2ECaseBinder } from "../playwright-checkout/fixtures";
 import { bindCheckoutContact } from "../referrals/checkout";
-import type {
-  CheckoutFlowState,
-  WorkspaceE2ECase,
-  WorkspaceE2ECaseContext,
-} from "../types";
+import type { CheckoutFlowState, WorkspaceE2ECaseContext } from "../types";
 import { checkoutFlows } from "./data";
 
 /**

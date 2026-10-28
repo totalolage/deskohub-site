@@ -757,18 +757,18 @@ test.skipIf(!chromiumAvailable)(
   async () => {
     const id = `case-${randomUUID()}`;
     const scope = Scope.makeUnsafe("parallel");
-    const run = makePlaywrightBrowserRunner(realBrowser(), { scope });
+    const runner = makePlaywrightBrowserRunner(realBrowser(), { scope });
     const observations: E2ETelemetryObservation[] = [];
     const opened = Promise.withResolvers<BrowserContext>();
     const fiber = Effect.runFork(
       runWorkspaceE2ECase({
         artifactRoot,
         datasourceConfig: testDatasourceConfig,
-        run,
+        run: runner,
         sessionPrefix,
         testCase: {
           checkoutStates: [],
-          execute: ({ runStep, session }) =>
+          execute: ({ run, runStep, session }) =>
             runStep({
               execute: Effect.gen(function* () {
                 yield* openPage(run, session, `${origin()}/`);
