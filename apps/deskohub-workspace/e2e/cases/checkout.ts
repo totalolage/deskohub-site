@@ -11,24 +11,22 @@ import {
 import { isSingleDayReservationInterval } from "@/features/reservation/reservation-interval-domain";
 import { formatMoney } from "@/shared/money/money";
 import {
-  activateBrowserElement,
-  activateHydratedBrowserElement,
+  activateElement,
+  activateHydratedElement,
+  assertPageCheck,
   closeBrowserTab,
-  evalBrowserScript,
   normalizeBrowserText,
   openBrowserPage,
+  openPage,
   readBrowserNetworkLog,
   switchToBrowserTab,
-  waitForBrowserCondition,
-  waitForBrowserReactHandler,
-  waitForBrowserText,
   waitForBrowserUrl,
+  waitForPageCondition,
+  waitForPageText,
+  waitForPageUrl,
+  waitForReactHandler,
 } from "../browser";
-import {
-  assertFulfilledStatusScript,
-  getAssertFulfillmentFailedSupportScript,
-  getAssertRepeatReservationScript,
-} from "../browser-scripts";
+import type { E2EBrowserSession } from "../browser-session";
 import type { WorkspaceE2EStep, WorkspaceE2EStepRunner } from "../case-runner";
 import {
   formatNexiBuildFailureCodes,
@@ -49,6 +47,10 @@ import {
   submitPaymentAndWaitForHostedPage,
   submitReservationForPayPage,
 } from "../checkout/payment";
+import {
+  findRepeatReservationProblem,
+  toRepeatReservation,
+} from "../checkout/repeat-reservation";
 import { matchesExpectedReservationDetails } from "../checkout/reservation-details";
 import { reservationStatusIsolationStep } from "../checkout/reservation-status-isolation";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
@@ -71,7 +73,7 @@ import {
   validateDotypos,
 } from "../integrations/dotypos";
 import type { Runner } from "../runtime";
-import { assert, log, parseUrl } from "../runtime";
+import { assert, browserSessionFor, log, parseUrl } from "../runtime";
 import type {
   CheckoutData,
   CheckoutFlow,
@@ -135,9 +137,12 @@ export const executeCheckoutFlow = ({
         ? yield* flow.startReservation
         : yield* runStep({
             execute: Effect.gen(function* () {
-              yield* openBrowserPage(config, run, session, data.checkoutUrl, {
-                timeoutMs: config.timeouts.browserNavigation,
-              });
+              yield* openPage(
+                yield* browserSessionFor(run, session),
+                config,
+                data.checkoutUrl,
+                { timeoutMs: config.timeouts.browserNavigation }
+              );
               if (beforeReservationSubmit) yield* beforeReservationSubmit;
               return yield* submitReservationForPayPage({
                 onOrderId: (startedOrderId) => {
@@ -535,44 +540,51 @@ const restartReservationAfterFulfillment = ({
       }
     );
 
-    yield* activateBrowserElement(
-      run,
-      session,
-      "#checkout-status-reserve-again",
-      { timeoutMs: config.timeouts.browserAction }
-    );
-    yield* waitForBrowserReactHandler(run, session, "form", "onSubmit", {
+    const browser = yield* browserSessionFor(run, session);
+    yield* activateElement(browser, "#checkout-status-reserve-again", {
+      timeoutMs: config.timeouts.browserAction,
+    });
+    yield* waitForReactHandler(browser, "form", "onSubmit", {
       timeoutMs: config.timeouts.uiTransition,
     });
-
-    const reservationPathLiteral = JSON.stringify(reservationPath);
-    yield* waitForBrowserCondition(
-      run,
-      session,
+    yield* waitForPageCondition(
+      browser,
       "fresh reservation form remains active",
-      `(() => {
-        const root = document.documentElement;
-        if (location.pathname !== ${reservationPathLiteral}) {
-          delete root.dataset.checkoutRestartReadyAt;
-          return false;
-        }
-        const readyAt = Number(root.dataset.checkoutRestartReadyAt);
-        if (!Number.isFinite(readyAt) || readyAt <= 0) {
-          root.dataset.checkoutRestartReadyAt = String(Date.now());
-          return false;
-        }
-        return Date.now() - readyAt >= 1000;
-      })()`,
+      isFreshReservationFormSettled,
+      { reservationPath },
       { timeoutMs: config.timeouts.uiTransition }
     );
-    yield* evalBrowserScript(
+    yield* assertPageCheck(
+      browser,
       "assert repeat reservation defaults",
-      run,
-      session,
-      getAssertRepeatReservationScript(data),
-      { logOutput: false, timeoutMs: config.timeouts.browserAction }
+      findRepeatReservationProblem,
+      toRepeatReservation(data),
+      { timeoutMs: config.timeouts.browserAction }
     );
   });
+
+/**
+ * Runs in the browser: whether the page has stayed on the fresh reservation
+ * form at `reservationPath` for a second. It records when it first saw the
+ * form on the document element and forgets it once the page leaves.
+ */
+export const isFreshReservationFormSettled = ({
+  reservationPath,
+}: {
+  readonly reservationPath: string;
+}) => {
+  const root = document.documentElement;
+  if (location.pathname !== reservationPath) {
+    delete root.dataset.checkoutRestartReadyAt;
+    return false;
+  }
+  const readyAt = Number(root.dataset.checkoutRestartReadyAt);
+  if (!Number.isFinite(readyAt) || readyAt <= 0) {
+    root.dataset.checkoutRestartReadyAt = String(Date.now());
+    return false;
+  }
+  return Date.now() - readyAt >= 1000;
+};
 
 export const assertFulfilledStatusPage = ({
   checkoutRow,
@@ -617,7 +629,8 @@ export const assertFulfilledStatusPage = ({
     // status route. Keep that page alive so its real auto-refresh observes the
     // fulfillment transition instead of starting another streamed RSC request
     // for every paid case.
-    yield* waitForBrowserUrl({
+    const browser = yield* browserSessionFor(run, session);
+    yield* waitForPageUrl({
       description: "fulfilled checkout status page",
       matches: (url) => {
         const parsed = parseUrl(url);
@@ -627,8 +640,7 @@ export const assertFulfilledStatusPage = ({
             parsed.pathname.endsWith(`/reservation/status/${orderId}`)
         );
       },
-      run,
-      session,
+      session: browser,
       timeoutMs: config.timeouts.uiTransition,
     });
     const expectedReservationText = yield* tryWorkspaceE2ESync(
@@ -667,7 +679,7 @@ export const assertFulfilledStatusPage = ({
         ];
       }
     );
-    yield* waitForBrowserText({
+    yield* waitForPageText({
       description: "fulfilled checkout status copy",
       matches: (text) => {
         const normalizedText = normalizeBrowserText(text).toLocaleLowerCase(
@@ -684,21 +696,40 @@ export const assertFulfilledStatusPage = ({
           )
         );
       },
-      run,
-      session,
+      session: browser,
       timeoutMs: config.timeouts.uiTransition,
     });
-    yield* evalBrowserScript(
+    yield* assertPageCheck(
+      browser,
       "assert fulfilled checkout status page",
-      run,
-      session,
-      assertFulfilledStatusScript,
-      {
-        timeoutMs: config.timeouts.browserAction,
-      }
+      findFulfilledStatusPageProblem,
+      undefined,
+      { timeoutMs: config.timeouts.browserAction }
     );
     log("Checkout status page validated");
   });
+
+/**
+ * Runs in the browser: why the page is not the canonical fulfilled checkout
+ * status page, or `null` when it is. It must not close over anything.
+ */
+export const findFulfilledStatusPageProblem = (): string | null => {
+  if (document.querySelector("[data-reservation-access]")) {
+    return "reservation access rendered on checkout status page";
+  }
+  // Only account-origin navigation may intercept the status route. A checkout
+  // status rendered in a dialog means the reservation modal slot leaked.
+  for (const dialog of document.querySelectorAll('[role="dialog"]')) {
+    if (/Your reservation is confirmed\./i.test(dialog.textContent ?? "")) {
+      return "checkout status rendered in a reservation dialog";
+    }
+  }
+  const text = document.body?.textContent ?? "";
+  return /Your reservation is confirmed\./i.test(text) &&
+    /emailed you the secure access link/i.test(text)
+    ? null
+    : "fulfilled checkout status copy not visible";
+};
 
 type WholeDayEmailCheckoutRow = Pick<
   CheckoutRow,
@@ -851,6 +882,11 @@ const assertFulfillmentFailedSupportPath = ({
   session: string;
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
+    // Each step reaches the browser itself, so a browser that fails to open
+    // stays attributed to the step that needed it.
+    const inBrowser = <A>(
+      drive: (browser: E2EBrowserSession) => Effect.Effect<A, WorkspaceE2EError>
+    ) => Effect.flatMap(browserSessionFor(run, session), drive);
     yield* runStep({
       execute: markFulfillmentFailedForE2E(orderId),
       id: "mark-fulfillment-failed-for-support-path",
@@ -865,66 +901,100 @@ const assertFulfillmentFailedSupportPath = ({
         yield* setSearchParams(statusUrl, {
           e2eAt: String(Date.now()),
         });
-        yield* openBrowserPage(config, run, session, statusUrl.toString(), {
-          timeoutMs: config.timeouts.browserNavigation,
-        });
+        yield* inBrowser((browser) =>
+          openPage(browser, config, statusUrl.toString(), {
+            timeoutMs: config.timeouts.browserNavigation,
+          })
+        );
       }),
       id: "open-fulfillment-failed-status-page",
       timeoutMs: config.timeouts.browserNavigation,
     });
     yield* runStep({
-      execute: waitForBrowserText({
-        description: "fulfillment failed support link",
-        matches: (text) =>
-          /couldn't deliver your confirmation/i.test(text) &&
-          /Send support request/i.test(text),
-        run,
-        session,
-        timeoutMs: config.timeouts.uiTransition,
-      }),
+      execute: inBrowser((browser) =>
+        waitForPageText({
+          description: "fulfillment failed support link",
+          matches: (text) =>
+            /couldn't deliver your confirmation/i.test(text) &&
+            /Send support request/i.test(text),
+          session: browser,
+          timeoutMs: config.timeouts.uiTransition,
+        })
+      ),
       id: "wait-for-fulfillment-support-link",
       timeoutMs: config.timeouts.uiTransition,
     });
     yield* runStep({
-      execute: evalBrowserScript(
-        "assert fulfillment failed support link",
-        run,
-        session,
-        getAssertFulfillmentFailedSupportScript(data, orderId),
-        {
-          logOutput: false,
-          timeoutMs: config.timeouts.browserAction,
-        }
+      execute: inBrowser((browser) =>
+        assertPageCheck(
+          browser,
+          "assert fulfillment failed support link",
+          findFulfillmentSupportLinkProblem,
+          { locale: data.locale, orderId },
+          { timeoutMs: config.timeouts.browserAction }
+        )
       ),
       id: "assert-fulfillment-support-link",
       timeoutMs: config.timeouts.browserAction,
     });
     yield* runStep({
-      execute: activateHydratedBrowserElement(
-        run,
-        session,
-        "#checkout-status-support-contact",
-        { timeoutMs: config.timeouts.browserAction }
+      execute: inBrowser((browser) =>
+        activateHydratedElement(browser, "#checkout-status-support-contact", {
+          timeoutMs: config.timeouts.browserAction,
+        })
       ),
       id: "activate-fulfillment-support-link",
       timeoutMs: config.timeouts.browserAction,
     });
     yield* runStep({
-      execute: waitForBrowserUrl({
-        description: "fulfillment failed support contact page",
-        matches: (url) => {
-          const parsed = parseUrl(url);
-          return (
-            parsed?.pathname === `/${data.locale}/contact` &&
-            (parsed.searchParams.get("message") ?? "").includes(orderId)
-          );
-        },
-        run,
-        session,
-        timeoutMs: config.timeouts.uiTransition,
-      }),
+      execute: inBrowser((browser) =>
+        waitForPageUrl({
+          description: "fulfillment failed support contact page",
+          matches: (url) => {
+            const parsed = parseUrl(url);
+            return (
+              parsed?.pathname === `/${data.locale}/contact` &&
+              (parsed.searchParams.get("message") ?? "").includes(orderId)
+            );
+          },
+          session: browser,
+          timeoutMs: config.timeouts.uiTransition,
+        })
+      ),
       id: "reach-fulfillment-support-contact-page",
       timeoutMs: config.timeouts.uiTransition,
     });
     log("Fulfillment failed support path e2e passed");
   });
+
+/**
+ * Runs in the browser: why the fulfillment-failed status page does not offer
+ * a support request for `orderId` on the locale's contact page, or `null`
+ * when it does. It must not close over anything.
+ */
+export const findFulfillmentSupportLinkProblem = ({
+  locale,
+  orderId,
+}: {
+  readonly locale: string;
+  readonly orderId: string;
+}): string | null => {
+  const text = document.body?.textContent ?? "";
+  if (!/couldn't deliver your confirmation/i.test(text)) {
+    return "fulfillment failed status copy not visible";
+  }
+  const link = [...document.querySelectorAll("a")].find((candidate) =>
+    /Send support request/i.test(candidate.textContent ?? "")
+  );
+  if (!(link instanceof HTMLAnchorElement)) {
+    return "support contact link not found";
+  }
+  const url = new URL(link.href);
+  if (url.pathname !== `/${locale}/contact`) {
+    return "support contact link points at unexpected path";
+  }
+  if (!(url.searchParams.get("message") ?? "").includes(orderId)) {
+    return "support contact message missing order id";
+  }
+  return null;
+};

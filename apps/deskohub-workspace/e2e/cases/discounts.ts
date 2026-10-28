@@ -6,23 +6,26 @@ import type { DiscountCodeId } from "@/features/discounts/persistence-contracts"
 import { discountCodeQueryParam } from "@/features/discounts/promotion-code";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
 import {
-  evalBrowserScript,
-  focusBrowserElement,
-  openBrowserPage,
-  readBrowserUrl,
-  scrollBrowserElementIntoView,
+  assertPageCheck,
+  openPage,
+  readPageUrl,
+  scrollIntoView,
   switchToBrowserTab,
-  waitForBrowserCondition,
-  waitForBrowserReactHandler,
-  waitForBrowserTextContent,
+  waitForPageCondition,
+  waitForPageTextContent,
+  waitForReactHandler,
 } from "../browser";
 import {
-  getPrepareCoworkAdvertisedPriceScript,
   getSubmitCoworkReservationScript,
   submitPreparedCoworkReservationScript,
 } from "../browser-scripts";
+import type { E2EBrowserSession } from "../browser-session";
 import { workspaceE2EMaximumSameDateCoworkReservations } from "../capacity";
 import type { WorkspaceE2EStep, WorkspaceE2EStepRunner } from "../case-runner";
+import {
+  prepareCoworkAdvertisedPrice,
+  toCoworkAdvertisedPriceSelection,
+} from "../checkout/cowork-advertised-price";
 import {
   loadAvailableCoworkDates,
   makeCoworkCheckoutData,
@@ -46,6 +49,7 @@ import {
   toWorkspaceE2EError,
   tryWorkspaceE2ESync,
   type WorkspaceE2EError,
+  withoutWorkspaceE2ETimeout,
 } from "../errors";
 import {
   assertNoDiscountPaymentState,
@@ -66,7 +70,7 @@ import {
 } from "../integrations/dotypos";
 import { pollUntil } from "../polling";
 import type { Runner } from "../runtime";
-import { addRedaction, assert, log } from "../runtime";
+import { addRedaction, assert, browserSessionFor, log } from "../runtime";
 import { workspaceE2EPollIntervalMs } from "../timeouts";
 import type {
   CheckoutData,
@@ -651,7 +655,12 @@ export const makeDiscountE2ECases = ({
 const calendarSaleAdvertisementStepTimeoutMs = (config: WorkspaceE2EConfig) =>
   config.timeouts.calendarSaleAdvertisement + config.timeouts.browserAction;
 
-const waitForAdvertisedCalendarSale = ({
+/**
+ * Loads the reservation form and prepares its selection until its discount
+ * details show the Calendar sale. Only an attempt whose discount
+ * check times out is retried; any other failure ends the wait.
+ */
+export const waitForAdvertisedCalendarSale = ({
   config,
   data,
   run,
@@ -664,16 +673,20 @@ const waitForAdvertisedCalendarSale = ({
 }): Effect.Effect<void, WorkspaceE2EError> =>
   pollUntil(
     Effect.gen(function* () {
-      yield* openBrowserPage(config, run, session, data.checkoutUrl, {
+      const browser = yield* browserSessionFor(run, session);
+      yield* openPage(browser, config, data.checkoutUrl, {
         timeoutMs: config.timeouts.browserNavigation,
       });
-      yield* evalBrowserScript(
-        "prepare advertised Calendar sale",
-        run,
-        session,
-        getPrepareCoworkAdvertisedPriceScript(data),
-        { timeoutMs: config.timeouts.checkoutStart }
-      );
+      // The in-page waits fail with plain errors, so an overrun of the
+      // evaluation stays a failure, as the argv evaluation's was.
+      yield* browser
+        .evaluate(
+          "prepare advertised Calendar sale",
+          prepareCoworkAdvertisedPrice,
+          toCoworkAdvertisedPriceSelection(data),
+          { timeoutMs: config.timeouts.checkoutStart }
+        )
+        .pipe(withoutWorkspaceE2ETimeout("prepare advertised Calendar sale"));
       return yield* assertDisplayedDiscounts({
         config,
         discounts: [calendarDiscountExpectation],
@@ -734,7 +747,8 @@ const executeCalendarSalePricingChanges = ({
         timeouts: config.timeouts,
       }).pipe(
         Effect.flatMap((orderId) =>
-          readBrowserUrl(run, session).pipe(
+          browserSessionFor(run, session).pipe(
+            Effect.flatMap(readPageUrl),
             Effect.flatMap((url) =>
               tryWorkspaceE2ESync("read Calendar pay page URL", () => {
                 assert(url, "Calendar pay page URL missing");
@@ -785,7 +799,13 @@ const executeCalendarSalePricingChanges = ({
         session,
         submitReservationScript: submitPreparedCoworkReservationScript,
         timeouts: config.timeouts,
-      }).pipe(Effect.tap(() => waitForPricingChanged(config, run, session))),
+      }).pipe(
+        Effect.tap(() =>
+          Effect.flatMap(browserSessionFor(run, session), (browser) =>
+            waitForPricingChanged(config, browser)
+          )
+        )
+      ),
       id: "assert-calendar-quote-pricing-change",
       timeoutMs: config.timeouts.checkoutStart,
     });
@@ -798,9 +818,12 @@ const executeCalendarSalePricingChanges = ({
     log(`Calendar quote-change e2e passed for order ${quoteChangeOrderId}`);
 
     yield* runStep({
-      execute: openBrowserPage(config, run, session, payPageUrl, {
-        timeoutMs: config.timeouts.browserNavigation,
-      }).pipe(
+      execute: browserSessionFor(run, session).pipe(
+        Effect.flatMap((browser) =>
+          openPage(browser, config, payPageUrl, {
+            timeoutMs: config.timeouts.browserNavigation,
+          })
+        ),
         Effect.andThen(
           assertDisplayedDiscounts({
             config,
@@ -865,9 +888,12 @@ const executeCustomerDiscountChangesBeforePayment = ({
     state.startedAt = new Date();
     const orderId = yield* runStep({
       execute: Effect.gen(function* () {
-        yield* openBrowserPage(config, run, session, data.checkoutUrl, {
-          timeoutMs: config.timeouts.browserNavigation,
-        });
+        yield* openPage(
+          yield* browserSessionFor(run, session),
+          config,
+          data.checkoutUrl,
+          { timeoutMs: config.timeouts.browserNavigation }
+        );
         return yield* submitReservationForPayPage({
           onOrderId: (startedOrderId) => {
             state.orderId = startedOrderId;
@@ -1273,9 +1299,12 @@ const executeUnavailableDiscountCode = ({
     state.startedAt = new Date();
     const orderId = yield* runStep({
       execute: Effect.gen(function* () {
-        yield* openBrowserPage(config, run, session, data.checkoutUrl, {
-          timeoutMs: config.timeouts.browserNavigation,
-        });
+        yield* openPage(
+          yield* browserSessionFor(run, session),
+          config,
+          data.checkoutUrl,
+          { timeoutMs: config.timeouts.browserNavigation }
+        );
         return yield* submitReservationForPayPage({
           onOrderId: (startedOrderId) => {
             state.orderId = startedOrderId;
@@ -1298,26 +1327,14 @@ const executeUnavailableDiscountCode = ({
         session,
       }).pipe(
         Effect.andThen(
-          evalBrowserScript(
-            "assert existing summary remains payable",
-            run,
-            session,
-            `
-(() => {
-  const consent = document.querySelector('#checkout-pay-legal-consent');
-  const payButton = [...document.querySelectorAll('button')].find((button) =>
-    /order and pay/i.test(button.textContent ?? '')
-  );
-  if (!(consent instanceof HTMLButtonElement) || consent.disabled) {
-    throw new Error('payment consent unavailable after code rejection');
-  }
-  if (!(payButton instanceof HTMLButtonElement)) {
-    throw new Error('payment action unavailable after code rejection');
-  }
-  return true;
-})()
-`,
-            { timeoutMs: config.timeouts.uiTransition }
+          Effect.flatMap(browserSessionFor(run, session), (browser) =>
+            assertPageCheck(
+              browser,
+              "assert existing summary remains payable",
+              findUnpayableSummaryProblem,
+              undefined,
+              { timeoutMs: config.timeouts.uiTransition }
+            )
           )
         )
       ),
@@ -1355,9 +1372,12 @@ const executeDiscountCodeExpiresBeforePayment = ({
     state.startedAt = new Date();
     const orderId = yield* runStep({
       execute: Effect.gen(function* () {
-        yield* openBrowserPage(config, run, session, data.checkoutUrl, {
-          timeoutMs: config.timeouts.browserNavigation,
-        });
+        yield* openPage(
+          yield* browserSessionFor(run, session),
+          config,
+          data.checkoutUrl,
+          { timeoutMs: config.timeouts.browserNavigation }
+        );
         return yield* submitReservationForPayPage({
           onOrderId: (startedOrderId) => {
             state.orderId = startedOrderId;
@@ -1443,43 +1463,90 @@ export const assertDisplayedDiscounts = ({
   readonly timeoutMs?: number;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const triggerSelector = "[data-checkout-discount-details]";
-    yield* waitForBrowserReactHandler(
-      run,
-      session,
-      triggerSelector,
-      "onFocus",
-      { timeoutMs }
+    const browser = yield* browserSessionFor(run, session);
+    yield* waitForReactHandler(browser, discountDetailsTrigger, "onFocus", {
+      timeoutMs,
+    });
+    yield* scrollIntoView(browser, discountDetailsTrigger, {
+      timeoutMs: config.timeouts.browserAction,
+    });
+    yield* browser.use("focus browser element", (page) =>
+      page
+        .locator(discountDetailsTrigger)
+        .filter({ visible: true })
+        .focus({ timeout: config.timeouts.browserAction })
     );
-    yield* scrollBrowserElementIntoView(run, session, triggerSelector, {
-      timeoutMs: config.timeouts.browserAction,
-    });
-    yield* focusBrowserElement(run, session, triggerSelector, {
-      timeoutMs: config.timeouts.browserAction,
-    });
-    for (const { adjustment, label } of discounts) {
-      const adjustmentLabel = formatDiscountAdjustment(adjustment, "en-US");
-      const labelLiteral = JSON.stringify(label.toLocaleLowerCase());
-      const adjustmentLiteral = JSON.stringify(adjustmentLabel);
-      yield* waitForBrowserCondition(
-        run,
-        session,
-        `${label} discount detail`,
-        `
-(() => {
-  const trigger = document.querySelector(${JSON.stringify(triggerSelector)});
-  const descriptionId = trigger?.getAttribute('aria-describedby');
-  const content = descriptionId
-    ? (document.getElementById(descriptionId)?.textContent ?? '')
-    : '';
-  return content.toLocaleLowerCase().includes(${labelLiteral})
-    && content.includes(${adjustmentLiteral});
-})()
-`,
+    for (const discount of discounts) {
+      yield* waitForPageCondition(
+        browser,
+        `${discount.label} discount detail`,
+        isDiscountDetailShown,
+        toDiscountDetail(discount),
         { timeoutMs }
       );
     }
   });
+
+/** The control whose tooltip details the checkout's discounts. */
+const discountDetailsTrigger = "[data-checkout-discount-details]";
+
+type DiscountDetail = {
+  readonly adjustment: string;
+  /** Lower-cased in Node, as the label match ignores case. */
+  readonly label: string;
+  readonly trigger: string;
+};
+
+export const toDiscountDetail = ({
+  adjustment,
+  label,
+}: Pick<
+  ExpectedDiscountApplication,
+  "adjustment" | "label"
+>): DiscountDetail => ({
+  adjustment: formatDiscountAdjustment(adjustment, "en-US"),
+  label: label.toLocaleLowerCase(),
+  trigger: discountDetailsTrigger,
+});
+
+/**
+ * Runs in the browser: whether the discount-details tooltip, reached through
+ * its trigger's `aria-describedby`, names the discount and its adjustment.
+ * It must not close over anything.
+ */
+export const isDiscountDetailShown = ({
+  adjustment,
+  label,
+  trigger,
+}: DiscountDetail) => {
+  const descriptionId = document
+    .querySelector(trigger)
+    ?.getAttribute("aria-describedby");
+  const content = descriptionId
+    ? (document.getElementById(descriptionId)?.textContent ?? "")
+    : "";
+  return (
+    content.toLocaleLowerCase().includes(label) && content.includes(adjustment)
+  );
+};
+
+/**
+ * Runs in the browser: why the pay page no longer offers payment after a
+ * rejected code, or `null` when its consent and pay action remain.
+ */
+export const findUnpayableSummaryProblem = (): string | null => {
+  const consent = document.querySelector("#checkout-pay-legal-consent");
+  const payButton = [...document.querySelectorAll("button")].find((button) =>
+    /order and pay/i.test(button.textContent ?? "")
+  );
+  if (!(consent instanceof HTMLButtonElement) || consent.disabled) {
+    return "payment consent unavailable after code rejection";
+  }
+  if (!(payButton instanceof HTMLButtonElement)) {
+    return "payment action unavailable after code rejection";
+  }
+  return null;
+};
 
 const trackCheckoutState = (
   flowStates: CheckoutFlowState[],
@@ -1492,16 +1559,14 @@ const trackCheckoutState = (
 
 const waitForPricingChanged = (
   config: WorkspaceE2EConfig,
-  run: Runner,
-  session: string
+  browser: E2EBrowserSession
 ) =>
-  waitForBrowserTextContent(run, session, "Pricing changed.", {
+  waitForPageTextContent(browser, "Pricing changed.", {
     timeoutMs: config.timeouts.providerTransition,
   }).pipe(
     Effect.andThen(
-      waitForBrowserTextContent(
-        run,
-        session,
+      waitForPageTextContent(
+        browser,
         "Review the updated summary before continuing.",
         { timeoutMs: config.timeouts.uiTransition }
       )
@@ -1513,9 +1578,12 @@ const submitCheckoutPaymentAndWaitForPricingChanged = (
   run: Runner,
   session: string
 ) =>
-  submitCheckoutPayment(run, session).pipe(
-    Effect.flatMap((checkoutTabId) =>
-      switchToBrowserTab(run, session, checkoutTabId)
-    ),
-    Effect.andThen(waitForPricingChanged(config, run, session))
-  );
+  Effect.gen(function* () {
+    // The payment and its argv tab id stay argv until stage 5.
+    const checkoutTabId = yield* submitCheckoutPayment(run, session);
+    yield* switchToBrowserTab(run, session, checkoutTabId);
+    yield* waitForPricingChanged(
+      config,
+      yield* browserSessionFor(run, session)
+    );
+  });
