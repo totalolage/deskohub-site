@@ -1,9 +1,5 @@
 import { Effect } from "effect";
-import {
-  openBrowserPage,
-  switchToBrowserTab,
-  waitForBrowserUrl,
-} from "../browser";
+import { openPage, switchToBrowserTab, waitForPageUrl } from "../browser";
 import type { WorkspaceE2EStepRunner } from "../case-runner";
 import { applyDiscountCode } from "../checkout/discount-code";
 import {
@@ -19,7 +15,7 @@ import {
 import type { E2EDatabase } from "../integrations/database.service";
 import { validateDotypos } from "../integrations/dotypos";
 import type { Runner } from "../runtime";
-import { log } from "../runtime";
+import { browserSessionFor, log } from "../runtime";
 import type { CheckoutData, CheckoutFlowState } from "../types";
 import { isExpectedCheckoutStatusUrl } from "../urls";
 import { assertFulfilledStatusPage } from "./checkout";
@@ -54,9 +50,12 @@ export const executeZeroTotalCheckout = ({
     state.startedAt = new Date();
     const orderId = yield* runStep({
       execute: Effect.gen(function* () {
-        yield* openBrowserPage(config, run, session, data.checkoutUrl, {
-          timeoutMs: config.timeouts.browserNavigation,
-        });
+        yield* openPage(
+          yield* browserSessionFor(run, session),
+          config,
+          data.checkoutUrl,
+          { timeoutMs: config.timeouts.browserNavigation }
+        );
         return yield* submitReservationForPayPage({
           onOrderId: (startedOrderId) => {
             state.orderId = startedOrderId;
@@ -83,22 +82,18 @@ export const executeZeroTotalCheckout = ({
       timeoutMs: config.timeouts.uiTransition,
     });
     yield* runStep({
-      execute: submitCheckoutPayment(run, session).pipe(
-        Effect.flatMap((checkoutTabId) =>
-          switchToBrowserTab(run, session, checkoutTabId)
-        ),
-        Effect.andThen(
-          waitForBrowserUrl({
-            description: "zero-total checkout status page",
-            matches: (url) =>
-              isExpectedCheckoutStatusUrl(url, config.expectedHost),
-            run,
-            session,
-            timeoutMs: config.timeouts.providerTransition,
-          })
-        ),
-        Effect.asVoid
-      ),
+      execute: Effect.gen(function* () {
+        // The payment and its argv tab id stay argv until stage 5.
+        const checkoutTabId = yield* submitCheckoutPayment(run, session);
+        yield* switchToBrowserTab(run, session, checkoutTabId);
+        yield* waitForPageUrl({
+          description: "zero-total checkout status page",
+          matches: (url) =>
+            isExpectedCheckoutStatusUrl(url, config.expectedHost),
+          session: yield* browserSessionFor(run, session),
+          timeoutMs: config.timeouts.providerTransition,
+        });
+      }),
       id: stepId("complete-internal-payment"),
       timeoutMs: config.timeouts.providerTransition,
     });
