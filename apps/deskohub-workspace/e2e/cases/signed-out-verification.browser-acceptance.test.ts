@@ -22,7 +22,6 @@ afterAll(async () => {
   await browser?.close();
 });
 
-
 const prompt = {
   signInLabel: "Sign in",
   signInPathname: "/en-US/auth/sign-in",
