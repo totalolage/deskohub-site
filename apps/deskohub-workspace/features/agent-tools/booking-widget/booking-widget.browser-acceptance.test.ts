@@ -1,4 +1,11 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -30,6 +37,10 @@ import { buildBookingWidget } from "./build-booking-widget";
 
 // Set to a directory to keep a screenshot of each state the suite reaches.
 const screenshotDirectory = process.env.BOOKING_WIDGET_SCREENSHOT_DIRECTORY;
+
+// A case drives several checks through the frame, which takes seconds even on
+// an idle machine, and a timed-out case takes the browser down with it.
+setDefaultTimeout(90_000);
 
 const chromiumAvailable = await playwrightChromiumAvailable();
 let browser: Browser | undefined;
@@ -157,9 +168,15 @@ const openBookingView = async ({
   readonly waitForForm?: boolean;
 }) => {
   if (!browser) throw new Error("The browser has not been launched.");
-  const page = await browser.newPage({
+  const pageOptions = {
     viewport: { width: 560, height: 900 },
     timezoneId: "Europe/Prague",
+  };
+  // Bun kills child processes when a case times out, the browser included,
+  // so the next case starts another rather than failing with it.
+  const page = await browser.newPage(pageOptions).catch(async () => {
+    browser = await chromium.launch({ headless: true });
+    return browser.newPage(pageOptions);
   });
   const calls: ToolCall[] = [];
   const linkOpened = Promise.withResolvers<string>();
@@ -624,18 +641,18 @@ describe.skipIf(!chromiumAvailable)("booking view", () => {
   });
 
   for (const locale of ["en-US", "cs-CZ"] as const) {
-    test(`meeting room in ${locale}: offers early setup only while the setup time is free and books the choice`, async () => {
+    test(`meeting room in ${locale}: offers early setup only while the setup time is free and keeps the choice for another free start`, async () => {
       const { page, view, calls, linkOpened } = await openBookingView({
         mode: "reserve",
         locale,
         answers: {
-          // The room is booked just before 11:00, so only 09:00 has a free
-          // setup time.
+          // The room is booked just before 11:00, so only that start's setup
+          // time is taken.
           check_availability: ({ start_time, locale }) =>
             toolResult(
               meetingRoomAvailabilityResult({
                 startTime: String(start_time),
-                earlySetupAvailable: start_time === "09:00",
+                earlySetupAvailable: start_time !== "11:00",
                 locale: toLocale(locale),
               })
             ),
@@ -667,6 +684,10 @@ describe.skipIf(!chromiumAvailable)("booking view", () => {
         await earlySetup.check();
         await capture(page, `early-setup-chosen-${locale}`);
 
+        await startTime.fill("10:00");
+        await checkAvailability(view, locale);
+        await expect(earlySetup.isChecked()).resolves.toBe(true);
+
         await view
           .getByRole("button", { name: m.bookingWidgetReserve({}, { locale }) })
           .click();
@@ -679,7 +700,7 @@ describe.skipIf(!chromiumAvailable)("booking view", () => {
           args: {
             family: "meeting-room",
             date: bookingToday,
-            start_time: "09:00",
+            start_time: "10:00",
             duration: "hour:1",
             early_setup: true,
             locale,
