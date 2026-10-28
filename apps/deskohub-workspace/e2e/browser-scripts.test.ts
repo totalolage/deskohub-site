@@ -5,7 +5,6 @@ import type { MeetingRoomReservationDuration } from "@/features/reservation/meet
 import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
 import {
   assertFulfilledStatusScript,
-  getAssertPrefilledReservationScript,
   getAssertRepeatReservationScript,
   getFillReservationContactScript,
   getPrepareCoworkAdvertisedPriceScript,
@@ -24,7 +23,6 @@ import {
 const workspaceTemporal = globalThis.Temporal;
 const oneHourMeetingRoomDuration = { unit: "hour", amount: 1 } as const;
 const fourHourMeetingRoomDuration = { unit: "hour", amount: 4 } as const;
-const wholeDayMeetingRoomDuration = { unit: "day", amount: 1 } as const;
 const getTestMeetingRoomInterval = (
   startDateTime: string,
   duration: MeetingRoomReservationDuration
@@ -1219,103 +1217,6 @@ test("follows the current meeting-room duration control after rerender", async (
   }
 });
 
-test("asserts restored whole-day meeting-room state and reset marketing consent", async () => {
-  const interval = getTestMeetingRoomInterval(
-    "2099-09-01T00:00",
-    wholeDayMeetingRoomDuration
-  );
-  expect(interval).toBeDefined();
-  const data = makeMeetingRoomCheckoutData(
-    "https://workspace.example.test",
-    {
-      date: "2099-09-01",
-      duration: wholeDayMeetingRoomDuration,
-      startDateTime: "2099-09-01T00:00",
-      ...interval!,
-    },
-    "meeting-room-backfill"
-  );
-  const assertion = getAssertPrefilledReservationScript(data);
-
-  GlobalRegistrator.register({
-    url: "https://workspace.example.test/en-US/reservation/meeting-room",
-  });
-  try {
-    document.body.innerHTML = `
-      <input name="startDateTime" value="2099-09-01" />
-      <input id="meeting-room-duration-day:1" type="radio" value="day:1" checked />
-      <input name="email" value="${data.email}" />
-      <input name="phone" value="${data.phone}" />
-      <input name="name" value="${data.name}" />
-      <textarea name="message">${data.message}</textarea>
-      <button id="reservation-marketing-consent" aria-checked="false"></button>
-    `;
-    const run = new Function(
-      "document",
-      "HTMLButtonElement",
-      "HTMLInputElement",
-      "HTMLTextAreaElement",
-      `return (${assertion})`
-    );
-
-    expect(
-      run(document, HTMLButtonElement, HTMLInputElement, HTMLTextAreaElement)
-    ).toBe(true);
-  } finally {
-    await GlobalRegistrator.unregister();
-    globalThis.Temporal = workspaceTemporal;
-  }
-});
-
-test("asserts meeting-room prefills without locale-specific labels", async () => {
-  const interval = getTestMeetingRoomInterval(
-    "2099-09-01T10:00",
-    oneHourMeetingRoomDuration
-  );
-  expect(interval).toBeDefined();
-  const data = makeMeetingRoomCheckoutData(
-    "https://workspace.example.test",
-    {
-      date: "2099-09-01",
-      duration: oneHourMeetingRoomDuration,
-      startDateTime: "2099-09-01T10:00",
-      ...interval!,
-    },
-    "meeting-room-prefill"
-  );
-  const assertion = getAssertPrefilledReservationScript(data);
-
-  GlobalRegistrator.register({
-    url: "https://workspace.example.test/cs-CZ/reservation/meeting-room",
-  });
-  try {
-    document.body.innerHTML = `
-      <input name="startDateTime" value="2099-09-01" />
-      <input type="time" value="10:00" aria-label="Začátek rezervace" />
-      <input id="meeting-room-duration-hour:1" type="radio" value="hour:1" checked />
-      <input name="email" value="${data.email}" />
-      <input name="phone" value="${data.phone}" />
-      <input name="name" value="${data.name}" />
-      <textarea name="message">${data.message}</textarea>
-      <button id="reservation-marketing-consent" aria-checked="false"></button>
-    `;
-    const run = new Function(
-      "document",
-      "HTMLButtonElement",
-      "HTMLInputElement",
-      "HTMLTextAreaElement",
-      `return (${assertion})`
-    );
-
-    expect(
-      run(document, HTMLButtonElement, HTMLInputElement, HTMLTextAreaElement)
-    ).toBe(true);
-  } finally {
-    await GlobalRegistrator.unregister();
-    globalThis.Temporal = workspaceTemporal;
-  }
-});
-
 test("prepares a multi-day office reservation with selected seats", async () => {
   const data = makeOfficeCheckoutData(
     "https://workspace.example.test",
@@ -1402,141 +1303,6 @@ test("prepares a multi-day office reservation with selected seats", async () => 
     expect(
       document.querySelector<HTMLInputElement>('input[name="email"]')?.value
     ).toBe("");
-  } finally {
-    await GlobalRegistrator.unregister();
-    globalThis.Temporal = workspaceTemporal;
-  }
-});
-
-test("asserts restored cowork switches for both current offers", async () => {
-  const runCoworkPrefill = (
-    data: ReturnType<typeof makeCoworkCheckoutData>
-  ) => {
-    const script = getAssertPrefilledReservationScript(data);
-    const run = new Function(
-      "document",
-      "HTMLButtonElement",
-      "HTMLInputElement",
-      "HTMLTextAreaElement",
-      `return (${script})`
-    );
-    return () =>
-      run(document, HTMLButtonElement, HTMLInputElement, HTMLTextAreaElement);
-  };
-  const renderCoworkPrefill = (
-    data: ReturnType<typeof makeCoworkCheckoutData>,
-    switchHtml: string,
-    monitorHtml: string
-  ) => {
-    document.body.innerHTML = `
-      <input checked name="entryTier" type="radio" value="${data.expectedReservationDetails.entryTier}" />
-      <input name="date" type="hidden" value="${data.date}" />
-      ${switchHtml}
-      <input name="email" value="${data.email}" />
-      <input name="phone" value="${data.phone}" />
-      <input name="name" value="${data.name}" />
-      <textarea name="message">${data.message}</textarea>
-      ${monitorHtml}
-      <button id="reservation-marketing-consent" aria-checked="false"></button>
-    `;
-  };
-
-  const openSpace = makeCoworkCheckoutData(
-    "https://workspace.example.test",
-    "2099-09-01",
-    "cowork-prefill-open-space",
-    { coffee: true }
-  );
-  const openSpaceSwitch = (coffeeChecked: boolean) => `
-      <label id="reservation-coffee-label">Coffee
-        <button aria-checked="${coffeeChecked}" aria-labelledby="reservation-coffee-label" role="switch"></button>
-      </label>
-    `;
-
-  GlobalRegistrator.register({
-    url: "https://workspace.example.test/en-US/reservation/cowork",
-  });
-  try {
-    renderCoworkPrefill(openSpace, openSpaceSwitch(true), "");
-    expect(runCoworkPrefill(openSpace)()).toBe(true);
-
-    renderCoworkPrefill(openSpace, openSpaceSwitch(false), "");
-    expect(runCoworkPrefill(openSpace)).toThrow(/coffee switch/);
-  } finally {
-    await GlobalRegistrator.unregister();
-    globalThis.Temporal = workspaceTemporal;
-  }
-
-  const reservedDesk = makeCoworkCheckoutData(
-    "https://workspace.example.test",
-    "2099-09-01",
-    "cowork-prefill-reserved-desk",
-    { entryTier: "reserved-desk", monitorOption: "2x27-qhd" }
-  );
-  const workstationSwitch = (workstationChecked: boolean) => `
-      <label id="reservation-workstation-label">Monitor workstation
-        <button aria-checked="${workstationChecked}" aria-labelledby="reservation-workstation-label" role="switch"></button>
-      </label>
-    `;
-  const reservedDeskMonitor = `
-      <input checked name="monitorOption" type="radio" value="2x27-qhd" />
-    `;
-
-  GlobalRegistrator.register({
-    url: "https://workspace.example.test/en-US/reservation/cowork",
-  });
-  try {
-    renderCoworkPrefill(
-      reservedDesk,
-      workstationSwitch(true),
-      reservedDeskMonitor
-    );
-    expect(runCoworkPrefill(reservedDesk)()).toBe(true);
-
-    renderCoworkPrefill(
-      reservedDesk,
-      workstationSwitch(false),
-      reservedDeskMonitor
-    );
-    expect(runCoworkPrefill(reservedDesk)).toThrow(/workstation switch/);
-  } finally {
-    await GlobalRegistrator.unregister();
-    globalThis.Temporal = workspaceTemporal;
-  }
-});
-
-test("asserts restored office range, seats, and reset marketing consent", async () => {
-  const data = makeOfficeCheckoutData(
-    "https://workspace.example.test",
-    officeSlot
-  );
-  const assertion = getAssertPrefilledReservationScript(data);
-
-  GlobalRegistrator.register({
-    url: "https://workspace.example.test/en-US/reservation/office",
-  });
-  try {
-    document.body.innerHTML = `
-      <input name="startsOn" value="${officeSlot.startsOn}" />
-      <input name="dayCount" type="number" value="2" />
-      <input checked name="seats" type="radio" value="${officeSlot.seats}" />
-      <input name="email" value="${data.email}" />
-      <input name="phone" value="${data.phone}" />
-      <input name="name" value="${data.name}" />
-      <textarea name="message">${data.message}</textarea>
-      <button id="reservation-marketing-consent" aria-checked="false"></button>
-    `;
-    const run = new Function(
-      "document",
-      "HTMLButtonElement",
-      "HTMLInputElement",
-      "HTMLTextAreaElement",
-      `return (${assertion})`
-    );
-
-    expect(
-      run(document, HTMLButtonElement, HTMLInputElement, HTMLTextAreaElement)
-    ).toBe(true);
   } finally {
     await GlobalRegistrator.unregister();
     globalThis.Temporal = workspaceTemporal;

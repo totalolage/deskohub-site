@@ -1,10 +1,24 @@
-import { type Locale, m } from "@/features/i18n";
 import {
   getMeetingRoomReservationDurationKey,
   isMeetingRoomWholeDayReservationDuration,
 } from "@/features/reservation/meeting-room-reservation-duration";
+import {
+  getCoworkSwitchExpectations,
+  getOfficeDayCount,
+  isPrefilledReservation,
+  type PrefilledReservationOptions,
+  toPrefilledReservation,
+} from "./checkout/prefilled-reservation";
 import { workspaceE2ETimeouts } from "./timeouts";
 import type { CheckoutData, CheckoutRow } from "./types";
+
+/**
+ * A self-contained in-page function called with its JSON argument, as the
+ * expression the argv `wait --fn` and `eval` commands evaluate. It lets an
+ * argv caller run the same function a session helper passes to Playwright.
+ */
+export const inPageCall = <Arg>(fn: (arg: Arg) => unknown, arg: Arg) =>
+  `(${fn.toString()})(${JSON.stringify(arg)})`;
 
 // The reservation form's one action button: Continue on the selection step,
 // the submit button on the contact step. Both report availability and price
@@ -13,22 +27,6 @@ const reservationActionSelector = "#reservation-continue, #reservation-submit";
 const reservationActionSelectorLiteral = JSON.stringify(
   reservationActionSelector
 );
-
-// The real cowork form renders the coffee switch only for Open Space and the
-// workstation (monitor) switch only for Reserved Desk. Both are FormControl
-// switches whose accessible name comes from aria-labelledby pointing at their
-// FormLabel (shared/components/ui/form.tsx), so assertions match by that
-// localized label text.
-const getCoworkSwitchExpectations = (entryTier: string, locale: Locale) => ({
-  coffeeSwitchLabel:
-    entryTier === "open-space"
-      ? m.reservationCoffeeLabel({}, { locale })
-      : null,
-  workstationSwitchLabel:
-    entryTier === "reserved-desk"
-      ? m.reservationWorkstationLabel({}, { locale })
-      : null,
-});
 
 const getCoworkSwitchSelectionScript = () => `
   const switchAccessibleName = (element) => {
@@ -51,16 +49,6 @@ const getCoworkSwitchSelectionScript = () => `
         switchAccessibleName(candidate).includes(label)
     );
 `;
-
-type PrefilledReservationOptions = {
-  readonly includeContact?: boolean;
-};
-
-const getOfficeDayCount = (office: NonNullable<CheckoutData["office"]>) =>
-  Temporal.PlainDate.from(office.startsOn).until(
-    Temporal.PlainDate.from(office.endsOn),
-    { largestUnit: "day" }
-  ).days + 1;
 
 export const getAssertRepeatReservationScript = (data: CheckoutData) => {
   const expected = (() => {
@@ -178,225 +166,14 @@ export const getAssertRepeatReservationScript = (data: CheckoutData) => {
  * Asserts the reservation form shows `data`'s selection and, unless
  * `includeContact` is false, its contact with marketing consent reset.
  */
-export const getAssertPrefilledReservationScript = (
-  data: CheckoutData,
-  { includeContact = true }: PrefilledReservationOptions = {}
-) => {
-  if (data.expectedReservationDetails.kind === "meeting-room") {
-    return getAssertPrefilledMeetingRoomReservationScript(data, includeContact);
-  }
-  if (data.expectedReservationDetails.kind === "office") {
-    return getAssertPrefilledOfficeReservationScript(data, includeContact);
-  }
-
-  const expectedReservation = data.expectedReservationDetails;
-
-  return `
-(() => {
-  const expected = ${JSON.stringify({
-    coffee: expectedReservation.coffee,
-    ...getCoworkSwitchExpectations(expectedReservation.entryTier, data.locale),
-    date: data.date,
-    email: data.email,
-    includeContact,
-    entryTier: expectedReservation.entryTier,
-    monitorOption: expectedReservation.monitorOption ?? null,
-    name: data.name,
-    phone: data.phone,
-  })};
-  ${getCoworkSwitchSelectionScript()}
-  const fail = (field) => {
-    throw new Error('restored reservation ' + field + ' did not match');
-  };
-  const value = (selector, field) => {
-    const element = document.querySelector(selector);
-    if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) fail(field);
-    return element.value;
-  };
-
-  const tier = document.querySelector('input[name="entryTier"]:checked');
-  if (!(tier instanceof HTMLInputElement) || tier.value !== expected.entryTier) fail('entry tier');
-
-  if (value('input[name="date"]', 'date') !== expected.date) fail('date');
-
-  const coffee = expected.coffeeSwitchLabel
-    ? findSwitchByLabel(expected.coffeeSwitchLabel)
-    : undefined;
-  if (expected.coffeeSwitchLabel) {
-    if (
-      !(coffee instanceof HTMLButtonElement) ||
-      coffee.getAttribute('aria-checked') !== String(expected.coffee)
-    ) {
-      fail('coffee switch');
-    }
-  }
-  const workstation = expected.workstationSwitchLabel
-    ? findSwitchByLabel(expected.workstationSwitchLabel)
-    : undefined;
-  if (expected.workstationSwitchLabel) {
-    if (
-      !(workstation instanceof HTMLButtonElement) ||
-      workstation.getAttribute('aria-checked') !==
-        String(expected.monitorOption !== null)
-    ) {
-      fail('workstation switch');
-    }
-  }
-  if (expected.includeContact) {
-    if (value('input[name="email"]', 'email') !== expected.email) fail('email');
-    if (value('input[name="phone"]', 'phone') !== expected.phone) fail('phone');
-    if (value('input[name="name"]', 'name') !== expected.name) fail('name');
-    // Booking for someone else repeats the email; a carried-in contact
-    // arrives with it already repeated.
-    const emailConfirmation = document.querySelector('input[name="emailConfirmation"]');
-    if (emailConfirmation !== null && (!(emailConfirmation instanceof HTMLInputElement) || emailConfirmation.value !== expected.email)) fail('repeated email');
-  }
-
-  const monitorInputs = [...document.querySelectorAll('input[type="radio"]')]
-    .filter((input) => input instanceof HTMLInputElement && input.name !== 'entryTier');
-  const selectedMonitor = monitorInputs.find((input) => input.checked);
-  if (expected.monitorOption === null) {
-    if (monitorInputs.length !== 0) fail('monitor option');
-  } else if (!(selectedMonitor instanceof HTMLInputElement) || selectedMonitor.value !== expected.monitorOption) {
-    fail('monitor option');
-  }
-
-  const marketingConsent = document.querySelector('#reservation-marketing-consent');
-  // The consent renders only for someone booking as themselves.
-  if (expected.includeContact && marketingConsent !== null && (!(marketingConsent instanceof HTMLButtonElement) || marketingConsent.getAttribute('aria-checked') !== 'false')) fail('marketing consent reset');
-  return true;
-})()
-`;
-};
-
-const getAssertPrefilledMeetingRoomReservationScript = (
-  data: CheckoutData,
-  includeContact: boolean
-) => {
-  if (!data.meetingRoom) {
-    throw new Error("Meeting-room backfill assertions require interval data");
-  }
-
-  return `
-(() => {
-  const expected = ${JSON.stringify({
-    date: data.date,
-    durationKey: getMeetingRoomReservationDurationKey(
-      data.meetingRoom.duration
-    ),
-    email: data.email,
-    includeContact,
-    name: data.name,
-    phone: data.phone,
-    time: data.meetingRoom.startDateTime.slice(11),
-    wholeDay: isMeetingRoomWholeDayReservationDuration(
-      data.meetingRoom.duration
-    ),
-  })};
-  const fail = (field) => {
-    throw new Error('restored meeting-room ' + field + ' did not match');
-  };
-  const value = (selector, field) => {
-    const element = document.querySelector(selector);
-    if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) fail(field);
-    return element.value;
-  };
-
-  if (value('input[name="startDateTime"]', 'start date') !== expected.date) fail('start date');
-  // The start-time control is matched by type, not by its localized aria label,
-  // so the same predicate asserts en-US and cs-CZ reservation pages.
-  const time = document.querySelector('input[type="time"]');
-  if (expected.wholeDay) {
-    if (time !== null) fail('hidden start time');
-  } else if (!(time instanceof HTMLInputElement) || time.value !== expected.time) {
-    fail('start time');
-  }
-  const duration = document.querySelector('input[id^="meeting-room-duration-"]:checked');
-  if (!(duration instanceof HTMLInputElement) || duration.value !== expected.durationKey) fail('duration');
-  if (expected.includeContact) {
-    if (value('input[name="email"]', 'email') !== expected.email) fail('email');
-    if (value('input[name="phone"]', 'phone') !== expected.phone) fail('phone');
-    if (value('input[name="name"]', 'name') !== expected.name) fail('name');
-    // Booking for someone else repeats the email; a carried-in contact
-    // arrives with it already repeated.
-    const emailConfirmation = document.querySelector('input[name="emailConfirmation"]');
-    if (emailConfirmation !== null && (!(emailConfirmation instanceof HTMLInputElement) || emailConfirmation.value !== expected.email)) fail('repeated email');
-  }
-
-  const marketingConsent = document.querySelector('#reservation-marketing-consent');
-  // The consent renders only for someone booking as themselves.
-  if (expected.includeContact && marketingConsent !== null && (!(marketingConsent instanceof HTMLButtonElement) || marketingConsent.getAttribute('aria-checked') !== 'false')) fail('marketing consent reset');
-  return true;
-})()
-`;
-};
-
-const getAssertPrefilledOfficeReservationScript = (
-  data: CheckoutData,
-  includeContact: boolean
-) => {
-  if (!data.office) {
-    throw new Error("Office backfill assertions require range data");
-  }
-
-  return `
-(() => {
-  const expected = ${JSON.stringify({
-    email: data.email,
-    includeContact,
-    dayCount: getOfficeDayCount(data.office),
-    name: data.name,
-    phone: data.phone,
-    seats: data.office.seats,
-    startsOn: data.office.startsOn,
-  })};
-  const fail = (field) => {
-    throw new Error('restored office ' + field + ' did not match');
-  };
-  const value = (selector, field) => {
-    const element = document.querySelector(selector);
-    if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) fail(field);
-    return element.value;
-  };
-
-  if (value('input[name="startsOn"]', 'start date') !== expected.startsOn) fail('start date');
-  if (value('input[name="dayCount"]', 'day count') !== String(expected.dayCount)) fail('day count');
-  const seats = document.querySelector('input[name="seats"]:checked');
-  if (!(seats instanceof HTMLInputElement) || seats.value !== String(expected.seats)) fail('seats');
-  if (expected.includeContact) {
-    if (value('input[name="email"]', 'email') !== expected.email) fail('email');
-    if (value('input[name="phone"]', 'phone') !== expected.phone) fail('phone');
-    if (value('input[name="name"]', 'name') !== expected.name) fail('name');
-    // Booking for someone else repeats the email; a carried-in contact
-    // arrives with it already repeated.
-    const emailConfirmation = document.querySelector('input[name="emailConfirmation"]');
-    if (emailConfirmation !== null && (!(emailConfirmation instanceof HTMLInputElement) || emailConfirmation.value !== expected.email)) fail('repeated email');
-  }
-
-  const marketingConsent = document.querySelector('#reservation-marketing-consent');
-  // The consent renders only for someone booking as themselves.
-  if (expected.includeContact && marketingConsent !== null && (!(marketingConsent instanceof HTMLButtonElement) || marketingConsent.getAttribute('aria-checked') !== 'false')) fail('marketing consent reset');
-  return true;
-})()
-`;
-};
-
+/**
+ * The argv condition over `isPrefilledReservation`, for callers still on the
+ * argv runner.
+ */
 export const getPrefilledReservationConditionScript = (
   data: CheckoutData,
   options: PrefilledReservationOptions = {}
-) => {
-  const assertion = getAssertPrefilledReservationScript(data, options).trim();
-
-  return `
-(() => {
-  try {
-    return (${assertion}) === true;
-  } catch {
-    return false;
-  }
-})()
-`;
-};
+) => inPageCall(isPrefilledReservation, toPrefilledReservation(data, options));
 
 /**
  * Prepares one step of the reservation form for its native activation. On the
