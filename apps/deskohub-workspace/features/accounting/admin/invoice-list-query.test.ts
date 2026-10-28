@@ -27,6 +27,22 @@ describe("invoiceListQuery", () => {
     ).toEqual({});
   });
 
+  test("ignores a param the URL repeats", () => {
+    expect(
+      invoiceListQuery.parse(
+        fromHref("/admin/invoices?sort=total&sort=source&direction=desc")
+      )
+    ).toEqual({ direction: "desc" });
+    expect(
+      invoiceListQuery.parse(
+        fromHref("/admin/invoices?page=2&page=3&sort=total")
+      )
+    ).toEqual({ sort: "total" });
+    expect(
+      invoiceListQuery.parse({ direction: ["asc", "desc"], page: "2" })
+    ).toEqual({ page: 2 });
+  });
+
   test("links back to the same query, with the page only past the first", () => {
     const query = invoiceListQuery.parse({
       direction: "desc",
@@ -35,7 +51,7 @@ describe("invoiceListQuery", () => {
     });
 
     expect(invoiceListQuery.href(query, { page: 2 })).toBe(
-      "/admin/invoices?direction=desc&sort=issuedAt&page=2"
+      "/admin/invoices?sort=issuedAt&direction=desc&page=2"
     );
     expect(
       invoiceListQuery.parse(
@@ -53,7 +69,7 @@ describe("invoiceListQuery", () => {
 
     expect(sorting).toEqual([{ desc: false, id: "customer" }]);
     expect(getSortHref("total", "desc")).toBe(
-      "/admin/invoices?direction=desc&sort=total"
+      "/admin/invoices?sort=total&direction=desc"
     );
   });
 });

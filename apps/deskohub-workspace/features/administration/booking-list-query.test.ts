@@ -79,14 +79,14 @@ describe("bookingListQuery", () => {
     ).toEqual(query);
   });
 
-  test("sorts the table by the list's order and keeps the day in header links", () => {
+  test("sorts the table by the list's order and keeps the day first in header links", () => {
     const { getSortHref, sorting } = bookingListQuery.tableSorting(
       bookingListQuery.parse({ date: "2026-08-14" })
     );
 
     expect(sorting).toEqual([{ desc: false, id: "booking" }]);
     expect(getSortHref("status", "asc")).toBe(
-      "/admin/bookings?date=2026-08-14&direction=asc&sort=status"
+      "/admin/bookings?date=2026-08-14&sort=status&direction=asc"
     );
   });
 

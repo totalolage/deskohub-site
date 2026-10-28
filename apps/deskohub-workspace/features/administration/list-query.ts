@@ -3,6 +3,7 @@ import { Effect, Option, Schema, SchemaTransformation } from "effect";
 import {
   getHrefWithSearchParams,
   getSearchParamsDecoder,
+  type RepeatedSearchParams,
   type SearchParamsRecord,
   type SearchParamValues,
 } from "@/shared/utils/search-params";
@@ -66,10 +67,18 @@ type AdministrationListQueryDefinition<Params, Query> = {
   /**
    * The URL params. Each decodes on its own, so an invalid value falls back
    * like an absent one instead of failing the list. `page` holds the page.
+   * Links name the params in the order they're declared, with the page last.
    */
   readonly params: Schema.Decoder<Params> & {
     readonly fields: Schema.Struct.Fields;
   };
+  /** How the list reads a param the URL repeats; by its first value unless set. */
+  readonly repeatedParams?: RepeatedSearchParams;
+  /**
+   * Where a header link names the order it switches to: in the params'
+   * declared order (the default), or after the list's other params.
+   */
+  readonly sortLinkOrder?: "declared" | "afterFilters";
   /** Turns the decoded params into the list's query, such as a default range. */
   readonly normalize: (params: Params) => Query;
 };
@@ -129,18 +138,23 @@ export function defineAdministrationListQuery<
   normalize,
   params,
   path,
+  repeatedParams = "first",
+  sortLinkOrder = "declared",
 }: AdministrationListQueryDefinition<Params, Query> & {
   readonly exportPath?: AdministrationHref;
 }): AdministrationListQuery<Query> & Partial<AdministrationListExport<Query>> {
-  const decode = getSearchParamsDecoder(params);
-  // Links name the params in one order, with the page last.
-  const names = Object.keys(params.fields)
-    .filter((name) => name !== "page")
-    .sort();
-  const getValues = (query: Query): SearchParamValues => {
+  const decode = getSearchParamsDecoder(params, { repeated: repeatedParams });
+  const names = Object.keys(params.fields).filter((name) => name !== "page");
+  const filterNames = names.filter(
+    (name) => name !== "sort" && name !== "direction"
+  );
+  const getValues = (
+    query: Query,
+    linkNames: readonly string[] = names
+  ): SearchParamValues => {
     const values = new Map(Object.entries(query));
     return Object.fromEntries(
-      names.map((name) => {
+      linkNames.map((name) => {
         const value = values.get(name);
         return [name, value === undefined ? undefined : String(value)];
       })
@@ -160,9 +174,12 @@ export function defineAdministrationListQuery<
     tableSorting: (query) => ({
       getSortHref: (field, direction) =>
         getHrefWithSearchParams(path, {
-          ...getValues(query),
-          direction,
+          ...getValues(
+            query,
+            sortLinkOrder === "afterFilters" ? filterNames : names
+          ),
           sort: field,
+          direction,
         }),
       sorting: query.sort
         ? [{ desc: query.direction === "desc", id: query.sort }]

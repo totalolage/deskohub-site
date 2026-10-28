@@ -11,11 +11,13 @@ import {
 
 /**
  * The invoice list's URL query. Without an order or page the service shows
- * its own default, so the query leaves them out.
+ * its own default, so the query leaves them out, as it does a param the URL
+ * repeats.
  */
 export const invoiceListQuery = defineAdministrationListQuery({
   path: administrationHref("/[locale]/admin/invoices"),
   params: Schema.Struct({
+    sort: optionalListParam(AdministrationInvoiceSort),
     direction: optionalListParam(AdministrationReservationSortDirection),
     page: optionalListParam(
       Schema.String.check(Schema.isPattern(/^\d+$/)).pipe(
@@ -25,8 +27,8 @@ export const invoiceListQuery = defineAdministrationListQuery({
         )
       )
     ),
-    sort: optionalListParam(AdministrationInvoiceSort),
   }),
+  repeatedParams: "absent",
   normalize: (params) => params,
 });
 

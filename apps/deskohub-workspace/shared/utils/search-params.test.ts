@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { Option, Schema } from "effect";
 import {
   getHrefWithSearchParams,
+  getSearchParamsDecoder,
   getSearchParamsRecord,
   toURLSearchParams,
 } from "./search-params";
@@ -16,6 +18,31 @@ describe("getSearchParamsRecord", () => {
       type: ["office", "cowork"],
       empty: "",
     });
+  });
+});
+
+describe("getSearchParamsDecoder", () => {
+  const schema = Schema.Struct({
+    sort: Schema.optionalKey(Schema.String),
+    type: Schema.optionalKey(Schema.String),
+  });
+
+  test("reads a repeated key by its first value", () => {
+    expect(
+      getSearchParamsDecoder(schema)({
+        sort: "total",
+        type: ["office", "desk"],
+      })
+    ).toEqual(Option.some({ sort: "total", type: "office" }));
+  });
+
+  test("can read a repeated key as absent", () => {
+    expect(
+      getSearchParamsDecoder(schema, { repeated: "absent" })({
+        sort: "total",
+        type: ["office", "desk"],
+      })
+    ).toEqual(Option.some({ sort: "total" }));
   });
 });
 

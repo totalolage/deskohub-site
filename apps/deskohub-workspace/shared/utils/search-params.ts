@@ -6,18 +6,30 @@ export type SupportedSearchParams = URLSearchParams | SearchParamsRecord;
 /** Query values by name; an absent or empty value stays out of an href. */
 export type SearchParamValues = Readonly<Record<string, string | undefined>>;
 
-const normalizeSearchParamsRecord = (searchParams: SearchParamsRecord) =>
+/**
+ * How a decoder reads a key the URL repeats: by its first value, or as if
+ * the key were absent.
+ */
+export type RepeatedSearchParams = "first" | "absent";
+
+const normalizeSearchParamsRecord = (
+  searchParams: SearchParamsRecord,
+  repeated: RepeatedSearchParams
+) =>
   Object.fromEntries(
-    Object.entries(searchParams).map(([key, value]) => [
-      key,
-      Array.isArray(value) ? value[0] : value,
-    ])
+    Object.entries(searchParams).flatMap(([key, value]) => {
+      if (!Array.isArray(value)) return [[key, value]];
+      return repeated === "first" ? [[key, value[0]]] : [];
+    })
   );
 
-export const getSearchParamsDecoder = <A>(outputSchema: Schema.Decoder<A>) => {
+export const getSearchParamsDecoder = <A>(
+  outputSchema: Schema.Decoder<A>,
+  { repeated = "first" }: { readonly repeated?: RepeatedSearchParams } = {}
+) => {
   const decodeUnknown = Schema.decodeUnknownOption(outputSchema);
   return (searchParams: SearchParamsRecord) =>
-    decodeUnknown(normalizeSearchParamsRecord(searchParams));
+    decodeUnknown(normalizeSearchParamsRecord(searchParams, repeated));
 };
 
 export const getSearchParam = (

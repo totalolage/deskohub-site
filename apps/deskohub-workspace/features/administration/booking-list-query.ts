@@ -26,6 +26,7 @@ const bookingListParams = defineAdministrationListQuery({
     page: listPageParam,
     sort: listParamWithDefault(AdministrationBookingSort, "booking"),
   }),
+  sortLinkOrder: "afterFilters",
   normalize: ({ date, ...params }) => ({
     ...params,
     date: Option.fromNullishOr(date)
