@@ -53,6 +53,7 @@ async function OrdersAdministration({
             <OrderCount locale={locale} result={result} />
           </Suspense>
         }
+        filterLayout="inline"
         filters={
           <Suspense fallback={<AdministrationFiltersLoading fields={2} />}>
             <OrderFiltersContent range={range} />
