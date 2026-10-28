@@ -80,7 +80,6 @@ import {
   type DiscountApplicationId,
   discountApplicationIdSchema,
 } from "@/features/discounts/persistence-contracts";
-import { decodeBookedReservation } from "@/features/reservation/backend/booked-reservation";
 import { loadEarlySetupDetails } from "@/features/reservation/backend/early-setup-details";
 import {
   type WorkspaceReservationId,
@@ -92,10 +91,7 @@ import { getReservationAccessName } from "@/features/reservation-access";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import type { Money } from "@/shared/money/money";
 import { workspaceSiteConstants } from "@/shared/utils";
-import {
-  instantStringSchema,
-  temporalInstantToIsoString,
-} from "@/shared/utils/temporal";
+import { instantStringSchema } from "@/shared/utils/temporal";
 import type { AdministrationCustomerMarketingConsentState } from "./customer-list-filters";
 import {
   type AdministrationCustomerName,
@@ -123,6 +119,7 @@ import {
   type EarlySetupDetailsById,
   getAdministrationReservationHeldRangeBounds,
   getBookedStart,
+  getBookedStartsAt,
   getEarlySetupDetails,
   getEarlySetupOrderCandidates,
   getReservationDate,
@@ -279,11 +276,6 @@ export type AdministrationReservationSummary = {
   /** The booked start, after any early-setup time. */
   readonly startsAt: string | null;
   readonly endsAt: string | null;
-  /**
-   * When the room is held from for a meeting room booked with early setup,
-   * which Dotypos stores as the reservation's start; otherwise null.
-   */
-  readonly setupStartsAt: string | null;
   readonly date: string | null;
   readonly type: "cowork" | "meeting-room" | "office";
   readonly product: AdministrationReservationProduct;
@@ -910,15 +902,6 @@ const toReservationSummary = ({
   readonly live: LiveReservationDetails;
   readonly row: SafeReservationRow;
 }): AdministrationReservationSummary => {
-  // An early-setup booking's Dotypos start is its setup start, so show the
-  // booked start beside it. Other bookings keep the provider's values as is;
-  // derived starts use the provider's millisecond ISO format.
-  const earlySetup = Option.fromNullishOr(live.reservation).pipe(
-    Option.map((reservation) =>
-      decodeBookedReservation(reservation, row.reservationDetails)
-    ),
-    Option.flatMap(({ setupStart, start }) => Option.all({ setupStart, start }))
-  );
   return {
     id: row.id,
     dotyposReservationId: row.dotyposReservationId,
@@ -927,15 +910,10 @@ const toReservationSummary = ({
       ? toCustomer(live.customer, row.dotyposCustomerId)
       : null,
     liveDetailsAvailable: Boolean(live.reservation),
-    startsAt: Option.match(earlySetup, {
-      onNone: () => live.reservation?.startDate ?? null,
-      onSome: ({ start }) => temporalInstantToIsoString(start),
-    }),
+    startsAt: live.reservation
+      ? getBookedStartsAt(live.reservation, row.reservationDetails)
+      : null,
     endsAt: live.reservation?.endDate ?? null,
-    setupStartsAt: Option.match(earlySetup, {
-      onNone: () => null,
-      onSome: ({ setupStart }) => temporalInstantToIsoString(setupStart),
-    }),
     date: live.reservation
       ? getReservationDate(live.reservation, row.reservationDetails)
       : null,
@@ -1000,7 +978,7 @@ const toBookingSummary = ({
     id: booking.id,
     customerId: customerId ?? null,
     customer: customerId && customer ? toCustomer(customer, customerId) : null,
-    startsAt: booking.startDate,
+    startsAt: getBookedStartsAt(booking, row?.reservationDetails),
     endsAt: booking.endDate,
     seats: booking.seats,
     status: booking.status,
@@ -1033,11 +1011,6 @@ const getDateRangeBounds = (startDate: string, endDate: string) => {
     startsAtOrAfter: start.toInstant().toString(),
     startsBefore: end.toInstant().toString(),
   };
-};
-
-const getDateBounds = (date: string) => {
-  const plainDate = Temporal.PlainDate.from(date);
-  return getDateRangeBounds(date, plainDate.add({ days: 1 }).toString());
 };
 
 const successfulReservationCount =
@@ -2663,8 +2636,12 @@ export class AdministrationService extends Context.Service<
 
       const listBookings = Effect.fn("AdministrationService.listBookings")(
         function* (input: AdministrationBookingListInput) {
-          const bookings = (yield* dotypos.listReservations({
-            ...getDateBounds(input.date),
+          // Dotypos holds an early-setup meeting room from before its booked
+          // start, so the read starts that much earlier and the bookings'
+          // stored details decide their booked start, date, and order.
+          const range = { from: input.date, to: input.date };
+          const heldBookings = (yield* dotypos.listReservations({
+            ...getAdministrationReservationHeldRangeBounds(range),
             order: "startDateAscending",
           })).flatMap((booking) => {
             const id = Option.getOrUndefined(
@@ -2672,19 +2649,38 @@ export class AdministrationService extends Context.Service<
             );
             return id ? [{ ...booking, id }] : [];
           });
+          const earlySetupDetails = yield* loadEarlySetupDetails(
+            db,
+            heldBookings.map(({ id }) => id)
+          );
           const direction = input.direction === "desc" ? -1 : 1;
-          const sortedBookings = bookings.toSorted((left, right) => {
-            const primary =
-              input.sort === "status"
-                ? left.status.localeCompare(right.status)
-                : left.startDate.localeCompare(right.startDate);
-            return (
-              direction *
-              (primary ||
-                left.startDate.localeCompare(right.startDate) ||
-                left.id.localeCompare(right.id))
-            );
-          });
+          const sortedBookings = heldBookings
+            .flatMap((booking) => {
+              const details = earlySetupDetails.get(booking.id);
+              return isAdministrationDateInRange(
+                getReservationDate(booking, details),
+                range
+              )
+                ? [{ booking, startsAt: getBookedStart(booking, details) }]
+                : [];
+            })
+            .toSorted((left, right) => {
+              const byStart = Temporal.Instant.compare(
+                left.startsAt,
+                right.startsAt
+              );
+              const primary =
+                input.sort === "status"
+                  ? left.booking.status.localeCompare(right.booking.status)
+                  : byStart;
+              return (
+                direction *
+                (primary ||
+                  byStart ||
+                  left.booking.id.localeCompare(right.booking.id))
+              );
+            })
+            .map(({ booking }) => booking);
           const pagination = getAdministrationPagination({
             pageSize: bookingPageSize,
             requestedPage: input.page,
@@ -2844,12 +2840,13 @@ export class AdministrationService extends Context.Service<
       const loadBookingBreadcrumb = Effect.fn(
         "AdministrationService.loadBookingBreadcrumb"
       )(function* (id: DotyposReservationId) {
-        const { details, tables } = yield* Effect.all(
+        const { details, earlySetupDetails, tables } = yield* Effect.all(
           {
             details: findBookingDetails(id),
+            earlySetupDetails: loadEarlySetupDetails(db, [id]),
             tables: loadBookingTables(),
           },
-          { concurrency: 2 }
+          { concurrency: 3 }
         );
         if (!details) return null;
         const tableId = Option.getOrUndefined(
@@ -2862,7 +2859,13 @@ export class AdministrationService extends Context.Service<
                 tableId
             )?.name ?? null)
           : null;
-        return { startsAt: details.reservation.startDate, tableName };
+        return {
+          startsAt: getBookedStartsAt(
+            details.reservation,
+            earlySetupDetails.get(id)
+          ),
+          tableName,
+        };
       });
 
       /**

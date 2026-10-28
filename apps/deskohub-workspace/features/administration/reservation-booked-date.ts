@@ -11,6 +11,7 @@ import {
 } from "@/features/reservation/meeting-room-early-setup";
 import type { StoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
 import { workspaceSiteConstants } from "@/shared/utils";
+import { temporalInstantToIsoString } from "@/shared/utils/temporal";
 import {
   type AdministrationReservationDateRange,
   getAdministrationReservationDateRangeBounds,
@@ -52,6 +53,22 @@ export const getBookedStart = (
     decodeBookedReservation(reservation, details).start,
     () => new Error("Dotypos reservation start is unreadable.")
   );
+
+/**
+ * The booked start to show for the reservation. Only an early-setup meeting
+ * room's booked start differs from the start Dotypos holds; other bookings
+ * keep the provider's value as is, and a derived start uses the provider's
+ * millisecond ISO format.
+ */
+export const getBookedStartsAt = (
+  reservation: BookedFacts,
+  details?: StoredWorkspaceReservationDetails
+) => {
+  const { setupStart, start } = decodeBookedReservation(reservation, details);
+  return Option.isSome(setupStart) && Option.isSome(start)
+    ? temporalInstantToIsoString(start.value)
+    : reservation.startDate;
+};
 
 const toWorkspaceDate = (instant: Temporal.Instant) =>
   instant

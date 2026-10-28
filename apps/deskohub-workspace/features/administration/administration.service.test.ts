@@ -93,8 +93,8 @@ describe("AdministrationService", () => {
       _cloudId: "cloud",
       _customerId: null,
       id: `booking-${String(index).padStart(2, "0")}`,
-      startDate: `2026-08-10T${String(index % 24).padStart(2, "0")}:00:00Z`,
-      endDate: `2026-08-10T${String(index % 24).padStart(2, "0")}:30:00Z`,
+      startDate: `2026-08-10T${String(index % 24).padStart(2, "0")}:00:00+02:00`,
+      endDate: `2026-08-10T${String(index % 24).padStart(2, "0")}:30:00+02:00`,
       seats: "1",
       status: index === 24 ? ("CANCELLED" as const) : ("NEW" as const),
     }));
@@ -138,6 +138,120 @@ describe("AdministrationService", () => {
 
     expect(result.items).toHaveLength(24);
     expect(result.items[0]?.status).toBe("CANCELLED");
+  });
+
+  test("lists early-setup bookings on their booked start", async () => {
+    const instant = Temporal.Instant.from("2026-08-01T08:00:00Z");
+    const earlySetup = { kind: "meeting-room", earlySetup: true } as const;
+    // Dotypos holds each early-setup room from 15 minutes before its booked
+    // start; Prague is UTC+2 in August.
+    const heldStarts = {
+      "early-setup": "2026-08-10T09:45:00+02:00",
+      between: "2026-08-10T09:50:00+02:00",
+      "midnight-early": "2026-08-09T23:45:00+02:00",
+      "next-date-early": "2026-08-10T23:45:00+02:00",
+    };
+    const earlySetupIds = ["early-setup", "midnight-early", "next-date-early"];
+    const rows = [
+      earlySetupIds.map((dotyposReservationId) => ({
+        dotyposReservationId,
+        reservationDetails: earlySetup,
+      })),
+      earlySetupIds.map((id) => ({
+        id: `workspace-${id}`,
+        dotyposCustomerId: "customer",
+        dotyposReservationId: id,
+        reservationState: "confirmed",
+        paymentState: "paid",
+        fulfillmentState: "fulfilled",
+        reservationPurpose: null,
+        reservationDetails: earlySetup,
+        reservationCreatedAt: instant,
+        reservationConfirmedAt: instant,
+        reservationCancelledAt: null,
+        reservationHoldExpiredAt: null,
+        paidAt: instant,
+        fulfilledAt: instant,
+        fulfillmentFailedAt: null,
+        failureCode: null,
+        createdAt: instant,
+        updatedAt: instant,
+      })),
+    ] as const;
+    const listInputs: unknown[] = [];
+    let selectCall = 0;
+
+    const result = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.listBookings({
+        date: "2026-08-10",
+        direction: "asc",
+        page: 1,
+        sort: "date",
+      });
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.make({
+                  select: () => makeQuery<unknown>(rows[selectCall++] ?? []),
+                } as never)
+              ),
+              DotyposServiceMock({
+                getCustomers: () => Effect.succeed([]),
+                getTables: () => Effect.succeed([]),
+                listReservations: (input) =>
+                  Effect.sync(() => {
+                    listInputs.push(input);
+                    return Object.entries(heldStarts)
+                      .toSorted(([, left], [, right]) =>
+                        Temporal.Instant.compare(left, right)
+                      )
+                      .map(([id, startDate]) => ({
+                        _branchId: "branch",
+                        _cloudId: "cloud",
+                        _customerId: null,
+                        id,
+                        startDate,
+                        endDate: "2026-08-11T06:00:00+02:00",
+                        seats: "1",
+                        status: "CONFIRMED" as const,
+                      }));
+                  }),
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              reservationAuthorsMock(),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(listInputs).toEqual([
+      {
+        startsAtOrAfter: "2026-08-09T21:45:00Z",
+        startsBefore: "2026-08-10T22:00:00Z",
+        order: "startDateAscending",
+      },
+    ]);
+    expect(result.items.map(({ id, startsAt }) => ({ id, startsAt }))).toEqual(
+      [
+        { id: "midnight-early", startsAt: "2026-08-09T22:00:00.000Z" },
+        { id: "between", startsAt: "2026-08-10T09:50:00+02:00" },
+        { id: "early-setup", startsAt: "2026-08-10T08:00:00.000Z" },
+      ]
+    );
+    expect(result.total).toBe(3);
   });
 
   test("filters reservations by an inclusive provider date range", async () => {
@@ -610,7 +724,7 @@ describe("AdministrationService", () => {
     expect(customerCalls[0]).toHaveLength(24);
   });
 
-  test("shows an early-setup meeting room's booked time and setup start", async () => {
+  test("shows an early-setup meeting room's booked time", async () => {
     const instant = Temporal.Instant.from("2026-08-01T08:00:00Z");
     const reservationRow = (
       id: string,
@@ -701,11 +815,10 @@ describe("AdministrationService", () => {
     );
 
     const times = result.items.map(
-      ({ date, endsAt, id, setupStartsAt, startsAt }) => ({
+      ({ date, endsAt, id, startsAt }) => ({
         date,
         endsAt,
         id,
-        setupStartsAt,
         startsAt,
       })
     );
@@ -714,14 +827,12 @@ describe("AdministrationService", () => {
         date: "2026-08-10",
         endsAt: "2026-08-10T11:00:00.000+02:00",
         id: "workspace-early-setup",
-        setupStartsAt: "2026-08-10T07:45:00.000Z",
         startsAt: "2026-08-10T08:00:00.000Z",
       },
       {
         date: "2026-08-10",
         endsAt: "2026-08-10T11:00:00.000+02:00",
         id: "workspace-on-time",
-        setupStartsAt: null,
         startsAt: "2026-08-10T10:00:00.000+02:00",
       },
     ]);
@@ -1710,7 +1821,9 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.make({} as never)
+                WorkspaceDatabase.make({
+                  select: () => makeQuery([]),
+                } as never)
               ),
               DotyposServiceMock({
                 getReservation: () =>
@@ -1757,6 +1870,69 @@ describe("AdministrationService", () => {
       startsAt: "2026-08-10T10:00:00Z",
       tableName: "Meeting Room",
     });
+  });
+
+  test("shows an early-setup meeting room's booked start in its booking breadcrumb", async () => {
+    const result = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.loadBookingBreadcrumb("early-setup");
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.make({
+                  select: () =>
+                    makeQuery([
+                      {
+                        dotyposReservationId: "early-setup",
+                        reservationDetails: {
+                          kind: "meeting-room",
+                          earlySetup: true,
+                        },
+                      },
+                    ]),
+                } as never)
+              ),
+              DotyposServiceMock({
+                getReservation: () =>
+                  Effect.succeed(
+                    Option.some({
+                      customer: { id: "dotypos-customer" },
+                      reservation: {
+                        _branchId: "branch",
+                        _cloudId: "cloud",
+                        _customerId: "dotypos-customer",
+                        _tableId: null,
+                        id: "early-setup",
+                        // Held from 09:45 for a 10:00 booking.
+                        startDate: "2026-08-10T09:45:00+02:00",
+                        endDate: "2026-08-10T11:00:00+02:00",
+                        seats: "1",
+                        status: "CONFIRMED",
+                      },
+                    })
+                  ),
+                getTables: () => Effect.succeed([]),
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              reservationAuthorsMock(),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(result?.startsAt).toBe("2026-08-10T08:00:00.000Z");
   });
 
   test("summarizes linked reservation dates through today in the Prague timezone", async () => {
