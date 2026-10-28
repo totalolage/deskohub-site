@@ -39,12 +39,6 @@ export const isReservationAccessProvisioningStale = (
   ) <= 0;
 
 /**
- * Igloohome access name for a grant's credential. Operators find a credential
- * in the Igloohome app by this name, so it stays unique per grant, and it
- * carries no reservation or customer identifier because Igloohome processes it
- * outside the EU.
- */
-/**
  * The whole Prague hours an hourly AlgoPIN for a span is programmed with. A
  * grant's stored bounds identify the same target when they round to the same
  * hours, whether a release stored the whole hours or the exact span.
@@ -60,6 +54,12 @@ export const getReservationAccessSchedule = (input: {
   };
 };
 
+/**
+ * Igloohome access name for a grant's credential. Operators find a credential
+ * in the Igloohome app by this name, so it stays unique per grant, and it
+ * carries no reservation or customer identifier because Igloohome processes it
+ * outside the EU.
+ */
 export const makeReservationAccessName = (grantId: ReservationAccessGrantId) =>
   `Deskohub ${grantId}`;
 
