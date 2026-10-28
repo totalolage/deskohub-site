@@ -4,6 +4,8 @@ import {
   AdministrationAuthentication,
   CliBearerAuthentication,
   CliClientCompatibility,
+  type CliMutationInProgress,
+  type CliMutationRejected,
   CliSessionId,
   CliSessionUnauthorized,
   CurrentAdministrationCaller,
@@ -15,7 +17,7 @@ import { HttpApiMiddleware } from "effect/unstable/httpapi";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
 import { AdministrationActionLog } from "./administration-action-log.service";
-import { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
+import { AdministrationRequestLedger } from "./administration-request-ledger.service";
 
 /** The test client's `dhw`: every request sends this version. */
 export const cliClientVersion = (version: string) =>
@@ -67,13 +69,58 @@ export const GrantedAdministrator = Layer.mock(AccountRoleGrants, {
 });
 
 /** Every mutation is new; Postgres suites cover replays. */
-export const ClaimEveryCliMutation = Layer.succeed(CliMutationIdempotency, {
-  applyOnce: ({ apply }) => apply,
-  claim: () => Effect.succeed({ kind: "claimed" as const }),
-  complete: () => Effect.void,
-  reclaimStale: () => Effect.succeed(false),
-  release: () => Effect.void,
-});
+export const ClaimEveryCliMutation = Layer.succeed(
+  AdministrationRequestLedger,
+  {
+    applyOnce: ({ apply }) => apply,
+    applyOnceWithEffects: ({ apply }) => apply,
+  } as AdministrationRequestLedger["Service"]
+);
+
+/** Records the handler's ledger request while applying its first attempt. */
+export const recordingRequestLedger = (
+  refusal?: CliMutationInProgress | CliMutationRejected
+) => {
+  const requests: Array<{
+    readonly requestId: unknown;
+    readonly mutation: unknown;
+    readonly channel: CurrentAdministrationCaller["Service"]["channel"];
+    readonly recovery?: unknown;
+    readonly stored?: unknown;
+    readonly resume?: unknown;
+    readonly inProgressMessage?: string;
+  }> = [];
+  const firstAttempt = <A, E, R>(
+    apply: Effect.Effect<A, E, R>
+  ): Effect.Effect<A, E | CliMutationInProgress | CliMutationRejected, R> =>
+    refusal
+      ? (Effect.fail(refusal) as Effect.Effect<
+          A,
+          E | CliMutationInProgress | CliMutationRejected,
+          R
+        >)
+      : apply;
+  return {
+    layer: Layer.succeed(AdministrationRequestLedger, {
+      applyOnce: (request) =>
+        Effect.flatMap(CurrentAdministrationCaller, ({ channel }) =>
+          Effect.sync(() => {
+            requests.push({ ...request, channel });
+          }).pipe(Effect.andThen(request.apply))
+        ),
+      applyOnceWithEffects: (request) =>
+        Effect.flatMap(CurrentAdministrationCaller, ({ channel }) =>
+          Effect.flatMap(
+            Effect.sync(() => {
+              requests.push({ ...request, channel });
+            }),
+            () => firstAttempt(request.apply)
+          )
+        ),
+    } as AdministrationRequestLedger["Service"]),
+    requests,
+  };
+};
 
 /**
  * Runs operations without recording them, for suites built from group

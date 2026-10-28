@@ -55,6 +55,7 @@ import {
   CampaignTestRecipientInvalid,
 } from "@/features/email-campaigns/errors";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { AdministrationRequestLedger } from "./administration-request-ledger.service";
 import {
   authorizedCliRequest,
   ClaimEveryCliMutation,
@@ -64,7 +65,6 @@ import {
   UnrecordedAdministrationActions,
 } from "./cli-api.test-utils";
 import { CliClientCompatibilityLive } from "./cli-client-version";
-import { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
 import { AdminCliCampaignsApiHandlers } from "./email-campaigns-api.server";
 
 const campaignId = AdministrationCampaignId.make(
@@ -968,7 +968,7 @@ describe.skipIf(!testDatabase)(
             automationServiceStubs(),
             CampaignService.Default,
             CampaignAudienceService.Default,
-            CliMutationIdempotency.Default,
+            AdministrationRequestLedger.Default,
             Layer.succeed(
               CampaignRecipientService,
               {} as CampaignRecipientService["Service"]
