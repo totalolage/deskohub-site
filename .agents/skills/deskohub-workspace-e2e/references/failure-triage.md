@@ -83,6 +83,16 @@ Preview E2E shares the Cloudinary quota with production, and decorative provider
 - Account deletion deletes the avatar prefix through the Cloudinary Admin API after expiring the Dotypos profile. A rate limit shows as a retryable deletion with "could not expire your customer profile" copy; read the logged cause `_tag` (`Cloudinary asset prefix delete failed`), not the copy, before you blame Dotypos.
 - Provider failure logs omit the HTTP code. Confirm a quota burst by querying PostHog logs for `Cloudinary search page failed` across all `service.version` values around the failure. If other previews caused it, rerun after the hourly window resets instead of changing the flow.
 
+### WebKit Temporal runtime never hydrates
+
+`temporal-runtime.pw.ts` in the `webkit` project fails with "The cowork form never hydrated", followed by the page diagnostics. Read them in this order:
+
+- `Temporal is missing or incomplete` among the page errors, with the `Temporal polyfill` request failed or answered 4xx/5xx: the `<head>` loader's polyfill didn't arrive, so the browser entry threw and the server-rendered page stayed dead. WebKit reports an error status as a failed request (`Load request cancelled`) with the status beside it. Reproduced locally by aborting that route; why the runner's request failed is in the trace's network entry.
+- The polyfill `still pending`: the parser is still blocked in `<head>`, so the page snapshot is empty.
+- The polyfill succeeded, `Temporal=object`, and `Next.js runtime=not started`: look at the failed `App scripts` entries and the page errors instead.
+
+The failure keeps `sanitized-trace.zip` in the test's folder of the uploaded artifact; open it with `bunx playwright show-trace`. URLs in it point at `preview.invalid`, and response bodies are dropped.
+
 ### Discount errors on a fresh preview database
 
 A fresh preview database logs `DiscountProviderError` or `DiscountDefinitionNotFoundError` during its first run, because instant navigation resolves the Calendar sale before `checkout-setup` seeds the definition. `PromotionCodeUnavailableError` comes from the negative discount-code cases. Neither explains a checkout failure.

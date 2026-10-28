@@ -44,10 +44,15 @@ export default defineConfig({
     },
     {
       // Safari and every iOS browser run WebKit, which gets the Temporal
-      // polyfill from the `<head>` loader.
+      // polyfill from the `<head>` loader. Its failures keep a trace, which
+      // the trace reporter sanitizes before it can be uploaded.
       name: "webkit",
       testMatch: "temporal-runtime.pw.ts",
-      use: { browserName: "webkit", launchOptions: {} },
+      use: {
+        browserName: "webkit",
+        launchOptions: {},
+        trace: "retain-on-failure",
+      },
     },
   ],
   testDir: "./e2e/instant-navigation",
