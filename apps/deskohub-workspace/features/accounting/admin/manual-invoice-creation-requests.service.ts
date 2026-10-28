@@ -1,8 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { and, eq, isNull, lte, sql } from "drizzle-orm";
+import { and, eq, isNull, lte } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer } from "effect";
-import type { SqlError } from "effect/unstable/sql/SqlError";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { manualInvoiceCreationRequests } from "@/db/schema";
 import type { InvoiceId } from "@/features/accounting/manual-invoice";
@@ -22,13 +21,6 @@ export class ManualInvoiceCreationRequestError extends Data.TaggedError(
 )<{ readonly message: string }> {}
 
 interface IManualInvoiceCreationRequests {
-  readonly withNewCustomerLock: <A, E, R>(
-    effect: Effect.Effect<A, E, R>
-  ) => Effect.Effect<A, E | EffectDrizzleQueryError | SqlError, R>;
-  readonly withLock: <A, E, R>(
-    invoiceId: InvoiceId,
-    effect: Effect.Effect<A, E, R>
-  ) => Effect.Effect<A, E | EffectDrizzleQueryError | SqlError, R>;
   readonly claim: (input: {
     readonly invoiceId: InvoiceId;
     readonly normalizedRequestJson: string;
@@ -53,30 +45,6 @@ export class ManualInvoiceCreationRequests extends Context.Service<
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
       const keys = yield* AccountingSnapshotKeyService;
-
-      // ponytail: one global new-customer lock avoids putting email PII in SQL;
-      // shard by a keyed normalized-email digest if admin throughput matters.
-      const withNewCustomerLock: IManualInvoiceCreationRequests["withNewCustomerLock"] =
-        (effect) =>
-          db.transaction((tx) =>
-            tx
-              .execute(
-                sql`select pg_advisory_xact_lock(hashtext('manual-invoice-new-customer'), hashtext('global'))`
-              )
-              .pipe(Effect.andThen(effect))
-          );
-
-      const withLock: IManualInvoiceCreationRequests["withLock"] = (
-        invoiceId,
-        effect
-      ) =>
-        db.transaction((tx) =>
-          tx
-            .execute(
-              sql`select pg_advisory_xact_lock(hashtext('manual-invoice-creation'), hashtext(${invoiceId}))`
-            )
-            .pipe(Effect.andThen(effect))
-        );
 
       const claim: IManualInvoiceCreationRequests["claim"] = Effect.fn(
         function* (input) {
@@ -173,8 +141,6 @@ export class ManualInvoiceCreationRequests extends Context.Service<
       return {
         claim,
         complete,
-        withLock,
-        withNewCustomerLock,
       } satisfies IManualInvoiceCreationRequests;
     })
   );
