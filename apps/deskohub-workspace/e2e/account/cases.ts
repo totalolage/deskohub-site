@@ -15,23 +15,15 @@ import { getReservationStartPath } from "@/features/reservation/routes";
 import { maskEmailAddress } from "@/shared/utils";
 import {
   clickBrowserElement,
-  closeBrowserSession,
   evalBrowserScript,
   fillBrowserField,
   focusBrowserElement,
   normalizeBrowserText,
-  openBrowserPage,
   pressBrowserKey,
-  readBrowserText,
-  readBrowserUrl,
   waitForBrowserCondition,
-  waitForBrowserReactFormSubmit,
   waitForBrowserReactHandler,
-  waitForBrowserText,
-  waitForBrowserUrl,
   waitForInteractiveSnapshot,
 } from "../browser";
-import { switchLocale } from "../cases/locale";
 import type { DatasourceConfig } from "../config";
 import {
   type WorkspaceE2EError,
@@ -39,12 +31,7 @@ import {
   workspaceE2ETimeoutError,
 } from "../errors";
 import { pollUntil } from "../polling";
-import {
-  addRedaction,
-  assert,
-  parseUrl,
-  type Runner,
-} from "../runtime";
+import { addRedaction, assert, parseUrl, type Runner } from "../runtime";
 import {
   workspaceE2EPollInitialIntervalMs,
   workspaceE2EPollIntervalMs,
@@ -77,7 +64,10 @@ import {
   expireSyntheticCustomerProfile,
   requireSyntheticCustomerProfile,
 } from "./fixtures";
-import type { WorkspaceE2EAccountLaneBrowser } from "./lane-browser";
+import type {
+  WorkspaceE2EAccountBrowser,
+  WorkspaceE2EAccountLaneBrowser,
+} from "./lane-browser";
 import type { WorkspaceE2EAccountPasskeys } from "./passkeys";
 import { workspaceE2EAccountProfileFixture } from "./profile-fixture";
 import type { MagicLinkRateBudget } from "./rate-budget";
@@ -145,9 +135,7 @@ const callbackSuffix = "/auth/callback";
  */
 const publicPreferenceProbeSuffix = "/faq";
 
-const signInFormSelector = "#account-sign-in-form";
 const signInEmailSelector = "#account-sign-in-email";
-const signInSubmitSelector = "#account-sign-in-submit";
 const signInCodeSelector = "#account-sign-in-code";
 const profileFirstNameSelector = "#account-profile-first-name";
 const profileLastNameSelector = "#account-profile-last-name";
@@ -157,7 +145,6 @@ const profileSubmitSelector = "#account-profile-form button[type=submit]";
 const profileReferralCodeSelector = "#profile-referral-code";
 const billingKindSelector = "#account-profile-billing-kind";
 const billingCompanyNameSelector = "#account-profile-billing-company-name";
-const signOutSelector = "#account-sign-out";
 const deleteTriggerSelector = "#delete-account-trigger";
 const deleteReauthSendSelector = "#delete-account-reauth-send";
 const deleteConfirmCheckboxSelector = "#confirm-account-deletion";
@@ -316,32 +303,27 @@ export const makeWorkspaceE2EAccountCases = ({
   const previewRpId = new URL(config.baseUrl).hostname;
 
   /**
-   * The page steps of one browser session. The lane drives its own session
-   * through them, and the reactivation case also drives a second, anonymous
-   * browser: the one a customer's assistant books in.
+   * The page steps of one browser. The lane drives its own browser through
+   * them, and the reactivation case also drives a second, anonymous browser:
+   * the one a customer's assistant books in.
    */
-  const makeBrowserSteps = (browserSession: string) => {
-    const openPage = (url: string) =>
-      openBrowserPage(config, run, browserSession, url, {
-        timeoutMs: browserTimeout,
-      });
+  const makeBrowserSteps = (browser: WorkspaceE2EAccountBrowser) => {
+    const openPage = (url: string) => browser.open(url);
 
     const waitText = (
       description: string,
       text: string,
       timeoutMs = uiTransition
     ) =>
-      waitForBrowserText({
+      browser.waitForText(
         description,
-        matches: (pageText) => pageText.includes(text),
-        run,
-        session: browserSession,
-        timeoutMs,
-      });
+        (pageText) => pageText.includes(text),
+        timeoutMs
+      );
 
     const waitUrlContains = (description: string, expected: string) =>
       pollUntil(
-        readBrowserUrl(run, browserSession).pipe(
+        browser.readUrl.pipe(
           Effect.map((url) => (url?.includes(expected) ? url : undefined))
         ),
         {
@@ -355,56 +337,47 @@ export const makeWorkspaceE2EAccountCases = ({
       description: string,
       matches: (pathname: string) => boolean
     ) =>
-      waitForBrowserUrl({
+      browser.waitForUrl(
         description,
-        matches: (url) => {
+        (url) => {
           const parsed = parseUrl(url);
           return parsed?.origin === previewOrigin && matches(parsed.pathname);
         },
-        run,
-        session: browserSession,
-        timeoutMs: navigationTimeout,
-      });
+        navigationTimeout
+      );
+
+    /**
+     * Waits until a sign-in leaves the browser on exactly the path and query
+     * it returns to, so a selection carried in the query survived the
+     * callback.
+     */
+    const waitReturnLanding = (description: string, returnTo: string) =>
+      browser.waitForUrl(
+        description,
+        (url) => {
+          const parsed = parseUrl(url);
+          return (
+            parsed?.origin === previewOrigin &&
+            `${parsed.pathname}${parsed.search}` === returnTo
+          );
+        },
+        navigationTimeout
+      );
+
+    /** Waits until a cowork page shows the selection its URL carries. */
+    const waitCoworkSelection = (description: string) =>
+      browser.waitForCoworkSelection(description, coworkSelectionTier);
 
     const readNormalizedText = () =>
-      readBrowserText(run, browserSession).pipe(
-        Effect.map(normalizeBrowserText)
-      );
+      browser.readText.pipe(Effect.map(normalizeBrowserText));
 
-    const waitSignInForm = () =>
-      waitForBrowserReactFormSubmit(
-        run,
-        browserSession,
-        signInFormSelector,
-        [signInEmailSelector],
-        { timeoutMs: browserTimeout }
-      );
+    const waitSignInForm = () => browser.waitForSignInForm;
 
     const fillAndSubmitEmail = (email: string) =>
-      Effect.gen(function* () {
-        yield* fillBrowserField(
-          run,
-          browserSession,
-          signInEmailSelector,
-          email,
-          {
-            timeoutMs: browserTimeout,
-          }
-        );
-        yield* clickBrowserElement(run, browserSession, signInSubmitSelector, {
-          timeoutMs: browserTimeout,
-        });
-      });
+      browser.submitSignInEmail(email);
 
     /** Waits until the code input of a sign-in code step takes typed digits. */
-    const waitSignInCodeInput = () =>
-      waitForBrowserReactHandler(
-        run,
-        browserSession,
-        signInCodeSelector,
-        "onChange",
-        { timeoutMs: browserTimeout }
-      );
+    const waitSignInCodeInput = () => browser.waitForSignInCodeInput;
 
     /**
      * Waits for the card an accepted sign-in email leaves and reports which
@@ -417,14 +390,11 @@ export const makeWorkspaceE2EAccountCases = ({
     ) {
       const inboxTitle = m.accountSignInAcceptedTitle({}, { locale });
       const codeTitle = m.accountSignInCodeTitle({}, { locale });
-      const pageText = yield* waitForBrowserText({
+      const pageText = yield* browser.waitForText(
         description,
-        matches: (text) =>
-          text.includes(inboxTitle) || text.includes(codeTitle),
-        run,
-        session: browserSession,
-        timeoutMs: uiTransition,
-      });
+        (text) => text.includes(inboxTitle) || text.includes(codeTitle),
+        uiTransition
+      );
       if (!pageText.includes(codeTitle)) {
         return "inbox" as const;
       }
@@ -436,7 +406,9 @@ export const makeWorkspaceE2EAccountCases = ({
       fillAndSubmitEmail,
       openPage,
       readNormalizedText,
+      waitCoworkSelection,
       waitPathname,
+      waitReturnLanding,
       waitSignInAccepted,
       waitSignInCodeInput,
       waitSignInForm,
@@ -449,13 +421,15 @@ export const makeWorkspaceE2EAccountCases = ({
     fillAndSubmitEmail,
     openPage,
     readNormalizedText,
+    waitCoworkSelection,
     waitPathname,
+    waitReturnLanding,
     waitSignInAccepted,
     waitSignInCodeInput,
     waitSignInForm,
     waitText,
     waitUrlContains,
-  } = makeBrowserSteps(session);
+  } = makeBrowserSteps(laneBrowser);
 
   const captureLanguageReview = (stage: LanguagePreferenceReviewStage) =>
     captureLanguagePreferenceReview === undefined
@@ -495,11 +469,9 @@ export const makeWorkspaceE2EAccountCases = ({
    */
   const signOutAndRequireAnonymous = (pageLocale: Locale = config.locale) =>
     Effect.gen(function* () {
-      yield* clickBrowserElement(run, session, signOutSelector, {
-        timeoutMs: browserTimeout,
-      });
+      yield* laneBrowser.signOut;
       yield* pollUntil(
-        readBrowserUrl(run, session).pipe(
+        laneBrowser.readUrl.pipe(
           Effect.map((url) =>
             url !== undefined &&
             withoutTrailingSlash(url) === localized("", pageLocale)
@@ -531,7 +503,7 @@ export const makeWorkspaceE2EAccountCases = ({
     referralCode: string
   ) {
     yield* pollUntil(
-      readBrowserUrl(run, session).pipe(
+      laneBrowser.readUrl.pipe(
         Effect.map((url) => {
           if (url === undefined) return undefined;
           const current = new URL(url);
@@ -669,13 +641,6 @@ export const makeWorkspaceE2EAccountCases = ({
         }),
     });
 
-  /**
-   * The second browser of the cross-browser sign-in: the one a customer's
-   * assistant books in. The reactivation case opens and closes it, so the
-   * lane keeps one page between cases.
-   */
-  const assistantSession = `${session}-assistant`;
-
   const captureHandoffReview = (stage: SignInHandoffReviewStage) =>
     captureSignInHandoffReview === undefined
       ? Effect.void
@@ -687,29 +652,6 @@ export const makeWorkspaceE2EAccountCases = ({
             }),
           try: () => captureSignInHandoffReview(stage),
         });
-
-  /**
-   * Waits until a sign-in leaves the browser on exactly the path and query it
-   * returns to, so a selection carried in the query survived the callback.
-   */
-  const waitReturnLanding = (
-    browserSession: string,
-    description: string,
-    returnTo: string
-  ) =>
-    waitForBrowserUrl({
-      description,
-      matches: (url) => {
-        const parsed = parseUrl(url);
-        return (
-          parsed?.origin === previewOrigin &&
-          `${parsed.pathname}${parsed.search}` === returnTo
-        );
-      },
-      run,
-      session: browserSession,
-      timeoutMs: navigationTimeout,
-    });
 
   /**
    * Whether the browser's session belongs to the email, read from the page
@@ -738,20 +680,6 @@ export const makeWorkspaceE2EAccountCases = ({
           (JSON.parse(command.stdout) as { sessionMatches: boolean })
             .sessionMatches
       )
-    );
-
-  /** Waits until a cowork page shows the selection its URL carries. */
-  const waitCoworkSelection = (browserSession: string, description: string) =>
-    waitForBrowserCondition(
-      run,
-      browserSession,
-      description,
-      `(() => {
-        const tier = document.querySelector('input[name="entryTier"]:checked');
-        return tier instanceof HTMLInputElement &&
-          tier.value === ${JSON.stringify(coworkSelectionTier)};
-      })()`,
-      { timeoutMs: uiTransition }
     );
 
   const passkeysOffered = () => lifecycleHandoff.passkeySignIn === "offered";
@@ -919,10 +847,7 @@ export const makeWorkspaceE2EAccountCases = ({
             "open-sign-in-from-cowork-selection",
             Effect.gen(function* () {
               yield* openPage(`${config.baseUrl}${selection}`);
-              yield* waitCoworkSelection(
-                session,
-                "cowork selection before the sign-in"
-              );
+              yield* waitCoworkSelection("cowork selection before the sign-in");
               yield* openPage(
                 `${config.baseUrl}${getAccountSignInPath(config.locale, selection)}`
               );
@@ -1081,7 +1006,6 @@ export const makeWorkspaceE2EAccountCases = ({
               // The code signs in from the selection's sign-in, so it returns
               // there; the completion state is on the account page.
               yield* waitReturnLanding(
-                session,
                 "cowork selection after the code sign-in",
                 signInReturns.sameBrowser.returnTo
               );
@@ -1159,12 +1083,10 @@ export const makeWorkspaceE2EAccountCases = ({
                 // before the callback leaves for the selection.
                 yield* openPage(link);
                 yield* waitReturnLanding(
-                  session,
                   "cowork selection after the link",
                   signInReturns.sameBrowser.returnTo
                 );
                 yield* waitCoworkSelection(
-                  session,
                   "cowork selection kept after the link"
                 );
                 assert(
@@ -1642,15 +1564,13 @@ export const makeWorkspaceE2EAccountCases = ({
                 // With sign-in codes on, the dialog opens its code step
                 // instead. The emailed link still signs in, and the session
                 // lifecycle case consumes it.
-                const pageText = yield* waitForBrowserText({
-                  description: "reauthentication email accepted",
-                  matches: (text) =>
+                const pageText = yield* laneBrowser.waitForText(
+                  "reauthentication email accepted",
+                  (text) =>
                     text.includes(deletionReauthLinkSent) ||
                     text.includes(deletionReauthCodeTitle),
-                  run,
-                  session,
-                  timeoutMs: uiTransition,
-                });
+                  uiTransition
+                );
                 if (pageText.includes(deletionReauthCodeTitle)) {
                   yield* waitSignInCodeInput();
                 }
@@ -1874,7 +1794,7 @@ export const makeWorkspaceE2EAccountCases = ({
         // link there, in Czech, from a cowork selection; the customer opens
         // the link in the lane browser. The link signs in only the browser
         // that opens it, which must finish on the same selection.
-        const assistant = makeBrowserSteps(assistantSession);
+        const assistant = makeBrowserSteps(laneBrowser.assistant);
         const { locale: handoffLocale, returnTo } = signInReturns.assistant;
         const reactivatedUserId = yield* Effect.gen(function* () {
           yield* runStep(
@@ -1882,8 +1802,7 @@ export const makeWorkspaceE2EAccountCases = ({
               "open-czech-selection-in-assistant-browser",
               Effect.gen(function* () {
                 yield* assistant.openPage(`${config.baseUrl}${returnTo}`);
-                yield* waitCoworkSelection(
-                  assistantSession,
+                yield* assistant.waitCoworkSelection(
                   "cowork selection before the sign-in"
                 );
               }),
@@ -1947,12 +1866,10 @@ export const makeWorkspaceE2EAccountCases = ({
                   // callback leaves for the selection.
                   yield* openPage(link);
                   yield* waitReturnLanding(
-                    session,
                     "cowork selection after the sign-in",
                     returnTo
                   );
                   yield* waitCoworkSelection(
-                    session,
                     "cowork selection kept after the sign-in"
                   );
                   assert(
@@ -2025,18 +1942,15 @@ export const makeWorkspaceE2EAccountCases = ({
             step(
               "request-new-link-with-selection-return",
               Effect.gen(function* () {
-                yield* clickBrowserElement(
-                  run,
-                  assistantSession,
-                  `a:has-text("${m.accountCallbackFailedAction({}, { locale: handoffLocale })}")`,
-                  { timeoutMs: browserTimeout }
+                yield* laneBrowser.assistant.requestNewLinkAfterFailedCallback(
+                  handoffLocale
                 );
                 yield* assistant.waitPathname(
                   "sign-in after the failed link",
                   (pathname) => pathname === `/${handoffLocale}${signInSuffix}`
                 );
                 yield* pollUntil(
-                  readBrowserUrl(run, assistantSession).pipe(
+                  laneBrowser.assistant.readUrl.pipe(
                     Effect.map((url) =>
                       url !== undefined &&
                       new URL(url).searchParams.get("returnTo") === returnTo
@@ -2059,11 +1973,7 @@ export const makeWorkspaceE2EAccountCases = ({
             )
           );
           return userId;
-        }).pipe(
-          Effect.ensuring(
-            Effect.ignore(closeBrowserSession(run, assistantSession))
-          )
-        );
+        }).pipe(Effect.ensuring(laneBrowser.assistant.close));
         // The Czech callback saved Czech as the new account's preference;
         // the later cases read the account in English, as an English
         // reactivation would have saved it.
@@ -2541,7 +2451,7 @@ export const makeWorkspaceE2EAccountCases = ({
         yield* runStep(
           step(
             "switch-to-english-in-header",
-            switchLocale(run, session, "en-US", config.timeouts),
+            laneBrowser.switchLocale("en-US"),
             providerTransition
           )
         );
