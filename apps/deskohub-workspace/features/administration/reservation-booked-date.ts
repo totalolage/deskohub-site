@@ -4,7 +4,7 @@ import {
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
 import { Option, Schema } from "effect";
-import { decodeBookedReservation } from "@/features/reservation/backend/booked-reservation";
+import { decodeBookedStart } from "@/features/reservation/backend/booked-reservation";
 import {
   getMeetingRoomBookedStart,
   getMeetingRoomSetupStart,
@@ -50,7 +50,7 @@ export const getBookedStart = (
   details?: StoredWorkspaceReservationDetails
 ) =>
   Option.getOrThrowWith(
-    decodeBookedReservation(reservation, details).start,
+    decodeBookedStart(reservation, details),
     () => new Error("Dotypos reservation start is unreadable.")
   );
 
@@ -64,8 +64,11 @@ export const getBookedStartsAt = (
   reservation: BookedFacts,
   details?: StoredWorkspaceReservationDetails
 ) => {
-  const { setupStart, start } = decodeBookedReservation(reservation, details);
-  return Option.isSome(setupStart) && Option.isSome(start)
+  const start = decodeBookedStart(reservation, details);
+  const heldStart = decodeBookedStart(reservation);
+  return Option.isSome(start) &&
+    Option.isSome(heldStart) &&
+    !start.value.equals(heldStart.value)
     ? temporalInstantToIsoString(start.value)
     : reservation.startDate;
 };
