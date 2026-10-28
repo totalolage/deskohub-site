@@ -5,8 +5,12 @@ import { Cause, Effect, Exit, Fiber, Option } from "effect";
 import { TestClock } from "effect/testing";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import {
+  activateBrowserElement,
+  activateElement,
   activateHydratedBrowserElement,
   activateHydratedElement,
+  assertPageCheck,
+  evalBrowserScript,
   openPage,
   readPageUrl,
   runBrowserCommand,
@@ -25,19 +29,15 @@ import {
   waitForReactHydration,
 } from "./browser";
 import { E2EBrowserSession } from "./browser-session";
-import { runE2ECase } from "./case-runner";
+import {
+  failedStepAnnotation as failedAnnotation,
+  type BrowserStepDriver as HelperDriver,
+  runBrowserStep,
+} from "./case-runner.browser.test-utils";
 import { isWorkspaceE2ETimeout, type WorkspaceE2EError } from "./errors";
 import { pollUntil } from "./polling";
 import { addRedaction } from "./redaction";
-import {
-  browserSessionFor,
-  makePlaywrightBrowserRunner,
-  type Runner,
-} from "./runtime";
-import {
-  type E2ETelemetryObservation,
-  makeE2ETelemetryMock,
-} from "./services/telemetry.mock";
+import { browserSessionFor, makePlaywrightBrowserRunner } from "./runtime";
 import { argvCommandTimeoutMs } from "./timeouts";
 
 const chromiumAvailable = await playwrightChromiumAvailable();
@@ -390,26 +390,16 @@ const helperServer = Bun.serve({
 
 afterAll(() => helperServer.stop(true));
 
-type HelperDriver = {
-  readonly id: string;
-  readonly run: Runner;
-  readonly session: E2EBrowserSession;
-};
-
-const helperCaseId = "browser-helper";
-const helperStepId = "drive-helper";
-
 /**
  * Serves a blank page, shows `html` in it, and runs `drive` as the one step
- * of a C03 case. Reports the case annotations, the step outcome, the step's
- * failure and what `drive` returned.
+ * of a C03 case (`runBrowserStep`).
  */
-const runHelperStep = async <A>(
+const runHelperStep = <A>(
   html: string,
   drive: (driver: HelperDriver) => Effect.Effect<A, WorkspaceE2EError>,
   {
     afterStep,
-    stepTimeoutMs = 15_000,
+    stepTimeoutMs,
   }: {
     /** Runs on the page once the case has settled. */
     readonly afterStep?: (
@@ -419,76 +409,18 @@ const runHelperStep = async <A>(
   } = {}
 ) => {
   if (!browser) throw new Error("Chromium is not running");
-  const run = makePlaywrightBrowserRunner(browser, { recordHar: false });
-  const id = `browser-helper-${randomUUID()}`;
-  const observations: E2ETelemetryObservation[] = [];
-  const failures: WorkspaceE2EError[] = [];
-  let value: A | undefined;
-  try {
-    const exit = await Effect.runPromiseExit(
-      runE2ECase({
-        body: (step) =>
-          Effect.gen(function* () {
-            const session = yield* browserSessionFor(run, id);
-            yield* session.use("show the page", async (page) => {
-              await page.goto(helperServer.url.href);
-              await page.setContent(html);
-            });
-            value = yield* step({
-              execute: drive({ id, run, session }).pipe(
-                Effect.tapError((failure) =>
-                  Effect.sync(() => failures.push(failure))
-                )
-              ),
-              id: helperStepId,
-              timeoutMs: stepTimeoutMs,
-            });
-          }),
-        caseId: helperCaseId,
-        watchdogMs: 60_000,
-      }).pipe(Effect.provide(makeE2ETelemetryMock(observations)))
-    );
-    if (afterStep) {
-      await Effect.runPromise(
-        Effect.flatMap(browserSessionFor(run, id), (session) =>
-          afterStep({ id, run, session })
-        )
-      );
-    }
-    return {
-      annotations: observations
-        .filter(({ scope }) => scope === "annotation")
-        .map(({ scope: _scope, ...annotation }) => annotation),
-      failures: failures.map((failure) => ({
-        message: failure.message,
-        timeout: isWorkspaceE2ETimeout(failure),
-      })),
-      steps: observations.flatMap(({ scope, ...observation }) =>
-        scope === "step" ? [observation] : []
-      ),
-      succeeded: Exit.isSuccess(exit),
-      value,
-    };
-  } finally {
-    await run.close?.();
-  }
+  return runBrowserStep({
+    afterStep,
+    browser,
+    drive,
+    prepare: (session) =>
+      session.use("show the page", async (page) => {
+        await page.goto(helperServer.url.href);
+        await page.setContent(html);
+      }),
+    stepTimeoutMs,
+  });
 };
-
-const failedAnnotation = (failureKind: "error" | "timeout") => [
-  failureKind === "timeout"
-    ? {
-        caseId: helperCaseId,
-        failureKind: "timeout" as const,
-        outcome: "timed_out" as const,
-        stepId: helperStepId,
-      }
-    : {
-        caseId: helperCaseId,
-        failureKind: "error" as const,
-        outcome: "failed" as const,
-        stepId: helperStepId,
-      },
-];
 
 // A control that React hydrates after `afterMs`: it gains React props with
 // the given handlers, as React's own `__reactProps$` key carries them.
@@ -608,6 +540,121 @@ test.skipIf(!chromiumAvailable)(
     }
   },
   90_000
+);
+
+test.skipIf(!chromiumAvailable)(
+  "activates a visible element without waiting for hydration through both drivers",
+  async () => {
+    const readPresses = (session: E2EBrowserSession) =>
+      session.evaluate(
+        "read presses",
+        () => ({
+          presses: Reflect.get(window, "presses"),
+          trustedEnters: Reflect.get(window, "trustedEnters"),
+        }),
+        undefined,
+        { timeoutMs: 5000 }
+      );
+    // The button never hydrates within the test.
+    const html = hydratingButton(120_000);
+    for (const drive of [
+      ({ session }: HelperDriver) =>
+        Effect.andThen(
+          activateElement(session, "#target", { timeoutMs: 5000 }),
+          readPresses(session)
+        ),
+      ({ id, run, session }: HelperDriver) =>
+        Effect.andThen(
+          activateBrowserElement(run, id, "#target", { timeoutMs: 5000 }),
+          readPresses(session)
+        ),
+    ]) {
+      const result = await runHelperStep(html, drive);
+      expect(result.succeeded).toBe(true);
+      expect(result.value).toEqual({ presses: 1, trustedEnters: 1 });
+    }
+
+    // Only a hidden match: neither driver focuses it.
+    const hidden = `${html}<button id="hidden" hidden>Hidden</button>`;
+    for (const drive of [
+      ({ session }: HelperDriver) =>
+        activateElement(session, "#hidden", { timeoutMs: 1000 }),
+      ({ id, run }: HelperDriver) =>
+        activateBrowserElement(run, id, "#hidden", { timeoutMs: 1000 }),
+    ]) {
+      const result = await runHelperStep(hidden, drive);
+      expect(result.annotations).toEqual(failedAnnotation("timeout"));
+    }
+  },
+  90_000
+);
+
+test.skipIf(!chromiumAvailable)(
+  "classifies page checks as the argv assertion evaluation does",
+  async () => {
+    const blockFor = 2000;
+    const checks: readonly {
+      readonly argv: string;
+      readonly check: (ms: number) => string | null;
+      readonly message: string;
+    }[] = [
+      {
+        // The argv form threw the problem the session check returns.
+        argv: "(() => { throw new Error('summary missing'); })()",
+        check: () => "summary missing",
+        message: "check the page failed: summary missing",
+      },
+      {
+        argv: "(() => { throw new Error('broken check'); })()",
+        check: (): string | null => {
+          throw new Error("broken check");
+        },
+        message: "check the page failed",
+      },
+      {
+        // Overruns the evaluation bound.
+        argv: inPageExpression((ms: number) => {
+          const end = Date.now() + ms;
+          while (Date.now() < end) {
+            // block the page
+          }
+          return true;
+        }, blockFor),
+        check: (ms: number) => {
+          const end = Date.now() + ms;
+          while (Date.now() < end) {
+            // block the page
+          }
+          return null;
+        },
+        message: "check the page failed",
+      },
+    ];
+    for (const { argv, check, message } of checks) {
+      const checked = await runHelperStep("<main></main>", ({ session }) =>
+        assertPageCheck(session, "check the page", check, blockFor, {
+          timeoutMs: 500,
+        })
+      );
+      expect(checked.annotations).toEqual(failedAnnotation("error"));
+      expect(checked.failures).toEqual([{ message, timeout: false }]);
+
+      const argvRun = await runHelperStep("<main></main>", ({ id, run }) =>
+        evalBrowserScript("check the page", run, id, argv, { timeoutMs: 500 })
+      );
+      expect(argvRun.annotations).toEqual(failedAnnotation("error"));
+      expect(argvRun.failures.map(({ timeout }) => timeout)).toEqual([false]);
+    }
+
+    const holds = await runHelperStep("<main></main>", ({ session }) =>
+      assertPageCheck(session, "check the page", () => null, undefined, {
+        timeoutMs: 5000,
+      })
+    );
+    expect(holds.succeeded).toBe(true);
+    expect(holds.annotations).toEqual([]);
+  },
+  120_000
 );
 
 test.skipIf(!chromiumAvailable)(
