@@ -23,6 +23,7 @@ import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { runWorkspaceBrowserEffectUntilAbort } from "@/shared/browser/workspace-browser-effect";
+import { reportWorkspaceBrowserFailure } from "@/shared/browser/workspace-browser-logs";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
@@ -52,10 +53,7 @@ import {
   isCampaignImageAlignment,
   isCampaignImageWidth,
 } from "../../body/campaign-image";
-import {
-  type CampaignImageUploadStage,
-  uploadCampaignImage,
-} from "./campaign-image-upload";
+import type { CampaignImageUploadStage } from "./campaign-image-upload";
 import { normalizeCampaignLinkHref } from "./campaign-link-href";
 import { CtaButtonDialog, type CtaButtonValues } from "./cta-button-dialog";
 
@@ -586,9 +584,25 @@ function ImageUploadControl({
     if (!lifetime.current) return;
     setError(undefined);
     setStage("uploading");
-    void uploadCampaignImage(file, locale, (next) =>
-      Effect.sync(() => setStage(next))
-    ).pipe(
+    // The upload and its canvas shrinking load only once an image is chosen,
+    // so the editor's first load doesn't carry their parsing and decoding.
+    void Effect.promise(() => import("./campaign-image-upload")).pipe(
+      Effect.flatMap(({ uploadCampaignImage }) =>
+        uploadCampaignImage(file, locale, (next) =>
+          Effect.sync(() => setStage(next))
+        )
+      ),
+      // Only loading the upload itself can fail here, such as offline.
+      Effect.catchDefect((cause) =>
+        reportWorkspaceBrowserFailure(
+          "email-campaigns.admin.image-upload.unavailable",
+          cause
+        ).pipe(
+          Effect.as(
+            Result.fail(m.emailCampaignsImageUploadFailed({}, { locale }))
+          )
+        )
+      ),
       Effect.flatMap((uploaded) =>
         Effect.sync(() => {
           setStage(undefined);
