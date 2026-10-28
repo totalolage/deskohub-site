@@ -8,7 +8,11 @@ import { env } from "@/env";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { WorkspaceIgloohomeLayer } from "@/shared/backend/config/igloohome.config";
 import { workspaceSiteConstants } from "@/shared/utils";
-import { ceilToWholeHour, floorToWholeHour } from "@/shared/utils/temporal";
+import {
+  ceilToWholeHour,
+  currentInstant,
+  floorToWholeHour,
+} from "@/shared/utils/temporal";
 import type {
   IssuedReservationAccess,
   ReservationAccessGrant,
@@ -50,7 +54,7 @@ export const getReservationAccessInterval = (input: {
   readonly now?: Temporal.Instant;
 }): Effect.Effect<ReservationAccessInterval, ReservationAccessIssuanceError> =>
   Effect.gen(function* () {
-    const now = input.now ?? Temporal.Now.instant();
+    const now = input.now ?? (yield* currentInstant);
     const schedule = getReservationAccessSchedule(input);
 
     if (Temporal.Instant.compare(now, input.reservedUntil) >= 0) {
@@ -233,6 +237,7 @@ export class ReservationAccessService extends Context.Service<
                   reservationId: input.reservationId,
                   scheduledAccessStartsAt:
                     existingGrant.scheduledAccessStartsAt,
+                  accessStartsAt: existingGrant.accessStartsAt,
                   accessEndsAt: existingGrant.accessEndsAt,
                 })
                 .pipe(
@@ -281,6 +286,7 @@ export class ReservationAccessService extends Context.Service<
                 id: grant.id,
                 reservationId: input.reservationId,
                 scheduledAccessStartsAt: interval.scheduledStartsAt,
+                accessStartsAt: grant.accessStartsAt,
                 accessEndsAt: interval.endsAt,
               })
               .pipe(
@@ -348,6 +354,7 @@ export class ReservationAccessService extends Context.Service<
               id: grant.id,
               reservationId: input.reservationId,
               scheduledAccessStartsAt: interval.scheduledStartsAt,
+              accessStartsAt: interval.startsAt,
               accessEndsAt: interval.endsAt,
               accessName,
               startedAt: claimedAt,
