@@ -1868,12 +1868,17 @@ export class AdministrationService extends Context.Service<
         );
         if (shiftedIds.length === 0) return reservations;
         const detailsById = yield* loadEarlySetupDetails(db, shiftedIds);
+        // The other bookings' held date is their booked date, which the
+        // held bounds already keep in the range.
+        const shifted = new Set(shiftedIds);
         return new Map(
-          [...reservations].filter(([id, reservation]) =>
-            isAdministrationDateInRange(
-              getReservationDate(reservation, detailsById.get(id)),
-              range
-            )
+          [...reservations].filter(
+            ([id, reservation]) =>
+              !shifted.has(id) ||
+              isAdministrationDateInRange(
+                getReservationDate(reservation, detailsById.get(id)),
+                range
+              )
           )
         );
       });

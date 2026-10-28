@@ -5,6 +5,7 @@ import { Option } from "effect";
 import {
   type BookedReservation,
   decodeBookedReservation,
+  decodeBookedStart,
 } from "@/features/reservation/backend/booked-reservation";
 import type { ReservationRecord } from "@/features/reservation/backend/reservation-record";
 
@@ -227,5 +228,33 @@ describe("decodeBookedReservation early setup", () => {
 
     expect(Option.isNone(booked.interval)).toBe(true);
     expect(Option.isSome(booked.occupiedInterval)).toBe(true);
+  });
+});
+
+describe("decodeBookedStart", () => {
+  const earlySetup = { kind: "meeting-room", earlySetup: true } as const;
+
+  test.each([
+    { name: "a flagged meeting room", details: earlySetup },
+    { name: "no details", details: undefined },
+    { name: "an office", details: { kind: "office" as const } },
+  ])("matches the decoded booked start for $name", ({ details }) => {
+    const record = makeRecord({ startDate: "2026-03-10T08:45:00Z" });
+
+    expect(
+      Option.getOrNull(Option.map(decodeBookedStart(record, details), String))
+    ).toBe(
+      Option.getOrNull(
+        Option.map(decodeBookedReservation(record, details).start, String)
+      )
+    );
+  });
+
+  test("has no start when Dotypos's start is unreadable", () => {
+    expect(
+      Option.isNone(
+        decodeBookedStart(makeRecord({ startDate: "soon" }), earlySetup)
+      )
+    ).toBe(true);
   });
 });

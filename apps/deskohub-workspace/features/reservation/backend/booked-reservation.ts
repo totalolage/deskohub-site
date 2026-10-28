@@ -53,6 +53,21 @@ const toInterval = (
   );
 
 /**
+ * The booked start of a Dotypos reservation or a reservation record alone,
+ * which is `decodeBookedReservation`'s `start` without decoding the other
+ * facts. Lists that order or date thousands of reservations read this.
+ */
+export const decodeBookedStart = (
+  reservation: Pick<DotyposReservation, "startDate">,
+  details?: StoredWorkspaceReservationDetails
+): Option.Option<Temporal.Instant> => {
+  const heldStart = decodeInstant(reservation.startDate);
+  return hasEarlySetup(details)
+    ? Option.map(heldStart, getMeetingRoomBookedStart)
+    : heldStart;
+};
+
+/**
  * Decodes the booked facts of a Dotypos reservation or a reservation record.
  * Pass the reservation's stored details when it has them, so an early-setup
  * meeting room decodes to its booked time rather than the span Dotypos holds.
@@ -82,7 +97,7 @@ export const decodeBookedReservation = (
     };
   }
 
-  const start = Option.map(heldStart, getMeetingRoomBookedStart);
+  const start = decodeBookedStart(reservation, details);
   return {
     start,
     end,
