@@ -1487,7 +1487,7 @@ export class AdministrationService extends Context.Service<
       id: DotyposReservationId
     ) => Effect.Effect<
       { readonly startsAt: string; readonly tableName: string | null } | null,
-      DotyposReadFailure
+      EffectDrizzleQueryError | DotyposReadFailure
     >;
     readonly listCustomers: (
       input: AdministrationCustomerListInput
