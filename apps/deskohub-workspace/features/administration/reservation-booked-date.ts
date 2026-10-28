@@ -121,8 +121,7 @@ export const getEarlySetupOrderCandidates = <Booking extends BookedFacts>(
     );
   };
   return bookings.filter(
-    (_, index) =>
-      nextStartsWithinLead(index) || nextStartsWithinLead(index - 1)
+    (_, index) => nextStartsWithinLead(index) || nextStartsWithinLead(index - 1)
   );
 };
 

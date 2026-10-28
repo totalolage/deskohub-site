@@ -244,13 +244,11 @@ describe("AdministrationService", () => {
         order: "startDateAscending",
       },
     ]);
-    expect(result.items.map(({ id, startsAt }) => ({ id, startsAt }))).toEqual(
-      [
-        { id: "midnight-early", startsAt: "2026-08-09T22:00:00.000Z" },
-        { id: "between", startsAt: "2026-08-10T09:50:00+02:00" },
-        { id: "early-setup", startsAt: "2026-08-10T08:00:00.000Z" },
-      ]
-    );
+    expect(result.items.map(({ id, startsAt }) => ({ id, startsAt }))).toEqual([
+      { id: "midnight-early", startsAt: "2026-08-09T22:00:00.000Z" },
+      { id: "between", startsAt: "2026-08-10T09:50:00+02:00" },
+      { id: "early-setup", startsAt: "2026-08-10T08:00:00.000Z" },
+    ]);
     expect(result.total).toBe(3);
   });
 
