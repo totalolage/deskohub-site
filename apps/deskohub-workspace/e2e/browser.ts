@@ -10,6 +10,7 @@ import {
   workspaceE2ETimeoutError,
 } from "./errors";
 import { pollUntil } from "./polling";
+import { redact } from "./redaction";
 import type { Runner } from "./runtime";
 import { log, redactDiagnosticText } from "./runtime";
 import { workspaceE2EPollIntervalMs } from "./timeouts";
@@ -249,89 +250,32 @@ export const waitForBrowserTextContent = (
     readonly caseSensitive?: boolean;
     readonly timeoutMs?: number;
   } = {}
-): Effect.Effect<void, WorkspaceE2EError> => {
-  const caseSensitive = options.caseSensitive !== false;
-  const textLiteral = JSON.stringify(
-    caseSensitive ? text : text.toLocaleLowerCase()
-  );
-  const bodyText = caseSensitive
-    ? "document.body?.innerText"
-    : "document.body?.innerText.toLocaleLowerCase()";
-  const textCheck = `(() => ${bodyText}.includes(${textLiteral}) ?? false)()`;
-
-  return runBrowserCommand(
-    "wait for browser text content",
+): Effect.Effect<void, WorkspaceE2EError> =>
+  waitForBrowserCondition(
     run,
     session,
-    ["wait", "--fn", textCheck],
-    {
-      logOutput: false,
-      timeoutMs: options.timeoutMs ?? 60_000,
-    }
-  ).pipe(Effect.asVoid);
-};
+    "browser text content",
+    inPageCall(pageTextIncludes, toPageTextQuery(text, options)),
+    { timeoutMs: options.timeoutMs }
+  );
 
 export const waitForBrowserReactFormSubmit = (
   run: Runner,
   session: string,
   selector: string,
   visibleFieldSelectors: readonly string[],
-  options: {
-    readonly requiredReadyAttribute?: {
-      readonly name: string;
-      readonly value: string;
-    };
-    readonly timeoutMs?: number;
-  } = {}
-): Effect.Effect<void, WorkspaceE2EError> => {
-  const selectorLiteral = JSON.stringify(selector);
-  const fieldSelectorsLiteral = JSON.stringify(visibleFieldSelectors);
-  const requiredReadyAttribute = options.requiredReadyAttribute;
-  const readyAttributeCheck =
-    requiredReadyAttribute === undefined
-      ? "true"
-      : `form.getAttribute(${JSON.stringify(requiredReadyAttribute.name)}) === ${JSON.stringify(requiredReadyAttribute.value)}`;
-  const handlersCheck = `(() => {
-    const form = document.querySelector(${selectorLiteral});
-    const reactPropsKey = form === null
-      ? undefined
-      : Object.keys(form).find((key) => key.startsWith("__reactProps$"));
-    const reactProps = reactPropsKey === undefined ? undefined : form[reactPropsKey];
-    const formHasSubmitHandler = typeof reactProps?.onSubmit === "function";
-    if (!formHasSubmitHandler) return false;
-    if (!(${readyAttributeCheck})) return false;
-    const fieldSelectors = ${fieldSelectorsLiteral};
-    if (fieldSelectors.length === 0) return false;
-    return fieldSelectors.every((fieldSelector) => {
-      const field = document.querySelector(fieldSelector);
-      if (field === null || !form.contains(field)) return false;
-      if (field instanceof HTMLInputElement && field.type === "hidden") return true;
-      const fieldStyle = window.getComputedStyle(field);
-      const fieldIsVisible =
-        field.getClientRects().length > 0 &&
-        fieldStyle.display !== "none" &&
-        fieldStyle.visibility === "visible";
-      if (!fieldIsVisible) return false;
-      const fieldPropsKey = Object.keys(field).find((key) =>
-        key.startsWith("__reactProps$")
-      );
-      const fieldProps =
-        fieldPropsKey === undefined ? undefined : field[fieldPropsKey];
-      return typeof fieldProps?.onChange === "function";
-    });
-  })()`;
-
-  return runBrowserCommand(
-    "wait for browser React form handlers",
+  options: ReactFormSubmitOptions = {}
+): Effect.Effect<void, WorkspaceE2EError> =>
+  waitForBrowserCondition(
     run,
     session,
-    ["wait", "--fn", handlersCheck],
-    {
-      logOutput: false,
-      timeoutMs: options.timeoutMs ?? 60_000,
-    }
-  ).pipe(Effect.asVoid);
-};
+    "browser React form handlers",
+    inPageCall(
+      isReactFormSubmitReady,
+      toReactFormSubmitQuery(selector, visibleFieldSelectors, options)
+    ),
+    { timeoutMs: options.timeoutMs }
+  );
 
 export const evalBrowserScript = (
   operation: string,
@@ -823,6 +767,205 @@ const readBrowserDiagnostics = (
         : unavailableBrowserDiagnostics
     )
   );
+
+/**
+ * Primes preview access for the URL's origin when the run has a bypass
+ * secret, then loads the URL in the session's active page. It activates the
+ * loaded page again, which drops any iframe the argv runner had selected, as
+ * its `open` command did, while argv commands still share the session.
+ */
+export const openPage = (
+  session: E2EBrowserSession,
+  config: Pick<WorkspaceE2EConfig, "bypassSecret">,
+  url: string,
+  { timeoutMs = 60_000 }: { readonly timeoutMs?: number } = {}
+): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.andThen(
+    config.bypassSecret
+      ? session.primePreviewAccess(url, config.bypassSecret, { timeoutMs })
+      : Effect.void,
+    session.use("open browser page", async (page) => {
+      await page.goto(url, { timeout: timeoutMs, waitUntil: "load" });
+      return page;
+    })
+  ).pipe(Effect.flatMap(session.activate));
+
+/** Waits until the page's visible text contains `text`. */
+export const waitForPageTextContent = (
+  session: E2EBrowserSession,
+  text: string,
+  options: PageTextOptions = {}
+): Effect.Effect<void, WorkspaceE2EError> =>
+  session
+    .use("wait for browser text content", (page) =>
+      page.waitForFunction(pageTextIncludes, toPageTextQuery(text, options), {
+        timeout: options.timeoutMs ?? 60_000,
+      })
+    )
+    .pipe(Effect.asVoid);
+
+/**
+ * Polls the page's visible text until `matches` accepts it and returns that
+ * text with registered secrets redacted. A read that fails or overruns its
+ * own bound counts as empty text.
+ */
+export const waitForPageText = ({
+  description,
+  matches,
+  session,
+  timeoutMs,
+}: {
+  readonly description: string;
+  readonly matches: (text: string) => boolean;
+  readonly session: E2EBrowserSession;
+  readonly timeoutMs: number;
+}): Effect.Effect<string, WorkspaceE2EError> =>
+  pollUntil(
+    session
+      .evaluate("read browser text", readPageText, undefined, {
+        timeoutMs: 30_000,
+      })
+      .pipe(
+        Effect.map(redact),
+        Effect.orElseSucceed(() => ""),
+        Effect.map((text) => (matches(text) ? text : undefined))
+      ),
+    {
+      intervalMs: workspaceE2EPollIntervalMs.browser,
+      label: description,
+      timeoutMs,
+    }
+  );
+
+/**
+ * Waits until React has attached the form's `onSubmit` handler and the
+ * `onChange` handler of each visible field, and the form carries the ready
+ * attribute when one is required. A native submit before then falls back to a
+ * document POST, and a fill before then is lost.
+ */
+export const waitForReactFormSubmit = (
+  session: E2EBrowserSession,
+  selector: string,
+  visibleFieldSelectors: readonly string[],
+  options: ReactFormSubmitOptions = {}
+): Effect.Effect<void, WorkspaceE2EError> =>
+  session
+    .use("wait for browser React form handlers", (page) =>
+      page.waitForFunction(
+        isReactFormSubmitReady,
+        toReactFormSubmitQuery(selector, visibleFieldSelectors, options),
+        { timeout: options.timeoutMs ?? 60_000 }
+      )
+    )
+    .pipe(Effect.asVoid);
+
+type PageTextOptions = {
+  readonly caseSensitive?: boolean;
+  readonly timeoutMs?: number;
+};
+
+type PageTextQuery = {
+  readonly caseSensitive: boolean;
+  /** Already lower-cased when the match ignores case. */
+  readonly text: string;
+};
+
+const toPageTextQuery = (
+  text: string,
+  { caseSensitive = true }: PageTextOptions
+): PageTextQuery => ({
+  caseSensitive,
+  text: caseSensitive ? text : text.toLocaleLowerCase(),
+});
+
+// The in-page functions below run in the browser, so they must not close over
+// anything; argv callers get them as an expression through `inPageCall`.
+
+const readPageText = () => document.body?.innerText ?? "";
+
+const pageTextIncludes = ({ caseSensitive, text }: PageTextQuery) => {
+  const pageText = document.body?.innerText;
+  return (
+    (caseSensitive ? pageText : pageText?.toLocaleLowerCase())?.includes(
+      text
+    ) ?? false
+  );
+};
+
+type ReactFormSubmitOptions = {
+  readonly requiredReadyAttribute?: {
+    readonly name: string;
+    readonly value: string;
+  };
+  readonly timeoutMs?: number;
+};
+
+type ReactFormSubmitQuery = {
+  readonly fieldSelectors: readonly string[];
+  readonly formSelector: string;
+  readonly readyAttribute: {
+    readonly name: string;
+    readonly value: string;
+  } | null;
+};
+
+const toReactFormSubmitQuery = (
+  formSelector: string,
+  fieldSelectors: readonly string[],
+  { requiredReadyAttribute }: ReactFormSubmitOptions
+): ReactFormSubmitQuery => ({
+  fieldSelectors,
+  formSelector,
+  readyAttribute: requiredReadyAttribute ?? null,
+});
+
+const isReactFormSubmitReady = ({
+  fieldSelectors,
+  formSelector,
+  readyAttribute,
+}: ReactFormSubmitQuery) => {
+  const hasReactHandler = (element: Element, handler: string) => {
+    const key = Object.keys(element).find((name) =>
+      name.startsWith("__reactProps$")
+    );
+    const props: unknown =
+      key === undefined
+        ? undefined
+        : Object.getOwnPropertyDescriptor(element, key)?.value;
+    return (
+      typeof props === "object" &&
+      props !== null &&
+      typeof Reflect.get(props, handler) === "function"
+    );
+  };
+  const form = document.querySelector(formSelector);
+  if (form === null || !hasReactHandler(form, "onSubmit")) return false;
+  if (
+    readyAttribute !== null &&
+    form.getAttribute(readyAttribute.name) !== readyAttribute.value
+  )
+    return false;
+  if (fieldSelectors.length === 0) return false;
+  return fieldSelectors.every((fieldSelector) => {
+    const field = document.querySelector(fieldSelector);
+    if (field === null || !form.contains(field)) return false;
+    if (field instanceof HTMLInputElement && field.type === "hidden")
+      return true;
+    const fieldStyle = window.getComputedStyle(field);
+    const fieldIsVisible =
+      field.getClientRects().length > 0 &&
+      fieldStyle.display !== "none" &&
+      fieldStyle.visibility === "visible";
+    return fieldIsVisible && hasReactHandler(field, "onChange");
+  });
+};
+
+/**
+ * An in-page function called with its JSON argument, as the expression the
+ * argv `wait --fn` command evaluates.
+ */
+const inPageCall = <Arg>(fn: (arg: Arg) => unknown, arg: Arg) =>
+  `(${fn.toString()})(${JSON.stringify(arg)})`;
 
 /**
  * The checkout page summary for a failure artifact: URL, title, alerts, and
