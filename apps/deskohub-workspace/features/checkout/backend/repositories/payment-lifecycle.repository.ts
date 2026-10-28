@@ -467,13 +467,14 @@ export class PaymentLifecycleRepository extends Context.Service<
               );
             }
             if (claimedApplications.referral !== undefined) {
-              // Checkout completes an internal payment inside the account
-              // guard, whose account lock is held on another connection.
-              // acceptReferral takes the graph lock before account locks,
-              // so an unbounded wait here could hang both; a bounded one
-              // fails this payment instead and the customer retries. The
-              // registry bounds it while that section holds the account
-              // lock; without the section the wait cannot hang.
+              // A signed-in checkout completes an internal payment inside
+              // the account guard, whose account lock is held on another
+              // connection. acceptReferral takes the graph lock before
+              // account locks, so an unbounded wait here could hang both; a
+              // bounded one fails this payment instead and the customer
+              // retries. The bound also allows the out-of-order graph lock
+              // under that section. A guest payment has no section and
+              // waits within the same bound.
               yield* WorkspaceLocks.referralGraph({
                 boundedWait: Duration.seconds(5),
               });
