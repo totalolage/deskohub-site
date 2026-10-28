@@ -364,17 +364,50 @@ describe.skipIf(!suiteDatabase)(
       expect(exit).toStrictEqual(Exit.succeed(true));
     });
 
-    test("an in-order lock ignores its bounded wait", async () => {
+    test("an in-order bounded wait runs in a savepoint and restores lock_timeout", async () => {
       recorded.length = 0;
       const exit = await run(
         transaction(
-          WorkspaceLocks.referralGraph({ boundedWait: Duration.seconds(5) })
+          Effect.gen(function* () {
+            yield* db.execute(sql`set local lock_timeout = '7s'`);
+            yield* WorkspaceLocks.referralGraph({
+              boundedWait: Duration.seconds(5),
+            });
+            return [yield* lockTimeout, yield* freeElsewhere(graphProbe)];
+          })
         )
       );
-      expect(Exit.isSuccess(exit)).toBe(true);
-      expect(recorded.map(({ text }) => text)).toEqual([
-        "select pg_advisory_xact_lock(hashtext($1), hashtext($2))",
-      ]);
+      expect(exit).toStrictEqual(Exit.succeed(["7s", false]));
+      expect(recorded.flatMap(({ values }) => values)).toContain("5000ms");
+    });
+
+    test("an in-order bounded wait under contention fails with a lock timeout and restores lock_timeout", async () => {
+      const holder = await pool.connect();
+      try {
+        await holder.query("begin");
+        await holder.query(
+          "select pg_advisory_xact_lock(hashtext('referral-attribution'), hashtext('graph'))"
+        );
+        recorded.length = 0;
+        const exit = await run(
+          transaction(
+            Effect.gen(function* () {
+              yield* db.execute(sql`set local lock_timeout = '7s'`);
+              const error = yield* Effect.flip(
+                WorkspaceLocks.referralGraph({
+                  boundedWait: Duration.millis(200),
+                })
+              );
+              return [isLockWaitTimeout(error), yield* lockTimeout];
+            })
+          ).pipe(Effect.timeout("20 seconds"))
+        );
+        expect(exit).toStrictEqual(Exit.succeed([true, "7s"]));
+        expect(recorded.flatMap(({ values }) => values)).toContain("200ms");
+      } finally {
+        await holder.query("rollback");
+        holder.release();
+      }
     });
 
     test("an out-of-order bounded wait under a section-held higher rank runs in a savepoint and restores lock_timeout", async () => {
