@@ -350,6 +350,13 @@ describe("BookingForm", () => {
     const { rerender } = renderForm({ check });
     fireEvent.click(earlySetupChoice());
 
+    rerender({
+      check,
+      reservation: AsyncResult.waiting(AsyncResult.initial()),
+    });
+    expect(earlySetupChoice().checked).toBe(true);
+    expect(earlySetupChoice().disabled).toBe(true);
+
     rerender({ check, reservation: AsyncResult.success(reservationResult()) });
 
     expect(earlySetupChoice().checked).toBe(true);

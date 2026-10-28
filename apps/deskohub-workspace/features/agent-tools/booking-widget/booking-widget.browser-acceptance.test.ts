@@ -173,11 +173,19 @@ const openBookingView = async ({
     timezoneId: "Europe/Prague",
   };
   // Bun kills child processes when a case times out, the browser included,
-  // so the next case starts another rather than failing with it.
-  const page = await browser.newPage(pageOptions).catch(async () => {
-    browser = await chromium.launch({ headless: true });
-    return browser.newPage(pageOptions);
-  });
+  // so the next case starts another rather than failing with it. Other
+  // failures stay this case's own.
+  const page = await browser
+    .newPage(pageOptions)
+    .catch(async (error: Error) => {
+      if (
+        !/has been closed|Failed to create browser context/.test(error.message)
+      ) {
+        throw error;
+      }
+      browser = await chromium.launch({ headless: true });
+      return browser.newPage(pageOptions);
+    });
   const calls: ToolCall[] = [];
   const linkOpened = Promise.withResolvers<string>();
   await page.exposeFunction(
