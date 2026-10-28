@@ -302,20 +302,47 @@ describe("BookingForm", () => {
     expect(earlySetupChoice().disabled).toBe(false);
   });
 
+  test("keeps the setup choice for another start whose setup time is free", () => {
+    const { onReserve, rerender } = renderForm({
+      check: meetingRoomCheck({ earlySetupAvailable: true }),
+    });
+    fireEvent.click(earlySetupChoice());
+
+    // The changed selection clears the results, and the check can fail.
+    rerender({ check: AsyncResult.initial() });
+    rerender({
+      check: AsyncResult.failure(Cause.fail(new BookingRequestFailed({}))),
+    });
+    rerender({
+      check: meetingRoomCheck({
+        earlySetupAvailable: true,
+        startTime: "11:00",
+      }),
+    });
+
+    expect(earlySetupChoice().checked).toBe(true);
+    reserve();
+    expect(onReserve).toHaveBeenCalledWith(
+      { ...meetingRoomSelection, start_time: "11:00" },
+      true
+    );
+  });
+
   test("holds Reserve and the setup choice while a new check runs", () => {
     const check = meetingRoomCheck({ earlySetupAvailable: true });
     const { onReserve, rerender } = renderForm({ check });
     fireEvent.click(earlySetupChoice());
 
     rerender({ check: AsyncResult.waiting(check) });
+    expect(earlySetupChoice().checked).toBe(true);
     expect(earlySetupChoice().disabled).toBe(true);
     reserve();
     expect(onReserve).not.toHaveBeenCalled();
 
     rerender({ check: meetingRoomCheck({ earlySetupAvailable: true }) });
-    expect(earlySetupChoice().checked).toBe(false);
+    expect(earlySetupChoice().checked).toBe(true);
     reserve();
-    expect(onReserve).toHaveBeenCalledWith(meetingRoomSelection, false);
+    expect(onReserve).toHaveBeenCalledWith(meetingRoomSelection, true);
   });
 
   test("keeps the setup choice of a held booking and stops changes to it", () => {

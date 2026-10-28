@@ -169,13 +169,20 @@ export function BookingForm({
   const reserved = AsyncResult.isSuccess(reservation)
     ? reservation.value
     : undefined;
-  // The check the customer chose early setup for: a later check starts
-  // unchecked, and a start whose setup time is taken never sends it.
-  const [earlySetupCheck, setEarlySetupCheck] = useState<BookingCheck>();
+  const [earlySetupChosen, setEarlySetupChosen] = useState(false);
   const earlySetupAvailable =
     checked?.availability.meeting_room?.early_setup_available === true;
-  const earlySetup =
-    earlySetupAvailable && checked !== undefined && earlySetupCheck === checked;
+  // As on the site, a completed check whose setup time is taken drops the
+  // choice; running, failed or cleared checks keep it.
+  if (
+    earlySetupChosen &&
+    checked !== undefined &&
+    !AsyncResult.isWaiting(check) &&
+    !earlySetupAvailable
+  ) {
+    setEarlySetupChosen(false);
+  }
+  const earlySetup = earlySetupAvailable && earlySetupChosen;
   const link = (url: string, label: string) => (
     <SiteLink
       label={label}
@@ -430,9 +437,7 @@ export function BookingForm({
                   AsyncResult.isWaiting(reservation)
                 }
                 locale={locale}
-                onCheckedChange={(value) =>
-                  setEarlySetupCheck(value ? checked : undefined)
-                }
+                onCheckedChange={setEarlySetupChosen}
               />
             )}
           {reserved
