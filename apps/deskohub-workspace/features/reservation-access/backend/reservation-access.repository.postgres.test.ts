@@ -147,17 +147,17 @@ describe.skipIf(!testDatabase)(
       expect(ensured.id).toBe(grant.id);
       expect(ensured.state).toBe("issued");
       expect(ensured.accessName).toBe(`Deskohub ${grant.id}`);
-      expect(
-        await run((repository) =>
-          repository.loadIssuedCode({
-            id: grant.id,
-            reservationId,
-            scheduledAccessStartsAt: target.scheduledAccessStartsAt,
-            accessStartsAt: target.accessStartsAt,
-            accessEndsAt: target.accessEndsAt,
-          })
-        )
-      ).toBe(accessCode);
+      const loadedCode = await run((repository) =>
+        repository.loadIssuedCode({
+          id: grant.id,
+          reservationId,
+          scheduledAccessStartsAt: target.scheduledAccessStartsAt,
+          accessStartsAt: target.accessStartsAt,
+          accessEndsAt: target.accessEndsAt,
+        })
+      );
+      // Compare inside the assertion so a failure never prints the PIN.
+      expect(loadedCode === accessCode).toBe(true);
     });
 
     test("resets an issued grant when the reservation moves to a new interval", async () => {
@@ -277,7 +277,7 @@ describe.skipIf(!testDatabase)(
       expect(Result.isFailure(laterAccessStartLoad)).toBe(true);
       expect(Result.isSuccess(currentLoad)).toBe(true);
       if (Result.isSuccess(currentLoad)) {
-        expect(currentLoad.success).toBe(accessCode);
+        expect(currentLoad.success === accessCode).toBe(true);
       }
     });
   }
