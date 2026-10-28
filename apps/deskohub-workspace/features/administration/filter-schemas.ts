@@ -18,14 +18,6 @@ export const orderFilterSchema = Schema.Struct({
 
 export type OrderFilterValues = typeof orderFilterSchema.Encoded;
 
-export const bookingFilterSchema = Schema.Struct({
-  date: calendarDateField,
-  sort: Schema.Literals(["booking", "status"]),
-  direction: Schema.Literals(["asc", "desc"]),
-});
-
-export type BookingFilterValues = typeof bookingFilterSchema.Encoded;
-
 const optionalOperationChannelField = Schema.Union([
   Schema.Literal(""),
   Schema.Literals(nexiOperationChannels),

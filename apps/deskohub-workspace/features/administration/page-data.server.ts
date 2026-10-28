@@ -1,6 +1,6 @@
 import "server-only";
 
-import { Effect, Layer, Option, Predicate } from "effect";
+import { Effect, Layer, Predicate } from "effect";
 import { cache } from "react";
 import type { CurrentAdministrator } from "@/features/administrators/backend/current-administrator";
 import {
@@ -8,15 +8,13 @@ import {
   runAdministrationPage,
 } from "@/features/administrators/server/administration-request.server";
 import type { Locale } from "@/features/i18n";
-import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import type { SearchParamsRecord } from "@/shared/utils/search-params";
-import { parsePlainDate } from "@/shared/utils/temporal";
 import {
-  type AdministrationBookingListInput,
   type AdministrationReservationListInput,
   AdministrationService,
   getAdministrationReservationOverview,
 } from "./administration.service";
+import { bookingListQuery } from "./booking-list-query";
 import { customerListQuery } from "./customer-list-query";
 import { formatAdministrationDateTime } from "./formatters";
 import {
@@ -43,24 +41,6 @@ const parsePage = (value: string | undefined) => {
   const page = Number(value);
   return Number.isSafeInteger(page) && page > 0 ? page : 1;
 };
-
-const parseDate = (value: string | undefined) =>
-  Option.fromNullishOr(value)
-    .pipe(
-      Option.flatMap(parsePlainDate),
-      Option.getOrElse(() => getCurrentWorkspaceDate())
-    )
-    .toString();
-
-const parseBookingSort = (
-  value: string | undefined
-): NonNullable<AdministrationBookingListInput["sort"]> =>
-  value === "status" ? value : "booking";
-
-const parseBookingSortDirection = (
-  value: string | undefined
-): NonNullable<AdministrationBookingListInput["direction"]> =>
-  value === "desc" ? "desc" : "asc";
 
 /** Runs an administration page query against the administration service. */
 const runAdministration = <A, E>(
@@ -179,15 +159,7 @@ export const loadAdministrationReservationBreadcrumbLabel = cache(
 
 const getAdministrationBookingListInput = async (
   searchParams: AdministrationSearchParams
-) => {
-  const params = await searchParams;
-  return {
-    date: parseDate(firstParam(params.date)),
-    direction: parseBookingSortDirection(firstParam(params.direction)),
-    page: parsePage(firstParam(params.page)),
-    sort: parseBookingSort(firstParam(params.sort)),
-  } satisfies AdministrationBookingListInput;
-};
+) => bookingListQuery.parse(await searchParams);
 
 const loadAdministrationBookingList = async (
   input: ReturnType<typeof getAdministrationBookingListInput>

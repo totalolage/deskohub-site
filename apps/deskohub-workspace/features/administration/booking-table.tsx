@@ -5,11 +5,9 @@ import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { AdministrationLink as Link } from "./admin-link";
-import type {
-  AdministrationBookingSort,
-  AdministrationBookingSummary,
-} from "./administration.service";
+import type { AdministrationBookingSummary } from "./administration.service";
 import { administrationHref } from "./administration-href";
+import { type BookingListQuery, bookingListQuery } from "./booking-list-query";
 import {
   getAdministrationBookingGuestCount,
   getAdministrationBookingStatusLabel,
@@ -23,10 +21,6 @@ import { EmptyState } from "./empty-state";
 import { formatAdministrationDateTime } from "./formatters";
 import { m } from "./i18n";
 import { getAdministrationReservationProductTitle } from "./reservation-product";
-import {
-  type AdministrationTableSorting,
-  getAdministrationTableSortHref,
-} from "./table-sort";
 
 export function BookingStatusBadge({
   booking,
@@ -159,10 +153,11 @@ const getColumns = (
 
 export function BookingTable({
   bookings,
-  sorting,
+  query,
 }: {
   readonly bookings: readonly AdministrationBookingSummary[];
-  readonly sorting?: AdministrationTableSorting<AdministrationBookingSort>;
+  /** The list's query, whose order the table shows and its headers change. */
+  readonly query?: BookingListQuery;
 }) {
   const locale = useRouteLocale();
   const columns = useMemo(() => getColumns(locale), [locale]);
@@ -177,17 +172,7 @@ export function BookingTable({
       columns={columns}
       data={bookings}
       getRowId={(booking) => booking.id}
-      getSortHref={
-        sorting
-          ? (field, direction) =>
-              getAdministrationTableSortHref({
-                basePath: administrationHref("/[locale]/admin/bookings"),
-                direction,
-                field,
-                params: sorting.params,
-              })
-          : undefined
-      }
+      {...(query && bookingListQuery.tableSorting(query))}
       mobile={
         <ul className="divide-y divide-navy-blue/10">
           {bookings.map((booking) => (
@@ -227,11 +212,6 @@ export function BookingTable({
             </li>
           ))}
         </ul>
-      }
-      sorting={
-        sorting
-          ? [{ id: sorting.field, desc: sorting.direction === "desc" }]
-          : undefined
       }
       tableClassName="min-w-[820px]"
     />

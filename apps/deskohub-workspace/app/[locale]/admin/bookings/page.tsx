@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { administrationHref } from "@/features/administration/administration-href";
+import { bookingListQuery } from "@/features/administration/booking-list-query";
 import {
   AdministrationPage,
   AdministrationTableCount,
@@ -20,7 +20,6 @@ import {
 } from "@/features/administration/page-data.server";
 import type { Locale } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
-import { getHrefWithSearchParams } from "@/shared/utils/search-params";
 
 export default function BookingsAdministrationPage({
   searchParams,
@@ -103,7 +102,7 @@ async function BookingFiltersContent({
 }: {
   readonly input: Promise<BookingsData["input"]>;
 }) {
-  return <BookingsAdministrationFilterForm input={await input} />;
+  return <BookingsAdministrationFilterForm query={await input} />;
 }
 
 async function BookingResultsContent({
@@ -132,26 +131,9 @@ function BookingResults({
 }: BookingsData & { readonly locale: Locale }) {
   return (
     <>
-      <BookingTable
-        bookings={result.items}
-        sorting={{
-          direction: input.direction ?? "asc",
-          field: input.sort ?? "booking",
-          params: { date: input.date },
-        }}
-      />
+      <BookingTable bookings={result.items} query={input} />
       <Pagination
-        href={(page) =>
-          getHrefWithSearchParams(
-            administrationHref("/[locale]/admin/bookings"),
-            {
-              date: input.date,
-              direction: input.direction,
-              sort: input.sort,
-              page: page > 1 ? String(page) : undefined,
-            }
-          )
-        }
+        href={(page) => bookingListQuery.href(input, { page })}
         locale={locale}
         page={result.page}
         pageCount={result.pageCount}

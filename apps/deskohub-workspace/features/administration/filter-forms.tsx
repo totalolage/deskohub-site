@@ -15,6 +15,7 @@ import {
   type AdministrationHref,
   administrationHref,
 } from "./administration-href";
+import { type BookingListQuery, bookingListQuery } from "./booking-list-query";
 import {
   AdministrationCustomerMarketingConsentState,
   type CustomerListQuery,
@@ -28,8 +29,6 @@ import {
   AdministrationFilterSelect,
 } from "./filter-controls";
 import {
-  type BookingFilterValues,
-  bookingFilterSchema,
   type OperationFilterValues,
   type OrderFilterValues,
   operationFilterSchema,
@@ -160,25 +159,17 @@ export function OrdersAdministrationFilterForm({
 }
 
 export function BookingsAdministrationFilterForm({
-  input,
+  query,
 }: {
-  readonly input: {
-    readonly date: string;
-    readonly direction: "asc" | "desc";
-    readonly sort: "booking" | "status";
-  };
+  readonly query: BookingListQuery;
 }) {
   const locale = useRouteLocale();
-  const values: BookingFilterValues = {
-    date: input.date,
-    direction: input.direction,
-    sort: input.sort,
-  };
-  const form = useForm<BookingFilterValues>({
+  const values = bookingListQuery.formValues(query);
+  const form = useForm({
     defaultValues: values,
     mode: "onSubmit",
     reValidateMode: "onChange",
-    resolver: effectSchemaResolver(bookingFilterSchema),
+    resolver: standardSchemaResolver(bookingListQuery.formSchema),
     values,
   });
 
@@ -198,17 +189,17 @@ export function BookingsAdministrationFilterForm({
         <AdministrationFilterInput
           {...form.register("date")}
           aria-invalid={form.formState.errors.date ? true : undefined}
-          defaultValue={input.date}
+          defaultValue={values.date}
           id="booking-date"
           required
           type="date"
         />
       </AdministrationFilterField>
-      <input {...form.register("sort")} type="hidden" value={input.sort} />
+      <input {...form.register("sort")} type="hidden" value={values.sort} />
       <input
         {...form.register("direction")}
         type="hidden"
-        value={input.direction}
+        value={values.direction}
       />
       <Button size="md" type="submit">
         {m.administrationFilterShowBookings({}, { locale })}

@@ -129,21 +129,36 @@ describe("administration filter forms", () => {
     test("replaces dirty criteria with the new server selection before GET", async () => {
       const view = render(
         <BookingsAdministrationFilterForm
-          input={{ date: "2026-08-10", direction: "desc", sort: "status" }}
+          query={{
+            date: "2026-08-10",
+            direction: "desc",
+            sort: "status",
+            page: 1,
+          }}
         />
       );
       const date = view.getByLabelText("Booking date") as HTMLInputElement;
       fireEvent.change(date, { target: { value: "2026-08-11" } });
       view.rerender(
         <BookingsAdministrationFilterForm
-          input={{ date: "2026-08-10", direction: "desc", sort: "status" }}
+          query={{
+            date: "2026-08-10",
+            direction: "desc",
+            sort: "status",
+            page: 1,
+          }}
         />
       );
       expect(date.value).toBe("2026-08-11");
 
       view.rerender(
         <BookingsAdministrationFilterForm
-          input={{ date: "2026-08-14", direction: "asc", sort: "booking" }}
+          query={{
+            date: "2026-08-14",
+            direction: "asc",
+            sort: "booking",
+            page: 1,
+          }}
         />
       );
 
@@ -478,7 +493,12 @@ describe("administration filter forms", () => {
     const view = render(
       <RouteLocaleProvider locale="cs-CZ">
         <BookingsAdministrationFilterForm
-          input={{ date: "2026-08-11", direction: "asc", sort: "booking" }}
+          query={{
+            date: "2026-08-11",
+            direction: "asc",
+            sort: "booking",
+            page: 1,
+          }}
         />
         <OperationsAdministrationFilterForm
           input={{}}
