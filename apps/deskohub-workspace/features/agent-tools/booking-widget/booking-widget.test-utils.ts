@@ -148,6 +148,33 @@ export const availabilityResult = (
   reservation_url: `${siteOrigin}/reservation/cowork?entryTier=open-space`,
 });
 
+/**
+ * A free meeting-room start, at `startTime` on the view's first date, whose
+ * setup time before it is free or taken.
+ */
+export const meetingRoomAvailabilityResult = ({
+  startTime,
+  earlySetupAvailable,
+  locale = "en-US",
+}: {
+  readonly startTime: string;
+  readonly earlySetupAvailable: boolean;
+  readonly locale?: Locale;
+}): CheckAvailabilityResult => ({
+  family: "meeting-room",
+  available: true,
+  days: [{ date: bookingToday, available: true }],
+  meeting_room: {
+    duration: "hour:1",
+    starts_at: `${bookingToday}T${startTime}`,
+    ends_at: `${bookingToday}T${Temporal.PlainTime.from(startTime).add({ hours: 1 }).toString({ smallestUnit: "minute" })}`,
+    early_setup_available: earlySetupAvailable,
+  },
+  checked_at: "2099-07-28T08:00:00Z",
+  note: m.agentToolAvailabilityAdvisoryNote({}, { locale }),
+  reservation_url: `${siteOrigin}/reservation/meeting-room?startDateTime=${bookingToday}T${startTime}&duration=hour%3A1`,
+});
+
 export const quoteResult = (locale: Locale = "en-US"): GetQuoteResult => ({
   family: "cowork",
   total: czk(250),

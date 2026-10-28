@@ -8,7 +8,10 @@ import type {
   MeetingRoomReservationData,
   MeetingRoomReservationInput,
 } from "@/features/reservation/meeting-room-reservation";
-import type { MeetingRoomStartTimes } from "@/features/reservation/workspace-availability";
+import {
+  findMeetingRoomStartTime,
+  type MeetingRoomStartTimes,
+} from "@/features/reservation/workspace-availability";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import { ChoiceCard } from "@/shared/components/ui/choice-card";
 import {
@@ -42,13 +45,7 @@ export const getMeetingRoomEarlySetupAvailability = ({
   if (startTimes.isError) return "failed";
   if (!(startTimes.isSuccess && startsAt)) return "loading";
 
-  const start = startTimes.data.startTimes.find(
-    (startTime) =>
-      Temporal.Instant.compare(
-        Temporal.Instant.from(startTime.startsAt),
-        startsAt
-      ) === 0
-  );
+  const start = findMeetingRoomStartTime(startTimes.data, startsAt);
   if (!start) return "start-unavailable";
   return start.earlySetupAvailable ? "available" : "setup-booked";
 };

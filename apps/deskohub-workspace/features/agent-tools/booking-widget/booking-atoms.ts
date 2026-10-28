@@ -57,22 +57,25 @@ export const bookingCheckAtom = bookingRuntime.fn(
 );
 
 /**
- * Holds the quoted selection for the signed-in customer. The view never
- * sends `marketing_consent`: only the customer's explicit request to the
- * agent grants it.
+ * Holds the quoted selection for the signed-in customer, with the early
+ * setup the customer chose for a meeting room. The view never sends
+ * `marketing_consent`: only the customer's explicit request to the agent
+ * grants it.
  */
 export const bookingReserveAtom = bookingRuntime.fn(
   ({
     selection,
+    earlySetup,
     locale,
   }: {
     readonly selection: BookingSelection;
+    readonly earlySetup: boolean;
     readonly locale: Locale;
   }) =>
     BookingHost.use((host) =>
       host.callTool(
         "start_reservation",
-        { ...selection, locale },
+        { ...selection, ...(earlySetup && { early_setup: true }), locale },
         startReservationResultSchema
       )
     )

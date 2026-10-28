@@ -21,6 +21,7 @@ import {
   availabilityResult,
   bookingOfferings,
   bookingToday,
+  meetingRoomAvailabilityResult,
   quoteResult,
   reservationResult,
   showBookingResult,
@@ -621,6 +622,79 @@ describe.skipIf(!chromiumAvailable)("booking view", () => {
       await page.close();
     }
   });
+
+  for (const locale of ["en-US", "cs-CZ"] as const) {
+    test(`meeting room in ${locale}: offers early setup only while the setup time is free and books the choice`, async () => {
+      const { page, view, calls, linkOpened } = await openBookingView({
+        mode: "reserve",
+        locale,
+        answers: {
+          // The room is booked just before 11:00, so only 09:00 has a free
+          // setup time.
+          check_availability: ({ start_time, locale }) =>
+            toolResult(
+              meetingRoomAvailabilityResult({
+                startTime: String(start_time),
+                earlySetupAvailable: start_time === "09:00",
+                locale: toLocale(locale),
+              })
+            ),
+        },
+      });
+      const earlySetup = view.getByRole("checkbox", {
+        name: m.reservationMeetingRoomEarlySetupLabel({}, { locale }),
+      });
+      const startTime = view.getByLabel(
+        m.bookingWidgetStartTimeLabel({}, { locale })
+      );
+      try {
+        await view
+          .getByText(m.bookingWidgetFamilyMeetingRoom({}, { locale }), {
+            exact: true,
+          })
+          .click();
+        await startTime.fill("11:00");
+        await checkAvailability(view, locale);
+        await expect(earlySetup.isDisabled()).resolves.toBe(true);
+        await expect(earlySetup.isChecked()).resolves.toBe(false);
+        await capture(page, `early-setup-taken-${locale}`);
+
+        await startTime.fill("09:00");
+        await checkAvailability(view, locale);
+        await expect(earlySetup.isEnabled()).resolves.toBe(true);
+        await expect(earlySetup.isChecked()).resolves.toBe(false);
+        await capture(page, `early-setup-free-${locale}`);
+        await earlySetup.check();
+        await capture(page, `early-setup-chosen-${locale}`);
+
+        await view
+          .getByRole("button", { name: m.bookingWidgetReserve({}, { locale }) })
+          .click();
+        const payLink = view.getByRole("link", {
+          name: m.bookingWidgetOpenPaymentPage({}, { locale }),
+        });
+        await payLink.waitFor();
+        expect(calls.at(-1)).toEqual({
+          name: "start_reservation",
+          args: {
+            family: "meeting-room",
+            date: bookingToday,
+            start_time: "09:00",
+            duration: "hour:1",
+            early_setup: true,
+            locale,
+          },
+        });
+        await expect(earlySetup.isChecked()).resolves.toBe(true);
+        await expect(earlySetup.isDisabled()).resolves.toBe(true);
+        await capture(page, `early-setup-held-${locale}`);
+        await payLink.click();
+        await expect(linkOpened).resolves.toBe(reservationResult().pay_url);
+      } finally {
+        await page.close();
+      }
+    });
+  }
 
   test("words a startup failure in the view's language", async () => {
     const { page, view } = await openBookingView({

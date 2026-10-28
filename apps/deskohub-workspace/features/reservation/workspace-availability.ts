@@ -353,6 +353,22 @@ export const getMeetingRoomStartTimesQuery = ({
   );
 
 /**
+ * The listed free start that books from `startsAt`, which says whether its
+ * setup time is free too, or none when that start isn't free.
+ */
+export const findMeetingRoomStartTime = (
+  { startTimes }: MeetingRoomStartTimes,
+  startsAt: Temporal.Instant
+) =>
+  startTimes.find(
+    (startTime) =>
+      Temporal.Instant.compare(
+        Temporal.Instant.from(startTime.startsAt),
+        startsAt
+      ) === 0
+  );
+
+/**
  * Whether the meeting room is free for the interval its availability was
  * queried for.
  */

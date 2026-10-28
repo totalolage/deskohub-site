@@ -15,6 +15,7 @@ import {
   bookingOfferings,
   bookingStart,
   bookingToday,
+  meetingRoomAvailabilityResult,
   quoteResult,
   reservationResult,
 } from "./booking-widget.test-utils";
@@ -62,22 +63,54 @@ const renderForm = ({
     ),
     onSelectionChange: mock(() => undefined),
     onReserve: mock(
-      (_selection: Parameters<FormProps["onReserve"]>[0]) => undefined
+      (
+        _selection: Parameters<FormProps["onReserve"]>[0],
+        _earlySetup: Parameters<FormProps["onReserve"]>[1]
+      ) => undefined
     ),
     onOpenLink: mock((_url: string) => undefined),
   };
-  render(
+  const form = (results: Partial<FormProps>) => (
     <BookingForm
       check={AsyncResult.initial()}
       linkFailed={false}
       reservation={AsyncResult.initial()}
       start={start}
       {...handlers}
-      {...props}
+      {...results}
     />
   );
-  return handlers;
+  const { rerender } = render(form(props));
+  return {
+    ...handlers,
+    /** Renders the same form again with other results. */
+    rerender: (results: Partial<FormProps>) => rerender(form(results)),
+  };
 };
+
+const meetingRoomSelection = {
+  family: "meeting-room",
+  date: bookingToday,
+  start_time: "09:00",
+  duration: "hour:1",
+} as const;
+
+/** A free meeting-room check and quote, each call a new check. */
+const meetingRoomCheck = ({
+  earlySetupAvailable,
+  startTime = "09:00",
+}: {
+  readonly earlySetupAvailable: boolean;
+  readonly startTime?: string;
+}) =>
+  AsyncResult.success({
+    availability: meetingRoomAvailabilityResult({
+      startTime,
+      earlySetupAvailable,
+    }),
+    quote: quoteResult(),
+    selection: { ...meetingRoomSelection, start_time: startTime },
+  });
 
 // Bound per call: the document exists only once the test env is registered.
 const screen = {
@@ -99,6 +132,16 @@ const choose = (label: string) =>
     })
   );
 const alert = () => screen.queries.getByRole("alert");
+const earlySetupChoice = () =>
+  screen.queries.getByRole<HTMLInputElement>("checkbox", {
+    name: m.reservationMeetingRoomEarlySetupLabel({}, { locale: "en-US" }),
+  });
+const reserve = () =>
+  fireEvent.click(
+    screen.queries.getByRole("button", {
+      name: m.bookingWidgetReserve({}, { locale: "en-US" }),
+    })
+  );
 
 describe("BookingForm", () => {
   afterEach(() => {
@@ -183,8 +226,99 @@ describe("BookingForm", () => {
       })
     );
 
-    expect(onReserve).toHaveBeenCalledWith(quotedSelection);
+    expect(onReserve).toHaveBeenCalledWith(quotedSelection, false);
     expect(screen.queries.queryAllByRole("link")).toEqual([]);
+    expect(screen.queries.queryAllByRole("checkbox")).toEqual([]);
+  });
+
+  test("offers a free meeting-room setup time unchecked and books with the choice", () => {
+    const { onReserve } = renderForm({
+      check: meetingRoomCheck({ earlySetupAvailable: true }),
+    });
+
+    const choice = earlySetupChoice();
+    expect(choice.checked).toBe(false);
+    expect(choice.disabled).toBe(false);
+    expect(choice.hasAttribute("aria-describedby")).toBe(false);
+
+    fireEvent.click(choice);
+    expect(earlySetupChoice().checked).toBe(true);
+    reserve();
+
+    expect(onReserve).toHaveBeenCalledWith(meetingRoomSelection, true);
+  });
+
+  test("books a meeting room without early setup unless the customer chooses it", () => {
+    const { onReserve } = renderForm({
+      check: meetingRoomCheck({ earlySetupAvailable: true }),
+    });
+
+    reserve();
+
+    expect(onReserve).toHaveBeenCalledWith(meetingRoomSelection, false);
+  });
+
+  test("disables early setup with a reason when the room is booked just before the start", () => {
+    const { onReserve } = renderForm({
+      check: meetingRoomCheck({ earlySetupAvailable: false }),
+    });
+
+    const choice = earlySetupChoice();
+    expect(choice.checked).toBe(false);
+    expect(choice.disabled).toBe(true);
+    const reasonId = choice.getAttribute("aria-describedby");
+    expect(
+      reasonId && document.getElementById(reasonId)?.textContent
+    ).toBeTruthy();
+    reserve();
+
+    expect(onReserve).toHaveBeenCalledWith(meetingRoomSelection, false);
+  });
+
+  test("drops the setup choice when a new start's setup time is taken", () => {
+    const { onReserve, rerender } = renderForm({
+      check: meetingRoomCheck({ earlySetupAvailable: true }),
+    });
+    fireEvent.click(earlySetupChoice());
+
+    rerender({
+      check: meetingRoomCheck({
+        earlySetupAvailable: false,
+        startTime: "11:00",
+      }),
+    });
+    expect(earlySetupChoice().checked).toBe(false);
+    expect(earlySetupChoice().disabled).toBe(true);
+    reserve();
+    expect(onReserve).toHaveBeenLastCalledWith(
+      { ...meetingRoomSelection, start_time: "11:00" },
+      false
+    );
+
+    // A later free start asks again rather than restoring the choice.
+    rerender({ check: meetingRoomCheck({ earlySetupAvailable: true }) });
+    expect(earlySetupChoice().checked).toBe(false);
+    expect(earlySetupChoice().disabled).toBe(false);
+  });
+
+  test("keeps the setup choice of a held booking and stops changes to it", () => {
+    const check = meetingRoomCheck({ earlySetupAvailable: true });
+    const { rerender } = renderForm({ check });
+    fireEvent.click(earlySetupChoice());
+
+    rerender({ check, reservation: AsyncResult.success(reservationResult()) });
+
+    expect(earlySetupChoice().checked).toBe(true);
+    expect(earlySetupChoice().disabled).toBe(true);
+  });
+
+  test("leaves early setup to the reservation page in reservation page mode", () => {
+    renderForm({
+      mode: "reservation_page",
+      check: meetingRoomCheck({ earlySetupAvailable: true }),
+    });
+
+    expect(screen.queries.queryAllByRole("checkbox")).toEqual([]);
   });
 
   test("disables Reserve while the booking starts", () => {
