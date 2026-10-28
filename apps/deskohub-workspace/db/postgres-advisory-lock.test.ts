@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Cause, Deferred, Effect, Exit, Fiber } from "effect";
 import { SqlError } from "effect/unstable/sql";
 import { Pool } from "pg";
+import type { CustomerAccountId } from "@/features/account/customer-account";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { makeDatabasePool } from "./database-client";
 import { databasePoolTimeouts } from "./database-pool-timeouts";
@@ -13,6 +14,7 @@ import {
   withPostgresAdvisoryLock,
   withPostgresAdvisoryLocks,
 } from "./postgres-advisory-lock";
+import { WorkspaceLockSections } from "./workspace-locks";
 
 const key: PostgresAdvisoryLockKey = ["test-namespace", "resource-1"];
 
@@ -641,6 +643,64 @@ describe("Postgres advisory lock helper", () => {
         runLayerLock(layer, ["wait", "third"], Effect.succeed("available"))
       );
       expect(result).toBe("available");
+    } finally {
+      await fake.pool.end();
+    }
+  });
+});
+
+describe("Workspace lock sections", () => {
+  test("a section holds its key for its effect only, and is not reentrant", async () => {
+    const fake = makeLayerPool(4);
+    const layer = WorkspaceDatabaseAdvisoryLock.makeLayer(fake.pool);
+    const first = "account-1" as CustomerAccountId;
+    const second = "account-2" as CustomerAccountId;
+    const enter = <A, E>(
+      accountId: CustomerAccountId,
+      effect: Effect.Effect<A, E, WorkspaceDatabaseAdvisoryLock>
+    ) => WorkspaceLockSections.customerAccount(accountId)(effect);
+
+    try {
+      const run = <A, E>(
+        effect: Effect.Effect<A, E, WorkspaceDatabaseAdvisoryLock>
+      ) => Effect.runPromiseExit(effect.pipe(Effect.provide(layer)));
+
+      // Another key nests, and leaves when its section ends.
+      expect(
+        await run(
+          enter(
+            first,
+            enter(second, Effect.void).pipe(
+              Effect.andThen(enter(second, Effect.succeed("nested")))
+            )
+          )
+        )
+      ).toStrictEqual(Exit.succeed("nested"));
+      expect(fake.connected).toBe(3);
+
+      // The same key inside its own section dies before taking a connection.
+      const reentered = await run(enter(first, enter(first, Effect.void)));
+      expect(
+        Exit.isFailure(reentered) &&
+          Cause.pretty(reentered.cause).includes("not reentrant")
+      ).toBe(true);
+      expect(fake.connected).toBe(4);
+
+      // The key leaves after a failed section too.
+      expect(
+        await run(enter(first, Effect.fail("failed" as const)))
+      ).toStrictEqual(Exit.fail("failed"));
+      expect(await run(enter(first, Effect.succeed("again")))).toStrictEqual(
+        Exit.succeed("again")
+      );
+      expect(fake.released).toEqual([
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+      ]);
     } finally {
       await fake.pool.end();
     }

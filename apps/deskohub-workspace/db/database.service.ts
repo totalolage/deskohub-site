@@ -2,6 +2,7 @@ import { Context, Effect, Latch, Layer, Option, Stream } from "effect";
 import type { SqlClient, SqlConnection } from "effect/unstable/sql";
 import type { DatabaseClient, RootDatabaseClient } from "./database-client";
 import type { DatabaseQueryError } from "./sql-constraint";
+import { openLockLedger } from "./workspace-lock-ledger";
 
 export type WorkspaceDatabaseClient = DatabaseClient;
 
@@ -126,35 +127,40 @@ export class WorkspaceDatabase extends Context.Service<
   IWorkspaceDatabase
 >()("WorkspaceDatabase") {
   /** Builds the service over a client; production, tests and E2E all use it. */
-  static make = (db: RootDatabaseClient): IWorkspaceDatabase =>
-    WorkspaceDatabase.of({
-      db,
-      transaction: (effect) =>
-        Effect.flatMap(Effect.serviceOption(WorkspaceTransaction), (open) =>
-          // Effect SQL nests only on the client that opened the transaction;
-          // another client would BEGIN an independent one on a second
-          // connection, which could commit while this one rolls back.
-          Option.isSome(open) && open.value.db !== db
-            ? Effect.die(
-                new Error(
-                  "A Workspace transaction was opened on a different database client inside another"
-                )
+  static make = (db: RootDatabaseClient): IWorkspaceDatabase => {
+    const transaction: IWorkspaceDatabase["transaction"] = (effect) =>
+      Effect.flatMap(Effect.serviceOption(WorkspaceTransaction), (open) =>
+        // Effect SQL nests only on the client that opened the transaction;
+        // another client would BEGIN an independent one on a second
+        // connection, which could commit while this one rolls back.
+        Option.isSome(open) && open.value.db !== db
+          ? Effect.die(
+              new Error(
+                "A Workspace transaction was opened on a different database client inside another"
               )
-            : db.transaction(() => {
-                const body = effect.pipe(
-                  Effect.provideService(
-                    WorkspaceTransaction,
-                    WorkspaceTransaction.of({ db })
-                  ),
-                  Effect.withConcurrency(1)
-                );
-                // A nested call already runs on the guarded connection.
-                return Option.isSome(open)
-                  ? body
-                  : oneStatementAtATime(db.$client, body);
-              })
-        ),
-    });
+            )
+          : db.transaction(() => {
+              const body = effect.pipe(
+                Effect.provideService(
+                  WorkspaceTransaction,
+                  WorkspaceTransaction.of({ db })
+                ),
+                Effect.withConcurrency(1),
+                // Bounded lock waits nest on this client's own transaction.
+                openLockLedger({
+                  nested: Option.isSome(open),
+                  db,
+                  savepoint: transaction,
+                })
+              );
+              // A nested call already runs on the guarded connection.
+              return Option.isSome(open)
+                ? body
+                : oneStatementAtATime(db.$client, body);
+            })
+      );
+    return WorkspaceDatabase.of({ db, transaction });
+  };
 
   static Default = Layer.unwrap(
     Effect.promise(async () => {
