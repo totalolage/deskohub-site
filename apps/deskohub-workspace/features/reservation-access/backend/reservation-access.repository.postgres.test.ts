@@ -209,6 +209,14 @@ describe.skipIf(!testDatabase)(
             startedAt: Temporal.Now.instant(),
           })
         );
+      // Each bound alone decides the claim, whatever order requests run in.
+      const staleStart = {
+        ...moved,
+        scheduledAccessStartsAt: target.scheduledAccessStartsAt,
+      };
+      const staleEnd = { ...moved, accessEndsAt: target.accessEndsAt };
+      expect(await claimFor(staleStart)).toBe(false);
+      expect(await claimFor(staleEnd)).toBe(false);
       const [staleClaimed, currentClaimed] = await Promise.all([
         claimFor(target),
         claimFor(moved),
@@ -238,11 +246,16 @@ describe.skipIf(!testDatabase)(
             })
             .pipe(Effect.result)
         );
-      const [staleLoad, currentLoad] = await Promise.all([
-        loadFor(target),
-        loadFor(moved),
-      ]);
+      const [staleLoad, staleStartLoad, staleEndLoad, currentLoad] =
+        await Promise.all([
+          loadFor(target),
+          loadFor(staleStart),
+          loadFor(staleEnd),
+          loadFor(moved),
+        ]);
       expect(Result.isFailure(staleLoad)).toBe(true);
+      expect(Result.isFailure(staleStartLoad)).toBe(true);
+      expect(Result.isFailure(staleEndLoad)).toBe(true);
       expect(Result.isSuccess(currentLoad)).toBe(true);
       if (Result.isSuccess(currentLoad)) {
         expect(currentLoad.success).toBe(accessCode);
