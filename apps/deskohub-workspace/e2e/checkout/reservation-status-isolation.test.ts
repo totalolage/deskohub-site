@@ -384,12 +384,9 @@ const runIsolation = async (
 
 const failedWith = (operation: string, failureKind: "error" | "timeout") => ({
   annotations: [
-    {
-      caseId,
-      failureKind,
-      outcome: failureKind === "timeout" ? "timed_out" : "failed",
-      stepId,
-    },
+    failureKind === "timeout"
+      ? { caseId, failureKind, outcome: "timed_out" as const, stepId }
+      : { caseId, failureKind, outcome: "failed" as const, stepId },
   ],
   failures: [{ operation, timeout: failureKind === "timeout" }],
   succeeded: false,
