@@ -449,6 +449,57 @@ describe("ReservationAccessService", () => {
     expect(issueHourlyAlgoPin).not.toHaveBeenCalled();
   });
 
+  const issueAfterConcurrentIssuance = (concurrentGrant: typeof grant) => {
+    const loadIssuedCode = mock(() => Effect.succeed(accessCode));
+    const issueHourlyAlgoPin = mock(() =>
+      Effect.die("Igloohome must not be called")
+    );
+    const result = Effect.gen(function* () {
+      const service = yield* ReservationAccessService;
+      return yield* service.issueForReservation(reservation);
+    }).pipe(
+      Effect.provide(
+        ReservationAccessService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(ReservationAccessRepository, {
+                findByReservationId: mock(() => Effect.succeed(null)),
+                ensure: mock(() => Effect.succeed(concurrentGrant)),
+                loadIssuedCode,
+              }),
+              Layer.mock(IgloohomeService, { issueHourlyAlgoPin })
+            )
+          )
+        )
+      ),
+      Effect.result,
+      Effect.runPromise
+    );
+    return { result, loadIssuedCode, issueHourlyAlgoPin };
+  };
+
+  test("reuses a PIN a concurrent request issued for the same hours", async () => {
+    const { result, issueHourlyAlgoPin } = issueAfterConcurrentIssuance(grant);
+
+    const issued = await result;
+    expect(Result.isSuccess(issued)).toBe(true);
+    expect(issueHourlyAlgoPin).not.toHaveBeenCalled();
+  });
+
+  test("withholds a PIN a concurrent request issued for other hours", async () => {
+    const { result, loadIssuedCode, issueHourlyAlgoPin } =
+      issueAfterConcurrentIssuance({
+        ...grant,
+        scheduledAccessStartsAt: reservation.reservedFrom.add({ hours: 4 }),
+        accessStartsAt: reservation.reservedFrom.add({ hours: 4 }),
+        accessEndsAt: reservation.reservedUntil.add({ hours: 4 }),
+      });
+
+    expect(Result.isFailure(await result)).toBe(true);
+    expect(loadIssuedCode).not.toHaveBeenCalled();
+    expect(issueHourlyAlgoPin).not.toHaveBeenCalled();
+  });
+
   test("reissues an issued credential when its rounded reservation schedule changes", async () => {
     const movedReservation = {
       ...reservation,

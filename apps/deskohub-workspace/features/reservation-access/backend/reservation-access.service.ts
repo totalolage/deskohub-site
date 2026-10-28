@@ -307,6 +307,24 @@ export class ReservationAccessService extends Context.Service<
             );
 
           if (grant.state === "issued") {
+            // A concurrent request issued it first. Keep that credential, but
+            // never present a PIN programmed for other hours or another lock.
+            if (
+              grant.deviceId !== deviceId ||
+              !isSameIgloohomeAccessWindow(
+                {
+                  startsAt: grant.scheduledAccessStartsAt,
+                  endsAt: grant.accessEndsAt,
+                },
+                { startsAt: input.reservedFrom, endsAt: input.reservedUntil }
+              )
+            ) {
+              return yield* new ReservationAccessIssuanceError({
+                reservationId: input.reservationId,
+                outcome: "rejected",
+                message: "Reservation access grant changed concurrently.",
+              });
+            }
             const accessCode = yield* repository
               .loadIssuedCode({
                 id: grant.id,
