@@ -15,6 +15,7 @@ import {
   makeCoworkCheckoutData,
   makeMeetingRoomCheckoutData,
   makeOfficeCheckoutData,
+  type OfficeCheckoutSlot,
 } from "./data";
 import {
   isPrefilledReservation,
@@ -82,7 +83,6 @@ const contactHtml = (
   <input name="phone" value="${data.phone}" />
   <input name="name" value="${data.name}" />
   ${emailConfirmation}
-  <textarea name="message">${data.message}</textarea>
   ${consent}`;
 
 test.skipIf(!chromiumAvailable)(
@@ -267,29 +267,25 @@ test.skipIf(!chromiumAvailable)(
   }
 );
 
+const officeSlot: OfficeCheckoutSlot = {
+  endsAt: "2099-09-02T22:00:00Z" as OfficeCheckoutSlot["endsAt"],
+  endsOn: "2099-09-02",
+  seats: 2,
+  startsAt: "2099-08-31T22:00:00Z" as OfficeCheckoutSlot["startsAt"],
+  startsOn: "2099-09-01",
+};
+
 test.skipIf(!chromiumAvailable)(
   "checks restored office range, seats, and contact only when carried in",
   async () => {
-    const data = makeOfficeCheckoutData(origin, {
-      startsOn: "2099-09-01",
-      endsOn: "2099-09-02",
-      seats: 2,
-      startsAt: "2099-08-31T22:00:00Z",
-      endsAt: "2099-09-02T22:00:00Z",
-    });
+    const data = makeOfficeCheckoutData(origin, officeSlot);
     const selection = ({ dayCount = "2", seats = "2" } = {}) => `
       <input name="startsOn" value="2099-09-01" />
       <input name="dayCount" type="number" value="${dayCount}" />
       <input checked name="seats" type="radio" value="${seats}" />`;
     const otherContact = makeOfficeCheckoutData(
       origin,
-      {
-        startsOn: "2099-09-01",
-        endsOn: "2099-09-02",
-        seats: 2,
-        startsAt: "2099-08-31T22:00:00Z",
-        endsAt: "2099-09-02T22:00:00Z",
-      },
+      officeSlot,
       "office-other-contact"
     );
 

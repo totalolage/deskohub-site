@@ -66,6 +66,13 @@ test.skipIf(!chromiumAvailable)(
         en
       )
     ).toBe(false);
+    expect(
+      await holdsOn(
+        `${totalRow("Total to pay", zeroText(enData))}<p>${en.appliedMessage}</p>`,
+        isAppliedZeroTotalPaySummary,
+        en
+      )
+    ).toBe(true);
 
     const csApplied = m.checkoutDiscountCodeApplied(
       { discount: "100 %" },
@@ -97,7 +104,7 @@ test.skipIf(!chromiumAvailable)(
 
     expect(
       await holdsOn(
-        `${totalRow("Total to pay", zeroText(enData))}${totalRow("Total to pay", zeroText(enData))}`,
+        `${totalRow("Total to pay", zeroText(enData))}${totalRow("Total to pay", zeroText(enData))}<p>${en.appliedMessage}</p>`,
         isAppliedZeroTotalPaySummary,
         en
       )

@@ -198,6 +198,9 @@ export type WorkspaceE2ETimeouts = Readonly<
   Record<keyof typeof workspaceE2ETimeouts, number>
 >;
 
+/** How long an argv runner command may run when its caller sets none. */
+export const argvCommandTimeoutMs = 2 * MINUTE;
+
 export const workspaceE2EPollIntervalMs = {
   advertisedPricing: 5 * SECOND,
   // Between automation planner ticks; each tick also reads the preview

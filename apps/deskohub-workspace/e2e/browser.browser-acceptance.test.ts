@@ -30,7 +30,6 @@ import { isWorkspaceE2ETimeout, type WorkspaceE2EError } from "./errors";
 import { pollUntil } from "./polling";
 import { addRedaction } from "./redaction";
 import {
-  argvCommandTimeoutMs,
   browserSessionFor,
   makePlaywrightBrowserRunner,
   type Runner,
@@ -39,6 +38,7 @@ import {
   type E2ETelemetryObservation,
   makeE2ETelemetryMock,
 } from "./services/telemetry.mock";
+import { argvCommandTimeoutMs } from "./timeouts";
 
 const chromiumAvailable = await playwrightChromiumAvailable();
 let browser: Browser | undefined;
@@ -475,12 +475,19 @@ const runHelperStep = async <A>(
 };
 
 const failedAnnotation = (failureKind: "error" | "timeout") => [
-  {
-    caseId: helperCaseId,
-    failureKind,
-    outcome: failureKind === "timeout" ? "timed_out" : "failed",
-    stepId: helperStepId,
-  },
+  failureKind === "timeout"
+    ? {
+        caseId: helperCaseId,
+        failureKind: "timeout" as const,
+        outcome: "timed_out" as const,
+        stepId: helperStepId,
+      }
+    : {
+        caseId: helperCaseId,
+        failureKind: "error" as const,
+        outcome: "failed" as const,
+        stepId: helperStepId,
+      },
 ];
 
 // A control that React hydrates after `afterMs`: it gains React props with
@@ -489,6 +496,10 @@ const hydratingButton = (afterMs: number, handlers: readonly string[] = []) =>
   `<button id="target">Go</button><button id="other">Other</button>
   <script>
     window.presses = 0;
+    window.trustedEnters = 0;
+    document.getElementById("target").addEventListener("keydown", (event) => {
+      if (event.isTrusted && event.key === "Enter") window.trustedEnters += 1;
+    });
     document.getElementById("target").addEventListener("click", () => {
       window.presses += 1;
     });
@@ -558,7 +569,10 @@ test.skipIf(!chromiumAvailable)(
     const readPresses = (session: E2EBrowserSession) =>
       session.evaluate(
         "read presses",
-        () => Reflect.get(window, "presses"),
+        () => ({
+          presses: Reflect.get(window, "presses"),
+          trustedEnters: Reflect.get(window, "trustedEnters"),
+        }),
         undefined,
         { timeoutMs: 5000 }
       );
@@ -578,7 +592,7 @@ test.skipIf(!chromiumAvailable)(
     ]) {
       const result = await runHelperStep(hydratingButton(300), drive);
       expect(result.succeeded).toBe(true);
-      expect(result.value).toBe(1);
+      expect(result.value).toEqual({ presses: 1, trustedEnters: 1 });
     }
 
     for (const drive of [

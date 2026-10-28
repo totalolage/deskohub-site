@@ -13,6 +13,7 @@ import {
   workspaceE2ETimeoutError,
 } from "./errors";
 import { redact } from "./redaction";
+import { argvCommandTimeoutMs } from "./timeouts";
 
 export {
   addDatabaseUrlRedactions,
@@ -207,9 +208,6 @@ const openArgvSession = (
       return Object.assign(pageState, { browserSession, scope });
     })
   );
-
-/** How long an argv command may run when its caller sets no timeout. */
-export const argvCommandTimeoutMs = 120_000;
 
 const execute = (
   getSession: (id: string) => Promise<ArgvSession>,

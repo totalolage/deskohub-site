@@ -144,6 +144,6 @@ test("makes a fresh well-formed referral code for the unusable link", () => {
   const first = makeUnusableReferralCode();
   const second = makeUnusableReferralCode();
   expect(first).toMatch(/^RFL[0-9A-F]{12}$/);
-  expect(parseReferralCode(first)).toBe(first);
+  expect<string | undefined>(parseReferralCode(first)).toBe(first);
   expect(second).not.toBe(first);
 });

@@ -18,6 +18,7 @@ import {
   makeCoworkCheckoutData,
   makeMeetingRoomCheckoutData,
   makeOfficeCheckoutData,
+  type OfficeCheckoutSlot,
 } from "./checkout/data";
 
 const workspaceTemporal = globalThis.Temporal;
@@ -27,13 +28,13 @@ const getTestMeetingRoomInterval = (
   startDateTime: string,
   duration: MeetingRoomReservationDuration
 ) => getMeetingRoomReservationInterval(startDateTime, duration);
-const officeSlot = {
+const officeSlot: OfficeCheckoutSlot = {
   startsOn: "2099-09-01",
   endsOn: "2099-09-02",
   seats: 2,
-  startsAt: "2099-08-31T22:00:00Z",
-  endsAt: "2099-09-02T22:00:00Z",
-} as const;
+  startsAt: "2099-08-31T22:00:00Z" as OfficeCheckoutSlot["startsAt"],
+  endsAt: "2099-09-02T22:00:00Z" as OfficeCheckoutSlot["endsAt"],
+};
 
 test("asserts safe repeat-reservation defaults for every family", async () => {
   const meetingRoomInterval = getTestMeetingRoomInterval(

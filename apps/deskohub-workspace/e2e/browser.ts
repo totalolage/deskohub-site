@@ -17,8 +17,8 @@ import {
 import { pollUntil } from "./polling";
 import { redact } from "./redaction";
 import type { Runner } from "./runtime";
-import { argvCommandTimeoutMs, log, redactDiagnosticText } from "./runtime";
-import { workspaceE2EPollIntervalMs } from "./timeouts";
+import { log, redactDiagnosticText } from "./runtime";
+import { argvCommandTimeoutMs, workspaceE2EPollIntervalMs } from "./timeouts";
 
 // Playwright reports an exhausted command budget as its TimeoutError; classify
 // it as a Workspace E2E timeout so pollers can retry it like their own deadlines.
@@ -342,23 +342,6 @@ export const scrollBrowserElementIntoView = (
       input: inPageCall(scrollElementIntoView, selector),
       logOutput: false,
       timeoutMs: options.timeoutMs ?? 60_000,
-    }
-  ).pipe(Effect.asVoid);
-
-export const captureBrowserScreenshot = (
-  run: Runner,
-  session: string,
-  path: string,
-  options: { readonly timeoutMs: number }
-): Effect.Effect<void, WorkspaceE2EError> =>
-  runBrowserCommand(
-    "capture browser screenshot",
-    run,
-    session,
-    ["screenshot", path],
-    {
-      logOutput: false,
-      timeoutMs: options.timeoutMs,
     }
   ).pipe(Effect.asVoid);
 
