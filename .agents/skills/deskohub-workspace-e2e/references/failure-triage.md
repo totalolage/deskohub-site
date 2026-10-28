@@ -14,7 +14,7 @@ Read [operations diagnostics](../../deskohub-workspace-operations/references/dia
 2. Query spans with `e2e.run.id = <GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>`.
 3. Find the `e2e.case` whose `e2e.outcome` is `failed` or `timed_out`, then its last non-passing `e2e.step`. Only the annotated case is the root failure. After it, running cases are recorded `cancelled`, though some account-lane browser errors during shutdown surface as `failed` within about two seconds of the stop.
 4. Compare the step's native duration with `e2e.timeout_ms` and read `e2e.failure.kind`. That tells you whether it failed at once or exhausted its wait.
-5. Use the case and step IDs to open only the matching GitHub log section and that case's browser snapshot, HAR, and database assertion artifacts.
+5. Use the case and step IDs to open only the matching GitHub log section and that case's browser snapshot, HAR, and database assertion artifacts. Failure capture writes only `error.txt` when the case's browser never opened. In `network.har`, response bodies are redacted except Nexi build-failure summaries, and an entry with status `-1` and no `content.text` was still in flight when the session closed, not a lost body.
 6. Form a specific hypothesis before rerunning. A rerun validates a hypothesis; a repeated failure needs a regression test and a fix.
 
 Never dump whole spans, attribute objects, exception events, or artifact payloads. Report correlation values, span names, durations, configured timeouts, closed outcomes and failure kinds, and the minimum artifact facts.

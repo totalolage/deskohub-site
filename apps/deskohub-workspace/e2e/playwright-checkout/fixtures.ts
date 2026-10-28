@@ -1,4 +1,5 @@
-import { Effect } from "effect";
+import { Effect, Exit, Scope } from "effect";
+import { runUntracedE2EEffect } from "../effect-edge";
 import { makePlaywrightBrowserRunner, type Runner } from "../runtime";
 import {
   isWorkspaceE2ENightlyCaseId,
@@ -19,12 +20,16 @@ export const test = runtimeTest.extend<
   WorkspaceE2EFixtures,
   WorkspaceE2EWorkerFixtures
 >({
+  // The test's Scope owns its browser sessions: the case's one session opens
+  // there on first use, inside the case runner, so a browser that fails to
+  // open is still the case's failure; closing the Scope closes every session,
+  // each release bounded by one browser action.
   browserRunner: async ({ browser }, use) => {
-    const runner = makePlaywrightBrowserRunner(browser);
+    const scope = Scope.makeUnsafe("parallel");
     try {
-      await use(runner);
+      await use(makePlaywrightBrowserRunner(browser, { scope }));
     } finally {
-      await runner.close?.();
+      await runUntracedE2EEffect(Scope.close(scope, Exit.void));
     }
   },
   runPlan: [
