@@ -14,10 +14,10 @@ import type {
   ReservationAccessGrant,
 } from "../reservation-access";
 import {
-  getReservationAccessSchedule,
   makeReservationAccessName,
   reservationAccessProvisioningStaleAfterMilliseconds,
 } from "../reservation-access";
+import { getReservationAccessSchedule } from "./igloohome-access-window";
 import {
   ReservationAccessRepository,
   type ReservationAccessStorageError,

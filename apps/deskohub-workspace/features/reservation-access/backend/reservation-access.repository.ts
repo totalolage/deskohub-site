@@ -11,12 +11,12 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { reservationAccessGrants } from "@/db/schema";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import {
-  getReservationAccessSchedule,
   makeReservationAccessName,
   type ReservationAccessGrant,
   type ReservationAccessGrantId,
   reservationAccessGrantIdSchema,
 } from "../reservation-access";
+import { getReservationAccessSchedule } from "./igloohome-access-window";
 
 const reservationAccessGrantSelection = {
   id: reservationAccessGrants.id,
