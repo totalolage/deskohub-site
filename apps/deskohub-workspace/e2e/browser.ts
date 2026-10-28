@@ -770,7 +770,9 @@ const readBrowserDiagnostics = (
 
 /**
  * Primes preview access for the URL's origin when the run has a bypass
- * secret, then loads the URL in the session's active page.
+ * secret, then loads the URL in the session's active page. It activates the
+ * loaded page again, which drops any iframe the argv runner had selected, as
+ * its `open` command did, while argv commands still share the session.
  */
 export const openPage = (
   session: E2EBrowserSession,
@@ -782,10 +784,11 @@ export const openPage = (
     config.bypassSecret
       ? session.primePreviewAccess(url, config.bypassSecret, { timeoutMs })
       : Effect.void,
-    session.use("open browser page", (page) =>
-      page.goto(url, { timeout: timeoutMs, waitUntil: "load" })
-    )
-  ).pipe(Effect.asVoid);
+    session.use("open browser page", async (page) => {
+      await page.goto(url, { timeout: timeoutMs, waitUntil: "load" });
+      return page;
+    })
+  ).pipe(Effect.flatMap(session.activate));
 
 /** Waits until the page's visible text contains `text`. */
 export const waitForPageTextContent = (

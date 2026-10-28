@@ -5,6 +5,7 @@ import { Cause, Effect, Exit, Option } from "effect";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import {
   openPage,
+  runBrowserCommand,
   waitForBrowserCondition,
   waitForBrowserTextContent,
   waitForPageText,
@@ -226,6 +227,125 @@ test.skipIf(!chromiumAvailable)(
       );
       expect(Exit.isSuccess(exit)).toBe(true);
     } finally {
+      await server.stop(true);
+    }
+  }
+);
+
+// A Workspace deployment origin, the only kind that gets the bypass secret.
+// The session's `fetch` answers its probe, and the context answers the page.
+const deploymentOrigin =
+  "https://deskohub-workspace-abc123def-synthetic.vercel.app";
+
+/**
+ * Opens the deployment origin through `openPage` with a bypass secret,
+ * recording the probe and the navigation in the order they happen.
+ */
+const openProtectedPage = async (probeStatus: number) => {
+  if (!browser) throw new Error("Chromium is not running");
+  const opened = browser;
+  const events: string[] = [];
+  const exit = await Effect.runPromiseExit(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const session = yield* E2EBrowserSession.open({
+          browser: opened,
+          fetch: (async (input: string | URL | Request) => {
+            const url = new URL(input instanceof Request ? input.url : input);
+            events.push(`probe ${url.origin}`);
+            return new Response(null, { status: probeStatus });
+          }) as typeof fetch,
+          id: `browser-open-${randomUUID()}`,
+          recordHar: false,
+        });
+        yield* session.use("route the deployment", (page) =>
+          page.context().route(`${deploymentOrigin}/**`, (route) => {
+            events.push(`navigate ${new URL(route.request().url()).origin}`);
+            return route.fulfill({
+              body: "<p>Opened</p>",
+              contentType: "text/html",
+            });
+          })
+        );
+        yield* openPage(
+          session,
+          { bypassSecret: "synthetic-bypass-secret" },
+          `${deploymentOrigin}/en-US`,
+          { timeoutMs: 5_000 }
+        );
+        yield* waitForPageTextContent(session, "Opened", { timeoutMs: 1_000 });
+      })
+    )
+  );
+  return { events, exit };
+};
+
+test.skipIf(!chromiumAvailable)(
+  "primes preview access before it opens a protected page",
+  async () => {
+    const { events, exit } = await openProtectedPage(200);
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(events).toEqual([
+      `probe ${deploymentOrigin}`,
+      `navigate ${deploymentOrigin}`,
+    ]);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "fails without navigating when preview access is refused",
+  async () => {
+    const { events, exit } = await openProtectedPage(401);
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(isTimeout(exit)).toBe(false);
+    expect(events).toEqual([`probe ${deploymentOrigin}`]);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "drops the argv runner's selected iframe when it opens a page",
+  async () => {
+    if (!browser) throw new Error("Chromium is not running");
+    const server = Bun.serve({
+      fetch: () =>
+        new Response("<p>Top page</p>", {
+          headers: { "content-type": "text/html" },
+        }),
+      hostname: "127.0.0.1",
+      port: 0,
+    });
+    const run = makePlaywrightBrowserRunner(browser, { recordHar: false });
+    const id = `browser-frame-${randomUUID()}`;
+    try {
+      const exit = await Effect.runPromiseExit(
+        Effect.gen(function* () {
+          const session = yield* browserSessionFor(run, id);
+          yield* session.use("show a framed page", (page) =>
+            page.setContent(
+              `<iframe id="child" srcdoc="<p>Inside the frame</p>"></iframe>`
+            )
+          );
+          yield* runBrowserCommand("select the iframe", run, id, [
+            "frame",
+            "#child",
+          ]);
+          yield* openPage(
+            session,
+            { bypassSecret: undefined },
+            server.url.href
+          );
+          // An argv command after the open reads the new page, not the
+          // iframe it had selected on the old one.
+          yield* waitForBrowserTextContent(run, id, "Top page", {
+            timeoutMs: 1_000,
+          });
+        })
+      );
+      expect(Exit.isSuccess(exit)).toBe(true);
+    } finally {
+      await run.close?.();
       await server.stop(true);
     }
   }

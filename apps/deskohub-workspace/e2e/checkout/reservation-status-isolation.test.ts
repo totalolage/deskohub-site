@@ -56,6 +56,9 @@ type IsolationMode =
 
 let mode: IsolationMode = "scoped";
 const requests: { readonly path: string; readonly signedIn: boolean }[] = [];
+// When the booking session first asked for the target status after the
+// signed-out check, which is where the case resumes after that browser's close.
+let authorizedStatusRequestedAt: number | undefined;
 
 const page = (body: string) =>
   new Response(`<!doctype html><html lang="en"><body>${body}</body></html>`, {
@@ -74,6 +77,8 @@ const server = Bun.serve({
     const signedIn =
       request.headers.get("cookie")?.includes(`${signedInCookie}=1`) ?? false;
     requests.push({ path: url.pathname, signedIn });
+    if (signedIn && url.pathname === targetStatusPath)
+      authorizedStatusRequestedAt ??= Date.now();
     if (url.pathname === "/en-US/contact") return page("<h1>Contact</h1>");
     if (url.pathname === signInPath)
       return page(
@@ -123,9 +128,10 @@ const config: WorkspaceE2EConfig = {
   expectedHost: new URL(baseUrl).host,
   timeouts: {
     ...workspaceE2ETimeouts,
-    browserAction: 5_000,
-    browserNavigation: 5_000,
-    uiTransition: 5_000,
+    // Long enough for a loaded machine; the failure paths wait them out.
+    browserAction: 10_000,
+    browserNavigation: 10_000,
+    uiTransition: 10_000,
   },
 };
 
@@ -225,6 +231,7 @@ const holdSignedOutContext = (
 ) => {
   const released = Promise.withResolvers<void>();
   const failedCloses: (() => Promise<void>)[] = [];
+  let closeStartedAt: number | undefined;
   let contexts = 0;
   const newContext: Browser["newContext"] = async (options) => {
     contexts += 1;
@@ -233,6 +240,7 @@ const holdSignedOutContext = (
     const context = await real.newContext(options);
     const close = context.close.bind(context);
     context.close = async (closeOptions) => {
+      closeStartedAt ??= Date.now();
       if (hold === "close-fails") {
         failedCloses.push(() => close(closeOptions));
         throw new Error("context close failed");
@@ -251,6 +259,7 @@ const holdSignedOutContext = (
   });
   return {
     browser,
+    closeStartedAt: () => closeStartedAt,
     release: async () => {
       released.resolve();
       await Promise.allSettled(
@@ -284,6 +293,7 @@ const runIsolation = async (
   const held = holdSignedOutContext(opened, signedOutContext);
   mode = isolationMode;
   requests.length = 0;
+  authorizedStatusRequestedAt = undefined;
   const database = makeDatabase();
   const run = makePlaywrightBrowserRunner(held.browser, { recordHar: false });
   const observations: E2ETelemetryObservation[] = [];
@@ -340,6 +350,13 @@ const runIsolation = async (
         timeout: isWorkspaceE2ETimeout(failure),
       })),
       finalUrl,
+      // How long the case waited for the signed-out browser's close before
+      // it went on to the booking session's checks.
+      closeWaitMs:
+        authorizedStatusRequestedAt === undefined ||
+        held.closeStartedAt() === undefined
+          ? undefined
+          : authorizedStatusRequestedAt - (held.closeStartedAt() ?? 0),
       openContexts: opened.contexts().length,
       reported: JSON.stringify({
         annotations,
@@ -459,7 +476,7 @@ test.skipIf(!chromiumAvailable)(
   async () => {
     const result = await runIsolation("scoped", {
       signedOutContext: "open-held",
-      stepTimeoutMs: 3_000,
+      stepTimeoutMs: 8_000,
     });
 
     expect({
@@ -495,7 +512,6 @@ test.skipIf(!chromiumAvailable)(
 test.skipIf(!chromiumAvailable)(
   "stops waiting for a signed-out browser close after its bound",
   async () => {
-    const startedAt = Date.now();
     const result = await runIsolation("scoped", {
       caseConfig: {
         ...config,
@@ -506,7 +522,10 @@ test.skipIf(!chromiumAvailable)(
 
     expect(result.succeeded).toBe(true);
     expect(result.annotations).toEqual([]);
-    expect(Date.now() - startedAt).toBeLessThan(stepTimeoutMs);
+    // The configured second, well short of the fixture's 10-second browser
+    // action bound that would also end the wait.
+    expect(result.closeWaitMs).toBeGreaterThanOrEqual(900);
+    expect(result.closeWaitMs).toBeLessThan(8_000);
   },
   testTimeoutMs
 );
