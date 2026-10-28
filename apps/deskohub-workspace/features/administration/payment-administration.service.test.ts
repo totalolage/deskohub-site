@@ -76,7 +76,7 @@ describe("PaymentAdministrationService", () => {
             Layer.merge(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({ db: database as never })
+                WorkspaceDatabase.make(database as never)
               ),
               NexiServiceMock({
                 listOrders: () =>

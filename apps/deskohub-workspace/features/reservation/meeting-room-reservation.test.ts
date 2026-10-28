@@ -115,6 +115,12 @@ describe("meetingRoomReservationSchema", () => {
       { kind: "meeting-room", duration: { unit: "day", amount: 1 } },
       // Written before snapshots recorded the offer.
       { kind: "meeting-room" },
+      // Written by a release that offers early setup.
+      {
+        kind: "meeting-room",
+        duration: { unit: "hour", amount: 1 },
+        earlySetup: true,
+      },
     ]) {
       expect(Result.isSuccess(safeParseStoredDetails(details))).toBe(true);
     }

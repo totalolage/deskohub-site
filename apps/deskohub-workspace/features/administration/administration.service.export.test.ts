@@ -107,7 +107,7 @@ const runAdministration = <A, E>(
           Layer.mergeAll(
             Layer.succeed(
               WorkspaceDatabase,
-              WorkspaceDatabase.of({ db: database as never })
+              WorkspaceDatabase.make(database as never)
             ),
             DotyposServiceMock(dotypos),
             Layer.succeed(

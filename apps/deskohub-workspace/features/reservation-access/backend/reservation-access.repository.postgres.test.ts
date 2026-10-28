@@ -66,10 +66,13 @@ describe.skipIf(!testDatabase)(
         )
       );
 
-    const issueGrant = async (reservationId: WorkspaceReservationId) => {
+    const issueGrant = async (
+      reservationId: WorkspaceReservationId,
+      bounds: typeof target = target
+    ) => {
       const accessCode = AlgoPinSchema.make("123456789");
       const grant = await run((repository) =>
-        repository.ensure({ reservationId, ...target, replacingIssued: null })
+        repository.ensure({ reservationId, ...bounds, replacingIssued: null })
       );
       expect(grant.accessName).toBe(`Deskohub ${grant.id}`);
       const startedAt = Temporal.Now.instant();
@@ -141,6 +144,40 @@ describe.skipIf(!testDatabase)(
       expect(ensured.id).toBe(grant.id);
       expect(ensured.state).toBe("issued");
       expect(ensured.accessName).toBe(`Deskohub ${grant.id}`);
+      expect(
+        await run((repository) =>
+          repository.loadIssuedCode({ id: grant.id, reservationId })
+        )
+      ).toBe(accessCode);
+    });
+
+    test("keeps a whole-hour grant an earlier release issued when a request ensures its exact span", async () => {
+      const reservationId = await insertReservation();
+      // Releases before exact spans store the whole hours the lock is
+      // programmed with.
+      const { accessCode, grant } = await issueGrant(reservationId);
+      const exactSpan = {
+        ...target,
+        scheduledAccessStartsAt: Temporal.Instant.from("2030-03-04T08:45:00Z"),
+        accessStartsAt: Temporal.Instant.from("2030-03-04T08:45:00Z"),
+        accessEndsAt: Temporal.Instant.from("2030-03-04T16:30:00Z"),
+      };
+
+      // A request that read no issued grant, or one for other hours, before
+      // that release issued this one must keep its PIN.
+      for (const replacingIssued of [
+        null,
+        {
+          ...target,
+          accessEndsAt: Temporal.Instant.from("2030-03-04T19:00:00Z"),
+        },
+      ]) {
+        const ensured = await run((repository) =>
+          repository.ensure({ reservationId, ...exactSpan, replacingIssued })
+        );
+        expect(ensured.id).toBe(grant.id);
+        expect(ensured.state).toBe("issued");
+      }
       expect(
         await run((repository) =>
           repository.loadIssuedCode({ id: grant.id, reservationId })

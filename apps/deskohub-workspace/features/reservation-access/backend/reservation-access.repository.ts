@@ -73,7 +73,9 @@ export interface IReservationAccessRepository {
   /**
    * Creates the grant, or resets a retryable one, for a target. An issued
    * grant is reset only when it still holds `replacingIssued`, the bounds of
-   * the issued grant the caller read and decided to replace.
+   * the issued grant the caller read and decided to replace. Callers replace
+   * only a grant programmed for other Igloohome hours, so a grant any
+   * deployment issued for the requested hours is never reset.
    */
   readonly ensure: (input: {
     readonly reservationId: WorkspaceReservationId;

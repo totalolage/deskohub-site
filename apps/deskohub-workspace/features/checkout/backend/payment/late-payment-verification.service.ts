@@ -172,7 +172,7 @@ export class LatePaymentVerificationService extends Context.Service<
         WorkspaceReservationRepository.Default,
         PaymentAttemptRepository.Default,
         LatePaymentRecoveryRepository.Default,
-        LatePaymentRecoveryQueueService.Default,
+        LatePaymentRecoveryQueueService.Live,
         WorkspaceNexiLayer
       )
     ),

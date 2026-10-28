@@ -641,7 +641,7 @@ export class CampaignSendService extends Context.Service<
             Layer.provide(NodeCrypto.layer)
           ),
           CampaignEmailConfig.Default,
-          CampaignSendQueueService.Default,
+          CampaignSendQueueService.Live,
           EmailServiceTag.RecipientRouted.pipe(Layer.provide(EmailConfigLayer))
         )
       ),

@@ -53,7 +53,7 @@ beforeAll(async () => {
         case "/noisy": {
           const count = Number(url.searchParams.get("count"));
           return html(
-            `<body><script>
+            `<body><h1>Noisy</h1><script>
               for (let index = 0; index < ${count}; index += 1) console.log("entry " + index);
               console.log("${url.searchParams.get("echo") ?? ""}");
               setTimeout(() => { throw new Error("synthetic page failure"); });
@@ -179,6 +179,87 @@ test.skipIf(!chromiumAvailable)(
     expect(afterClose.message).toBe(
       "read the title after close stopped because the browser session closed"
     );
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "captures failure artifacts from the active page, then exports the HAR",
+  async () => {
+    const secret = "synthetic-capture-query-secret";
+    addRedaction(secret);
+    const id = `session-capture-${randomUUID()}`;
+    const directory = join(artifactDir, id);
+    const afterCapture = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const session = yield* E2EBrowserSession.open({
+            browser: browser as Browser,
+            id,
+          });
+          yield* session.use("open the noisy page", async (page) => {
+            const failed = page.waitForEvent("pageerror");
+            await page.goto(`${origin()}/noisy?count=2&echo=${secret}`);
+            await failed;
+          });
+          yield* session.captureFailureArtifacts(directory);
+          return yield* Effect.flip(
+            session.use("read the title after capture", (page) => page.title())
+          );
+        })
+      )
+    );
+    const read = (name: string) => readFile(join(directory, name), "utf8");
+
+    expect((await readdir(directory)).sort()).toEqual([
+      "console.txt",
+      "errors.txt",
+      "network-requests.txt",
+      "network.har",
+      "snapshot-interactive.txt",
+    ]);
+    expect(await read("console.txt")).toStartWith(
+      "exitCode: 0\n\nstdout:\n[log] entry 0\n[log] entry 1\n"
+    );
+    expect(await read("errors.txt")).toContain("synthetic page failure");
+    expect(await read("network-requests.txt")).toContain("/noisy?count=");
+    expect(await read("snapshot-interactive.txt")).toContain("Noisy");
+    const har = await read("network.har");
+    expect(JSON.parse(har).log.entries.length).toBeGreaterThan(0);
+    for (const name of await readdir(directory))
+      expect(await read(name)).not.toContain(secret);
+    expect(afterCapture.message).toBe(
+      "read the title after capture stopped because the browser session closed"
+    );
+    expect(await rawHarFiles(id)).toEqual([]);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "writes an unreadable snapshot empty and no HAR the session never recorded",
+  async () => {
+    const directory = join(artifactDir, `session-capture-${randomUUID()}`);
+    const contextsBefore = browser?.contexts().length;
+    await withSession(
+      (session) =>
+        Effect.gen(function* () {
+          yield* goto(session, "/");
+          yield* session.use("close the only page", (page) => page.close());
+          yield* session.captureFailureArtifacts(directory);
+          // The capture closed the context before the Scope did.
+          expect(browser?.contexts().length).toBe(contextsBefore);
+        }),
+      { recordHar: false }
+    );
+
+    expect((await readdir(directory)).sort()).toEqual([
+      "console.txt",
+      "errors.txt",
+      "network-requests.txt",
+      "snapshot-interactive.txt",
+    ]);
+    expect(
+      await readFile(join(directory, "snapshot-interactive.txt"), "utf8")
+    ).toBe("\n");
   }
 );
 
@@ -879,6 +960,107 @@ test.skipIf(!chromiumAvailable)(
     );
 
     expect(total).toBe(1 + 2 + "Session".length);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "describes a cookie by its attributes and expected value, never the value",
+  async () => {
+    const siteUrl = "https://workspace.example.test";
+    const value = "synthetic-remembered-code";
+    const outcome = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const session = yield* openSession();
+          yield* session.use("add cookies", (page) =>
+            page.context().addCookies([
+              {
+                expires: Math.round(Date.now() / 1000) + 30 * 86_400,
+                httpOnly: false,
+                name: "remembered",
+                sameSite: "Lax",
+                secure: true,
+                url: siteUrl,
+                value,
+              },
+            ])
+          );
+          yield* session.setSessionCookie({
+            name: "session_token",
+            url: siteUrl,
+            value: "synthetic-session",
+          });
+          const described = yield* Effect.all({
+            absent: session.describeCookie({ name: "absent", url: siteUrl }),
+            differs: session.describeCookie({
+              name: "remembered",
+              url: `${siteUrl}/en-US/account`,
+              value: "another-code",
+            }),
+            matches: session.describeCookie({
+              name: "remembered",
+              url: siteUrl,
+              value,
+            }),
+            sessionCookie: session.describeCookie({
+              name: "session_token",
+              url: siteUrl,
+            }),
+          });
+          const invalidQuery = yield* Effect.flip(
+            session.describeCookie({ name: "remembered", url: "not a url" })
+          );
+          yield* session.close();
+          const afterClose = yield* Effect.flip(
+            session.describeCookie({ name: "remembered", url: siteUrl })
+          );
+          return { afterClose, described, invalidQuery };
+        })
+      )
+    );
+
+    expect(outcome.described).toEqual({
+      absent: { present: false },
+      differs: {
+        httpOnly: false,
+        lifetimeDays: 30,
+        matches: false,
+        path: "/",
+        present: true,
+        sameSite: "Lax",
+        secure: true,
+      },
+      matches: {
+        httpOnly: false,
+        lifetimeDays: 30,
+        matches: true,
+        path: "/",
+        present: true,
+        sameSite: "Lax",
+        secure: true,
+      },
+      sessionCookie: {
+        httpOnly: true,
+        lifetimeDays: null,
+        matches: null,
+        path: "/",
+        present: true,
+        sameSite: "Lax",
+        secure: true,
+      },
+    });
+    for (const failure of [outcome.invalidQuery, outcome.afterClose]) {
+      expect(failure.operation).toBe("read browser cookie");
+      expect(isWorkspaceE2ETimeout(failure)).toBe(false);
+    }
+    expect(outcome.afterClose.message).toContain("browser session closed");
+    expect(
+      JSON.stringify([
+        outcome.described,
+        outcome.invalidQuery,
+        outcome.afterClose,
+      ])
+    ).not.toContain(value);
   }
 );
 

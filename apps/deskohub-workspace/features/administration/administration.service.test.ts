@@ -114,9 +114,7 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({
-                  db: { select: () => makeQuery([]) } as never,
-                })
+                WorkspaceDatabase.make({ select: () => makeQuery([]) } as never)
               ),
               DotyposServiceMock({
                 getCustomers: () => Effect.succeed([]),
@@ -163,7 +161,7 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({ db: database as never })
+                WorkspaceDatabase.make(database as never)
               ),
               DotyposServiceMock({
                 listReservations: (input) =>
@@ -245,7 +243,7 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({ db: database as never })
+                WorkspaceDatabase.make(database as never)
               ),
               DotyposServiceMock({
                 listReservations: () =>
@@ -310,7 +308,7 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({ db: database as never })
+                WorkspaceDatabase.make(database as never)
               ),
               DotyposServiceMock({
                 listReservations: (input) =>
@@ -386,7 +384,7 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({ db: database as never })
+                WorkspaceDatabase.make(database as never)
               ),
               DotyposServiceMock({
                 getCustomers: () =>
@@ -471,21 +469,19 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({
-                  db: {
-                    select: () => {
-                      const call = selectCall++;
-                      const query = makeQuery(rows[call] ?? []);
-                      if (call === 4) {
-                        query.orderBy = () => {
-                          recoveryOrderByCalls += 1;
-                          return query;
-                        };
-                      }
-                      return query;
-                    },
-                  } as never,
-                })
+                WorkspaceDatabase.make({
+                  select: () => {
+                    const call = selectCall++;
+                    const query = makeQuery(rows[call] ?? []);
+                    if (call === 4) {
+                      query.orderBy = () => {
+                        recoveryOrderByCalls += 1;
+                        return query;
+                      };
+                    }
+                    return query;
+                  },
+                } as never)
               ),
               DotyposServiceMock({
                 getCustomers: () =>
@@ -565,11 +561,9 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({
-                  db: {
-                    select: () => makeQuery(rows[selectCall++] ?? []),
-                  } as never,
-                })
+                WorkspaceDatabase.make({
+                  select: () => makeQuery(rows[selectCall++] ?? []),
+                } as never)
               ),
               DotyposServiceMock({
                 getCustomers: ({ ids = [] }) =>
@@ -670,11 +664,9 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({
-                  db: {
-                    select: () => makeQuery(rows[selectCall++] ?? []),
-                  } as never,
-                })
+                WorkspaceDatabase.make({
+                  select: () => makeQuery(rows[selectCall++] ?? []),
+                } as never)
               ),
               DotyposServiceMock({
                 getCustomers: ({ ids = [] }) =>
@@ -762,11 +754,9 @@ describe("AdministrationService", () => {
               Layer.mergeAll(
                 Layer.succeed(
                   WorkspaceDatabase,
-                  WorkspaceDatabase.of({
-                    db: {
-                      select: () => makeQuery(rows[selectCall++] ?? []),
-                    } as never,
-                  })
+                  WorkspaceDatabase.make({
+                    select: () => makeQuery(rows[selectCall++] ?? []),
+                  } as never)
                 ),
                 DotyposServiceMock({
                   getCustomer: (id) =>
@@ -832,11 +822,9 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({
-                  db: {
-                    select: () => makeQuery(rows[selectCall++] ?? []),
-                  } as never,
-                })
+                WorkspaceDatabase.make({
+                  select: () => makeQuery(rows[selectCall++] ?? []),
+                } as never)
               ),
               DotyposServiceMock({
                 getCustomers: () =>
@@ -899,11 +887,9 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({
-                  db: {
-                    select: () => makeQuery(rows[selectCall++] ?? []),
-                  } as never,
-                })
+                WorkspaceDatabase.make({
+                  select: () => makeQuery(rows[selectCall++] ?? []),
+                } as never)
               ),
               DotyposServiceMock({
                 getCustomers: () =>
@@ -1111,11 +1097,9 @@ describe("AdministrationService", () => {
               Layer.mergeAll(
                 Layer.succeed(
                   WorkspaceDatabase,
-                  WorkspaceDatabase.of({
-                    db: {
-                      select: () => makeQuery(rangeRows),
-                    } as never,
-                  })
+                  WorkspaceDatabase.make({
+                    select: () => makeQuery(rangeRows),
+                  } as never)
                 ),
                 DotyposServiceMock({
                   getCustomers: (options) =>
@@ -1305,23 +1289,21 @@ describe("AdministrationService", () => {
         Layer.mergeAll(
           Layer.succeed(
             WorkspaceDatabase,
-            WorkspaceDatabase.of({
-              db: {
-                select: () => {
-                  databaseQueries += 1;
-                  return makeQuery([
-                    {
-                      customerId: "customer-1",
-                      failureCode: null,
-                      fulfillmentState: "fulfilled",
-                      id: "reservation-1",
-                      paymentState: "paid",
-                      reservationState: "confirmed",
-                    },
-                  ]);
-                },
-              } as never,
-            })
+            WorkspaceDatabase.make({
+              select: () => {
+                databaseQueries += 1;
+                return makeQuery([
+                  {
+                    customerId: "customer-1",
+                    failureCode: null,
+                    fulfillmentState: "fulfilled",
+                    id: "reservation-1",
+                    paymentState: "paid",
+                    reservationState: "confirmed",
+                  },
+                ]);
+              },
+            } as never)
           ),
           DotyposServiceMock({
             getCustomers: () => Effect.succeed([]),
@@ -1384,21 +1366,19 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({
-                  db: {
-                    select: linkageThenEarlySetupRows(
-                      input.linkedIds.map((id) => ({
-                        customerId: "customer",
-                        failureCode: null,
-                        fulfillmentState: "fulfilled",
-                        id,
-                        paymentState: "paid",
-                        reservationState: "confirmed",
-                      })),
-                      input.earlySetupIds
-                    ),
-                  } as never,
-                })
+                WorkspaceDatabase.make({
+                  select: linkageThenEarlySetupRows(
+                    input.linkedIds.map((id) => ({
+                      customerId: "customer",
+                      failureCode: null,
+                      fulfillmentState: "fulfilled",
+                      id,
+                      paymentState: "paid",
+                      reservationState: "confirmed",
+                    })),
+                    input.earlySetupIds
+                  ),
+                } as never)
               ),
               DotyposServiceMock({
                 getCustomers: (options) =>
@@ -1601,9 +1581,7 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({
-                  db: { select: () => makeQuery([]) } as never,
-                })
+                WorkspaceDatabase.make({ select: () => makeQuery([]) } as never)
               ),
               DotyposServiceMock({
                 getReservation: () => Effect.succeed(Option.none()),
@@ -1654,9 +1632,9 @@ describe("AdministrationService", () => {
               Layer.mergeAll(
                 Layer.succeed(
                   WorkspaceDatabase,
-                  WorkspaceDatabase.of({
-                    db: { select: () => makeQuery([]) } as never,
-                  })
+                  WorkspaceDatabase.make({
+                    select: () => makeQuery([]),
+                  } as never)
                 ),
                 DotyposServiceMock({
                   getReservation: () => Effect.fail(failure),
@@ -1700,7 +1678,7 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({ db: database as never })
+                WorkspaceDatabase.make(database as never)
               ),
               DotyposServiceMock({}),
               Layer.succeed(
@@ -1732,7 +1710,7 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({ db: {} as never })
+                WorkspaceDatabase.make({} as never)
               ),
               DotyposServiceMock({
                 getReservation: () =>
@@ -1869,7 +1847,7 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({ db: database as never })
+                WorkspaceDatabase.make(database as never)
               ),
               DotyposServiceMock({
                 listReservations: (input) =>
@@ -1975,9 +1953,7 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({
-                  db: { select: () => makeQuery([]) } as never,
-                })
+                WorkspaceDatabase.make({ select: () => makeQuery([]) } as never)
               ),
               DotyposServiceMock({
                 listReservations: () =>
@@ -2026,14 +2002,12 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({
-                  db: {
-                    select: linkageThenEarlySetupRows(
-                      input.linkedIds.map((id) => ({ id })),
-                      input.earlySetupIds
-                    ),
-                  } as never,
-                })
+                WorkspaceDatabase.make({
+                  select: linkageThenEarlySetupRows(
+                    input.linkedIds.map((id) => ({ id })),
+                    input.earlySetupIds
+                  ),
+                } as never)
               ),
               DotyposServiceMock({ listReservations: input.listReservations }),
               Layer.succeed(
@@ -2505,7 +2479,7 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({ db: database as never })
+                WorkspaceDatabase.make(database as never)
               ),
               DotyposServiceMock({
                 listReservations: (input) =>
@@ -2593,7 +2567,7 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({ db: database as never })
+                WorkspaceDatabase.make(database as never)
               ),
               DotyposServiceMock({}),
               Layer.succeed(
@@ -2672,12 +2646,12 @@ describe("AdministrationService reservation author", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({
+                WorkspaceDatabase.make(
                   // The reservation is the first read; its related rows are empty.
-                  db: {
+                  {
                     select: () => makeQuery(selectCall++ === 0 ? [row] : []),
-                  } as never,
-                })
+                  } as never
+                )
               ),
               DotyposServiceMock({
                 getCustomer: (id) =>

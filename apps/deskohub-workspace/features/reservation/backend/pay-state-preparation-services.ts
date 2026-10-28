@@ -34,7 +34,7 @@ export const payStatePreparationServices = Layer.mergeAll(
     Layer.provide(WorkspaceReservationRepository.Live),
     Layer.provide(WorkspaceDotyposLayer)
   ),
-  ReservationHoldCleanupScheduleService.Default,
+  ReservationHoldCleanupScheduleService.Live,
   PostHogEventService.Live,
   WorkspaceDotyposLayer,
   CheckoutPricingService.Live,

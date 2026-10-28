@@ -810,6 +810,19 @@ describe("CheckoutStatusService", () => {
     expect(summary?.earlySetup).toBe(true);
   });
 
+  test("reports the booked time of an early-setup meeting room", async () => {
+    const status = await getMeetingRoomStatus({
+      reservationDetails: { kind: "meeting-room", earlySetup: true },
+      startDate: "2026-06-20T06:45:00.000Z",
+    });
+
+    expect(status.kind).toBe("meeting-room");
+    const summary = status.kind === "meeting-room" ? status.summary : undefined;
+    expect(summary?.reservedFrom.toString()).toBe("2026-06-20T07:00:00Z");
+    expect(summary?.reservedUntil.toString()).toBe("2026-06-20T11:00:00Z");
+    expect(summary?.earlySetup).toBe(true);
+  });
+
   test.each([
     ["readable", "3", 3],
     ["unreadable", "abc", undefined],

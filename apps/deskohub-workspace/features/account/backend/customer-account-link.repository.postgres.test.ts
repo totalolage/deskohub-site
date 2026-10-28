@@ -28,7 +28,7 @@ const makeRepositoryLayer = () =>
       Layer.mergeAll(
         Layer.succeed(
           WorkspaceDatabase,
-          WorkspaceDatabase.of({ db: testDatabase!.db })
+          WorkspaceDatabase.make(testDatabase!.db)
         ),
         WorkspaceDatabaseAdvisoryLock.makeLayer(testDatabase!.pool)
       )
@@ -251,7 +251,7 @@ describe.skipIf(!testDatabase)(
               Layer.provide(
                 Layer.succeed(
                   WorkspaceDatabase,
-                  WorkspaceDatabase.of({ db: testDatabase!.db })
+                  WorkspaceDatabase.make(testDatabase!.db)
                 )
               )
             )

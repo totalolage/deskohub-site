@@ -536,7 +536,7 @@ const runAuthCleanup = (now: Date) =>
           Layer.provide(
             Layer.succeed(
               WorkspaceDatabase,
-              WorkspaceDatabase.of({ db: testDatabase!.db })
+              WorkspaceDatabase.make(testDatabase!.db)
             )
           )
         )

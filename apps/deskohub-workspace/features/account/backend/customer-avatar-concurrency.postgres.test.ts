@@ -203,7 +203,7 @@ const makeLayer = () =>
               Layer.mergeAll(
                 Layer.succeed(
                   WorkspaceDatabase,
-                  WorkspaceDatabase.of({ db: testDatabase.db })
+                  WorkspaceDatabase.make(testDatabase.db)
                 ),
                 WorkspaceDatabaseAdvisoryLock.makeLayer(testDatabase.pool)
               )
@@ -227,7 +227,7 @@ const makeLayer = () =>
         Layer.mergeAll(
           Layer.succeed(
             WorkspaceDatabase,
-            WorkspaceDatabase.of({ db: testDatabase.db })
+            WorkspaceDatabase.make(testDatabase.db)
           ),
           WorkspaceDatabaseAdvisoryLock.makeLayer(testDatabase.pool)
         )

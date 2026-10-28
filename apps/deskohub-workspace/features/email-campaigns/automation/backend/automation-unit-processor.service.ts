@@ -432,7 +432,7 @@ export class AutomationUnitProcessor extends Context.Service<
         WorkspaceDatabase.Default,
         WorkspaceDatabaseAdvisoryLock.Default,
         AutomationUnitHandlers.Live,
-        AutomationUnitQueue.Default
+        AutomationUnitQueue.Live
       )
     )
   );

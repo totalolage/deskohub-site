@@ -167,10 +167,7 @@ const passGate = (gate: Gate | undefined) =>
     : Effect.void;
 
 const databaseLayer = () =>
-  Layer.succeed(
-    WorkspaceDatabase,
-    WorkspaceDatabase.of({ db: testDatabase!.db })
-  );
+  Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.make(testDatabase!.db));
 
 /**
  * The real link repository, advisory locks, intent repository, and referral

@@ -449,14 +449,18 @@ describe("ReservationAccessService", () => {
     expect(issueHourlyAlgoPin).not.toHaveBeenCalled();
   });
 
-  const issueAfterConcurrentIssuance = (concurrentGrant: typeof grant) => {
+  const issueAfterConcurrentIssuance = (
+    concurrentGrant: typeof grant,
+    request = reservation
+  ) => {
     const loadIssuedCode = mock(() => Effect.succeed(accessCode));
+    const rescheduleIssued = rescheduleIssuedToBounds();
     const issueHourlyAlgoPin = mock(() =>
       Effect.die("Igloohome must not be called")
     );
     const result = Effect.gen(function* () {
       const service = yield* ReservationAccessService;
-      return yield* service.issueForReservation(reservation);
+      return yield* service.issueForReservation(request);
     }).pipe(
       Effect.provide(
         ReservationAccessService.Default.pipe(
@@ -465,6 +469,7 @@ describe("ReservationAccessService", () => {
               Layer.mock(ReservationAccessRepository, {
                 findByReservationId: mock(() => Effect.succeed(null)),
                 ensure: mock(() => Effect.succeed(concurrentGrant)),
+                rescheduleIssued,
                 loadIssuedCode,
               }),
               Layer.mock(IgloohomeService, { issueHourlyAlgoPin })
@@ -475,14 +480,47 @@ describe("ReservationAccessService", () => {
       Effect.result,
       Effect.runPromise
     );
-    return { result, loadIssuedCode, issueHourlyAlgoPin };
+    return { result, loadIssuedCode, rescheduleIssued, issueHourlyAlgoPin };
   };
 
   test("reuses a PIN a concurrent request issued for the same hours", async () => {
-    const { result, issueHourlyAlgoPin } = issueAfterConcurrentIssuance(grant);
+    const { result, rescheduleIssued, issueHourlyAlgoPin } =
+      issueAfterConcurrentIssuance(grant);
 
     const issued = await result;
     expect(Result.isSuccess(issued)).toBe(true);
+    expect(rescheduleIssued).not.toHaveBeenCalled();
+    expect(issueHourlyAlgoPin).not.toHaveBeenCalled();
+  });
+
+  test("records the exact span on a whole-hour PIN an earlier release issued concurrently", async () => {
+    const earlySetupReservation = {
+      reservationId,
+      reservedFrom: Temporal.Instant.from("2099-07-01T07:45:00Z"),
+      reservedUntil: Temporal.Instant.from("2099-07-01T09:00:00Z"),
+    };
+    const { result, rescheduleIssued, issueHourlyAlgoPin } =
+      issueAfterConcurrentIssuance(
+        {
+          ...grant,
+          scheduledAccessStartsAt: Temporal.Instant.from(
+            "2099-07-01T07:00:00Z"
+          ),
+          accessStartsAt: Temporal.Instant.from("2099-07-01T07:00:00Z"),
+          accessEndsAt: Temporal.Instant.from("2099-07-01T09:00:00Z"),
+        },
+        earlySetupReservation
+      );
+
+    const issued = Result.getOrThrow(await result);
+    expect(issued.accessCode).toBe(accessCode);
+    expect(
+      issued.accessStartsAt.equals(earlySetupReservation.reservedFrom)
+    ).toBe(true);
+    expect(
+      issued.accessEndsAt.equals(earlySetupReservation.reservedUntil)
+    ).toBe(true);
+    expect(rescheduleIssued).toHaveBeenCalledTimes(1);
     expect(issueHourlyAlgoPin).not.toHaveBeenCalled();
   });
 

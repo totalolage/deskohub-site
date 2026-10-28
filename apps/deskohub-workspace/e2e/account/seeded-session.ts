@@ -9,13 +9,12 @@ import { parseBetterAuthSecrets } from "@/features/account/backend/auth/auth-sec
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { AccountRole } from "@/features/administrators/account-role";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
-import { setBrowserCookie } from "../browser";
 import type { E2EBrowserSession } from "../browser-session";
 import type { WorkspaceE2EEnvironment } from "../e2e-env";
 import { type WorkspaceE2EError, workspaceE2EError } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
 import { runDatabaseOperation } from "../integrations/database-operation";
-import { addRedaction, type Runner } from "../runtime";
+import { addRedaction } from "../runtime";
 
 /**
  * Better Auth's session cookie on an HTTPS deployment. Workspace keeps the
@@ -196,29 +195,27 @@ const issueWorkspaceE2ESyntheticSession = ({
   });
 
 /**
- * Signs a runner browser session in as one journaled synthetic account
- * without a magic link, setting the seeded session's cookie for the preview
- * origin in that session's own browser context.
+ * Signs an E2E browser session in as one journaled synthetic account
+ * without a magic link, setting the seeded session's HTTP-only, Secure, Lax
+ * cookie for the preview's HTTPS origin.
  */
 export const signInWorkspaceE2ESyntheticAccount = ({
   accountId,
   baseUrl,
-  run,
   secret,
   session,
 }: {
   readonly accountId: string;
   readonly baseUrl: string;
-  readonly run: Runner;
   readonly secret: WorkspaceE2ESessionSigningSecret;
-  readonly session: string;
+  readonly session: E2EBrowserSession;
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const value = yield* issueWorkspaceE2ESyntheticSession({
       accountId,
       secret,
     });
-    yield* setBrowserCookie(run, session, {
+    yield* session.setSessionCookie({
       name: workspaceE2ESessionCookieName,
       url: baseUrl,
       value,

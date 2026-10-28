@@ -85,9 +85,10 @@ mock.module("@/features/account/server/auth.server", () => ({
 
 // Signed-in calls build their account services, which never query here.
 mock.module("@/db/database-provider.server", () => ({
-  workspaceDatabaseLayer: Layer.succeed(WorkspaceDatabase, {
-    db: {} as WorkspaceDatabase["Service"]["db"],
-  }),
+  workspaceDatabaseLayer: Layer.succeed(
+    WorkspaceDatabase,
+    WorkspaceDatabase.make({} as never)
+  ),
   workspaceDatabasePool: { options: { max: 4 } },
 }));
 

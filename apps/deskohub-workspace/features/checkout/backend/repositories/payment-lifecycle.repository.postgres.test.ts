@@ -2224,7 +2224,7 @@ describe.skipIf(!testDatabase)(
           const db = await Effect.runPromise(makeDatabaseClient(pool));
           const databaseLayer = Layer.succeed(
             WorkspaceDatabase,
-            WorkspaceDatabase.of({ db })
+            WorkspaceDatabase.make(db)
           );
           const repository = await makeRepository(databaseLayer);
           const referrals = await makeReferralService({
