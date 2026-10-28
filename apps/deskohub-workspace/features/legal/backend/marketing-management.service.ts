@@ -46,7 +46,7 @@ export class MarketingManagementService extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const { db } = yield* WorkspaceDatabase;
+      const { db, transaction } = yield* WorkspaceDatabase;
 
       const issue: IMarketingManagementService["issue"] = Effect.fn(
         "MarketingManagementService.issue"
@@ -80,44 +80,39 @@ export class MarketingManagementService extends Context.Service<
         const linkHash = hashToken(token);
         const sessionHash = hashToken(sessionToken);
 
-        const exchanged = yield* db
-          .transaction(
-            Effect.fn(function* (tx) {
-              const [link] = yield* tx
-                .update(customerMarketingManagementTokens)
-                .set({ revokedAt: now })
-                .where(
-                  and(
-                    eq(customerMarketingManagementTokens.tokenHash, linkHash),
-                    eq(customerMarketingManagementTokens.purpose, "link"),
-                    isNull(customerMarketingManagementTokens.revokedAt),
-                    gt(customerMarketingManagementTokens.expiresAt, now)
-                  )
+        const exchanged = yield* transaction(
+          Effect.gen(function* () {
+            const [link] = yield* db
+              .update(customerMarketingManagementTokens)
+              .set({ revokedAt: now })
+              .where(
+                and(
+                  eq(customerMarketingManagementTokens.tokenHash, linkHash),
+                  eq(customerMarketingManagementTokens.purpose, "link"),
+                  isNull(customerMarketingManagementTokens.revokedAt),
+                  gt(customerMarketingManagementTokens.expiresAt, now)
                 )
-                .returning({
-                  dotyposCustomerId:
-                    customerMarketingManagementTokens.dotyposCustomerId,
-                  expiresAt: customerMarketingManagementTokens.expiresAt,
-                });
-
-              if (!link) return null;
-
-              const expiresAt = earliestInstant(
-                sessionLifetime,
-                link.expiresAt
-              );
-              yield* tx.insert(customerMarketingManagementTokens).values({
-                tokenHash: sessionHash,
-                dotyposCustomerId: link.dotyposCustomerId,
-                purpose: "session",
-                expiresAt,
-                revokedAt: null,
+              )
+              .returning({
+                dotyposCustomerId:
+                  customerMarketingManagementTokens.dotyposCustomerId,
+                expiresAt: customerMarketingManagementTokens.expiresAt,
               });
 
-              return { token: sessionToken, expiresAt };
-            })
-          )
-          .pipe(Effect.mapError(() => unavailableError()));
+            if (!link) return null;
+
+            const expiresAt = earliestInstant(sessionLifetime, link.expiresAt);
+            yield* db.insert(customerMarketingManagementTokens).values({
+              tokenHash: sessionHash,
+              dotyposCustomerId: link.dotyposCustomerId,
+              purpose: "session",
+              expiresAt,
+              revokedAt: null,
+            });
+
+            return { token: sessionToken, expiresAt };
+          })
+        ).pipe(Effect.mapError(() => unavailableError()));
 
         if (exchanged === null) return yield* invalidCredentialError();
 

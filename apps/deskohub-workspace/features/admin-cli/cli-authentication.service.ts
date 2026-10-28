@@ -157,7 +157,7 @@ export class CliAuthentication extends Context.Service<
     this,
     Effect.gen(function* () {
       const database = yield* WorkspaceDatabase;
-      const { db } = database;
+      const { db, transaction } = yield* WorkspaceDatabase;
       const crypto = yield* Crypto.Crypto;
       const roleGrants = yield* AccountRoleGrants;
       const holdsAdministratorRole = (accountId: CustomerAccountId) =>
@@ -290,8 +290,8 @@ export class CliAuthentication extends Context.Service<
 
         const grantToken = CliGrantToken.make(yield* makeSecret());
         const grantExpiresAt = now.add({ minutes: grantLifetimeMinutes });
-        const [approved] = yield* db.transaction(
-          Effect.fn(function* () {
+        const [approved] = yield* transaction(
+          Effect.gen(function* () {
             // The lock makes a concurrent revoke wait and then withdraw this
             // grant token, or makes this approval see the grant gone.
             const approverHoldsRole = yield* roleGrants.lockHeld({
@@ -372,8 +372,8 @@ export class CliAuthentication extends Context.Service<
         const tokenHash = yield* digestSecret(accessToken);
         const sessionId = CliSessionId.make(yield* crypto.randomUUIDv7);
 
-        const session = yield* db.transaction(
-          Effect.fn(function* (tx) {
+        const session = yield* transaction(
+          Effect.gen(function* () {
             // The lock makes a concurrent revoke wait for this session and
             // revoke it too, or makes this exchange see the grant gone.
             const approverHoldsRole = yield* roleGrants.lockHeld({
@@ -382,7 +382,7 @@ export class CliAuthentication extends Context.Service<
             });
             if (!approverHoldsRole) return yield* rejectedGrant;
 
-            yield* tx.insert(cliSessions).values({
+            yield* db.insert(cliSessions).values({
               id: sessionId,
               approvedByAccountId,
               approvedByAccountEmail: approvedByAccountEmail,
@@ -395,7 +395,7 @@ export class CliAuthentication extends Context.Service<
               expiresAt: request.sessionExpiresAt,
             });
 
-            const consumed = yield* tx
+            const consumed = yield* db
               .update(cliAuthenticationRequests)
               .set({
                 consumedAt: now,

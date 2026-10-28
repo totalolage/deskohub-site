@@ -19,7 +19,10 @@ import {
   Option,
   Schema,
 } from "effect";
-import { WorkspaceDatabase } from "@/db/database.service";
+import {
+  WorkspaceDatabase,
+  type WorkspaceTransaction,
+} from "@/db/database.service";
 import {
   type CliStoredMutation,
   type CliStoredMutationResult,
@@ -42,7 +45,10 @@ type DatabaseMutation<
   R,
 > = LedgerRequest & {
   readonly result: Schema.Decoder<A>;
-  /** Writes only through the Workspace database; it joins the transaction. */
+  /**
+   * Writes only through the Workspace database; it runs inside the ledger's
+   * transaction, so it may require `WorkspaceTransaction`.
+   */
   readonly apply: Effect.Effect<A, E, R>;
 };
 
@@ -182,7 +188,7 @@ interface IAdministrationRequestLedger {
     | CliMutationRejected
     | DatabaseQueryError
     | Schema.SchemaError,
-    R | CurrentAdministrationCaller
+    Exclude<R, WorkspaceTransaction> | CurrentAdministrationCaller
   >;
   /**
    * Applies a mutation with external effects at most once per caller's

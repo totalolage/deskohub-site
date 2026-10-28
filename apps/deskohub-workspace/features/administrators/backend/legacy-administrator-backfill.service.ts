@@ -8,6 +8,7 @@ import {
   cliSessions,
   manualInvoiceActors,
 } from "@/db/schema";
+import { WorkspaceLocks } from "@/db/workspace-locks";
 import { findActiveCustomerAccountByEmail } from "@/features/account";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import { InvoiceRepository } from "@/features/accounting/backend/invoice.repository";
@@ -73,7 +74,7 @@ export class LegacyAdministratorBackfill extends Context.Service<
     this,
     Effect.gen(function* () {
       const database = yield* WorkspaceDatabase;
-      const { db } = database;
+      const { db, transaction } = yield* WorkspaceDatabase;
       const roleGrants = yield* AccountRoleGrants;
       const invoiceRepository = yield* InvoiceRepository;
 
@@ -221,12 +222,10 @@ export class LegacyAdministratorBackfill extends Context.Service<
       });
 
       const backfill = (input: LinkInput) =>
-        db.transaction(() =>
+        transaction(
           Effect.succeed(input).pipe(
             Effect.tap(() =>
-              db.execute(
-                sql`select pg_advisory_xact_lock(hashtext('legacy-administrator'), hashtext(${input.legacyUsername}))`
-              )
+              WorkspaceLocks.legacyAdministrator(input.legacyUsername)
             ),
             Effect.bind("administratorRole", grantAdministrator),
             Effect.bind("cliSessions", linkCliSessions),
