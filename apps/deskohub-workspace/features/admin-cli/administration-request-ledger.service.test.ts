@@ -707,19 +707,31 @@ describe.skipIf(!testDatabase)("administration request ledger", () => {
       expect(await counts()).toEqual({ applied: 1, resumed: 1, settled: 2 });
     });
 
-    test("frees the request ID when a resumed mutation fails for any reason", async () => {
-      const requestId = newRequestId();
-      const { run } = await reservationAccess();
+    test.each([
+      "not_found",
+      "invalid_state",
+      "retryable_failure",
+      "recovery_failed",
+    ] as const)(
+      "frees the request ID when a resumed mutation fails with %s",
+      async (reason) => {
+        const requestId = newRequestId();
+        const { run, counts } = await reservationAccess();
 
-      await run(requestId, { apply: Effect.fail(failure("recovery_failed")) });
-      await ageClaim(requestId, 70);
-      const failed = await run(requestId, {
-        resume: Effect.fail(failure("recovery_failed")),
-      });
+        await run(requestId, {
+          apply: Effect.fail(failure("recovery_failed")),
+        });
+        await ageClaim(requestId, 70);
+        const failed = await run(requestId, {
+          resume: Effect.fail(failure(reason)),
+        });
 
-      expect(failureOf(failed)).toEqual(failure("recovery_failed"));
-      expect(await ledgerEntry(requestId)).toBeUndefined();
-    });
+        expect(failureOf(failed)).toEqual(failure(reason));
+        expect(await ledgerEntry(requestId)).toBeUndefined();
+        expect(await run(requestId)).toEqual(Exit.succeed(result));
+        expect(await counts()).toEqual({ applied: 2, resumed: 1, settled: 1 });
+      }
+    );
 
     test("fails and keeps the claim when the result can't be recorded", async () => {
       const requestId = newRequestId();
@@ -788,7 +800,8 @@ describe.skipIf(!testDatabase)("administration request ledger", () => {
         result: created,
       });
 
-    test.each([
+    /** Failures that prove no code exists, which free the request ID. */
+    const releasingFailures = [
       ["rejected", new CliMutationRejected({ message: "Rejected." })],
       ["unavailable", new CliServiceUnavailable({ message: "Unavailable." })],
       [
@@ -802,16 +815,9 @@ describe.skipIf(!testDatabase)("administration request ledger", () => {
         "reconciled",
         new CliStandaloneAccessCodeReconciled({ message: "Reconciled." }),
       ],
-    ])("frees the request ID when creation is %s", async (_, failure) => {
-      const requestId = newRequestId();
-      const { run } = await creation();
-
-      const failed = await run(requestId, { apply: Effect.fail(failure) });
-      expect(failureOf(failed)).toBe(failure);
-      expect(await ledgerEntry(requestId)).toBeUndefined();
-    });
-
-    test.each([
+    ] as const;
+    /** Failures after which a code may exist, which keep the claim. */
+    const retainingFailures = [
       ["uncertain", new CliMutationUncertain({ message: "Uncertain." })],
       [
         "in progress",
@@ -820,14 +826,31 @@ describe.skipIf(!testDatabase)("administration request ledger", () => {
           message: inProgressMessage,
         }),
       ],
-    ])("keeps the claim when creation is %s", async (_, failure) => {
-      const requestId = newRequestId();
-      const { run } = await creation();
+    ] as const;
 
-      const failed = await run(requestId, { apply: Effect.fail(failure) });
-      expect(failureOf(failed)).toBe(failure);
-      expect(await ledgerEntry(requestId)).toEqual({ result: null });
-    });
+    test.each(releasingFailures)(
+      "frees the request ID when creation is %s",
+      async (_, failure) => {
+        const requestId = newRequestId();
+        const { run } = await creation();
+
+        const failed = await run(requestId, { apply: Effect.fail(failure) });
+        expect(failureOf(failed)).toBe(failure);
+        expect(await ledgerEntry(requestId)).toBeUndefined();
+      }
+    );
+
+    test.each(retainingFailures)(
+      "keeps the claim when creation is %s",
+      async (_, failure) => {
+        const requestId = newRequestId();
+        const { run } = await creation();
+
+        const failed = await run(requestId, { apply: Effect.fail(failure) });
+        expect(failureOf(failed)).toBe(failure);
+        expect(await ledgerEntry(requestId)).toEqual({ result: null });
+      }
+    );
 
     test("waits within the stale window, then creates again under the same claim", async () => {
       const requestId = newRequestId();
@@ -847,6 +870,51 @@ describe.skipIf(!testDatabase)("administration request ledger", () => {
       expect(await ledgerEntry(requestId)).toEqual({ result: stored });
       expect(await counts()).toEqual({ applied: 2, resumed: 0, settled: 1 });
     });
+
+    test.each(releasingFailures)(
+      "frees the request ID when creation resumed after the stale window is %s",
+      async (_, failure) => {
+        const requestId = newRequestId();
+        const { run, counts } = await creation();
+
+        await run(requestId, {
+          apply: Effect.fail(
+            new CliMutationUncertain({ message: "Uncertain." })
+          ),
+        });
+        await ageClaim(requestId, 70);
+        const failed = await run(requestId, { apply: Effect.fail(failure) });
+
+        expect(failureOf(failed)).toBe(failure);
+        expect(await ledgerEntry(requestId)).toBeUndefined();
+        expect(await run(requestId)).toEqual(Exit.succeed(created));
+        expect(await counts()).toEqual({ applied: 3, resumed: 0, settled: 1 });
+      }
+    );
+
+    test.each(retainingFailures)(
+      "keeps the claim when creation resumed after the stale window is %s",
+      async (_, failure) => {
+        const requestId = newRequestId();
+        const { run, counts } = await creation();
+
+        await run(requestId, {
+          apply: Effect.fail(
+            new CliMutationUncertain({ message: "Uncertain." })
+          ),
+        });
+        await ageClaim(requestId, 70);
+        const failed = await run(requestId, { apply: Effect.fail(failure) });
+
+        expect(failureOf(failed)).toBe(failure);
+        expect(await ledgerEntry(requestId)).toEqual({ result: null });
+        const waiting = await run(requestId);
+        expect(failureOf(waiting)).toEqual(
+          new CliMutationInProgress({ requestId, message: inProgressMessage })
+        );
+        expect(await counts()).toEqual({ applied: 2, resumed: 0, settled: 0 });
+      }
+    );
 
     test("dies, despite best-effort recording, when the claim vanished before its result is recorded", async () => {
       const requestId = newRequestId();
