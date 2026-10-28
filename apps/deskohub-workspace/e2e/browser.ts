@@ -12,6 +12,7 @@ import {
   tryWorkspaceE2ESync,
   type WorkspaceE2EError,
   withoutWorkspaceE2ETimeout,
+  workspaceE2EError,
   workspaceE2ETimeoutError,
 } from "./errors";
 import { pollUntil } from "./polling";
@@ -895,21 +896,20 @@ export const waitForPageCondition = <Arg>(
     .pipe(Effect.asVoid);
 
 /**
- * Waits for the element to hydrate, then focuses its visible match and
- * presses Enter, so the element's own handler receives a trusted event.
+ * Focuses the visible match of `selector` and presses Enter, so the
+ * element's own handler receives a trusted event.
  */
-export const activateHydratedElement = (
+export const activateElement = (
   session: E2EBrowserSession,
   selector: string,
-  options: { readonly timeoutMs?: number } = {}
+  { timeoutMs = 60_000 }: { readonly timeoutMs?: number } = {}
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    yield* waitForReactHydration(session, selector, options);
     yield* session.use("focus browser element", (page) =>
       page
         .locator(selector)
         .filter({ visible: true })
-        .focus({ timeout: options.timeoutMs ?? 60_000 })
+        .focus({ timeout: timeoutMs })
     );
     // As the argv `press` command, the key press has no timeout of its own;
     // the caller's step bounds it.
@@ -917,6 +917,44 @@ export const activateHydratedElement = (
       page.keyboard.press("Enter")
     );
   });
+
+/** Waits for the element to hydrate, then activates it (`activateElement`). */
+export const activateHydratedElement = (
+  session: E2EBrowserSession,
+  selector: string,
+  options: { readonly timeoutMs?: number } = {}
+): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.andThen(
+    waitForReactHydration(session, selector, options),
+    activateElement(session, selector, options)
+  );
+
+/**
+ * Evaluates `check`, a self-contained in-page function called with `arg`,
+ * and fails with the problem it returns; `null` means the page holds. An
+ * evaluation that overruns `timeoutMs` fails rather than timing out, as the
+ * argv `eval` it replaces did, so `check` must never throw a named
+ * `TimeoutError`.
+ */
+export const assertPageCheck = <Arg>(
+  session: E2EBrowserSession,
+  label: string,
+  check: (arg: Arg) => string | null,
+  arg: Arg,
+  { timeoutMs }: { readonly timeoutMs: number }
+): Effect.Effect<void, WorkspaceE2EError> =>
+  session.evaluate(label, check, arg, { timeoutMs }).pipe(
+    withoutWorkspaceE2ETimeout(label),
+    Effect.flatMap((problem) =>
+      problem === null
+        ? Effect.void
+        : Effect.fail(
+            workspaceE2EError(`${label} failed: ${redact(problem)}`, {
+              operation: label,
+            })
+          )
+    )
+  );
 
 /**
  * Scrolls the first element matching `selector` to the viewport's center and
