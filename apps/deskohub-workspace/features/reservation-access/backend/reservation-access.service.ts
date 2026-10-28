@@ -231,7 +231,8 @@ export class ReservationAccessService extends Context.Service<
                 .loadIssuedCode({
                   id: existingGrant.id,
                   reservationId: input.reservationId,
-                  scheduledAccessStartsAt: existingGrant.scheduledAccessStartsAt,
+                  scheduledAccessStartsAt:
+                    existingGrant.scheduledAccessStartsAt,
                   accessEndsAt: existingGrant.accessEndsAt,
                 })
                 .pipe(
