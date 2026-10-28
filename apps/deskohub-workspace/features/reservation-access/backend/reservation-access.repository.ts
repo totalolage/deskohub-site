@@ -11,6 +11,7 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { reservationAccessGrants } from "@/db/schema";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import {
+  getReservationAccessSchedule,
   makeReservationAccessName,
   type ReservationAccessGrant,
   type ReservationAccessGrantId,
@@ -151,6 +152,14 @@ export class ReservationAccessRepository extends Context.Service<
                   })
               )
             );
+            const hours = getReservationAccessSchedule({
+              reservedFrom: input.scheduledAccessStartsAt,
+              reservedUntil: input.accessEndsAt,
+            });
+            const schedule = {
+              startsAt: hours.startsAt.toInstant(),
+              endsAt: hours.endsAt.toInstant(),
+            };
             yield* db
               .insert(reservationAccessGrants)
               .values({
@@ -184,9 +193,8 @@ export class ReservationAccessRepository extends Context.Service<
                 // Reset an issued grant only for a moved schedule. A request
                 // that raced a concurrent issuance for the same target must
                 // reuse the stored PIN rather than wipe it and provision a
-                // second credential. The requested bounds are whole hours;
-                // later releases store a grant's exact span, which is the
-                // same target when it lies within those hours.
+                // second credential. Stored bounds are the same target when
+                // they round to the requested whole hours.
                 setWhere: or(
                   inArray(reservationAccessGrants.state, ["pending", "failed"]),
                   and(
@@ -194,20 +202,17 @@ export class ReservationAccessRepository extends Context.Service<
                     or(
                       lt(
                         reservationAccessGrants.scheduledAccessStartsAt,
-                        input.scheduledAccessStartsAt
+                        schedule.startsAt
                       ),
                       gte(
                         reservationAccessGrants.scheduledAccessStartsAt,
-                        input.scheduledAccessStartsAt.add({ hours: 1 })
+                        schedule.startsAt.add({ hours: 1 })
                       ),
                       lte(
                         reservationAccessGrants.accessEndsAt,
-                        input.accessEndsAt.subtract({ hours: 1 })
+                        schedule.endsAt.subtract({ hours: 1 })
                       ),
-                      gt(
-                        reservationAccessGrants.accessEndsAt,
-                        input.accessEndsAt
-                      )
+                      gt(reservationAccessGrants.accessEndsAt, schedule.endsAt)
                     )
                   )
                 ),

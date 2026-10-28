@@ -32,7 +32,10 @@ import {
 
 type OriginalHoldStatus = "NEW" | "CONFIRMED" | "CANCELLED";
 
-type HarnessReservation = Omit<typeof coworkReservation, "reservationDetails"> & {
+type HarnessReservation = Omit<
+  typeof coworkReservation,
+  "reservationDetails"
+> & {
   readonly reservationDetails: StoredWorkspaceReservationDetails;
   readonly reservationState: string;
   readonly failureCode?: string;

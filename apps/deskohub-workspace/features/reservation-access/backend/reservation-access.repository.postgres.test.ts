@@ -174,6 +174,31 @@ describe.skipIf(!testDatabase)(
       ).toBe(accessCode);
     });
 
+    test("keeps an issued whole-hour grant when a request ensures its exact span", async () => {
+      const reservationId = await insertReservation();
+      const { accessCode, grant } = await issueGrant(reservationId);
+
+      const ensured = await run((repository) =>
+        repository.ensure({
+          reservationId,
+          ...target,
+          scheduledAccessStartsAt: Temporal.Instant.from(
+            "2030-03-04T08:45:00Z"
+          ),
+          accessStartsAt: Temporal.Instant.from("2030-03-04T08:45:00Z"),
+          accessEndsAt: Temporal.Instant.from("2030-03-04T16:30:00Z"),
+        })
+      );
+
+      expect(ensured.id).toBe(grant.id);
+      expect(ensured.state).toBe("issued");
+      expect(
+        await run((repository) =>
+          repository.loadIssuedCode({ id: grant.id, reservationId })
+        )
+      ).toBe(accessCode);
+    });
+
     test("resets an issued grant when the reservation moves to a new interval", async () => {
       const reservationId = await insertReservation();
       await issueGrant(reservationId);

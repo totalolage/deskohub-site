@@ -8,12 +8,13 @@ import { env } from "@/env";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { WorkspaceIgloohomeLayer } from "@/shared/backend/config/igloohome.config";
 import { workspaceSiteConstants } from "@/shared/utils";
-import { ceilToWholeHour, floorToWholeHour } from "@/shared/utils/temporal";
+import { floorToWholeHour } from "@/shared/utils/temporal";
 import type {
   IssuedReservationAccess,
   ReservationAccessGrant,
 } from "../reservation-access";
 import {
+  getReservationAccessSchedule,
   makeReservationAccessName,
   reservationAccessProvisioningStaleAfterMilliseconds,
 } from "../reservation-access";
@@ -100,17 +101,6 @@ export const getReservationAccessInterval = (input: {
       }),
     };
   });
-
-const getReservationAccessSchedule = (input: {
-  readonly reservedFrom: Temporal.Instant;
-  readonly reservedUntil: Temporal.Instant;
-}) => {
-  const timeZone = workspaceSiteConstants.location.timeZone;
-  return {
-    startsAt: floorToWholeHour(input.reservedFrom.toZonedDateTimeISO(timeZone)),
-    endsAt: ceilToWholeHour(input.reservedUntil.toZonedDateTimeISO(timeZone)),
-  };
-};
 
 export interface IReservationAccessService {
   readonly loadGrant: (
