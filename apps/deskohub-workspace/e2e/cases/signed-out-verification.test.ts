@@ -1,11 +1,12 @@
 import { expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Effect, Exit } from "effect";
+import { Effect } from "effect";
 import {
   makeCoworkCheckoutData,
   withCheckoutContactEmail,
 } from "../checkout/data";
 import type { WorkspaceE2EConfig } from "../config";
+import { WorkspaceE2EError } from "../errors";
 import { workspaceE2ETimeouts } from "../timeouts";
 import type { CheckoutFlowState } from "../types";
 import {
@@ -49,15 +50,21 @@ test("plans the signed-out checkout on its own date and requires binding", async
     "2099-08-03",
   ]);
   expect(flowStates.at(-1)).toBe(planned.checkoutStates[0]);
-  const exit = await Effect.runPromiseExit(
-    planned.execute({
-      // The unbound case fails before it could reach a browser.
-      run: undefined as never,
-      runStep: (step) => step.execute,
-      session: "session",
-    }) as Effect.Effect<void, unknown>
+  // The unbound case fails with its binding error before it could reach a
+  // browser.
+  const error = await Effect.runPromise(
+    Effect.flip(
+      planned.execute({
+        run: undefined as never,
+        runStep: (step) => step.execute,
+        session: "session",
+      }) as Effect.Effect<void, unknown>
+    )
   );
-  expect(Exit.isFailure(exit)).toBe(true);
+  expect(error).toBeInstanceOf(WorkspaceE2EError);
+  expect(error).toMatchObject({
+    operation: "bind signed-out verification case",
+  });
 });
 
 test("types the run-scoped recipient at the contact step", () => {
