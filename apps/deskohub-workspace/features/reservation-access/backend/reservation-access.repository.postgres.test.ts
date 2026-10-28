@@ -66,10 +66,13 @@ describe.skipIf(!testDatabase)(
         )
       );
 
-    const issueGrant = async (reservationId: WorkspaceReservationId) => {
+    const issueGrant = async (
+      reservationId: WorkspaceReservationId,
+      bounds: typeof target = target
+    ) => {
       const accessCode = AlgoPinSchema.make("123456789");
       const grant = await run((repository) =>
-        repository.ensure({ reservationId, ...target })
+        repository.ensure({ reservationId, ...bounds })
       );
       expect(grant.accessName).toBe(`Deskohub ${grant.id}`);
       const startedAt = Temporal.Now.instant();
@@ -141,6 +144,29 @@ describe.skipIf(!testDatabase)(
       expect(ensured.id).toBe(grant.id);
       expect(ensured.state).toBe("issued");
       expect(ensured.accessName).toBe(`Deskohub ${grant.id}`);
+      expect(
+        await run((repository) =>
+          repository.loadIssuedCode({ id: grant.id, reservationId })
+        )
+      ).toBe(accessCode);
+    });
+
+    test("keeps an issued grant whose exact span lies within the requested whole hours", async () => {
+      const reservationId = await insertReservation();
+      // Later releases store the exact span the reservation holds.
+      const { accessCode, grant } = await issueGrant(reservationId, {
+        ...target,
+        scheduledAccessStartsAt: Temporal.Instant.from("2030-03-04T08:45:00Z"),
+        accessStartsAt: Temporal.Instant.from("2030-03-04T08:45:00Z"),
+        accessEndsAt: Temporal.Instant.from("2030-03-04T16:30:00Z"),
+      });
+
+      const ensured = await run((repository) =>
+        repository.ensure({ reservationId, ...target })
+      );
+
+      expect(ensured.id).toBe(grant.id);
+      expect(ensured.state).toBe("issued");
       expect(
         await run((repository) =>
           repository.loadIssuedCode({ id: grant.id, reservationId })

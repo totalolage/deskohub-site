@@ -19,6 +19,7 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { ReservationRecords } from "@/features/reservation/backend/reservation-records";
 import {
+  type StoredWorkspaceReservationDetails,
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
@@ -120,12 +121,14 @@ const insertWorkspaceReservation = async (input: {
   readonly dotyposReservationId: DotyposReservationId;
   readonly authorAccountId: CustomerAccountId;
   readonly reservationState?: "held" | "confirmed";
+  readonly details?: StoredWorkspaceReservationDetails;
 }) => {
   await Effect.runPromise(
     workspaceFixtures(testDatabase!.db).reservation({
       stage: { reservation: input.reservationState ?? "confirmed" },
       customer: input.dotyposCustomerId,
       author: input.authorAccountId,
+      ...(input.details && { details: input.details }),
       overrides: {
         id: input.id,
         dotyposReservationId: input.dotyposReservationId,
@@ -659,6 +662,7 @@ describe.skipIf(!testDatabase)(
         readonly startDate?: string;
         readonly endDate?: string;
         readonly seats?: string;
+        readonly details?: StoredWorkspaceReservationDetails;
       }[]
     ) => {
       const account = customerAccountIdSchema.make(uniqueId());
@@ -686,6 +690,7 @@ describe.skipIf(!testDatabase)(
           dotyposReservationId: dotypos,
           authorAccountId: account,
           reservationState: entry.reservationState,
+          ...(entry.details && { details: entry.details }),
         });
         const reservation = makeDotyposReservation({
           id: dotypos,
@@ -752,6 +757,70 @@ describe.skipIf(!testDatabase)(
         seeded.idsOf("unreadable-start").workspace,
       ]);
       expect(history.groups.unavailable[1]?.seats).toBeNull();
+    });
+
+    test("shows an early-setup meeting room at its booked start", async () => {
+      const seeded = await seedOwnReservations([
+        {
+          key: "early-setup",
+          reservationState: "confirmed",
+          status: "CONFIRMED",
+          startDate: "2000-04-02T09:45:00.000Z",
+          endDate: "2000-04-02T11:00:00.000Z",
+          details: { kind: "meeting-room", earlySetup: true },
+        },
+        {
+          // Starts after the setup start but before the booked start.
+          key: "between",
+          reservationState: "confirmed",
+          status: "CONFIRMED",
+          startDate: "2000-04-02T09:50:00.000Z",
+          endDate: "2000-04-02T10:50:00.000Z",
+          details: { kind: "meeting-room" },
+        },
+        {
+          key: "without-setup",
+          reservationState: "confirmed",
+          status: "CONFIRMED",
+          startDate: "2000-04-01T09:45:00.000Z",
+          endDate: "2000-04-01T11:00:00.000Z",
+          details: { kind: "meeting-room" },
+        },
+      ]);
+
+      const history = await Effect.gen(function* () {
+        const service = yield* CustomerReservationHistoryService;
+        return yield* service.load(seeded.account);
+      }).pipe(
+        Effect.provide(makeHistoryLayer(seeded.reservations)),
+        Effect.runPromise
+      );
+      if (history.kind !== "available") throw new Error("History unavailable");
+
+      const summaries = Object.values(history.groups).flat();
+      const summaryOf = (key: string) =>
+        summaries.find(({ id }) => id === seeded.idsOf(key).workspace);
+      expect(summaryOf("early-setup")).toMatchObject({
+        startsAt: "2000-04-02T10:00:00Z",
+        endsAt: "2000-04-02T11:00:00.000Z",
+      });
+      expect(summaryOf("without-setup")).toMatchObject({
+        startsAt: "2000-04-01T09:45:00.000Z",
+        endsAt: "2000-04-01T11:00:00.000Z",
+      });
+      // Ordered by booked start, newest first.
+      expect(
+        summaries
+          .map(({ id }) => id)
+          .filter((id) =>
+            ["early-setup", "between"].some(
+              (key) => seeded.idsOf(key).workspace === id
+            )
+          )
+      ).toEqual([
+        seeded.idsOf("early-setup").workspace,
+        seeded.idsOf("between").workspace,
+      ]);
     });
 
     test("sorts an impossible start last and reads seats as positive whole numbers", async () => {

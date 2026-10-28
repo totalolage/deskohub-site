@@ -18,6 +18,7 @@ import type { AffirmedDiscountAdvertisementQuote } from "@/features/discounts";
 import type { CanonicalPromotionCode } from "@/features/discounts/contracts";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
+import { getMeetingRoomOccupiedInterval } from "@/features/reservation/meeting-room-early-setup";
 import {
   getMeetingRoomAdvertisedPriceReservation,
   type MeetingRoomReservationDetails,
@@ -111,13 +112,12 @@ export const ensureMeetingRoomPayStateAvailable = (input: {
   readonly availability: typeof WorkspaceAvailabilityService.Service;
   readonly reservation: Pick<
     MeetingRoomReservationDetails,
-    "kind" | "startsAt" | "endsAt"
+    "kind" | "startsAt" | "endsAt" | "earlySetup"
   >;
 }) =>
   input.availability.ensureAvailable({
     kind: input.reservation.kind,
-    startsAt: input.reservation.startsAt,
-    endsAt: input.reservation.endsAt,
+    ...getMeetingRoomOccupiedInterval(input.reservation),
   });
 
 export const getPreparedMeetingRoomCheckoutDetails = (input: {

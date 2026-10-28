@@ -109,6 +109,8 @@ export const meetingRoomReservationDetailsSchema = Schema.Struct({
   reservationDate: plainDateStringSchema,
   startsAt: instantStringSchema,
   endsAt: instantStringSchema,
+  /** The customer comes 15 minutes before `startsAt` to set up. */
+  earlySetup: Schema.optionalKey(Schema.Boolean),
 }).annotate({
   identifier: "MeetingRoomReservationDetails",
   description:

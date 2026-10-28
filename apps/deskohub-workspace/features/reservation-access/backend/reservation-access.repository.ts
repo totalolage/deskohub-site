@@ -5,7 +5,7 @@ import type {
 } from "@deskohub/igloohome";
 import { AlgoPinSchema } from "@deskohub/igloohome";
 import { NodeCrypto } from "@effect/platform-node";
-import { and, eq, inArray, lte, ne, or } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, lt, lte, or } from "drizzle-orm";
 import { Context, Crypto, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { reservationAccessGrants } from "@/db/schema";
@@ -184,17 +184,27 @@ export class ReservationAccessRepository extends Context.Service<
                 // Reset an issued grant only for a moved schedule. A request
                 // that raced a concurrent issuance for the same target must
                 // reuse the stored PIN rather than wipe it and provision a
-                // second credential.
+                // second credential. The requested bounds are whole hours;
+                // later releases store a grant's exact span, which is the
+                // same target when it lies within those hours.
                 setWhere: or(
                   inArray(reservationAccessGrants.state, ["pending", "failed"]),
                   and(
                     eq(reservationAccessGrants.state, "issued"),
                     or(
-                      ne(
+                      lt(
                         reservationAccessGrants.scheduledAccessStartsAt,
                         input.scheduledAccessStartsAt
                       ),
-                      ne(
+                      gte(
+                        reservationAccessGrants.scheduledAccessStartsAt,
+                        input.scheduledAccessStartsAt.add({ hours: 1 })
+                      ),
+                      lte(
+                        reservationAccessGrants.accessEndsAt,
+                        input.accessEndsAt.subtract({ hours: 1 })
+                      ),
+                      gt(
                         reservationAccessGrants.accessEndsAt,
                         input.accessEndsAt
                       )
