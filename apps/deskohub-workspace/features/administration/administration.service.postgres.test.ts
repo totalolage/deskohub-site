@@ -556,7 +556,8 @@ describe.skipIf(!testDatabase)(
         expect(listInputs).toEqual([
           {
             order: "startDateAscending",
-            startsAtOrAfter: "2026-09-30T22:00:00Z",
+            // Early setup holds a midnight booking from the date before.
+            startsAtOrAfter: "2026-09-30T21:45:00Z",
             startsBefore: "2026-10-31T23:00:00Z",
           },
         ]);

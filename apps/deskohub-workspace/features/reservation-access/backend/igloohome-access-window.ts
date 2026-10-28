@@ -64,7 +64,9 @@ export const getIgloohomeAccessWindow = (
       ? hours.startsAt
       : currentHour;
   const durationHours =
-    (hours.endsAt.epochMilliseconds - startsAt.epochMilliseconds) / 3_600_000;
+    (hours.endsAt.toInstant().epochMilliseconds -
+      startsAt.toInstant().epochMilliseconds) /
+    3_600_000;
 
   return Number.isInteger(durationHours) &&
     durationHours >= 1 &&
