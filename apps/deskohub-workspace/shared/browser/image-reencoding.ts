@@ -99,8 +99,12 @@ const readUpright = (picture: IMagickImage, bytes: Uint8Array) =>
       Effect.sync(() => {
         picture.autoOrient();
         const colorProfile = picture.getColorProfile();
+        // The profile's bytes are a view of memory that stripping frees.
+        const colorProfileBytes = colorProfile?.data.slice();
         picture.strip();
-        if (colorProfile) picture.setProfile(colorProfile);
+        if (colorProfile && colorProfileBytes) {
+          picture.setProfile(colorProfile.name, colorProfileBytes);
+        }
       })
     )
   );

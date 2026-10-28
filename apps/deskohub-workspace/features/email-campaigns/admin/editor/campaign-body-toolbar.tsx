@@ -563,7 +563,11 @@ function ImageUploadControl({
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string>();
-  const [shrinking, setShrinking] = useState(false);
+  // Checking whether a file fits takes a moment, and shrinking it longer;
+  // either way the editor takes no other image meanwhile.
+  const [preparation, setPreparation] = useState<
+    "idle" | "checking" | "shrinking"
+  >("idle");
   const upload = useWorkspaceAction(uploadCampaignImage, {
     onSuccess: ({ data }) => {
       setError(undefined);
@@ -580,9 +584,11 @@ function ImageUploadControl({
           m.emailCampaignsImageUploadFailed({}, { locale })
       ),
   });
-  const progress = shrinking
-    ? m.emailCampaignsImageShrinking({}, { locale })
-    : upload.isExecuting && m.emailCampaignsImageUploading({}, { locale });
+  const progress =
+    preparation === "shrinking"
+      ? m.emailCampaignsImageShrinking({}, { locale })
+      : upload.isExecuting && m.emailCampaignsImageUploading({}, { locale });
+  const busy = preparation !== "idle" || upload.isExecuting;
 
   // Leaving the editor while an image is still being shrunk drops it, so no
   // upload starts for an editor that's gone.
@@ -596,16 +602,17 @@ function ImageUploadControl({
   const uploadImage = (file: File) => {
     if (!lifetime.current) return;
     setError(undefined);
+    setPreparation("checking");
     // A file that already fits goes straight to the upload, so it skips the
     // shrinking message.
     void prepareCampaignImage(
       file,
       locale,
-      Effect.sync(() => setShrinking(true))
+      Effect.sync(() => setPreparation("shrinking"))
     ).pipe(
       Effect.flatMap((prepared) =>
         Effect.sync(() => {
-          setShrinking(false);
+          setPreparation("idle");
           Result.match(prepared, {
             onSuccess: (image) => {
               const formData = new FormData();
@@ -626,7 +633,7 @@ function ImageUploadControl({
   return (
     <>
       <ToolbarButton
-        disabled={disabled || Boolean(progress)}
+        disabled={disabled || busy}
         label={progress || m.emailCampaignsImageUploadInsert({}, { locale })}
         onClick={() => fileInput.current?.click()}
       >

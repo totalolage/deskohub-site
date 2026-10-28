@@ -261,6 +261,21 @@ test("shows the editor busy while it shrinks an image", async () => {
   );
 });
 
+test("takes no other image while it checks whether one fits", async () => {
+  prepareImage = () => Effect.never;
+  const { view } = await renderEditor();
+
+  chooseImage(
+    view,
+    new File([new Uint8Array(3)], "new.png", { type: "image/png" })
+  );
+
+  await waitFor(() =>
+    expect(insertButton(view)).toHaveProperty("disabled", true)
+  );
+  expect(view.getByRole("status").textContent).toBe("");
+});
+
 test("says why an image can't be used and uploads nothing", async () => {
   const reason = "synthetic reason";
   prepareImage = () => Effect.succeed(Result.fail(reason));

@@ -59,6 +59,17 @@ const rotatedExif = new Uint8Array([
   ...[0, 0, 0, 0],
 ]);
 
+/** The 132-byte header of an RGB display profile with no tags. */
+const colorProfile = (() => {
+  const bytes = new Uint8Array(132);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(0, bytes.length);
+  view.setUint8(8, 2);
+  bytes.set(new TextEncoder().encode("mntrRGB XYZ "), 12);
+  bytes.set(new TextEncoder().encode("acsp"), 36);
+  return bytes;
+})();
+
 interface Shrunk {
   readonly file: File;
   readonly width: number;
@@ -66,6 +77,7 @@ interface Shrunk {
   readonly opaque: boolean;
   readonly quality: number;
   readonly hasExif: boolean;
+  readonly colorProfile: Uint8Array | undefined;
 }
 
 const shrink = async (file: File, imageFit = fit): Promise<Shrunk> => {
@@ -78,6 +90,7 @@ const shrink = async (file: File, imageFit = fit): Promise<Shrunk> => {
     opaque: image.isOpaque,
     quality: image.quality,
     hasExif: image.getProfile("exif") !== null,
+    colorProfile: image.getColorProfile()?.data.slice(),
   }));
 };
 
@@ -137,6 +150,17 @@ describe("reencodeImageToFit", () => {
 
     expect([shrunk.width, shrunk.height]).toEqual([300, 600]);
     expect(shrunk.hasExif).toBe(false);
+  });
+
+  test("keeps the picture's colour profile", async () => {
+    const stored = picture(900, 300);
+    stored.setProfile("icc", colorProfile);
+
+    const shrunk = await shrink(
+      encoded(stored, MagickFormat.Jpeg, "wide.jpg", "image/jpeg")
+    );
+
+    expect(shrunk.colorProfile).toEqual(colorProfile);
   });
 
   test("lowers the JPEG quality only as far as the byte limit needs", async () => {
