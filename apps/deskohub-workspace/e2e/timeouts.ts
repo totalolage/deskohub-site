@@ -35,6 +35,10 @@ export const workspaceE2ETimeouts = {
   // Releasing a probe response's body, so a stuck release can't hold up the
   // session's cleanup.
   browserResponseDisposal: 30 * SECOND,
+  // A case waiting for a second browser session it opened, such as a
+  // signed-out visitor's, to close. Its failure is ignored, and the case's
+  // Scope still closes a session that outlives the wait.
+  browserSessionClose: 2 * MINUTE,
   // One MCP exchange, with room for a cold advisory snapshot to fill from
   // Dotypos (one full Dotypos request timeout).
   customerMcpRequest: 60 * SECOND,
