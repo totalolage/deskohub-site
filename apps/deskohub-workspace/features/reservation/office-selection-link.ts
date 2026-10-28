@@ -97,8 +97,8 @@ export const officeSelectionLink = defineSelectionLink({
   },
   write: (selection: OfficeSelection) => ({
     startsOn: selection.startsOn || undefined,
-    dayCount: optionalString(selection.dayCount),
-    seats: optionalString(selection.seats),
+    dayCount: selection.dayCount?.toString(),
+    seats: selection.seats?.toString(),
   }),
   /**
    * The stored start date, day count, and seats. An interval that isn't whole
@@ -125,6 +125,3 @@ export const officeSelectionLink = defineSelectionLink({
     };
   },
 });
-
-const optionalString = (value: number | undefined) =>
-  value === undefined ? undefined : String(value);
