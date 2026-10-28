@@ -90,8 +90,8 @@ export type WorkspaceE2EAccountLaneBrowser = WorkspaceE2EAccountBrowser & {
   readonly assistant: WorkspaceE2EAccountBrowser & {
     /**
      * Closes the assistant's browser. A close that fails or outlasts
-     * `browserSessionClose` is ignored; the lane runner's Scope still closes
-     * a session that outlives the wait.
+     * `browserSessionClose` is ignored; the lane runner's `close` at worker
+     * teardown still closes a session that opens after the wait.
      */
     readonly close: Effect.Effect<void>;
   };

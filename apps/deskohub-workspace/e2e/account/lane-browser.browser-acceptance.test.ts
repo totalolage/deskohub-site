@@ -42,6 +42,7 @@ const origin = "https://workspace.example.test";
 // Long enough for several cookie reads at the browser poll interval.
 const config = {
   baseUrl: origin,
+  bypassSecret: undefined,
   timeouts: { ...workspaceE2ETimeouts, uiTransition: 3000 },
 };
 const sharedCode = "RFLSYNTHETICLANE";
