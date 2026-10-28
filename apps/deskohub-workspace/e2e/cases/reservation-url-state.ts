@@ -128,7 +128,6 @@ export const makeReservationUrlStateE2ECases = ({
   config,
   datasourceConfig,
   preparation,
-  run,
 }: {
   readonly allocation: WorkspaceE2EDateAllocation;
   readonly config: WorkspaceE2EConfig;
@@ -138,7 +137,6 @@ export const makeReservationUrlStateE2ECases = ({
     readonly meetingRoom: MeetingRoomE2EPreparation;
     readonly office: OfficeE2EPreparation | undefined;
   };
-  readonly run: Runner;
 }): Effect.Effect<readonly WorkspaceE2ECase[], WorkspaceE2EError> =>
   Effect.gen(function* () {
     // None of these cases submits, so they hold no capacity: their dates only
@@ -195,7 +193,7 @@ export const makeReservationUrlStateE2ECases = ({
     const cases: WorkspaceE2ECase[] = [
       {
         checkoutStates: [],
-        execute: ({ runStep, session }) =>
+        execute: ({ run, runStep, session }) =>
           assertCoworkUrlState(
             { config, run, runStep, session },
             { openSpaceData, reservedDeskData }
@@ -209,7 +207,7 @@ export const makeReservationUrlStateE2ECases = ({
       },
       {
         checkoutStates: [],
-        execute: ({ runStep, session }) =>
+        execute: ({ run, runStep, session }) =>
           assertMeetingRoomUrlState(
             { config, run, runStep, session },
             meetingRoomData
@@ -234,7 +232,7 @@ export const makeReservationUrlStateE2ECases = ({
     cases.push(
       {
         checkoutStates: [],
-        execute: ({ runStep, session }) =>
+        execute: ({ run, runStep, session }) =>
           assertOfficeUrlState(
             { config, run, runStep, session },
             officeData
@@ -248,7 +246,7 @@ export const makeReservationUrlStateE2ECases = ({
       },
       {
         checkoutStates: [],
-        execute: ({ runStep, session }) =>
+        execute: ({ run, runStep, session }) =>
           assertOfficeStartsOnLink(
             { config, run, runStep, session },
             datasourceConfig,

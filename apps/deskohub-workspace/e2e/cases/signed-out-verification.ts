@@ -148,7 +148,6 @@ export const planSignedOutVerificationCase = ({
  */
 export const bindSignedOutVerificationCase: WorkspaceE2ECaseBinder = async ({
   environment,
-  run,
   runId,
   testCase,
 }) => {
@@ -171,14 +170,13 @@ export const bindSignedOutVerificationCase: WorkspaceE2ECaseBinder = async ({
     datasourceConfig,
     displayName: () => boundState.data.name,
     journalOwnerId: signedOutVerificationCaseId,
-    run,
     runId,
     secret: resolveWorkspaceE2ESessionSigningSecret(environment),
   });
   return {
     ...testCase,
     checkoutStates: [boundState],
-    execute: ({ runStep, session }) =>
+    execute: ({ run, runStep, session }) =>
       executeSignedOutVerification({
         accountConfig,
         config,
