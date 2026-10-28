@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { administrationHref } from "@/features/administration/administration-href";
+import { bookingListQuery } from "@/features/administration/booking-list-query";
 import {
   AdministrationPage,
   AdministrationTableCount,
@@ -54,6 +54,7 @@ async function BookingsAdministration({
             <BookingCount locale={locale} result={result} />
           </Suspense>
         }
+        filterLayout="inline"
         filters={
           <Suspense fallback={<AdministrationFiltersLoading fields={1} />}>
             <BookingFiltersContent input={input} />
@@ -102,7 +103,7 @@ async function BookingFiltersContent({
 }: {
   readonly input: Promise<BookingsData["input"]>;
 }) {
-  return <BookingsAdministrationFilterForm input={await input} />;
+  return <BookingsAdministrationFilterForm query={await input} />;
 }
 
 async function BookingResultsContent({
@@ -131,24 +132,12 @@ function BookingResults({
 }: BookingsData & { readonly locale: Locale }) {
   return (
     <>
-      <BookingTable
-        bookings={result.items}
-        sorting={{
-          direction: input.direction ?? "asc",
-          field: input.sort ?? "booking",
-          params: { date: input.date },
-        }}
-      />
+      <BookingTable bookings={result.items} query={input} />
       <Pagination
-        basePath={administrationHref("/[locale]/admin/bookings")}
+        href={(page) => bookingListQuery.href(input, { page })}
         locale={locale}
         page={result.page}
         pageCount={result.pageCount}
-        params={{
-          date: input.date,
-          direction: input.direction,
-          sort: input.sort,
-        }}
       />
     </>
   );

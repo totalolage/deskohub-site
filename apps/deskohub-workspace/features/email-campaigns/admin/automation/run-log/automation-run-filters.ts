@@ -7,7 +7,7 @@ import {
   AutomationVersionNumber,
 } from "@deskohub/workspace-admin-api";
 import { Option, Predicate, Schema } from "effect";
-import type { AdministrationListParams } from "@/features/administration/list-href";
+import type { SearchParamValues } from "@/shared/utils/search-params";
 
 /** The run log's filters and page, as its URL carries them. */
 export interface AutomationRunFilters {
@@ -68,7 +68,7 @@ export const parseAutomationRunFilters = (
 /** The URL params of `filters`, for links that keep or change them. */
 export const automationRunFilterParams = (
   filters: AutomationRunFilters
-): AdministrationListParams => ({
+): SearchParamValues => ({
   state: Option.getOrUndefined(filters.state),
   outcome: Option.getOrUndefined(filters.outcome),
   skipReason: Option.getOrUndefined(filters.skipReason),

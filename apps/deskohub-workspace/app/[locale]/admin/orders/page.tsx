@@ -53,6 +53,7 @@ async function OrdersAdministration({
             <OrderCount locale={locale} result={result} />
           </Suspense>
         }
+        filterLayout="inline"
         filters={
           <Suspense fallback={<AdministrationFiltersLoading fields={2} />}>
             <OrderFiltersContent range={range} />
@@ -101,7 +102,7 @@ async function OrderFiltersContent({
 }: {
   readonly range: Promise<OrdersData["range"]>;
 }) {
-  return <OrdersAdministrationFilterForm range={await range} />;
+  return <OrdersAdministrationFilterForm query={await range} />;
 }
 
 async function OrderResultsContent({
