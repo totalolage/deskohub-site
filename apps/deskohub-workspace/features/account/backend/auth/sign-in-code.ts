@@ -1,7 +1,6 @@
 import type { AuthContext, DBAdapter } from "better-auth";
 import { Clock, Data, Effect, Option } from "effect";
 import type { SqlError } from "effect/unstable/sql";
-import type { PostgresAdvisoryLockKey } from "@/db/postgres-advisory-lock";
 import {
   betterAuthMagicLinkOptions,
   betterAuthSignInCodeOptions,
@@ -34,11 +33,11 @@ type StoredVerifications = Pick<
 >;
 
 /**
- * Runs an effect while it holds the lock for a key: a transaction-scoped
- * Postgres advisory lock in production.
+ * Runs an effect while it holds one address's sign-in lock, named by
+ * its `digestAddress`: a Workspace lock section in production.
  */
 export type SignInEmailLock = <A, E>(
-  key: PostgresAdvisoryLockKey,
+  address: string,
   effect: Effect.Effect<A, E>
 ) => Effect.Effect<A, E | SqlError.SqlError>;
 
@@ -75,17 +74,13 @@ const normalizeEmail = (email: string) => email.trim().toLowerCase();
 const signInCodeIdentifier = (email: string) =>
   `sign-in-otp-${normalizeEmail(email)}`;
 
-const digestAddress = ({ email }: { readonly email: string }) =>
-  digest(normalizeEmail(email));
-
 /**
- * The per-address lock key that serializes one email address's sign-in
- * writes: code issues and review-login provisioning.
+ * The digest of a normalized address. It names the address's sign-in lock,
+ * which serializes its sign-in writes: code issues and review-login
+ * provisioning.
  */
-export const signInEmailLockKey = (recipient: { readonly email: string }) =>
-  digestAddress(recipient).pipe(
-    Effect.map((address): PostgresAdvisoryLockKey => ["sign-in-email", address])
-  );
+export const digestAddress = ({ email }: { readonly email: string }) =>
+  digest(normalizeEmail(email));
 
 /** The claim row of the sign-in email that carried this link. */
 const claimIdentifier = ({ token }: { readonly token: string }) =>
@@ -202,8 +197,8 @@ export const issueSignInCode = (issue: SignInCodeIssue) =>
     Effect.tap(writeClaimRows),
     Effect.map(({ code }) => code),
     (issuance) =>
-      Effect.flatMap(signInEmailLockKey(issue), (key) =>
-        issue.withSignInEmailLock(key, issuance)
+      Effect.flatMap(digestAddress(issue), (address) =>
+        issue.withSignInEmailLock(address, issuance)
       ),
     Effect.mapError(() => new SignInCodeStorageError()),
     Effect.withSpan("SignInCode.issue")

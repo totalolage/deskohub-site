@@ -10,7 +10,7 @@ import {
 } from "@/features/account/customer-account";
 import type { Locale } from "@/features/i18n";
 import type { ReviewAccountCredential } from "./review-account-credentials";
-import { type SignInEmailLock, signInEmailLockKey } from "./sign-in-code";
+import { digestAddress, type SignInEmailLock } from "./sign-in-code";
 
 /**
  * App-directory review logins sign in with an email and password through
@@ -217,10 +217,10 @@ const repairReviewLogin = Effect.fn("WorkspaceAuth.repairReviewLogin")(
  * sign-in lock, so concurrent first sign-ins create one login.
  */
 export const provisionReviewLogin = (provisioning: ReviewLoginProvisioning) =>
-  signInEmailLockKey(provisioning.credential).pipe(
-    Effect.flatMap((key) =>
+  digestAddress(provisioning.credential).pipe(
+    Effect.flatMap((address) =>
       provisioning.config.withSignInEmailLock(
-        key,
+        address,
         storage(() =>
           provisioning.context.internalAdapter.findUserByEmail(
             provisioning.credential.email,

@@ -35,6 +35,12 @@ export const findViolatedConstraint = (
     })
   );
 
+/** Whether the statement gave up waiting for a lock (SQLSTATE 55P03, `lock_timeout`). */
+export const isLockWaitTimeout = (error: DatabaseQueryError): boolean =>
+  findSqlError(error).pipe(
+    Option.exists(({ reason }) => reason._tag === "LockTimeoutError")
+  );
+
 /** Drizzle reports the Effect SQL failure inside the `Cause` it wraps. */
 const findSqlError = (
   error: DatabaseQueryError
