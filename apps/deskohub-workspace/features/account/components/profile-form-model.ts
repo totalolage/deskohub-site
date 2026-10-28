@@ -368,6 +368,17 @@ export const profileFormSchema = (locale: Locale) =>
   );
 
 /**
+ * The completion contract as the client checks it: the referral fields are
+ * left to the server action, so a code it rejects comes back as a server
+ * validation error rather than stopping the submit.
+ */
+const completionFormContract = Schema.Struct({
+  ...completeCustomerProfileSchema.fields,
+  referralCode: Schema.optional(Schema.String),
+  prefilledReferralCode: Schema.optional(Schema.String),
+});
+
+/**
  * Decodes the flat form values to the first-time completion contract, which
  * adds the referral code. `prefilledReferralCode` is the code the form was
  * prefilled with from a shared link.
@@ -378,7 +389,7 @@ export const completionFormSchema = (
 ) =>
   profileFormValuesSchema.pipe(
     Schema.decodeTo(
-      completeCustomerProfileSchema.pipe(reportedOnProfileFormFields(locale)),
+      completionFormContract.pipe(reportedOnProfileFormFields(locale)),
       SchemaTransformation.transform({
         decode: (values) =>
           toCustomerProfileCompletionInput(values, prefilledReferralCode),

@@ -386,6 +386,54 @@ describe("ProfileForm", () => {
     expect(view.container.querySelector("#profile-referral-code")).toBeTruthy();
   });
 
+  test("leaves an over-long referral code to the server's validation", async () => {
+    completeCustomerProfile.mockImplementationOnce(() =>
+      Promise.resolve({
+        validationErrors: {
+          formErrors: [],
+          fieldErrors: { referralCode: ["Too long."] },
+        },
+      })
+    );
+    const { ProfileForm } = await import("./profile-form");
+
+    const view = render(
+      <ProfileForm
+        mode="complete"
+        locale="en-US"
+        email={adaAddress}
+        referralsEnabled
+      />
+    );
+    fireEvent.change(view.getByLabelText("First name"), {
+      target: { value: "Ada" },
+    });
+    const field = view.container.querySelector(
+      "#profile-referral-code"
+    ) as HTMLInputElement;
+    const referralCode = "A".repeat(65);
+    fireEvent.change(field, { target: { value: referralCode } });
+    await act(async () => {
+      fireEvent.submit(view.container.querySelector("#account-profile-form")!);
+    });
+
+    expect(completeCustomerProfile.mock.calls[0]![0]).toEqual({
+      firstName: "Ada",
+      referralCode,
+    });
+    expect(
+      await view.findByText(
+        m.accountProfileValidationError({}, { locale: "en-US" })
+      )
+    ).toBeTruthy();
+    expect(field.getAttribute("aria-invalid")).toBe("true");
+    expect(
+      view.getByText(
+        m.accountProfileReferralCodeUnavailable({}, { locale: "en-US" })
+      ).id
+    ).toBe("profile-referral-code-error");
+  });
+
   test("keeps the full edit snapshot and drafts across identity and billing sections", async () => {
     const { ProfileForm } = await import("./profile-form");
 

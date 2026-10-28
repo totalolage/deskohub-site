@@ -224,17 +224,16 @@ describe("completionFormSchema", () => {
     expect(result.values).not.toHaveProperty("prefilledReferralCode");
   });
 
-  test("rejects an over-long referral code on its field", async () => {
-    expect(
-      await errorsOf(
-        completionFormSchema("en-US"),
-        values({ billingKind: "hidden", referralCode: "A".repeat(65) })
-      )
-    ).toEqual({
-      referralCode: m.accountProfileReferralCodeUnavailable(
-        {},
-        { locale: "en-US" }
-      ),
+  test("leaves an over-long referral code to the server", async () => {
+    const referralCode = "A".repeat(65);
+    const result = await resolve(
+      completionFormSchema("en-US", referralCode),
+      values({ billingKind: "hidden", referralCode })
+    );
+    expect(result.errors).toEqual({});
+    expect(result.values).toMatchObject({
+      referralCode,
+      prefilledReferralCode: referralCode,
     });
   });
 
