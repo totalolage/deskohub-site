@@ -19,7 +19,7 @@ import { type WorkspaceE2EError, workspaceE2EError } from "../errors";
 import type { E2EDatabase } from "../integrations/database.service";
 import type { WorkspaceE2EReferralCaseId } from "../playwright-checkout/case-catalog";
 import type { WorkspaceE2ERunId } from "../run-identifiers";
-import { addRedaction, type Runner } from "../runtime";
+import { addRedaction } from "../runtime";
 import type { workspaceE2EReferralRecipientLabels } from "./journal-owners";
 
 type ReferralRecipientLabel<Id extends WorkspaceE2EReferralCaseId> =
@@ -42,14 +42,12 @@ export const makeWorkspaceE2EReferralIdentities = <
   baseUrl,
   caseId,
   datasourceConfig,
-  run,
   runId,
   secret,
 }: {
   readonly baseUrl: string;
   readonly caseId: Id;
   readonly datasourceConfig: DatasourceConfig;
-  readonly run: Runner;
   readonly runId: WorkspaceE2ERunId;
   readonly secret: WorkspaceE2ESessionSigningSecret;
 }) => {
@@ -59,7 +57,6 @@ export const makeWorkspaceE2EReferralIdentities = <
       datasourceConfig,
       displayName: (label) => `Referral ${label}`,
       journalOwnerId: caseId,
-      run,
       runId,
       secret,
     }

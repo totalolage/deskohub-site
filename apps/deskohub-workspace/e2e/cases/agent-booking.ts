@@ -136,7 +136,6 @@ export const planAgentBookingCase = ({
  */
 export const bindAgentBookingCase: WorkspaceE2ECaseBinder = async ({
   environment,
-  run,
   runId,
   testCase,
 }) => {
@@ -152,7 +151,6 @@ export const bindAgentBookingCase: WorkspaceE2ECaseBinder = async ({
     datasourceConfig,
     displayName: () => "Workspace E2E Agent Booker",
     journalOwnerId: agentBookingCaseId,
-    run,
     runId,
     secret: resolveWorkspaceE2ESessionSigningSecret(environment),
   });
@@ -166,7 +164,7 @@ export const bindAgentBookingCase: WorkspaceE2ECaseBinder = async ({
   return {
     ...testCase,
     checkoutStates: [boundState],
-    execute: ({ runStep, session }) =>
+    execute: ({ run, runStep, session }) =>
       executeAgentBooking({
         config,
         datasourceConfig,
@@ -205,7 +203,7 @@ const executeAgentBooking = Effect.fn("AgentBooking.execute")(function* (
     timeoutMs: config.timeouts.datasource,
   });
   yield* runStep({
-    execute: identities.signIn(booker, session),
+    execute: identities.signIn(booker, booking),
     id: "sign-in-agent-booker",
     timeoutMs: config.timeouts.datasource,
   });

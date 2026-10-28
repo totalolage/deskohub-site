@@ -172,7 +172,7 @@ export const planReferralSomeoneElsePaymentCase = ({
  * booker opens a shared referral link and books for the referred customer.
  */
 export const bindReferralSomeoneElsePaymentCase: WorkspaceE2ECaseBinder =
-  async ({ environment, run, runId, testCase }) => {
+  async ({ environment, runId, testCase }) => {
     if (testCase.id !== referralSomeoneElsePaymentCaseId) return testCase;
     const [state] = testCase.checkoutStates;
     if (!state || testCase.checkoutStates.length !== 1) {
@@ -187,7 +187,6 @@ export const bindReferralSomeoneElsePaymentCase: WorkspaceE2ECaseBinder =
       datasourceConfig,
       displayName: (label) => recipientDisplayNames[label],
       journalOwnerId: referralSomeoneElsePaymentCaseId,
-      run,
       runId,
       secret: resolveWorkspaceE2ESessionSigningSecret(environment),
     });
@@ -200,7 +199,7 @@ export const bindReferralSomeoneElsePaymentCase: WorkspaceE2ECaseBinder =
     return {
       ...testCase,
       checkoutStates: [boundState],
-      execute: ({ runStep, session }) =>
+      execute: ({ run, runStep, session }) =>
         executeReferralSomeoneElsePayment({
           config,
           datasourceConfig,
@@ -278,7 +277,7 @@ const executeReferralSomeoneElsePayment = Effect.fn(
     timeoutMs: config.timeouts.datasource,
   });
   yield* runStep({
-    execute: identities.signIn(booker, session),
+    execute: identities.signIn(booker, { run, session }),
     id: "sign-in-synthetic-booker",
     timeoutMs: config.timeouts.datasource,
   });

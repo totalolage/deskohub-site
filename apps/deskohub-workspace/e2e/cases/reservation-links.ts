@@ -117,13 +117,11 @@ export const makeReservationLinkE2ECases = ({
   datasourceConfig,
   flowStates,
   preparation,
-  run,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly datasourceConfig: DatasourceConfig;
   readonly flowStates: CheckoutFlowState[];
   readonly preparation: MeetingRoomE2EPreparation;
-  readonly run: Runner;
 }): Effect.Effect<
   readonly WorkspaceE2ECase[],
   WorkspaceE2EError,
@@ -204,7 +202,7 @@ export const makeReservationLinkE2ECases = ({
     return [
       {
         checkoutStates: [enZeroTotalState, enReplacementState],
-        execute: ({ runStep, session }) =>
+        execute: ({ run, runStep, session }) =>
           runReservationLinkZeroTotalCase({
             config,
             data: enZeroTotalData,
@@ -230,7 +228,7 @@ export const makeReservationLinkE2ECases = ({
       },
       {
         checkoutStates: [csZeroTotalState],
-        execute: ({ runStep, session }) =>
+        execute: ({ run, runStep, session }) =>
           runReservationLinkZeroTotalCase({
             config,
             data: csZeroTotalData,
@@ -254,7 +252,7 @@ export const makeReservationLinkE2ECases = ({
       },
       {
         checkoutStates: [unknownCodeState],
-        execute: ({ runStep, session }) =>
+        execute: ({ run, runStep, session }) =>
           runReservationLinkUnknownCodeCase({
             config,
             data: unknownCodeData,

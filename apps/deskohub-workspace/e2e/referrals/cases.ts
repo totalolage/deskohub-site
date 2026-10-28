@@ -114,13 +114,11 @@ type ReferralCaseContext = {
 export const bindWorkspaceE2EReferralCase = ({
   browser,
   environment,
-  run,
   runId,
   testCase,
 }: {
   readonly browser: Browser;
   readonly environment: WorkspaceE2EEnvironment;
-  readonly run: Runner;
   readonly runId: WorkspaceE2ERunId;
   readonly testCase: WorkspaceE2ECase;
 }): WorkspaceE2ECase => {
@@ -139,7 +137,6 @@ export const bindWorkspaceE2EReferralCase = ({
     baseUrl: config.baseUrl,
     caseId,
     datasourceConfig,
-    run,
     runId,
     secret,
   });
@@ -160,7 +157,7 @@ export const bindWorkspaceE2EReferralCase = ({
   return {
     ...testCase,
     checkoutStates,
-    execute: ({ runStep, session }) =>
+    execute: ({ run, runStep, session }) =>
       Effect.gen(function* () {
         // Each case's own context starts without a remembered shared link.
         const browserSession = yield* runStep({
@@ -455,7 +452,7 @@ const referrerScreen: ReferralCaseExecutor = (context) =>
     const referrer = yield* runStep({
       execute: Effect.gen(function* () {
         const referrer = yield* identities.seedReferrer("rrs-referrer");
-        yield* identities.signIn(referrer, context.session);
+        yield* identities.signIn(referrer, context);
         return referrer;
       }),
       id: "seed-and-sign-in-referrer-without-invitees",
@@ -684,7 +681,7 @@ const profileCompletionCheckout: ReferralCaseExecutor = (
         const otherReferrer =
           yield* identities.seedReferrer("rpc-other-referrer");
         const account = yield* identities.seedUnlinkedAccount("rpc-customer");
-        yield* identities.signIn(account, session);
+        yield* identities.signIn(account, context);
         return { account, otherReferrer, referrer };
       }),
       id: "seed-two-referrers-and-sign-in-new-account",
@@ -848,7 +845,7 @@ const checkoutCodeEntry: ReferralCaseExecutor = (context, checkoutStates) =>
           yield* identities.seedReferrer("rce-link-referrer");
         // A completed profile without a referral; it owns its own code.
         const customer = yield* identities.seedReferrer("rce-customer");
-        yield* identities.signIn(customer, session);
+        yield* identities.signIn(customer, context);
         return { customer, linkReferrer, referrer };
       }),
       id: "seed-two-referrers-and-sign-in-completed-profile",
@@ -984,7 +981,7 @@ const shareLinkCheckout: ReferralCaseExecutor = (context, checkoutStates) =>
           referrerDotyposCustomerId: customer.customerId,
           referrerPromotionCodeId: customer.promotionCodeId,
         });
-        yield* identities.signIn(customer, session);
+        yield* identities.signIn(customer, context);
         return { customer, referrer };
       }),
       id: "seed-referrer-and-sign-in-customer-with-invitee",
@@ -1136,7 +1133,7 @@ const autoLinkedSignIn: ReferralCaseExecutor = (context) =>
         const customerId = yield* identities.createCustomer(label);
         yield* prepare(customerId);
         const account = yield* identities.seedUnlinkedAccount(label);
-        yield* identities.signIn(account, session);
+        yield* identities.signIn(account, context);
         yield* openAccount(context, `?ref=${ref}`);
         yield* waitForLinkedAccount(context);
         const linked = yield* requireLinkedCustomer(context, account);
@@ -1220,7 +1217,7 @@ const profileCompletionUnusableLink: ReferralCaseExecutor = (context) =>
       execute: Effect.gen(function* () {
         const referrer = yield* identities.seedReferrer("rpu-referrer");
         const account = yield* identities.seedUnlinkedAccount("rpu-customer");
-        yield* identities.signIn(account, session);
+        yield* identities.signIn(account, context);
         return { account, referrer };
       }),
       id: "seed-referrer-and-sign-in-new-account",

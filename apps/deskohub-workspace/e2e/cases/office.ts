@@ -72,13 +72,11 @@ export const makeOfficeE2ECases = ({
   datasourceConfig,
   flowStates,
   preparation,
-  run,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly datasourceConfig: DatasourceConfig;
   readonly flowStates: CheckoutFlowState[];
   readonly preparation: OfficeE2EPreparation | undefined;
-  readonly run: Runner;
 }): Effect.Effect<
   readonly WorkspaceE2ECase[],
   WorkspaceE2EError,
@@ -98,7 +96,7 @@ export const makeOfficeE2ECases = ({
     return [
       {
         checkoutStates: [state],
-        execute: ({ runStep, session }) =>
+        execute: ({ run, runStep, session }) =>
           executeCheckoutFlow({
             config,
             data,

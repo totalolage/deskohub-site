@@ -30,7 +30,6 @@ import { selectCoworkDates } from "./checkout/data";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "./config";
 import type { E2EDotyposDiscountGroup } from "./integrations/dotypos";
 import { workspaceE2EReferralCheckoutCaseIds } from "./referrals/plan";
-import type { Runner } from "./runtime";
 import { workspaceE2ETimeouts } from "./timeouts";
 
 afterEach(() => setSystemTime());
@@ -156,7 +155,6 @@ test("wires the case-plan per-date maximums through the real case builders", asy
       datasourceConfig: {} as DatasourceConfig,
       flowStates: [],
       preparation,
-      run: makeStubRunner(),
       traceConstruction: false,
     }).pipe(Effect.provide(httpClientLayer))
   );
@@ -265,7 +263,6 @@ test("prepares the transient calendar pool with the bare reserved-desk product",
           id: "e2e-discount-group",
         } as E2EDotyposDiscountGroup,
       },
-      run: makeStubRunner(),
     }).pipe(Effect.provide(httpClientLayer))
   );
 
@@ -633,12 +630,6 @@ const makeConstructionTestConfig = (): WorkspaceE2EConfig => ({
   bypassSecret: undefined,
   expectedHost: "deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app",
   timeouts: workspaceE2ETimeouts,
-});
-
-const makeStubRunner = (): Runner => async () => ({
-  exitCode: 0,
-  stderr: "",
-  stdout: "",
 });
 
 const makeTable = (
