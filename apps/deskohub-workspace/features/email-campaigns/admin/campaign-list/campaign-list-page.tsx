@@ -39,6 +39,16 @@ export async function CampaignListPage({
     <AdministrationPage>
       <h1 className="sr-only">{m.emailCampaignsListTitle({}, { locale })}</h1>
       <AdministrationTableToolbar
+        actions={
+          <Button asChild size="md">
+            <Link
+              href={administrationHref("/[locale]/admin/email-campaigns/new")}
+            >
+              <Plus aria-hidden className="size-4" />
+              {m.emailCampaignsListNewCampaign({}, { locale })}
+            </Link>
+          </Button>
+        }
         count={
           <Suspense
             fallback={
@@ -50,19 +60,8 @@ export async function CampaignListPage({
             <CampaignCount campaigns={campaigns} locale={locale} />
           </Suspense>
         }
-        filters={
-          <div className="flex flex-wrap items-end justify-end gap-3">
-            <CampaignDeliveryFilterForm delivery={await delivery} />
-            <Button asChild size="md">
-              <Link
-                href={administrationHref("/[locale]/admin/email-campaigns/new")}
-              >
-                <Plus aria-hidden className="size-4" />
-                {m.emailCampaignsListNewCampaign({}, { locale })}
-              </Link>
-            </Button>
-          </div>
-        }
+        filterLayout="inline"
+        filters={<CampaignDeliveryFilterForm delivery={await delivery} />}
         label={m.emailCampaignsListTableControls({}, { locale })}
       />
       <Suspense
