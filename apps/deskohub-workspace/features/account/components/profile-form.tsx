@@ -1,5 +1,6 @@
 "use client";
 
+import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import { useRouter } from "next/navigation";
 import {
   type FormEvent,
@@ -11,28 +12,33 @@ import {
 } from "react";
 import { type FieldErrors, useForm, useWatch } from "react-hook-form";
 import {
-  type AresBusinessLookupResult,
   completeCustomerProfile,
-  lookupAresBusiness,
   updateCustomerProfile,
 } from "@/features/account/actions";
 import { refreshAnalyticsDotyposCustomerId } from "@/features/account/analytics-customer-link";
 import type { AresBusinessBillingDraft } from "@/features/account/backend/ares-business-draft";
-import type { CustomerProfileBilling } from "@/features/account/backend/customer-dotypos-adapter.service";
 import { BillingScreen } from "@/features/account/components/billing/billing-screen";
 import { AvatarControl } from "@/features/account/components/profile/avatar-control";
 import { ProfileScreen } from "@/features/account/components/profile/profile-screen";
 import {
-  createProfileFormResolver,
-  getProfileFormDefaultValues,
-  type ProfileBillingKind,
+  completionFormSchema,
+  firstInvalidProfileFormSection,
+  type ProfileFormField,
+  type ProfileFormSection,
   type ProfileFormValues,
   profileBillingFieldNames,
-  profileFieldPathFromDomName,
-  toCustomerProfileCompletionInput,
-  toCustomerProfileInput,
-} from "@/features/account/components/profile-form-schema";
-import type { CustomerAvatarPresentation } from "@/features/account/contracts";
+  profileFormDefaults,
+  profileFormErrorMessage,
+  profileFormFieldOfInputName,
+  profileFormInputName,
+  profileFormSchema,
+  toProfileFormErrors,
+} from "@/features/account/components/profile-form-model";
+import { useAresBusinessLookup } from "@/features/account/components/use-ares-business-lookup";
+import type {
+  CustomerAvatarPresentation,
+  CustomerProfile,
+} from "@/features/account/contracts";
 import { type Locale, m } from "@/features/i18n";
 import type { ReferralCode } from "@/features/referrals/client";
 import { formatReferralInvitationDiscount } from "@/features/referrals/client";
@@ -55,13 +61,8 @@ type ProfileFormProps = {
   readonly email: string;
   readonly locale: Locale;
   readonly mode: CustomerProfileFormMode;
-  readonly onSectionChange?: (section: "profile" | "billing") => void;
-  readonly profile?: {
-    readonly firstName: string;
-    readonly lastName: string | null;
-    readonly phone: string | null;
-    readonly billing: CustomerProfileBilling | null;
-  };
+  readonly onSectionChange?: (section: ProfileFormSection) => void;
+  readonly profile?: CustomerProfile;
   readonly avatarPresentation?: CustomerAvatarPresentation;
   /** Server-checked invitation code that prefills first-time completion. */
   readonly referralCode?: ReferralCode;
@@ -70,33 +71,7 @@ type ProfileFormProps = {
    * released referral program does.
    */
   readonly referralsEnabled?: boolean;
-  readonly section?: "profile" | "billing";
-};
-
-type AresLookupStatus =
-  | "idle"
-  | "found"
-  | "invalid-ico"
-  | "not-found"
-  | "unavailable"
-  | "applied";
-
-type AresLookupUi = {
-  readonly isPending: boolean;
-  readonly status: AresLookupStatus;
-  readonly review?: AresBusinessBillingDraft;
-  readonly message?: string;
-  readonly onLookup: () => void;
-  readonly onApply: () => void;
-  readonly onDismiss: () => void;
-};
-
-type AresLookupUiState = {
-  status: AresLookupStatus;
-  review?: AresBusinessBillingDraft;
-  message?: string;
-  /** Invalidation generation at which this state was installed. */
-  generation?: number;
+  readonly section?: ProfileFormSection;
 };
 
 type SavedIdentity = {
@@ -104,7 +79,7 @@ type SavedIdentity = {
   readonly lastName: string | null;
 };
 
-const profileFieldLayoutClass = (name: keyof ProfileFormValues) => {
+const profileFieldLayoutClass = (name: ProfileFormField) => {
   if (name === "companyName" || name === "companyId") return "@xl:col-span-2";
   if (name === "addressLine1" || name === "addressLine2") return "min-w-0";
   return undefined;
@@ -129,23 +104,25 @@ export function ProfileForm({
   const [hasCompletedInitialProfile, setHasCompletedInitialProfile] =
     useState(false);
   const [isRefreshPending, startRefreshTransition] = useTransition();
-  const [aresLookup, setAresLookup] = useState<AresLookupUiState>({
-    status: "idle",
-  });
-  // Any IČO edit or billing-kind change bumps the generation; a pending
-  // lookup is tagged with the generation at its start, so a response that
-  // resolves after an edit is discarded and can never be applied.
-  const aresGenerationRef = useRef(0);
-  const pendingAresRequestGenerationRef = useRef(0);
+  const aresLookup = useAresBusinessLookup(locale);
   const submittedValuesRef = useRef<ProfileFormValues | undefined>(undefined);
   const submittingRef = useRef(false);
 
   const isComplete = mode === "complete";
   const isInitialCompletion = isComplete && !hasCompletedInitialProfile;
 
-  const form = useForm<ProfileFormValues>({
-    resolver: createProfileFormResolver(locale),
-    defaultValues: getProfileFormDefaultValues(profile, referralCode),
+  // Initial completion also submits the referral code; every later save
+  // submits the plain profile contract.
+  const formSchema = isInitialCompletion
+    ? completionFormSchema(locale, referralCode)
+    : profileFormSchema(locale);
+  const form = useForm<
+    typeof formSchema.Encoded,
+    unknown,
+    typeof formSchema.Type
+  >({
+    resolver: effectSchemaResolver(formSchema),
+    defaultValues: profileFormDefaults(profile, referralCode),
     mode: "onBlur",
     reValidateMode: "onChange",
   });
@@ -155,7 +132,7 @@ export function ProfileForm({
   // values against the saved baseline (no DOM FormData snapshotting). The
   // comparison runs at guard-event time so it never lags the last keystroke.
   const savedBaselineRef = useRef<ProfileFormValues>(
-    getProfileFormDefaultValues(profile, referralCode)
+    profileFormDefaults(profile, referralCode)
   );
   const isDirty = () =>
     rhfIsDirty ||
@@ -165,7 +142,7 @@ export function ProfileForm({
   const billingKind = useWatch({
     control: form.control,
     name: "billingKind",
-  }) as ProfileBillingKind;
+  });
 
   const action = (
     isInitialCompletion ? completeCustomerProfile : updateCustomerProfile
@@ -176,68 +153,14 @@ export function ProfileForm({
       "referralCode",
       {
         type: "server",
-        message: m.accountProfileReferralCodeUnavailable({}, { locale }),
+        message: profileFormErrorMessage("referralCode", locale),
       },
       { shouldFocus: true }
     );
 
-  const invalidateAresLookup = () => {
-    aresGenerationRef.current += 1;
-    setAresLookup({ status: "idle" });
-  };
-
-  const lookupAres = useWorkspaceAction(lookupAresBusiness, {
-    onSuccess: ({ data }) => {
-      const lookupResult = data as AresBusinessLookupResult | undefined;
-      if (!lookupResult) return;
-      // A response that resolves after the IČO or the billing kind changed
-      // mid-flight is superseded and must not overwrite newer UI state.
-      if (pendingAresRequestGenerationRef.current !== aresGenerationRef.current)
-        return;
-      if (lookupResult.status === "found") {
-        setAresLookup({
-          status: "found",
-          review: lookupResult.company,
-        });
-      } else {
-        setAresLookup({
-          status: lookupResult.status,
-          message: lookupResult.message,
-        });
-      }
-    },
-    onError: ({ error }) => {
-      // A resolved failure (expired session, pending deletion, disabled
-      // accounts, …) must surface in the lookup status instead of silently
-      // resetting the region, and must be discarded when superseded.
-      if (pendingAresRequestGenerationRef.current !== aresGenerationRef.current)
-        return;
-      setAresLookup({
-        status: "unavailable",
-        message:
-          error.serverError || m.accountAresLookupActionError({}, { locale }),
-      });
-    },
-    onTransportError: () => {
-      if (pendingAresRequestGenerationRef.current !== aresGenerationRef.current)
-        return;
-      setAresLookup({
-        status: "unavailable",
-        message: m.accountAresLookupActionError({}, { locale }),
-      });
-    },
-  });
-
-  const handleAresLookup = () => {
-    if (lookupAres.isExecuting) return;
-    setAresLookup({ status: "idle" });
-    pendingAresRequestGenerationRef.current = aresGenerationRef.current;
-    lookupAres.execute({ ico: form.getValues("companyId") });
-  };
-
   const applyAresReview = () => {
-    const review = aresLookup.review;
-    if (!review || aresLookup.status !== "found") return;
+    const review = aresLookup.apply();
+    if (!review) return;
     for (const field of profileBillingFieldNames) {
       const value = review[field];
       if (value !== undefined) {
@@ -247,14 +170,6 @@ export function ProfileForm({
         });
       }
     }
-    setAresLookup({
-      status: "applied",
-      message: m.accountAresLookupApplied({}, { locale }),
-    });
-  };
-
-  const dismissAresReview = () => {
-    setAresLookup({ status: "idle" });
   };
 
   const { execute, hasErrored, isExecuting, result } = useWorkspaceAction(
@@ -312,106 +227,30 @@ export function ProfileForm({
     if (!fieldErrors) return;
     if (handledValidationResultRef.current === result) return;
     handledValidationResultRef.current = result;
-    if (fieldErrors.firstName?.length) {
-      form.setError("firstName", {
-        type: "server",
-        message: m.accountProfileFirstNameRequired({}, { locale }),
-      });
+    const { errors, firstSection } = toProfileFormErrors(
+      { fieldErrors },
+      locale
+    );
+    for (const [field, message] of Object.entries(errors)) {
+      form.setError(field as ProfileFormField, { type: "server", message });
     }
-    if (fieldErrors.phone?.length) {
-      form.setError("phone", {
-        type: "server",
-        message: m.accountProfilePhoneInvalid({}, { locale }),
-      });
-    }
-    if (fieldErrors.referralCode?.length) {
-      form.setError("referralCode", {
-        type: "server",
-        message: m.accountProfileReferralCodeUnavailable({}, { locale }),
-      });
-    }
-    if (fieldErrors.lastName?.length) {
-      form.setError("lastName", {
-        type: "server",
-        message: m.accountProfileValidationError({}, { locale }),
-      });
-    }
-    let billingFieldError = false;
-    for (const error of fieldErrors.billing ?? []) {
-      const fieldName = profileBillingFieldNames.find(
-        (field) => error === field || error.startsWith(`${field}:`)
-      );
-      if (fieldName !== undefined) {
-        billingFieldError = true;
-        form.setError(fieldName, {
-          type: "server",
-          message: m.accountProfileValidationError({}, { locale }),
-        });
-      } else {
-        form.setError("billingKind", {
-          type: "server",
-          message: m.accountProfileValidationError({}, { locale }),
-        });
-      }
-    }
-    if (!isComplete) {
-      let sectionWithError: "profile" | "billing" | undefined;
-      if (
-        (fieldErrors.firstName?.length ?? 0) > 0 ||
-        (fieldErrors.lastName?.length ?? 0) > 0 ||
-        (fieldErrors.phone?.length ?? 0) > 0
-      ) {
-        sectionWithError = "profile";
-      } else if ((fieldErrors.billing?.length ?? 0) > 0 || billingFieldError) {
-        sectionWithError = "billing";
-      }
-      if (sectionWithError !== undefined) {
-        onSectionChange?.(sectionWithError);
-      }
+    if (!isComplete && firstSection !== undefined) {
+      onSectionChange?.(firstSection);
     }
   }, [form, result, isComplete, locale, onSectionChange]);
 
-  const firstInvalidSectionFromErrors = (
-    errors: FieldErrors<ProfileFormValues>
-  ): "profile" | "billing" | undefined => {
-    const names = Object.keys(errors);
-    if (
-      names.includes("firstName") ||
-      names.includes("lastName") ||
-      names.includes("phone")
-    ) {
-      return "profile";
-    }
-    if (
-      names.some(
-        (name) =>
-          name === "billingKind" ||
-          (profileBillingFieldNames as readonly string[]).includes(name)
-      )
-    ) {
-      return "billing";
-    }
-    return undefined;
-  };
-
-  const handleValid = (values: ProfileFormValues) => {
+  const handleValid = (input: typeof formSchema.Type) => {
     if (isExecuting || submittingRef.current) return;
-    submittedValuesRef.current = values;
+    submittedValuesRef.current = form.getValues();
     submittingRef.current = true;
-    // The resolver has already validated this mapping against the contract
-    // schema (updateCustomerProfileStandardSchema), so client and server
-    // share trimming and length rules. The referral code is checked only on
-    // the server.
-    execute(
-      isInitialCompletion
-        ? toCustomerProfileCompletionInput(values, referralCode)
-        : toCustomerProfileInput(values)
-    );
+    execute(input);
   };
 
   const handleInvalid = (errors: FieldErrors<ProfileFormValues>) => {
     if (isComplete) return;
-    const firstInvalidSection = firstInvalidSectionFromErrors(errors);
+    const firstInvalidSection = firstInvalidProfileFormSection(
+      Object.keys(errors)
+    );
     if (firstInvalidSection !== undefined && section !== firstInvalidSection) {
       onSectionChange?.(firstInvalidSection);
     }
@@ -425,50 +264,24 @@ export function ProfileForm({
   const handleInvalidCapture = (event: InvalidEvent<HTMLFormElement>) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
-    const fieldName = target.getAttribute("name");
-    if (fieldName === null) return;
-    const fieldPath = profileFieldPathFromDomName(fieldName);
-
-    if (fieldPath === "firstName") {
-      form.setError("firstName", {
-        type: "required",
-        message: m.accountProfileFirstNameRequired({}, { locale }),
-      });
-    }
-    if (fieldPath === "companyName") {
-      form.setError("companyName", {
-        type: "required",
-        message: m.accountProfileValidationError({}, { locale }),
-      });
-    }
-
-    const invalidInputs = Array.from(event.currentTarget.elements).filter(
-      (element): element is HTMLInputElement =>
-        element instanceof HTMLInputElement && !element.validity.valid
+    const field = profileFormFieldOfInputName(
+      target.getAttribute("name") ?? ""
     );
-    const firstInvalidFieldName = invalidInputs
-      .map(({ name }) => profileFieldPathFromDomName(name))
-      .find(
-        (name) =>
-          name === "firstName" ||
-          name === "phone" ||
-          (profileBillingFieldNames as readonly string[]).includes(name)
-      );
-    let firstInvalidSection: "profile" | "billing" | undefined;
-    if (
-      firstInvalidFieldName === "firstName" ||
-      firstInvalidFieldName === "phone"
-    ) {
-      firstInvalidSection = "profile";
-    } else if (
-      firstInvalidFieldName !== undefined &&
-      (profileBillingFieldNames as readonly string[]).includes(
-        firstInvalidFieldName
-      )
-    ) {
-      firstInvalidSection = "billing";
+    // `required` is the only native constraint a profile input can fail.
+    if (field !== undefined) {
+      form.setError(field, {
+        type: "required",
+        message: profileFormErrorMessage(field, locale),
+      });
     }
 
+    const firstInvalidSection = firstInvalidProfileFormSection(
+      Array.from(event.currentTarget.elements).flatMap((element) =>
+        element instanceof HTMLInputElement && !element.validity.valid
+          ? (profileFormFieldOfInputName(element.name) ?? [])
+          : []
+      )
+    );
     if (
       !isComplete &&
       firstInvalidSection !== undefined &&
@@ -487,13 +300,9 @@ export function ProfileForm({
   );
 
   const renderTextField = (
-    name: keyof ProfileFormValues,
+    name: ProfileFormField,
     options: {
       readonly autoComplete?: string;
-      // Legacy public DOM contract: some billing inputs keep their
-      // pre-RHF `name` attributes (used by native validation messages)
-      // even though the RHF field path differs.
-      readonly domName?: string;
       readonly id: string;
       readonly inputMode?: "numeric";
       readonly label: string;
@@ -508,7 +317,7 @@ export function ProfileForm({
       render={({ field, fieldState }) => {
         const describedBy = [
           fieldState.error ? `${options.id}-error` : undefined,
-          name === "companyId" && aresLookup.status === "invalid-ico"
+          name === "companyId" && aresLookup.state.status === "invalid-ico"
             ? "account-profile-ares-status"
             : undefined,
         ]
@@ -526,7 +335,7 @@ export function ProfileForm({
                 aria-invalid={
                   Boolean(fieldState.error) ||
                   (name === "companyId" &&
-                    aresLookup.status === "invalid-ico") ||
+                    aresLookup.state.status === "invalid-ico") ||
                   undefined
                 }
                 aria-labelledby={`${options.id}-label`}
@@ -534,7 +343,7 @@ export function ProfileForm({
                 id={options.id}
                 inputMode={options.inputMode}
                 maxLength={options.maxLength}
-                name={options.domName ?? name}
+                name={profileFormInputName(name)}
                 required={options.required}
                 type={options.type}
               />
@@ -575,12 +384,12 @@ export function ProfileForm({
   );
 
   const aresButtonLabel = (() => {
-    if (lookupAres.isExecuting) {
+    if (aresLookup.isPending) {
       return m.accountAresLookupLoading({}, { locale });
     }
     if (
-      aresLookup.status === "not-found" ||
-      aresLookup.status === "unavailable"
+      aresLookup.state.status === "not-found" ||
+      aresLookup.state.status === "unavailable"
     ) {
       return m.accountAresLookupRetry({}, { locale });
     }
@@ -591,28 +400,28 @@ export function ProfileForm({
   // outcomes; the review panel itself stays outside the region so nothing
   // steals focus from manual entry.
   const aresStatusContent = (() => {
-    if (lookupAres.isExecuting) {
+    if (aresLookup.isPending) {
       return <span>{m.accountAresLookupLoading({}, { locale })}</span>;
     }
-    if (aresLookup.status === "found") {
+    if (aresLookup.state.status === "found") {
       return (
         <span className="text-emerald-800">
           {m.accountAresLookupReviewReady({}, { locale })}
         </span>
       );
     }
-    if (aresLookup.message) {
+    if (aresLookup.state.status !== "idle" && aresLookup.state.message) {
       return (
         <span
           className={
-            aresLookup.status === "invalid-ico" ||
-            aresLookup.status === "not-found" ||
-            aresLookup.status === "unavailable"
+            aresLookup.state.status === "invalid-ico" ||
+            aresLookup.state.status === "not-found" ||
+            aresLookup.state.status === "unavailable"
               ? "text-red-700"
               : "text-emerald-800"
           }
         >
-          {aresLookup.message}
+          {aresLookup.state.message}
         </span>
       );
     }
@@ -620,9 +429,9 @@ export function ProfileForm({
   })();
 
   useEffect(() => {
-    if (aresLookup.status !== "invalid-ico") return;
+    if (aresLookup.state.status !== "invalid-ico") return;
     document.getElementById("account-profile-billing-company-id")?.focus();
-  }, [aresLookup.status]);
+  }, [aresLookup.state.status]);
 
   const billingFields = (
     <>
@@ -650,7 +459,7 @@ export function ProfileForm({
                 name={undefined}
                 onChange={(event) => {
                   field.onChange(event);
-                  invalidateAresLookup();
+                  aresLookup.invalidate();
                 }}
               >
                 <option value="hidden">
@@ -676,7 +485,6 @@ export function ProfileForm({
           {billingKind === "business" ? (
             <>
               {renderTextField("companyName", {
-                domName: "billingCompanyName",
                 autoComplete: "organization",
                 id: "account-profile-billing-company-name",
                 label: m.accountProfileCompanyNameLabel({}, { locale }),
@@ -698,7 +506,7 @@ export function ProfileForm({
                       fieldState.error
                         ? "account-profile-billing-company-id-error"
                         : undefined,
-                      aresLookup.status === "invalid-ico"
+                      aresLookup.state.status === "invalid-ico"
                         ? "account-profile-ares-status"
                         : undefined,
                     ]
@@ -712,17 +520,17 @@ export function ProfileForm({
                             aria-describedby={describedBy || undefined}
                             aria-invalid={
                               Boolean(fieldState.error) ||
-                              aresLookup.status === "invalid-ico" ||
+                              aresLookup.state.status === "invalid-ico" ||
                               undefined
                             }
                             aria-labelledby="account-profile-billing-company-id-label"
                             id="account-profile-billing-company-id"
                             inputMode="numeric"
                             maxLength={32}
-                            name="billingCompanyId"
+                            name={profileFormInputName("companyId")}
                             onChange={(event) => {
                               field.onChange(event);
-                              invalidateAresLookup();
+                              aresLookup.invalidate();
                             }}
                           />
                         </FormControl>
@@ -737,8 +545,10 @@ export function ProfileForm({
                 <div className="flex flex-wrap items-center gap-3">
                   <Button
                     caps
-                    disabled={lookupAres.isExecuting}
-                    onClick={handleAresLookup}
+                    disabled={aresLookup.isPending}
+                    onClick={() =>
+                      aresLookup.lookUp(form.getValues("companyId"))
+                    }
                     shape="rounded"
                     size="sm"
                     tone="navy-blue"
@@ -754,25 +564,16 @@ export function ProfileForm({
                 >
                   {aresStatusContent}
                 </p>
-                {Boolean(
-                  aresLookup.review && aresLookup.status === "found"
-                ) && (
+                {aresLookup.state.status === "found" && (
                   <AresReviewPanel
-                    ares={{
-                      isPending: lookupAres.isExecuting,
-                      status: aresLookup.status,
-                      review: aresLookup.review,
-                      message: aresLookup.message,
-                      onLookup: handleAresLookup,
-                      onApply: applyAresReview,
-                      onDismiss: dismissAresReview,
-                    }}
                     locale={locale}
+                    onApply={applyAresReview}
+                    onDismiss={aresLookup.dismiss}
+                    review={aresLookup.state.review}
                   />
                 )}
               </FormItem>
               {renderTextField("vatId", {
-                domName: "billingVatId",
                 id: "account-profile-billing-vat-id",
                 label: m.accountProfileVatIdLabel({}, { locale }),
                 maxLength: 32,
@@ -780,21 +581,18 @@ export function ProfileForm({
             </>
           ) : null}
           {renderTextField("addressLine1", {
-            domName: "billingAddressLine1",
             autoComplete: "address-line1",
             id: "account-profile-billing-address-line1",
             label: m.accountProfileAddressLine1Label({}, { locale }),
             maxLength: 200,
           })}
           {renderTextField("addressLine2", {
-            domName: "billingAddressLine2",
             autoComplete: "address-line2",
             id: "account-profile-billing-address-line2",
             label: m.accountProfileAddressLine2Label({}, { locale }),
             maxLength: 200,
           })}
           {renderTextField("city", {
-            domName: "billingCity",
             autoComplete: "address-level2",
             id: "account-profile-billing-city",
             label: m.accountProfileCityLabel({}, { locale }),
@@ -802,14 +600,12 @@ export function ProfileForm({
           })}
           <div className="min-w-0 grid gap-5 @xl:grid-cols-2">
             {renderTextField("zip", {
-              domName: "billingZip",
               autoComplete: "postal-code",
               id: "account-profile-billing-zip",
               label: m.accountProfileZipLabel({}, { locale }),
               maxLength: 20,
             })}
             {renderTextField("country", {
-              domName: "billingCountry",
               autoComplete: "country",
               id: "account-profile-billing-country",
               label: m.accountProfileCountryLabel({}, { locale }),
@@ -930,7 +726,7 @@ export function ProfileForm({
                           data-ph-mask
                           id="profile-referral-code"
                           maxLength={64}
-                          name="referralCode"
+                          name={profileFormInputName("referralCode")}
                           spellCheck={false}
                         />
                       </FormControl>
@@ -1007,14 +803,16 @@ export function ProfileForm({
 }
 
 function AresReviewPanel({
-  ares,
   locale,
+  onApply,
+  onDismiss,
+  review,
 }: {
-  readonly ares: AresLookupUi;
   readonly locale: Locale;
+  readonly onApply: () => void;
+  readonly onDismiss: () => void;
+  readonly review: AresBusinessBillingDraft;
 }) {
-  const review = ares.review;
-  if (!review) return null;
   const presentEntries = (
     [
       ["companyName", m.accountProfileCompanyNameLabel({}, { locale })],
@@ -1042,18 +840,12 @@ function AresReviewPanel({
         ))}
       </dl>
       <div className="flex flex-wrap gap-2">
-        <Button
-          caps
-          onClick={ares.onApply}
-          shape="rounded"
-          size="sm"
-          type="button"
-        >
+        <Button caps onClick={onApply} shape="rounded" size="sm" type="button">
           {m.accountAresLookupApply({}, { locale })}
         </Button>
         <Button
           caps
-          onClick={ares.onDismiss}
+          onClick={onDismiss}
           shape="rounded"
           size="sm"
           tone="outline"

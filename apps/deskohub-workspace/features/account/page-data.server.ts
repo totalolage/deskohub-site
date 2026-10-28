@@ -11,7 +11,6 @@ import {
   CustomerAuthentication,
 } from "@/features/account/backend/customer-authentication.service";
 import { CustomerAvatarService } from "@/features/account/backend/customer-avatar.service";
-import type { CustomerProfile } from "@/features/account/backend/customer-dotypos-adapter.service";
 import { CustomerProfileService } from "@/features/account/backend/customer-profile.service";
 import {
   CustomerReservationHistoryService,
@@ -21,6 +20,7 @@ import { isRememberedReferralCodeUsed } from "@/features/account/backend/remembe
 import { recordSignupReferral } from "@/features/account/backend/signup-referral";
 import type {
   CustomerAvatarPresentation,
+  CustomerProfile,
   CustomerReservationHistory,
   ProfileCompletionReferralOutcome,
 } from "@/features/account/contracts";
