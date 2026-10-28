@@ -1,6 +1,5 @@
 import { Schema } from "effect";
 import { isPlainDateString } from "@/shared/utils/temporal";
-import { administrationCustomerMarketingConsentStates } from "./customer-list-filters";
 import {
   nexiOperationChannels,
   nexiOperationTypes,
@@ -45,18 +44,3 @@ export const operationFilterSchema = Schema.Struct({
 });
 
 export type OperationFilterValues = typeof operationFilterSchema.Encoded;
-
-const optionalCustomerMarketingConsentField = Schema.Union([
-  Schema.Literal(""),
-  Schema.Literals(administrationCustomerMarketingConsentStates),
-]);
-
-export const customerFilterSchema = Schema.Struct({
-  from: optionalCalendarDateField,
-  to: optionalCalendarDateField,
-  marketingConsent: optionalCustomerMarketingConsentField,
-  sort: Schema.Literals(["activity", "reservations"]),
-  direction: Schema.Literals(["asc", "desc"]),
-});
-
-export type CustomerFilterValues = typeof customerFilterSchema.Encoded;

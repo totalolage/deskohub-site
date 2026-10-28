@@ -98,7 +98,7 @@ import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import type { Money } from "@/shared/money/money";
 import { workspaceSiteConstants } from "@/shared/utils";
 import { instantStringSchema } from "@/shared/utils/temporal";
-import type { AdministrationCustomerMarketingConsentState } from "./customer-list-filters";
+import type { AdministrationCustomerMarketingConsentState } from "./customer-list-query";
 import {
   type AdministrationCustomerName,
   unnamedCustomerDisplayName,

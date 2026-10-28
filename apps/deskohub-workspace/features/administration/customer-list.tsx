@@ -2,10 +2,8 @@ import { Suspense } from "react";
 import { CustomerSearch } from "@/features/discounts/admin/customer-admin-client";
 import type { Locale } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
-import { getHrefWithSearchParams } from "@/shared/utils/search-params";
-import { administrationHref } from "./administration-href";
 import { AdministrationCustomerTable, Pagination } from "./components";
-import { getAdministrationCustomerListParams } from "./customer-list-filters";
+import { customerListQuery } from "./customer-list-query";
 import { CustomersAdministrationFilterForm } from "./filter-forms";
 import { m } from "./i18n";
 import {
@@ -65,12 +63,7 @@ export async function AdministrationCustomerList({
             <CustomerFilters input={input} />
           </Suspense>
         }
-        exportHref={input.then((resolvedInput) =>
-          getHrefWithSearchParams(
-            administrationHref("/[locale]/admin/customers/export"),
-            getAdministrationCustomerListParams(resolvedInput)
-          )
-        )}
+        exportHref={input.then(customerListQuery.exportHref)}
         label={m.administrationCustomerTableControls({}, { locale })}
         search={<CustomerSearch variant="toolbar" />}
       />
@@ -112,8 +105,7 @@ async function CustomerFilters({
   const resolvedInput = await input;
   return (
     <CustomersAdministrationFilterForm
-      input={resolvedInput}
-      params={getAdministrationCustomerListParams(resolvedInput)}
+      query={resolvedInput}
       shortcuts={getAdministrationReservationDateShortcuts()}
     />
   );
@@ -139,8 +131,6 @@ async function CustomersTable({
       </section>
     );
   }
-  const params = getAdministrationCustomerListParams(resolvedInput);
-
   return (
     <section className="mt-7">
       <AdministrationCustomerTable
@@ -150,22 +140,10 @@ async function CustomersTable({
             resolvedInput.to ||
             resolvedInput.marketingConsent
         )}
-        sorting={{
-          direction: resolvedInput.direction ?? "desc",
-          field: resolvedInput.sort ?? "activity",
-          params,
-        }}
+        query={resolvedInput}
       />
       <Pagination
-        href={(page) =>
-          getHrefWithSearchParams(
-            administrationHref("/[locale]/admin/customers"),
-            {
-              ...params,
-              page: page > 1 ? String(page) : undefined,
-            }
-          )
-        }
+        href={(page) => customerListQuery.href(resolvedInput, { page })}
         locale={locale}
         page={resolvedResult.page}
         pageCount={resolvedResult.pageCount}

@@ -11,12 +11,15 @@ import {
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import { AdministrationLink as Link } from "./admin-link";
-import type { AdministrationCustomerListInput } from "./administration.service";
 import {
   type AdministrationHref,
   administrationHref,
 } from "./administration-href";
-import { administrationCustomerMarketingConsentStates } from "./customer-list-filters";
+import {
+  AdministrationCustomerMarketingConsentState,
+  type CustomerListQuery,
+  customerListQuery,
+} from "./customer-list-query";
 import { getAdministrationCustomerMarketingConsentLabel } from "./customer-presentation";
 import {
   AdministrationFilterField,
@@ -27,8 +30,6 @@ import {
 import {
   type BookingFilterValues,
   bookingFilterSchema,
-  type CustomerFilterValues,
-  customerFilterSchema,
   type OperationFilterValues,
   type OrderFilterValues,
   operationFilterSchema,
@@ -473,45 +474,21 @@ export function ReservationsAdministrationFilterForm({
 }
 
 export function CustomersAdministrationFilterForm({
-  input,
-  params,
+  query,
   shortcuts,
 }: {
-  readonly input: Omit<AdministrationCustomerListInput, "page">;
-  /** The list's normalized URL parameters, which shortcuts keep. */
-  readonly params: Readonly<Record<string, string | undefined>>;
+  readonly query: CustomerListQuery;
   readonly shortcuts: ReservationDateShortcuts;
 }) {
   const locale = useRouteLocale();
-  const values: CustomerFilterValues = {
-    from: input.from ?? "",
-    to: input.to ?? "",
-    marketingConsent: input.marketingConsent ?? "",
-    sort: input.sort ?? "activity",
-    direction: input.direction ?? "desc",
-  };
-  const form = useForm<CustomerFilterValues>({
+  const values = customerListQuery.formValues(query);
+  const form = useForm({
     defaultValues: values,
     mode: "onSubmit",
     reValidateMode: "onChange",
-    resolver: effectSchemaResolver(customerFilterSchema),
+    resolver: standardSchemaResolver(customerListQuery.formSchema),
     values,
   });
-  const shortcutHref = (
-    range: AdministrationReservationDateRange
-  ): AdministrationHref => {
-    const search = new URLSearchParams();
-    for (const [key, value] of Object.entries({
-      ...params,
-      from: range.from,
-      to: range.to,
-    })) {
-      if (value) search.set(key, value);
-    }
-    return `${administrationHref(
-      "/[locale]/admin/customers"
-    )}?${search.toString()}`;
-  };
 
   return (
     <AdministrationFilterForm
@@ -532,13 +509,13 @@ export function CustomersAdministrationFilterForm({
           aria-invalid={
             form.formState.errors.marketingConsent ? true : undefined
           }
-          defaultValue={input.marketingConsent ?? ""}
+          defaultValue={values.marketingConsent}
           id="customer-marketing-consent"
         >
           <option value="">
             {m.administrationFilterCustomerMarketingConsentAll({}, { locale })}
           </option>
-          {administrationCustomerMarketingConsentStates.map((state) => (
+          {AdministrationCustomerMarketingConsentState.literals.map((state) => (
             <option key={state} value={state}>
               {getAdministrationCustomerMarketingConsentLabel(state, locale)}
             </option>
@@ -552,7 +529,7 @@ export function CustomersAdministrationFilterForm({
         <AdministrationFilterInput
           {...form.register("from")}
           aria-invalid={form.formState.errors.from ? true : undefined}
-          defaultValue={input.from ?? ""}
+          defaultValue={values.from}
           id="customer-reservation-from"
           type="date"
         />
@@ -564,31 +541,33 @@ export function CustomersAdministrationFilterForm({
         <AdministrationFilterInput
           {...form.register("to")}
           aria-invalid={form.formState.errors.to ? true : undefined}
-          defaultValue={input.to ?? ""}
+          defaultValue={values.to}
           id="customer-reservation-to"
           type="date"
         />
       </AdministrationFilterField>
-      <input
-        {...form.register("sort")}
-        type="hidden"
-        value={input.sort ?? "activity"}
-      />
+      <input {...form.register("sort")} type="hidden" value={values.sort} />
       <input
         {...form.register("direction")}
         type="hidden"
-        value={input.direction ?? "desc"}
+        value={values.direction}
       />
       <div className="flex flex-col gap-3 sm:col-span-2 sm:flex-row sm:items-center sm:justify-between 2xl:col-span-3">
         <ReservationDateShortcutLinks
-          getHref={shortcutHref}
+          getHref={(range) =>
+            customerListQuery.href({
+              ...query,
+              from: range.from,
+              to: range.to,
+            })
+          }
           shortcuts={shortcuts}
         />
         <fieldset
           aria-label={m.administrationFilterActions({}, { locale })}
           className="flex min-w-0 items-center justify-end gap-2 border-0 p-0"
         >
-          {(input.from || input.to || input.marketingConsent) && (
+          {(query.from || query.to || query.marketingConsent) && (
             <Button asChild size="md" variant="ghost">
               <Link href={administrationHref("/[locale]/admin/customers")}>
                 {m.administrationFilterClear({}, { locale })}

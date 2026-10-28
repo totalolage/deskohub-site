@@ -14,7 +14,7 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
-import { getAdministrationCustomerListParams } from "./customer-list-filters";
+import type { CustomerListQuery } from "./customer-list-query";
 import {
   BookingsAdministrationFilterForm,
   CustomersAdministrationFilterForm,
@@ -73,14 +73,10 @@ const reservationFilterForm = ({
   />
 );
 
-type CustomerFilterInput = Parameters<
-  typeof CustomersAdministrationFilterForm
->[0]["input"];
-
-const customerFilterForm = (input: CustomerFilterInput) => (
+// The list's own order and first page, with the filters a test sets.
+const customerFilterForm = (query: Partial<CustomerListQuery>) => (
   <CustomersAdministrationFilterForm
-    input={input}
-    params={getAdministrationCustomerListParams(input)}
+    query={{ direction: "desc", page: 1, sort: "activity", ...query }}
     shortcuts={reservationShortcuts}
   />
 );

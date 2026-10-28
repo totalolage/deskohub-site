@@ -13,20 +13,17 @@ import type { SearchParamsRecord } from "@/shared/utils/search-params";
 import { parsePlainDate } from "@/shared/utils/temporal";
 import {
   type AdministrationBookingListInput,
-  type AdministrationCustomerExportInput,
-  type AdministrationCustomerListInput,
   type AdministrationReservationListInput,
   AdministrationService,
   getAdministrationReservationOverview,
 } from "./administration.service";
-import { parseAdministrationCustomerMarketingConsentState } from "./customer-list-filters";
+import { customerListQuery } from "./customer-list-query";
 import { formatAdministrationDateTime } from "./formatters";
 import {
   getAdministrationOperationFilters,
   getAdministrationOrderDateTimeBounds,
   getAdministrationPaymentDateTimeBounds,
 } from "./payment-administration-filters";
-import { getAdministrationReservationDateRange } from "./reservation-date-range";
 import { reservationListQuery } from "./reservation-list-query";
 import { getAdministrationReservationProductTitle } from "./reservation-product";
 import {
@@ -59,16 +56,6 @@ const parseBookingSort = (
   value: string | undefined
 ): NonNullable<AdministrationBookingListInput["sort"]> =>
   value === "status" ? value : "booking";
-
-const parseCustomerSort = (
-  value: string | undefined
-): NonNullable<AdministrationCustomerListInput["sort"]> =>
-  value === "reservations" ? value : "activity";
-
-const parseSortDirection = (
-  value: string | undefined
-): NonNullable<AdministrationReservationListInput["direction"]> =>
-  value === "asc" ? "asc" : "desc";
 
 const parseBookingSortDirection = (
   value: string | undefined
@@ -252,42 +239,13 @@ export const loadAdministrationBookingBreadcrumbLabel = cache(
   }
 );
 
-/**
- * Parses the customer list's URL parameters. The list has no default date
- * range: without `from` or `to` it covers every customer.
- */
-export const parseAdministrationCustomerListSearchParams = (
-  params: Awaited<AdministrationSearchParams>
-) =>
-  ({
-    ...getAdministrationReservationDateRange({
-      from: firstParam(params.from),
-      to: firstParam(params.to),
-    }),
-    direction: parseSortDirection(firstParam(params.direction)),
-    marketingConsent: parseAdministrationCustomerMarketingConsentState(
-      firstParam(params.marketingConsent)
-    ),
-    page: parsePage(firstParam(params.page)),
-    sort: parseCustomerSort(firstParam(params.sort)),
-  }) satisfies AdministrationCustomerListInput;
-
-/** The customer export reads the list's filters and order, but no page. */
-export const parseAdministrationCustomerExportSearchParams = (
-  params: Awaited<AdministrationSearchParams>
-): AdministrationCustomerExportInput => {
-  const { page: _, ...input } =
-    parseAdministrationCustomerListSearchParams(params);
-  return input;
-};
-
 const getAdministrationCustomerListInput = (
   searchParams: AdministrationSearchParams
 ) =>
   runAdministrationPage(
     "administration.customers-input",
     Effect.promise(() => searchParams).pipe(
-      Effect.map(parseAdministrationCustomerListSearchParams)
+      Effect.map(customerListQuery.parse)
     ),
     Layer.empty
   );
