@@ -84,7 +84,10 @@ import {
   type ReservationProductDetailsBackfillBatch,
 } from "@/features/reservation/backend/reservation-product-details-backfill.service";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import { discountMutationRecovery } from "./administration-mutation-recovery";
+import {
+  discountMutationRecovery,
+  reservationAccessRecovery,
+} from "./administration-mutation-recovery";
 import { AdministrationRequestLedger } from "./administration-request-ledger.service";
 import {
   ClaimEveryCliMutation,
@@ -925,15 +928,6 @@ describe("Workspace Admin API", () => {
     const rejectedRequestId = Schema.decodeUnknownSync(CliMutationRequestId)(
       "01980000-0000-7000-8000-000000000021"
     );
-    const retryableRequestId = Schema.decodeUnknownSync(CliMutationRequestId)(
-      "01980000-0000-7000-8000-000000000022"
-    );
-    const staleRequestId = Schema.decodeUnknownSync(CliMutationRequestId)(
-      "01980000-0000-7000-8000-000000000023"
-    );
-    const currentRequestId = Schema.decodeUnknownSync(CliMutationRequestId)(
-      "01980000-0000-7000-8000-000000000024"
-    );
     const grant = {
       id: "access-1" as ReservationAccessGrant["id"],
       reservationId: "reservation-1",
@@ -953,41 +947,14 @@ describe("Workspace Admin API", () => {
       createdAt: instant,
       updatedAt: instant,
     } satisfies ReservationAccessGrant;
-    let executions = 0;
-    let retryableExecutions = 0;
-    let staleExecutions = 0;
+    const domainInputs: Array<
+      Parameters<ReservationAccessAdministration["Service"]["mutate"]>[0]
+    > = [];
     const reservationAccess = Layer.succeed(ReservationAccessAdministration, {
-      // A deployment that predates stored access names left the grant
-      // provisioning.
-      resumeInterruptedMutation: () =>
-        Effect.sync(() => {
-          staleExecutions += 1;
-          return {
-            ...grant,
-            reservationId: "stale-reservation",
-            state: "provisioning" as const,
-            providerCredentialId: null,
-            accessName: null,
-            issuedAt: null,
-          };
-        }),
-      mutate: (mutation) => {
-        if (mutation.reservationId === "transient-reservation") {
-          retryableExecutions += 1;
-          return retryableExecutions === 1
-            ? Effect.fail(
-                new ReservationAccessAdministrationError({
-                  reason: "retryable_failure",
-                  message: "Dotypos is temporarily unavailable.",
-                })
-              )
-            : Effect.succeed(grant);
-        }
-        return mutation.kind === "retry-failed"
-          ? Effect.sync(() => {
-              executions += 1;
-              return grant;
-            })
+      mutate: (input) => {
+        domainInputs.push(input);
+        return input.kind === "retry-failed"
+          ? Effect.succeed(grant)
           : Effect.fail(
               new ReservationAccessAdministrationError({
                 reason: "invalid_state",
@@ -995,51 +962,14 @@ describe("Workspace Admin API", () => {
               })
             );
       },
+      resumeInterruptedMutation: () => Effect.succeed(grant),
     });
-    const completed = new Map<string, unknown>();
-    const claims = new Set<string>();
-    const idempotency = Layer.succeed(AdministrationRequestLedger, {
-      applyOnce: () => Effect.die("Unused CLI mutation ledger"),
-      claim: ({ requestId: claimedRequestId }) =>
-        Effect.sync(() => {
-          if (
-            claimedRequestId === staleRequestId ||
-            claimedRequestId === currentRequestId
-          ) {
-            return { kind: "in-progress" as const };
-          }
-          if (completed.has(claimedRequestId)) {
-            return {
-              kind: "completed" as const,
-              result: completed.get(claimedRequestId) as never,
-            };
-          }
-          if (claims.has(claimedRequestId)) {
-            return { kind: "in-progress" as const };
-          }
-          claims.add(claimedRequestId);
-          return { kind: "claimed" as const };
-        }),
-      complete: ({ requestId: completedRequestId, result }) =>
-        Effect.sync(() => {
-          completed.set(completedRequestId, result);
-        }),
-      reclaimStale: ({ requestId: reclaimedRequestId }) =>
-        Effect.succeed(reclaimedRequestId === staleRequestId),
-      release: ({ requestId: releasedRequestId }) =>
-        Effect.sync(() => {
-          claims.delete(releasedRequestId);
-        }),
-    });
+    const ledger = recordingRequestLedger();
     const result = await Effect.gen(function* () {
       const client = yield* HttpApiTest.groups(WorkspaceAdminApi, [
         "administration",
       ]);
       const recovered = yield* client.administration.mutateReservationAccess({
-        params: { reservationId: grant.reservationId },
-        payload: { requestId, mutation: { kind: "retry-failed" } },
-      });
-      const replayed = yield* client.administration.mutateReservationAccess({
         params: { reservationId: grant.reservationId },
         payload: { requestId, mutation: { kind: "retry-failed" } },
       });
@@ -1055,51 +985,11 @@ describe("Workspace Admin API", () => {
           },
         })
         .pipe(Effect.flip);
-      const retryable = yield* client.administration
-        .mutateReservationAccess({
-          params: { reservationId: "transient-reservation" },
-          payload: {
-            requestId: retryableRequestId,
-            mutation: { kind: "retry-failed" },
-          },
-        })
-        .pipe(Effect.flip);
-      const retried = yield* client.administration.mutateReservationAccess({
-        params: { reservationId: "transient-reservation" },
-        payload: {
-          requestId: retryableRequestId,
-          mutation: { kind: "retry-failed" },
-        },
-      });
-      const reclaimed = yield* client.administration.mutateReservationAccess({
-        params: { reservationId: "stale-reservation" },
-        payload: {
-          requestId: staleRequestId,
-          mutation: { kind: "retry-failed" },
-        },
-      });
-      const current = yield* client.administration
-        .mutateReservationAccess({
-          params: { reservationId: "current-reservation" },
-          payload: {
-            requestId: currentRequestId,
-            mutation: { kind: "retry-failed" },
-          },
-        })
-        .pipe(Effect.flip);
-      return {
-        current,
-        reclaimed,
-        recovered,
-        rejected,
-        replayed,
-        retried,
-        retryable,
-      };
+      return { recovered, rejected };
     }).pipe(
       Effect.provide(AdminCliAdministrationApiHandlers),
       Effect.provide(AuthorizedCliRequest),
-      Effect.provide(idempotency),
+      Effect.provide(ledger.layer),
       Effect.provide(UnusedInvoiceAdministration),
       Effect.provide(UnusedStandaloneAccessCodeAdministration),
       Effect.provide(UnusedReservationAdministration),
@@ -1122,17 +1012,31 @@ describe("Workspace Admin API", () => {
 
     expect(result.recovered.state).toBe("issued");
     expect(result.recovered.accessName).toBe("Deskohub reservation-1");
-    expect(result.replayed).toEqual(result.recovered);
-    expect(executions).toBe(1);
     expect("accessCode" in result.recovered).toBe(false);
     expect(result.rejected).toBeInstanceOf(CliMutationRejected);
-    expect(result.retryable).toBeInstanceOf(CliServiceUnavailable);
-    expect(result.retried.state).toBe("issued");
-    expect(retryableExecutions).toBe(2);
-    expect(result.reclaimed.state).toBe("provisioning");
-    expect(result.reclaimed.accessName).toBe("Deskohub stale-reservation");
-    expect(staleExecutions).toBe(1);
-    expect(result.current).toBeInstanceOf(CliMutationInProgress);
+    expect(domainInputs).toEqual([
+      { reservationId: grant.reservationId, kind: "retry-failed" },
+      {
+        reservationId: grant.reservationId,
+        kind: "confirm-provider-credential-removed",
+        providerCredentialRemoved: true,
+      },
+    ]);
+    expect(ledger.requests).toHaveLength(2);
+    expect(ledger.requests[0]).toMatchObject({
+      requestId,
+      mutation: {
+        kind: "reservation-access",
+        reservationId: grant.reservationId,
+        mutation: { kind: "retry-failed" },
+      },
+      inProgressMessage:
+        "This reservation access mutation is still being applied. Retrying with the same request identifier is safe.",
+    });
+    expect(ledger.requests[0]?.recovery).toBe(reservationAccessRecovery);
+    expect(ledger.requests[0]?.resume).toBeDefined();
+    expect(ledger.requests[1]?.recovery).toBe(reservationAccessRecovery);
+    expect(ledger.requests[1]?.resume).toBeDefined();
   });
 
   test("scopes every session control operation to the authenticated session owner", async () => {

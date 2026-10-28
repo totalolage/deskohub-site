@@ -72,7 +72,6 @@ import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date
 import {
   getReservationAccessName,
   type ReservationAccessGrant,
-  reservationAccessProvisioningStaleAfterMilliseconds,
 } from "@/features/reservation-access";
 import {
   WorkspaceObservabilityLive,
@@ -85,7 +84,10 @@ import {
   mapAdministrationApiFailure,
   mapServiceFailure,
 } from "./administration-api-failure";
-import { discountMutationRecovery } from "./administration-mutation-recovery";
+import {
+  discountMutationRecovery,
+  reservationAccessRecovery,
+} from "./administration-mutation-recovery";
 import {
   AdministrationRequestLedger,
   mutationScopeOf,
@@ -212,92 +214,38 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
       .handle("backfillReservationProductDetails", ({ payload }) =>
         productDetailsBackfill.runBatch(payload).pipe(mapServiceFailure)
       )
-      .handle(
-        "mutateReservationAccess",
-        Effect.fn(function* ({ params, payload }) {
-          const caller = yield* CurrentAdministrationCaller;
-          const request = {
-            scope: mutationScopeOf(caller.channel),
+      .handle("mutateReservationAccess", ({ params, payload }) =>
+        ledger
+          .applyOnceWithEffects({
             requestId: payload.requestId,
             mutation: {
-              kind: "reservation-access" as const,
+              kind: "reservation-access",
               reservationId: params.reservationId,
               mutation: payload.mutation,
             },
-          };
-          const claim = yield* ledger.claim(request).pipe(mapServiceFailure);
-          const applyMutation = reservationAccess
-            .mutate({
-              reservationId: params.reservationId,
-              ...payload.mutation,
-            })
-            .pipe(
-              Effect.map(toCliReservationAccessGrant),
-              Effect.tapError((cause) =>
-                cause.reason === "recovery_failed"
-                  ? Effect.void
-                  : ledger
-                      .release(request)
-                      .pipe(Effect.catch(() => Effect.void))
-              ),
-              mapAdministrationApiFailure(mapReservationAccessMutationFailure),
-              Effect.tap((result) =>
-                ledger.complete({ ...request, result }).pipe(mapServiceFailure)
-              )
-            );
-          const resumeInterruptedMutation = Effect.gen(function* () {
-            const reclaimedAt = Temporal.Now.instant();
-            const reclaimed = yield* ledger
-              .reclaimStale({
-                ...request,
-                reclaimedAt,
-                staleBefore: reclaimedAt.subtract({
-                  milliseconds:
-                    reservationAccessProvisioningStaleAfterMilliseconds,
-                }),
+            stored: StoredResult.unchanged(
+              AdministrationReservationAccessGrant
+            ),
+            apply: reservationAccess
+              .mutate({
+                reservationId: params.reservationId,
+                ...payload.mutation,
               })
-              .pipe(mapServiceFailure);
-            if (!reclaimed) {
-              return yield* new CliMutationInProgress({
-                requestId: payload.requestId,
-                message:
-                  "This reservation access mutation is still being applied. Retrying with the same request identifier is safe.",
-              });
-            }
-            return yield* reservationAccess
+              .pipe(Effect.map(toCliReservationAccessGrant)),
+            resume: reservationAccess
               .resumeInterruptedMutation(params.reservationId)
-              .pipe(
-                Effect.map(toCliReservationAccessGrant),
-                Effect.tapError(() =>
-                  ledger.release(request).pipe(Effect.catch(() => Effect.void))
-                ),
-                mapAdministrationApiFailure(
-                  mapReservationAccessMutationFailure
-                ),
-                Effect.tap((result) =>
-                  ledger
-                    .complete({ ...request, result })
-                    .pipe(mapServiceFailure)
-                )
-              );
-          });
-
-          return yield* Match.value(claim).pipe(
-            Match.discriminatorsExhaustive("kind")({
-              claimed: () => applyMutation,
-              completed: ({ result }) =>
-                Schema.decodeUnknownEffect(
-                  AdministrationReservationAccessGrant
-                )(result).pipe(mapServiceFailure),
-              "in-progress": () => resumeInterruptedMutation,
-              mismatch: () =>
-                new CliMutationRejected({
-                  message:
-                    "This mutation request identifier was already used for different input.",
-                }),
-            })
-          );
-        })
+              .pipe(Effect.map(toCliReservationAccessGrant)),
+            recovery: reservationAccessRecovery,
+            inProgressMessage:
+              "This reservation access mutation is still being applied. Retrying with the same request identifier is safe.",
+          })
+          .pipe(
+            Effect.catchTag("ReservationAccessAdministrationError", (cause) =>
+              Effect.fail(cause).pipe(
+                mapAdministrationApiFailure(mapReservationAccessMutationFailure)
+              )
+            )
+          )
       )
       .handle("findReservation", ({ query }) =>
         administration.findReservationId(query.identifier).pipe(
