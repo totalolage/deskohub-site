@@ -1299,7 +1299,7 @@ describe("AdministrationService", () => {
       },
     ];
     let listReservationsCalls = 0;
-    let linkageQueries = 0;
+    let databaseQueries = 0;
     const administrationLayer = AdministrationService.Default.pipe(
       Layer.provide(
         Layer.mergeAll(
@@ -1308,7 +1308,7 @@ describe("AdministrationService", () => {
             WorkspaceDatabase.of({
               db: {
                 select: () => {
-                  linkageQueries += 1;
+                  databaseQueries += 1;
                   return makeQuery([
                     {
                       customerId: "customer-1",
@@ -1360,7 +1360,8 @@ describe("AdministrationService", () => {
     );
 
     expect(listReservationsCalls).toBe(1);
-    expect(linkageQueries).toBe(1);
+    // The source's linkage and early-setup details, read once.
+    expect(databaseQueries).toBe(2);
     expect(overview.today).toEqual(reservationOverview.today);
     expect(overview.upcoming).toEqual(reservationOverview.upcoming);
     expect(overview.lastSevenDays).toEqual(reservationOverview.lastSevenDays);
@@ -1581,7 +1582,11 @@ describe("AdministrationService", () => {
         }),
     });
 
-    expect(source.reservations).toEqual({ kind: "available", items: [] });
+    expect(source.reservations).toEqual({
+      kind: "available",
+      items: [],
+      earlySetupDetails: new Map(),
+    });
     expect(listCalls).toBe(0);
   });
 
@@ -2188,18 +2193,22 @@ describe("AdministrationService", () => {
       {
         ...booking,
         id: "booking-unflagged-midnight",
-        startDate: "2026-08-10T21:45:00Z",
+        startDate: "2026-08-09T21:45:00Z",
       },
     ];
 
     const result = await loadOverviewReservationActivity({
       linkedIds: bookings.map(({ id }) => id),
       listReservations: () => Effect.succeed(bookings),
-      earlySetupIds: ["booking-setup-from-range-start", "booking-setup-midnight"],
+      earlySetupIds: [
+        "booking-setup-from-range-start",
+        "booking-setup-midnight",
+      ],
     });
 
     expect(result.dates).toEqual([
       { count: 1, date: "2025-08-27" },
+      { count: 1, date: "2026-08-09" },
       { count: 1, date: "2026-08-10" },
     ]);
   });

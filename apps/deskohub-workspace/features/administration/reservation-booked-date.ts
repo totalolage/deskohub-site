@@ -30,13 +30,12 @@ export type EarlySetupDetailsById = ReadonlyMap<
 
 /** The booking's stored details when they move its start. */
 export const getEarlySetupDetails = (
-  reservation: Pick<DotyposReservation, "id">,
+  reservation: { readonly id?: string | undefined },
   detailsById: EarlySetupDetailsById
 ) =>
   Option.getOrUndefined(
-    Option.flatMapNullishOr(
-      decodeDotyposReservationId(reservation.id),
-      (id) => detailsById.get(id)
+    Option.flatMapNullishOr(decodeDotyposReservationId(reservation.id), (id) =>
+      detailsById.get(id)
     )
   );
 
@@ -83,23 +82,29 @@ export const isHeldFromPreviousDateWithEarlySetup = (
 
 /**
  * The bookings, given in Dotypos start order, whose stored details could
- * change that order: those the next booking starts within a setup lead of,
- * since early setup holds a meeting room only that much before its booked
- * start.
+ * change that order: both bookings of each neighbouring pair that start
+ * within a setup lead of each other, since early setup holds a meeting room
+ * only that much before its booked start.
  */
 export const getEarlySetupOrderCandidates = <Booking extends BookedFacts>(
   bookings: readonly Booking[]
-) =>
-  bookings.filter((booking, index) => {
-    const next = bookings[index + 1];
-    return (
-      next !== undefined &&
-      Temporal.Instant.compare(
-        getBookedStart(next),
-        getMeetingRoomBookedStart(getBookedStart(booking))
-      ) <= 0
-    );
-  });
+) => {
+  const startsWithinLead = (
+    booking: Booking | undefined,
+    next: Booking | undefined
+  ) =>
+    booking !== undefined &&
+    next !== undefined &&
+    Temporal.Instant.compare(
+      getBookedStart(next),
+      getMeetingRoomBookedStart(getBookedStart(booking))
+    ) <= 0;
+  return bookings.filter(
+    (booking, index) =>
+      startsWithinLead(booking, bookings[index + 1]) ||
+      startsWithinLead(bookings[index - 1], booking)
+  );
+};
 
 /**
  * The bookings in booked-start order, earliest first; bookings that start
@@ -108,7 +113,7 @@ export const getEarlySetupOrderCandidates = <Booking extends BookedFacts>(
  * starts in between.
  */
 export const sortByBookedStart = <
-  Booking extends BookedFacts & Pick<DotyposReservation, "id">,
+  Booking extends BookedFacts & { readonly id?: string | undefined },
 >(
   bookings: readonly Booking[],
   detailsById: EarlySetupDetailsById

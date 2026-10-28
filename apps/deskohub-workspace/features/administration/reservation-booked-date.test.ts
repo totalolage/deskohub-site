@@ -77,14 +77,41 @@ describe("administration booked dates", () => {
       booking("later", "2026-08-10T08:00:00Z"),
     ];
 
-    expect(
-      getEarlySetupOrderCandidates(bookings).map(({ id }) => id)
-    ).toEqual(["setup", "unflagged", "on-time"]);
+    expect(getEarlySetupOrderCandidates(bookings).map(({ id }) => id)).toEqual([
+      "setup",
+      "unflagged",
+      "on-time",
+      "midnight",
+    ]);
     expect(
       sortByBookedStart(bookings, new Map([["setup", earlySetup]])).map(
         ({ id }) => id
       )
     ).toEqual(["unflagged", "on-time", "setup", "midnight", "later"]);
     expect(sortByBookedStart(bookings, new Map())).toEqual(bookings);
+  });
+
+  test("reads both neighbours' details when two early-setup bookings start close together", () => {
+    const booking = (id: string, startDate: string) => ({
+      ...held(startDate, "2026-08-10T12:00:00Z"),
+      id,
+    });
+    const bookings = [
+      booking("first-setup", "2026-08-10T07:45:00Z"),
+      booking("second-setup", "2026-08-10T07:50:00Z"),
+      booking("later", "2026-08-10T09:00:00Z"),
+    ];
+    const candidates = getEarlySetupOrderCandidates(bookings);
+
+    expect(candidates.map(({ id }) => id)).toEqual([
+      "first-setup",
+      "second-setup",
+    ]);
+    expect(
+      sortByBookedStart(
+        bookings,
+        new Map(candidates.map(({ id }) => [id, earlySetup] as const))
+      ).map(({ id }) => id)
+    ).toEqual(["first-setup", "second-setup", "later"]);
   });
 });

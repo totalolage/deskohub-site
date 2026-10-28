@@ -404,7 +404,8 @@ describe("AudienceFactsService Dotypos bounds", () => {
     ).toEqual([
       { dotyposReservationIds: [reservationId("r1")] },
       { dotyposReservationIds: [reservationId("r1")] },
-      { dotyposReservationIds: [reservationId("r1")] },
+      // The March visit isn't booked in October.
+      { dotyposReservationIds: [] },
       {},
     ]);
   });

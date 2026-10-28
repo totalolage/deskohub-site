@@ -574,8 +574,8 @@ type AdministrationOverviewRow = Pick<
 };
 
 /**
- * Linked Dotypos bookings booked in a range, with the stored details of those
- * early setup could hold from the previous date.
+ * Linked Dotypos bookings booked in a range, with the stored details of the
+ * early-setup meeting rooms among them.
  */
 type AdministrationLinkedBookings = {
   readonly items: readonly DotyposReservation[];
@@ -3507,8 +3507,9 @@ export class AdministrationService extends Context.Service<
        * Listing every Dotypos booking in a range instead costs hundreds of
        * sequential pages on a busy cloud. Dotypos holds an early-setup
        * meeting room from before its booked start, so the read starts that
-       * much earlier, and the bookings early setup could hold from the
-       * previous date read their stored details to decide what stays.
+       * much earlier and the bookings' stored details decide what stays.
+       * The Overview ranks customers by their latest booked start, so every
+       * booking reads its details, in one query.
        */
       const listLinkedBookings = Effect.fn(
         "AdministrationService.listLinkedBookings"
@@ -3530,9 +3531,7 @@ export class AdministrationService extends Context.Service<
         const earlySetupDetails = yield* loadEarlySetupDetails(
           db,
           held.flatMap((reservation) =>
-            isHeldFromPreviousDateWithEarlySetup(reservation)
-              ? Option.toArray(decodeDotyposReservationId(reservation.id))
-              : []
+            Option.toArray(decodeDotyposReservationId(reservation.id))
           )
         );
         return {
