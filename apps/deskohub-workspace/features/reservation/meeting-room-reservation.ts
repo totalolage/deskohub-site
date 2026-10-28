@@ -196,6 +196,9 @@ export const storedMeetingRoomReservationDetailsSchema = Schema.Struct({
   duration: Schema.optionalKey(
     workspaceMeetingRoomProductIdentitySchema.fields.duration
   ),
+  // Dotypos holds the room from the setup start, so the booked start is 15
+  // minutes after the stored Dotypos start.
+  earlySetup: Schema.optionalKey(Schema.Boolean),
 }).annotate({
   identifier: "StoredMeetingRoomReservationDetails",
   description:

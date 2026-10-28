@@ -18,6 +18,7 @@ import {
 import { getMeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
 import { findMeetingRoomReservationDuration } from "@/features/reservation/meeting-room-reservation-time";
 import { getOfficeReservationSelection } from "@/features/reservation/office-reservation";
+import type { StoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
 import type {
   CustomerLastReservation,
   CustomerLastReservationForKind,
@@ -57,9 +58,16 @@ export class CustomerLastReservationService extends Context.Service<
       // None when the row has no Dotypos reservation or Dotypos lost it. Both
       // families then give no last reservation, as does an unreadable
       // interval, and for offices unreadable seats.
-      const readBooked = (
-        dotyposReservationId: DotyposReservationId | null
-      ): Effect.Effect<Option.Option<BookedReservation>, DotyposReadFailure> =>
+      const readBooked = ({
+        dotyposReservationId,
+        reservationDetails,
+      }: {
+        readonly dotyposReservationId: DotyposReservationId | null;
+        readonly reservationDetails: StoredWorkspaceReservationDetails;
+      }): Effect.Effect<
+        Option.Option<BookedReservation>,
+        DotyposReadFailure
+      > =>
         dotyposReservationId
           ? dotypos
               .listReservations({ ids: [dotyposReservationId] })
@@ -67,7 +75,8 @@ export class CustomerLastReservationService extends Context.Service<
                 Effect.map((reservations) =>
                   Option.map(
                     Option.fromUndefinedOr(reservations[0]),
-                    decodeBookedReservation
+                    (reservation) =>
+                      decodeBookedReservation(reservation, reservationDetails)
                   )
                 )
               )
@@ -110,7 +119,7 @@ export class CustomerLastReservationService extends Context.Service<
                   : null
               ),
             "meeting-room": () =>
-              readBooked(row.dotyposReservationId).pipe(
+              readBooked(row).pipe(
                 Effect.map((booked): CustomerLastReservation | null =>
                   booked.pipe(
                     Option.flatMap(({ interval }) => interval),
@@ -127,7 +136,7 @@ export class CustomerLastReservationService extends Context.Service<
                 )
               ),
             office: () =>
-              readBooked(row.dotyposReservationId).pipe(
+              readBooked(row).pipe(
                 Effect.map((booked): CustomerLastReservation | null =>
                   booked.pipe(
                     Option.flatMap(({ interval, seats }) =>

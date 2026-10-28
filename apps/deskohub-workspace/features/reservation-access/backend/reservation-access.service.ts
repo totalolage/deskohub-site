@@ -221,11 +221,15 @@ export class ReservationAccessService extends Context.Service<
                 message: "Reservation access device changed after issuance.",
               });
             }
+            // Later releases record the grant's exact span rather than the
+            // whole hours the lock is programmed with; both compare the same.
+            const grantSchedule = getReservationAccessSchedule({
+              reservedFrom: existingGrant.scheduledAccessStartsAt,
+              reservedUntil: existingGrant.accessEndsAt,
+            });
             if (
-              existingGrant.scheduledAccessStartsAt.equals(
-                schedule.startsAt.toInstant()
-              ) &&
-              existingGrant.accessEndsAt.equals(schedule.endsAt.toInstant())
+              grantSchedule.startsAt.equals(schedule.startsAt) &&
+              grantSchedule.endsAt.equals(schedule.endsAt)
             ) {
               const accessCode = yield* repository
                 .loadIssuedCode({

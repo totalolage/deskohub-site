@@ -246,6 +246,54 @@ describe("ReservationAccessService", () => {
     expect(issueHourlyAlgoPin).not.toHaveBeenCalled();
   });
 
+  test("reuses an issued credential that records its exact span rather than whole hours", async () => {
+    const exactReservation = {
+      reservationId,
+      reservedFrom: Temporal.Instant.from("2099-07-01T08:45:00Z"),
+      reservedUntil: Temporal.Instant.from("2099-07-01T10:30:00Z"),
+    };
+    const exactGrant = {
+      ...grant,
+      scheduledAccessStartsAt: exactReservation.reservedFrom,
+      accessStartsAt: exactReservation.reservedFrom,
+      accessEndsAt: exactReservation.reservedUntil,
+    };
+    const issueHourlyAlgoPin = mock(() =>
+      Effect.die("Igloohome must not be called")
+    );
+    const ensure = mock(() => Effect.die("The grant must not be reset"));
+
+    const issued = await Effect.gen(function* () {
+      const service = yield* ReservationAccessService;
+      return yield* service.issueForReservation(exactReservation);
+    }).pipe(
+      Effect.provide(
+        ReservationAccessService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(ReservationAccessRepository, {
+                findByReservationId: mock(() => Effect.succeed(exactGrant)),
+                ensure,
+                loadIssuedCode: mock(() => Effect.succeed(accessCode)),
+              }),
+              Layer.mock(IgloohomeService, { issueHourlyAlgoPin })
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(issued).toEqual({
+      grantId,
+      accessCode,
+      accessStartsAt: exactReservation.reservedFrom,
+      accessEndsAt: exactReservation.reservedUntil,
+    });
+    expect(ensure).not.toHaveBeenCalled();
+    expect(issueHourlyAlgoPin).not.toHaveBeenCalled();
+  });
+
   test("reissues an issued credential when its rounded reservation schedule changes", async () => {
     const movedReservation = {
       ...reservation,

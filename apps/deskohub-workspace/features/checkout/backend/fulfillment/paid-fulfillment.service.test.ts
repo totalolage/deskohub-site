@@ -201,6 +201,119 @@ describe("WorkspacePaidFulfillmentService", () => {
     });
   });
 
+  test("issues the door code of an early-setup meeting room from its setup start", async () => {
+    const order = {
+      id: "reservation-id",
+      activePaymentAttemptId: "payment-attempt-id",
+      paymentState: "paid",
+      fulfillmentState: "processing",
+      updatedAt: Temporal.Now.instant().subtract({
+        milliseconds: PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS + 1000,
+      }),
+    };
+    const claimed = {
+      ...order,
+      reservationState: "confirmed",
+      fulfillmentState: "processing",
+      dotyposReservationId: "dotypos-reservation-id",
+      dotyposCustomerId: "dotypos-customer-id",
+      activeCustomerEmailDeliveryLocale: null,
+      locale: "en-US",
+    };
+    const emailReservation = {
+      ...claimed,
+      reservationDetails: { kind: "meeting-room", earlySetup: true },
+      customer: { email: testEmailAddressForCustomer },
+      setupFrom: Temporal.Instant.from("2026-07-01T07:45:00.000Z"),
+      reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
+      reservedUntil: Temporal.Instant.from("2026-07-01T10:00:00.000Z"),
+    };
+    const claimPaidFulfillment = mock(() => Effect.succeed(claimed as never));
+    const confirmReservation = mock(() =>
+      Effect.die("already confirmed reservations do not call Dotypos")
+    );
+    const markReservationConfirmed = mock(() =>
+      Effect.die("already confirmed reservations do not update confirmation")
+    );
+    const deliverySteps: string[] = [];
+    const customerEmailDeliveryId = EmailDeliveryIdSchema.make(
+      "accepted-customer-email-delivery"
+    );
+    const sendPaidReservationEmails = mock(() =>
+      Effect.sync(() => {
+        deliverySteps.push("email");
+        return customerEmailDeliveryId;
+      })
+    );
+    const resolveCustomerAccessCode = mock(() =>
+      Effect.sync(() => {
+        deliverySteps.push("access");
+        return "access-code";
+      })
+    );
+    const markFulfilled = mock(() => Effect.void);
+    const processInvoice = mock(() => Effect.void);
+
+    await Effect.gen(function* () {
+      const service = yield* WorkspacePaidFulfillmentService;
+      yield* service.fulfillPaidOrder({ orderId: "reservation-id" });
+    }).pipe(
+      Effect.provide(
+        WorkspacePaidFulfillmentService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              noReservationAuthors,
+              Layer.mock(WorkspaceReservationRepository, {
+                findById: mock(() => Effect.succeed(order as never)),
+                retainActiveCustomerEmailDeliveryLocale: mock(
+                  (input: { readonly locale: "en-US" | "cs-CZ" }) =>
+                    Effect.succeed(input.locale)
+                ),
+                claimPaidFulfillment,
+                markReservationConfirmed,
+                markFulfilled,
+                markFulfillmentFailed: mock(() => Effect.void),
+              }),
+              Layer.mock(DotyposService, {
+                confirmReservation,
+              }),
+              Layer.mock(CustomerEmailLocaleService, {
+                byDotyposCustomer: mock(() =>
+                  Effect.succeed({ kind: "guest" })
+                ),
+              }),
+              Layer.mock(WorkspaceReservationService, {
+                getReservation: mock(() =>
+                  Effect.succeed(emailReservation as never)
+                ),
+              } satisfies IWorkspaceReservationService),
+              Layer.mock(WorkspaceReservationEmailService, {
+                sendPaidReservationEmails,
+              } satisfies IWorkspaceReservationEmailService),
+              Layer.mock(WorkspaceCheckoutAccessCodeService, {
+                resolveCustomerAccessCode,
+              }),
+              Layer.mock(PostHogEventService, {
+                capture: mock(() => Effect.void),
+              }),
+              Layer.mock(ReservationInvoiceService, {
+                processByPaymentAttemptId: processInvoice,
+              })
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(resolveCustomerAccessCode).toHaveBeenCalledWith({
+      reservationId: emailReservation.id,
+      dotyposReservationId: emailReservation.dotyposReservationId,
+      reservedFrom: emailReservation.setupFrom,
+      reservedUntil: emailReservation.reservedUntil,
+    });
+  });
+
   test("hands the reservation's author to the first paid emails only and still fulfills when the author can't be read", async () => {
     const author = {
       kind: "active",
