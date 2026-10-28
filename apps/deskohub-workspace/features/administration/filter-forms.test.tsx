@@ -22,6 +22,7 @@ import {
   OrdersAdministrationFilterForm,
   ReservationsAdministrationFilterForm,
 } from "./filter-forms";
+import { orderListQuery } from "./order-list-query";
 import type { ReservationListQuery } from "./reservation-list-query";
 
 async function expectNativeGetSubmission(form: HTMLFormElement) {
@@ -93,7 +94,7 @@ describe("administration filter forms", () => {
     test("replaces dirty dates with the new server range before GET", async () => {
       const view = render(
         <OrdersAdministrationFilterForm
-          range={{ from: "2026-08-03", to: "2026-08-10" }}
+          query={orderListQuery.parse({ from: "2026-08-03", to: "2026-08-10" })}
         />
       );
       const from = view.getByLabelText("From") as HTMLInputElement;
@@ -102,7 +103,7 @@ describe("administration filter forms", () => {
       fireEvent.change(to, { target: { value: "2026-08-11" } });
       view.rerender(
         <OrdersAdministrationFilterForm
-          range={{ from: "2026-08-03", to: "2026-08-10" }}
+          query={orderListQuery.parse({ from: "2026-08-03", to: "2026-08-10" })}
         />
       );
       expect(from.value).toBe("2026-08-04");
@@ -110,7 +111,7 @@ describe("administration filter forms", () => {
 
       view.rerender(
         <OrdersAdministrationFilterForm
-          range={{ from: "2026-08-05", to: "2026-08-12" }}
+          query={orderListQuery.parse({ from: "2026-08-05", to: "2026-08-12" })}
         />
       );
 

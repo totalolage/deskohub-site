@@ -107,8 +107,8 @@ export type AdministrationListExport<Query> = {
 };
 
 export function defineAdministrationListQuery<
-  Params extends { readonly page?: number },
-  Query extends { readonly page?: number },
+  Params extends object,
+  Query extends object,
 >(
   definition: AdministrationListQueryDefinition<Params, Query> & {
     /** The list's CSV export route. */
@@ -116,14 +116,14 @@ export function defineAdministrationListQuery<
   }
 ): AdministrationListQuery<Query> & AdministrationListExport<Query>;
 export function defineAdministrationListQuery<
-  Params extends { readonly page?: number },
-  Query extends { readonly page?: number },
+  Params extends object,
+  Query extends object,
 >(
   definition: AdministrationListQueryDefinition<Params, Query>
 ): AdministrationListQuery<Query>;
 export function defineAdministrationListQuery<
-  Params extends { readonly page?: number },
-  Query extends { readonly page?: number },
+  Params extends object,
+  Query extends object,
 >({
   exportPath,
   normalize,
@@ -172,7 +172,9 @@ export function defineAdministrationListQuery<
       exportHref: (query: Query) =>
         getHrefWithSearchParams(exportPath, getValues(query)),
       parseExport: (searchParams: SearchParamsRecord) => {
-        const { page: _, ...input } = parse(searchParams);
+        const { page: _, ...input } = parse(searchParams) as Query & {
+          readonly page?: number;
+        };
         return input;
       },
     }),

@@ -30,11 +30,10 @@ import {
 } from "./filter-controls";
 import {
   type OperationFilterValues,
-  type OrderFilterValues,
   operationFilterSchema,
-  orderFilterSchema,
 } from "./filter-schemas";
 import { m } from "./i18n";
+import { type OrderListQuery, orderListQuery } from "./order-list-query";
 import {
   nexiOperationChannels,
   nexiOperationTypes,
@@ -104,17 +103,17 @@ function ReservationDateShortcutLinks({
 }
 
 export function OrdersAdministrationFilterForm({
-  range,
+  query,
 }: {
-  readonly range: DateRangeDefaults;
+  readonly query: OrderListQuery;
 }) {
   const locale = useRouteLocale();
-  const values: OrderFilterValues = { from: range.from, to: range.to };
-  const form = useForm<OrderFilterValues>({
+  const values = orderListQuery.formValues(query);
+  const form = useForm({
     defaultValues: values,
     mode: "onSubmit",
     reValidateMode: "onChange",
-    resolver: effectSchemaResolver(orderFilterSchema),
+    resolver: standardSchemaResolver(orderListQuery.formSchema),
     values,
   });
 
@@ -134,7 +133,7 @@ export function OrdersAdministrationFilterForm({
         <AdministrationFilterInput
           {...form.register("from")}
           aria-invalid={form.formState.errors.from ? true : undefined}
-          defaultValue={range.from}
+          defaultValue={values.from}
           id="order-from"
           type="date"
         />
@@ -146,7 +145,7 @@ export function OrdersAdministrationFilterForm({
         <AdministrationFilterInput
           {...form.register("to")}
           aria-invalid={form.formState.errors.to ? true : undefined}
-          defaultValue={range.to}
+          defaultValue={values.to}
           id="order-to"
           type="date"
         />

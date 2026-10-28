@@ -11,13 +11,6 @@ const optionalCalendarDateField = Schema.Union([
   calendarDateField,
 ]);
 
-export const orderFilterSchema = Schema.Struct({
-  from: optionalCalendarDateField,
-  to: optionalCalendarDateField,
-});
-
-export type OrderFilterValues = typeof orderFilterSchema.Encoded;
-
 const optionalOperationChannelField = Schema.Union([
   Schema.Literal(""),
   Schema.Literals(nexiOperationChannels),

@@ -17,9 +17,9 @@ import {
 import { bookingListQuery } from "./booking-list-query";
 import { customerListQuery } from "./customer-list-query";
 import { formatAdministrationDateTime } from "./formatters";
+import { orderListQuery } from "./order-list-query";
 import {
   getAdministrationOperationFilters,
-  getAdministrationOrderDateTimeBounds,
   getAdministrationPaymentDateTimeBounds,
 } from "./payment-administration-filters";
 import { reservationListQuery } from "./reservation-list-query";
@@ -287,13 +287,7 @@ export const loadAdministrationCustomerReservationActivity = cache(
 
 const getAdministrationOrderRange = async (
   searchParams: AdministrationSearchParams
-) => {
-  const params = await searchParams;
-  return getAdministrationOrderDateTimeBounds(
-    firstParam(params.from),
-    firstParam(params.to)
-  );
-};
+) => orderListQuery.parse(await searchParams);
 
 const loadAdministrationOrderList = async (
   range: ReturnType<typeof getAdministrationOrderRange>
