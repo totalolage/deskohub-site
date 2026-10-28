@@ -5,6 +5,13 @@ import type { CampaignBodyAttributeValue } from "./campaign-body-document";
 /** The width of the template's body column, in CSS pixels. */
 export const campaignBodyColumnWidth = 534;
 
+/**
+ * The widest picture a body image is stored at: twice the body column, sharp
+ * on high-density screens and no heavier than needed, since every recipient
+ * downloads it.
+ */
+export const campaignImageMaxWidth = 2 * campaignBodyColumnWidth;
+
 /** Where an image sits across the body column. */
 const campaignImageAlignments = ["left", "center", "right"] as const;
 export type CampaignImageAlignment = (typeof campaignImageAlignments)[number];

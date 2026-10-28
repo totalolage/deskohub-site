@@ -3,7 +3,6 @@ import inlangSettings from "./project.inlang/settings.json" with {
 };
 import { withBotId } from "botid/next/config";
 import { configureWorkspaceBotId } from "./shared/bot-protection/bot-protection.policy.js";
-import { serverActionBodySizeLimitBytes } from "./shared/utils/server-action-body-limit.js";
 
 const localeRedirectPattern = inlangSettings.locales.join("|");
 const workspaceBotIdVercelEnvironment =
@@ -60,10 +59,11 @@ const nextConfig = {
     // Garbage collection drops unreachable work from it, which slows its growth
     // toward Vercel's 1.5 GB build-cache limit, past which Vercel discards it.
     turbopackGc: true,
-    // Customer avatar and campaign image uploads must fit in it, so each
-    // rejects a larger image itself with its own message.
+    // Customer avatar uploads carry up to 2 MiB of raw image bytes plus the
+    // Server Action / multipart envelope, so the 1 MiB default body limit is
+    // too small; oversized images are rejected by the avatar policy itself.
     serverActions: {
-      bodySizeLimit: serverActionBodySizeLimitBytes,
+      bodySizeLimit: "4mb",
     },
     exposeTestingApiInProductionBuild:
       workspaceBotIdVercelEnvironment === "preview",

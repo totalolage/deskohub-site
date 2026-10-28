@@ -1,25 +1,46 @@
 import "server-only";
 
+import { CloudinaryPublicIdSchema } from "@deskohub/cloudinary";
 import {
-  CloudinaryPublicIdSchema,
-  type CloudinaryUploadError,
-} from "@deskohub/cloudinary";
-import { CloudinaryService } from "@deskohub/cloudinary/server";
+  CloudinaryService,
+  type CloudinarySignedImageUpload,
+} from "@deskohub/cloudinary/server";
 import { Context, Effect, Layer, Schema } from "effect";
 import { env } from "@/env";
 import { WorkspaceCloudinaryLayer } from "@/features/gallery/backend/cloudinary.service";
+import { campaignImageMaxWidth } from "../body/campaign-image";
+
+/**
+ * What Cloudinary does to a body image before it stores it, keeping only the
+ * result: it narrows the picture to `campaignImageMaxWidth`, turns it upright
+ * as its EXIF orientation says, strips its metadata (camera details and GPS
+ * position; the colour profile stays), and recompresses it at quality 85.
+ * `fl_lossy` stores a PNG without an alpha channel as a JPEG, usually far
+ * smaller, and recompresses GIF frames, keeping an animation.
+ */
+export const campaignImageTransformation = `c_limit,fl_force_strip.lossy,q_85,w_${campaignImageMaxWidth}`;
+
+/**
+ * Formats every email client shows, stored as they are. An image in any other
+ * format, such as WebP or HEIC, becomes a PNG, which `fl_lossy` turns into a
+ * JPEG when it has no alpha channel.
+ */
+const campaignImageFormats = ["gif", "jpg", "png"];
+const campaignImageFallbackFormat = "png";
+
+/**
+ * Lets the admin's browser upload one body image straight to Cloudinary,
+ * which stores it as `publicId`. The signature covers the folder, the public
+ * ID and the transformation, so the browser can't change them.
+ */
+export interface CampaignImageUploadAuthorization
+  extends CloudinarySignedImageUpload {
+  readonly publicId: string;
+}
 
 interface ICampaignImageService {
-  /**
-   * Uploads a body image and returns its public Cloudinary URL and its width
-   * in pixels.
-   */
-  readonly upload: (
-    file: File
-  ) => Effect.Effect<
-    { readonly url: string; readonly width: number },
-    CloudinaryUploadError | Schema.SchemaError
-  >;
+  /** Authorizes the upload of one body image under a fresh public ID. */
+  readonly authorizeUpload: Effect.Effect<CampaignImageUploadAuthorization>;
 }
 
 /** Campaign body images in the Deskohub Cloudinary account. */
@@ -31,23 +52,24 @@ export class CampaignImageService extends Context.Service<
     this,
     Effect.gen(function* () {
       const cloudinary = yield* CloudinaryService;
+      const folder = `email-campaigns/${env.VERCEL_ENV}`;
 
-      const upload = Effect.fn("CampaignImageService.upload")(function* (
-        file: File
-      ) {
-        const bytes = yield* Effect.promise(() => file.arrayBuffer());
+      const authorizeUpload = Effect.gen(function* () {
+        // A UUID is never empty, so it is always a public ID.
         const publicId = yield* Schema.decodeEffect(CloudinaryPublicIdSchema)(
           crypto.randomUUID()
-        );
-        const asset = yield* cloudinary.uploadImage({
-          bytes: new Uint8Array(bytes),
+        ).pipe(Effect.orDie);
+        const upload = yield* cloudinary.signImageUpload({
           publicId,
-          folder: `email-campaigns/${env.VERCEL_ENV}`,
+          folder,
+          transformation: campaignImageTransformation,
+          allowedFormats: campaignImageFormats,
+          fallbackFormat: campaignImageFallbackFormat,
         });
-        return { url: asset.secure_url, width: asset.width };
-      });
+        return { ...upload, publicId: `${folder}/${publicId}` };
+      }).pipe(Effect.withSpan("CampaignImageService.authorizeUpload"));
 
-      return { upload } satisfies ICampaignImageService;
+      return { authorizeUpload } satisfies ICampaignImageService;
     })
   );
 

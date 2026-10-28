@@ -20,7 +20,7 @@ import { toCampaignPreviewInput } from "../composer/campaign-composer-fields";
 registerWorkspaceComponentTestEnv();
 
 mock.module("@/features/email-campaigns/admin/editor/actions", () => ({
-  uploadCampaignImage: mock(async () => ({})),
+  authorizeCampaignImageUpload: mock(async () => ({})),
 }));
 
 const { CampaignBodyEditor } = await import("./campaign-body-editor");

@@ -66,6 +66,13 @@ Admin email campaigns live in `apps/deskohub-workspace/features/email-campaigns/
 - Test emails go only through `EmailService.send`, with `[TEST]` subjects and the code above the body. They create no send rows. Outside production the code is also logged, because preview inboxes are Console-only.
 - `EMAIL_CAMPAIGN_FROM`, `EMAIL_CAMPAIGN_REPLY_TO`, and `EMAIL_CAMPAIGN_ADMIN_INBOX` configure the sender and the admin inbox. Production fails campaign operations with `CampaignEmailNotConfigured` until all three are set. Elsewhere unset values fall back to `@deskohub.test` addresses.
 
+## Body images
+
+- The editor uploads a body image straight from the admin's browser to Cloudinary; no image bytes pass through a Server Action or Vercel. `authorizeCampaignImageUpload` (admins only) returns `CampaignImageService.authorizeUpload`: fields signed by `CloudinaryService.signImageUpload` with `api_sign_request`, valid for an hour.
+- The signature fixes the folder `email-campaigns/<VERCEL_ENV>`, a fresh UUID public ID, `overwrite=false`, `allowed_formats=gif,jpg,png` with `format=png` for anything else, and the incoming transformation `campaignImageTransformation` (`c_limit,fl_force_strip.lossy,q_85,w_1068`). Incoming transformations keep metadata unless `fl_force_strip` is set; `fl_lossy` stores a PNG without an alpha channel as a JPEG. `resource_type` isn't signed, but save-time rules accept only `/<cloud>/image/` URLs.
+- Only a file above the account plan's `media_limits` (Free: 10 MiB, 25 MP; read with one Admin API `usage` call) is first shrunk on a canvas in the browser (`shared/browser/image-downscaling.ts`). An animated GIF shrunk that way keeps only its first frame.
+- The editor accepts an answer only for the authorized public ID with a valid width. Save-time rules (`isCampaignImageSource`) stay the gate for every adapter.
+
 ## Automation engine timing
 
 - The planner ticks every `emailAutomationTickMinutes` (`@deskohub/workspace-admin-api`). Units it plans run from the queue seconds later, still within the tick.

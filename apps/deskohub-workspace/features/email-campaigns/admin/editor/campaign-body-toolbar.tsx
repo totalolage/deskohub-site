@@ -46,15 +46,16 @@ import {
   TooltipTrigger,
 } from "@/shared/components/ui/tooltip";
 import { cn } from "@/shared/utils";
-import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import {
   type CampaignImageAlignment,
   defaultCampaignImageAlignment,
   isCampaignImageAlignment,
   isCampaignImageWidth,
 } from "../../body/campaign-image";
-import { uploadCampaignImage } from "./actions";
-import { prepareCampaignImage } from "./campaign-image-preparation";
+import {
+  type CampaignImageUploadStage,
+  uploadCampaignImage,
+} from "./campaign-image-upload";
 import { normalizeCampaignLinkHref } from "./campaign-link-href";
 import { CtaButtonDialog, type CtaButtonValues } from "./cta-button-dialog";
 
@@ -563,35 +564,17 @@ function ImageUploadControl({
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string>();
-  // Checking whether a file fits takes a moment, and shrinking it longer;
-  // either way the editor takes no other image meanwhile.
-  const [preparation, setPreparation] = useState<
-    "idle" | "checking" | "shrinking"
-  >("idle");
-  const upload = useWorkspaceAction(uploadCampaignImage, {
-    onSuccess: ({ data }) => {
-      setError(undefined);
-      editor
-        ?.chain()
-        .focus()
-        .setImage({ src: data.url, alt: "", width: data.width })
-        .run();
-    },
-    onError: ({ error }) =>
-      setError(
-        error.serverError ??
-          error.validationErrors?.formErrors?.[0] ??
-          m.emailCampaignsImageUploadFailed({}, { locale })
-      ),
-  });
+  // The editor takes no other image until this one is in or has failed.
+  const [stage, setStage] = useState<CampaignImageUploadStage>();
   const progress =
-    preparation === "shrinking"
+    stage &&
+    (stage === "shrinking"
       ? m.emailCampaignsImageShrinking({}, { locale })
-      : upload.isExecuting && m.emailCampaignsImageUploading({}, { locale });
-  const busy = preparation !== "idle" || upload.isExecuting;
+      : m.emailCampaignsImageUploading({}, { locale }));
+  const busy = stage !== undefined;
 
-  // Leaving the editor while an image is still being shrunk drops it, so no
-  // upload starts for an editor that's gone.
+  // Leaving the editor while an image is still uploading drops it, so none
+  // is inserted into an editor that's gone.
   const lifetime = useRef<AbortSignal>(undefined);
   useEffect(() => {
     const mounted = new AbortController();
@@ -602,29 +585,26 @@ function ImageUploadControl({
   const uploadImage = (file: File) => {
     if (!lifetime.current) return;
     setError(undefined);
-    setPreparation("checking");
-    // A file that already fits goes straight to the upload, so it skips the
-    // shrinking message.
-    void prepareCampaignImage(
-      file,
-      locale,
-      Effect.sync(() => setPreparation("shrinking"))
+    setStage("uploading");
+    void uploadCampaignImage(file, locale, (next) =>
+      Effect.sync(() => setStage(next))
     ).pipe(
-      Effect.flatMap((prepared) =>
+      Effect.flatMap((uploaded) =>
         Effect.sync(() => {
-          setPreparation("idle");
-          Result.match(prepared, {
-            onSuccess: (image) => {
-              const formData = new FormData();
-              formData.set("file", image);
-              upload.execute(formData);
-            },
+          setStage(undefined);
+          Result.match(uploaded, {
+            onSuccess: ({ url, width }) =>
+              editor
+                ?.chain()
+                .focus()
+                .setImage({ src: url, alt: "", width })
+                .run(),
             onFailure: setError,
           });
         })
       ),
       runWorkspaceBrowserEffectUntilAbort(
-        "email-campaigns.admin.prepare-image",
+        "email-campaigns.admin.upload-image",
         lifetime.current
       )
     );
@@ -644,8 +624,7 @@ function ImageUploadControl({
         )}
       </ToolbarButton>
       <input
-        // Any picture the browser can decode; the editor converts the ones
-        // the upload doesn't take.
+        // Any picture: Cloudinary converts the ones email clients can't show.
         accept="image/*"
         className="sr-only"
         onChange={(event) => {

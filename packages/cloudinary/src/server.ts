@@ -6,6 +6,8 @@ export {
 export {
   type CloudinaryImageUploadInput,
   CloudinaryService,
+  type CloudinarySignedImageUpload,
+  type CloudinarySignedImageUploadInput,
   getGalleryImages,
   type ICloudinaryService,
 } from "./service";

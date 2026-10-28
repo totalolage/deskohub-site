@@ -145,7 +145,6 @@
         "@effect/opentelemetry": "4.0.0-beta.85",
         "@effect/platform-node": "4.0.0-beta.85",
         "@effect/sql-pg": "4.0.0-beta.85",
-        "@imagemagick/magick-wasm": "0.0.45",
         "@inlang/paraglide-js": "^2.26.0",
         "@js-temporal/polyfill": "^0.5.1",
         "@modelcontextprotocol/ext-apps": "^2.0.3",
@@ -941,8 +940,6 @@
     "@humanwhocodes/module-importer": ["@humanwhocodes/module-importer@1.0.1", "", {}, "sha512-bxveV4V8v5Yb4ncFTT3rPSgZBOpCkjfK0y4oVVVJwIuDVBRMDXrPyXRL988i5ap9m9bnyEEjWfm5WkBmtffLfA=="],
 
     "@humanwhocodes/retry": ["@humanwhocodes/retry@0.4.3", "", {}, "sha512-bV0Tgo9K4hfPCek+aMAn81RppFKv2ySDQeMoSZuvTASywNTnVJCArCZE2FWqpvIatKu7VMRLWlR1EazvVhDyhQ=="],
-
-    "@imagemagick/magick-wasm": ["@imagemagick/magick-wasm@0.0.45", "", {}, "sha512-ef8FHka4xLWo5/tGTV6P45bPjTvnKZz/oHN6sCDTbY8zaCdM2MeaoQHLsy9IHuiVHQhomG3TQ6ErgTnEDyuzvw=="],
 
     "@img/colour": ["@img/colour@1.1.0", "", {}, "sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ=="],
 

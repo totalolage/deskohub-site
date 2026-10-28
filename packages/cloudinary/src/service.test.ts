@@ -87,8 +87,25 @@ const fakeHttpClientLayer = FetchHttpClient.layer.pipe(
   Layer.provide(Layer.succeed(FetchHttpClient.Fetch, fakeFetch))
 );
 
+const signCalls: {
+  params: Record<string, unknown>;
+  apiSecret: string;
+}[] = [];
+
 const cloudinary = {
   config: mock(() => undefined),
+  utils: {
+    api_url: mock(
+      (action: string, options: Record<string, unknown>) =>
+        `https://api.cloudinary.test/v1_1/${String(options.cloud_name)}/${String(options.resource_type)}/${action}`
+    ),
+    api_sign_request: mock(
+      (params: Record<string, unknown>, apiSecret: string) => {
+        signCalls.push({ params: { ...params }, apiSecret });
+        return "fake-upload-signature";
+      }
+    ),
+  },
   url: mock((source: string, options: Record<string, unknown>) => {
     urlCalls.push({ source, options: { ...options } });
 
@@ -577,6 +594,44 @@ describe("CloudinaryService uploads", () => {
 
     expect(result).toEqual(uploadedAsset);
     expect(uploadAttempts).toBe(3);
+  });
+});
+
+describe("CloudinaryService signed uploads", () => {
+  test("signs every field the browser sends except the file and API key", async () => {
+    signCalls.length = 0;
+    const service = await makeService();
+    const upload = await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* TestClock.setTime(1_767_225_600_500);
+        return yield* service.signImageUpload({
+          publicId: cloudinaryPublicId("4f1c0b9e"),
+          folder: "email-campaigns/preview",
+          transformation: "c_limit,w_1068",
+          allowedFormats: ["gif", "jpg", "png"],
+          fallbackFormat: "png",
+        });
+      }).pipe(Effect.provide(TestClock.layer()))
+    );
+
+    const signed = {
+      allowed_formats: "gif,jpg,png",
+      folder: "email-campaigns/preview",
+      format: "png",
+      overwrite: "false",
+      public_id: "4f1c0b9e",
+      timestamp: "1767225600",
+      transformation: "c_limit,w_1068",
+    };
+    expect(signCalls).toEqual([{ params: signed, apiSecret: "api-secret" }]);
+    expect(upload).toEqual({
+      url: "https://api.cloudinary.test/v1_1/cloud-name/image/upload",
+      fields: {
+        ...signed,
+        api_key: "api-key",
+        signature: "fake-upload-signature",
+      },
+    });
   });
 });
 

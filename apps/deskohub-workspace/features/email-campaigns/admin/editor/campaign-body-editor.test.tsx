@@ -1,4 +1,12 @@
-import { afterAll, afterEach, expect, mock, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
 import {
   act,
   cleanup,
@@ -7,7 +15,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { Editor } from "@tiptap/core";
-import { Effect, Result } from "effect";
+import { Effect, Option } from "effect";
 import { m } from "@/features/administration/i18n";
 import {
   registerWorkspaceComponentTestEnv,
@@ -17,44 +25,61 @@ import type { CampaignBodyNode } from "../../body/campaign-body-document";
 
 registerWorkspaceComponentTestEnv();
 
-const uploadCampaignImage = mock(async (_form: FormData) => ({
-  data: {
-    url: "https://res.cloudinary.com/cloud/image/upload/v1/campaigns/new.png",
-    width: 640,
-  },
-}));
+const authorization = {
+  url: "https://api.cloudinary.test/v1_1/cloud/image/upload",
+  fields: { public_id: "4f1c0b9e", signature: "fake-upload-signature" },
+  publicId: "email-campaigns/preview/4f1c0b9e",
+};
+const storedImage = {
+  public_id: authorization.publicId,
+  secure_url:
+    "https://res.cloudinary.com/cloud/image/upload/v1/email-campaigns/preview/4f1c0b9e.png",
+  width: 1068,
+};
+
+/** Authorizes the upload as the test needs; by default it's granted. */
+let authorize = async (): Promise<{
+  readonly data?: typeof authorization;
+  readonly serverError?: string;
+}> => ({ data: authorization });
 
 mock.module("@/features/email-campaigns/admin/editor/actions", () => ({
-  uploadCampaignImage,
+  authorizeCampaignImageUpload: () => authorize(),
 }));
 
-/** Prepares an image as the test needs; by default it's used as it is. */
-let prepareImage = (
-  file: File,
-  _onShrinking: Effect.Effect<void>
-): Effect.Effect<Result.Result<File, string>> =>
-  Effect.succeed(Result.succeed(file));
+/** The picture's size as the browser reads it; by default a small one. */
+let pictureSize = Option.some({ width: 800, height: 600 });
 
-mock.module(
-  "@/features/email-campaigns/admin/editor/campaign-image-preparation",
-  () => ({
-    prepareCampaignImage: (
-      file: File,
-      _locale: string,
-      onShrinking: Effect.Effect<void> = Effect.void
-    ) => prepareImage(file, onShrinking),
-  })
-);
+mock.module("@/shared/browser/image-size", () => ({
+  readImageSize: () => Effect.sync(() => pictureSize),
+}));
+
+/** Shrinks a picture as the test needs; by default at once. */
+const shrunkImage = new Blob([new Uint8Array(2)], { type: "image/jpeg" });
+let downscale = (): Effect.Effect<Blob> => Effect.succeed(shrunkImage);
+
+mock.module("@/shared/browser/image-downscaling", () => ({
+  downscaleImage: () => downscale(),
+}));
+
+/** Cloudinary's answer; by default the stored image. */
+const fetchSpy = spyOn(globalThis, "fetch");
+const answerStored = () =>
+  fetchSpy.mockImplementation(async () => Response.json(storedImage));
 
 const { CampaignBodyEditor } = await import("./campaign-body-editor");
-const defaultPrepareImage = prepareImage;
+const defaults = { authorize, pictureSize, downscale };
 
+beforeEach(answerStored);
 afterEach(() => {
   cleanup();
-  uploadCampaignImage.mockClear();
-  prepareImage = defaultPrepareImage;
+  fetchSpy.mockReset();
+  ({ authorize, pictureSize, downscale } = defaults);
 });
-afterAll(unregisterWorkspaceComponentTestEnv);
+afterAll(() => {
+  fetchSpy.mockRestore();
+  unregisterWorkspaceComponentTestEnv();
+});
 
 const locale = "en-US";
 
@@ -180,27 +205,6 @@ test("aligns the selected image and keeps its width", async () => {
   });
 });
 
-test("inserts an uploaded image centered at its width", async () => {
-  const { view, changes } = await renderEditor();
-  const input =
-    view.container.querySelector<HTMLInputElement>('input[type="file"]');
-
-  fireEvent.change(input!, {
-    target: {
-      files: [new File([new Uint8Array(3)], "new.png", { type: "image/png" })],
-    },
-  });
-
-  await waitFor(() =>
-    expect(changes.at(-1)?.content).toContainEqual(
-      expect.objectContaining({
-        type: "image",
-        attrs: expect.objectContaining({ align: "center", width: 640 }),
-      })
-    )
-  );
-});
-
 const chooseImage = (view: ReturnType<typeof render>, file: File) => {
   const input =
     view.container.querySelector<HTMLInputElement>('input[type="file"]');
@@ -212,84 +216,121 @@ const insertButton = (view: ReturnType<typeof render>) =>
     name: m.emailCampaignsImageUploadInsert({}, { locale }),
   });
 
-test("uploads the image as prepared, not as chosen", async () => {
-  const shrunk = new File([new Uint8Array(2)], "big.jpg", {
-    type: "image/jpeg",
-  });
-  prepareImage = () => Effect.succeed(Result.succeed(shrunk));
-  const { view } = await renderEditor();
+const postedFile = (call = 0) => {
+  const form = fetchSpy.mock.calls[call]?.[1]?.body;
+  return form instanceof FormData ? form.get("file") : null;
+};
 
-  chooseImage(
-    view,
-    new File([new Uint8Array(3)], "big.png", { type: "image/png" })
+const png = (name = "new.png") =>
+  new File([new Uint8Array(3)], name, { type: "image/png" });
+
+test("uploads an image straight to Cloudinary and inserts it centered at its stored width", async () => {
+  const { view, changes } = await renderEditor();
+
+  chooseImage(view, png());
+
+  await waitFor(() =>
+    expect(changes.at(-1)?.content).toContainEqual(
+      expect.objectContaining({
+        type: "image",
+        attrs: expect.objectContaining({
+          src: storedImage.secure_url,
+          align: "center",
+          width: 1068,
+        }),
+      })
+    )
   );
-
-  await waitFor(() => expect(uploadCampaignImage).toHaveBeenCalledTimes(1));
-  expect(uploadCampaignImage.mock.calls[0]?.[0].get("file")).toBe(shrunk);
+  expect(fetchSpy).toHaveBeenCalledTimes(1);
+  expect(fetchSpy.mock.calls[0]?.[0]).toBe(authorization.url);
+  const posted = postedFile();
+  expect(posted instanceof Blob && posted.size).toBe(3);
 });
 
-test("shows the editor busy while it shrinks an image", async () => {
-  const { promise: shrunk, resolve: finishShrinking } =
-    Promise.withResolvers<void>();
-  prepareImage = (file, onShrinking) =>
-    onShrinking.pipe(
-      Effect.andThen(Effect.promise(() => shrunk)),
-      Effect.as(Result.succeed(file))
-    );
-  const { view } = await renderEditor();
+test("shows the editor busy until Cloudinary has stored the image", async () => {
+  const { promise: stored, resolve: store } = Promise.withResolvers<void>();
+  fetchSpy.mockImplementation(async () => {
+    await stored;
+    return Response.json(storedImage);
+  });
+  const { view, changes } = await renderEditor();
 
-  chooseImage(
-    view,
-    new File([new Uint8Array(3)], "big.png", { type: "image/png" })
-  );
+  chooseImage(view, png());
 
   const busy = await waitFor(() => {
     const button = view.getByRole("button", {
-      name: m.emailCampaignsImageShrinking({}, { locale }),
+      name: m.emailCampaignsImageUploading({}, { locale }),
     });
     expect(button).toHaveProperty("disabled", true);
     return button;
   });
   expect(view.getByRole("status").textContent).not.toBe("");
-  expect(uploadCampaignImage).not.toHaveBeenCalled();
 
-  finishShrinking();
+  store();
 
-  await waitFor(() => expect(uploadCampaignImage).toHaveBeenCalledTimes(1));
   await waitFor(() =>
     expect(busy.isConnected && insertButton(view)).toBeTruthy()
   );
+  expect(changes.at(-1)?.content).toContainEqual(
+    expect.objectContaining({ type: "image" })
+  );
 });
 
-test("takes no other image while it checks whether one fits", async () => {
-  prepareImage = () => Effect.never;
+test("shrinks an image above the account's limits first, showing the editor busy", async () => {
+  pictureSize = Option.some({ width: 6000, height: 5000 });
+  const { promise: shrunk, resolve: finishShrinking } =
+    Promise.withResolvers<void>();
+  downscale = () => Effect.promise(() => shrunk).pipe(Effect.as(shrunkImage));
   const { view } = await renderEditor();
 
-  chooseImage(
-    view,
-    new File([new Uint8Array(3)], "new.png", { type: "image/png" })
-  );
+  chooseImage(view, png("big.png"));
 
   await waitFor(() =>
-    expect(insertButton(view)).toHaveProperty("disabled", true)
+    expect(
+      view.getByRole("button", {
+        name: m.emailCampaignsImageShrinking({}, { locale }),
+      })
+    ).toHaveProperty("disabled", true)
   );
-  expect(view.getByRole("status").textContent).toBe("");
+  expect(fetchSpy).not.toHaveBeenCalled();
+
+  finishShrinking();
+
+  await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+  const posted = postedFile();
+  expect(posted instanceof Blob && posted.size).toBe(shrunkImage.size);
+  await waitFor(() => expect(insertButton(view)).toBeTruthy());
 });
 
-test("says why an image can't be used and uploads nothing", async () => {
+test("says the image can't be read when Cloudinary refuses it, and inserts nothing", async () => {
+  fetchSpy.mockImplementation(async () =>
+    Response.json({ error: { message: "Invalid image file" } }, { status: 400 })
+  );
+  const { view, changes } = await renderEditor();
+  const before = changes.length;
+
+  chooseImage(view, png("broken.png"));
+
+  await waitFor(() =>
+    expect(view.getByRole("status").textContent).toBe(
+      m.emailCampaignsImageUploadUnreadable({}, { locale })
+    )
+  );
+  expect(changes.slice(before)).toEqual([]);
+  expect(insertButton(view)).toHaveProperty("disabled", false);
+});
+
+test("uploads nothing when the upload isn't authorized", async () => {
   const reason = "synthetic reason";
-  prepareImage = () => Effect.succeed(Result.fail(reason));
+  authorize = async () => ({ serverError: reason });
   const { view } = await renderEditor();
 
-  chooseImage(
-    view,
-    new File([new Uint8Array(3)], "broken.png", { type: "image/png" })
-  );
+  chooseImage(view, png());
 
   await waitFor(() =>
     expect(view.getByRole("status").textContent).toBe(reason)
   );
-  expect(uploadCampaignImage).not.toHaveBeenCalled();
+  expect(fetchSpy).not.toHaveBeenCalled();
   expect(insertButton(view)).toHaveProperty("disabled", false);
 });
 
