@@ -5,13 +5,15 @@ import { testEmailAddress } from "@deskohub/test-email";
 import {
   type AdministrationAssistantConnectionIdType,
   type AdministrationChannel,
+  CliMutationInProgress,
+  CliMutationRequestId,
   CliSessionId,
   CliSessionUnauthorized,
   type CurrentAdministrationCaller,
 } from "@deskohub/workspace-admin-api";
 import { NodeHttpServer } from "@effect/platform-node";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Effect, Layer, Logger, Option, type Schema } from "effect";
+import { Effect, Layer, Logger, Option, Schema } from "effect";
 import { HttpRouter } from "effect/unstable/http";
 import { StandaloneAccessCodeAdministration } from "@/features/access-codes";
 import type { AgentScope } from "@/features/account/agent-scopes";
@@ -28,10 +30,10 @@ import {
 } from "@/features/account/customer-account";
 import { InvoiceAdministrationService } from "@/features/accounting/admin/invoice-administration.service";
 import { AdministrationActionLog } from "@/features/admin-cli/administration-action-log.service";
+import { AdministrationRequestLedger } from "@/features/admin-cli/administration-request-ledger.service";
 import { CliAuthentication } from "@/features/admin-cli/cli-authentication.service";
 import { CliAuthenticationAdmission } from "@/features/admin-cli/cli-authentication-admission.service";
 import { CliClientCompatibilityLive } from "@/features/admin-cli/cli-client-version";
-import { AdministrationRequestLedger } from "@/features/admin-cli/administration-request-ledger.service";
 import {
   CliBearerAuthenticationLive,
   CliSessionAdministrationAuthenticationLive,
@@ -301,6 +303,15 @@ const makeInstanceServices = () => {
     }),
     Layer.succeed(AdministrationRequestLedger, {
       applyOnce: () => Effect.die("Unused CLI mutation ledger"),
+      applyOnceWithEffects: () =>
+        Effect.fail(
+          new CliMutationInProgress({
+            message: "This mutation is already in progress.",
+            requestId: Schema.decodeUnknownSync(CliMutationRequestId)(
+              "01980000-0000-7000-8000-0000000000b1"
+            ),
+          })
+        ),
       claim: () => Effect.succeed({ kind: "in-progress" as const }),
       complete: () => Effect.void,
       reclaimStale: () => Effect.succeed(false),

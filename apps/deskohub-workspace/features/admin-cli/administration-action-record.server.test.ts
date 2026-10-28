@@ -7,6 +7,7 @@ import {
   type AdministrationAssistantConnectionIdType,
   AdministrationAuthentication,
   type AdministrationChannel,
+  CliMutationRejected,
   CliSessionId,
   CurrentAdministrationCaller,
   WorkspaceAdminApi,
@@ -34,6 +35,7 @@ import {
   AdministrationActionLog,
 } from "./administration-action-log.service";
 import { AdministrationActionRecordLive } from "./administration-action-record.server";
+import { AdministrationRequestLedger } from "./administration-request-ledger.service";
 import {
   cliSessionAdministrator,
   UnusedCliSessionAuthentication,
@@ -41,7 +43,6 @@ import {
 import { CliAuthentication } from "./cli-authentication.service";
 import { CliAuthenticationAdmission } from "./cli-authentication-admission.service";
 import { CliClientCompatibilityLive } from "./cli-client-version";
-import { AdministrationRequestLedger } from "./administration-request-ledger.service";
 import { makeWorkspaceAdminApiLayer } from "./workspace-admin-api.server";
 
 const sessionChannel: AdministrationChannel = {
@@ -383,7 +384,12 @@ describe("administration action record", () => {
     const { events, layer } = makeActionLog();
     const handler = serve({
       actionLog: layer,
-      idempotency: { claim: () => Effect.succeed({ kind: "mismatch" }) },
+      idempotency: {
+        applyOnceWithEffects: () =>
+          Effect.fail(
+            new CliMutationRejected({ message: "This mutation was rejected." })
+          ),
+      },
     });
     const body = {
       requestId: "01980000-0000-7000-8000-0000000000b1",

@@ -85,6 +85,12 @@ import {
   mapAdministrationApiFailure,
   mapServiceFailure,
 } from "./administration-api-failure";
+import { discountMutationRecovery } from "./administration-mutation-recovery";
+import {
+  AdministrationRequestLedger,
+  mutationScopeOf,
+  StoredResult,
+} from "./administration-request-ledger.service";
 import { AdminCliAdministratorsApiHandlers } from "./administrators-api.server";
 import { CliAuthentication } from "./cli-authentication.service";
 import { CliAuthenticationAdmission } from "./cli-authentication-admission.service";
@@ -92,10 +98,6 @@ import {
   CliClientCompatibilityLive,
   minimumDhwVersions,
 } from "./cli-client-version";
-import {
-  AdministrationRequestLedger,
-  mutationScopeOf,
-} from "./administration-request-ledger.service";
 import { AdminCliAutomationsApiHandlers } from "./email-automations-api.server";
 import { AdminCliCampaignsApiHandlers } from "./email-campaigns-api.server";
 
@@ -223,9 +225,7 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
               mutation: payload.mutation,
             },
           };
-          const claim = yield* ledger
-            .claim(request)
-            .pipe(mapServiceFailure);
+          const claim = yield* ledger.claim(request).pipe(mapServiceFailure);
           const applyMutation = reservationAccess
             .mutate({
               reservationId: params.reservationId,
@@ -242,9 +242,7 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
               ),
               mapAdministrationApiFailure(mapReservationAccessMutationFailure),
               Effect.tap((result) =>
-                ledger
-                  .complete({ ...request, result })
-                  .pipe(mapServiceFailure)
+                ledger.complete({ ...request, result }).pipe(mapServiceFailure)
               )
             );
           const resumeInterruptedMutation = Effect.gen(function* () {
@@ -271,9 +269,7 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
               .pipe(
                 Effect.map(toCliReservationAccessGrant),
                 Effect.tapError(() =>
-                  ledger
-                    .release(request)
-                    .pipe(Effect.catch(() => Effect.void))
+                  ledger.release(request).pipe(Effect.catch(() => Effect.void))
                 ),
                 mapAdministrationApiFailure(
                   mapReservationAccessMutationFailure
@@ -572,9 +568,7 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
             return yield* executeCreation;
           });
 
-          const claim = yield* ledger
-            .claim(request)
-            .pipe(mapServiceFailure);
+          const claim = yield* ledger.claim(request).pipe(mapServiceFailure);
 
           return yield* Match.value(claim).pipe(
             Match.discriminatorsExhaustive("kind")({
@@ -619,64 +613,19 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
             .pipe(mapServiceFailure);
         })
       )
-      .handle(
-        "mutateDiscounts",
-        Effect.fn(function* ({ payload }) {
-          const caller = yield* CurrentAdministrationCaller;
-          const request = {
-            scope: mutationScopeOf(caller.channel),
-            requestId: payload.requestId,
-            mutation: payload.mutation,
-          };
-          const claim = yield* ledger
-            .claim(request)
-            .pipe(mapServiceFailure);
-
-          return yield* Match.value(claim).pipe(
-            Match.discriminatorsExhaustive("kind")({
-              claimed: () =>
-                executeDiscountAdminMutation(payload.mutation).pipe(
-                  Effect.provideService(DiscountAdministration, discounts),
-                  mapAdministrationApiFailure(mapDiscountMutationFailure),
-                  Effect.tap(() =>
-                    refreshCalendarDiscountSourceAfterMutation(payload.mutation)
-                  ),
-                  Effect.tapError((cause) =>
-                    cause instanceof CliResourceNotFound ||
-                    cause instanceof CliMutationRejected
-                      ? ledger
-                          .release(request)
-                          .pipe(Effect.catch(() => Effect.void))
-                      : Effect.void
-                  ),
-                  Effect.tap((result) =>
-                    ledger
-                      .complete({ ...request, result })
-                      .pipe(mapServiceFailure)
-                  )
-                ),
-              completed: ({ result }) =>
-                Schema.decodeUnknownEffect(
-                  AdministrationDiscountMutationResult
-                )(result).pipe(
-                  mapServiceFailure,
-                  Effect.tap(() =>
-                    refreshCalendarDiscountSourceAfterMutation(payload.mutation)
-                  )
-                ),
-              "in-progress": () =>
-                new CliMutationInProgress({
-                  requestId: payload.requestId,
-                  message:
-                    "This mutation is still being applied. Retrying with the same request identifier is safe.",
-                }),
-              mismatch: () =>
-                new CliMutationRejected({
-                  message:
-                    "This mutation request identifier was already used for different input.",
-                }),
-            })
-          );
+      .handle("mutateDiscounts", ({ payload }) =>
+        ledger.applyOnceWithEffects({
+          requestId: payload.requestId,
+          mutation: payload.mutation,
+          stored: StoredResult.unchanged(AdministrationDiscountMutationResult),
+          apply: executeDiscountAdminMutation(payload.mutation).pipe(
+            Effect.provideService(DiscountAdministration, discounts),
+            mapAdministrationApiFailure(mapDiscountMutationFailure)
+          ),
+          afterSettled: refreshCalendarDiscountSourceAfterMutation(
+            payload.mutation
+          ),
+          recovery: discountMutationRecovery,
         })
       )
       .handle(

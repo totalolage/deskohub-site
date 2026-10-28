@@ -84,15 +84,18 @@ import {
   type ReservationProductDetailsBackfillBatch,
 } from "@/features/reservation/backend/reservation-product-details-backfill.service";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import { discountMutationRecovery } from "./administration-mutation-recovery";
+import { AdministrationRequestLedger } from "./administration-request-ledger.service";
 import {
+  ClaimEveryCliMutation,
   DiscardedAdministrationActionLog,
+  recordingRequestLedger,
   UnrecordedAdministrationActions,
   UnusedCliSessionAuthentication,
 } from "./cli-api.test-utils";
 import { CliAuthentication } from "./cli-authentication.service";
 import { CliAuthenticationAdmission } from "./cli-authentication-admission.service";
 import { CliClientCompatibilityLive } from "./cli-client-version";
-import { AdministrationRequestLedger } from "./administration-request-ledger.service";
 import {
   AdminCliAdministrationApiHandlers,
   AdminCliApiHandlers,
@@ -133,13 +136,6 @@ const UnusedReservationProductDetailsBackfill = Layer.succeed(
   ReservationProductDetailsBackfill,
   { runBatch: () => Effect.die("not expected") }
 );
-const ClaimEveryCliMutation = Layer.succeed(AdministrationRequestLedger, {
-  applyOnce: () => Effect.die("Unused CLI mutation ledger"),
-  claim: () => Effect.succeed({ kind: "claimed" as const }),
-  complete: () => Effect.void,
-  reclaimStale: () => Effect.succeed(false),
-  release: () => Effect.void,
-});
 const UnusedReservationAccessAdministration = Layer.succeed(
   ReservationAccessAdministration,
   {} as ReservationAccessAdministration["Service"]
@@ -433,7 +429,14 @@ describe("Workspace Admin API", () => {
               ),
       });
     const sessionOwners: Array<string> = [];
-    const ledgerScopes: Array<unknown> = [];
+    const ledger = recordingRequestLedger(
+      new CliMutationInProgress({
+        message: "Mutation is already running.",
+        requestId: Schema.decodeUnknownSync(CliMutationRequestId)(
+          "01980000-0000-7000-8000-0000000000b1"
+        ),
+      })
+    );
     const services = Layer.mergeAll(
       Layer.succeed(CliAuthentication, {
         ...({} as CliAuthentication["Service"]),
@@ -443,17 +446,7 @@ describe("Workspace Admin API", () => {
             return [];
           }),
       }),
-      Layer.succeed(AdministrationRequestLedger, {
-        applyOnce: () => Effect.die("Unused CLI mutation ledger"),
-        claim: (request) =>
-          Effect.sync(() => {
-            ledgerScopes.push(request.scope);
-            return { kind: "in-progress" as const };
-          }),
-        complete: () => Effect.void,
-        reclaimStale: () => Effect.succeed(false),
-        release: () => Effect.void,
-      }),
+      ledger.layer,
       Layer.succeed(CliAuthenticationAdmission, {} as never),
       Layer.succeed(AdministrationService, {} as never),
       Layer.succeed(AdministratorRoster, {} as never),
@@ -497,7 +490,7 @@ describe("Workspace Admin API", () => {
 
     for (const order of [instances, [...instances].reverse()]) {
       sessionOwners.length = 0;
-      ledgerScopes.length = 0;
+      ledger.requests.length = 0;
       const memoMap = Layer.makeMemoMapUnsafe();
       const handlers = Object.fromEntries(
         instances.map((instance) => [
@@ -548,7 +541,7 @@ describe("Workspace Admin API", () => {
           (instance) => callerOf(instance).actor.accountId
         )
       );
-      expect(ledgerScopes).toEqual(
+      expect(ledger.requests.map((request) => request.channel)).toEqual(
         [...order, order[0]].map((instance) => callerOf(instance).channel)
       );
     }
@@ -1376,53 +1369,21 @@ describe("Workspace Admin API", () => {
     expect(serviceCalls).toBe(0);
   });
 
-  test("replays completed mutations and preserves deterministic conflicts", async () => {
+  test("records the discount mutation request and maps domain conflicts", async () => {
     const discountId = Schema.decodeUnknownSync(AdministrationStoredDiscountId)(
       "01980000-0000-7000-8000-000000000001"
     );
-    const replayRequestId = Schema.decodeUnknownSync(CliMutationRequestId)(
+    const requestId = Schema.decodeUnknownSync(CliMutationRequestId)(
       "01980000-0000-7000-8000-000000000010"
     );
-    const conflictRequestId = Schema.decodeUnknownSync(CliMutationRequestId)(
-      "01980000-0000-7000-8000-000000000011"
-    );
-    const pendingRequestId = Schema.decodeUnknownSync(CliMutationRequestId)(
-      "01980000-0000-7000-8000-000000000012"
-    );
-    let executions = 0;
-    let releases = 0;
     const mutation = { kind: "delete-discount" as const, id: discountId };
-    const replayedResult = {
-      kind: mutation.kind,
-      createdDiscountId: null,
-      createdCodeId: null,
-      createdVoucherId: null,
-    };
-    const idempotency = Layer.succeed(AdministrationRequestLedger, {
-      applyOnce: () => Effect.die("Unused CLI mutation ledger"),
-      claim: ({ requestId }) =>
-        Effect.sync(() => {
-          if (requestId === replayRequestId) {
-            return { kind: "completed" as const, result: replayedResult };
-          }
-          if (requestId === pendingRequestId) {
-            return { kind: "in-progress" as const };
-          }
-          return { kind: "claimed" as const };
-        }),
-      complete: () => Effect.void,
-      reclaimStale: () => Effect.succeed(false),
-      release: () =>
-        Effect.sync(() => {
-          releases += 1;
-        }),
-    });
+    const ledger = recordingRequestLedger();
+    const domainInputs: Array<{ readonly id: AdministrationStoredDiscountId }> =
+      [];
     const discounts = Layer.succeed(DiscountAdministration, {
       ...({} as DiscountAdministration["Service"]),
-      deleteDiscount: () =>
-        Effect.sync(() => {
-          executions += 1;
-        }).pipe(
+      deleteDiscount: (input) =>
+        Effect.sync(() => domainInputs.push(input)).pipe(
           Effect.andThen(
             new DiscountAdminConflictError({
               reason: "discount-referenced",
@@ -1432,28 +1393,17 @@ describe("Workspace Admin API", () => {
         ),
     });
 
-    const result = await Effect.gen(function* () {
+    const error = await Effect.gen(function* () {
       const client = yield* HttpApiTest.groups(WorkspaceAdminApi, [
         "administration",
       ]);
-      const replayed = yield* client.administration.mutateDiscounts({
-        payload: { requestId: replayRequestId, mutation },
-      });
-      const conflict = yield* client.administration
-        .mutateDiscounts({
-          payload: { requestId: conflictRequestId, mutation },
-        })
+      return yield* client.administration
+        .mutateDiscounts({ payload: { requestId, mutation } })
         .pipe(Effect.flip);
-      const pending = yield* client.administration
-        .mutateDiscounts({
-          payload: { requestId: pendingRequestId, mutation },
-        })
-        .pipe(Effect.flip);
-      return { conflict, pending, replayed };
     }).pipe(
       Effect.provide(AdminCliAdministrationApiHandlers),
       Effect.provide(AuthorizedCliRequest),
-      Effect.provide(idempotency),
+      Effect.provide(ledger.layer),
       Effect.provide(UnusedInvoiceAdministration),
       Effect.provide(UnusedStandaloneAccessCodeAdministration),
       Effect.provide(UnusedReservationAdministration),
@@ -1474,11 +1424,14 @@ describe("Workspace Admin API", () => {
       Effect.runPromise
     );
 
-    expect(result.replayed).toEqual(replayedResult);
-    expect(result.conflict).toBeInstanceOf(CliMutationRejected);
-    expect(result.pending).toBeInstanceOf(CliMutationInProgress);
-    expect(executions).toBe(1);
-    expect(releases).toBe(1);
+    expect(error).toBeInstanceOf(CliMutationRejected);
+    expect(domainInputs).toEqual([{ id: discountId }]);
+    expect(ledger.requests).toHaveLength(1);
+    expect(ledger.requests[0]).toMatchObject({
+      requestId,
+      mutation,
+      recovery: discountMutationRecovery,
+    });
   });
 });
 

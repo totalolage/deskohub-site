@@ -4,6 +4,8 @@ import {
   AdministrationAuthentication,
   CliBearerAuthentication,
   CliClientCompatibility,
+  type CliMutationInProgress,
+  type CliMutationRejected,
   CliSessionId,
   CliSessionUnauthorized,
   CurrentAdministrationCaller,
@@ -67,14 +69,66 @@ export const GrantedAdministrator = Layer.mock(AccountRoleGrants, {
 });
 
 /** Every mutation is new; Postgres suites cover replays. */
-export const ClaimEveryCliMutation = Layer.succeed(AdministrationRequestLedger, {
-  applyOnce: ({ apply }) => apply,
-  applyOnceWithEffects: ({ apply }) => apply,
-  claim: () => Effect.succeed({ kind: "claimed" as const }),
-  complete: () => Effect.void,
-  reclaimStale: () => Effect.succeed(false),
-  release: () => Effect.void,
-});
+export const ClaimEveryCliMutation = Layer.succeed(
+  AdministrationRequestLedger,
+  {
+    applyOnce: ({ apply }) => apply,
+    applyOnceWithEffects: ({ apply }) => apply,
+    claim: () => Effect.succeed({ kind: "claimed" as const }),
+    complete: () => Effect.void,
+    reclaimStale: () => Effect.succeed(false),
+    release: () => Effect.void,
+  }
+);
+
+/** Records the handler's ledger request while applying its first attempt. */
+export const recordingRequestLedger = (
+  refusal?: CliMutationInProgress | CliMutationRejected
+) => {
+  const requests: Array<{
+    readonly requestId: unknown;
+    readonly mutation: unknown;
+    readonly channel: CurrentAdministrationCaller["Service"]["channel"];
+    readonly recovery?: unknown;
+    readonly stored?: unknown;
+    readonly resume?: unknown;
+    readonly inProgressMessage?: string;
+  }> = [];
+  const firstAttempt = <A, E, R>(
+    apply: Effect.Effect<A, E, R>
+  ): Effect.Effect<A, E | CliMutationInProgress | CliMutationRejected, R> =>
+    refusal
+      ? (Effect.fail(refusal) as Effect.Effect<
+          A,
+          E | CliMutationInProgress | CliMutationRejected,
+          R
+        >)
+      : apply;
+  return {
+    layer: Layer.succeed(AdministrationRequestLedger, {
+      applyOnce: (request) =>
+        Effect.flatMap(CurrentAdministrationCaller, ({ channel }) =>
+          Effect.sync(() => {
+            requests.push({ ...request, channel });
+          }).pipe(Effect.andThen(request.apply))
+        ),
+      applyOnceWithEffects: (request) =>
+        Effect.flatMap(CurrentAdministrationCaller, ({ channel }) =>
+          Effect.flatMap(
+            Effect.sync(() => {
+              requests.push({ ...request, channel });
+            }),
+            () => firstAttempt(request.apply)
+          )
+        ),
+      claim: () => Effect.succeed({ kind: "claimed" as const }),
+      complete: () => Effect.void,
+      reclaimStale: () => Effect.succeed(false),
+      release: () => Effect.void,
+    }),
+    requests,
+  };
+};
 
 /**
  * Runs operations without recording them, for suites built from group
