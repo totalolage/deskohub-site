@@ -219,7 +219,9 @@ test.skipIf(!chromiumAvailable)(
     });
     try {
       const exit = await onPage("", (session) =>
-        openPage(session, { bypassSecret: undefined }, server.url.href).pipe(
+        openPage(session, { bypassSecret: undefined }, server.url.href, {
+          timeoutMs: 10_000,
+        }).pipe(
           Effect.andThen(
             waitForPageTextContent(session, "Opened", { timeoutMs: 1_000 })
           )
@@ -334,7 +336,8 @@ test.skipIf(!chromiumAvailable)(
           yield* openPage(
             session,
             { bypassSecret: undefined },
-            server.url.href
+            server.url.href,
+            { timeoutMs: 10_000 }
           );
           // An argv command after the open reads the new page, not the
           // iframe it had selected on the old one.
