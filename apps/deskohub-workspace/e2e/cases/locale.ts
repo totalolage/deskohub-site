@@ -14,7 +14,7 @@ export const assertLocaleSwitcher = ({
   runStep,
   session,
 }: {
-  config: WorkspaceE2EConfig;
+  config: Pick<WorkspaceE2EConfig, "baseUrl" | "bypassSecret" | "timeouts">;
   run: Runner;
   runStep: WorkspaceE2EStepRunner;
   session: string;
