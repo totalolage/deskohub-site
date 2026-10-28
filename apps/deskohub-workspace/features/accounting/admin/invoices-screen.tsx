@@ -16,6 +16,7 @@ import { AdministrationCollectionLoading } from "@/features/administration/loadi
 import type { Locale } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { Button } from "@/shared/components/ui/button";
+import { getHrefWithSearchParams } from "@/shared/utils/search-params";
 import { formatInvoiceTotal } from "./invoice-display";
 import { InvoiceAdministrationTable } from "./invoice-table";
 import {
@@ -109,11 +110,19 @@ async function InvoiceCollection({
         query={result.query}
       />
       <Pagination
-        basePath={administrationHref("/[locale]/admin/invoices")}
+        href={(page) =>
+          getHrefWithSearchParams(
+            administrationHref("/[locale]/admin/invoices"),
+            {
+              sort: result.query.sort,
+              direction: result.query.direction,
+              page: page > 1 ? String(page) : undefined,
+            }
+          )
+        }
         locale={locale}
         page={result.items.page}
         pageCount={result.items.pageCount}
-        params={{ sort: result.query.sort, direction: result.query.direction }}
       />
     </>
   );

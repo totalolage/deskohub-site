@@ -41,6 +41,7 @@ import { ReservationOrderList } from "./payment-components";
 import { OperationTable, OrderTable } from "./payment-tables";
 import { ReservationAccessAdministration } from "./reservation-access-administration";
 import { ReservationLifecycleMap } from "./reservation-lifecycle-map";
+import { reservationListQuery } from "./reservation-list-query";
 import { ReservationLookup } from "./reservation-lookup";
 import { getAdministrationReservationLifecycle } from "./reservation-status";
 
@@ -252,13 +253,13 @@ describe("administration reservation components", () => {
     const reservations = loadFixtureReservations({}).items;
     const view = render(
       <ReservationTable
-        reservations={reservations}
-        sorting={{
-          basePath: "/admin/reservations",
+        query={reservationListQuery.parse({
           direction: "asc",
-          field: "reservation",
-          params: { status: "complete" },
-        }}
+          from: "2026-08-01",
+          sort: "reservation",
+          status: "complete",
+        })}
+        reservations={reservations}
       />
     );
     const table = view.getByRole("table", { name: "Reservations" });
@@ -270,17 +271,17 @@ describe("administration reservation components", () => {
       "ascending"
     );
     expect(reservationHeader.getAttribute("href")).toBe(
-      "/en-US/admin/reservations?status=complete&sort=reservation&direction=desc"
+      "/en-US/admin/reservations?direction=desc&from=2026-08-01&sort=reservation&status=complete"
     );
     expect(
       within(table).getByRole("link", { name: "Status" }).getAttribute("href")
     ).toBe(
-      "/en-US/admin/reservations?status=complete&sort=status&direction=asc"
+      "/en-US/admin/reservations?direction=asc&from=2026-08-01&sort=status&status=complete"
     );
     const dateHeader = within(table).getByRole("link", { name: "Date" });
     expect(dateHeader.closest("th")?.getAttribute("aria-sort")).toBe("none");
     expect(dateHeader.getAttribute("href")).toBe(
-      "/en-US/admin/reservations?status=complete&sort=date&direction=asc"
+      "/en-US/admin/reservations?direction=asc&from=2026-08-01&sort=date&status=complete"
     );
   });
 

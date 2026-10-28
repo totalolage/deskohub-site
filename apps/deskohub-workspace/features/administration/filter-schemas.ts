@@ -1,5 +1,4 @@
 import { Schema } from "effect";
-import { workspaceReservationKindSchema } from "@/features/reservation/reservation-kind";
 import { isPlainDateString } from "@/shared/utils/temporal";
 import { administrationCustomerMarketingConsentStates } from "./customer-list-filters";
 import {
@@ -46,28 +45,6 @@ export const operationFilterSchema = Schema.Struct({
 });
 
 export type OperationFilterValues = typeof operationFilterSchema.Encoded;
-
-const optionalReservationStatusField = Schema.Union([
-  Schema.Literal(""),
-  Schema.Literals(["in_progress", "complete", "cancelled", "needs_refund"]),
-]);
-
-const optionalReservationTypeField = Schema.Union([
-  Schema.Literal(""),
-  workspaceReservationKindSchema,
-]);
-
-export const reservationFilterSchema = Schema.Struct({
-  status: optionalReservationStatusField,
-  type: optionalReservationTypeField,
-  from: optionalCalendarDateField,
-  to: optionalCalendarDateField,
-  customerId: Schema.optional(Schema.String),
-  sort: Schema.Literals(["created", "date", "reservation", "status"]),
-  direction: Schema.Literals(["asc", "desc"]),
-});
-
-export type ReservationFilterValues = typeof reservationFilterSchema.Encoded;
 
 const optionalCustomerMarketingConsentField = Schema.Union([
   Schema.Literal(""),

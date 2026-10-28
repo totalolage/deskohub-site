@@ -7,9 +7,9 @@ import type { ReactNode } from "react";
 import { AdministrationLink } from "@/features/administration/admin-link";
 import type { AdministrationHref } from "@/features/administration/administration-href";
 import { m } from "@/features/administration/i18n";
-import type { AdministrationListParams } from "@/features/administration/list-href";
 import type { Locale } from "@/features/i18n";
 import { formatCount } from "@/shared/utils/number";
+import type { SearchParamValues } from "@/shared/utils/search-params";
 import { upperCaseFirst } from "@/shared/utils/text-case";
 import { automationRunSkipReasonLabel } from "./automation-run-status";
 import { automationStepLabelOrId } from "./automation-step-label";
@@ -18,7 +18,7 @@ interface CountLine {
   readonly key: string;
   readonly label: string;
   readonly count: number;
-  readonly params: AdministrationListParams;
+  readonly params: SearchParamValues;
 }
 
 function CountTile({
@@ -31,7 +31,7 @@ function CountTile({
 }: {
   readonly breakdown?: readonly CountLine[];
   readonly count: number;
-  readonly href: (params: AdministrationListParams) => AdministrationHref;
+  readonly href: (params: SearchParamValues) => AdministrationHref;
   readonly label: string;
   readonly locale: Locale;
   readonly tone?: "neutral" | "positive" | "attention";
@@ -94,7 +94,7 @@ export function AutomationRunCounts({
 }: {
   readonly flow: AutomationFlow | null;
   /** The run list with the counts' version and `params`. */
-  readonly href: (params: AdministrationListParams) => AdministrationHref;
+  readonly href: (params: SearchParamValues) => AdministrationHref;
   readonly locale: Locale;
   /** Which versions the counts cover, such as "All versions". */
   readonly scope: ReactNode;
@@ -102,9 +102,8 @@ export function AutomationRunCounts({
 }) {
   const stepLabel = (stepId: string) =>
     automationStepLabelOrId({ flow, stepId, locale });
-  const tileHref =
-    (params: AdministrationListParams) => (extra: AdministrationListParams) =>
-      href({ ...params, ...extra });
+  const tileHref = (params: SearchParamValues) => (extra: SearchParamValues) =>
+    href({ ...params, ...extra });
   const { byOutcome, bySkipReason, byState, bySteps } = stats;
   return (
     <section aria-labelledby="automation-run-counts" className="grid gap-3">

@@ -9,12 +9,12 @@ import {
 } from "@/features/administrators/server/administration-request.server";
 import type { Locale } from "@/features/i18n";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
+import type { SearchParamsRecord } from "@/shared/utils/search-params";
 import { parsePlainDate } from "@/shared/utils/temporal";
 import {
   type AdministrationBookingListInput,
   type AdministrationCustomerExportInput,
   type AdministrationCustomerListInput,
-  type AdministrationReservationExportInput,
   type AdministrationReservationListInput,
   AdministrationService,
   getAdministrationReservationOverview,
@@ -26,10 +26,8 @@ import {
   getAdministrationOrderDateTimeBounds,
   getAdministrationPaymentDateTimeBounds,
 } from "./payment-administration-filters";
-import {
-  getAdministrationReservationDateRange,
-  getAdministrationReservationListDateRange,
-} from "./reservation-date-range";
+import { getAdministrationReservationDateRange } from "./reservation-date-range";
+import { reservationListQuery } from "./reservation-list-query";
 import { getAdministrationReservationProductTitle } from "./reservation-product";
 import {
   decodeDotyposCustomerRouteId,
@@ -37,12 +35,9 @@ import {
   decodeNexiOperationRouteId,
   decodeNexiOrderRouteId,
   decodeWorkspaceReservationRouteId,
-  getDotyposCustomerRouteId,
 } from "./route-identifiers.server";
 
-export type AdministrationSearchParams = Promise<
-  Record<string, string | readonly string[] | undefined>
->;
+export type AdministrationSearchParams = Promise<SearchParamsRecord>;
 
 const firstParam = (value: string | readonly string[] | undefined) =>
   Predicate.isString(value) ? value : value?.[0];
@@ -59,23 +54,6 @@ const parseDate = (value: string | undefined) =>
       Option.getOrElse(() => getCurrentWorkspaceDate())
     )
     .toString();
-
-const parseStatus = (
-  value: string | undefined
-): AdministrationReservationListInput["status"] =>
-  value === "in_progress" ||
-  value === "complete" ||
-  value === "cancelled" ||
-  value === "needs_refund"
-    ? value
-    : undefined;
-
-const parseReservationSort = (
-  value: string | undefined
-): NonNullable<AdministrationReservationListInput["sort"]> =>
-  value === "date" || value === "reservation" || value === "status"
-    ? value
-    : "created";
 
 const parseBookingSort = (
   value: string | undefined
@@ -154,55 +132,13 @@ export const loadAdministrationReservationOverview = async () => {
   );
 };
 
-/**
- * The reservation list input that the page and its export derive from the
- * same URL, including the default date range.
- */
-export const parseAdministrationReservationListSearchParams = (
-  params: Awaited<AdministrationSearchParams>
-) => {
-  const typeValue = firstParam(params.type);
-  const customerId = getDotyposCustomerRouteId(firstParam(params.customerId));
-  const status = parseStatus(firstParam(params.status));
-  const dateRange = getAdministrationReservationListDateRange({
-    customerId,
-    date: firstParam(params.date),
-    from: firstParam(params.from),
-    status,
-    to: firstParam(params.to),
-  });
-  return {
-    customerId,
-    ...dateRange,
-    direction: parseSortDirection(firstParam(params.direction)),
-    page: parsePage(firstParam(params.page)),
-    sort: parseReservationSort(firstParam(params.sort)),
-    status,
-    type:
-      typeValue === "cowork" ||
-      typeValue === "meeting-room" ||
-      typeValue === "office"
-        ? typeValue
-        : undefined,
-  } satisfies AdministrationReservationListInput;
-};
-
-/** The reservation export reads the list's filters and order, but no page. */
-export const parseAdministrationReservationExportSearchParams = (
-  params: Awaited<AdministrationSearchParams>
-): AdministrationReservationExportInput => {
-  const { page: _, ...input } =
-    parseAdministrationReservationListSearchParams(params);
-  return input;
-};
-
 const getAdministrationReservationListInput = (
   searchParams: AdministrationSearchParams
 ) =>
   runAdministrationPage(
     "administration.reservations-input",
     Effect.promise(() => searchParams).pipe(
-      Effect.map(parseAdministrationReservationListSearchParams)
+      Effect.map(reservationListQuery.parse)
     ),
     Layer.empty
   );

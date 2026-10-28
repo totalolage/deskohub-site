@@ -2,11 +2,9 @@ import { Suspense } from "react";
 import type { Locale } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { AdministrationLink as Link } from "./admin-link";
-import { administrationHref } from "./administration-href";
 import { Pagination } from "./components";
 import { ReservationsAdministrationFilterForm } from "./filter-forms";
 import { m } from "./i18n";
-import { getAdministrationListHref } from "./list-href";
 import {
   AdministrationCollectionLoading,
   AdministrationCountLoading,
@@ -24,7 +22,7 @@ import {
   getAdministrationReservationDateShortcuts,
   getAdministrationReservationListDefaultDateRange,
 } from "./reservation-date-range";
-import { getAdministrationReservationListParams } from "./reservation-list-params";
+import { reservationListQuery } from "./reservation-list-query";
 import { ReservationLookup } from "./reservation-lookup";
 import { ReservationTable } from "./reservation-table";
 import {
@@ -79,12 +77,7 @@ export async function AdministrationReservationList({
             <ReservationFiltersContent input={input} />
           </Suspense>
         }
-        exportHref={input.then((resolvedInput) =>
-          getAdministrationListHref(
-            administrationHref("/[locale]/admin/reservations/export"),
-            getAdministrationReservationListParams(resolvedInput)
-          )
-        )}
+        exportHref={input.then(reservationListQuery.exportHref)}
         label={m.administrationReservationListToolbarLabel({}, { locale })}
         search={<ReservationLookup variant="toolbar" />}
       />
@@ -144,7 +137,7 @@ async function ReservationFiltersContent({
   return (
     <ReservationsAdministrationFilterForm
       defaultFrom={getAdministrationReservationListDefaultDateRange().from}
-      input={resolvedInput}
+      query={resolvedInput}
       shortcuts={getAdministrationReservationDateShortcuts()}
     />
   );
@@ -174,7 +167,6 @@ function ReservationResults({
   locale,
   result,
 }: ReservationsData & { readonly locale: Locale }) {
-  const listParams = getAdministrationReservationListParams(input);
   return (
     <>
       {input.customerId && (
@@ -182,13 +174,10 @@ function ReservationResults({
           <p>{m.administrationReservationListCustomerNotice({}, { locale })}</p>
           <Link
             className="font-semibold hover:underline"
-            href={getAdministrationListHref(
-              administrationHref("/[locale]/admin/reservations"),
-              {
-                ...listParams,
-                customerId: undefined,
-              }
-            )}
+            href={reservationListQuery.href({
+              ...input,
+              customerId: undefined,
+            })}
           >
             {m.administrationReservationListCustomerClear({}, { locale })}
           </Link>
@@ -204,21 +193,12 @@ function ReservationResults({
           {m.administrationReservationListDateSortUnavailable({}, { locale })}
         </AdministrationAlert>
       )}
-      <ReservationTable
-        reservations={result.items}
-        sorting={{
-          basePath: administrationHref("/[locale]/admin/reservations"),
-          direction: input.direction ?? "desc",
-          field: input.sort ?? "created",
-          params: listParams,
-        }}
-      />
+      <ReservationTable query={input} reservations={result.items} />
       <Pagination
-        basePath={administrationHref("/[locale]/admin/reservations")}
+        href={(page) => reservationListQuery.href(input, { page })}
         locale={locale}
         page={result.page}
         pageCount={result.pageCount}
-        params={listParams}
       />
     </>
   );

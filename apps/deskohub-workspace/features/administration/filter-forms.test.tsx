@@ -6,6 +6,7 @@ import {
   expect,
   test,
 } from "bun:test";
+import type { DotyposCustomerId } from "@deskohub/dotypos/types";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { m } from "@/features/i18n";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
@@ -21,6 +22,7 @@ import {
   OrdersAdministrationFilterForm,
   ReservationsAdministrationFilterForm,
 } from "./filter-forms";
+import type { ReservationListQuery } from "./reservation-list-query";
 
 async function expectNativeGetSubmission(form: HTMLFormElement) {
   let submitted = false;
@@ -51,14 +53,22 @@ const reservationShortcuts = {
   past: { to: "2026-08-11" },
 } as const;
 
-type ReservationFilterInput = Parameters<
-  typeof ReservationsAdministrationFilterForm
->[0]["input"];
-
-const reservationFilterForm = (input: ReservationFilterInput) => (
+// The list's own order and first page, with the filters a test sets.
+const reservationFilterForm = ({
+  customerId,
+  ...query
+}: Partial<Omit<ReservationListQuery, "customerId">> & {
+  readonly customerId?: string;
+}) => (
   <ReservationsAdministrationFilterForm
     defaultFrom="2026-01-01"
-    input={input}
+    query={{
+      direction: "desc",
+      page: 1,
+      sort: "created",
+      ...query,
+      ...(customerId && { customerId: customerId as DotyposCustomerId }),
+    }}
     shortcuts={reservationShortcuts}
   />
 );
@@ -461,7 +471,9 @@ describe("administration filter forms", () => {
     ).toBeDefined();
     expect(
       view.getByRole("link", { name: "Nadcházející" }).getAttribute("href")
-    ).toBe("/cs-CZ/admin/reservations?from=2026-08-13&status=cancelled");
+    ).toBe(
+      "/cs-CZ/admin/reservations?direction=desc&from=2026-08-13&sort=created&status=cancelled"
+    );
     expect(view.getByRole("link", { name: "Vymazat" })).toBeDefined();
     expect(view.getByRole("button", { name: "Použít filtry" })).toBeDefined();
   });

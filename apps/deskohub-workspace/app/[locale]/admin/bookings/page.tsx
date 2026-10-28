@@ -20,6 +20,7 @@ import {
 } from "@/features/administration/page-data.server";
 import type { Locale } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
+import { getHrefWithSearchParams } from "@/shared/utils/search-params";
 
 export default function BookingsAdministrationPage({
   searchParams,
@@ -140,15 +141,20 @@ function BookingResults({
         }}
       />
       <Pagination
-        basePath={administrationHref("/[locale]/admin/bookings")}
+        href={(page) =>
+          getHrefWithSearchParams(
+            administrationHref("/[locale]/admin/bookings"),
+            {
+              date: input.date,
+              direction: input.direction,
+              sort: input.sort,
+              page: page > 1 ? String(page) : undefined,
+            }
+          )
+        }
         locale={locale}
         page={result.page}
         pageCount={result.pageCount}
-        params={{
-          date: input.date,
-          direction: input.direction,
-          sort: input.sort,
-        }}
       />
     </>
   );

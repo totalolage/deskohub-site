@@ -3,6 +3,9 @@ import { Schema } from "effect";
 export type SearchParamsRecord = Record<string, string | string[] | undefined>;
 export type SupportedSearchParams = URLSearchParams | SearchParamsRecord;
 
+/** Query values by name; an absent or empty value stays out of an href. */
+export type SearchParamValues = Readonly<Record<string, string | undefined>>;
+
 const normalizeSearchParamsRecord = (searchParams: SearchParamsRecord) =>
   Object.fromEntries(
     Object.entries(searchParams).map(([key, value]) => [
@@ -11,9 +14,7 @@ const normalizeSearchParamsRecord = (searchParams: SearchParamsRecord) =>
     ])
   );
 
-export const getSearchParamsDecoder = <A, I>(
-  outputSchema: Schema.Codec<A, I>
-) => {
+export const getSearchParamsDecoder = <A>(outputSchema: Schema.Decoder<A>) => {
   const decodeUnknown = Schema.decodeUnknownOption(outputSchema);
   return (searchParams: SearchParamsRecord) =>
     decodeUnknown(normalizeSearchParamsRecord(searchParams));
@@ -54,3 +55,16 @@ export const toURLSearchParams = (
       [value ?? []].flat().map((item) => [key, item])
     )
   );
+
+/** The path with the given query values, leaving out empty ones. */
+export const getHrefWithSearchParams = <Path extends string>(
+  path: Path,
+  values: SearchParamValues
+): Path | `${Path}?${string}` => {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(values)) {
+    if (value) search.set(key, value);
+  }
+  const query = search.toString();
+  return query ? `${path}?${query}` : path;
+};

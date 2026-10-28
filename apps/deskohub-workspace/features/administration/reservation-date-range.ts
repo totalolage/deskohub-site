@@ -1,8 +1,8 @@
+import type { AdministrationReservationStatusFilter } from "@deskohub/workspace-admin-api";
 import { Option } from "effect";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { workspaceSiteConstants } from "@/shared/utils";
 import { parsePlainDate } from "@/shared/utils/temporal";
-import type { AdministrationReservationStatusFilter } from "./administration.service";
 
 export type AdministrationReservationDateRange = {
   readonly from?: string;

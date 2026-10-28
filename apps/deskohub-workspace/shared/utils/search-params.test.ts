@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { getSearchParamsRecord, toURLSearchParams } from "./search-params";
+import {
+  getHrefWithSearchParams,
+  getSearchParamsRecord,
+  toURLSearchParams,
+} from "./search-params";
 
 describe("getSearchParamsRecord", () => {
   test("reads search params in the shape Next.js passes to a page", () => {
@@ -30,5 +34,21 @@ describe("toURLSearchParams", () => {
       ["ba_param", "scope"],
       ["scope", "offerings:read reservations:read"],
     ]);
+  });
+});
+
+describe("getHrefWithSearchParams", () => {
+  test("adds present values to the path and leaves out empty ones", () => {
+    expect(
+      getHrefWithSearchParams("/admin/reservations", {
+        direction: "desc",
+        from: "",
+        status: undefined,
+        to: "2026-10-31",
+      })
+    ).toBe("/admin/reservations?direction=desc&to=2026-10-31");
+    expect(getHrefWithSearchParams("/admin/reservations", {})).toBe(
+      "/admin/reservations"
+    );
   });
 });

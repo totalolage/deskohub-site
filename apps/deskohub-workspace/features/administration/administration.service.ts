@@ -22,6 +22,12 @@ import {
   NexiOrderIdSchema,
   NexiWebhookEventIdSchema,
 } from "@deskohub/nexi";
+import type {
+  AdministrationReservationFamily,
+  AdministrationReservationSort,
+  AdministrationReservationSortDirection,
+  AdministrationReservationStatusFilter,
+} from "@deskohub/workspace-admin-api";
 import {
   and,
   asc,
@@ -128,7 +134,6 @@ import {
 } from "./reservation-product";
 import {
   type AdministrationReservationStatusNote,
-  type AdministrationStatusGroup,
   canCancelReservation,
   getAdministrationReservationLifecycle,
   getAdministrationReservationStatus,
@@ -157,14 +162,10 @@ const paymentAttemptStateLabels = {
 } as const;
 
 /**
- * Reservation list filters: the durable workflow status groups plus the
- * payment-attempt refund work queue shared by late payments and operator
- * cancellations.
+ * The reservation list's criteria. `status` is a durable workflow status group
+ * or the payment-attempt refund work queue shared by late payments and
+ * operator cancellations.
  */
-export type AdministrationReservationStatusFilter =
-  | Exclude<AdministrationStatusGroup, "attention">
-  | "needs_refund";
-
 export type AdministrationReservationListInput = {
   readonly customerId?: DotyposCustomerId;
   readonly date?: string;
@@ -174,18 +175,10 @@ export type AdministrationReservationListInput = {
   readonly sort?: AdministrationReservationSort;
   readonly status?: AdministrationReservationStatusFilter;
   readonly to?: string;
-  readonly type?: "cowork" | "meeting-room" | "office";
+  readonly type?: AdministrationReservationFamily;
 };
 
-export type AdministrationReservationSort =
-  | "created"
-  | "date"
-  | "reservation"
-  | "status";
-
 type AdministrationSortDirection = "asc" | "desc";
-
-type AdministrationReservationSortDirection = AdministrationSortDirection;
 
 type ReservationListInput = AdministrationReservationListInput & {
   readonly pageSize?: number;

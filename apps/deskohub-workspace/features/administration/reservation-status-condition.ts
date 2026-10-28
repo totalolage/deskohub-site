@@ -1,3 +1,4 @@
+import type { AdministrationReservationStatusFilter } from "@deskohub/workspace-admin-api";
 import {
   and,
   eq,
@@ -11,7 +12,6 @@ import {
 } from "drizzle-orm";
 import { paymentAttempts, workspaceReservations } from "@/db/schema";
 import { temporalInstantToDate } from "@/shared/utils/temporal";
-import type { AdministrationReservationStatusFilter } from "./administration.service";
 
 /** The states a status group reads, each as a SQL condition. */
 type ReservationStates = {

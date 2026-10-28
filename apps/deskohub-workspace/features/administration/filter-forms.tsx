@@ -1,6 +1,7 @@
 "use client";
 
 import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
+import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
 import type { FormEvent } from "react";
 import { useForm } from "react-hook-form";
 import {
@@ -10,10 +11,7 @@ import {
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import { AdministrationLink as Link } from "./admin-link";
-import type {
-  AdministrationCustomerListInput,
-  AdministrationReservationStatusFilter,
-} from "./administration.service";
+import type { AdministrationCustomerListInput } from "./administration.service";
 import {
   type AdministrationHref,
   administrationHref,
@@ -35,8 +33,6 @@ import {
   type OrderFilterValues,
   operationFilterSchema,
   orderFilterSchema,
-  type ReservationFilterValues,
-  reservationFilterSchema,
 } from "./filter-schemas";
 import { m } from "./i18n";
 import {
@@ -48,6 +44,10 @@ import type {
   AdministrationReservationClosedDateRange,
   AdministrationReservationDateRange,
 } from "./reservation-date-range";
+import {
+  type ReservationListQuery,
+  reservationListQuery,
+} from "./reservation-list-query";
 
 type DateRangeDefaults = {
   readonly from: string;
@@ -323,58 +323,22 @@ export function OperationsAdministrationFilterForm({
 
 export function ReservationsAdministrationFilterForm({
   defaultFrom,
-  input,
+  query,
   shortcuts,
 }: {
   readonly defaultFrom: string;
-  readonly input: {
-    readonly customerId?: string;
-    readonly direction?: "asc" | "desc";
-    readonly from?: string;
-    readonly sort?: "created" | "date" | "reservation" | "status";
-    readonly status?: AdministrationReservationStatusFilter;
-    readonly to?: string;
-    readonly type?: "cowork" | "meeting-room" | "office";
-  };
+  readonly query: ReservationListQuery;
   readonly shortcuts: ReservationDateShortcuts;
 }) {
   const locale = useRouteLocale();
-  const values: ReservationFilterValues = {
-    status: input.status ?? "",
-    type: input.type ?? "",
-    from: input.from ?? "",
-    to: input.to ?? "",
-    customerId: input.customerId,
-    sort: input.sort ?? "created",
-    direction: input.direction ?? "desc",
-  };
-  const form = useForm<ReservationFilterValues>({
+  const values = reservationListQuery.formValues(query);
+  const form = useForm({
     defaultValues: values,
     mode: "onSubmit",
     reValidateMode: "onChange",
-    resolver: effectSchemaResolver(reservationFilterSchema),
+    resolver: standardSchemaResolver(reservationListQuery.formSchema),
     values,
   });
-  const shortcutHref = (range: {
-    readonly from?: string;
-    readonly to?: string;
-  }): AdministrationHref => {
-    const search = new URLSearchParams();
-    for (const [key, value] of Object.entries({
-      customerId: input.customerId,
-      direction: input.direction,
-      from: range.from,
-      sort: input.sort,
-      status: input.status,
-      to: range.to,
-      type: input.type,
-    })) {
-      if (value) search.set(key, value);
-    }
-    return `${administrationHref(
-      "/[locale]/admin/reservations"
-    )}?${search.toString()}`;
-  };
 
   return (
     <AdministrationFilterForm
@@ -392,7 +356,7 @@ export function ReservationsAdministrationFilterForm({
         <AdministrationFilterSelect
           {...form.register("status")}
           aria-invalid={form.formState.errors.status ? true : undefined}
-          defaultValue={input.status ?? ""}
+          defaultValue={values.status}
           id="reservation-status"
         >
           <option value="">
@@ -419,7 +383,7 @@ export function ReservationsAdministrationFilterForm({
         <AdministrationFilterSelect
           {...form.register("type")}
           aria-invalid={form.formState.errors.type ? true : undefined}
-          defaultValue={input.type ?? ""}
+          defaultValue={values.type}
           id="reservation-type"
         >
           <option value="">
@@ -443,7 +407,7 @@ export function ReservationsAdministrationFilterForm({
         <AdministrationFilterInput
           {...form.register("from")}
           aria-invalid={form.formState.errors.from ? true : undefined}
-          defaultValue={input.from ?? ""}
+          defaultValue={values.from}
           id="reservation-date-from"
           type="date"
         />
@@ -455,42 +419,44 @@ export function ReservationsAdministrationFilterForm({
         <AdministrationFilterInput
           {...form.register("to")}
           aria-invalid={form.formState.errors.to ? true : undefined}
-          defaultValue={input.to ?? ""}
+          defaultValue={values.to}
           id="reservation-date-to"
           type="date"
         />
       </AdministrationFilterField>
-      {input.customerId && (
+      {values.customerId && (
         <input
           {...form.register("customerId")}
           type="hidden"
-          value={input.customerId}
+          value={values.customerId}
         />
       )}
-      <input
-        {...form.register("sort")}
-        type="hidden"
-        value={input.sort ?? "created"}
-      />
+      <input {...form.register("sort")} type="hidden" value={values.sort} />
       <input
         {...form.register("direction")}
         type="hidden"
-        value={input.direction ?? "desc"}
+        value={values.direction}
       />
       <div className="flex flex-col gap-3 sm:col-span-2 sm:flex-row sm:items-center sm:justify-between 2xl:col-span-4">
         <ReservationDateShortcutLinks
-          getHref={shortcutHref}
+          getHref={(range) =>
+            reservationListQuery.href({
+              ...query,
+              from: range.from,
+              to: range.to,
+            })
+          }
           shortcuts={shortcuts}
         />
         <fieldset
           aria-label={m.administrationFilterActions({}, { locale })}
           className="flex min-w-0 items-center justify-end gap-2 border-0 p-0"
         >
-          {(input.customerId ||
-            input.from !== defaultFrom ||
-            input.status ||
-            input.to ||
-            input.type) && (
+          {(query.customerId ||
+            query.from !== defaultFrom ||
+            query.status ||
+            query.to ||
+            query.type) && (
             <Button asChild size="md" variant="ghost">
               <Link href={administrationHref("/[locale]/admin/reservations")}>
                 {m.administrationFilterClear({}, { locale })}

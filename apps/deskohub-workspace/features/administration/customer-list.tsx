@@ -2,12 +2,12 @@ import { Suspense } from "react";
 import { CustomerSearch } from "@/features/discounts/admin/customer-admin-client";
 import type { Locale } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
+import { getHrefWithSearchParams } from "@/shared/utils/search-params";
 import { administrationHref } from "./administration-href";
 import { AdministrationCustomerTable, Pagination } from "./components";
 import { getAdministrationCustomerListParams } from "./customer-list-filters";
 import { CustomersAdministrationFilterForm } from "./filter-forms";
 import { m } from "./i18n";
-import { getAdministrationListHref } from "./list-href";
 import {
   AdministrationCollectionLoading,
   AdministrationCountLoading,
@@ -66,7 +66,7 @@ export async function AdministrationCustomerList({
           </Suspense>
         }
         exportHref={input.then((resolvedInput) =>
-          getAdministrationListHref(
+          getHrefWithSearchParams(
             administrationHref("/[locale]/admin/customers/export"),
             getAdministrationCustomerListParams(resolvedInput)
           )
@@ -157,11 +157,18 @@ async function CustomersTable({
         }}
       />
       <Pagination
-        basePath={administrationHref("/[locale]/admin/customers")}
+        href={(page) =>
+          getHrefWithSearchParams(
+            administrationHref("/[locale]/admin/customers"),
+            {
+              ...params,
+              page: page > 1 ? String(page) : undefined,
+            }
+          )
+        }
         locale={locale}
         page={resolvedResult.page}
         pageCount={resolvedResult.pageCount}
-        params={params}
       />
     </section>
   );

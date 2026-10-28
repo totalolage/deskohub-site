@@ -6,14 +6,8 @@ import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { AdministrationLink as Link } from "./admin-link";
-import type {
-  AdministrationReservationSort,
-  AdministrationReservationSummary,
-} from "./administration.service";
-import {
-  type AdministrationHref,
-  administrationHref,
-} from "./administration-href";
+import type { AdministrationReservationSummary } from "./administration.service";
+import { administrationHref } from "./administration-href";
 import { getAdministrationCustomerName } from "./customer-presentation";
 import {
   AdministrationDataTable,
@@ -28,15 +22,15 @@ import { m } from "./i18n";
 import { NexiOrderLink } from "./nexi-order-link";
 import { PaymentAmount, PaymentStatusText } from "./payment-status";
 import {
+  type ReservationListQuery,
+  reservationListQuery,
+} from "./reservation-list-query";
+import {
   getAdministrationReservationStatusLabel,
   getAdministrationReservationStatusNoteLabel,
 } from "./reservation-presentation";
 import { getAdministrationReservationProductTitle } from "./reservation-product";
 import type { AdministrationStatusGroup } from "./reservation-status";
-import {
-  type AdministrationTableSorting,
-  getAdministrationTableSortHref,
-} from "./table-sort";
 
 function ReservationStatusBadge({
   group,
@@ -61,21 +55,17 @@ function ReservationStatusBadge({
   );
 }
 
-export type ReservationTableSorting =
-  AdministrationTableSorting<AdministrationReservationSort> & {
-    readonly basePath: AdministrationHref;
-  };
-
 export function ReservationTable({
   emptyMessage,
+  query,
   reservations,
   showCustomer = true,
-  sorting,
 }: {
   readonly emptyMessage?: string;
+  /** The list's query, whose order the table shows and its headers change. */
+  readonly query?: ReservationListQuery;
   readonly reservations: readonly AdministrationReservationSummary[];
   readonly showCustomer?: boolean;
-  readonly sorting?: ReservationTableSorting;
 }) {
   const locale = useRouteLocale();
   const columns = useMemo<
@@ -170,17 +160,7 @@ export function ReservationTable({
       columns={columns}
       data={reservations}
       getRowId={(reservation) => reservation.id}
-      getSortHref={
-        sorting
-          ? (field, direction) =>
-              getAdministrationTableSortHref({
-                basePath: sorting.basePath,
-                direction,
-                field,
-                params: sorting.params,
-              })
-          : undefined
-      }
+      {...(query && reservationListQuery.tableSorting(query))}
       mobile={
         <ul className="divide-y divide-navy-blue/10">
           {reservations.map((reservation) => (
@@ -252,11 +232,6 @@ export function ReservationTable({
             </li>
           ))}
         </ul>
-      }
-      sorting={
-        sorting
-          ? [{ id: sorting.field, desc: sorting.direction === "desc" }]
-          : undefined
       }
       // Without the customer column the table sits in the customer page's
       // main column, which is about 630px wide at the xl breakpoint.
