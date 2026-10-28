@@ -9,6 +9,7 @@ import {
   getMeetingRoomReservationSelectionSearchParams,
   getMeetingRoomRestoredReservationValues,
   getStoredMeetingRoomReservationSelectionSearchParams,
+  withMeetingRoomEarlySetup,
 } from "./meeting-room-reservation-checkout-query";
 import { getMeetingRoomReservationDuration } from "./meeting-room-reservation-duration";
 import {
@@ -250,6 +251,30 @@ describe("customer last reservation defaults", () => {
         { kind: "meeting-room", duration: "hour:4" }
       ).duration
     ).toBe("hour:1");
+  });
+});
+
+describe("withMeetingRoomEarlySetup", () => {
+  test("asks a reservation-page link for setup time and keeps its selection", () => {
+    const link = new URL(
+      withMeetingRoomEarlySetup(
+        "https://workspace.example/reservation/meeting-room?startDateTime=2099-08-12T09%3A00&duration=hour%3A1"
+      )
+    );
+
+    expect(link.pathname).toBe("/reservation/meeting-room");
+    expect(
+      getMeetingRoomReservationDefaultValuesFromSearchParams(
+        link.searchParams,
+        deterministicNow()
+      )
+    ).toEqual(
+      expect.objectContaining({
+        startDateTime: "2099-08-12T09:00",
+        duration: "hour:1",
+        earlySetup: true,
+      })
+    );
   });
 });
 

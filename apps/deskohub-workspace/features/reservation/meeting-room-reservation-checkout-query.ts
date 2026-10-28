@@ -86,6 +86,16 @@ export const getMeetingRoomReservationDefaultValuesFromSearchParams = (
 const earlySetupQueryParam = "earlySetup";
 const earlySetupQueryValue = "true";
 
+/**
+ * A meeting-room reservation-page link that also asks for the setup time, for
+ * a customer who chose it after the link was made.
+ */
+export const withMeetingRoomEarlySetup = (reservationUrl: string) => {
+  const link = new URL(reservationUrl);
+  link.searchParams.set(earlySetupQueryParam, earlySetupQueryValue);
+  return link.toString();
+};
+
 /** The meeting-room selection as the link parameters the parser above reads. */
 export const getMeetingRoomReservationSelectionSearchParams = (
   selection: Pick<MeetingRoomReservationInput, "startDateTime" | "duration"> &

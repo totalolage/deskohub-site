@@ -5,6 +5,7 @@ import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
 import { useId, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { type Locale, m } from "@/features/i18n";
+import { withMeetingRoomEarlySetup } from "@/features/reservation/meeting-room-reservation-checkout-query";
 import { Button } from "@/shared/components/ui/button";
 import { ChoiceCard } from "@/shared/components/ui/choice-card";
 import {
@@ -463,7 +464,10 @@ export function BookingForm({
                 </p>
               )}
               {link(
-                checked.quote.reservation_url,
+                // The quote's link predates the setup choice, so carry it.
+                earlySetup
+                  ? withMeetingRoomEarlySetup(checked.quote.reservation_url)
+                  : checked.quote.reservation_url,
                 m.bookingWidgetOpenReservationPage({}, { locale })
               )}
             </div>

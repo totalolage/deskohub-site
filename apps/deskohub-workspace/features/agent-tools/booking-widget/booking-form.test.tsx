@@ -4,6 +4,7 @@ import { Cause, Exit } from "effect";
 import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
 import type { ComponentProps } from "react";
 import { type Locale, m } from "@/features/i18n";
+import { withMeetingRoomEarlySetup } from "@/features/reservation/meeting-room-reservation-checkout-query";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -326,6 +327,31 @@ describe("BookingForm", () => {
 
     expect(earlySetupChoice().checked).toBe(true);
     expect(earlySetupChoice().disabled).toBe(true);
+  });
+
+  test("carries the setup choice to the reservation page after a failed booking", () => {
+    const check = meetingRoomCheck({ earlySetupAvailable: true });
+    const { rerender } = renderForm({ check });
+    fireEvent.click(earlySetupChoice());
+
+    rerender({
+      check,
+      reservation: AsyncResult.fromExit(
+        Exit.fail(
+          new BookingToolFailed({
+            error: { code: "profile_incomplete", message: "" },
+          })
+        )
+      ),
+    });
+
+    expect(
+      screen.queries
+        .getByRole("link", {
+          name: m.bookingWidgetOpenReservationPage({}, { locale: "en-US" }),
+        })
+        .getAttribute("href")
+    ).toBe(withMeetingRoomEarlySetup(quoteResult().reservation_url));
   });
 
   test("leaves early setup to the reservation page in reservation page mode", () => {
