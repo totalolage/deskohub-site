@@ -1,4 +1,4 @@
-import { Data, Effect } from "effect";
+import { Data, Effect, Option } from "effect";
 import type { ImageSize } from "./image-size";
 
 /** The browser can't decode the file as a picture. */
@@ -18,10 +18,9 @@ export interface ImageDownscaleLimits {
 const jpegQuality = 0.92;
 
 /**
- * Smaller re-encodings to try when one is still too heavy. Each scales the
- * picture by the share of bytes it may keep, with room to spare.
+ * A re-encoding still too heavy is scaled by the share of bytes it may keep,
+ * with room to spare.
  */
-const extraEncodings = 3;
 const byteBudgetMargin = 0.9;
 
 /**
@@ -56,43 +55,67 @@ const isTransparent = (pixels: Uint8ClampedArray) => {
   return false;
 };
 
+const drawingContext = (canvas: OffscreenCanvas) =>
+  Effect.sync(() => canvas.getContext("2d")).pipe(
+    Effect.flatMap(Effect.fromNullishOr),
+    Effect.orDie
+  );
+
 /**
  * Draws the picture at `size` and encodes it: as a PNG when any pixel is
  * transparent, so it keeps its alpha, and otherwise as a JPEG.
  */
-const encode = (picture: ImageBitmap, size: ImageSize) =>
-  Effect.suspend(() => {
-    const canvas = new OffscreenCanvas(size.width, size.height);
-    const context = canvas.getContext("2d");
-    if (!context) return Effect.die(new Error("No 2D canvas context."));
-    context.imageSmoothingQuality = "high";
-    context.drawImage(picture, 0, 0, size.width, size.height);
-    const { data } = context.getImageData(0, 0, size.width, size.height);
-    const type = isTransparent(data) ? "image/png" : "image/jpeg";
-    return Effect.promise(() =>
-      canvas.convertToBlob({ type, quality: jpegQuality })
-    );
-  });
+const encode = ({
+  picture,
+  size,
+}: {
+  readonly picture: ImageBitmap;
+  readonly size: ImageSize;
+}) =>
+  Effect.Do.pipe(
+    Effect.let("canvas", () => new OffscreenCanvas(size.width, size.height)),
+    Effect.bind("context", ({ canvas }) => drawingContext(canvas)),
+    Effect.bind("type", ({ context }) =>
+      Effect.sync(() => {
+        context.imageSmoothingQuality = "high";
+        context.drawImage(picture, 0, 0, size.width, size.height);
+        const { data } = context.getImageData(0, 0, size.width, size.height);
+        return isTransparent(data) ? "image/png" : "image/jpeg";
+      })
+    ),
+    Effect.flatMap(({ canvas, type }) =>
+      Effect.promise(() => canvas.convertToBlob({ type, quality: jpegQuality }))
+    )
+  );
 
-const encodeWithin = (
-  picture: ImageBitmap,
-  size: ImageSize,
-  maxBytes: number,
-  encodingsLeft: number
-): Effect.Effect<Blob> =>
-  encode(picture, size).pipe(
+/**
+ * Encodes the picture at `size`, then smaller until the file fits
+ * `maxBytes`. A 1-pixel picture fits any real limit, so this ends.
+ */
+const encodeWithin = (input: {
+  readonly picture: ImageBitmap;
+  readonly size: ImageSize;
+  readonly maxBytes: number;
+}): Effect.Effect<Blob> =>
+  encode(input).pipe(
     Effect.flatMap((file) =>
-      file.size <= maxBytes || encodingsLeft === 0
-        ? Effect.succeed(file)
-        : encodeWithin(
-            picture,
-            scaledBy(
-              size,
-              Math.sqrt((maxBytes / file.size) * byteBudgetMargin)
-            ),
-            maxBytes,
-            encodingsLeft - 1
+      Effect.suspend(() =>
+        encodeWithin({
+          ...input,
+          size: scaledBy(
+            input.size,
+            Math.sqrt((input.maxBytes / file.size) * byteBudgetMargin)
+          ),
+        })
+      ).pipe(
+        Effect.when(
+          Effect.succeed(
+            file.size > input.maxBytes &&
+              input.size.width * input.size.height > 1
           )
+        ),
+        Effect.map(Option.getOrElse(() => file))
+      )
     )
   );
 
@@ -100,8 +123,7 @@ const encodeWithin = (
  * Re-encodes the file's picture, upright and without its metadata, within
  * `limits`, on a canvas: no WebAssembly codec needed. A transparent picture
  * becomes a PNG and any other a JPEG; an animation keeps its first frame.
- * A picture still too heavy at its size is scaled down further, a few times
- * at most.
+ * A picture still too heavy at its size is scaled down further until it fits.
  */
 export const downscaleImage = (
   file: Blob,
@@ -113,11 +135,10 @@ export const downscaleImage = (
       catch: () => new ImageDecodeError(),
     }),
     (picture) =>
-      encodeWithin(
+      encodeWithin({
         picture,
-        downscaledSize(picture, limits),
-        limits.maxBytes,
-        extraEncodings
-      ),
+        size: downscaledSize(picture, limits),
+        maxBytes: limits.maxBytes,
+      }),
     (picture) => Effect.sync(() => picture.close())
   );

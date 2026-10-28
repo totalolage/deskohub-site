@@ -302,6 +302,68 @@ test("shrinks an image above the account's limits first, showing the editor busy
   await waitFor(() => expect(insertButton(view)).toBeTruthy());
 });
 
+test("shows the editor busy while it waits for the upload's authorization", async () => {
+  const { promise: authorized, resolve: grant } = Promise.withResolvers<void>();
+  authorize = async () => {
+    await authorized;
+    return { data: authorization };
+  };
+  const { view } = await renderEditor();
+
+  chooseImage(view, png());
+
+  await waitFor(() =>
+    expect(
+      view.getByRole("button", {
+        name: m.emailCampaignsImageUploading({}, { locale }),
+      })
+    ).toHaveProperty("disabled", true)
+  );
+  expect(fetchSpy).not.toHaveBeenCalled();
+
+  grant();
+
+  await waitFor(() => expect(insertButton(view)).toBeTruthy());
+  expect(fetchSpy).toHaveBeenCalledTimes(1);
+});
+
+test("uploads nothing once the editor closes while the upload is authorized", async () => {
+  const { promise: authorized, resolve: grant } = Promise.withResolvers<void>();
+  authorize = async () => {
+    await authorized;
+    return { data: authorization };
+  };
+  const { view } = await renderEditor();
+
+  chooseImage(view, png());
+  view.unmount();
+  grant();
+  await authorized;
+  await new Promise((settled) => setTimeout(settled, 0));
+
+  expect(fetchSpy).not.toHaveBeenCalled();
+});
+
+test("cancels the upload when the editor closes while it's sent", async () => {
+  fetchSpy.mockImplementation(
+    (_url, init) =>
+      new Promise((_, reject) =>
+        init?.signal?.addEventListener("abort", () =>
+          reject(init.signal?.reason)
+        )
+      )
+  );
+  const { view } = await renderEditor();
+
+  chooseImage(view, png());
+  await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+  view.unmount();
+
+  await waitFor(() =>
+    expect(fetchSpy.mock.calls[0]?.[1]?.signal?.aborted).toBe(true)
+  );
+});
+
 test("says the image can't be read when Cloudinary refuses it, and inserts nothing", async () => {
   fetchSpy.mockImplementation(async () =>
     Response.json({ error: { message: "Invalid image file" } }, { status: 400 })

@@ -54,20 +54,28 @@ export class CampaignImageService extends Context.Service<
       const cloudinary = yield* CloudinaryService;
       const folder = `email-campaigns/${env.VERCEL_ENV}`;
 
-      const authorizeUpload = Effect.gen(function* () {
+      const authorizeUpload = Effect.Do.pipe(
         // A UUID is never empty, so it is always a public ID.
-        const publicId = yield* Schema.decodeEffect(CloudinaryPublicIdSchema)(
-          crypto.randomUUID()
-        ).pipe(Effect.orDie);
-        const upload = yield* cloudinary.signImageUpload({
-          publicId,
-          folder,
-          transformation: campaignImageTransformation,
-          allowedFormats: campaignImageFormats,
-          fallbackFormat: campaignImageFallbackFormat,
-        });
-        return { ...upload, publicId: `${folder}/${publicId}` };
-      }).pipe(Effect.withSpan("CampaignImageService.authorizeUpload"));
+        Effect.bind("publicId", () =>
+          Schema.decodeEffect(CloudinaryPublicIdSchema)(
+            crypto.randomUUID()
+          ).pipe(Effect.orDie)
+        ),
+        Effect.bind("upload", ({ publicId }) =>
+          cloudinary.signImageUpload({
+            publicId,
+            folder,
+            transformation: campaignImageTransformation,
+            allowedFormats: campaignImageFormats,
+            fallbackFormat: campaignImageFallbackFormat,
+          })
+        ),
+        Effect.map(({ publicId, upload }) => ({
+          ...upload,
+          publicId: `${folder}/${publicId}`,
+        })),
+        Effect.withSpan("CampaignImageService.authorizeUpload")
+      );
 
       return { authorizeUpload } satisfies ICampaignImageService;
     })

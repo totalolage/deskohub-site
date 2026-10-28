@@ -1,7 +1,10 @@
 import { Data, Effect, Option, Result, Schema } from "effect";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
-import { downscaleImage } from "@/shared/browser/image-downscaling";
+import {
+  downscaleImage,
+  type ImageDecodeError,
+} from "@/shared/browser/image-downscaling";
 import { type ImageSize, readImageSize } from "@/shared/browser/image-size";
 import { reportWorkspaceBrowserFailure } from "@/shared/browser/workspace-browser-logs";
 import type { CampaignImageUploadAuthorization } from "../../backend/campaign-image.service";
@@ -70,15 +73,16 @@ const authorize = (locale: Locale) =>
     catch: (cause) => new CampaignImageUploadError({ cause }),
   }).pipe(
     Effect.flatMap((result) =>
-      result?.data
-        ? Effect.succeed(result.data)
-        : Effect.fail(
+      Effect.fromOption(Option.fromNullishOr(result?.data)).pipe(
+        Effect.mapError(
+          () =>
             new CampaignImageAuthorizationError({
               message:
                 result?.serverError ??
                 m.emailCampaignsImageUploadFailed({}, { locale }),
             })
-          )
+        )
+      )
     )
   );
 
@@ -86,45 +90,99 @@ const authorize = (locale: Locale) =>
  * Posts the file straight to Cloudinary with the signed fields. Cloudinary
  * answers 400 for a file it can't store as an image.
  */
-export const sendCampaignImage = Effect.fn("sendCampaignImage")(function* (
-  file: Blob,
-  authorization: CampaignImageUploadAuthorization
-) {
-  const response = yield* Effect.tryPromise({
+export const sendCampaignImage = ({
+  image,
+  authorization,
+}: {
+  readonly image: Blob;
+  readonly authorization: CampaignImageUploadAuthorization;
+}): Effect.Effect<
+  UploadedCampaignImage,
+  CampaignImageRejectedError | CampaignImageUploadError
+> =>
+  Effect.tryPromise({
     try: (signal) => {
       const form = new FormData();
       for (const [name, value] of Object.entries(authorization.fields)) {
         form.set(name, value);
       }
-      form.set("file", file);
+      form.set("file", image);
       return fetch(authorization.url, { method: "POST", body: form, signal });
     },
     catch: (cause) => new CampaignImageUploadError({ cause }),
-  });
-  if (response.status === 400) return yield* new CampaignImageRejectedError();
-  if (!response.ok) {
-    return yield* new CampaignImageUploadError({ cause: response.status });
-  }
-  const answer = yield* Effect.tryPromise({
-    try: () => response.json(),
-    catch: (cause) => new CampaignImageUploadError({ cause }),
-  });
-  const image = yield* Schema.decodeUnknownEffect(StoredCampaignImage)(
-    answer
-  ).pipe(Effect.mapError((cause) => new CampaignImageUploadError({ cause })));
-  if (
-    image.public_id !== authorization.publicId ||
-    !isCampaignImageWidth(image.width)
-  ) {
-    return yield* new CampaignImageUploadError({ cause: "unexpected-image" });
-  }
-  return { url: image.secure_url, width: image.width };
-});
+  }).pipe(
+    Effect.filterOrFail(
+      (response) => response.status !== 400,
+      () => new CampaignImageRejectedError()
+    ),
+    Effect.filterOrFail(
+      (response) => response.ok,
+      (response) => new CampaignImageUploadError({ cause: response.status })
+    ),
+    Effect.flatMap((response) =>
+      Effect.tryPromise({
+        try: () => response.json(),
+        catch: (cause) => new CampaignImageUploadError({ cause }),
+      })
+    ),
+    Effect.flatMap((answer) =>
+      Schema.decodeUnknownEffect(StoredCampaignImage)(answer).pipe(
+        Effect.mapError((cause) => new CampaignImageUploadError({ cause }))
+      )
+    ),
+    Effect.filterOrFail(
+      (stored) =>
+        stored.public_id === authorization.publicId &&
+        isCampaignImageWidth(stored.width),
+      () => new CampaignImageUploadError({ cause: "unexpected-image" })
+    ),
+    Effect.map((stored) => ({ url: stored.secure_url, width: stored.width })),
+    Effect.withSpan("sendCampaignImage")
+  );
 
 /** What the editor is doing with the image, to tell the admin. */
 export type CampaignImageUploadStage = "shrinking" | "uploading";
 
 const uploadFailureCode = "email-campaigns.admin.image-upload.failed";
+
+/** Reports which stage the upload has reached. */
+type CampaignImageUploadProgress = (
+  stage: CampaignImageUploadStage
+) => Effect.Effect<void>;
+
+const shrinkCampaignImage = ({
+  file,
+  onStage,
+}: {
+  readonly file: File;
+  readonly onStage: CampaignImageUploadProgress;
+}) =>
+  onStage("shrinking").pipe(
+    Effect.andThen(
+      downscaleImage(file, {
+        ...campaignImageUploadLimits,
+        maxWidth: campaignImageMaxWidth,
+      })
+    ),
+    Effect.tap(() => onStage("uploading"))
+  );
+
+/**
+ * The picture to upload: the file as chosen, or shrunk first in the browser
+ * when it's above the account's limits.
+ */
+const prepareCampaignImage = (input: {
+  readonly file: File;
+  readonly onStage: CampaignImageUploadProgress;
+}): Effect.Effect<Blob, ImageDecodeError> =>
+  shrinkCampaignImage(input).pipe(
+    Effect.when(
+      readImageSize(input.file).pipe(
+        Effect.map((size) => needsShrinkingBeforeUpload(input.file.size, size))
+      )
+    ),
+    Effect.map(Option.getOrElse((): Blob => input.file))
+  );
 
 /**
  * Uploads a body image straight to Cloudinary, which shrinks it to the
@@ -136,24 +194,12 @@ const uploadFailureCode = "email-campaigns.admin.image-upload.failed";
 export const uploadCampaignImage = (
   file: File,
   locale: Locale,
-  onStage: (stage: CampaignImageUploadStage) => Effect.Effect<void>
+  onStage: CampaignImageUploadProgress
 ): Effect.Effect<Result.Result<UploadedCampaignImage, string>> =>
-  Effect.gen(function* () {
-    const authorization = yield* authorize(locale);
-    const size = yield* readImageSize(file);
-    const image = needsShrinkingBeforeUpload(file.size, size)
-      ? yield* onStage("shrinking").pipe(
-          Effect.andThen(
-            downscaleImage(file, {
-              ...campaignImageUploadLimits,
-              maxWidth: campaignImageMaxWidth,
-            })
-          ),
-          Effect.tap(() => onStage("uploading"))
-        )
-      : file;
-    return yield* sendCampaignImage(image, authorization);
-  }).pipe(
+  Effect.Do.pipe(
+    Effect.bind("authorization", () => authorize(locale)),
+    Effect.bind("image", () => prepareCampaignImage({ file, onStage })),
+    Effect.flatMap(sendCampaignImage),
     Effect.map(Result.succeed),
     Effect.catchTags({
       ImageDecodeError: () => unreadable(locale),

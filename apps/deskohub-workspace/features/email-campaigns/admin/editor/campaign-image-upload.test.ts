@@ -40,7 +40,7 @@ const answer = (status: number, body: CloudinaryAnswer) =>
   fetchSpy.mockResolvedValue(Response.json(body, { status }));
 
 const send = (file = new Blob([new Uint8Array(3)], { type: "image/png" })) =>
-  Effect.runPromiseExit(sendCampaignImage(file, authorization));
+  Effect.runPromiseExit(sendCampaignImage({ image: file, authorization }));
 
 const failureTag = (exit: Exit.Exit<unknown, { readonly _tag: string }>) =>
   Exit.isFailure(exit)
