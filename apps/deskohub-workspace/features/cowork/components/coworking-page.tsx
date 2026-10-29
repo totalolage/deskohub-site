@@ -1,11 +1,10 @@
 import { CloudinaryImage } from "@deskohub/cloudinary-image";
-import { getLocalizedCloudinaryContextValue } from "@deskohub/cloudinary-image/localized-context";
 import Interpolate from "@doist/react-interpolate";
 import { ArrowDown, ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 import { getWorkspaceProductTierTitle } from "@/features/checkout/product-catalog.i18n";
 import type { PublicPriceListOffering } from "@/features/checkout/public-offerings";
-import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
+import type { VenuePhoto } from "@/features/gallery/types/venue-photo";
 import { type Locale, m } from "@/features/i18n";
 import { getOfferingSale } from "@/features/pricing/offering-sale";
 import { PublicPageBreadcrumbs } from "@/features/public-pages/components/public-page-breadcrumbs";
@@ -27,7 +26,7 @@ import {
 type CoworkingPageProps = {
   /** The cowork offerings at the prices every visitor shares. */
   readonly offerings: ReadonlyArray<PublicPriceListOffering>;
-  readonly photos: readonly CloudinaryAsset[];
+  readonly photos: readonly VenuePhoto[];
   readonly locale: Locale;
 };
 
@@ -59,7 +58,7 @@ function CoworkingHero({
   photo,
 }: {
   readonly locale: Locale;
-  readonly photo?: CloudinaryAsset;
+  readonly photo?: VenuePhoto;
 }) {
   return (
     <section
@@ -141,15 +140,12 @@ function CoworkingHero({
           <figure className="relative m-0 before:absolute before:-inset-3 before:-z-10 before:translate-x-3 before:translate-y-3 before:rounded-[2rem] before:border before:border-burned-orange/70 max-sm:before:-inset-2 max-sm:before:translate-x-2 max-sm:before:translate-y-2">
             <div className="relative aspect-[4/5] overflow-hidden rounded-[1.75rem] border border-white/20 bg-white/6 sm:aspect-[5/4] lg:aspect-[4/5]">
               <CloudinaryImage
-                alt={
-                  getLocalizedCloudinaryContextValue(photo, "alt", locale) ??
-                  m.coworkingPhotoAlt({}, { locale })
-                }
+                alt={photo.alt}
                 className="absolute inset-0 size-full object-cover"
                 preload
                 sizes="(min-width: 1024px) 44vw, 92vw"
                 size={{ width: "fill", height: "fill" }}
-                source={photo}
+                source={photo.publicId}
                 variant="gallery"
               />
             </div>
@@ -408,7 +404,7 @@ function CoworkingPhotos({
   photos,
 }: {
   readonly locale: Locale;
-  readonly photos: readonly CloudinaryAsset[];
+  readonly photos: readonly VenuePhoto[];
 }) {
   if (photos.length === 0) return null;
 
@@ -430,18 +426,15 @@ function CoworkingPhotos({
           {photos.map((photo) => (
             <div
               className="relative aspect-[4/3] overflow-hidden rounded-[1.25rem] bg-navy-blue/8"
-              key={photo.public_id}
+              key={photo.id}
             >
               <CloudinaryImage
-                alt={
-                  getLocalizedCloudinaryContextValue(photo, "alt", locale) ||
-                  m.coworkingPhotoAlt({}, { locale })
-                }
+                alt={photo.alt}
                 className="absolute inset-0 size-full object-cover"
                 preload={false}
                 sizes="(min-width: 1024px) 30vw, 48vw"
                 size={{ width: "fill", height: "fill" }}
-                source={photo}
+                source={photo.publicId}
                 variant="gallery"
               />
             </div>

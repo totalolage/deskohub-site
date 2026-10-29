@@ -8,17 +8,16 @@ import {
   test,
 } from "bun:test";
 import { cleanup } from "@testing-library/react";
-import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
+import type { VenuePhoto } from "@/features/gallery/types/venue-photo";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 
-let loadCarouselImages = (): Promise<readonly CloudinaryAsset[]> =>
-  Promise.resolve([]);
+let loadPhotos = (): Promise<readonly VenuePhoto[]> => Promise.resolve([]);
 
-mock.module("@/features/gallery/backend/get-cloudinary-images.server", () => ({
-  getCloudinaryImages: () => loadCarouselImages(),
+mock.module("@/features/gallery/backend/load-venue-photos.server", () => ({
+  loadVenuePhotos: () => loadPhotos(),
 }));
 mock.module("@deskohub/cloudinary-image", () => ({
   CloudinaryImage: ({ alt }: { alt: string }) => (
@@ -36,17 +35,23 @@ describe("LandingPagePhotoCarouselSection", () => {
   afterEach(() => cleanup());
   afterAll(() => unregisterWorkspaceComponentTestEnv());
 
-  test("renders nothing when the photos fail to load", async () => {
-    loadCarouselImages = () =>
-      Promise.reject(new Error("Cloudinary search failed"));
+  test("propagates redirect errors from the photo loader", async () => {
+    loadPhotos = () =>
+      Promise.reject(
+        Object.assign(new Error("Redirect"), {
+          digest: "NEXT_REDIRECT;replace;/en-US;307;",
+        })
+      );
 
-    expect(
-      await LandingPagePhotoCarouselSection({ locale: "en-US" })
-    ).toBeNull();
+    await expect(
+      LandingPagePhotoCarouselSection({ locale: "en-US" })
+    ).rejects.toMatchObject({
+      digest: expect.stringContaining("NEXT_REDIRECT"),
+    });
   });
 
-  test("renders nothing when Cloudinary serves no photos", async () => {
-    loadCarouselImages = () => Promise.resolve([]);
+  test("renders nothing when the loader returns no photos", async () => {
+    loadPhotos = () => Promise.resolve([]);
 
     expect(
       await LandingPagePhotoCarouselSection({ locale: "en-US" })

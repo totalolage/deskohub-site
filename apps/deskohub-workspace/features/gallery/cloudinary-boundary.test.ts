@@ -11,8 +11,9 @@ const allowedServerImports = new Set([
   "features/account/backend/customer-avatar.service.ts",
   "features/email-campaigns/backend/campaign-image.service.ts",
   "features/email-campaigns/backend/campaign-image.service.test.ts",
-  "features/gallery/backend/cloudinary.service.ts",
+  "shared/backend/cloudinary.ts",
   "features/gallery/backend/get-cloudinary-images.server.ts",
+  "features/gallery/backend/load-venue-photos.control-flow.test.ts",
 ]);
 
 const gallerySearchModule =

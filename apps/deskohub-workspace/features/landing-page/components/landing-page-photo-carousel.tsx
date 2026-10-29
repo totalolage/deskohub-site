@@ -1,15 +1,14 @@
 "use client";
 
 import { CloudinaryImage } from "@deskohub/cloudinary-image";
-import { getLocalizedCloudinaryContextValue } from "@deskohub/cloudinary-image/localized-context";
 import { motion, type Transition } from "motion/react";
 import { useMemo, useState } from "react";
-import Lightbox, { type SlideImage } from "yet-another-react-lightbox";
-import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
+import Lightbox from "yet-another-react-lightbox";
 import {
   useMotionSwipeCarousel,
   wrapIndex,
 } from "@/features/gallery/hooks/use-motion-swipe-carousel";
+import type { VenuePhoto } from "@/features/gallery/types/venue-photo";
 import { type Locale, m } from "@/features/i18n";
 import { CarouselPositionIndicator } from "@/shared/components/carousel-position-indicator";
 import { cn } from "@/shared/utils";
@@ -18,7 +17,7 @@ import "yet-another-react-lightbox/styles.css";
 type LandingPagePhotoCarouselProps = {
   ariaLabel: string;
   locale: Locale;
-  images: readonly CloudinaryAsset[];
+  images: readonly VenuePhoto[];
   className?: string;
 };
 
@@ -88,10 +87,6 @@ const getSlideMotion = (offset: number) => {
   };
 };
 
-const getImageAlt = (image: CloudinaryAsset, locale: Locale) =>
-  getLocalizedCloudinaryContextValue(image, "alt", locale) ||
-  m.landingCarouselImageAlt({}, { locale });
-
 const getSlideZIndex = (offset: number) => {
   if (Math.abs(offset) < 0.5) return 20;
   if (Math.abs(offset) < 1.5) return 10;
@@ -138,25 +133,9 @@ export function LandingPagePhotoCarousel({
   const openLightbox = (index: number) => {
     setLightboxIndex(index);
   };
-  const lightboxSlides: SlideImage[] = useMemo(
-    () =>
-      images.map((image) => {
-        const caption = getLocalizedCloudinaryContextValue(
-          image,
-          "caption",
-          locale
-        );
-
-        return {
-          alt: getImageAlt(image, locale),
-          description: caption,
-          height: image.height,
-          src: image.secure_url,
-          title: caption,
-          width: image.width,
-        };
-      }),
-    [images, locale]
+  const lightboxSlides = useMemo(
+    () => images.map((image) => image.lightbox),
+    [images]
   );
   let visibleOffsets: readonly SlideOffset[] = slideOffsets;
   if (images.length === 0) visibleOffsets = [];
@@ -260,8 +239,8 @@ export function LandingPagePhotoCarousel({
             >
               <span className="relative block h-full overflow-hidden rounded-[1.25rem] bg-navy-blue sm:rounded-[1.85rem]">
                 <CloudinaryImage
-                  source={image}
-                  alt={getImageAlt(image, locale)}
+                  source={image.publicId}
+                  alt={image.alt}
                   className="absolute inset-0"
                   size={{ width: "fill", height: "fill" }}
                   // The current slide's width: 78% of the content box, capped
@@ -279,7 +258,7 @@ export function LandingPagePhotoCarousel({
         <CarouselPositionIndicator
           activeIndex={activeIndex}
           count={images.length}
-          getKey={(index) => images[index]?.public_id ?? index}
+          getKey={(index) => images[index]?.id ?? index}
           getLabel={(index) =>
             m.landingCarouselShowImage({ number: index + 1 }, { locale })
           }

@@ -1,17 +1,15 @@
 "use client";
 
 import { CloudinaryImage } from "@deskohub/cloudinary-image";
-import { getCloudinaryImageUrl } from "@deskohub/cloudinary-image/url";
 import { useMemo, useState } from "react";
-import Lightbox, { type SlideImage } from "yet-another-react-lightbox";
+import Lightbox from "yet-another-react-lightbox";
 import "yet-another-react-lightbox/styles.css";
-import { getLocalizedCloudinaryContextValue } from "@deskohub/cloudinary-image/localized-context";
-import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
+import type { VenuePhoto } from "@/features/gallery/types/venue-photo";
 import { type Locale, m } from "@/features/i18n";
 import { UnstyledButton } from "@/shared/components/ui/unstyled-button";
 
 type MeetingRoomGalleryProps = {
-  images: readonly CloudinaryAsset[];
+  images: readonly VenuePhoto[];
   locale: Locale;
 };
 
@@ -20,35 +18,9 @@ export function MeetingRoomGallery({
   locale,
 }: MeetingRoomGalleryProps) {
   const [lightboxIndex, setLightboxIndex] = useState(-1);
-  const lightboxSlides: SlideImage[] = useMemo(
-    () =>
-      images.map((image) => {
-        const caption = getLocalizedCloudinaryContextValue(
-          image,
-          "caption",
-          locale
-        );
-
-        return {
-          alt:
-            getLocalizedCloudinaryContextValue(image, "alt", locale) ||
-            m.meetingRoomGalleryImageAlt({}, { locale }),
-          description: getLocalizedCloudinaryContextValue(
-            image,
-            "detail",
-            locale
-          ),
-          height: image.height,
-          src: getCloudinaryImageUrl({
-            asset: image,
-            height: 1920,
-            width: 1920,
-          }),
-          title: caption,
-          width: image.width,
-        };
-      }),
-    [images, locale]
+  const lightboxSlides = useMemo(
+    () => images.map((image) => image.lightbox),
+    [images]
   );
 
   return (
@@ -73,25 +45,11 @@ export function MeetingRoomGallery({
         {images.length > 0 ? (
           <div className="grid grid-cols-1 gap-x-5 gap-y-8 md:grid-cols-2 xl:grid-cols-3">
             {images.map((image, index) => {
-              const alt = getLocalizedCloudinaryContextValue(
-                image,
-                "alt",
-                locale
-              );
-              const caption = getLocalizedCloudinaryContextValue(
-                image,
-                "caption",
-                locale
-              );
-              const detail = getLocalizedCloudinaryContextValue(
-                image,
-                "detail",
-                locale
-              );
+              const { alt, caption, detail } = image;
               const imageName = alt || caption;
 
               return (
-                <figure className="m-0 min-w-0" key={image.public_id}>
+                <figure className="m-0 min-w-0" key={image.id}>
                   <UnstyledButton
                     aria-label={
                       imageName
@@ -108,12 +66,12 @@ export function MeetingRoomGallery({
                     onClick={() => setLightboxIndex(index)}
                   >
                     <CloudinaryImage
-                      alt={alt || m.meetingRoomGalleryImageAlt({}, { locale })}
+                      alt={alt}
                       className="absolute inset-0 size-full object-cover transition-transform duration-300 group-hover:scale-[1.025] group-focus-visible:scale-[1.025]"
                       preload={false}
                       sizes="(min-width: 1280px) 30vw, (min-width: 768px) 48vw, 100vw"
                       size={{ width: "fill", height: "fill" }}
-                      source={image}
+                      source={image.publicId}
                       variant="gallery"
                     />
                   </UnstyledButton>
