@@ -33,7 +33,7 @@ export class AutomationSweepPlanning extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const { db } = yield* WorkspaceDatabase;
+      const { transaction } = yield* WorkspaceDatabase;
       const sweep = yield* ReservationActivitySweep;
       const reconciler = yield* CustomerEventReconciler;
 
@@ -41,12 +41,12 @@ export class AutomationSweepPlanning extends Context.Service<
         plan: (at) =>
           Effect.Do.pipe(
             Effect.bind("pages", () =>
-              db.transaction((tx) =>
+              transaction(
                 sweep
-                  .duePages(tx, at)
+                  .duePages(at)
                   .pipe(
                     Effect.flatMap((pages) =>
-                      planAutomationUnits(tx, pages.map(plannedSweepPage), at)
+                      planAutomationUnits(pages.map(plannedSweepPage), at)
                     )
                   )
               )

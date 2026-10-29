@@ -1,11 +1,9 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { Effect } from "effect";
+import { WorkspaceTransaction } from "@/db/database.service";
 import { emailCampaignAutomationRuns as runs } from "@/db/schema";
 import type { AutomationRunId } from "../automation-identifiers";
-import type {
-  AutomationEngineTransaction,
-  PlannedAutomationUnit,
-} from "./automation-unit-handler";
+import type { PlannedAutomationUnit } from "./automation-unit-handler";
 import { planAutomationUnits } from "./automation-unit-planning";
 
 /**
@@ -18,15 +16,14 @@ import { planAutomationUnits } from "./automation-unit-planning";
  */
 export const planAutomationRunUnits = Effect.fn("automationRunUnits.plan")(
   function* (
-    tx: AutomationEngineTransaction,
     planned: readonly {
       readonly unit: PlannedAutomationUnit;
       readonly runIds: readonly AutomationRunId[];
     }[],
     at: Temporal.Instant
   ) {
+    const { db } = yield* WorkspaceTransaction;
     const { written } = yield* planAutomationUnits(
-      tx,
       planned.map(({ unit }) => unit),
       at
     );
@@ -34,7 +31,7 @@ export const planAutomationRunUnits = Effect.fn("automationRunUnits.plan")(
       planned.map(({ unit, runIds }) => [unit.key, runIds])
     );
     return yield* Effect.forEach(written, ({ unitId, key }) =>
-      tx
+      db
         .update(runs)
         .set({ workUnitId: unitId, updatedAt: at })
         .where(

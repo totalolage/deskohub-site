@@ -2,6 +2,7 @@ import "server-only";
 
 import { and, eq, inArray, isNull, type SQL, sql } from "drizzle-orm";
 import { Effect, Option } from "effect";
+import { WorkspaceTransaction } from "@/db/database.service";
 import { emailCampaignAutomationRuns as runs } from "@/db/schema";
 import { temporalInstantToIsoString } from "@/shared/utils/temporal";
 import type {
@@ -14,7 +15,6 @@ import {
   type AutomationRunProgressEntry,
   appendAutomationRunProgress,
 } from "./automation-run-timeline";
-import type { AutomationEngineTransaction } from "./automation-unit-handler";
 
 /*
  * How an open run moves through its flow. Each move is a compare-and-set on
@@ -45,13 +45,11 @@ type AutomationRunMove = {
  * `workUnitId` (null: by no unit), clears their owner, and records each
  * move's entry. Runs lock in id order (§5.4). Returns the runs moved.
  */
-const moveAutomationRuns = Effect.fn("automationRuns.move")(function* (
-  tx: AutomationEngineTransaction,
-  input: {
-    readonly moves: readonly AutomationRunMove[];
-    readonly workUnitId: AutomationWorkUnitId | null;
-  }
-) {
+const moveAutomationRuns = Effect.fn("automationRuns.move")(function* (input: {
+  readonly moves: readonly AutomationRunMove[];
+  readonly workUnitId: AutomationWorkUnitId | null;
+}) {
+  const { db } = yield* WorkspaceTransaction;
   if (input.moves.length === 0) return [];
 
   const byRun = (value: (move: AutomationRunMove) => SQL) =>
@@ -69,7 +67,7 @@ const moveAutomationRuns = Effect.fn("automationRuns.move")(function* (
       ? isNull(runs.workUnitId)
       : eq(runs.workUnitId, input.workUnitId)
   );
-  const lockedInIdOrder = tx
+  const lockedInIdOrder = db
     .select({ id: runs.id })
     .from(runs)
     .where(
@@ -84,7 +82,7 @@ const moveAutomationRuns = Effect.fn("automationRuns.move")(function* (
     .orderBy(runs.id)
     .for("update");
 
-  const moved = yield* tx
+  const moved = yield* db
     .update(runs)
     .set({
       stepId: byRun((move) => sql`${move.stepId}`),
@@ -111,7 +109,6 @@ const moveAutomationRuns = Effect.fn("automationRuns.move")(function* (
 
   const movedIds = new Set(moved.map(({ runId }) => runId));
   yield* appendAutomationRunProgress(
-    tx,
     input.moves
       .filter((move) => movedIds.has(move.position.runId))
       .map((move) => move.entry)
@@ -126,18 +123,15 @@ const moveAutomationRuns = Effect.fn("automationRuns.move")(function* (
  * for a wait, `condition-passed` for a condition. `workUnitId` is the unit
  * that owns the runs, or null for the planner's timers.
  */
-export const advanceAutomationRuns = (
-  tx: AutomationEngineTransaction,
-  input: {
-    readonly runs: readonly (AutomationRunPosition & {
-      readonly nextStepId: AutomationStepId;
-      readonly passed: "woke" | "condition-passed";
-    })[];
-    readonly workUnitId: AutomationWorkUnitId | null;
-    readonly at: Temporal.Instant;
-  }
-) =>
-  moveAutomationRuns(tx, {
+export const advanceAutomationRuns = (input: {
+  readonly runs: readonly (AutomationRunPosition & {
+    readonly nextStepId: AutomationStepId;
+    readonly passed: "woke" | "condition-passed";
+  })[];
+  readonly workUnitId: AutomationWorkUnitId | null;
+  readonly at: Temporal.Instant;
+}) =>
+  moveAutomationRuns({
     workUnitId: input.workUnitId,
     moves: input.runs.map(
       (run): AutomationRunMove => ({
@@ -160,16 +154,13 @@ export const advanceAutomationRuns = (
  * Puts unowned runs to wait at their step until `dueAt`, or moves a waiting
  * run's due time after a pause passed it over (D12), with a `waiting` entry.
  */
-export const waitAutomationRuns = (
-  tx: AutomationEngineTransaction,
-  input: {
-    readonly runs: readonly (AutomationRunPosition & {
-      readonly dueAt: Temporal.Instant;
-    })[];
-    readonly at: Temporal.Instant;
-  }
-) =>
-  moveAutomationRuns(tx, {
+export const waitAutomationRuns = (input: {
+  readonly runs: readonly (AutomationRunPosition & {
+    readonly dueAt: Temporal.Instant;
+  })[];
+  readonly at: Temporal.Instant;
+}) =>
+  moveAutomationRuns({
     workUnitId: null,
     moves: input.runs.map(
       (run): AutomationRunMove => ({
@@ -194,14 +185,11 @@ export const waitAutomationRuns = (
  * with a `woke` entry: a send step's deferred trigger is verified again by
  * the next deliver unit (§5.9).
  */
-export const wakeAutomationRuns = (
-  tx: AutomationEngineTransaction,
-  input: {
-    readonly runs: readonly AutomationRunPosition[];
-    readonly at: Temporal.Instant;
-  }
-) =>
-  moveAutomationRuns(tx, {
+export const wakeAutomationRuns = (input: {
+  readonly runs: readonly AutomationRunPosition[];
+  readonly at: Temporal.Instant;
+}) =>
+  moveAutomationRuns({
     workUnitId: null,
     moves: input.runs.map(
       (run): AutomationRunMove => ({

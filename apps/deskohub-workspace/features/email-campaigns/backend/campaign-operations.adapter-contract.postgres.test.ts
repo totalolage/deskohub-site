@@ -25,6 +25,7 @@ import { NodeCrypto, NodeHttpServer } from "@effect/platform-node";
 import { Effect, Layer, Option } from "effect";
 import { HttpRouter } from "effect/unstable/http";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
+import { WorkspaceDatabase } from "@/db/database.service";
 import { cliSessions } from "@/db/schema";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import { mockAdministratorAccess } from "@/features/administrators/server/administrator-access.test-utils";
@@ -871,10 +872,17 @@ describe.skipIf(!testDatabase)("campaign operation adapters", () => {
         })
       ),
       Effect.andThen(
-        testDatabase.db.transaction((tx) => loadAutomationWorkingCopy(tx, id))
+        Effect.flatMap(WorkspaceDatabase, ({ transaction }) =>
+          transaction(loadAutomationWorkingCopy(id))
+        )
       ),
       Effect.map((copy) => Option.getOrThrow(copy.draftHash)),
-      Effect.provide(AutomationLifecycle.Live),
+      Effect.provide(
+        Layer.mergeAll(
+          AutomationLifecycle.Live.pipe(Layer.provide(testDatabase.layer)),
+          testDatabase.layer
+        )
+      ),
       Effect.runPromise
     );
   };

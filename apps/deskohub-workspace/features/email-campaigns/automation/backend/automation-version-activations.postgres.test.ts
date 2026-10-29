@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { Effect } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   deleteAutomatedCampaigns,
@@ -50,7 +51,9 @@ describe.skipIf(!testDatabase)(
       });
 
       const activations = await Effect.runPromise(
-        db.transaction((tx) => loadAutomationVersionActivations(tx, campaignId))
+        Effect.flatMap(WorkspaceDatabase, ({ transaction }) =>
+          transaction(loadAutomationVersionActivations(campaignId))
+        ).pipe(Effect.provide(testDatabase.layer))
       );
 
       expect(activations).toEqual([

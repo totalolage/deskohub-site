@@ -4,6 +4,7 @@ import type { DotyposCustomerId } from "@deskohub/dotypos";
 import type { AutomationFlowType as AutomationFlow } from "@deskohub/workspace-admin-api";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { Effect, Option, Schema } from "effect";
+import { WorkspaceTransaction } from "@/db/database.service";
 import {
   emailCampaignAutomationTriggerReceipts as receipts,
   emailCampaignAutomationRuns as runs,
@@ -26,10 +27,7 @@ import type {
 import type { AutomationEvaluationFacts } from "./automation-evaluation-facts.service";
 import { planReachedStep } from "./automation-reached-step";
 import { appendAutomationRunProgress } from "./automation-run-timeline";
-import {
-  type AutomationEngineTransaction,
-  AutomationUnitRecheckFailed,
-} from "./automation-unit-handler";
+import { AutomationUnitRecheckFailed } from "./automation-unit-handler";
 
 /** One trigger occurrence for one customer of one automation. */
 export type AutomationTriggerOccurrence = {
@@ -74,9 +72,8 @@ type AutomationRunEntry = {
  * `AutomationUnitRecheckFailed`, rolling the runs back: the unit drops and
  * its subjects are replanned, when the key is no longer free.
  */
-export const enterAutomationRuns = Effect.fn("automationRuns.enter")(function* (
-  tx: AutomationEngineTransaction,
-  input: {
+export const enterAutomationRuns = Effect.fn("automationRuns.enter")(
+  function* (input: {
     readonly campaignId: CampaignId;
     readonly versionId: AutomationVersionId;
     /** Occurrences that start runs at the version's first step. */
@@ -89,143 +86,146 @@ export const enterAutomationRuns = Effect.fn("automationRuns.enter")(function* (
     };
     readonly rejected: readonly AutomationTriggerRejection[];
     readonly at: Temporal.Instant;
-  }
-) {
-  const admitted = input.admitted?.occurrences ?? [];
-  const firstStepId = input.admitted?.flow.steps[0]?.id;
-  const firstByCustomer = new Map<
-    DotyposCustomerId,
-    AutomationTriggerOccurrence
-  >();
-  for (const occurrence of admitted.toSorted(byOccurrence)) {
-    if (!firstByCustomer.has(occurrence.dotyposCustomerId)) {
-      firstByCustomer.set(occurrence.dotyposCustomerId, occurrence);
+  }) {
+    const { db } = yield* WorkspaceTransaction;
+    const admitted = input.admitted?.occurrences ?? [];
+    const firstStepId = input.admitted?.flow.steps[0]?.id;
+    const firstByCustomer = new Map<
+      DotyposCustomerId,
+      AutomationTriggerOccurrence
+    >();
+    for (const occurrence of admitted.toSorted(byOccurrence)) {
+      if (!firstByCustomer.has(occurrence.dotyposCustomerId)) {
+        firstByCustomer.set(occurrence.dotyposCustomerId, occurrence);
+      }
     }
-  }
-  const candidates = [...firstByCustomer.values()];
+    const candidates = [...firstByCustomer.values()];
 
-  const inserted =
-    firstStepId === undefined || candidates.length === 0
-      ? []
-      : yield* tx
-          .insert(runs)
-          .values(
-            candidates.map((occurrence) => ({
-              campaignId: input.campaignId,
-              versionId: input.versionId,
-              dotyposCustomerId: occurrence.dotyposCustomerId,
-              triggerKind: occurrence.kind,
-              triggerAt: occurrence.at,
-              triggerEventId: occurrence.eventId,
-              triggerReservationId: occurrence.reservationId,
-              status: "active" as const,
-              stepId: firstStepId,
-              phase: "ready" as const,
-              stepEnteredAt: input.at,
-              dueAt: input.at,
-              workUnitId: null,
-            }))
-          )
-          .onConflictDoNothing({
-            target: [runs.campaignId, runs.dotyposCustomerId],
-            where: ne(runs.status, "ended"),
-          })
-          .returning({
-            id: runs.id,
-            dotyposCustomerId: runs.dotyposCustomerId,
-          });
-  const startedRuns = new Map<DotyposCustomerId, AutomationRunId>(
-    inserted.map((run) => [run.dotyposCustomerId, run.id])
-  );
+    const inserted =
+      firstStepId === undefined || candidates.length === 0
+        ? []
+        : yield* db
+            .insert(runs)
+            .values(
+              candidates.map((occurrence) => ({
+                campaignId: input.campaignId,
+                versionId: input.versionId,
+                dotyposCustomerId: occurrence.dotyposCustomerId,
+                triggerKind: occurrence.kind,
+                triggerAt: occurrence.at,
+                triggerEventId: occurrence.eventId,
+                triggerReservationId: occurrence.reservationId,
+                status: "active" as const,
+                stepId: firstStepId,
+                phase: "ready" as const,
+                stepEnteredAt: input.at,
+                dueAt: input.at,
+                workUnitId: null,
+              }))
+            )
+            .onConflictDoNothing({
+              target: [runs.campaignId, runs.dotyposCustomerId],
+              where: ne(runs.status, "ended"),
+            })
+            .returning({
+              id: runs.id,
+              dotyposCustomerId: runs.dotyposCustomerId,
+            });
+    const startedRuns = new Map<DotyposCustomerId, AutomationRunId>(
+      inserted.map((run) => [run.dotyposCustomerId, run.id])
+    );
 
-  const receiptRows = [
-    ...admitted.map((occurrence) => {
-      const runId =
-        firstByCustomer.get(occurrence.dotyposCustomerId) === occurrence
-          ? startedRuns.get(occurrence.dotyposCustomerId)
-          : undefined;
-      return receiptRow(input, occurrence, {
-        disposition: runId === undefined ? "already-active" : "started",
-        runId: runId ?? null,
-      });
-    }),
-    ...input.rejected.map((rejection) =>
-      receiptRow(input, rejection, {
-        disposition: rejection.disposition,
-        runId: null,
-      })
-    ),
-  ];
-  const written =
-    receiptRows.length === 0
-      ? []
-      : yield* tx
-          .insert(receipts)
-          .values(receiptRows)
-          .onConflictDoNothing()
-          .returning({ dedupKey: receipts.dedupKey, runId: receipts.runId });
-  const startedReceipts = written.filter(({ runId }) => runId !== null).length;
-  if (startedReceipts < startedRuns.size) {
-    return yield* new AutomationUnitRecheckFailed({ code: "receipt-taken" });
-  }
-
-  yield* appendAutomationRunProgress(
-    tx,
-    inserted.map((run) => ({
-      runId: run.id,
-      kind: "started" as const,
-      stepId: firstStepId ?? null,
-      at: input.at,
-    }))
-  );
-  if (input.admitted !== undefined && firstStepId !== undefined) {
-    yield* planReachedStep(tx, input.admitted.facts, {
-      campaignId: input.campaignId,
-      versionId: input.versionId,
-      flow: Option.some(input.admitted.flow),
-      stepId: firstStepId,
-      runs: inserted.flatMap((run) =>
-        Option.toArray(
-          Option.fromUndefinedOr(firstByCustomer.get(run.dotyposCustomerId))
-        ).map((occurrence) => ({
-          runId: run.id,
-          dotyposCustomerId: run.dotyposCustomerId,
-          triggerKind: occurrence.kind,
-          triggerAt: occurrence.at,
-          triggerReservationId: occurrence.reservationId,
-        }))
+    const receiptRows = [
+      ...admitted.map((occurrence) => {
+        const runId =
+          firstByCustomer.get(occurrence.dotyposCustomerId) === occurrence
+            ? startedRuns.get(occurrence.dotyposCustomerId)
+            : undefined;
+        return receiptRow(input, occurrence, {
+          disposition: runId === undefined ? "already-active" : "started",
+          runId: runId ?? null,
+        });
+      }),
+      ...input.rejected.map((rejection) =>
+        receiptRow(input, rejection, {
+          disposition: rejection.disposition,
+          runId: null,
+        })
       ),
-      at: input.at,
-      chainedSteps: 0,
-    });
+    ];
+    const written =
+      receiptRows.length === 0
+        ? []
+        : yield* db
+            .insert(receipts)
+            .values(receiptRows)
+            .onConflictDoNothing()
+            .returning({ dedupKey: receipts.dedupKey, runId: receipts.runId });
+    const startedReceipts = written.filter(
+      ({ runId }) => runId !== null
+    ).length;
+    if (startedReceipts < startedRuns.size) {
+      return yield* new AutomationUnitRecheckFailed({ code: "receipt-taken" });
+    }
+
+    yield* appendAutomationRunProgress(
+      inserted.map((run) => ({
+        runId: run.id,
+        kind: "started" as const,
+        stepId: firstStepId ?? null,
+        at: input.at,
+      }))
+    );
+    if (input.admitted !== undefined && firstStepId !== undefined) {
+      yield* planReachedStep(input.admitted.facts, {
+        campaignId: input.campaignId,
+        versionId: input.versionId,
+        flow: Option.some(input.admitted.flow),
+        stepId: firstStepId,
+        runs: inserted.flatMap((run) =>
+          Option.toArray(
+            Option.fromUndefinedOr(firstByCustomer.get(run.dotyposCustomerId))
+          ).map((occurrence) => ({
+            runId: run.id,
+            dotyposCustomerId: run.dotyposCustomerId,
+            triggerKind: occurrence.kind,
+            triggerAt: occurrence.at,
+            triggerReservationId: occurrence.reservationId,
+          }))
+        ),
+        at: input.at,
+        chainedSteps: 0,
+      });
+    }
+    return {
+      started: startedRuns.size,
+      alreadyActive: admitted.length - startedRuns.size,
+      rejected: input.rejected.length,
+    } satisfies AutomationRunEntry;
   }
-  return {
-    started: startedRuns.size,
-    alreadyActive: admitted.length - startedRuns.size,
-    rejected: input.rejected.length,
-  } satisfies AutomationRunEntry;
-});
+);
 
 /** Receipt keys among `dedupKeys` the automation already recorded. */
 export const takenReceiptKeys = (
-  tx: AutomationEngineTransaction,
   campaignId: CampaignId,
   dedupKeys: readonly string[]
 ) =>
-  dedupKeys.length === 0
-    ? Effect.succeed(new Set<string>())
-    : tx
-        .select({ dedupKey: receipts.dedupKey })
-        .from(receipts)
-        .where(
-          and(
-            eq(receipts.campaignId, campaignId),
-            inArray(receipts.dedupKey, [...new Set(dedupKeys)])
+  Effect.flatMap(WorkspaceTransaction, ({ db }) =>
+    dedupKeys.length === 0
+      ? Effect.succeed(new Set<string>())
+      : db
+          .select({ dedupKey: receipts.dedupKey })
+          .from(receipts)
+          .where(
+            and(
+              eq(receipts.campaignId, campaignId),
+              inArray(receipts.dedupKey, [...new Set(dedupKeys)])
+            )
           )
-        )
-        .pipe(
-          Effect.map((rows) => new Set(rows.map(({ dedupKey }) => dedupKey)))
-        );
+          .pipe(
+            Effect.map((rows) => new Set(rows.map(({ dedupKey }) => dedupKey)))
+          )
+  );
 
 const byOccurrence = (
   left: AutomationTriggerOccurrence,
@@ -271,14 +271,12 @@ const decodeFlow = Schema.decodeUnknownOption(automationFlowSchema);
 /** The versions by id, with their flows decoded. */
 export const loadAutomationEntryVersions = Effect.fn(
   "automationVersions.loadEntryVersions"
-)(function* (
-  tx: AutomationEngineTransaction,
-  versionIds: readonly AutomationVersionId[]
-) {
+)(function* (versionIds: readonly AutomationVersionId[]) {
+  const { db } = yield* WorkspaceTransaction;
   const rows =
     versionIds.length === 0
       ? []
-      : yield* tx
+      : yield* db
           .select({
             id: versions.id,
             campaignId: versions.campaignId,

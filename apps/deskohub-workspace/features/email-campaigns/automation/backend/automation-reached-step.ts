@@ -21,7 +21,7 @@ import {
 } from "./automation-run-progress";
 import { AutomationRunTransitions } from "./automation-run-transitions";
 import { planDeliverRuns } from "./automation-send-planning.service";
-import type { AutomationEngineTransaction } from "./automation-unit-handler";
+
 import { automationStepPosition } from "./automation-version-flows";
 
 /**
@@ -47,15 +47,12 @@ export type ReachedStep<Run extends { readonly runId: AutomationRunId }> = {
 };
 
 /** Ends runs whose step can't be decided `failed / evaluation-unavailable`. */
-const endUnavailable = (
-  tx: AutomationEngineTransaction,
-  input: {
-    readonly stepId: AutomationStepId;
-    readonly runIds: readonly AutomationRunId[];
-    readonly at: Temporal.Instant;
-  }
-) =>
-  AutomationRunTransitions.end(tx, {
+const endUnavailable = (input: {
+  readonly stepId: AutomationStepId;
+  readonly runIds: readonly AutomationRunId[];
+  readonly at: Temporal.Instant;
+}) =>
+  AutomationRunTransitions.end({
     runIds: input.runIds,
     expect: {
       status: "active",
@@ -76,16 +73,13 @@ const endUnavailable = (
  * cap is returned unentered, so the caller leaves its runs `ready`.
  */
 export const enterReachedWaits = Effect.fn("automationReachedSteps.enterWaits")(
-  function* (
-    tx: AutomationEngineTransaction,
-    reached: ReachedStep<{ readonly runId: AutomationRunId }>
-  ) {
+  function* (reached: ReachedStep<{ readonly runId: AutomationRunId }>) {
     let current = reached;
     for (;;) {
       if (current.runs.length === 0) return Option.none();
       const position = automationStepPosition(current.flow, current.stepId);
       if (Option.isNone(position)) {
-        yield* endUnavailable(tx, {
+        yield* endUnavailable({
           stepId: current.stepId,
           runIds: current.runs.map(({ runId }) => runId),
           at: current.at,
@@ -107,7 +101,7 @@ export const enterReachedWaits = Effect.fn("automationReachedSteps.enterWaits")(
       });
       const runIds = current.runs.map(({ runId }) => runId);
       if (transition._tag === "Wait") {
-        yield* waitAutomationRuns(tx, {
+        yield* waitAutomationRuns({
           runs: runIds.map((runId) => ({
             runId,
             stepId: current.stepId,
@@ -120,7 +114,7 @@ export const enterReachedWaits = Effect.fn("automationReachedSteps.enterWaits")(
       }
       if (transition._tag !== "Advance" || Option.isNone(next)) {
         // A calendar that never occurs again, or a wait without a step after it.
-        yield* endUnavailable(tx, {
+        yield* endUnavailable({
           stepId: current.stepId,
           runIds,
           at: current.at,
@@ -128,7 +122,7 @@ export const enterReachedWaits = Effect.fn("automationReachedSteps.enterWaits")(
         return Option.none();
       }
       const moved = new Set(
-        yield* advanceAutomationRuns(tx, {
+        yield* advanceAutomationRuns({
           runs: runIds.map((runId) => ({
             runId,
             stepId: current.stepId,
@@ -162,11 +156,10 @@ export const enterReachedWaits = Effect.fn("automationReachedSteps.enterWaits")(
  */
 export const planReachedStep = Effect.fn("automationReachedSteps.plan")(
   function* (
-    tx: AutomationEngineTransaction,
     facts: AutomationEvaluationFacts["Service"],
     reached: ReachedStep<ConditionStepRun>
   ) {
-    const entered = yield* enterReachedWaits(tx, reached);
+    const entered = yield* enterReachedWaits(reached);
     if (Option.isNone(entered)) return;
     const { step, reached: target } = entered.value;
     const runOf = new Map(reached.runs.map((run) => [run.runId, run]));
@@ -185,7 +178,7 @@ export const planReachedStep = Effect.fn("automationReachedSteps.plan")(
     yield* Match.value(step).pipe(
       Match.tagsExhaustive({
         Condition: ({ id, filter }) =>
-          planConditionSteps(tx, facts, {
+          planConditionSteps(facts, {
             campaignId: target.campaignId,
             steps: [
               {
@@ -200,7 +193,6 @@ export const planReachedStep = Effect.fn("automationReachedSteps.plan")(
           }),
         Send: () =>
           planDeliverRuns(
-            tx,
             runs.map((run) => ({
               id: run.runId,
               campaignId: target.campaignId,

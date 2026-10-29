@@ -11,6 +11,7 @@ import {
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { resendSimulatorAddress, testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer, Option } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
 import { customerMarketingConsents } from "@/db/schema";
 import type { CampaignId } from "../campaign-identifiers";
 import {
@@ -624,17 +625,18 @@ describe.skipIf(!testDatabase)(
       return Effect.runPromise(
         Effect.gen(function* () {
           const delivery = yield* CampaignDeliveryService;
+          const { transaction } = yield* WorkspaceDatabase;
           const at = Temporal.Now.instant();
-          const sendId = yield* db.transaction((tx) =>
+          const sendId = yield* transaction(
             delivery
-              .createAutomatedSend(tx, {
+              .createAutomatedSend({
                 campaignId: input.campaignId,
                 versionId: input.versionId,
                 at,
               })
               .pipe(
                 Effect.tap((created) =>
-                  delivery.persistAutomatedBatch(tx, {
+                  delivery.persistAutomatedBatch({
                     sendId: created,
                     recipients: input.recipients.map((dotyposCustomerId) => ({
                       dotyposCustomerId,
@@ -650,9 +652,9 @@ describe.skipIf(!testDatabase)(
             sendId,
             profiles: Option.some(read),
           });
-          yield* db.transaction((tx) => settle(tx, Temporal.Now.instant()));
+          yield* transaction(settle(Temporal.Now.instant()));
           return sendId;
-        }).pipe(Effect.provide(consumerLayer))
+        }).pipe(Effect.provide(Layer.merge(consumerLayer, testDatabase.layer)))
       );
     };
 

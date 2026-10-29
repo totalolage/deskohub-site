@@ -1,9 +1,9 @@
 import { and, asc, inArray, not, type SQL, sql } from "drizzle-orm";
 import { Effect } from "effect";
+import { WorkspaceTransaction } from "@/db/database.service";
 import { customerAccounts, customerEvents } from "@/db/schema";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { CustomerEventId } from "@/shared/backend/customer-events/customer-event";
-import type { AutomationEngineTransaction } from "./automation-unit-handler";
 
 /**
  * Whether a `customer_events` row can start a run: every event except a
@@ -27,43 +27,43 @@ export const triggeringCustomerEvent: SQL<boolean> = sql<boolean>`not exists (
  * statement's fresh snapshot sees every marking committed before the grant.
  */
 export const lockTriggeringCustomerEvents = (
-  tx: AutomationEngineTransaction,
   events: readonly {
     readonly id: CustomerEventId;
     readonly customerAccountId: CustomerAccountId | null;
   }[]
-) => {
-  const accountIds = [
-    ...new Set(
-      events.flatMap(({ customerAccountId }) => customerAccountId ?? [])
-    ),
-  ].sort();
-  const eventIds = events.flatMap(({ id, customerAccountId }) =>
-    customerAccountId === null ? [] : [id]
-  );
-  return accountIds.length === 0
-    ? Effect.succeed<ReadonlySet<CustomerEventId>>(new Set<CustomerEventId>())
-    : tx
-        .select({ id: customerAccounts.id })
-        .from(customerAccounts)
-        .where(inArray(customerAccounts.id, accountIds))
-        .orderBy(asc(customerAccounts.id))
-        .for("share")
-        .pipe(
-          Effect.andThen(
-            tx
-              .select({ id: customerEvents.id })
-              .from(customerEvents)
-              .where(
-                and(
-                  inArray(customerEvents.id, eventIds),
-                  not(triggeringCustomerEvent)
+) =>
+  Effect.flatMap(WorkspaceTransaction, ({ db }) => {
+    const accountIds = [
+      ...new Set(
+        events.flatMap(({ customerAccountId }) => customerAccountId ?? [])
+      ),
+    ].sort();
+    const eventIds = events.flatMap(({ id, customerAccountId }) =>
+      customerAccountId === null ? [] : [id]
+    );
+    return accountIds.length === 0
+      ? Effect.succeed<ReadonlySet<CustomerEventId>>(new Set<CustomerEventId>())
+      : db
+          .select({ id: customerAccounts.id })
+          .from(customerAccounts)
+          .where(inArray(customerAccounts.id, accountIds))
+          .orderBy(asc(customerAccounts.id))
+          .for("share")
+          .pipe(
+            Effect.andThen(
+              db
+                .select({ id: customerEvents.id })
+                .from(customerEvents)
+                .where(
+                  and(
+                    inArray(customerEvents.id, eventIds),
+                    not(triggeringCustomerEvent)
+                  )
                 )
-              )
-          ),
-          Effect.map(
-            (rows): ReadonlySet<CustomerEventId> =>
-              new Set(rows.map(({ id }) => id as CustomerEventId))
-          )
-        );
-};
+            ),
+            Effect.map(
+              (rows): ReadonlySet<CustomerEventId> =>
+                new Set(rows.map(({ id }) => id as CustomerEventId))
+            )
+          );
+  });
