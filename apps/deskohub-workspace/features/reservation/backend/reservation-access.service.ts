@@ -6,7 +6,7 @@ import type { Locale } from "@/features/i18n";
 import { decodeBookedReservation } from "@/features/reservation/backend/booked-reservation";
 import { ReservationAuthorizationService } from "@/features/reservation/backend/reservation-authorization.service";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
-import { getDotyposReservationTiming } from "@/features/reservation/backend/workspace-reservation.service";
+import { getDotyposReservationAccessTiming } from "@/features/reservation/backend/workspace-reservation.service";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import type { ReservationAccessToken } from "@/features/reservation/reservation-access-token";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
@@ -96,9 +96,12 @@ const implementation = Effect.gen(function* () {
         return unavailableAccess;
       }
 
-      const timing = yield* getDotyposReservationTiming({
+      const timing = yield* getDotyposReservationAccessTiming({
         reservationId: reservation.id,
-        reservation: decodeBookedReservation(providerReservation.reservation),
+        reservation: decodeBookedReservation(
+          providerReservation.reservation,
+          reservation.reservationDetails
+        ),
       }).pipe(
         Effect.tapError(() =>
           Effect.logWarning("Reservation access timing is invalid")

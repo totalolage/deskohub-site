@@ -57,6 +57,11 @@ export type WorkspaceReservationDetails = Pick<
   readonly customer: Customer;
   readonly reservedFrom: Temporal.Instant;
   readonly reservedUntil: Temporal.Instant;
+  /**
+   * When an early-setup meeting room is held from, before `reservedFrom`. The
+   * customer may arrive then, and the door code works from then.
+   */
+  readonly setupFrom?: Temporal.Instant;
   readonly providerStatus: "NEW" | "CONFIRMED" | "CANCELLED";
   readonly seats: number;
   readonly tableName?: string;
@@ -162,7 +167,8 @@ export class WorkspaceReservationService extends Context.Service<
           const { dotyposReservationDetails, dotyposReservationId, tables } =
             yield* loadDotyposReservation(reservation);
           const booked = decodeBookedReservation(
-            dotyposReservationDetails.reservation
+            dotyposReservationDetails.reservation,
+            reservation.reservationDetails
           );
           const { reservedFrom, reservedUntil } =
             yield* getDotyposReservationTiming({
@@ -206,6 +212,10 @@ export class WorkspaceReservationService extends Context.Service<
             providerStatus: dotyposReservationDetails.reservation.status,
             reservedFrom,
             reservedUntil,
+            ...Option.match(booked.setupStart, {
+              onNone: () => ({}),
+              onSome: (setupFrom) => ({ setupFrom }),
+            }),
             seats,
             ...(tableName && { tableName }),
             ...(tableMap && { tableMap }),
@@ -244,10 +254,11 @@ export class WorkspaceReservationService extends Context.Service<
             if (dotyposReservationDetails.reservation.status !== "CONFIRMED") {
               return yield* accessUnavailable(id);
             }
-            return yield* getDotyposReservationTiming({
+            return yield* getDotyposReservationAccessTiming({
               reservationId: id,
               reservation: decodeBookedReservation(
-                dotyposReservationDetails.reservation
+                dotyposReservationDetails.reservation,
+                reservation.reservationDetails
               ),
             });
           }
@@ -308,3 +319,16 @@ export const getDotyposReservationTiming = Effect.fn(
   const { startsAt, endsAt } = input.reservation.interval.value;
   return { reservedFrom: startsAt, reservedUntil: endsAt };
 });
+
+/**
+ * The span a reservation's door code covers: the span Dotypos holds, which
+ * starts at the setup start of an early-setup meeting room.
+ */
+export const getDotyposReservationAccessTiming = (input: {
+  readonly reservationId: WorkspaceReservationId;
+  readonly reservation: Pick<BookedReservation, "occupiedInterval">;
+}) =>
+  getDotyposReservationTiming({
+    reservationId: input.reservationId,
+    reservation: { interval: input.reservation.occupiedInterval },
+  });

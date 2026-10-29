@@ -11,6 +11,7 @@ import "@/shared/polyfills/temporal";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspaceProductMonitorOption } from "@/features/reservation/cowork-reservation-product";
 import {
+  TableAssignmentUnavailableError,
   type WorkspaceTableAssignmentReservation,
   WorkspaceTableAssignmentService,
 } from "./workspace-table-assignment.service";
@@ -87,7 +88,11 @@ const makeReservation = (
 };
 
 const makeMeetingRoomReservation = (
-  overrides: { readonly startsAt?: string; readonly endsAt?: string } = {}
+  overrides: {
+    readonly startsAt?: string;
+    readonly endsAt?: string;
+    readonly earlySetup?: boolean;
+  } = {}
 ): WorkspaceTableAssignmentReservation => ({
   kind: "meeting-room",
   duration: { unit: "hour", amount: 1 },
@@ -456,6 +461,43 @@ describe("WorkspaceTableAssignmentService", () => {
           }),
         ]
       )
+    ).resolves.toBe("room-1");
+  });
+
+  test("includes early setup in the half-open meeting-room occupancy interval", async () => {
+    const table = [
+      makeTable({
+        id: "room-1",
+        name: "Room 1",
+        tags: ["reservation:meeting-room"],
+      }),
+    ];
+    const booking = makeMeetingRoomReservation({
+      startsAt: "2099-06-10T08:00:00Z",
+      endsAt: "2099-06-10T09:00:00Z",
+    });
+    const precedingReservation = makeDotyposReservation({
+      tableId: "room-1",
+      status: "NEW",
+      startDate: "2099-06-10T07:00:00Z",
+      endDate: "2099-06-10T08:00:00Z",
+    });
+
+    await expect(
+      assignTableId(booking, table, [precedingReservation])
+    ).resolves.toBe("room-1");
+    await expect(
+      assignTableId({ ...booking, earlySetup: true }, table, [
+        precedingReservation,
+      ])
+    ).rejects.toBeInstanceOf(TableAssignmentUnavailableError);
+    await expect(
+      assignTableId({ ...booking, earlySetup: true }, table, [
+        {
+          ...precedingReservation,
+          endDate: "2099-06-10T07:45:00Z",
+        },
+      ])
     ).resolves.toBe("room-1");
   });
 

@@ -5,6 +5,7 @@ import { Option } from "effect";
 import {
   type BookedReservation,
   decodeBookedReservation,
+  decodeBookedStart,
 } from "@/features/reservation/backend/booked-reservation";
 import type { ReservationRecord } from "@/features/reservation/backend/reservation-record";
 
@@ -158,5 +159,102 @@ describe("decodeBookedReservation seats", () => {
     expect(
       Option.getOrNull(decodeBookedReservation(makeRecord({ seats })).seats)
     ).toBe(expected);
+  });
+});
+
+describe("decodeBookedReservation early setup", () => {
+  const heldRecord = makeRecord({
+    startDate: "2026-03-10T08:45:00Z",
+    endDate: "2026-03-10T10:00:00Z",
+  });
+  const toSetup = (booked: BookedReservation) => ({
+    ...toPlain(booked),
+    setupStart: Option.getOrNull(Option.map(booked.setupStart, String)),
+    occupiedInterval: Option.getOrNull(
+      Option.map(booked.occupiedInterval, ({ startsAt, endsAt }) => [
+        String(startsAt),
+        String(endsAt),
+      ])
+    ),
+  });
+
+  test("turns the held span of a flagged meeting room into its booked time", () => {
+    expect(
+      toSetup(
+        decodeBookedReservation(heldRecord, {
+          kind: "meeting-room",
+          duration: { unit: "hour", amount: 1 },
+          earlySetup: true,
+        })
+      )
+    ).toEqual({
+      start: "2026-03-10T09:00:00Z",
+      end: "2026-03-10T10:00:00Z",
+      interval: ["2026-03-10T09:00:00Z", "2026-03-10T10:00:00Z"],
+      setupStart: "2026-03-10T08:45:00Z",
+      occupiedInterval: ["2026-03-10T08:45:00Z", "2026-03-10T10:00:00Z"],
+    });
+  });
+
+  test.each([
+    { name: "no details", details: undefined },
+    {
+      name: "a meeting room without setup",
+      details: { kind: "meeting-room" as const },
+    },
+    {
+      name: "a meeting room whose setup is off",
+      details: { kind: "meeting-room" as const, earlySetup: false },
+    },
+    { name: "another family", details: { kind: "office" as const } },
+  ])("keeps the held span as the booked time for $name", ({ details }) => {
+    expect(toSetup(decodeBookedReservation(heldRecord, details))).toEqual({
+      start: "2026-03-10T08:45:00Z",
+      end: "2026-03-10T10:00:00Z",
+      interval: ["2026-03-10T08:45:00Z", "2026-03-10T10:00:00Z"],
+      setupStart: null,
+      occupiedInterval: ["2026-03-10T08:45:00Z", "2026-03-10T10:00:00Z"],
+    });
+  });
+
+  test("has no booked interval when the setup leaves no booked time", () => {
+    const booked = decodeBookedReservation(
+      makeRecord({
+        startDate: "2026-03-10T08:45:00Z",
+        endDate: "2026-03-10T09:00:00Z",
+      }),
+      { kind: "meeting-room", earlySetup: true }
+    );
+
+    expect(Option.isNone(booked.interval)).toBe(true);
+    expect(Option.isSome(booked.occupiedInterval)).toBe(true);
+  });
+});
+
+describe("decodeBookedStart", () => {
+  const earlySetup = { kind: "meeting-room", earlySetup: true } as const;
+
+  test.each([
+    { name: "a flagged meeting room", details: earlySetup },
+    { name: "no details", details: undefined },
+    { name: "an office", details: { kind: "office" as const } },
+  ])("matches the decoded booked start for $name", ({ details }) => {
+    const record = makeRecord({ startDate: "2026-03-10T08:45:00Z" });
+
+    expect(
+      Option.getOrNull(Option.map(decodeBookedStart(record, details), String))
+    ).toBe(
+      Option.getOrNull(
+        Option.map(decodeBookedReservation(record, details).start, String)
+      )
+    );
+  });
+
+  test("has no start when Dotypos's start is unreadable", () => {
+    expect(
+      Option.isNone(
+        decodeBookedStart(makeRecord({ startDate: "soon" }), earlySetup)
+      )
+    ).toBe(true);
   });
 });

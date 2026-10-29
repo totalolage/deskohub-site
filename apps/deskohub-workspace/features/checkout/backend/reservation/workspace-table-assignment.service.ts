@@ -15,6 +15,7 @@ import {
   getCoworkReservationIntervalInput,
 } from "@/features/reservation/cowork-reservation";
 import type { StoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
+import { getMeetingRoomOccupiedInterval } from "@/features/reservation/meeting-room-early-setup";
 import type { MeetingRoomReservationDetails } from "@/features/reservation/meeting-room-reservation";
 import {
   getOfficeReservationIntervalInput,
@@ -108,7 +109,7 @@ export const getWorkspaceReservationInterval = (
       Match.discriminatorsExhaustive("kind")({
         cowork: ({ entryTier, date }) =>
           getCoworkReservationIntervalInput(entryTier, date),
-        "meeting-room": (meetingRoom) => meetingRoom,
+        "meeting-room": getMeetingRoomOccupiedInterval,
         office: getOfficeReservationIntervalInput,
       })
     )
@@ -350,7 +351,9 @@ const getReservationOccupancyInput = (
           )
         ),
       "meeting-room": (meetingRoomReservation) =>
-        Effect.succeed(meetingRoomReservation),
+        getReservationIntervalNormalization(
+          getMeetingRoomOccupiedInterval(meetingRoomReservation)
+        ),
       office: (officeReservation) =>
         getReservationIntervalNormalization(
           getOfficeReservationIntervalInput(officeReservation)

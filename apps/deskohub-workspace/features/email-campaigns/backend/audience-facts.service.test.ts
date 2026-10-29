@@ -98,6 +98,8 @@ const resolveFacts = async (input: {
   readonly facts?: AudienceFactSourceType;
   readonly respectVisitBounds?: boolean;
   readonly profileCustomers?: readonly DotyposCustomerId[];
+  /** Visits stored as early-setup meeting rooms. */
+  readonly earlySetup?: readonly string[];
 }) => {
   const countReservations = mock((selection: CampaignReservationSelection) => {
     const counts = new Map<DotyposCustomerId, number>();
@@ -187,6 +189,21 @@ const resolveFacts = async (input: {
           countReceivedCampaignEmails,
           accountCreations,
           listBookedReservations,
+          earlySetupDetails: (ids) =>
+            Effect.succeed(
+              new Map(
+                ids.flatMap((id) =>
+                  input.earlySetup?.includes(id)
+                    ? [
+                        [
+                          id,
+                          { kind: "meeting-room", earlySetup: true } as const,
+                        ] as const,
+                      ]
+                    : []
+                )
+              )
+            ),
           earliestReservationAt: Effect.succeed(
             input.earliestReservationAt === undefined
               ? instant("2025-01-10T12:00:00Z")
@@ -367,25 +384,28 @@ describe("AudienceFactsService Dotypos bounds", () => {
         reservations({ dateBasis: "visit", period: { _tag: "AnyTime" } })
       ),
     });
+    // Each range starts a setup lead early: Dotypos holds an early-setup
+    // meeting room from before its booked start.
     expect(listReservations.mock.calls.map(([options]) => options)).toEqual([
       {
-        startsAtOrAfter: "2026-02-28T23:00:00Z",
+        startsAtOrAfter: "2026-02-28T22:45:00Z",
         startsBefore: "2026-03-31T22:00:00Z",
       },
       // No start of its own: a week before the earliest Workspace reservation.
       {
-        startsAtOrAfter: "2025-01-03T12:00:00Z",
+        startsAtOrAfter: "2025-01-03T11:45:00Z",
         startsBefore: "2026-03-31T22:00:00Z",
       },
       // Onward keeps future visits.
-      { startsAtOrAfter: "2026-09-30T22:00:00Z" },
+      { startsAtOrAfter: "2026-09-30T21:45:00Z" },
     ]);
     expect(
       countReservations.mock.calls.map(([selection]) => selection)
     ).toEqual([
       { dotyposReservationIds: [reservationId("r1")] },
       { dotyposReservationIds: [reservationId("r1")] },
-      { dotyposReservationIds: [reservationId("r1")] },
+      // The March visit isn't booked in October.
+      { dotyposReservationIds: [] },
       {},
     ]);
   });
@@ -405,6 +425,68 @@ describe("AudienceFactsService Dotypos bounds", () => {
     expect([...facts(exit).dates.values()]).toEqual([
       { withValue: new Set(), inPeriod: new Set() },
     ]);
+  });
+});
+
+describe("AudienceFactsService early setup", () => {
+  // Prague is UTC+1 in March. Early setup holds a meeting room booked from
+  // midnight from 23:45 the previous day.
+  const heldFromEve = "2026-02-28T22:45:00Z";
+  const march = {
+    _tag: "Range",
+    from: "2026-03-01",
+    to: "2026-03-31",
+  } as const;
+  const booked = ["setup", "unflagged"].map((id) => ({
+    dotyposReservationId: reservationId(id),
+    dotyposCustomerId: customerId(id),
+  }));
+
+  test("counts a midnight early-setup visit on its booked date", async () => {
+    const { countReservations } = await resolveFacts({
+      visits: [visit("setup", heldFromEve), visit("unflagged", heldFromEve)],
+      earlySetup: ["setup"],
+      booked,
+      respectVisitBounds: true,
+      filter: reservations({ dateBasis: "visit", period: march }),
+    });
+
+    expect(
+      countReservations.mock.calls.map(([selection]) => selection)
+    ).toEqual([{ dotyposReservationIds: [reservationId("setup")] }]);
+  });
+
+  test("dates a midnight early-setup visit by its booked start", async () => {
+    const { exit } = await resolveFacts({
+      visits: [visit("setup", heldFromEve), visit("unflagged", heldFromEve)],
+      earlySetup: ["setup"],
+      booked,
+      filter: {
+        attribute: "lastVisit",
+        _tag: "Condition",
+        operator: "in",
+        value: march,
+      },
+    });
+
+    expect(facts(exit).dates.get(lastVisitKey(march))).toEqual({
+      withValue: new Set([customerId("setup"), customerId("unflagged")]),
+      inPeriod: new Set([customerId("setup")]),
+    });
+  });
+
+  test("leaves a visit that hasn't reached its booked start out of past visits", async () => {
+    const heldFrom = now.subtract({ minutes: 5 }).toString();
+    const { exit } = await resolveFacts({
+      visits: [visit("setup", heldFrom), visit("unflagged", heldFrom)],
+      earlySetup: ["setup"],
+      booked,
+      filter: { attribute: "lastVisit", _tag: "Condition", operator: "none" },
+    });
+
+    expect(
+      [...facts(exit).dates.values()].map(({ withValue }) => withValue)
+    ).toEqual([new Set([customerId("unflagged")])]);
   });
 });
 
@@ -461,7 +543,7 @@ describe("AudienceFactsService last visit", () => {
     expect(listReservations.mock.calls.map(([options]) => options)).toEqual([
       // Dotypos has no inclusive end, so "at or before now" ends 1 ms later.
       {
-        startsAtOrAfter: "2025-01-03T12:00:00Z",
+        startsAtOrAfter: "2025-01-03T11:45:00Z",
         startsBefore: "2026-10-15T10:00:00.001Z",
       },
     ]);
@@ -566,7 +648,7 @@ describe("AudienceFactsService evaluation time", () => {
     });
     expect(listReservations.mock.calls.map(([options]) => options)).toEqual([
       {
-        startsAtOrAfter: "2026-10-14T10:00:00Z",
+        startsAtOrAfter: "2026-10-14T09:45:00Z",
         startsBefore: "2026-10-15T10:00:00.001Z",
       },
     ]);
