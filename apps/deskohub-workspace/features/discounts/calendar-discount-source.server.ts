@@ -2,14 +2,13 @@ import "server-only";
 
 import { GoogleCalendarService } from "@deskohub/google-calendar";
 import { Effect, Layer, Option } from "effect";
-import { cacheLife, cacheTag } from "next/cache";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   CalendarResourceConfig,
   type SalesCalendarId,
 } from "@/shared/backend/config/calendar-resource.config";
 import { WorkspaceGoogleCalendarLayer } from "@/shared/backend/config/google-calendar.config";
-import { runWorkspaceEffectOrElse } from "@/shared/backend/workspace-effect";
+import { readSharedSnapshot } from "@/shared/backend/shared-snapshot";
 import { type CalendarSale, normalizeCalendarSales } from "./calendar-sale";
 import type { DiscountDefinition } from "./discount-definition";
 import { DiscountDefinitionRepository } from "./discount-definition.repository";
@@ -130,32 +129,26 @@ export async function loadCalendarDiscountSource(
 ): Promise<CalendarSalesSourceResult> {
   "use cache: remote";
 
-  const source = await Effect.gen(function* () {
-    const { salesCalendarId } = yield* CalendarResourceConfig;
-    return yield* loadCalendarSalesSource({
-      calendarId: salesCalendarId,
-      bookingDate,
-    });
-  }).pipe(
-    Effect.provide(CalendarDiscountSourceLive),
-    runWorkspaceEffectOrElse("discounts.calendar-source.load", {
-      failureCode: "calendar_discount_source_load_failed",
-      // A typed failure or defect, including a runner that never starts,
-      // is never shared, so the next request retries it. Interruption and
-      // Next.js control flow propagate without this.
-      orElse: (cause) => {
-        cacheLife({ expire: 0 });
-        throw cause;
+  // A partial source or a failed load, including a runner that never
+  // starts, is never shared, so the next request retries it.
+  return await readSharedSnapshot(
+    "discounts.calendar-source.load",
+    Effect.gen(function* () {
+      const { salesCalendarId } = yield* CalendarResourceConfig;
+      return yield* loadCalendarSalesSource({
+        calendarId: salesCalendarId,
+        bookingDate,
+      });
+    }).pipe(Effect.provide(CalendarDiscountSourceLive)),
+    {
+      complete: {
+        lifetime: "advertisedPricingSources",
+        tags: [calendarDiscountSourceTag],
       },
-    })
+      incomplete: {
+        when: (source) => !source.complete,
+        lifetime: { expire: 0 },
+      },
+    }
   );
-
-  if (source.complete) {
-    cacheLife("advertisedPricingSources");
-    cacheTag(calendarDiscountSourceTag);
-  } else {
-    cacheLife({ expire: 0 });
-  }
-
-  return source;
 }

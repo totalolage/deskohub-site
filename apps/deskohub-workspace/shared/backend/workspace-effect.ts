@@ -12,7 +12,12 @@ import { flushPostHogLogs } from "./logging/posthog-otel";
 import { WorkspaceTracingLive } from "./observability/workspace-tracing";
 import { runStandaloneWorkspaceEffect } from "./standalone-workspace-effect";
 
-type WorkspaceEffectBoundary = "action" | "page" | "route" | "run" | "task";
+export type WorkspaceEffectBoundary =
+  | "action"
+  | "page"
+  | "route"
+  | "run"
+  | "task";
 
 interface RunWorkspaceEffectOptions {
   readonly boundary?: WorkspaceEffectBoundary;
