@@ -1,6 +1,7 @@
 import { AdministrationReservationSortDirection } from "@deskohub/workspace-admin-api";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { Schema } from "effect";
+import { Schema, SchemaTransformation } from "effect";
+import type { MarketingConsentStatus } from "@/features/legal/marketing-consent-status";
 import { administrationHref } from "./administration-href";
 import {
   calendarDateFilterField,
@@ -13,17 +14,31 @@ import {
 } from "./list-query";
 import { getAdministrationReservationDateRange } from "./reservation-date-range";
 
-/**
- * A customer's current marketing consent: an active grant, a withdrawn grant,
- * or no grant ever recorded.
- */
-const AdministrationCustomerMarketingConsentState = Schema.Literals([
-  "granted",
+/** The marketing consent states the list filters by, in the filter's order. */
+const marketingConsentStatuses = [
+  "active",
   "withdrawn",
+  "absent",
+] as const satisfies readonly MarketingConsentStatus[];
+
+const MarketingConsentStatusField = Schema.Literals(marketingConsentStatuses);
+
+/**
+ * The filter's values from before the list named the states after the consent
+ * ledger. A link made then still filters the same customers.
+ */
+const LegacyMarketingConsentStatusParam = Schema.Literals([
+  "granted",
   "never",
-]);
-export type AdministrationCustomerMarketingConsentState =
-  typeof AdministrationCustomerMarketingConsentState.Type;
+]).pipe(
+  Schema.decodeTo(
+    Schema.Literals(["active", "absent"]),
+    SchemaTransformation.transform({
+      decode: (value) => (value === "granted" ? "active" : "absent"),
+      encode: (status) => (status === "active" ? "granted" : "never"),
+    })
+  )
+);
 
 const AdministrationCustomerSort = Schema.Literals([
   "activity",
@@ -40,7 +55,10 @@ const customerListParams = defineAdministrationListQuery({
     ),
     from: optionalListParam(Schema.String),
     marketingConsent: optionalListParam(
-      AdministrationCustomerMarketingConsentState
+      Schema.Union([
+        MarketingConsentStatusField,
+        LegacyMarketingConsentStatusParam,
+      ])
     ),
     page: listPageParam,
     sort: listParamWithDefault(AdministrationCustomerSort, "activity"),
@@ -56,9 +74,7 @@ const customerFilterFormSchema = getFilterFormSchema(
   Schema.Struct({
     from: optionalFilterField(calendarDateFilterField),
     to: optionalFilterField(calendarDateFilterField),
-    marketingConsent: optionalFilterField(
-      AdministrationCustomerMarketingConsentState
-    ),
+    marketingConsent: optionalFilterField(MarketingConsentStatusField),
     sort: AdministrationCustomerSort,
     direction: AdministrationReservationSortDirection,
   })
@@ -74,7 +90,7 @@ export type CustomerListQuery = ReturnType<typeof customerListParams.parse>;
 export const customerListQuery = {
   ...customerListParams,
   /** The consent states the list can filter by, in the filter's order. */
-  marketingConsentStates: AdministrationCustomerMarketingConsentState.literals,
+  marketingConsentStates: marketingConsentStatuses,
   formSchema: customerFilterFormSchema,
   formValues: (
     query: CustomerListQuery

@@ -49,7 +49,6 @@ import { Context, Data, Effect, Layer, Option, Schema } from "effect";
 import { unstable_rethrow } from "next/navigation";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { equalsAny } from "@/db/equals-any";
-import { qualifiedColumn } from "@/db/qualified-column";
 import {
   customerMarketingConsents,
   discountApplications,
@@ -86,6 +85,8 @@ import {
   type DiscountApplicationId,
   discountApplicationIdSchema,
 } from "@/features/discounts/persistence-contracts";
+import { marketingConsentState } from "@/features/legal/backend/marketing-consent-ledger";
+import type { MarketingConsentStatus } from "@/features/legal/marketing-consent-status";
 import { loadEarlySetupDetails } from "@/features/reservation/backend/early-setup-details";
 import {
   type WorkspaceReservationId,
@@ -98,7 +99,6 @@ import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import type { Money } from "@/shared/money/money";
 import { workspaceSiteConstants } from "@/shared/utils";
 import { instantStringSchema } from "@/shared/utils/temporal";
-import type { AdministrationCustomerMarketingConsentState } from "./customer-list-query";
 import {
   type AdministrationCustomerName,
   unnamedCustomerDisplayName,
@@ -227,7 +227,7 @@ export class AdministrationListSourceUnavailableError extends Data.TaggedError(
 export type AdministrationCustomerListInput = {
   readonly direction?: AdministrationSortDirection;
   readonly from?: string;
-  readonly marketingConsent?: AdministrationCustomerMarketingConsentState;
+  readonly marketingConsent?: MarketingConsentStatus;
   readonly page?: number;
   readonly sort?: AdministrationCustomerSort;
   readonly to?: string;
@@ -521,7 +521,7 @@ export type AdministrationReservationAccessGrant = {
 export type AdministrationCustomerSummary = {
   readonly customer: AdministrationCustomer | null;
   readonly customerId: DotyposCustomerId;
-  readonly marketingConsent: AdministrationCustomerMarketingConsentState;
+  readonly marketingConsent: MarketingConsentStatus;
   readonly reservationCount: number;
   readonly lastActivityAt: string;
 };
@@ -1015,11 +1015,9 @@ const successfulReservationCount =
  * The reservation's customer's current marketing consent state. The customer
  * list filters and displays this one definition, so both always agree.
  */
-const customerMarketingConsentState = sql<AdministrationCustomerMarketingConsentState>`coalesce((
-  select case when ${qualifiedColumn(customerMarketingConsents.withdrawnAt)} is null then 'granted' else 'withdrawn' end
-  from ${customerMarketingConsents}
-  where ${qualifiedColumn(customerMarketingConsents.dotyposCustomerId)} = ${qualifiedColumn(workspaceReservations.dotyposCustomerId)}
-), 'never')`;
+const customerMarketingConsentState = marketingConsentState(
+  workspaceReservations.dotyposCustomerId
+);
 
 /**
  * Selects every reservation of a customer who has a successful reservation
@@ -2943,7 +2941,7 @@ export class AdministrationService extends Context.Service<
       )(function* <E = never>(
         rows: readonly {
           readonly customerId: DotyposCustomerId;
-          readonly marketingConsent: AdministrationCustomerMarketingConsentState;
+          readonly marketingConsent: MarketingConsentStatus;
           readonly reservationCount: number;
           readonly lastActivityAt: Temporal.Instant | null;
         }[],

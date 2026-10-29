@@ -25,6 +25,18 @@ export const currentInstant: Effect.Effect<Temporal.Instant> =
     )
   );
 
+/**
+ * Current instant read from the Effect `Clock` at its full precision, for a
+ * record that must order events less than a millisecond apart. Stored, it
+ * keeps microseconds (`toStoredInstant`).
+ */
+export const currentPreciseInstant: Effect.Effect<Temporal.Instant> =
+  Clock.currentTimeNanos.pipe(
+    Effect.map((epochNanoseconds) =>
+      Temporal.Instant.fromEpochNanoseconds(epochNanoseconds)
+    )
+  );
+
 const parsePlainTime = Option.liftThrowable((value: string) =>
   Temporal.PlainTime.from(value)
 );
