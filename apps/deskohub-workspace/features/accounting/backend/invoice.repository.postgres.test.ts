@@ -10,6 +10,7 @@ import { NexiOrderIdSchema } from "@deskohub/nexi";
 import { testEmailAddress } from "@deskohub/test-email";
 import { asc, eq, inArray, like, sql } from "drizzle-orm";
 import { Effect, Layer, Schema } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
 import {
   accountingDocumentSnapshots,
   invoiceEmailDeliveries,
@@ -186,52 +187,54 @@ const createPaidFixture = async (
   );
 
   const reservationId = await Effect.runPromise(
-    testDatabase!.db.transaction((tx) =>
-      Effect.gen(function* () {
-        const reservation = yield* workspaceFixtures(tx).reservation({
-          stage: {
-            reservation: paid ? "confirmed" : "held",
-            payment: paid ? "paid" : "pending",
-            fulfillment: getFixtureFulfillmentState({ fulfilled, paid }),
-          },
-          customer: dotyposCustomerId,
-          at: now,
-          overrides: {
+    Effect.flatMap(WorkspaceDatabase, ({ db, transaction }) =>
+      transaction(
+        Effect.gen(function* () {
+          const reservation = yield* workspaceFixtures(db).reservation({
+            stage: {
+              reservation: paid ? "confirmed" : "held",
+              payment: paid ? "paid" : "pending",
+              fulfillment: getFixtureFulfillmentState({ fulfilled, paid }),
+            },
+            customer: dotyposCustomerId,
+            at: now,
+            overrides: {
+              dotyposReservationId,
+              activePaymentAttemptId: paymentAttemptId,
+            },
+          });
+          const source = makeAccountingDocumentSnapshot({
+            workspaceReservationId: reservation.id,
             dotyposReservationId,
-            activePaymentAttemptId: paymentAttemptId,
-          },
-        });
-        const source = makeAccountingDocumentSnapshot({
-          workspaceReservationId: reservation.id,
-          dotyposReservationId,
-          dotyposCustomerId,
-          locale: "en-US",
-          prepared,
-        });
-        yield* tx.insert(paymentAttempts).values({
-          id: paymentAttemptId,
-          workspaceReservationId: reservation.id,
-          provider: "nexi",
-          providerOrderId: NexiOrderIdSchema.make(
-            `synthetic-order-${randomUUID()}`
-          ),
-          state: paid ? "paid" : "pending",
-          amountValue: source.quote.payment.expectedPrice.value,
-          amountExponent: source.quote.payment.expectedPrice.exponent,
-          currency: source.quote.payment.expectedPrice.currency,
-        });
-        yield* tx.insert(accountingDocumentSnapshots).values({
-          paymentAttemptId,
-          workspaceReservationId: reservation.id,
-          keyId: testKey.id,
-          encryptedSnapshot: encryptAccountingSnapshot(
-            JSON.stringify(source),
-            testKey.secret
-          ),
-        });
-        return reservation.id;
-      })
-    )
+            dotyposCustomerId,
+            locale: "en-US",
+            prepared,
+          });
+          yield* db.insert(paymentAttempts).values({
+            id: paymentAttemptId,
+            workspaceReservationId: reservation.id,
+            provider: "nexi",
+            providerOrderId: NexiOrderIdSchema.make(
+              `synthetic-order-${randomUUID()}`
+            ),
+            state: paid ? "paid" : "pending",
+            amountValue: source.quote.payment.expectedPrice.value,
+            amountExponent: source.quote.payment.expectedPrice.exponent,
+            currency: source.quote.payment.expectedPrice.currency,
+          });
+          yield* db.insert(accountingDocumentSnapshots).values({
+            paymentAttemptId,
+            workspaceReservationId: reservation.id,
+            keyId: testKey.id,
+            encryptedSnapshot: encryptAccountingSnapshot(
+              JSON.stringify(source),
+              testKey.secret
+            ),
+          });
+          return reservation.id;
+        })
+      )
+    ).pipe(Effect.provide(testDatabase!.layer))
   );
 
   return {
@@ -256,32 +259,34 @@ const createAdditionalFailedAttempt = async (fixture: PaidFixture) => {
   });
 
   await Effect.runPromise(
-    testDatabase!.db.transaction((tx) =>
-      Effect.gen(function* () {
-        yield* tx.insert(paymentAttempts).values({
-          id: paymentAttemptId,
-          workspaceReservationId: fixture.reservationId,
-          provider: "nexi",
-          providerOrderId: NexiOrderIdSchema.make(
-            `synthetic-order-${randomUUID()}`
-          ),
-          state: "failed",
-          failureCode: "synthetic_invoice_attempt",
-          amountValue: source.quote.payment.expectedPrice.value,
-          amountExponent: source.quote.payment.expectedPrice.exponent,
-          currency: source.quote.payment.expectedPrice.currency,
-        });
-        yield* tx.insert(accountingDocumentSnapshots).values({
-          paymentAttemptId,
-          workspaceReservationId: fixture.reservationId,
-          keyId: testKey.id,
-          encryptedSnapshot: encryptAccountingSnapshot(
-            JSON.stringify(source),
-            testKey.secret
-          ),
-        });
-      })
-    )
+    Effect.flatMap(WorkspaceDatabase, ({ db, transaction }) =>
+      transaction(
+        Effect.gen(function* () {
+          yield* db.insert(paymentAttempts).values({
+            id: paymentAttemptId,
+            workspaceReservationId: fixture.reservationId,
+            provider: "nexi",
+            providerOrderId: NexiOrderIdSchema.make(
+              `synthetic-order-${randomUUID()}`
+            ),
+            state: "failed",
+            failureCode: "synthetic_invoice_attempt",
+            amountValue: source.quote.payment.expectedPrice.value,
+            amountExponent: source.quote.payment.expectedPrice.exponent,
+            currency: source.quote.payment.expectedPrice.currency,
+          });
+          yield* db.insert(accountingDocumentSnapshots).values({
+            paymentAttemptId,
+            workspaceReservationId: fixture.reservationId,
+            keyId: testKey.id,
+            encryptedSnapshot: encryptAccountingSnapshot(
+              JSON.stringify(source),
+              testKey.secret
+            ),
+          });
+        })
+      )
+    ).pipe(Effect.provide(testDatabase!.layer))
   );
 
   return paymentAttemptId;
@@ -318,30 +323,38 @@ const sequenceOf = (invoiceNumber: InvoiceNumber) =>
 // exclusive lock and trigger toggle an operator would need.
 const deleteFixtureInvoices = () =>
   Effect.runPromise(
-    testDatabase!.db.transaction((tx) =>
-      Effect.gen(function* () {
-        yield* tx.execute(sql`lock table ${invoices} in access exclusive mode`);
-        yield* tx.execute(
-          sql`alter table ${invoices} disable trigger invoices_immutable`
-        );
-        const fixtureInvoices = tx
-          .select({ id: invoices.id })
-          .from(invoices)
-          .where(like(invoices.dotyposCustomerId, `${fixtureCustomerPrefix}%`));
-        yield* tx
-          .delete(invoiceEmailDeliveries)
-          .where(inArray(invoiceEmailDeliveries.invoiceId, fixtureInvoices));
-        yield* tx
-          .delete(manualInvoiceActors)
-          .where(inArray(manualInvoiceActors.invoiceId, fixtureInvoices));
-        yield* tx
-          .delete(invoices)
-          .where(like(invoices.dotyposCustomerId, `${fixtureCustomerPrefix}%`));
-        yield* tx.execute(
-          sql`alter table ${invoices} enable trigger invoices_immutable`
-        );
-      })
-    )
+    Effect.flatMap(WorkspaceDatabase, ({ db, transaction }) =>
+      transaction(
+        Effect.gen(function* () {
+          yield* db.execute(
+            sql`lock table ${invoices} in access exclusive mode`
+          );
+          yield* db.execute(
+            sql`alter table ${invoices} disable trigger invoices_immutable`
+          );
+          const fixtureInvoices = db
+            .select({ id: invoices.id })
+            .from(invoices)
+            .where(
+              like(invoices.dotyposCustomerId, `${fixtureCustomerPrefix}%`)
+            );
+          yield* db
+            .delete(invoiceEmailDeliveries)
+            .where(inArray(invoiceEmailDeliveries.invoiceId, fixtureInvoices));
+          yield* db
+            .delete(manualInvoiceActors)
+            .where(inArray(manualInvoiceActors.invoiceId, fixtureInvoices));
+          yield* db
+            .delete(invoices)
+            .where(
+              like(invoices.dotyposCustomerId, `${fixtureCustomerPrefix}%`)
+            );
+          yield* db.execute(
+            sql`alter table ${invoices} enable trigger invoices_immutable`
+          );
+        })
+      )
+    ).pipe(Effect.provide(testDatabase!.layer))
   );
 
 describe.skipIf(!testDatabase)(
