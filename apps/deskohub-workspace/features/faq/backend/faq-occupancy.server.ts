@@ -2,10 +2,9 @@ import "server-only";
 
 import { DotyposService } from "@deskohub/dotypos";
 import { Effect } from "effect";
-import { cacheLife } from "next/cache";
 import "@/shared/polyfills/temporal";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
-import { runWorkspaceEffectOrElse } from "@/shared/backend/workspace-effect";
+import { readSharedSnapshot } from "@/shared/backend/shared-snapshot";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { type FaqOccupancyStats, getFaqOccupancyStats } from "./faq-occupancy";
 
@@ -37,24 +36,26 @@ export async function loadFaqOccupancyStats(): Promise<
   FaqOccupancyStats | undefined
 > {
   "use cache";
-  cacheLife({ stale: 30, revalidate: 300, expire: 600 });
 
-  const stats = await loadFaqOccupancy().pipe(
-    Effect.provide(WorkspaceDotyposLayer),
-    runWorkspaceEffectOrElse("faq.occupancy.load", {
+  return await readSharedSnapshot(
+    "faq.occupancy.load",
+    loadFaqOccupancy().pipe(
+      Effect.map(
+        (stats): FaqOccupancyStats => ({
+          averageReservationsPerDay: stats.averageReservationsPerDay,
+          coworkSeatCapacity: stats.coworkSeatCapacity,
+        })
+      ),
+      Effect.provide(WorkspaceDotyposLayer)
+    ),
+    {
       boundary: "page",
-      failureCode: "faq.occupancy.load_failed",
-      orElse: () => {
-        cacheLife(unknownOccupancyLife);
-        return undefined;
+      complete: { lifetime: { stale: 30, revalidate: 300, expire: 600 } },
+      failure: {
+        failureCode: "faq.occupancy.load_failed",
+        fallback: () => undefined,
+        lifetime: unknownOccupancyLife,
       },
-    })
-  );
-
-  return (
-    stats && {
-      averageReservationsPerDay: stats.averageReservationsPerDay,
-      coworkSeatCapacity: stats.coworkSeatCapacity,
     }
   );
 }

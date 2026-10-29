@@ -16,6 +16,7 @@ import type {
   Table as DotyposTable,
 } from "@deskohub/dotypos/generated";
 import { Effect, Layer } from "effect";
+import { recordNextCache } from "@/shared/testing/next-cache-recorder.test-utils";
 
 let tables: readonly DotyposTable[] = [];
 let reservations: readonly DotyposReservation[] = [];
@@ -43,39 +44,15 @@ const listReservations = mock(
       : Effect.succeed([...reservations]);
   }
 );
-const cacheLife = mock(
-  (
-    _lifetime:
-      | string
-      | {
-          readonly stale?: number;
-          readonly revalidate?: number;
-          readonly expire?: number;
-        }
-  ) => undefined
-);
+const nextCache = recordNextCache();
 
-mock.module("next/cache", () => ({ cacheLife }));
+mock.module("next/cache", () => nextCache.module);
 mock.module("@/shared/backend/config/dotypos.config", () => ({
   WorkspaceDotyposLayer: Layer.succeed(DotyposService, {
     getTables,
     listReservations,
   }),
 }));
-mock.module("@/shared/backend/workspace-effect", () => ({
-  runWorkspaceEffectOrElse:
-    <B>(
-      _operation: string,
-      { orElse }: { readonly orElse: (cause: unknown) => B }
-    ) =>
-    <A, E>(effect: Effect.Effect<A, E, never>): Promise<A | B> =>
-      Effect.runPromise(
-        effect.pipe(
-          Effect.catchCause((cause) => Effect.sync(() => orElse(cause)))
-        )
-      ),
-}));
-
 const { loadFaqOccupancyStats } = await import("./faq-occupancy.server");
 
 const coworkTableId = "synthetic-cowork-table";
@@ -117,7 +94,7 @@ beforeEach(() => {
   requestedBounds = undefined;
   getTables.mockClear();
   listReservations.mockClear();
-  cacheLife.mockClear();
+  nextCache.clear();
 });
 
 afterEach(() => setSystemTime());
@@ -158,8 +135,8 @@ describe("loadFaqOccupancyStats", () => {
 
     await loadFaqOccupancyStats();
 
-    expect(cacheLife.mock.calls).toEqual([
-      [{ stale: 30, revalidate: 300, expire: 600 }],
+    expect(nextCache.calls).toEqual([
+      { cacheLife: { stale: 30, revalidate: 300, expire: 600 } },
     ]);
   });
 
@@ -171,9 +148,8 @@ describe("loadFaqOccupancyStats", () => {
     });
 
     await expect(loadFaqOccupancyStats()).resolves.toBeUndefined();
-    expect(cacheLife.mock.calls).toEqual([
-      [{ stale: 30, revalidate: 300, expire: 600 }],
-      [{ stale: 30, revalidate: 60, expire: 300 }],
+    expect(nextCache.calls).toEqual([
+      { cacheLife: { stale: 30, revalidate: 60, expire: 300 } },
     ]);
   });
 });

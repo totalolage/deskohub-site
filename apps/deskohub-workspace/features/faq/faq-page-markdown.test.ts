@@ -23,6 +23,7 @@ import {
   markdownPlainText,
   messagePlainText,
 } from "@/shared/markdown/markdown.test-utils";
+import { recordNextCache } from "@/shared/testing/next-cache-recorder.test-utils";
 import { getFaqGroups } from "./faq-entries";
 
 const coworkTableId = "synthetic-cowork-table";
@@ -50,18 +51,12 @@ const aprilReservations = Array.from(
   })
 );
 
-mock.module("next/cache", () => ({ cacheLife: () => undefined }));
+mock.module("next/cache", () => recordNextCache().module);
 mock.module("@/shared/backend/config/dotypos.config", () => ({
   WorkspaceDotyposLayer: Layer.succeed(DotyposService, {
     getTables: () => Effect.succeed([coworkTable]),
     listReservations: () => Effect.succeed(aprilReservations),
   }),
-}));
-mock.module("@/shared/backend/workspace-effect", () => ({
-  runWorkspaceEffectOrElse:
-    (_operation: string) =>
-    <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>
-      Effect.runPromise(effect),
 }));
 
 const { faqPageMarkdown } = await import("./faq-page-markdown");
