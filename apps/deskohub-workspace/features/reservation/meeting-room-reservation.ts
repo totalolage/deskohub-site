@@ -1,8 +1,11 @@
 import { Effect, Option, Schema, SchemaGetter, SchemaIssue } from "effect";
+import { workspaceMeetingRoomCatalog } from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
 import {
   getMeetingRoomReservationDuration,
   getMeetingRoomReservationDurationKey,
+  isMeetingRoomWholeDayReservationDuration,
+  type MeetingRoomReservationDuration,
   meetingRoomReservationDurationKeySchema,
   meetingRoomReservationDurationSchema,
 } from "@/features/reservation/meeting-room-reservation-duration";
@@ -22,7 +25,6 @@ import {
   reservationCustomerSchema,
 } from "@/features/reservation/reservation-contact";
 import {
-  getMeetingRoomDurationValidationMessage,
   getReservationIntervalNormalization,
   hasReservationIntervalEnded,
   reservationTimestampInputSchema,
@@ -107,6 +109,8 @@ export const meetingRoomReservationDetailsSchema = Schema.Struct({
   reservationDate: plainDateStringSchema,
   startsAt: instantStringSchema,
   endsAt: instantStringSchema,
+  /** The customer comes 15 minutes before `startsAt` to set up. */
+  earlySetup: Schema.optionalKey(Schema.Boolean),
 }).annotate({
   identifier: "MeetingRoomReservationDetails",
   description:
@@ -194,6 +198,9 @@ export const storedMeetingRoomReservationDetailsSchema = Schema.Struct({
   duration: Schema.optionalKey(
     workspaceMeetingRoomProductIdentitySchema.fields.duration
   ),
+  // Dotypos holds the room from the setup start, so the booked start is 15
+  // minutes after the stored Dotypos start.
+  earlySetup: Schema.optionalKey(Schema.Boolean),
 }).annotate({
   identifier: "StoredMeetingRoomReservationDetails",
   description:
@@ -209,6 +216,23 @@ export const getStoredMeetingRoomReservationDetails = ({
   kind: meetingRoomReservationKind,
   duration,
 });
+
+const getMeetingRoomDurationMessage = (
+  duration: MeetingRoomReservationDuration
+) => {
+  if (isMeetingRoomWholeDayReservationDuration(duration)) {
+    return m.reservationMeetingRoomDurationWholeDay();
+  }
+
+  return m.reservationMeetingRoomDurationHours({ count: duration.amount });
+};
+
+const getMeetingRoomDurationValidationMessage = () =>
+  m.reservationValidationMeetingRoomDuration({
+    durations: workspaceMeetingRoomCatalog
+      .map(({ duration }) => getMeetingRoomDurationMessage(duration))
+      .join(", "),
+  });
 
 const intervalMatchesMeetingRoomReservationDuration = (
   reservation: MeetingRoomReservationOrderInput,

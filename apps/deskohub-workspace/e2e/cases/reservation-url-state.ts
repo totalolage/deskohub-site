@@ -7,21 +7,18 @@ import {
 } from "@/features/reservation/reservation-checkout-query";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
 import {
-  clickBrowserElement,
-  evalBrowserScript,
-  fillBrowserField,
-  openBrowserPage,
-  readBrowserUrl,
-  waitForBrowserCondition,
-  waitForBrowserReactHandler,
-  waitForBrowserUrl,
+  openPage,
+  readPageUrl,
+  waitForPageCondition,
+  waitForPageUrl,
+  waitForReactHandler,
 } from "../browser";
 import {
-  getPrefilledReservationConditionScript,
   getPrepareCoworkAdvertisedPriceScript,
   getPrepareMeetingRoomAdvertisedPriceScript,
   getPrepareOfficeAdvertisedPriceScript,
 } from "../browser-scripts";
+import type { E2EBrowserSession } from "../browser-session";
 import type { WorkspaceE2EStepRunner } from "../case-runner";
 import {
   makeCoworkCheckoutData,
@@ -35,15 +32,20 @@ import {
   continueToReservationContactStep,
   prepareReservationSelection,
 } from "../checkout/payment";
+import {
+  isPrefilledReservation,
+  toPrefilledReservation,
+} from "../checkout/prefilled-reservation";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import {
   toWorkspaceE2EError,
   tryWorkspaceE2ESync,
   type WorkspaceE2EError,
+  withoutWorkspaceE2ETimeout,
 } from "../errors";
 import { loadDotyposOfficeSeatCapacity } from "../integrations/dotypos";
 import type { Runner } from "../runtime";
-import { assert, log, parseUrl } from "../runtime";
+import { assert, browserSessionFor, log, parseUrl } from "../runtime";
 import type { CheckoutData, WorkspaceE2ECase } from "../types";
 import type { DiscountAvailabilityE2EPreparation } from "./discounts";
 import {
@@ -116,12 +118,16 @@ type UrlStateCaseContext = {
   readonly session: string;
 };
 
+// Resolved inside each step, so a browser that fails to open fails the step
+// that needed it.
+const browserOf = ({ run, session }: UrlStateCaseContext) =>
+  browserSessionFor(run, session);
+
 export const makeReservationUrlStateE2ECases = ({
   allocation,
   config,
   datasourceConfig,
   preparation,
-  run,
 }: {
   readonly allocation: WorkspaceE2EDateAllocation;
   readonly config: WorkspaceE2EConfig;
@@ -131,7 +137,6 @@ export const makeReservationUrlStateE2ECases = ({
     readonly meetingRoom: MeetingRoomE2EPreparation;
     readonly office: OfficeE2EPreparation | undefined;
   };
-  readonly run: Runner;
 }): Effect.Effect<readonly WorkspaceE2ECase[], WorkspaceE2EError> =>
   Effect.gen(function* () {
     // None of these cases submits, so they hold no capacity: their dates only
@@ -188,7 +193,7 @@ export const makeReservationUrlStateE2ECases = ({
     const cases: WorkspaceE2ECase[] = [
       {
         checkoutStates: [],
-        execute: ({ runStep, session }) =>
+        execute: ({ run, runStep, session }) =>
           assertCoworkUrlState(
             { config, run, runStep, session },
             { openSpaceData, reservedDeskData }
@@ -202,7 +207,7 @@ export const makeReservationUrlStateE2ECases = ({
       },
       {
         checkoutStates: [],
-        execute: ({ runStep, session }) =>
+        execute: ({ run, runStep, session }) =>
           assertMeetingRoomUrlState(
             { config, run, runStep, session },
             meetingRoomData
@@ -227,7 +232,7 @@ export const makeReservationUrlStateE2ECases = ({
     cases.push(
       {
         checkoutStates: [],
-        execute: ({ runStep, session }) =>
+        execute: ({ run, runStep, session }) =>
           assertOfficeUrlState(
             { config, run, runStep, session },
             officeData
@@ -241,7 +246,7 @@ export const makeReservationUrlStateE2ECases = ({
       },
       {
         checkoutStates: [],
-        execute: ({ runStep, session }) =>
+        execute: ({ run, runStep, session }) =>
           assertOfficeStartsOnLink(
             { config, run, runStep, session },
             datasourceConfig,
@@ -501,38 +506,43 @@ const assertOfficeStartsOnLink = (
       timeoutMs: config.timeouts.datasource,
     });
     yield* runStep({
-      execute: openBrowserPage(
-        config,
-        run,
-        session,
-        `${config.baseUrl}${pathname}?${new URLSearchParams(
-          Object.entries(state.selection).filter(
-            (entry): entry is [string, string] => entry[1] !== undefined
-          )
-        )}`,
-        { timeoutMs: config.timeouts.browserNavigation }
-      ).pipe(Effect.asVoid),
+      execute: Effect.flatMap(browserOf(context), (browser) =>
+        openPage(
+          browser,
+          config,
+          `${config.baseUrl}${pathname}?${new URLSearchParams(
+            Object.entries(state.selection).filter(
+              (entry): entry is [string, string] => entry[1] !== undefined
+            )
+          )}`,
+          { timeoutMs: config.timeouts.browserNavigation }
+        )
+      ),
       id: "open-office-starts-on-link",
       timeoutMs: config.timeouts.browserNavigation,
     });
     yield* runStep({
-      execute: waitForBrowserCondition(
-        run,
-        session,
-        "linked office selection",
-        getPrefilledReservationConditionScript(data, { includeContact: false }),
-        { timeoutMs: config.timeouts.uiTransition }
+      execute: Effect.flatMap(browserOf(context), (browser) =>
+        waitForPageCondition(
+          browser,
+          "linked office selection",
+          isPrefilledReservation,
+          toPrefilledReservation(data, { includeContact: false }),
+          { timeoutMs: config.timeouts.uiTransition }
+        )
       ),
       id: "assert-linked-office-selection",
       timeoutMs: config.timeouts.uiTransition,
     });
     yield* runStep({
-      execute: waitForBrowserCondition(
-        run,
-        session,
-        "office seat options for the office table capacity",
-        getOfficeSeatOptionsConditionScript(seatCapacity),
-        { timeoutMs: config.timeouts.uiTransition }
+      execute: Effect.flatMap(browserOf(context), (browser) =>
+        waitForPageCondition(
+          browser,
+          "office seat options for the office table capacity",
+          hasOfficeSeatOptions,
+          seatCapacity,
+          { timeoutMs: config.timeouts.uiTransition }
+        )
       ),
       id: "assert-linked-office-seat-options",
       timeoutMs: config.timeouts.uiTransition,
@@ -544,13 +554,11 @@ const assertOfficeStartsOnLink = (
     });
 
     yield* runStep({
-      execute: openBrowserPage(
-        config,
-        run,
-        session,
-        `${config.baseUrl}${pathname}`,
-        { timeoutMs: config.timeouts.browserNavigation }
-      ).pipe(Effect.asVoid),
+      execute: Effect.flatMap(browserOf(context), (browser) =>
+        openPage(browser, config, `${config.baseUrl}${pathname}`, {
+          timeoutMs: config.timeouts.browserNavigation,
+        })
+      ),
       id: "open-link-free-office-page",
       timeoutMs: config.timeouts.browserNavigation,
     });
@@ -583,113 +591,118 @@ const assertOfficeStartsOnLink = (
     log("Office startsOn link e2e passed");
   });
 
-const openReservationPage = (
-  { config, run, session }: UrlStateCaseContext,
-  pathname: string
-) =>
-  openBrowserPage(
-    config,
-    run,
-    session,
-    `${config.baseUrl}${pathname}?${new URLSearchParams(unrelatedQueryParams)}`,
-    { timeoutMs: config.timeouts.browserNavigation }
-  ).pipe(Effect.asVoid);
+const openReservationPage = (context: UrlStateCaseContext, pathname: string) =>
+  Effect.flatMap(browserOf(context), (browser) =>
+    openPage(
+      browser,
+      context.config,
+      `${context.config.baseUrl}${pathname}?${new URLSearchParams(unrelatedQueryParams)}`,
+      { timeoutMs: context.config.timeouts.browserNavigation }
+    )
+  );
 
 // Native fills, so the form receives the customer's own input events.
 const typeContact = (
-  { config, run, session }: UrlStateCaseContext,
+  context: UrlStateCaseContext,
   data: CheckoutData
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    yield* fillBrowserField(run, session, 'input[name="name"]', data.name, {
-      timeoutMs: config.timeouts.browserAction,
-    });
-    yield* fillBrowserField(run, session, 'input[name="email"]', data.email, {
-      timeoutMs: config.timeouts.browserAction,
-    });
+    const browser = yield* browserOf(context);
+    for (const [selector, value] of [
+      ['input[name="name"]', data.name],
+      ['input[name="email"]', data.email],
+    ] as const) {
+      yield* browser.use("fill browser field", (page) =>
+        page
+          .locator(selector)
+          .filter({ visible: true })
+          .fill(value, { timeout: context.config.timeouts.browserAction })
+      );
+    }
   });
 
 const selectionSummaryChangeSelector =
   'section[aria-labelledby="reservation-selection-summary-heading"] button';
 
 // The summary's Change button returns to the selection step in place.
-const returnToReservationSelection = ({
-  config,
-  run,
-  session,
-}: UrlStateCaseContext): Effect.Effect<void, WorkspaceE2EError> =>
+const returnToReservationSelection = (
+  context: UrlStateCaseContext
+): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const options = { timeoutMs: config.timeouts.browserAction };
-    yield* waitForBrowserReactHandler(
-      run,
-      session,
+    const browser = yield* browserOf(context);
+    const timeoutMs = context.config.timeouts.browserAction;
+    yield* waitForReactHandler(
+      browser,
       selectionSummaryChangeSelector,
       "onClick",
-      options
+      { timeoutMs }
     );
-    yield* clickBrowserElement(
-      run,
-      session,
-      selectionSummaryChangeSelector,
-      options
-    );
-    yield* waitForBrowserCondition(
-      run,
-      session,
+    yield* clickVisible(browser, selectionSummaryChangeSelector, timeoutMs);
+    yield* waitForPageCondition(
+      browser,
       "reservation selection step",
-      `document.querySelector('#reservation-continue') !== null`,
-      options
+      (selector: string) => document.querySelector(selector) !== null,
+      "#reservation-continue",
+      { timeoutMs }
     );
   });
 
-const switchCoffeeOn = ({
-  config,
-  run,
-  session,
-}: UrlStateCaseContext): Effect.Effect<void, WorkspaceE2EError> =>
+const switchCoffeeOn = (
+  context: UrlStateCaseContext
+): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const options = { timeoutMs: config.timeouts.browserAction };
-    yield* waitForBrowserCondition(
-      run,
-      session,
+    const browser = yield* browserOf(context);
+    const timeoutMs = context.config.timeouts.browserAction;
+    yield* waitForPageCondition(
+      browser,
       "coffee switched off",
-      getSwitchCheckedConditionScript(coffeeSwitchSelector, false),
-      options
+      isSwitchChecked,
+      { checked: false, selector: coffeeSwitchSelector },
+      { timeoutMs }
     );
-    yield* waitForBrowserReactHandler(
-      run,
-      session,
-      coffeeSwitchSelector,
-      "onClick",
-      options
-    );
-    yield* clickBrowserElement(run, session, coffeeSwitchSelector, options);
-    yield* waitForBrowserCondition(
-      run,
-      session,
+    yield* waitForReactHandler(browser, coffeeSwitchSelector, "onClick", {
+      timeoutMs,
+    });
+    yield* clickVisible(browser, coffeeSwitchSelector, timeoutMs);
+    yield* waitForPageCondition(
+      browser,
       "coffee switched on",
-      getSwitchCheckedConditionScript(coffeeSwitchSelector, true),
-      options
+      isSwitchChecked,
+      { checked: true, selector: coffeeSwitchSelector },
+      { timeoutMs }
     );
   });
+
+const clickVisible = (
+  browser: E2EBrowserSession,
+  selector: string,
+  timeoutMs: number
+) =>
+  browser.use("click browser element", (page) =>
+    page
+      .locator(selector)
+      .filter({ visible: true })
+      .click({ timeout: timeoutMs })
+  );
 
 const waitForReservationUrlState = (
-  { config, run, session }: UrlStateCaseContext,
+  context: UrlStateCaseContext,
   description: string,
   expected: ReservationUrlState
 ) => {
   let lastMismatch = "URL was not read";
-  return waitForBrowserUrl({
-    description,
-    matches: (url) => {
-      const mismatch = findReservationUrlStateMismatch(url, expected);
-      lastMismatch = mismatch ?? "none";
-      return mismatch === undefined;
-    },
-    run,
-    session,
-    timeoutMs: config.timeouts.uiTransition,
-  }).pipe(
+  return Effect.flatMap(browserOf(context), (browser) =>
+    waitForPageUrl({
+      description,
+      matches: (url) => {
+        const mismatch = findReservationUrlStateMismatch(url, expected);
+        lastMismatch = mismatch ?? "none";
+        return mismatch === undefined;
+      },
+      session: browser,
+      timeoutMs: context.config.timeouts.uiTransition,
+    })
+  ).pipe(
     Effect.tapError(() =>
       Effect.sync(() => log(`${description}: last mismatch ${lastMismatch}`))
     ),
@@ -707,8 +720,9 @@ const reloadAndAssertRestoredSelection = (
   expected: ReservationUrlState
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const { config, run, session } = context;
-    const writtenUrl = yield* readBrowserUrl(run, session);
+    const { config } = context;
+    const browser = yield* browserOf(context);
+    const writtenUrl = yield* readPageUrl(browser);
     const url = yield* tryWorkspaceE2ESync(
       "read written reservation URL",
       () => {
@@ -716,17 +730,17 @@ const reloadAndAssertRestoredSelection = (
         return writtenUrl;
       }
     );
-    yield* openBrowserPage(config, run, session, url, {
+    yield* openPage(browser, config, url, {
       timeoutMs: config.timeouts.browserNavigation,
     });
-    yield* waitForBrowserCondition(
-      run,
-      session,
+    yield* waitForPageCondition(
+      browser,
       "restored reservation selection",
-      getPrefilledReservationConditionScript(data, { includeContact: false }),
+      isPrefilledReservation,
+      toPrefilledReservation(data, { includeContact: false }),
       { timeoutMs: config.timeouts.uiTransition }
     );
-    const reloadedUrl = yield* readBrowserUrl(run, session);
+    const reloadedUrl = yield* readPageUrl(browser);
     yield* tryWorkspaceE2ESync("assert reloaded reservation URL", () => {
       const mismatch = findReservationUrlStateMismatch(
         reloadedUrl ?? "",
@@ -766,34 +780,41 @@ const requireMeetingRoom = (data: CheckoutData) =>
     return data.meetingRoom;
   });
 
-const getSwitchCheckedConditionScript = (
-  selector: string,
-  checked: boolean
-) => `
-(() => {
-  const element = document.querySelector(${JSON.stringify(selector)});
-  return element instanceof HTMLButtonElement &&
-    element.getAttribute('aria-checked') === ${JSON.stringify(String(checked))};
-})()
-`;
+// The in-page functions below run in the browser, so they must not close over
+// anything.
+
+export const isSwitchChecked = ({
+  checked,
+  selector,
+}: {
+  readonly checked: boolean;
+  readonly selector: string;
+}) => {
+  const element = document.querySelector(selector);
+  return (
+    element instanceof HTMLButtonElement &&
+    element.getAttribute("aria-checked") === String(checked)
+  );
+};
 
 // Live seat cards for exactly one through `seatCapacity` seats, none of them
 // the loading fallback or disabled.
-const getOfficeSeatOptionsConditionScript = (seatCapacity: number) => `
-(() => {
-  if (document.querySelector('[data-office-seat-option-fallback]')) return false;
+export const hasOfficeSeatOptions = (seatCapacity: number) => {
+  if (document.querySelector("[data-office-seat-option-fallback]"))
+    return false;
   const options = [...document.querySelectorAll('input[name="seats"]')];
-  return options.length === ${seatCapacity} &&
+  return (
+    options.length === seatCapacity &&
     options.every(
       (option, index) =>
         option instanceof HTMLInputElement &&
         option.value === String(index + 1) &&
         !option.disabled
-    );
-})()
-`;
+    )
+  );
+};
 
-type OfficeSelectionDisplay = {
+export type OfficeSelectionDisplay = {
   readonly basePrice: string;
   readonly seatPrice: string;
   readonly startDate: string;
@@ -804,65 +825,65 @@ type OfficeSelectionDisplay = {
  * reads them with the start date field's committed value.
  */
 const readOfficeSelectionDisplay = (
-  { config, run, session }: UrlStateCaseContext,
+  context: UrlStateCaseContext,
   seats: number
 ): Effect.Effect<OfficeSelectionDisplay, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const elements = `
-  const basePrice = document.querySelector('[data-office-base-price]');
-  const seatPrice = document.querySelector(${JSON.stringify(officeSeatPriceSelector(seats))});
-  const startDate = document.querySelector('input[name="startsOn"]');
-  const submit = document.querySelector('#reservation-continue');
-  const text = (element) => (element?.textContent ?? '').replace(/\\s+/g, ' ').trim();
-`;
-    yield* waitForBrowserCondition(
-      run,
-      session,
+    const browser = yield* browserOf(context);
+    const seatPriceSelector = officeSeatPriceSelector(seats);
+    yield* waitForPageCondition(
+      browser,
       "office access and seat prices",
-      `
-(() => {
-  ${elements}
-  return basePrice instanceof HTMLElement &&
-    basePrice.querySelector('[data-slot="skeleton"]') === null &&
-    seatPrice instanceof HTMLElement &&
-    seatPrice.dataset.reservationTypePriceReady === 'true' &&
-    startDate instanceof HTMLInputElement &&
-    submit instanceof HTMLButtonElement &&
-    submit.dataset.reservationPriceLoading === 'false' &&
-    submit.dataset.reservationPriceError !== 'true';
-})()
-`,
-      { timeoutMs: config.timeouts.uiTransition }
+      areOfficePricesReady,
+      seatPriceSelector,
+      { timeoutMs: context.config.timeouts.uiTransition }
     );
-    const result = yield* evalBrowserScript(
-      "read office date and prices",
-      run,
-      session,
-      `
-(() => {
-  ${elements}
-  return {
-    basePrice: text(basePrice),
-    seatPrice: text(seatPrice),
-    startDate: startDate.value,
-  };
-})()
-`,
-      { logOutput: false, timeoutMs: config.timeouts.browserAction }
-    );
+    // An overrun fails rather than timing out, as the argv evaluation did.
+    const display = yield* browser
+      .evaluate(
+        "read office date and prices",
+        readOfficeDisplay,
+        seatPriceSelector,
+        { timeoutMs: context.config.timeouts.browserAction }
+      )
+      .pipe(withoutWorkspaceE2ETimeout("read office date and prices"));
     return yield* tryWorkspaceE2ESync("parse office date and prices", () => {
-      const display = JSON.parse(
-        result.stdout.trim()
-      ) as Partial<OfficeSelectionDisplay>;
       assert(
-        typeof display.basePrice === "string" &&
-          display.basePrice.length > 0 &&
-          typeof display.seatPrice === "string" &&
+        display.basePrice.length > 0 &&
           display.seatPrice.length > 0 &&
-          typeof display.startDate === "string" &&
           display.startDate.length > 0,
         "office date and prices missing"
       );
-      return display as OfficeSelectionDisplay;
+      return display;
     });
   });
+
+export const areOfficePricesReady = (seatPriceSelector: string) => {
+  const basePrice = document.querySelector("[data-office-base-price]");
+  const seatPrice = document.querySelector(seatPriceSelector);
+  const startDate = document.querySelector('input[name="startsOn"]');
+  const submit = document.querySelector("#reservation-continue");
+  return (
+    basePrice instanceof HTMLElement &&
+    basePrice.querySelector('[data-slot="skeleton"]') === null &&
+    seatPrice instanceof HTMLElement &&
+    seatPrice.dataset.reservationTypePriceReady === "true" &&
+    startDate instanceof HTMLInputElement &&
+    submit instanceof HTMLButtonElement &&
+    submit.dataset.reservationPriceLoading === "false" &&
+    submit.dataset.reservationPriceError !== "true"
+  );
+};
+
+export const readOfficeDisplay = (
+  seatPriceSelector: string
+): OfficeSelectionDisplay => {
+  const text = (element: Element | null) =>
+    (element?.textContent ?? "").replace(/\s+/g, " ").trim();
+  const startDate = document.querySelector('input[name="startsOn"]');
+  return {
+    basePrice: text(document.querySelector("[data-office-base-price]")),
+    seatPrice: text(document.querySelector(seatPriceSelector)),
+    startDate: startDate instanceof HTMLInputElement ? startDate.value : "",
+  };
+};

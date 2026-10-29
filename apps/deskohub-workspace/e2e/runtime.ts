@@ -1,5 +1,4 @@
 import { mkdir, rename, writeFile } from "node:fs/promises";
-import { devNull } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Browser, Frame, Page } from "@playwright/test";
@@ -7,8 +6,14 @@ import { Effect, Exit, Scope } from "effect";
 import { normalizePostgresConnectionUrl } from "../db/postgres-connection-url";
 import { E2EBrowserSession } from "./browser-session";
 import { runUntracedE2EEffect } from "./effect-edge";
-import { toWorkspaceE2EError, type WorkspaceE2EError } from "./errors";
+import {
+  toWorkspaceE2EError,
+  type WorkspaceE2EError,
+  workspaceE2EError,
+  workspaceE2ETimeoutError,
+} from "./errors";
 import { redact } from "./redaction";
+import { argvCommandTimeoutMs } from "./timeouts";
 
 export {
   addDatabaseUrlRedactions,
@@ -52,6 +57,22 @@ export type Runner = {
 };
 
 /**
+ * The browser session behind a runner's `--session` id, for helpers that
+ * drive it directly while the argv commands around them still use the id.
+ */
+export const browserSessionFor = (
+  run: Runner,
+  id: string
+): Effect.Effect<E2EBrowserSession, WorkspaceE2EError> =>
+  run.session
+    ? run.session(id)
+    : Effect.fail(
+        workspaceE2EError("This runner has no browser sessions", {
+          operation: "open browser session",
+        })
+      );
+
+/**
  * One argv session: the browser session plus the state only the argv
  * protocol needs, namely tab ids and the iframe that commands target. Any
  * change of the active page drops the selected iframe.
@@ -66,6 +87,18 @@ type ArgvPageState = {
   readonly pageIds: Map<Page, string>;
 };
 
+type ArgvRunnerOptions = {
+  /** Exchanges the preview bypass secret; see `E2EBrowserSession.open`. */
+  readonly fetch?: typeof fetch;
+  readonly recordHar?: boolean;
+  /**
+   * The caller's Scope, which then owns every session: closing it closes
+   * them, a session whose opening outlives it closes as soon as it opens, and
+   * `close` still closes them early.
+   */
+  readonly scope?: Scope.Scope;
+};
+
 /**
  * The argv browser protocol over `E2EBrowserSession`, kept until every
  * caller drives the session directly. Each `--session` id lazily opens one
@@ -73,13 +106,13 @@ type ArgvPageState = {
  */
 export const makePlaywrightBrowserRunner = (
   browser: Browser,
-  options: { readonly recordHar?: boolean } = {}
+  options: ArgvRunnerOptions = {}
 ): Runner => {
   const sessions = new Map<string, Promise<ArgvSession>>();
   const getSession = (id: string) => {
     const existing = sessions.get(id);
     if (existing) return existing;
-    const created = openArgvSession(browser, id, options.recordHar);
+    const created = openArgvSession(browser, id, options);
     sessions.set(id, created);
     return created;
   };
@@ -152,19 +185,22 @@ export const makePlaywrightBrowserRunner = (
 const openArgvSession = (
   browser: Browser,
   id: string,
-  recordHar: boolean | undefined
+  options: ArgvRunnerOptions
 ): Promise<ArgvSession> =>
   runUntracedE2EEffect(
     Effect.gen(function* () {
       const pageState: ArgvPageState = { pageIds: new Map() };
-      const scope = yield* Scope.make();
+      const scope = yield* options.scope
+        ? Scope.fork(options.scope)
+        : Scope.make();
       const browserSession = yield* E2EBrowserSession.open({
         browser,
+        fetch: options.fetch,
         id,
         onActivate: () => {
           pageState.frame = undefined;
         },
-        recordHar,
+        recordHar: options.recordHar,
       }).pipe(
         Scope.provide(scope),
         Effect.onError((cause) => Scope.close(scope, Exit.failCause(cause)))
@@ -177,7 +213,7 @@ const execute = (
   getSession: (id: string) => Promise<ArgvSession>,
   args: string[],
   input: string | undefined,
-  timeoutMs = 120_000,
+  timeoutMs = argvCommandTimeoutMs,
   signal?: AbortSignal
 ) => {
   const sessionId = args[0] === "--session" ? args[1] : undefined;
@@ -225,7 +261,9 @@ const runCommand = (
       });
       return headers
         ? browserSession
-            .primePreviewAccess(url, headers, { timeoutMs })
+            .primePreviewAccess(url, readPreviewBypassSecret(headers), {
+              timeoutMs,
+            })
             .pipe(Effect.mapError(toArgvFailure), Effect.andThen(navigate))
         : navigate;
     }
@@ -369,64 +407,32 @@ const runCommand = (
         return "";
       });
     }
-    case "console":
-      return commandArgs[0] === "--clear"
-        ? browserSession.clearDiagnostics("console").pipe(asDone)
-        : browserSession.diagnostics.pipe(
-            Effect.map(({ console }) => console.join("\n"))
-          );
-    case "errors":
-      return commandArgs[0] === "--clear"
-        ? browserSession.clearDiagnostics("errors").pipe(asDone)
-        : browserSession.diagnostics.pipe(
-            Effect.map(({ errors }) => errors.join("\n\n"))
-          );
     case "network":
-      if (commandArgs[0] === "requests")
-        return commandArgs[1] === "--clear"
-          ? browserSession.clearDiagnostics("requests").pipe(asDone)
-          : browserSession.diagnostics.pipe(
-              Effect.map(({ requests }) => requests.join("\n"))
-            );
-      // The session records its HAR from the start; the argv start command
-      // stays a no-op.
-      if (commandArgs[0] === "har" && commandArgs[1] === "start")
-        return Effect.succeed("");
-      if (commandArgs[0] === "har" && commandArgs[1] === "stop") {
-        const destination = commandArgs[2];
-        return browserSession
-          .close(
-            destination && destination !== devNull
-              ? { harPath: destination }
-              : {}
-          )
-          .pipe(Effect.mapError(toArgvFailure), asDone);
-      }
+      if (commandArgs[0] === "requests" && commandArgs.length === 1)
+        return browserSession.diagnostics.pipe(
+          Effect.map(({ requests }) => requests.join("\n"))
+        );
       throw new Error(
         `Unsupported Playwright network operation: ${commandArgs.join(" ")}`
       );
-    case "cookie": {
-      if (commandArgs[1] !== "--stdin" || input === undefined)
-        throw new Error("Playwright cookie input is required");
-      if (commandArgs[0] === "set")
-        return browserSession
-          .setSessionCookie(parseHttpsOnlyCookie(input))
-          .pipe(Effect.mapError(toArgvFailure), asDone);
-      if (commandArgs[0] === "get") {
-        const query = parseCookieQuery(input);
-        return drive("cookie get", async (page) => {
-          const cookie = (await page.context().cookies(query.url)).find(
-            ({ name }) => name === query.name
-          );
-          return JSON.stringify(describeCookie(cookie, query.value));
-        });
-      }
-      throw new Error("Unsupported Playwright cookie operation");
-    }
     case "close":
-      return browserSession
-        .close()
-        .pipe(Effect.mapError(toArgvFailure), asDone);
+      // The close runs on detached, so a timeout stops only this wait.
+      return browserSession.close().pipe(
+        Effect.timeoutOrElse({
+          duration: `${timeoutMs} millis`,
+          orElse: () =>
+            Effect.fail(
+              workspaceE2ETimeoutError(
+                `close: Timeout ${timeoutMs}ms exceeded.`,
+                {
+                  operation: "close",
+                }
+              )
+            ),
+        }),
+        Effect.mapError(toArgvFailure),
+        asDone
+      );
     default:
       throw new Error(
         `Unsupported Playwright browser operation: ${json ? "--json " : ""}${command} ${commandArgs.join(" ")}`.trim()
@@ -489,97 +495,6 @@ const requirePageId = (
   return pageId;
 };
 
-/**
- * Decodes one cookie for the session's own context. Cookie values never
- * travel in command arguments, which the runner logs; only an HTTP-only,
- * Secure, Lax cookie bound to one HTTPS origin is accepted.
- */
-export const parseHttpsOnlyCookie = (input: string) => {
-  const value: unknown = JSON.parse(input);
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    !("name" in value) ||
-    !("url" in value) ||
-    !("value" in value) ||
-    typeof value.name !== "string" ||
-    typeof value.url !== "string" ||
-    typeof value.value !== "string" ||
-    value.name === "" ||
-    value.value === ""
-  ) {
-    throw new Error("Playwright cookie input is invalid");
-  }
-  const url = new URL(value.url);
-  if (url.protocol !== "https:" || url.pathname !== "/" || url.search) {
-    throw new Error("Playwright cookies require an HTTPS origin");
-  }
-  return {
-    httpOnly: true,
-    name: value.name,
-    sameSite: "Lax" as const,
-    secure: true,
-    url: url.origin,
-    value: value.value,
-  };
-};
-
-const parseCookieQuery = (input: string) => {
-  const value: unknown = JSON.parse(input);
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    !("name" in value) ||
-    !("url" in value) ||
-    typeof value.name !== "string" ||
-    typeof value.url !== "string" ||
-    ("value" in value &&
-      value.value !== undefined &&
-      typeof value.value !== "string")
-  ) {
-    throw new Error("Playwright cookie query is invalid");
-  }
-  return {
-    name: value.name,
-    url: new URL(value.url).origin,
-    value: "value" in value ? (value.value as string | undefined) : undefined,
-  };
-};
-
-/**
- * A cookie's attributes and whether it holds an expected value. The value
- * itself never leaves the browser context, so it cannot reach a log.
- */
-export const describeCookie = (
-  cookie:
-    | {
-        readonly expires: number;
-        readonly httpOnly: boolean;
-        readonly path: string;
-        readonly sameSite: string;
-        readonly secure: boolean;
-        readonly value: string;
-      }
-    | undefined,
-  expectedValue: string | undefined,
-  nowSeconds = Date.now() / 1000
-) =>
-  cookie === undefined
-    ? { present: false as const }
-    : {
-        httpOnly: cookie.httpOnly,
-        lifetimeDays:
-          cookie.expires < 0
-            ? null
-            : Math.round((cookie.expires - nowSeconds) / 86_400),
-        matches:
-          expectedValue === undefined ? null : cookie.value === expectedValue,
-        path: cookie.path,
-        present: true as const,
-        sameSite: cookie.sameSite,
-        secure: cookie.secure,
-      };
-
 const parseBrowserCommand = (args: string[]) => {
   let cursor = 0;
   let headers: Record<string, string> | undefined;
@@ -605,6 +520,26 @@ const parseBrowserCommand = (args: string[]) => {
     headers,
     json,
   };
+};
+
+const previewBypassHeaders = new Set([
+  "x-vercel-protection-bypass",
+  "x-vercel-set-bypass-cookie",
+]);
+
+/**
+ * `--headers` is the argv form of the preview bypass secret: the session
+ * exchanges the secret itself, so a header it would not send is refused.
+ */
+const readPreviewBypassSecret = (headers: Record<string, string>) => {
+  let secret: string | undefined;
+  for (const [name, value] of Object.entries(headers)) {
+    const header = name.toLowerCase();
+    if (!previewBypassHeaders.has(header))
+      throw new Error("Only the preview bypass headers are supported");
+    if (header === "x-vercel-protection-bypass") secret = value;
+  }
+  return secret;
 };
 
 const toPlaywrightSelector = (selector: string) =>

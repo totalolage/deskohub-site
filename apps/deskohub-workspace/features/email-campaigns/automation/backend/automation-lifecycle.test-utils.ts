@@ -4,6 +4,7 @@ import {
 } from "@deskohub/workspace-admin-api";
 import { Effect, Layer, Option, Schema } from "effect";
 import { TestClock } from "effect/testing";
+import { WorkspaceDatabase } from "@/db/database.service";
 import { emailCampaignAudiences } from "@/db/schema";
 import type { AudienceFilter } from "@/features/email-campaigns/audience-filter";
 import {
@@ -120,7 +121,9 @@ export const automationLifecycleTestKit = (
   /** The working copy's current draft hash. */
   const draftHash = async (campaignId: CampaignId) => {
     const copy = await Effect.runPromise(
-      db.transaction((tx) => loadAutomationWorkingCopy(tx, campaignId))
+      Effect.flatMap(WorkspaceDatabase, ({ transaction }) =>
+        transaction(loadAutomationWorkingCopy(campaignId))
+      ).pipe(Effect.provide(databaseLayer))
     );
     return Option.getOrThrow(copy.draftHash);
   };

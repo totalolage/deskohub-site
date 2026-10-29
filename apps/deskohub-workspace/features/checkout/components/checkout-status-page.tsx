@@ -27,13 +27,13 @@ import { type Locale, m } from "@/features/i18n";
 import { getMeetingRoomCheckoutStatusSummary } from "@/features/meeting-room/components/meeting-room-checkout-status-summary";
 import { getOfficeCheckoutStatusSummary } from "@/features/office/components/office-checkout-status-summary";
 import { getOfficeReservationSelection } from "@/features/reservation/office-reservation";
-import { setReservationSelectionSearchParams } from "@/features/reservation/reservation-checkout-query";
 import { formatReservationDisplayDate } from "@/features/reservation/reservation-date";
 import {
   getCoworkReservationPath,
   getReservationStartPath,
   reservationAccessPath,
 } from "@/features/reservation/routes";
+import { getSelectionPath } from "@/features/reservation/selection-path";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
 import { CheckoutFlowLayout } from "./checkout-flow-layout";
@@ -310,26 +310,29 @@ const getRepeatReservationSearchParams = (
   );
 };
 
-/** The booked selection a failed, cancelled, or expired payment retries. */
-const getRetryReservationSearchParams = (
-  status: CheckoutStatusViewModel
-): URLSearchParams | undefined => {
-  if (status.status === "not_found" || !status.retrySearchParams) {
-    return undefined;
-  }
-
-  const searchParams = new URLSearchParams();
-  setReservationSelectionSearchParams(searchParams, status.retrySearchParams);
-  return searchParams;
-};
-
+/**
+ * The reservation page a "reserve again" link opens: a failed, cancelled, or
+ * expired payment retries its booked selection; otherwise the link repeats
+ * the reservation's options.
+ */
 const getReserveAgainPath = (
   status: CheckoutStatusViewModel,
   locale: Locale,
-  searchParams: URLSearchParams | undefined
+  {
+    offersRetry,
+    repeatSearchParams,
+  }: {
+    readonly offersRetry: boolean;
+    readonly repeatSearchParams: URLSearchParams | undefined;
+  }
 ) => {
   if (status.status === "not_found") return getCoworkReservationPath(locale);
-  return getReservationStartPath(locale, status.kind, searchParams);
+  if (!offersRetry) {
+    return getReservationStartPath(locale, status.kind, repeatSearchParams);
+  }
+  return status.retrySelection
+    ? getSelectionPath(locale, status.retrySelection)
+    : getReservationStartPath(locale, status.kind);
 };
 
 const getReserveAgainLabel = (
@@ -397,13 +400,10 @@ export function CheckoutStatusPage({
   const offersRetry = shouldOfferReservationRetry(status.status);
   const repeatReservationSearchParams =
     getRepeatReservationSearchParams(status);
-  const reserveAgainPath = getReserveAgainPath(
-    status,
-    locale,
-    offersRetry
-      ? getRetryReservationSearchParams(status)
-      : repeatReservationSearchParams
-  );
+  const reserveAgainPath = getReserveAgainPath(status, locale, {
+    offersRetry,
+    repeatSearchParams: repeatReservationSearchParams,
+  });
   const showSupportButton = !!supportContactHref;
   const offersNewReservation = shouldOfferNewReservation(status.status);
   const reviewSandbox = status.status !== "not_found" && status.reviewSandbox;

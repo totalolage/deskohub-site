@@ -5,7 +5,8 @@ import type { DatasourceConfig } from "../config";
 import { type WorkspaceE2EError, workspaceE2EError } from "../errors";
 import type { E2EDatabase } from "../integrations/database.service";
 import type { WorkspaceE2ERunId } from "../run-identifiers";
-import type { Runner } from "../runtime";
+import { browserSessionFor } from "../runtime";
+import type { WorkspaceE2ECaseContext } from "../types";
 import { makeWorkspaceE2EAccountRecipientForRunId } from "./config";
 import { createSyntheticCustomerProfile } from "./fixtures";
 import {
@@ -41,7 +42,6 @@ export const makeWorkspaceE2ECaseIdentities = <Label extends string>({
   datasourceConfig,
   displayName,
   journalOwnerId,
-  run,
   runId,
   secret,
 }: {
@@ -50,7 +50,6 @@ export const makeWorkspaceE2ECaseIdentities = <Label extends string>({
   /** The account and profile name for one label. */
   readonly displayName: (label: Label) => string;
   readonly journalOwnerId: WorkspaceE2EAccountJournalOwnerId;
-  readonly run: Runner;
   readonly runId: WorkspaceE2ERunId;
   readonly secret: WorkspaceE2ESessionSigningSecret;
 }) => {
@@ -140,15 +139,18 @@ export const makeWorkspaceE2ECaseIdentities = <Label extends string>({
     /** Signs this case's browser session in as one of its accounts. */
     signIn: (
       account: Pick<WorkspaceE2ECaseAccount, "accountId">,
-      session: string
+      { run, session }: Pick<WorkspaceE2ECaseContext, "run" | "session">
     ) =>
-      signInWorkspaceE2ESyntheticAccount({
-        accountId: account.accountId,
-        baseUrl,
-        run,
-        secret,
-        session,
-      }),
+      browserSessionFor(run, session).pipe(
+        Effect.flatMap((browserSession) =>
+          signInWorkspaceE2ESyntheticAccount({
+            accountId: account.accountId,
+            baseUrl,
+            secret,
+            session: browserSession,
+          })
+        )
+      ),
   };
 };
 

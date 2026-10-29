@@ -1,4 +1,4 @@
-import { eq, isNull, type SQL, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
@@ -10,8 +10,8 @@ import {
   paymentAttempts,
   workspaceReservations,
 } from "@/db/schema";
+import { WorkspaceLocks } from "@/db/workspace-locks";
 import {
-  decodeInvoiceDocument,
   formatInvoiceNumber,
   getInvoiceNumberingYear,
   getInvoiceVariableSymbol,
@@ -27,7 +27,6 @@ import {
 } from "@/features/accounting/invoice";
 import {
   type InvoiceId,
-  invoiceIdSchema,
   isInvoiceCurrencyPayable,
   type ManualInvoiceInput,
   type ManualInvoiceProvenance,
@@ -45,23 +44,14 @@ import {
   type AccountingDocumentSnapshotStorageError,
 } from "./accounting-document-snapshot.repository";
 import { AccountingSnapshotKeyService } from "./accounting-snapshot-key.service";
-import {
-  decryptAccountingSnapshot,
-  encryptAccountingSnapshot,
-} from "./accounting-snapshot-sql";
+import { encryptAccountingSnapshot } from "./accounting-snapshot-sql";
+import { InvoiceStorageError, makeInvoiceReads } from "./invoice-reads";
 
 class InvoiceEligibilityError extends Data.TaggedError(
   "InvoiceEligibilityError"
 )<{
   readonly paymentAttemptId: string;
   readonly message: string;
-}> {}
-
-class InvoiceStorageError extends Data.TaggedError("InvoiceStorageError")<{
-  readonly operation: "decrypt" | "encrypt" | "load" | "parse" | "validate";
-  readonly paymentAttemptId: string;
-  readonly message: string;
-  readonly cause?: unknown;
 }> {}
 
 class ManualInvoiceConflictError extends Data.TaggedError(
@@ -175,131 +165,11 @@ export class InvoiceRepository extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const { db } = yield* WorkspaceDatabase;
+      const { db, transaction } = yield* WorkspaceDatabase;
       const accountingSnapshots = yield* AccountingDocumentSnapshotRepository;
       const keys = yield* AccountingSnapshotKeyService;
-
-      const loadInvoice = Effect.fn("InvoiceRepository.loadInvoice")(
-        function* (input: { readonly where: SQL; readonly lookupId: string }) {
-          const [metadata] = yield* db
-            .select({ keyId: invoices.keyId })
-            .from(invoices)
-            .where(input.where)
-            .limit(1);
-
-          if (!metadata) return null;
-
-          const key = yield* keys.getById(metadata.keyId).pipe(
-            Effect.mapError(
-              (cause) =>
-                new InvoiceStorageError({
-                  operation: "decrypt",
-                  paymentAttemptId: input.lookupId,
-                  message: "Invoice decryption key is unavailable.",
-                  cause: censorLogValue(cause),
-                })
-            )
-          );
-
-          const [row] = yield* db
-            .select({
-              id: invoices.id,
-              workspaceReservationId: invoices.workspaceReservationId,
-              paymentAttemptId: invoices.paymentAttemptId,
-              dotyposCustomerId: invoices.dotyposCustomerId,
-              invoiceNumber: invoices.invoiceNumber,
-              issuedAt: invoices.issuedAt,
-              documentJson: decryptAccountingSnapshot(
-                invoices.encryptedDocument,
-                key.secret
-              ),
-            })
-            .from(invoices)
-            .where(input.where)
-            .limit(1)
-            .pipe(
-              Effect.withTracerEnabled(false),
-              Effect.mapError(
-                (cause) =>
-                  new InvoiceStorageError({
-                    operation: "decrypt",
-                    paymentAttemptId: input.lookupId,
-                    message: "Invoice could not be decrypted.",
-                    cause: censorLogValue(cause),
-                  })
-              )
-            );
-
-          if (!row) {
-            return yield* new InvoiceStorageError({
-              operation: "load",
-              paymentAttemptId: input.lookupId,
-              message: "Invoice disappeared while loading.",
-            });
-          }
-
-          const encoded = yield* Effect.try({
-            try: () => JSON.parse(row.documentJson) as unknown,
-            catch: () =>
-              new InvoiceStorageError({
-                operation: "parse",
-                paymentAttemptId: input.lookupId,
-                message: "Invoice JSON is invalid.",
-              }),
-          });
-          const document = yield* decodeInvoiceDocument(encoded).pipe(
-            Effect.mapError(
-              () =>
-                new InvoiceStorageError({
-                  operation: "parse",
-                  paymentAttemptId: input.lookupId,
-                  message: "Invoice schema is invalid.",
-                })
-            )
-          );
-
-          yield* validateStoredInvoice({ row, document });
-
-          return {
-            id: invoiceIdSchema.make(row.id),
-            workspaceReservationId: row.workspaceReservationId,
-            paymentAttemptId: row.paymentAttemptId,
-            dotyposCustomerId: row.dotyposCustomerId,
-            invoiceNumber: document.invoiceNumber,
-            issuedAt: row.issuedAt,
-            document,
-          } satisfies Invoice;
-        }
-      );
-
-      const findById = Effect.fn("InvoiceRepository.findById")(
-        (invoiceId: string) =>
-          loadInvoice({
-            where: eq(invoices.id, invoiceIdSchema.make(invoiceId)),
-            lookupId: invoiceId,
-          })
-      );
-
-      const findByPaymentAttemptId = Effect.fn(
-        "InvoiceRepository.findByPaymentAttemptId"
-      )((paymentAttemptId: string) =>
-        loadInvoice({
-          where: eq(
-            invoices.paymentAttemptId,
-            paymentAttemptIdSchema.make(paymentAttemptId)
-          ),
-          lookupId: paymentAttemptId,
-        }).pipe(
-          Effect.map((invoice) =>
-            invoice && !isManualInvoiceDocument(invoice.document)
-              ? ({
-                  ...invoice,
-                  document: invoice.document,
-                } as ReservationInvoice)
-              : null
-          )
-        )
-      );
+      const reads = yield* makeInvoiceReads;
+      const { findById, findByPaymentAttemptId } = reads;
 
       const issue = Effect.fn("InvoiceRepository.issue")(function* (input: {
         readonly paymentAttemptId: string;
@@ -337,9 +207,9 @@ export class InvoiceRepository extends Context.Service<
           )
         );
 
-        const outcome = yield* db.transaction(
-          Effect.fn(function* (tx) {
-            const [locked] = yield* tx
+        const outcome = yield* transaction(
+          Effect.gen(function* () {
+            const [locked] = yield* db
               .select({
                 reservationId: workspaceReservations.id,
                 reservationPaymentState: workspaceReservations.paymentState,
@@ -372,7 +242,7 @@ export class InvoiceRepository extends Context.Service<
               );
             }
 
-            const [existing] = yield* tx
+            const [existing] = yield* db
               .select({ paymentAttemptId: invoices.paymentAttemptId })
               .from(invoices)
               .where(eq(invoices.workspaceReservationId, locked.reservationId))
@@ -440,7 +310,7 @@ export class InvoiceRepository extends Context.Service<
               temporalInstantToIsoString(Temporal.Now.instant())
             );
             const numberingYear = getInvoiceNumberingYear(issuedAt);
-            const [counter] = yield* tx
+            const [counter] = yield* db
               .insert(invoiceNumberCounters)
               .values({ numberingYear, lastSequence: 1 })
               .onConflictDoUpdate({
@@ -488,7 +358,7 @@ export class InvoiceRepository extends Context.Service<
               )
             );
 
-            yield* tx
+            yield* db
               .insert(invoices)
               .values({
                 workspaceReservationId: locked.reservationId,
@@ -578,12 +448,10 @@ export class InvoiceRepository extends Context.Service<
           });
         }
 
-        const outcome = yield* db.transaction(
-          Effect.fn(function* (tx) {
-            yield* tx.execute(
-              sql`select pg_advisory_xact_lock(hashtext(${normalized.invoiceId}))`
-            );
-            const [existing] = yield* tx
+        const outcome = yield* transaction(
+          Effect.gen(function* () {
+            yield* WorkspaceLocks.manualInvoiceIssue(normalized.invoiceId);
+            const [existing] = yield* db
               .select({ id: invoices.id })
               .from(invoices)
               .where(eq(invoices.id, normalized.invoiceId))
@@ -605,7 +473,7 @@ export class InvoiceRepository extends Context.Service<
               temporalInstantToIsoString(Temporal.Now.instant())
             );
             const numberingYear = getInvoiceNumberingYear(issuedAt);
-            const [counter] = yield* tx
+            const [counter] = yield* db
               .insert(invoiceNumberCounters)
               .values({ numberingYear, lastSequence: 1 })
               .onConflictDoUpdate({
@@ -632,7 +500,7 @@ export class InvoiceRepository extends Context.Service<
               invoiceNumber,
               issuedAt,
             });
-            yield* tx
+            yield* db
               .insert(invoices)
               .values({
                 id: normalized.invoiceId,
@@ -661,7 +529,7 @@ export class InvoiceRepository extends Context.Service<
                     })
                 )
               );
-            yield* tx.insert(manualInvoiceActors).values({
+            yield* db.insert(manualInvoiceActors).values({
               invoiceId: normalized.invoiceId,
               actorAccountId: issuedBy.accountId,
               actorAccountEmail: issuedBy.email,
@@ -696,43 +564,6 @@ export class InvoiceRepository extends Context.Service<
         };
       });
 
-      const list = Effect.fn("InvoiceRepository.list")(function* () {
-        const rows = yield* db.select({ id: invoices.id }).from(invoices);
-        // ponytail: decrypting the small invoice ledger in-process keeps one
-        // repository path; add SQL pagination when the ledger is measurably large.
-        const loaded = yield* Effect.all(
-          rows.map(({ id }) => findById(id)),
-          { concurrency: "inherit" }
-        );
-        return loaded.filter((invoice) => invoice !== null);
-      });
-
-      const listManualInvoiceProvenance = Effect.fn(
-        "InvoiceRepository.listManualInvoiceProvenance"
-      )(function* () {
-        const rows = yield* db
-          .select({ id: invoices.id })
-          .from(invoices)
-          .where(isNull(invoices.workspaceReservationId));
-        const loaded = yield* Effect.all(
-          rows.map(({ id }) => findById(id)),
-          { concurrency: "inherit" }
-        );
-        return loaded.flatMap((invoice) =>
-          invoice && isManualInvoiceDocument(invoice.document)
-            ? [
-                {
-                  invoiceId: invoice.document.invoiceId,
-                  provenance: {
-                    source: invoice.document.provenance.source,
-                    actor: invoice.document.provenance.actor,
-                  },
-                },
-              ]
-            : []
-        );
-      });
-
       const getSuggestedVariableSymbol = Effect.fn(
         "InvoiceRepository.getSuggestedVariableSymbol"
       )(function* () {
@@ -752,12 +583,9 @@ export class InvoiceRepository extends Context.Service<
       });
 
       return {
-        findById,
-        findByPaymentAttemptId,
+        ...reads,
         issue,
         issueManual,
-        list,
-        listManualInvoiceProvenance,
         getSuggestedVariableSymbol,
       } satisfies IInvoiceRepository;
     })
@@ -779,42 +607,6 @@ const wrapInvoiceEligibilityError = (
   paymentAttemptId: string,
   message: string
 ) => new InvoiceEligibilityError({ paymentAttemptId, message });
-
-const validateStoredInvoice = Effect.fn(
-  "InvoiceRepository.validateStoredInvoice"
-)(function* (input: {
-  readonly row: {
-    readonly id: string;
-    readonly workspaceReservationId: string | null;
-    readonly paymentAttemptId: string | null;
-    readonly dotyposCustomerId: string;
-    readonly invoiceNumber: string;
-    readonly issuedAt: Temporal.Instant;
-  };
-  readonly document: InvoiceDocument;
-}) {
-  const { document, row } = input;
-  const commonMismatch =
-    document.dotyposCustomerId !== row.dotyposCustomerId ||
-    document.invoiceNumber !== row.invoiceNumber ||
-    Temporal.Instant.compare(
-      Temporal.Instant.from(document.issuedAt),
-      row.issuedAt
-    ) !== 0;
-  const sourceMismatch = isManualInvoiceDocument(document)
-    ? document.invoiceId !== row.id ||
-      row.workspaceReservationId !== null ||
-      row.paymentAttemptId !== null
-    : document.workspaceReservationId !== row.workspaceReservationId ||
-      document.paymentAttemptId !== row.paymentAttemptId;
-  if (commonMismatch || sourceMismatch) {
-    return yield* new InvoiceStorageError({
-      operation: "validate",
-      paymentAttemptId: row.paymentAttemptId ?? row.id,
-      message: "Invoice metadata does not match its encrypted document.",
-    });
-  }
-});
 
 const validateManualInvoiceRetry = Effect.fn(
   "InvoiceRepository.validateManualInvoiceRetry"

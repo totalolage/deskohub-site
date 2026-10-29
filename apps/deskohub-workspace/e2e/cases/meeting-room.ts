@@ -22,7 +22,7 @@ import {
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { formatMoney } from "@/shared/money/money";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
-import { normalizeBrowserText, waitForBrowserText } from "../browser";
+import { normalizeBrowserText, waitForPageText } from "../browser";
 import {
   getPrepareMeetingRoomAdvertisedPriceScript,
   getSubmitMeetingRoomReservationScript,
@@ -47,7 +47,7 @@ import {
 } from "../integrations/dotypos";
 import { pollUntil } from "../polling";
 import type { Runner } from "../runtime";
-import { assert, log } from "../runtime";
+import { assert, browserSessionFor, log } from "../runtime";
 import { workspaceE2EPollIntervalMs } from "../timeouts";
 import type {
   CheckoutData,
@@ -110,13 +110,11 @@ export const makeMeetingRoomE2ECases = ({
   datasourceConfig,
   flowStates,
   preparation,
-  run,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly datasourceConfig: DatasourceConfig;
   readonly flowStates: CheckoutFlowState[];
   readonly preparation: MeetingRoomE2EPreparation;
-  readonly run: Runner;
 }): Effect.Effect<
   readonly WorkspaceE2ECase[],
   WorkspaceE2EError,
@@ -191,7 +189,7 @@ export const makeMeetingRoomE2ECases = ({
     return [
       {
         checkoutStates: [paidState],
-        execute: ({ runStep, session }) => {
+        execute: ({ run, runStep, session }) => {
           return executeCheckoutFlow({
             config,
             data: paidData,
@@ -236,7 +234,7 @@ export const makeMeetingRoomE2ECases = ({
       },
       {
         checkoutStates: [zeroTotalState],
-        execute: ({ runStep, session }) =>
+        execute: ({ run, runStep, session }) =>
           executeZeroTotalCheckout({
             config,
             data: zeroTotalData,
@@ -261,7 +259,7 @@ export const makeMeetingRoomE2ECases = ({
       },
       {
         checkoutStates: [replacementState],
-        execute: ({ runStep, session }) =>
+        execute: ({ run, runStep, session }) =>
           assertReservationReplacement({
             config,
             data: replacementData,
@@ -298,7 +296,7 @@ export const makeMeetingRoomE2ECases = ({
       },
       {
         checkoutStates: [cancelledState],
-        execute: ({ runStep, session }) =>
+        execute: ({ run, runStep, session }) =>
           assertPaymentTerminalPath({
             config,
             data: cancelledData,
@@ -323,7 +321,7 @@ export const makeMeetingRoomE2ECases = ({
       },
       {
         checkoutStates: [dayState],
-        execute: ({ runStep, session }) =>
+        execute: ({ run, runStep, session }) =>
           executeCheckoutFlow({
             config,
             data: dayData,
@@ -556,7 +554,7 @@ const assertMeetingRoomPayPage = (
       data.locale
     );
 
-    yield* waitForBrowserText({
+    yield* waitForPageText({
       description: "meeting-room pay summary",
       matches: (text) => {
         const normalized = normalizeBrowserText(text);
@@ -566,8 +564,7 @@ const assertMeetingRoomPayPage = (
           normalized.includes(normalizeBrowserText(price))
         );
       },
-      run,
-      session,
+      session: yield* browserSessionFor(run, session),
       timeoutMs: config.timeouts.uiTransition,
     });
     log("Meeting-room pay summary validated");

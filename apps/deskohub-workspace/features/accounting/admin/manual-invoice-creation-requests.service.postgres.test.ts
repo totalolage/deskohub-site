@@ -3,10 +3,9 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { AdministrationInvoiceCreateInput } from "@deskohub/workspace-admin-api";
-import { Deferred, Effect, Fiber, Layer, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { invoiceIdSchema } from "@/features/accounting/manual-invoice";
-import { waitForAdvisoryLockWaiter } from "@/shared/testing/workspace-postgres-lock-waiters.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { AccountingSnapshotKeyService } from "../backend/accounting-snapshot-key.service";
 import { getManualInvoiceCreationRequestJson } from "./invoice-administration.service";
@@ -24,7 +23,7 @@ const getRequests = () =>
           Layer.mergeAll(
             Layer.succeed(
               WorkspaceDatabase,
-              WorkspaceDatabase.of({ db: testDatabase!.db })
+              WorkspaceDatabase.make(testDatabase!.db)
             ),
             AccountingSnapshotKeyService.Default
           )
@@ -102,51 +101,6 @@ describe.skipIf(!testDatabase)(
       ]) {
         expect(stored).not.toContain(value.toLowerCase());
       }
-    });
-
-    test("serializes creation per invoice ID", async () => {
-      const requests = await getRequests();
-      const invoiceId = uniqueInvoiceId();
-      const events: string[] = [];
-
-      await Effect.runPromise(
-        Effect.gen(function* () {
-          const acquired = yield* Deferred.make<void>();
-          const release = yield* Deferred.make<void>();
-          const holder = yield* Effect.forkChild(
-            requests.withLock(
-              invoiceId,
-              Deferred.succeed(acquired, undefined).pipe(
-                Effect.andThen(Deferred.await(release)),
-                Effect.andThen(Effect.sync(() => events.push("holder")))
-              )
-            )
-          );
-          yield* Deferred.await(acquired);
-          const contender = yield* Effect.forkChild(
-            requests.withLock(
-              invoiceId,
-              Effect.sync(() => events.push("contender"))
-            )
-          );
-          yield* Effect.promise(() =>
-            waitForAdvisoryLockWaiter(testDatabase!.pool, [
-              "manual-invoice-creation",
-              invoiceId,
-            ])
-          );
-
-          yield* requests.withLock(
-            uniqueInvoiceId(),
-            Effect.sync(() => events.push("other invoice"))
-          );
-          yield* Deferred.succeed(release, undefined);
-          yield* Fiber.join(holder);
-          yield* Fiber.join(contender);
-        })
-      );
-
-      expect(events).toEqual(["other invoice", "holder", "contender"]);
     });
   }
 );

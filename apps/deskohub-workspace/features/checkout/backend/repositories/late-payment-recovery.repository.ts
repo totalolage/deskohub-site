@@ -14,15 +14,14 @@ import {
   paymentAttempts,
   workspaceReservations,
 } from "@/db/schema";
+import { WorkspaceLocks } from "@/db/workspace-locks";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import type { DiscountClaimError } from "@/features/discounts/errors";
-import { referralFirstBookingLockStatement } from "@/features/referrals/advisory-locks";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { recordCustomerEvent } from "@/shared/backend/customer-events/customer-event-outbox";
 import {
   attemptRecordsReferral,
   ensureReferralFirstPaidTransition,
-  lockReferralFirstBooking,
   redeemCodeClaim,
   redeemReferralInvitationClaim,
 } from "./payment-lifecycle.repository";
@@ -129,7 +128,7 @@ export class LatePaymentRecoveryRepository extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const { db } = yield* WorkspaceDatabase;
+      const { db, transaction } = yield* WorkspaceDatabase;
 
       const findByPaymentAttemptId = Effect.fn(
         "LatePaymentRecoveryRepository.findByPaymentAttemptId"
@@ -152,9 +151,9 @@ export class LatePaymentRecoveryRepository extends Context.Service<
             readonly completedAt: Temporal.Instant;
           }
         ) {
-          yield* db.transaction(
-            Effect.fn(function* (tx) {
-              const [reservationIdentity] = yield* tx
+          yield* transaction(
+            Effect.gen(function* () {
+              const [reservationIdentity] = yield* db
                 .select({
                   dotyposCustomerId: workspaceReservations.dotyposCustomerId,
                 })
@@ -170,16 +169,16 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                   "Late-payment reservation was not found."
                 );
               }
-              yield* lockReferralFirstBooking({
-                tx,
-                dotyposCustomerId: reservationIdentity.dotyposCustomerId,
-                recordsAttribution: yield* attemptRecordsReferral(
-                  tx,
-                  input.paymentAttemptId
-                ),
-              });
+              // A transition that may record a referral attribution takes the
+              // graph lock first, matching acceptReferral's lock order.
+              if (yield* attemptRecordsReferral(input.paymentAttemptId)) {
+                yield* WorkspaceLocks.referralGraph();
+              }
+              yield* WorkspaceLocks.referralFirstBooking(
+                reservationIdentity.dotyposCustomerId
+              );
 
-              const [recovery] = yield* tx
+              const [recovery] = yield* db
                 .select()
                 .from(latePaymentRecoveries)
                 .where(
@@ -213,7 +212,7 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                 );
               }
 
-              const [reservation] = yield* tx
+              const [reservation] = yield* db
                 .select()
                 .from(workspaceReservations)
                 .where(
@@ -261,7 +260,7 @@ export class LatePaymentRecoveryRepository extends Context.Service<
               }
 
               if (input.state === "recovered") {
-                const [newer] = yield* tx
+                const [newer] = yield* db
                   .select({ id: workspaceReservations.id })
                   .from(workspaceReservations)
                   .where(
@@ -288,14 +287,13 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                 }
 
                 yield* ensureReferralFirstPaidTransition({
-                  tx,
                   dotyposCustomerId: reservation.dotyposCustomerId,
                   workspaceReservationId: input.workspaceReservationId,
                   paymentAttemptId: input.paymentAttemptId,
                 });
               }
 
-              const [attempt] = yield* tx
+              const [attempt] = yield* db
                 .update(paymentAttempts)
                 .set({
                   state: "paid",
@@ -337,13 +335,11 @@ export class LatePaymentRecoveryRepository extends Context.Service<
 
               if (input.state === "recovered") {
                 yield* redeemCodeClaim(
-                  tx,
                   input.paymentAttemptId,
                   recovery.verifiedPaidAt,
                   true
                 );
                 yield* redeemReferralInvitationClaim(
-                  tx,
                   input.paymentAttemptId,
                   input.workspaceReservationId,
                   recovery.verifiedPaidAt,
@@ -373,7 +369,7 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                     }),
                   };
                 }
-                const [updatedReservation] = yield* tx
+                const [updatedReservation] = yield* db
                   .update(workspaceReservations)
                   .set({
                     ...reservationValues,
@@ -410,7 +406,7 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                   input.reservationState === "confirmed" &&
                   updatedReservation.reservationConfirmedAt
                 ) {
-                  yield* recordCustomerEvent(tx, {
+                  yield* recordCustomerEvent({
                     kind: "reservation-booked",
                     occurredAt: updatedReservation.reservationConfirmedAt,
                     dotyposCustomerId: updatedReservation.dotyposCustomerId,
@@ -419,7 +415,7 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                 }
               }
 
-              yield* tx
+              yield* db
                 .update(latePaymentRecoveries)
                 .set({
                   state: input.state,
@@ -469,9 +465,9 @@ export class LatePaymentRecoveryRepository extends Context.Service<
         }),
         start: Effect.fn("LatePaymentRecoveryRepository.start")(
           function* (input) {
-            return yield* db.transaction(
-              Effect.fn(function* (tx) {
-                const [reservationIdentity] = yield* tx
+            return yield* transaction(
+              Effect.gen(function* () {
+                const [reservationIdentity] = yield* db
                   .select({
                     dotyposCustomerId: workspaceReservations.dotyposCustomerId,
                   })
@@ -487,15 +483,13 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                     "Late-payment reservation was not found."
                   );
                 }
-                yield* tx.execute(
-                  referralFirstBookingLockStatement(
-                    reservationIdentity.dotyposCustomerId
-                  )
+                yield* WorkspaceLocks.referralFirstBooking(
+                  reservationIdentity.dotyposCustomerId
                 );
                 // Lock the attempt before looking for an existing recovery so
                 // a concurrent webhook and status-page verification serialize
                 // here and the later one observes the committed recovery.
-                const [attempt] = yield* tx
+                const [attempt] = yield* db
                   .select({ state: paymentAttempts.state })
                   .from(paymentAttempts)
                   .where(
@@ -510,7 +504,7 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                   .limit(1)
                   .for("update");
 
-                const [existing] = yield* tx
+                const [existing] = yield* db
                   .select()
                   .from(latePaymentRecoveries)
                   .where(
@@ -526,7 +520,7 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                   // attempt already locked here rather than the recovery,
                   // whose row settlement locks before the attempt.
                   if (input.webhookEventId && !existing.webhookEventId) {
-                    yield* tx
+                    yield* db
                       .update(paymentAttempts)
                       .set({ lastWebhookEventId: input.webhookEventId })
                       .where(eq(paymentAttempts.id, input.paymentAttemptId));
@@ -534,7 +528,7 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                   return existing;
                 }
 
-                const [reservation] = yield* tx
+                const [reservation] = yield* db
                   .select()
                   .from(workspaceReservations)
                   .where(
@@ -556,7 +550,7 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                   );
                 }
 
-                const [recovery] = yield* tx
+                const [recovery] = yield* db
                   .insert(latePaymentRecoveries)
                   .values({
                     paymentAttemptId: input.paymentAttemptId,

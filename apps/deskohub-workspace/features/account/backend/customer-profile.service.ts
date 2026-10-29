@@ -2,7 +2,7 @@ import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { Context, Effect, Layer } from "effect";
 import type { ReferralSignupIntent } from "@/features/referrals/signup-intent.repository";
 import { ReviewAccounts } from "@/features/review-accounts";
-import type { CustomerProfileInput } from "../contracts";
+import type { CustomerProfile, CustomerProfileInput } from "../contracts";
 import {
   CustomerAccountAccessError,
   type CustomerAccountId,
@@ -14,10 +14,7 @@ import {
 import { requireAccountActivity } from "./customer-account-activity";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
 import { resolveCustomerAccountLinkUnderHeldLock } from "./customer-account-resolver.service";
-import {
-  CustomerDotyposAdapter,
-  type CustomerProfile,
-} from "./customer-dotypos-adapter.service";
+import { CustomerDotyposAdapter } from "./customer-dotypos-adapter.service";
 
 const readLinkedProfile = (
   dotypos: CustomerDotyposAdapter["Service"],

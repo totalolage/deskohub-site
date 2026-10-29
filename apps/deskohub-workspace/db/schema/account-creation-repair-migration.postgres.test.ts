@@ -111,7 +111,7 @@ const migrateAcross = async ({
     const db = await Effect.runPromise(makeDatabaseClient(pool));
     await check({
       pool,
-      layer: Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.of({ db })),
+      layer: Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.make(db)),
     });
   } finally {
     await pool.end();

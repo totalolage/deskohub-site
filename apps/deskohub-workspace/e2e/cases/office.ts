@@ -3,7 +3,7 @@ import { HttpClient } from "effect/unstable/http";
 import { getWorkspaceOfficePrice } from "@/features/checkout/product-catalog";
 import { formatMoney } from "@/shared/money/money";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
-import { waitForBrowserText } from "../browser";
+import { waitForPageText } from "../browser";
 import { getSubmitOfficeReservationScript } from "../browser-scripts";
 import {
   loadOfficeAvailability,
@@ -20,7 +20,7 @@ import {
 import { pollUntil } from "../polling";
 import { isPreviewPageAvailable } from "../preview-readiness";
 import type { Runner } from "../runtime";
-import { assert, log } from "../runtime";
+import { assert, browserSessionFor, log } from "../runtime";
 import { workspaceE2EPollIntervalMs } from "../timeouts";
 import type {
   CheckoutData,
@@ -72,13 +72,11 @@ export const makeOfficeE2ECases = ({
   datasourceConfig,
   flowStates,
   preparation,
-  run,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly datasourceConfig: DatasourceConfig;
   readonly flowStates: CheckoutFlowState[];
   readonly preparation: OfficeE2EPreparation | undefined;
-  readonly run: Runner;
 }): Effect.Effect<
   readonly WorkspaceE2ECase[],
   WorkspaceE2EError,
@@ -98,7 +96,7 @@ export const makeOfficeE2ECases = ({
     return [
       {
         checkoutStates: [state],
-        execute: ({ runStep, session }) =>
+        execute: ({ run, runStep, session }) =>
           executeCheckoutFlow({
             config,
             data,
@@ -165,7 +163,7 @@ const assertOfficePayPage = (
       data.locale
     ).replaceAll(/\s+/g, " ");
 
-    yield* waitForBrowserText({
+    yield* waitForPageText({
       description: "office pay summary",
       matches: (text) => {
         const normalized = text.replaceAll(/\s+/g, " ");
@@ -175,8 +173,7 @@ const assertOfficePayPage = (
           normalized.includes(price)
         );
       },
-      run,
-      session,
+      session: yield* browserSessionFor(run, session),
       timeoutMs: config.timeouts.uiTransition,
     });
     log("Office pay summary validated");

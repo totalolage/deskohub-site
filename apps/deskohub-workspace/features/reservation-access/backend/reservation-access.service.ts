@@ -8,7 +8,7 @@ import { env } from "@/env";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { WorkspaceIgloohomeLayer } from "@/shared/backend/config/igloohome.config";
 import { workspaceSiteConstants } from "@/shared/utils";
-import { ceilToWholeHour, floorToWholeHour } from "@/shared/utils/temporal";
+import { currentInstant, floorToWholeHour } from "@/shared/utils/temporal";
 import type {
   IssuedReservationAccess,
   ReservationAccessGrant,
@@ -17,6 +17,7 @@ import {
   makeReservationAccessName,
   reservationAccessProvisioningStaleAfterMilliseconds,
 } from "../reservation-access";
+import { getReservationAccessSchedule } from "./igloohome-access-window";
 import {
   ReservationAccessRepository,
   type ReservationAccessStorageError,
@@ -50,7 +51,7 @@ export const getReservationAccessInterval = (input: {
   readonly now?: Temporal.Instant;
 }): Effect.Effect<ReservationAccessInterval, ReservationAccessIssuanceError> =>
   Effect.gen(function* () {
-    const now = input.now ?? Temporal.Now.instant();
+    const now = input.now ?? (yield* currentInstant);
     const schedule = getReservationAccessSchedule(input);
 
     if (Temporal.Instant.compare(now, input.reservedUntil) >= 0) {
@@ -100,17 +101,6 @@ export const getReservationAccessInterval = (input: {
       }),
     };
   });
-
-const getReservationAccessSchedule = (input: {
-  readonly reservedFrom: Temporal.Instant;
-  readonly reservedUntil: Temporal.Instant;
-}) => {
-  const timeZone = workspaceSiteConstants.location.timeZone;
-  return {
-    startsAt: floorToWholeHour(input.reservedFrom.toZonedDateTimeISO(timeZone)),
-    endsAt: ceilToWholeHour(input.reservedUntil.toZonedDateTimeISO(timeZone)),
-  };
-};
 
 export interface IReservationAccessService {
   readonly loadGrant: (
@@ -183,6 +173,49 @@ export class ReservationAccessService extends Context.Service<
           "ReservationAccessService.issueForReservation"
         )(function* (input) {
           const schedule = getReservationAccessSchedule(input);
+          // Later releases record the grant's exact span rather than the
+          // whole hours the lock is programmed with; both compare the same.
+          const isProgrammedForRequestedHours = (
+            grant: ReservationAccessGrant
+          ) => {
+            const grantSchedule = getReservationAccessSchedule({
+              reservedFrom: grant.scheduledAccessStartsAt,
+              reservedUntil: grant.accessEndsAt,
+            });
+            return (
+              grantSchedule.startsAt.equals(schedule.startsAt) &&
+              grantSchedule.endsAt.equals(schedule.endsAt)
+            );
+          };
+          // Loads the PIN only for the bounds this request read and shows.
+          const recoverIssued = (grant: ReservationAccessGrant) =>
+            repository
+              .loadIssuedCode({
+                id: grant.id,
+                reservationId: input.reservationId,
+                scheduledAccessStartsAt: grant.scheduledAccessStartsAt,
+                accessStartsAt: grant.accessStartsAt,
+                accessEndsAt: grant.accessEndsAt,
+              })
+              .pipe(
+                Effect.mapError(
+                  () =>
+                    new ReservationAccessIssuanceError({
+                      reservationId: input.reservationId,
+                      outcome: "rejected",
+                      message:
+                        "Issued reservation access could not be recovered.",
+                    })
+                ),
+                Effect.map(
+                  (accessCode): IssuedReservationAccess => ({
+                    grantId: grant.id,
+                    accessCode,
+                    accessStartsAt: grant.accessStartsAt,
+                    accessEndsAt: grant.accessEndsAt,
+                  })
+                )
+              );
           const existingGrant = yield* repository
             .findByReservationId(input.reservationId)
             .pipe(
@@ -221,34 +254,8 @@ export class ReservationAccessService extends Context.Service<
                 message: "Reservation access device changed after issuance.",
               });
             }
-            if (
-              existingGrant.scheduledAccessStartsAt.equals(
-                schedule.startsAt.toInstant()
-              ) &&
-              existingGrant.accessEndsAt.equals(schedule.endsAt.toInstant())
-            ) {
-              const accessCode = yield* repository
-                .loadIssuedCode({
-                  id: existingGrant.id,
-                  reservationId: input.reservationId,
-                })
-                .pipe(
-                  Effect.mapError(
-                    () =>
-                      new ReservationAccessIssuanceError({
-                        reservationId: input.reservationId,
-                        outcome: "rejected",
-                        message:
-                          "Issued reservation access could not be recovered.",
-                      })
-                  )
-                );
-              return {
-                grantId: existingGrant.id,
-                accessCode,
-                accessStartsAt: existingGrant.accessStartsAt,
-                accessEndsAt: existingGrant.accessEndsAt,
-              };
+            if (isProgrammedForRequestedHours(existingGrant)) {
+              return yield* recoverIssued(existingGrant);
             }
           }
 
@@ -273,28 +280,16 @@ export class ReservationAccessService extends Context.Service<
             );
 
           if (grant.state === "issued") {
-            const accessCode = yield* repository
-              .loadIssuedCode({
-                id: grant.id,
+            // A concurrent request may have moved the grant to other lock
+            // hours after this request ensured it.
+            if (!isProgrammedForRequestedHours(grant)) {
+              return yield* new ReservationAccessIssuanceError({
                 reservationId: input.reservationId,
-              })
-              .pipe(
-                Effect.mapError(
-                  () =>
-                    new ReservationAccessIssuanceError({
-                      reservationId: input.reservationId,
-                      outcome: "rejected",
-                      message:
-                        "Issued reservation access could not be recovered.",
-                    })
-                )
-              );
-            return {
-              grantId: grant.id,
-              accessCode,
-              accessStartsAt: grant.accessStartsAt,
-              accessEndsAt: grant.accessEndsAt,
-            };
+                outcome: "rejected",
+                message: "Issued reservation access could not be recovered.",
+              });
+            }
+            return yield* recoverIssued(grant);
           }
 
           if (grant.state === "uncertain") {
@@ -342,6 +337,9 @@ export class ReservationAccessService extends Context.Service<
             .claim({
               id: grant.id,
               reservationId: input.reservationId,
+              scheduledAccessStartsAt: interval.scheduledStartsAt,
+              accessStartsAt: interval.startsAt,
+              accessEndsAt: interval.endsAt,
               accessName,
               startedAt: claimedAt,
             })

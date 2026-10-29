@@ -12,6 +12,7 @@ import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { Effect, Layer, Option } from "effect";
 import type { ReservationState } from "@/db/schema";
 import {
+  type StoredWorkspaceReservationDetails,
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
@@ -58,15 +59,17 @@ describe.skipIf(!testDatabase)(
         readonly label: string;
         readonly customer: DotyposCustomerId;
         readonly state?: LocalState;
+        readonly details?: StoredWorkspaceReservationDetails;
       }>
     ) => {
       const confirmedAt = Temporal.Instant.from("2026-10-01T10:00:00Z");
       await Effect.runPromise(
         workspaceFixtures(testDatabase.db).reservations(
-          reservations.map(({ label, customer, state = "booked" }) => {
+          reservations.map(({ label, customer, state = "booked", details }) => {
             const id = workspaceId(label);
             insertedIds.push(id);
             return {
+              ...(details && { details }),
               stage: {
                 reservation: reservationStates[state],
                 payment: "paid",
@@ -175,6 +178,63 @@ describe.skipIf(!testDatabase)(
       });
     });
 
+    test("starts an early-setup meeting room's visit at its booked start", async () => {
+      const customer = customerId("early-setup");
+      // Dotypos holds the early-setup room from 23:45 for a midnight booking.
+      const heldFrom = Temporal.Instant.from("2026-11-01T22:45:00Z");
+      await insert([
+        {
+          label: "early-setup",
+          customer,
+          details: { kind: "meeting-room", earlySetup: true },
+        },
+        {
+          label: "early-setup-unflagged",
+          customer,
+          details: { kind: "meeting-room" },
+        },
+      ]);
+      const dotypos = countedDotyposReservationReads(
+        ["early-setup", "early-setup-unflagged"].map((label) =>
+          dotyposReservation({ label, customer, startsAt: heldFrom })
+        )
+      );
+
+      const visits = await Effect.runPromise(
+        withVisits(
+          dotypos,
+          Effect.gen(function* () {
+            const reservationVisits = yield* ReservationVisits;
+            return yield* reservationVisits.ofCustomers([customer]);
+          })
+        )
+      );
+
+      expect(
+        visits
+          .get(customer)
+          ?.map(({ dotyposReservationId, startsAt, endsAt }) => ({
+            dotyposReservationId,
+            startsAt: startsAt.toString(),
+            endsAt: endsAt.toString(),
+          }))
+          .toSorted((left, right) =>
+            left.dotyposReservationId.localeCompare(right.dotyposReservationId)
+          )
+      ).toEqual([
+        {
+          dotyposReservationId: dotyposId("early-setup"),
+          startsAt: "2026-11-01T23:00:00Z",
+          endsAt: "2026-11-02T00:45:00Z",
+        },
+        {
+          dotyposReservationId: dotyposId("early-setup-unflagged"),
+          startsAt: "2026-11-01T22:45:00Z",
+          endsAt: "2026-11-02T00:45:00Z",
+        },
+      ]);
+    });
+
     test("answers a repeat lookup from memory and refetches in a new instance", async () => {
       const customer = customerId("memo");
       const bookings = [
@@ -277,6 +337,36 @@ describe.skipIf(!testDatabase)(
         [workspaceId("status-cancelled"), workspaceId("status-new")].toSorted()
       );
       expect(dotypos.requests()).toBe(1);
+    });
+
+    test("fails counted reservations with a reversed Dotypos interval", async () => {
+      const customer = customerId("reversed-interval");
+      await insert([{ label: "reversed-interval", customer }]);
+      const reservation = dotyposReservation({
+        label: "reversed-interval",
+        customer,
+        startsAt: at(9),
+      });
+      const dotypos = countedDotyposReservationReads([
+        { ...reservation, endDate: at(8).toString() },
+      ]);
+
+      const failure = await Effect.runPromise(
+        withVisits(
+          dotypos,
+          Effect.gen(function* () {
+            const reservationVisits = yield* ReservationVisits;
+            return yield* Effect.flip(
+              reservationVisits.ofCustomers([customer])
+            );
+          })
+        )
+      );
+
+      expect(failure).toMatchObject({
+        _tag: "ReservationVisitsUnavailable",
+        cause: { _tag: "InvalidDotyposReservationInterval" },
+      });
     });
 
     test("never returns unconfirmed, Workspace-cancelled, or non-Workspace reservations", async () => {

@@ -1,18 +1,27 @@
-import type { send } from "@vercel/queue";
 import { Context, Effect, Layer, Schema } from "effect";
 import {
-  publishQueueMessage,
   type QueueMessageSendError,
-} from "@/shared/backend/queue/queue-message";
+  QueuePublisher,
+} from "@/shared/backend/queue/queue-publisher";
+import { defineQueueTopic } from "@/shared/backend/queue/queue-topic";
 import { automationWorkUnitIdSchema } from "../automation-identifiers";
 import type { EnqueuedAutomationUnit } from "./automation-unit-slots";
 
-export const automationUnitQueueTopic = "workspace-email-automation-unit";
-
-export const automationUnitMessageSchema = Schema.Struct({
-  unitId: automationWorkUnitIdSchema,
+/**
+ * Each enqueue generation is its own message, so the reaper's re-send of a
+ * lost message isn't swallowed as a duplicate of the first.
+ */
+export const automationUnitTopic = defineQueueTopic({
+  topic: "workspace-email-automation-unit",
+  label: "Automation unit",
+  message: Schema.toStandardSchemaV1(
+    Schema.Struct({ unitId: automationWorkUnitIdSchema })
+  ),
+  publish: (unit: EnqueuedAutomationUnit) => ({
+    message: { unitId: unit.unitId },
+    key: `email-automation-unit:${unit.unitId}:${unit.enqueueGeneration}`,
+  }),
 });
-type AutomationUnitMessage = typeof automationUnitMessageSchema.Type;
 
 interface IAutomationUnitQueue {
   /** Publishes one message per promoted unit, after its transaction commits. */
@@ -21,33 +30,28 @@ interface IAutomationUnitQueue {
   ) => Effect.Effect<void, QueueMessageSendError>;
 }
 
-/**
- * Each enqueue generation is its own message, so the reaper's re-send of a
- * lost message isn't swallowed as a duplicate of the first.
- */
-export const makeAutomationUnitQueue = (
-  sendMessage?: typeof send
-): IAutomationUnitQueue => ({
-  enqueue: Effect.fn("automationUnitQueue.enqueue")(function* (units) {
-    yield* Effect.all(
-      units.map((unit) =>
-        publishQueueMessage(
-          automationUnitQueueTopic,
-          { unitId: unit.unitId } satisfies AutomationUnitMessage,
-          {
-            idempotencyKey: `email-automation-unit:${unit.unitId}:${unit.enqueueGeneration}`,
-          },
-          sendMessage
-        )
-      ),
-      { concurrency: "inherit", discard: true }
-    );
-  }),
-});
-
 export class AutomationUnitQueue extends Context.Service<
   AutomationUnitQueue,
   IAutomationUnitQueue
 >()("@deskohub-workspace/email-campaigns/AutomationUnitQueue") {
-  static Default = Layer.succeed(this, makeAutomationUnitQueue());
+  static Default = Layer.effect(
+    this,
+    Effect.gen(function* () {
+      const publisher = yield* QueuePublisher;
+      return {
+        enqueue: Effect.fn("automationUnitQueue.enqueue")(function* (units) {
+          yield* Effect.all(
+            units.map((unit) =>
+              automationUnitTopic
+                .publish(unit)
+                .pipe(Effect.provideService(QueuePublisher, publisher))
+            ),
+            { concurrency: "inherit", discard: true }
+          );
+        }),
+      };
+    })
+  );
+
+  static Live = this.Default.pipe(Layer.provide(QueuePublisher.Default));
 }

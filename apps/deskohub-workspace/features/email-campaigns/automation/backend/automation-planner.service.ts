@@ -102,7 +102,7 @@ export class AutomationPlanner extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const { db } = yield* WorkspaceDatabase;
+      const { db, transaction } = yield* WorkspaceDatabase;
       const { supportedKinds } = yield* AutomationUnitHandlers;
       const sweepPlanning = yield* AutomationSweepPlanning;
       const intakePlanning = yield* AutomationIntakePlanning;
@@ -146,163 +146,157 @@ export class AutomationPlanner extends Context.Service<
        * deliver unit recovers while its automation is paused or archived.
        */
       const reap = (at: Temporal.Instant) =>
-        db
-          .transaction((tx) =>
-            Effect.all({
-              // Marked units only ever settle `dropped`, so their subjects
-              // are freed first, in lock order, before the unit rows.
-              dropped: tx
-                .select({ id: units.id, subject: units.subject })
-                .from(units)
-                .where(droppable(at))
-                .pipe(
-                  Effect.tap((marked) =>
-                    releaseAutomationUnitSubjects(tx, marked)
-                  ),
-                  Effect.flatMap((marked) =>
-                    tx
-                      .update(units)
-                      .set({
-                        status: "dropped",
-                        claimId: null,
-                        claimExpiresAt: null,
-                        settledAt: at,
-                      })
-                      .where(
-                        and(
-                          inArray(
-                            units.id,
-                            marked.map((unit) => unit.id)
-                          ),
-                          droppable(at)
-                        )
+        transaction(
+          Effect.all({
+            // Marked units only ever settle `dropped`, so their subjects
+            // are freed first, in lock order, before the unit rows.
+            dropped: db
+              .select({ id: units.id, subject: units.subject })
+              .from(units)
+              .where(droppable(at))
+              .pipe(
+                Effect.tap((marked) => releaseAutomationUnitSubjects(marked)),
+                Effect.flatMap((marked) =>
+                  db
+                    .update(units)
+                    .set({
+                      status: "dropped",
+                      claimId: null,
+                      claimExpiresAt: null,
+                      settledAt: at,
+                    })
+                    .where(
+                      and(
+                        inArray(
+                          units.id,
+                          marked.map((unit) => unit.id)
+                        ),
+                        droppable(at)
                       )
-                      .returning({ unitId: units.id })
-                  )
-                ),
-              requeued: tx
-                .update(units)
-                .set({
-                  status: "enqueued",
-                  claimId: null,
-                  claimExpiresAt: null,
-                  enqueuedAt: at,
-                  lastErrorCode: "claim-expired",
-                  enqueueGeneration: sql`${units.enqueueGeneration} + 1`,
-                })
-                .where(
-                  and(
-                    inArray(units.kind, supportedKinds),
-                    recoverable,
-                    eq(units.status, "claimed"),
-                    lte(units.claimExpiresAt, at)
-                  )
+                    )
+                    .returning({ unitId: units.id })
                 )
-                .returning({
-                  unitId: units.id,
-                  enqueueGeneration: units.enqueueGeneration,
-                }),
-              resent: tx
-                .update(units)
-                .set({
-                  enqueuedAt: at,
-                  enqueueGeneration: sql`${units.enqueueGeneration} + 1`,
-                })
-                .where(
-                  and(
-                    inArray(units.kind, supportedKinds),
-                    recoverable,
-                    eq(units.status, "enqueued"),
-                    lt(units.enqueuedAt, at.subtract(unclaimedResendAfter))
-                  )
+              ),
+            requeued: db
+              .update(units)
+              .set({
+                status: "enqueued",
+                claimId: null,
+                claimExpiresAt: null,
+                enqueuedAt: at,
+                lastErrorCode: "claim-expired",
+                enqueueGeneration: sql`${units.enqueueGeneration} + 1`,
+              })
+              .where(
+                and(
+                  inArray(units.kind, supportedKinds),
+                  recoverable,
+                  eq(units.status, "claimed"),
+                  lte(units.claimExpiresAt, at)
                 )
-                .returning({
-                  unitId: units.id,
-                  enqueueGeneration: units.enqueueGeneration,
-                }),
-            })
-          )
-          .pipe(
-            Effect.tap(({ requeued, resent }) =>
-              slots.publish([...requeued, ...resent])
-            ),
-            Effect.map(({ dropped, requeued, resent }) => ({
-              dropped: dropped.length,
-              requeued: requeued.length,
-              resent: resent.length,
-            })),
-            Effect.withSpan("automationPlanner.reap")
-          );
+              )
+              .returning({
+                unitId: units.id,
+                enqueueGeneration: units.enqueueGeneration,
+              }),
+            resent: db
+              .update(units)
+              .set({
+                enqueuedAt: at,
+                enqueueGeneration: sql`${units.enqueueGeneration} + 1`,
+              })
+              .where(
+                and(
+                  inArray(units.kind, supportedKinds),
+                  recoverable,
+                  eq(units.status, "enqueued"),
+                  lt(units.enqueuedAt, at.subtract(unclaimedResendAfter))
+                )
+              )
+              .returning({
+                unitId: units.id,
+                enqueueGeneration: units.enqueueGeneration,
+              }),
+          })
+        ).pipe(
+          Effect.tap(({ requeued, resent }) =>
+            slots.publish([...requeued, ...resent])
+          ),
+          Effect.map(({ dropped, requeued, resent }) => ({
+            dropped: dropped.length,
+            requeued: requeued.length,
+            resent: resent.length,
+          })),
+          Effect.withSpan("automationPlanner.reap")
+        );
 
       const housekeeping = (at: Temporal.Instant) =>
-        db
-          .transaction((tx) =>
-            Effect.all({
-              units: tx
-                .delete(units)
-                .where(
-                  inArray(
-                    units.id,
-                    tx
-                      .select({ id: units.id })
-                      .from(units)
-                      .where(
-                        lt(units.settledAt, at.subtract(settledUnitRetention))
-                      )
-                      .limit(housekeepingBatchSize)
-                  )
+        transaction(
+          Effect.all({
+            units: db
+              .delete(units)
+              .where(
+                inArray(
+                  units.id,
+                  db
+                    .select({ id: units.id })
+                    .from(units)
+                    .where(
+                      lt(units.settledAt, at.subtract(settledUnitRetention))
+                    )
+                    .limit(housekeepingBatchSize)
                 )
-                .returning({ id: units.id }),
-              previews: tx
-                .delete(emailCampaignAutomationPreviews)
-                .where(
-                  inArray(
-                    emailCampaignAutomationPreviews.id,
-                    tx
-                      .select({ id: emailCampaignAutomationPreviews.id })
-                      .from(emailCampaignAutomationPreviews)
-                      .where(
+              )
+              .returning({ id: units.id }),
+            previews: db
+              .delete(emailCampaignAutomationPreviews)
+              .where(
+                inArray(
+                  emailCampaignAutomationPreviews.id,
+                  db
+                    .select({ id: emailCampaignAutomationPreviews.id })
+                    .from(emailCampaignAutomationPreviews)
+                    .where(
+                      lt(
+                        emailCampaignAutomationPreviews.createdAt,
+                        at.subtract(previewRetention)
+                      )
+                    )
+                    .limit(housekeepingBatchSize)
+                )
+              )
+              .returning({ id: emailCampaignAutomationPreviews.id }),
+            // Events still owned by an open intake unit stay until it settles.
+            events: db
+              .delete(customerEvents)
+              .where(
+                inArray(
+                  customerEvents.id,
+                  db
+                    .select({ id: customerEvents.id })
+                    .from(customerEvents)
+                    .where(
+                      and(
                         lt(
-                          emailCampaignAutomationPreviews.createdAt,
-                          at.subtract(previewRetention)
-                        )
+                          customerEvents.occurredAt,
+                          at.subtract(customerEventRetention)
+                        ),
+                        isNull(customerEvents.automationUnitId)
                       )
-                      .limit(housekeepingBatchSize)
-                  )
+                    )
+                    .limit(housekeepingBatchSize)
                 )
-                .returning({ id: emailCampaignAutomationPreviews.id }),
-              // Events still owned by an open intake unit stay until it settles.
-              events: tx
-                .delete(customerEvents)
-                .where(
-                  inArray(
-                    customerEvents.id,
-                    tx
-                      .select({ id: customerEvents.id })
-                      .from(customerEvents)
-                      .where(
-                        and(
-                          lt(
-                            customerEvents.occurredAt,
-                            at.subtract(customerEventRetention)
-                          ),
-                          isNull(customerEvents.automationUnitId)
-                        )
-                      )
-                      .limit(housekeepingBatchSize)
-                  )
-                )
-                .returning({ id: customerEvents.id }),
-            })
-          )
-          .pipe(
-            Effect.map((pruned) => ({
-              units: pruned.units.length,
-              previews: pruned.previews.length,
-              events: pruned.events.length,
-            })),
-            Effect.withSpan("automationPlanner.housekeeping")
-          );
+              )
+              .returning({ id: customerEvents.id }),
+          })
+        ).pipe(
+          Effect.map((pruned) => ({
+            units: pruned.units.length,
+            previews: pruned.previews.length,
+            events: pruned.events.length,
+          })),
+          Effect.withSpan("automationPlanner.housekeeping")
+        );
 
       const inFlightByKind = db
         .select({ kind: units.kind, count: sql<number>`count(*)::int` })
@@ -428,7 +422,7 @@ export class AutomationPlanner extends Context.Service<
         WorkspaceDatabase.Default,
         WorkspaceDatabaseAdvisoryLock.Default,
         AutomationUnitHandlers.Live,
-        AutomationUnitQueue.Default,
+        AutomationUnitQueue.Live,
         AutomationSweepPlanning.Live,
         AutomationIntakePlanning.Live,
         AutomationTimerPlanning.Live,

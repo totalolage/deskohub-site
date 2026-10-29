@@ -7,7 +7,9 @@ import {
 } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Cause, Effect, Layer, Option } from "effect";
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
+import { Cause, Effect, Exit, Layer, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   type ReservationAuthor,
@@ -27,7 +29,10 @@ import {
 import { PaymentAdministrationServiceMock } from "./payment-administration.service.mock";
 import { PostHogReservationHistory } from "./posthog-reservation-history";
 
-const makeQuery = <A>(rows: readonly A[]) => {
+const makeQuery = <A>(
+  rows: readonly A[],
+  onWhere?: (condition: SQL | undefined) => void
+) => {
   const query = Effect.succeed(rows) as Effect.Effect<readonly A[]> & {
     from: () => typeof query;
     groupBy: () => typeof query;
@@ -35,7 +40,7 @@ const makeQuery = <A>(rows: readonly A[]) => {
     limit: () => typeof query;
     offset: () => typeof query;
     orderBy: () => typeof query;
-    where: () => typeof query;
+    where: (condition?: SQL) => typeof query;
   };
   query.from = () => query;
   query.groupBy = () => query;
@@ -43,8 +48,31 @@ const makeQuery = <A>(rows: readonly A[]) => {
   query.limit = () => query;
   query.offset = () => query;
   query.orderBy = () => query;
-  query.where = () => query;
+  query.where = (condition) => {
+    onWhere?.(condition);
+    return query;
+  };
   return query;
+};
+
+/**
+ * A database select that returns the linkage rows, then, given early-setup
+ * meeting rooms, their stored details.
+ */
+const linkageThenEarlySetupRows = <A>(
+  linkageRows: readonly A[],
+  earlySetupIds?: readonly string[]
+) => {
+  let selectCall = 0;
+  return () =>
+    selectCall++ === 0 || !earlySetupIds
+      ? makeQuery<unknown>(linkageRows)
+      : makeQuery<unknown>(
+          earlySetupIds.map((dotyposReservationId) => ({
+            dotyposReservationId,
+            reservationDetails: { kind: "meeting-room", earlySetup: true },
+          }))
+        );
 };
 
 const reservationAuthorsMock = (
@@ -65,8 +93,8 @@ describe("AdministrationService", () => {
       _cloudId: "cloud",
       _customerId: null,
       id: `booking-${String(index).padStart(2, "0")}`,
-      startDate: `2026-08-10T${String(index % 24).padStart(2, "0")}:00:00Z`,
-      endDate: `2026-08-10T${String(index % 24).padStart(2, "0")}:30:00Z`,
+      startDate: `2026-08-10T${String(index % 24).padStart(2, "0")}:00:00+02:00`,
+      endDate: `2026-08-10T${String(index % 24).padStart(2, "0")}:30:00+02:00`,
       seats: "1",
       status: index === 24 ? ("CANCELLED" as const) : ("NEW" as const),
     }));
@@ -86,9 +114,7 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({
-                  db: { select: () => makeQuery([]) } as never,
-                })
+                WorkspaceDatabase.make({ select: () => makeQuery([]) } as never)
               ),
               DotyposServiceMock({
                 getCustomers: () => Effect.succeed([]),
@@ -114,6 +140,118 @@ describe("AdministrationService", () => {
     expect(result.items[0]?.status).toBe("CANCELLED");
   });
 
+  test("lists early-setup bookings on their booked start", async () => {
+    const instant = Temporal.Instant.from("2026-08-01T08:00:00Z");
+    const earlySetup = { kind: "meeting-room", earlySetup: true } as const;
+    // Dotypos holds each early-setup room from 15 minutes before its booked
+    // start; Prague is UTC+2 in August.
+    const heldStarts = {
+      "early-setup": "2026-08-10T09:45:00+02:00",
+      between: "2026-08-10T09:50:00+02:00",
+      "midnight-early": "2026-08-09T23:45:00+02:00",
+      "next-date-early": "2026-08-10T23:45:00+02:00",
+    };
+    const earlySetupIds = ["early-setup", "midnight-early", "next-date-early"];
+    const rows = [
+      earlySetupIds.map((dotyposReservationId) => ({
+        dotyposReservationId,
+        reservationDetails: earlySetup,
+      })),
+      earlySetupIds.map((id) => ({
+        id: `workspace-${id}`,
+        dotyposCustomerId: "customer",
+        dotyposReservationId: id,
+        reservationState: "confirmed",
+        paymentState: "paid",
+        fulfillmentState: "fulfilled",
+        reservationPurpose: null,
+        reservationDetails: earlySetup,
+        reservationCreatedAt: instant,
+        reservationConfirmedAt: instant,
+        reservationCancelledAt: null,
+        reservationHoldExpiredAt: null,
+        paidAt: instant,
+        fulfilledAt: instant,
+        fulfillmentFailedAt: null,
+        failureCode: null,
+        createdAt: instant,
+        updatedAt: instant,
+      })),
+    ] as const;
+    const listInputs: unknown[] = [];
+    let selectCall = 0;
+
+    const result = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.listBookings({
+        date: "2026-08-10",
+        direction: "asc",
+        page: 1,
+        sort: "date",
+      });
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.make({
+                  select: () => makeQuery<unknown>(rows[selectCall++] ?? []),
+                } as never)
+              ),
+              DotyposServiceMock({
+                getCustomers: () => Effect.succeed([]),
+                getTables: () => Effect.succeed([]),
+                listReservations: (input) =>
+                  Effect.sync(() => {
+                    listInputs.push(input);
+                    return Object.entries(heldStarts)
+                      .toSorted(([, left], [, right]) =>
+                        Temporal.Instant.compare(left, right)
+                      )
+                      .map(([id, startDate]) => ({
+                        _branchId: "branch",
+                        _cloudId: "cloud",
+                        _customerId: null,
+                        id,
+                        startDate,
+                        endDate: "2026-08-11T06:00:00+02:00",
+                        seats: "1",
+                        status: "CONFIRMED" as const,
+                      }));
+                  }),
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              reservationAuthorsMock(),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(listInputs).toEqual([
+      {
+        startsAtOrAfter: "2026-08-09T21:45:00Z",
+        startsBefore: "2026-08-10T22:00:00Z",
+        order: "startDateAscending",
+      },
+    ]);
+    expect(result.items.map(({ id, startsAt }) => ({ id, startsAt }))).toEqual([
+      { id: "midnight-early", startsAt: "2026-08-09T22:00:00.000Z" },
+      { id: "between", startsAt: "2026-08-10T09:50:00+02:00" },
+      { id: "early-setup", startsAt: "2026-08-10T08:00:00.000Z" },
+    ]);
+    expect(result.total).toBe(3);
+  });
+
   test("filters reservations by an inclusive provider date range", async () => {
     const listInputs: unknown[] = [];
     const rows = [[{ value: 0 }], []] as const;
@@ -135,7 +273,7 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({ db: database as never })
+                WorkspaceDatabase.make(database as never)
               ),
               DotyposServiceMock({
                 listReservations: (input) =>
@@ -161,12 +299,106 @@ describe("AdministrationService", () => {
 
     expect(listInputs).toEqual([
       {
-        startsAtOrAfter: "2026-08-05T22:00:00Z",
+        startsAtOrAfter: "2026-08-05T21:45:00Z",
         startsBefore: "2026-08-12T22:00:00Z",
         order: "startDateAscending",
       },
     ]);
     expect(result.total).toBe(0);
+  });
+
+  test("filters early-setup bookings by their booked date", async () => {
+    // Prague is UTC+2 in August. Bookings held from 23:45 or later may belong
+    // to the next date, so only they read their stored details.
+    const heldStarts = {
+      "midnight-early": "2026-08-09T21:45:00Z",
+      "midnight-on-time": "2026-08-09T21:50:00Z",
+      noon: "2026-08-10T10:00:00Z",
+      "late-early": "2026-08-10T21:45:00Z",
+      "late-on-time": "2026-08-10T21:50:00Z",
+    };
+    const earlySetup = { kind: "meeting-room", earlySetup: true } as const;
+    const rows = [
+      [
+        {
+          dotyposReservationId: "midnight-early",
+          reservationDetails: earlySetup,
+        },
+        { dotyposReservationId: "late-early", reservationDetails: earlySetup },
+      ],
+      [{ value: 0 }],
+      [],
+    ] as const;
+    const conditionParams: unknown[] = [];
+    let selectCall = 0;
+    const database = {
+      select: () =>
+        makeQuery(rows[selectCall++] ?? [], (condition) => {
+          if (condition) {
+            conditionParams.push(
+              ...new PgDialect().sqlToQuery(condition).params
+            );
+          }
+        }),
+    };
+
+    const result = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.listReservations({
+        from: "2026-08-10",
+        to: "2026-08-10",
+      });
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.make(database as never)
+              ),
+              DotyposServiceMock({
+                listReservations: () =>
+                  Effect.succeed(
+                    Object.entries(heldStarts).map(([id, startDate]) => ({
+                      _branchId: "branch",
+                      _cloudId: "cloud",
+                      _customerId: "customer",
+                      id,
+                      startDate,
+                      endDate: "2026-08-11T06:00:00Z",
+                      seats: "1",
+                      status: "CONFIRMED" as const,
+                    }))
+                  ),
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              reservationAuthorsMock(),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(result.dateFilterUnavailable).toBe(false);
+    expect(conditionParams).toContainEqual([
+      "midnight-early",
+      "midnight-on-time",
+      "late-early",
+      "late-on-time",
+    ]);
+    expect(conditionParams).toContainEqual([
+      "midnight-early",
+      "noon",
+      "late-on-time",
+    ]);
   });
 
   test("keeps single-sided provider date ranges open", async () => {
@@ -188,7 +420,7 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({ db: database as never })
+                WorkspaceDatabase.make(database as never)
               ),
               DotyposServiceMock({
                 listReservations: (input) =>
@@ -214,7 +446,7 @@ describe("AdministrationService", () => {
 
     expect(listInputs).toEqual([
       {
-        startsAtOrAfter: "2026-08-05T22:00:00Z",
+        startsAtOrAfter: "2026-08-05T21:45:00Z",
         order: "startDateAscending",
       },
       {
@@ -264,7 +496,7 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({ db: database as never })
+                WorkspaceDatabase.make(database as never)
               ),
               DotyposServiceMock({
                 getCustomers: () =>
@@ -349,21 +581,19 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({
-                  db: {
-                    select: () => {
-                      const call = selectCall++;
-                      const query = makeQuery(rows[call] ?? []);
-                      if (call === 4) {
-                        query.orderBy = () => {
-                          recoveryOrderByCalls += 1;
-                          return query;
-                        };
-                      }
-                      return query;
-                    },
-                  } as never,
-                })
+                WorkspaceDatabase.make({
+                  select: () => {
+                    const call = selectCall++;
+                    const query = makeQuery(rows[call] ?? []);
+                    if (call === 4) {
+                      query.orderBy = () => {
+                        recoveryOrderByCalls += 1;
+                        return query;
+                      };
+                    }
+                    return query;
+                  },
+                } as never)
               ),
               DotyposServiceMock({
                 getCustomers: () =>
@@ -443,11 +673,9 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({
-                  db: {
-                    select: () => makeQuery(rows[selectCall++] ?? []),
-                  } as never,
-                })
+                WorkspaceDatabase.make({
+                  select: () => makeQuery(rows[selectCall++] ?? []),
+                } as never)
               ),
               DotyposServiceMock({
                 getCustomers: ({ ids = [] }) =>
@@ -494,6 +722,118 @@ describe("AdministrationService", () => {
     expect(customerCalls[0]).toHaveLength(24);
   });
 
+  test("shows an early-setup meeting room's booked time", async () => {
+    const instant = Temporal.Instant.from("2026-08-01T08:00:00Z");
+    const reservationRow = (
+      id: string,
+      reservationDetails: { readonly kind: "meeting-room"; earlySetup?: true }
+    ) => ({
+      id: `workspace-${id}`,
+      dotyposCustomerId: "customer",
+      dotyposReservationId: id,
+      reservationState: "confirmed",
+      paymentState: "paid",
+      fulfillmentState: "fulfilled",
+      reservationPurpose: null,
+      reservationDetails,
+      reservationCreatedAt: instant,
+      reservationConfirmedAt: instant,
+      reservationCancelledAt: null,
+      reservationHoldExpiredAt: null,
+      paidAt: instant,
+      fulfilledAt: instant,
+      fulfillmentFailedAt: null,
+      createdAt: instant,
+      updatedAt: instant,
+    });
+    const rows = [
+      [{ value: 2 }],
+      [
+        reservationRow("early-setup", {
+          kind: "meeting-room",
+          earlySetup: true,
+        }),
+        reservationRow("on-time", { kind: "meeting-room" }),
+      ],
+      [],
+      [],
+      [],
+    ] as const;
+    // Dotypos holds the early-setup room from 09:45 for a 10:00 booking.
+    const heldStarts = new Map([
+      ["early-setup", "2026-08-10T09:45:00.000+02:00"],
+      ["on-time", "2026-08-10T10:00:00.000+02:00"],
+    ]);
+    let selectCall = 0;
+
+    const result = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.listReservations({});
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.make({
+                  select: () => makeQuery(rows[selectCall++] ?? []),
+                } as never)
+              ),
+              DotyposServiceMock({
+                getCustomers: ({ ids = [] }) =>
+                  Effect.succeed(ids.map((id) => ({ id }))),
+                listReservations: (input) =>
+                  Effect.succeed(
+                    (input.ids ?? []).map((id) => ({
+                      _branchId: "branch",
+                      _cloudId: "cloud",
+                      _customerId: "customer",
+                      id,
+                      startDate: heldStarts.get(id) ?? "",
+                      endDate: "2026-08-10T11:00:00.000+02:00",
+                      seats: "1",
+                      status: "CONFIRMED" as const,
+                    }))
+                  ),
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              reservationAuthorsMock(),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    const times = result.items.map(({ date, endsAt, id, startsAt }) => ({
+      date,
+      endsAt,
+      id,
+      startsAt,
+    }));
+    expect(times).toEqual([
+      {
+        date: "2026-08-10",
+        endsAt: "2026-08-10T11:00:00.000+02:00",
+        id: "workspace-early-setup",
+        startsAt: "2026-08-10T08:00:00.000Z",
+      },
+      {
+        date: "2026-08-10",
+        endsAt: "2026-08-10T11:00:00.000+02:00",
+        id: "workspace-on-time",
+        startsAt: "2026-08-10T10:00:00.000+02:00",
+      },
+    ]);
+  });
+
   test("falls back to item customer reads when a batch omits a customer", async () => {
     const customerId = "dotypos-customer";
     const rows = [
@@ -521,11 +861,9 @@ describe("AdministrationService", () => {
               Layer.mergeAll(
                 Layer.succeed(
                   WorkspaceDatabase,
-                  WorkspaceDatabase.of({
-                    db: {
-                      select: () => makeQuery(rows[selectCall++] ?? []),
-                    } as never,
-                  })
+                  WorkspaceDatabase.make({
+                    select: () => makeQuery(rows[selectCall++] ?? []),
+                  } as never)
                 ),
                 DotyposServiceMock({
                   getCustomer: (id) =>
@@ -591,11 +929,9 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({
-                  db: {
-                    select: () => makeQuery(rows[selectCall++] ?? []),
-                  } as never,
-                })
+                WorkspaceDatabase.make({
+                  select: () => makeQuery(rows[selectCall++] ?? []),
+                } as never)
               ),
               DotyposServiceMock({
                 getCustomers: () =>
@@ -658,11 +994,9 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({
-                  db: {
-                    select: () => makeQuery(rows[selectCall++] ?? []),
-                  } as never,
-                })
+                WorkspaceDatabase.make({
+                  select: () => makeQuery(rows[selectCall++] ?? []),
+                } as never)
               ),
               DotyposServiceMock({
                 getCustomers: () =>
@@ -870,11 +1204,9 @@ describe("AdministrationService", () => {
               Layer.mergeAll(
                 Layer.succeed(
                   WorkspaceDatabase,
-                  WorkspaceDatabase.of({
-                    db: {
-                      select: () => makeQuery(rangeRows),
-                    } as never,
-                  })
+                  WorkspaceDatabase.make({
+                    select: () => makeQuery(rangeRows),
+                  } as never)
                 ),
                 DotyposServiceMock({
                   getCustomers: (options) =>
@@ -1058,29 +1390,27 @@ describe("AdministrationService", () => {
       },
     ];
     let listReservationsCalls = 0;
-    let linkageQueries = 0;
+    let databaseQueries = 0;
     const administrationLayer = AdministrationService.Default.pipe(
       Layer.provide(
         Layer.mergeAll(
           Layer.succeed(
             WorkspaceDatabase,
-            WorkspaceDatabase.of({
-              db: {
-                select: () => {
-                  linkageQueries += 1;
-                  return makeQuery([
-                    {
-                      customerId: "customer-1",
-                      failureCode: null,
-                      fulfillmentState: "fulfilled",
-                      id: "reservation-1",
-                      paymentState: "paid",
-                      reservationState: "confirmed",
-                    },
-                  ]);
-                },
-              } as never,
-            })
+            WorkspaceDatabase.make({
+              select: () => {
+                databaseQueries += 1;
+                return makeQuery([
+                  {
+                    customerId: "customer-1",
+                    failureCode: null,
+                    fulfillmentState: "fulfilled",
+                    id: "reservation-1",
+                    paymentState: "paid",
+                    reservationState: "confirmed",
+                  },
+                ]);
+              },
+            } as never)
           ),
           DotyposServiceMock({
             getCustomers: () => Effect.succeed([]),
@@ -1119,7 +1449,8 @@ describe("AdministrationService", () => {
     );
 
     expect(listReservationsCalls).toBe(1);
-    expect(linkageQueries).toBe(1);
+    // The source's linkage and early-setup details, read once.
+    expect(databaseQueries).toBe(2);
     expect(overview.today).toEqual(reservationOverview.today);
     expect(overview.upcoming).toEqual(reservationOverview.upcoming);
     expect(overview.lastSevenDays).toEqual(reservationOverview.lastSevenDays);
@@ -1128,6 +1459,8 @@ describe("AdministrationService", () => {
   const loadLinkedOverview = (input: {
     readonly linkedIds: readonly string[];
     readonly listReservations: DotyposService["Service"]["listReservations"];
+    /** Linked bookings stored as early-setup meeting rooms. */
+    readonly earlySetupIds?: readonly string[];
   }) =>
     Effect.gen(function* () {
       const administration = yield* AdministrationService;
@@ -1140,21 +1473,19 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({
-                  db: {
-                    select: () =>
-                      makeQuery(
-                        input.linkedIds.map((id) => ({
-                          customerId: "customer",
-                          failureCode: null,
-                          fulfillmentState: "fulfilled",
-                          id,
-                          paymentState: "paid",
-                          reservationState: "confirmed",
-                        }))
-                      ),
-                  } as never,
-                })
+                WorkspaceDatabase.make({
+                  select: linkageThenEarlySetupRows(
+                    input.linkedIds.map((id) => ({
+                      customerId: "customer",
+                      failureCode: null,
+                      fulfillmentState: "fulfilled",
+                      id,
+                      paymentState: "paid",
+                      reservationState: "confirmed",
+                    })),
+                    input.earlySetupIds
+                  ),
+                } as never)
               ),
               DotyposServiceMock({
                 getCustomers: (options) =>
@@ -1214,13 +1545,13 @@ describe("AdministrationService", () => {
       {
         ids: linkedIds.slice(0, 50),
         order: "startDateAscending",
-        startsAtOrAfter: "2026-08-19T22:00:00Z",
+        startsAtOrAfter: "2026-08-19T21:45:00Z",
         startsBefore: "2026-09-25T22:00:00Z",
       },
       {
         ids: linkedIds.slice(50),
         order: "startDateAscending",
-        startsAtOrAfter: "2026-08-19T22:00:00Z",
+        startsAtOrAfter: "2026-08-19T21:45:00Z",
         startsBefore: "2026-09-25T22:00:00Z",
       },
     ]);
@@ -1232,6 +1563,40 @@ describe("AdministrationService", () => {
       completed: 2,
       unavailable: false,
       value: 2,
+    });
+  });
+
+  test("counts an early-setup meeting room on its booked date in the overview", async () => {
+    setSystemTime(new Date("2026-08-26T12:00:00Z"));
+    const booking = {
+      _branchId: "branch",
+      _cloudId: "cloud",
+      _customerId: "customer",
+      endDate: "2026-08-26T09:00:00Z",
+      seats: "1",
+      status: "CONFIRMED" as const,
+    };
+    // Prague is UTC+2 in August. Early setup holds a meeting room from 23:45
+    // for a midnight booking.
+    const bookings = [
+      { ...booking, id: "booking-setup", startDate: "2026-08-25T21:45:00Z" },
+      {
+        ...booking,
+        id: "booking-unflagged",
+        startDate: "2026-08-25T21:45:00Z",
+      },
+    ];
+
+    const { source } = await loadLinkedOverview({
+      linkedIds: bookings.map(({ id }) => id),
+      listReservations: () => Effect.succeed(bookings),
+      earlySetupIds: ["booking-setup"],
+    });
+
+    expect(getAdministrationReservationOverview(source).today).toEqual({
+      completed: 1,
+      unavailable: false,
+      value: 1,
     });
   });
 
@@ -1304,7 +1669,11 @@ describe("AdministrationService", () => {
         }),
     });
 
-    expect(source.reservations).toEqual({ kind: "available", items: [] });
+    expect(source.reservations).toEqual({
+      kind: "available",
+      items: [],
+      earlySetupDetails: new Map(),
+    });
     expect(listCalls).toBe(0);
   });
 
@@ -1319,9 +1688,7 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({
-                  db: { select: () => makeQuery([]) } as never,
-                })
+                WorkspaceDatabase.make({ select: () => makeQuery([]) } as never)
               ),
               DotyposServiceMock({
                 getReservation: () => Effect.succeed(Option.none()),
@@ -1372,9 +1739,9 @@ describe("AdministrationService", () => {
               Layer.mergeAll(
                 Layer.succeed(
                   WorkspaceDatabase,
-                  WorkspaceDatabase.of({
-                    db: { select: () => makeQuery([]) } as never,
-                  })
+                  WorkspaceDatabase.make({
+                    select: () => makeQuery([]),
+                  } as never)
                 ),
                 DotyposServiceMock({
                   getReservation: () => Effect.fail(failure),
@@ -1418,7 +1785,7 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({ db: database as never })
+                WorkspaceDatabase.make(database as never)
               ),
               DotyposServiceMock({}),
               Layer.succeed(
@@ -1450,7 +1817,9 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({ db: {} as never })
+                WorkspaceDatabase.make({
+                  select: () => makeQuery([]),
+                } as never)
               ),
               DotyposServiceMock({
                 getReservation: () =>
@@ -1497,6 +1866,69 @@ describe("AdministrationService", () => {
       startsAt: "2026-08-10T10:00:00Z",
       tableName: "Meeting Room",
     });
+  });
+
+  test("shows an early-setup meeting room's booked start in its booking breadcrumb", async () => {
+    const result = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.loadBookingBreadcrumb("early-setup");
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.make({
+                  select: () =>
+                    makeQuery([
+                      {
+                        dotyposReservationId: "early-setup",
+                        reservationDetails: {
+                          kind: "meeting-room",
+                          earlySetup: true,
+                        },
+                      },
+                    ]),
+                } as never)
+              ),
+              DotyposServiceMock({
+                getReservation: () =>
+                  Effect.succeed(
+                    Option.some({
+                      customer: { id: "dotypos-customer" },
+                      reservation: {
+                        _branchId: "branch",
+                        _cloudId: "cloud",
+                        _customerId: "dotypos-customer",
+                        _tableId: null,
+                        id: "early-setup",
+                        // Held from 09:45 for a 10:00 booking.
+                        startDate: "2026-08-10T09:45:00+02:00",
+                        endDate: "2026-08-10T11:00:00+02:00",
+                        seats: "1",
+                        status: "CONFIRMED",
+                      },
+                    })
+                  ),
+                getTables: () => Effect.succeed([]),
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              reservationAuthorsMock(),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(result?.startsAt).toBe("2026-08-10T08:00:00.000Z");
   });
 
   test("summarizes linked reservation dates through today in the Prague timezone", async () => {
@@ -1587,7 +2019,7 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({ db: database as never })
+                WorkspaceDatabase.make(database as never)
               ),
               DotyposServiceMock({
                 listReservations: (input) =>
@@ -1658,6 +2090,7 @@ describe("AdministrationService", () => {
           .subtract({ days: 364 })
           .toZonedDateTime(workspaceSiteConstants.location.timeZone)
           .toInstant()
+          .subtract({ minutes: 15 })
           .toString(),
         startsBefore: to
           .add({ days: 1 })
@@ -1692,9 +2125,7 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({
-                  db: { select: () => makeQuery([]) } as never,
-                })
+                WorkspaceDatabase.make({ select: () => makeQuery([]) } as never)
               ),
               DotyposServiceMock({
                 listReservations: () =>
@@ -1723,10 +2154,16 @@ describe("AdministrationService", () => {
     expect(result.dates).toBeNull();
   });
 
-  const loadOverviewReservationActivity = (input: {
+  type OverviewReservationActivityInput = {
     readonly linkedIds: readonly string[];
     readonly listReservations: DotyposService["Service"]["listReservations"];
-  }) =>
+    /** Linked bookings stored as early-setup meeting rooms. */
+    readonly earlySetupIds?: readonly string[];
+  };
+
+  const provideOverviewReservationActivity = (
+    input: OverviewReservationActivityInput
+  ) =>
     Effect.gen(function* () {
       const administration = yield* AdministrationService;
       return yield* administration.loadReservationActivity();
@@ -1737,12 +2174,12 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({
-                  db: {
-                    select: () =>
-                      makeQuery(input.linkedIds.map((id) => ({ id }))),
-                  } as never,
-                })
+                WorkspaceDatabase.make({
+                  select: linkageThenEarlySetupRows(
+                    input.linkedIds.map((id) => ({ id })),
+                    input.earlySetupIds
+                  ),
+                } as never)
               ),
               DotyposServiceMock({ listReservations: input.listReservations }),
               Layer.succeed(
@@ -1756,9 +2193,40 @@ describe("AdministrationService", () => {
             )
           )
         )
-      ),
-      Effect.runPromise
+      )
     );
+
+  const loadOverviewReservationActivity = (
+    input: OverviewReservationActivityInput
+  ) => Effect.runPromise(provideOverviewReservationActivity(input));
+
+  test("dies when Dotypos lists a reservation with an unreadable start", async () => {
+    setSystemTime(new Date("2026-08-26T12:00:00Z"));
+    const booking = {
+      _branchId: "branch",
+      _cloudId: "cloud",
+      _customerId: "dotypos-customer",
+      id: "booking-unreadable",
+      endDate: "2026-08-10T23:00:00Z",
+      seats: "1",
+      status: "CONFIRMED" as const,
+    };
+
+    for (const startDate of ["not-a-date", "2026-02-30T08:00:00Z"]) {
+      const exit = await Effect.runPromiseExit(
+        provideOverviewReservationActivity({
+          linkedIds: [booking.id],
+          listReservations: () => Effect.succeed([{ ...booking, startDate }]),
+        })
+      );
+
+      expect(
+        Exit.isFailure(exit) &&
+          Cause.hasDies(exit.cause) &&
+          !Cause.hasFails(exit.cause)
+      ).toBe(true);
+    }
+  });
 
   test("counts every linked reservation in the overview reservation activity", async () => {
     setSystemTime(new Date("2026-08-26T12:00:00Z"));
@@ -1825,7 +2293,7 @@ describe("AdministrationService", () => {
           "booking-new",
           "booking-other-day",
         ],
-        startsAtOrAfter: "2025-08-26T22:00:00Z",
+        startsAtOrAfter: "2025-08-26T21:45:00Z",
         startsBefore: "2026-08-26T22:00:00Z",
         order: "startDateAscending",
       },
@@ -1838,6 +2306,57 @@ describe("AdministrationService", () => {
         { count: 1, date: "2026-08-12" },
       ],
     });
+  });
+
+  test("dates an early-setup meeting room in the overview reservation activity by its booked start", async () => {
+    setSystemTime(new Date("2026-08-26T12:00:00Z"));
+    const booking = {
+      _branchId: "branch",
+      _cloudId: "cloud",
+      _customerId: "dotypos-customer",
+      endDate: "2026-08-10T23:00:00Z",
+      seats: "1",
+      status: "CONFIRMED" as const,
+    };
+    // Prague is UTC+2 in August. Early setup holds a meeting room from 23:45
+    // for a midnight booking.
+    const bookings = [
+      {
+        ...booking,
+        id: "booking-setup-from-range-start",
+        startDate: "2025-08-26T21:45:00Z",
+      },
+      {
+        ...booking,
+        id: "booking-before-range",
+        startDate: "2025-08-26T21:45:00Z",
+      },
+      {
+        ...booking,
+        id: "booking-setup-midnight",
+        startDate: "2026-08-09T21:45:00Z",
+      },
+      {
+        ...booking,
+        id: "booking-unflagged-midnight",
+        startDate: "2026-08-09T21:45:00Z",
+      },
+    ];
+
+    const result = await loadOverviewReservationActivity({
+      linkedIds: bookings.map(({ id }) => id),
+      listReservations: () => Effect.succeed(bookings),
+      earlySetupIds: [
+        "booking-setup-from-range-start",
+        "booking-setup-midnight",
+      ],
+    });
+
+    expect(result.dates).toEqual([
+      { count: 1, date: "2025-08-27" },
+      { count: 1, date: "2026-08-09" },
+      { count: 1, date: "2026-08-10" },
+    ]);
   });
 
   test("reads only linked bookings for the overview reservation activity, in id batches", async () => {
@@ -2011,6 +2530,26 @@ describe("AdministrationService", () => {
               coffee: false,
             },
           },
+          {
+            id: "booking-setup-from-range-start",
+            ...completedRow,
+            reservationDetails: { kind: "meeting-room", earlySetup: true },
+          },
+          {
+            id: "booking-before-range",
+            ...completedRow,
+            reservationDetails: { kind: "meeting-room" },
+          },
+          {
+            id: "booking-setup-midnight",
+            ...completedRow,
+            reservationDetails: { kind: "meeting-room", earlySetup: true },
+          },
+          {
+            id: "booking-unflagged-midnight",
+            ...completedRow,
+            reservationDetails: { kind: "meeting-room" },
+          },
         ]),
     };
     const booking = {
@@ -2076,6 +2615,28 @@ describe("AdministrationService", () => {
         id: "booking-baseline",
         startDate: "2026-08-13T08:00:00Z",
       },
+      // Prague is UTC+2 in August. Early setup holds these meeting rooms from
+      // 23:45 for a midnight booking.
+      {
+        ...booking,
+        id: "booking-setup-from-range-start",
+        startDate: "2025-08-26T21:45:00Z",
+      },
+      {
+        ...booking,
+        id: "booking-before-range",
+        startDate: "2025-08-26T21:50:00Z",
+      },
+      {
+        ...booking,
+        id: "booking-setup-midnight",
+        startDate: "2026-08-13T21:45:00Z",
+      },
+      {
+        ...booking,
+        id: "booking-unflagged-midnight",
+        startDate: "2026-08-15T21:45:00Z",
+      },
     ];
 
     const result = await Effect.gen(function* () {
@@ -2090,7 +2651,7 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({ db: database as never })
+                WorkspaceDatabase.make(database as never)
               ),
               DotyposServiceMock({
                 listReservations: (input) =>
@@ -2124,6 +2685,7 @@ describe("AdministrationService", () => {
           .subtract({ days: 364 })
           .toZonedDateTime(workspaceSiteConstants.location.timeZone)
           .toInstant()
+          .subtract({ minutes: 15 })
           .toString(),
         startsBefore: to
           .add({ days: 1 })
@@ -2137,8 +2699,11 @@ describe("AdministrationService", () => {
       from: to.subtract({ days: 364 }).toString(),
       to: to.toString(),
       dates: [
+        { category: "meeting-room", count: 1, date: "2025-08-27" },
         { category: "office", count: 3, date: "2026-08-12" },
         { category: "cowork-basic", count: 1, date: "2026-08-13" },
+        { category: "meeting-room", count: 1, date: "2026-08-14" },
+        { category: "meeting-room", count: 1, date: "2026-08-15" },
         { category: "cowork-plus", count: 1, date: "2026-08-26" },
       ],
     });
@@ -2174,7 +2739,7 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({ db: database as never })
+                WorkspaceDatabase.make(database as never)
               ),
               DotyposServiceMock({}),
               Layer.succeed(
@@ -2253,12 +2818,12 @@ describe("AdministrationService reservation author", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({
+                WorkspaceDatabase.make(
                   // The reservation is the first read; its related rows are empty.
-                  db: {
+                  {
                     select: () => makeQuery(selectCall++ === 0 ? [row] : []),
-                  } as never,
-                })
+                  } as never
+                )
               ),
               DotyposServiceMock({
                 getCustomer: (id) =>

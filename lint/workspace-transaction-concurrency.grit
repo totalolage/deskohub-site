@@ -1,0 +1,61 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// A Workspace transaction has one connection. Transactional code states no
+// concurrency at all: no `concurrency` or `concurrent` option, set or written,
+// whatever its value (1, `"inherit"` and `false` included), and no
+// `withConcurrency`, fork, race or stream merge. The check covers the whole
+// file, because a scope check misses bodies in nested generators, options
+// objects built elsewhere in the file and renamed `transaction` bindings. A
+// file is transactional when it names `WorkspaceTransaction`, binds
+// `transaction` in a destructuring (the only way the entry rule lets code
+// reach the wrapper) or calls `transaction(...)`. A rule sees one file;
+// `transaction` also dies at run time when two statements overlap on its
+// connection.
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/.*\.(?:ts|tsx)$",
+  not $name <: r".*apps/deskohub-workspace/(?:e2e|scripts)/.*",
+  not $name <: r".*apps/deskohub-workspace/db/database\.service\.ts$",
+  not $name <: r".*\.(?:test|test-utils)\.(?:ts|tsx)$",
+  $body <: r"(?s).*(?:ransaction).*",
+  or {
+    $body <: r"(?s).*\bWorkspaceTransaction\b.*",
+    $body <: contains or {
+      `transaction($...)`,
+      JsObjectBindingPatternProperty() as $binding where {
+        $binding <: r"(?s)^['\"]?transaction['\"]?\s*:.*"
+      },
+      JsObjectBindingPatternShorthandProperty() as $binding where {
+        $binding <: r"(?s)^transaction\b.*"
+      }
+    }
+  },
+  $body <: contains bubble or {
+    JsPropertyObjectMember() as $span where {
+      $span <: r"(?s)^\[?\s*['\"]?(?:concurrency|concurrent)['\"]?\s*\]?\s*:.*",
+      // Biome also offers the member with its trailing comma; report once.
+      not $span <: r"(?s).*,\s*$"
+    },
+    JsShorthandPropertyObjectMember() as $span where {
+      $span <: r"^(?:concurrency|concurrent)$"
+    },
+    JsAssignmentExpression() as $span where {
+      $span <: r"(?s)^[^=]*(?:\.\s*|\[\s*['\"])(?:concurrency|concurrent)['\"]?\s*\]?\s*=.*"
+    },
+    `$owner.$method($...)` as $span where {
+      or {
+        $method <: r"^(?:fork\w*|runFork|race\w*|withConcurrency)$",
+        and {
+          $owner <: r"^(?:Stream|Channel)$",
+          $method <: r"^merge\w*$"
+        }
+      }
+    }
+  } where {
+    register_diagnostic(
+      span = $span,
+      message = "Keep transactional work on one fiber: no concurrency option, `concurrent` option, `withConcurrency`, fork, race or merge in a file that runs Workspace transactions.",
+      severity = "error"
+    )
+  }
+}

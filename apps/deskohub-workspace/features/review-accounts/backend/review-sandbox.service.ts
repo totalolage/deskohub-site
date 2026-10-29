@@ -130,7 +130,7 @@ export class ReviewSandbox extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const { db } = yield* WorkspaceDatabase;
+      const { db, transaction } = yield* WorkspaceDatabase;
 
       const findOpenHold = (input: {
         readonly accountId: CustomerAccountId;
@@ -162,9 +162,9 @@ export class ReviewSandbox extends Context.Service<
         readonly selectionKey: string;
         readonly now: Temporal.Instant;
       }) =>
-        db.transaction(
-          Effect.fn(function* (tx) {
-            yield* tx
+        transaction(
+          Effect.gen(function* () {
+            yield* db
               .update(reviewAccountHolds)
               .set({ cancelledAt: input.now })
               .where(
@@ -179,7 +179,7 @@ export class ReviewSandbox extends Context.Service<
                 )
               );
             const bookedAt = toStoredInstant(input.request.bookedAt);
-            const [hold] = yield* tx
+            const [hold] = yield* db
               .insert(reviewAccountHolds)
               .values({
                 accountId: input.request.accountId,

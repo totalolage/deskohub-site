@@ -13,6 +13,12 @@ import {
 } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { workspaceReservations } from "@/db/schema/workspace-reservations";
+import {
+  type BookedInterval,
+  type BookedReservation,
+  decodeBookedReservation,
+} from "@/features/reservation/backend/booked-reservation";
+import { getMeetingRoomEarlySetupField } from "@/features/reservation/meeting-room-early-setup";
 import { findMeetingRoomReservationDuration } from "@/features/reservation/meeting-room-reservation-time";
 import { getOfficeReservationSelection } from "@/features/reservation/office-reservation";
 import {
@@ -20,12 +26,10 @@ import {
   storedWorkspaceReservationDetailsSchema,
   type WorkspaceReservationId,
 } from "@/features/reservation/persistence-contracts";
-import { reservationIntervalSchema } from "@/features/reservation/reservation-interval";
 import {
   meetingRoomReservationKind,
   officeReservationKind,
 } from "@/features/reservation/reservation-kind";
-import { dotyposReservationSeatsSchema } from "@/features/reservation/reservation-seats";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 
 /** Rows read, and Dotypos reservations requested, per batch. */
@@ -89,6 +93,7 @@ type BackfillRow = {
 
 type IncompleteRow = BackfillRow & {
   readonly dotyposReservationId: DotyposReservationId;
+  readonly storedDetails: StoredWorkspaceReservationDetails;
 };
 
 type ResolvedRow = IncompleteRow & {
@@ -98,19 +103,12 @@ type ResolvedRow = IncompleteRow & {
 type UnresolvedRow =
   ReservationProductDetailsBackfillBatch["unresolved"][number];
 
-type BookedInterval = {
-  readonly startsAt: Temporal.Instant;
-  readonly endsAt: Temporal.Instant;
-};
-
 const storedFamily = sql<ReservationProductDetailsBackfillFamily>`${workspaceReservations.reservationDetails}->>'kind'`;
 
 const decodeStoredDetails = Schema.decodeUnknownOption(
   storedWorkspaceReservationDetailsSchema,
   { onExcessProperty: "error" }
 );
-const decodeInterval = Schema.decodeUnknownOption(reservationIntervalSchema);
-const decodeSeats = Schema.decodeUnknownOption(dotyposReservationSeatsSchema);
 
 const isComplete = Match.type<StoredWorkspaceReservationDetails>().pipe(
   Match.discriminatorsExhaustive("kind")({
@@ -147,7 +145,9 @@ const triageRow = (
       unresolvedRow({ row, reason: "dotypos_reservation_id_missing" })
     );
   }
-  return Result.succeed(Option.some({ ...row, dotyposReservationId }));
+  return Result.succeed(
+    Option.some({ ...row, dotyposReservationId, storedDetails: details.value })
+  );
 };
 
 const triageRows = ({ rows }: { readonly rows: readonly BackfillRow[] }) => {
@@ -161,7 +161,8 @@ const triageRows = ({ rows }: { readonly rows: readonly BackfillRow[] }) => {
 };
 
 const resolveMeetingRoomDetails = (
-  interval: BookedInterval
+  interval: BookedInterval,
+  storedDetails: StoredWorkspaceReservationDetails
 ): Result.Result<
   StoredWorkspaceReservationDetails,
   ReservationProductDetailsUnresolvedReason
@@ -170,19 +171,22 @@ const resolveMeetingRoomDetails = (
     findMeetingRoomReservationDuration(interval),
     () => "interval_not_in_catalog" as const
   ).pipe(
-    Result.map((duration) => ({ kind: meetingRoomReservationKind, duration }))
+    Result.map((duration) => ({
+      kind: meetingRoomReservationKind,
+      duration,
+      ...(storedDetails.kind === meetingRoomReservationKind &&
+        getMeetingRoomEarlySetupField(storedDetails)),
+    }))
   );
 
 const resolveOfficeDetails = ({
   seats,
   ...interval
-}: BookedInterval & {
-  readonly seats: DotyposReservation["seats"];
-}): Result.Result<
+}: BookedInterval & Pick<BookedReservation, "seats">): Result.Result<
   StoredWorkspaceReservationDetails,
   ReservationProductDetailsUnresolvedReason
 > =>
-  decodeSeats(seats).pipe(
+  seats.pipe(
     Result.fromOption(() => "dotypos_seats_invalid" as const),
     Result.flatMap((seats) =>
       Result.fromNullishOr(
@@ -195,33 +199,34 @@ const resolveOfficeDetails = ({
 
 /**
  * The full snapshot for an incomplete row, from the Dotypos reservation's
- * interval and seats only. The reservation note is freeform and never read.
+ * booked interval and seats only. The stored details say how to read the
+ * interval: an early-setup meeting room is held from before its booked
+ * start, and keeps that flag. The reservation note is freeform and never
+ * read.
  */
 const resolveDetails = ({
   family,
   reservation,
+  storedDetails,
 }: {
   readonly family: ReservationProductDetailsBackfillFamily;
   readonly reservation: DotyposReservation;
+  readonly storedDetails: StoredWorkspaceReservationDetails;
 }): Result.Result<
   StoredWorkspaceReservationDetails,
   ReservationProductDetailsUnresolvedReason
 > => {
-  const interval = decodeInterval({
-    startsAt: reservation.startDate,
-    endsAt: reservation.endDate,
-  });
+  const { interval, seats } = decodeBookedReservation(
+    reservation,
+    storedDetails
+  );
   if (Option.isNone(interval)) return Result.fail("dotypos_interval_invalid");
-  const booked: BookedInterval = {
-    startsAt: Temporal.Instant.from(interval.value.startsAt),
-    endsAt: Temporal.Instant.from(interval.value.endsAt),
-  };
   return Match.value(family).pipe(
     Match.when(meetingRoomReservationKind, () =>
-      resolveMeetingRoomDetails(booked)
+      resolveMeetingRoomDetails(interval.value, storedDetails)
     ),
     Match.when(officeReservationKind, () =>
-      resolveOfficeDetails({ ...booked, seats: reservation.seats })
+      resolveOfficeDetails({ ...interval.value, seats })
     ),
     Match.exhaustive
   );
@@ -242,7 +247,11 @@ const resolveRow = ({
     () => "dotypos_reservation_not_found" as const
   ).pipe(
     Result.flatMap((reservation) =>
-      resolveDetails({ family: row.family, reservation })
+      resolveDetails({
+        family: row.family,
+        reservation,
+        storedDetails: row.storedDetails,
+      })
     ),
     Result.map((details) => ({ ...row, details })),
     Result.mapError((reason) => unresolvedRow({ row, reason }))

@@ -10,30 +10,27 @@ import {
 } from "effect";
 import { Resend } from "resend";
 import { WorkspaceDatabase } from "@/db/database.service";
-import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice.service";
 import { CampaignDeliveryStatusService } from "@/features/email-campaigns/backend/campaign-delivery-status.service";
 import { campaignEmailCategory } from "@/features/email-campaigns/campaign-email-message";
-import {
-  type WorkspaceReservation,
-  WorkspaceReservationRepository,
-} from "@/features/reservation/backend/workspace-reservation.repository";
 import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
-import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
 import {
   type Instant,
   instantStringSchema,
   TemporalInstantSchema,
   temporalInstantToIsoString,
 } from "@/shared/utils/temporal";
-import { captureReservationFulfilled } from "../analytics/posthog-lifecycle-events";
 import { ResendWebhookRuntimeConfig } from "./resend-webhook.config";
+import {
+  type ReservationAccessDeliveryReport,
+  type ReservationDeliveryReportError,
+  ReservationFulfillment,
+} from "./reservation-fulfillment.service";
+import { customerAccessCategory } from "./workspace-reservation-email.service";
 
 const workspaceFulfillmentSource = "workspace-paid-fulfillment";
-const customerAccessCategory = "workspace-paid-reservation-access";
-const fulfillmentEmailFailureCode = "fulfillment_email_failed";
 
 const ResendWebhookEventIdSchema = Schema.NonEmptyString.pipe(
   Schema.brand("ResendWebhookEventId")
@@ -180,10 +177,8 @@ export class ResendWebhookService extends Context.Service<
 
   static Live = this.Default.pipe(
     Layer.provide(ResendWebhookRuntimeConfig.Default),
-    Layer.provide(PostHogEventService.Live),
-    Layer.provide(ReservationInvoiceService.Live),
+    Layer.provide(ReservationFulfillment.Live),
     Layer.provide(CampaignDeliveryStatusService.Default),
-    Layer.provide(WorkspaceReservationRepository.Default),
     Layer.provide(WorkspaceDatabase.Default)
   );
 }
@@ -205,14 +200,58 @@ const isDeliverySuccessEvent = (event: ResendWebhookEvent) =>
 const isReservationDeliveryEvent = (event: ResendWebhookEvent) =>
   isDeliveryFailureEvent(event) || isDeliverySuccessEvent(event);
 
+// An equal tag wins over a missing one, so an untagged email still counts as
+// this deployment's when the deployment itself has no environment name.
+const classifyDeployment = (
+  tagged: string | undefined,
+  current: string
+): NonNullable<
+  ReservationAccessDeliveryReport["accessEmail"]
+>["deployment"] => {
+  if (tagged === current) return "current";
+  return tagged === undefined ? "missing" : "other";
+};
+
+/** Keeps the webhook's error code and message for each unapplied report. */
+const describeUnappliedReport = (
+  report: ReservationAccessDeliveryReport,
+  reason: ReservationDeliveryReportError["reason"]
+): Pick<ResendWebhookProcessingError, "errorCode" | "message"> => {
+  switch (reason) {
+    case "delivery_unattached":
+      return {
+        errorCode: "resend_webhook_delivery_unattached",
+        message:
+          "Resend webhook referenced the customer delivery before it was attached to a reservation.",
+      };
+    case "reservation_load_failed":
+      return {
+        errorCode: "resend_webhook_reservation_load_failed",
+        message:
+          "Resend webhook could not load the reservation for the delivered email.",
+      };
+    case "invoice_processing_failed":
+      return {
+        errorCode: "resend_webhook_invoice_processing_failed",
+        message: "Resend webhook invoice processing failed.",
+      };
+    case "reservation_update_failed":
+      return {
+        errorCode: "resend_webhook_reservation_update_failed",
+        message:
+          report.outcome === "delivered"
+            ? "Resend webhook could not mark reservation fulfilled."
+            : "Resend webhook could not mark reservation fulfillment failed.",
+      };
+  }
+};
+
 function makeResendWebhookServiceLayer(service: typeof ResendWebhookService) {
   return Layer.effect(
     service,
     Effect.gen(function* () {
-      const reservations = yield* WorkspaceReservationRepository;
+      const fulfillment = yield* ReservationFulfillment;
       const config = yield* ResendWebhookRuntimeConfig;
-      const posthogEvents = yield* PostHogEventService;
-      const reservationInvoices = yield* ReservationInvoiceService;
       const campaignDeliveryStatus = yield* CampaignDeliveryStatusService;
 
       /**
@@ -253,41 +292,6 @@ function makeResendWebhookServiceLayer(service: typeof ResendWebhookService) {
                   message:
                     "Resend webhook could not record the campaign delivery status.",
                   eventId: input.eventId,
-                  cause,
-                })
-            )
-          );
-      });
-
-      const processReservationInvoice = Effect.fn(
-        "resendWebhook.processReservationInvoice"
-      )(function* (input: {
-        readonly eventId: ResendWebhookEventId;
-        readonly reservation: Pick<
-          WorkspaceReservation,
-          "activePaymentAttemptId" | "id"
-        >;
-      }) {
-        if (!input.reservation.activePaymentAttemptId) {
-          yield* Effect.logWarning(
-            "Reservation invoice processing skipped: payment attempt missing",
-            { workspaceReservationId: input.reservation.id }
-          );
-          return;
-        }
-
-        yield* reservationInvoices
-          .processByPaymentAttemptId({
-            paymentAttemptId: input.reservation.activePaymentAttemptId,
-          })
-          .pipe(
-            Effect.mapError(
-              (cause) =>
-                new ResendWebhookProcessingError({
-                  errorCode: "resend_webhook_invoice_processing_failed",
-                  message: "Resend webhook invoice processing failed.",
-                  eventId: input.eventId,
-                  workspaceReservationId: input.reservation.id,
                   cause,
                 })
             )
@@ -350,187 +354,37 @@ function makeResendWebhookServiceLayer(service: typeof ResendWebhookService) {
             tags.get("source") === workspaceFulfillmentSource &&
             tags.get("category") === customerAccessCategory &&
             workspaceReservationId !== undefined;
-          const isThisDeploymentDelivery =
-            isCustomerAccessDelivery &&
-            tags.get("deploymentEnvironment") === config.deploymentEnvironment;
-
-          const reservation = yield* reservations
-            .findByActiveCustomerEmailDeliveryId(resendEmailId)
-            .pipe(
-              Effect.mapError(
-                (cause) =>
-                  new ResendWebhookProcessingError({
-                    errorCode: "resend_webhook_reservation_load_failed",
-                    message:
-                      "Resend webhook could not load the reservation for the delivered email.",
-                    eventId: input.eventId,
-                    cause,
-                  })
-              )
-            );
-
-          if (!reservation) {
-            if (isThisDeploymentDelivery) {
-              yield* Effect.logWarning(
-                "Resend webhook arrived before the customer delivery was attached",
-                {
-                  eventId: input.eventId,
-                  resendEmailId,
-                  workspaceReservationId,
-                }
-              );
-
-              return yield* new ResendWebhookProcessingError({
-                errorCode: "resend_webhook_delivery_unattached",
-                message:
-                  "Resend webhook referenced the customer delivery before it was attached to a reservation.",
-                eventId: input.eventId,
-                workspaceReservationId,
-              });
-            }
-
-            yield* Effect.logWarning(
-              "Resend webhook referenced an unknown customer email delivery",
-              { eventId: input.eventId, resendEmailId }
-            );
-
-            return ignored("unknown_email_delivery");
-          }
-
-          if (!isCustomerAccessDelivery) {
-            return ignored("unrelated_email");
-          }
-
-          if (workspaceReservationId !== reservation.id) {
-            yield* Effect.logWarning(
-              "Resend webhook reservation tag did not match the active delivery",
-              {
-                eventId: input.eventId,
-                resendEmailId,
-                workspaceReservationId,
-              }
-            );
-
-            return ignored("reservation_mismatch");
-          }
-
           const deploymentEnvironment = tags.get("deploymentEnvironment");
-          if (deploymentEnvironment !== config.deploymentEnvironment) {
-            return ignored(
-              deploymentEnvironment === undefined
-                ? "deployment_environment_missing"
-                : "deployment_environment_mismatch"
-            );
-          }
+          const report: ReservationAccessDeliveryReport = {
+            deliveryId: resendEmailId,
+            outcome: isDeliverySuccessEvent(event) ? "delivered" : "failed",
+            occurredAt: event.createdAt,
+            ...(isCustomerAccessDelivery && {
+              accessEmail: {
+                reservationId: workspaceReservationId,
+                deployment: classifyDeployment(
+                  deploymentEnvironment,
+                  config.deploymentEnvironment
+                ),
+              },
+            }),
+          };
 
-          if (isDeliverySuccessEvent(event)) {
-            if (reservation.fulfillmentState === "fulfilled") {
-              yield* processReservationInvoice({
-                eventId: input.eventId,
-                reservation,
-              });
-              return ignored("reservation_already_fulfilled");
-            }
-
-            if (
-              reservation.fulfillmentState === "failed" &&
-              reservation.fulfillmentFailureCode !== fulfillmentEmailFailureCode
-            ) {
-              yield* Effect.logInfo(
-                "Resend delivery success ignored: reservation already failed",
-                {
+          const outcome = yield* fulfillment.recordDelivery(report).pipe(
+            Effect.mapError(
+              (error) =>
+                new ResendWebhookProcessingError({
+                  ...describeUnappliedReport(report, error.reason),
                   eventId: input.eventId,
-                  workspaceReservationId,
-                  fulfillmentFailureCode: reservation.fulfillmentFailureCode,
-                }
-              );
+                  workspaceReservationId: error.workspaceReservationId,
+                  cause: error.cause,
+                })
+            )
+          );
 
-              return ignored("reservation_already_failed");
-            }
-
-            const fulfilledAt = event.createdAt;
-            const fulfilledReservation = yield* reservations
-              .markCustomerEmailDeliveryFulfilled({
-                customerEmailDeliveryId: resendEmailId,
-                fulfilledAt,
-              })
-              .pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new ResendWebhookProcessingError({
-                      errorCode: "resend_webhook_reservation_update_failed",
-                      message:
-                        "Resend webhook could not mark reservation fulfilled.",
-                      eventId: input.eventId,
-                      workspaceReservationId,
-                      cause,
-                    })
-                )
-              );
-
-            if (!fulfilledReservation) {
-              yield* Effect.logInfo(
-                "Resend delivery success ignored: reservation delivery state is newer or changed concurrently",
-                {
-                  eventId: input.eventId,
-                  workspaceReservationId,
-                  fulfillmentState: reservation.fulfillmentState,
-                }
-              );
-
-              return ignored("reservation_delivery_state_changed");
-            }
-
-            yield* captureReservationFulfilled({
-              reservation: fulfilledReservation,
-              timestamp: fulfilledAt,
-            }).pipe(Effect.provideService(PostHogEventService, posthogEvents));
-            yield* processReservationInvoice({
-              eventId: input.eventId,
-              reservation: fulfilledReservation,
-            });
-
-            return {
-              status: "processed",
-            } satisfies ResendWebhookProcessingResult;
-          }
-
-          const failedReservation = yield* reservations
-            .markCustomerEmailDeliveryFailed({
-              customerEmailDeliveryId: resendEmailId,
-              failureCode: fulfillmentEmailFailureCode,
-              failedAt: event.createdAt,
-            })
-            .pipe(
-              Effect.mapError(
-                (cause) =>
-                  new ResendWebhookProcessingError({
-                    errorCode: "resend_webhook_reservation_update_failed",
-                    message:
-                      "Resend webhook could not mark reservation fulfillment failed.",
-                    eventId: input.eventId,
-                    workspaceReservationId,
-                    cause,
-                  })
-              )
-            );
-
-          if (!failedReservation) {
-            yield* Effect.logInfo(
-              "Resend delivery failure ignored: reservation delivery state is newer or changed concurrently",
-              {
-                eventId: input.eventId,
-                workspaceReservationId,
-                fulfillmentState: reservation.fulfillmentState,
-              }
-            );
-
-            return ignored("reservation_delivery_state_changed");
-          }
-
-          return {
-            status: "processed",
-          } satisfies ResendWebhookProcessingResult;
+          return outcome === "applied"
+            ? ({ status: "processed" } satisfies ResendWebhookProcessingResult)
+            : ignored(outcome.ignored);
         },
         (effect) =>
           effect.pipe(

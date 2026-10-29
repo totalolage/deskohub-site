@@ -87,6 +87,7 @@ export class AdministratorRoster extends Context.Service<
     this,
     Effect.gen(function* () {
       const database = yield* WorkspaceDatabase;
+      const { transaction } = yield* WorkspaceDatabase;
       const grants = yield* AccountRoleGrants;
 
       return {
@@ -143,8 +144,8 @@ export class AdministratorRoster extends Context.Service<
           // once it commits, later consent checks refuse the administration
           // scope. One that already passed can still finish; administration
           // calls re-read the grant.
-          return yield* database.db.transaction(
-            Effect.fn(function* () {
+          return yield* transaction(
+            Effect.gen(function* () {
               const revoked = yield* grants.revoke({ accountId, role });
               yield* revokeAdministrationCliAccess(accountId).pipe(
                 Effect.provideService(WorkspaceDatabase, database)

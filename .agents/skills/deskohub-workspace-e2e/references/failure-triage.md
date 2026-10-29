@@ -14,7 +14,7 @@ Read [operations diagnostics](../../deskohub-workspace-operations/references/dia
 2. Query spans with `e2e.run.id = <GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>`.
 3. Find the `e2e.case` whose `e2e.outcome` is `failed` or `timed_out`, then its last non-passing `e2e.step`. Only the annotated case is the root failure. After it, running cases are recorded `cancelled`, though some account-lane browser errors during shutdown surface as `failed` within about two seconds of the stop.
 4. Compare the step's native duration with `e2e.timeout_ms` and read `e2e.failure.kind`. That tells you whether it failed at once or exhausted its wait.
-5. Use the case and step IDs to open only the matching GitHub log section and that case's browser snapshot, HAR, and database assertion artifacts.
+5. Use the case and step IDs to open only the matching GitHub log section and that case's browser snapshot, HAR, and database assertion artifacts. Failure capture writes only `error.txt` when the case's browser never opened. In `network.har`, response bodies are redacted except Nexi build-failure summaries, and an entry with status `-1` and no `content.text` was still in flight when the session closed, not a lost body.
 6. Form a specific hypothesis before rerunning. A rerun validates a hypothesis; a repeated failure needs a regression test and a fix.
 
 Never dump whole spans, attribute objects, exception events, or artifact payloads. Report correlation values, span names, durations, configured timeouts, closed outcomes and failure kinds, and the minimum artifact facts.
@@ -82,6 +82,16 @@ Preview E2E shares the Cloudinary quota with production, and decorative provider
 - A missing site banner with a "Something went wrong." page is an app error-boundary failure, not a navigation race. Confirm with the deployment's Vercel request logs for `/en-US`.
 - Account deletion deletes the avatar prefix through the Cloudinary Admin API after expiring the Dotypos profile. A rate limit shows as a retryable deletion with "could not expire your customer profile" copy; read the logged cause `_tag` (`Cloudinary asset prefix delete failed`), not the copy, before you blame Dotypos.
 - Provider failure logs omit the HTTP code. Confirm a quota burst by querying PostHog logs for `Cloudinary search page failed` across all `service.version` values around the failure. If other previews caused it, rerun after the hourly window resets instead of changing the flow.
+
+### WebKit Temporal runtime never hydrates
+
+`temporal-runtime.pw.ts` in the `webkit` project fails with "The cowork form never hydrated", followed by the page diagnostics. Read them in this order:
+
+- `Temporal is missing or incomplete` among the page errors, with the `Temporal polyfill` request failed or answered 4xx/5xx: the `<head>` loader's polyfill didn't arrive, so the browser entry threw and the server-rendered page stayed dead. WebKit reports an error status as a failed request (`Load request cancelled`) with the status beside it. Reproduced locally by aborting that route; why the runner's request failed is in the trace's network entry.
+- The polyfill `still pending`: the parser is still blocked in `<head>`, so the page snapshot is empty.
+- The polyfill succeeded, `Temporal=object`, and `Next.js runtime=not started`: look at the failed `App scripts` entries and the page errors instead.
+
+The failure keeps `sanitized-trace.zip` in the test's folder of the uploaded artifact; open it with `bunx playwright show-trace`. URLs in it point at `preview.invalid`, and response bodies are dropped.
 
 ### Discount errors on a fresh preview database
 

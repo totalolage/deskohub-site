@@ -14,7 +14,7 @@ import {
 } from "../playwright-checkout/case-catalog";
 import type { WorkspaceE2ECaseBinder } from "../playwright-checkout/fixtures";
 import { bindCheckoutContact } from "../referrals/checkout";
-import type { CheckoutFlowState, WorkspaceE2ECase } from "../types";
+import type { CheckoutFlowState, WorkspaceE2ECaseContext } from "../types";
 import { checkoutFlows } from "./data";
 
 /**
@@ -72,8 +72,6 @@ export const workspaceE2ECheckoutBookerJournalOwners: readonly WorkspaceE2EAccou
     recipientLabels: [workspaceE2ECheckoutBookerLabel(caseId)],
   }));
 
-type CaseContext = Parameters<WorkspaceE2ECase["execute"]>[0];
-
 const accountBookingFlows = new Map(
   checkoutFlows.map((flow) => [`checkout-${flow.id}`, flow])
 );
@@ -81,7 +79,6 @@ const accountBookingFlows = new Map(
 /** Signs the planned case in as its own seeded booker before it runs. */
 export const bindWorkspaceE2ECheckoutBooker: WorkspaceE2ECaseBinder = async ({
   environment,
-  run,
   runId,
   testCase,
 }) => {
@@ -94,21 +91,21 @@ export const bindWorkspaceE2ECheckoutBooker: WorkspaceE2ECaseBinder = async ({
     datasourceConfig,
     displayName: () => "Workspace E2E Booker",
     journalOwnerId: checkoutBookerJournalOwnerId(testCase.id),
-    run,
     runId,
     secret: resolveWorkspaceE2ESessionSigningSecret(environment),
   });
   const signIn = Effect.fn("CheckoutBooker.signIn")(function* ({
+    run,
     runStep,
     session,
-  }: CaseContext) {
+  }: WorkspaceE2ECaseContext) {
     const booker = yield* runStep({
       execute: identities.seedLinkedAccount(label),
       id: "seed-checkout-booker",
       timeoutMs: config.timeouts.datasource,
     });
     yield* runStep({
-      execute: identities.signIn(booker, session),
+      execute: identities.signIn(booker, { run, session }),
       id: "sign-in-checkout-booker",
       timeoutMs: config.timeouts.datasource,
     });
@@ -119,7 +116,7 @@ export const bindWorkspaceE2ECheckoutBooker: WorkspaceE2ECaseBinder = async ({
     return {
       ...testCase,
       execute: Effect.fn("CheckoutBooker.execute")(function* (
-        context: CaseContext
+        context: WorkspaceE2ECaseContext
       ) {
         yield* signIn(context);
         yield* testCase.execute(context);
@@ -140,7 +137,7 @@ export const bindWorkspaceE2ECheckoutBooker: WorkspaceE2ECaseBinder = async ({
     ...testCase,
     checkoutStates: [boundState],
     execute: Effect.fn("CheckoutBooker.executeAccountBooking")(function* (
-      context: CaseContext
+      context: WorkspaceE2ECaseContext
     ) {
       yield* signIn(context);
       yield* executeCheckoutFlow({
@@ -148,7 +145,7 @@ export const bindWorkspaceE2ECheckoutBooker: WorkspaceE2ECaseBinder = async ({
         data: boundState.data,
         datasourceConfig,
         flow,
-        run,
+        run: context.run,
         runStep: context.runStep,
         session: context.session,
         state: boundState,

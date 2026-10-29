@@ -758,7 +758,14 @@ jobs:
         if: failure()
         with:
           name: workspace-e2e-artifacts-${{ github.run_id }}-${{ github.run_attempt }}
-          path: apps/deskohub-workspace/e2e-artifacts/**
+          # A raw Playwright trace holds the preview origin and bypass cookie.
+          # The trace reporter replaces each with sanitized-trace.zip; a raw
+          # trace a killed run left behind, and the worker's trace working
+          # files that an early stop can leave, never leave the runner.
+          path: |
+            apps/deskohub-workspace/e2e-artifacts/**
+            !apps/deskohub-workspace/e2e-artifacts/**/trace*.zip
+            !apps/deskohub-workspace/e2e-artifacts/**/.playwright-artifacts-*/**
           if-no-files-found: ignore
           retention-days: 7
 

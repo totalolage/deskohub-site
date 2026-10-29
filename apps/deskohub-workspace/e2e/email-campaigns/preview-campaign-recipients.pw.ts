@@ -5,7 +5,7 @@ import { mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { DotyposCustomerId } from "@deskohub/dotypos";
-import { type BrowserContext, expect, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { eq } from "drizzle-orm";
 import { Effect } from "effect";
 import type { DatabaseClient } from "@/db/database-client";
@@ -23,15 +23,14 @@ import { getWorkspaceE2EMarketingDocumentHash } from "../account/marketing-docum
 import { resolveWorkspaceE2ESessionSigningSecret } from "../account/seeded-session";
 import {
   type ActionResponseOutcome,
-  openAdminBrowserPage,
-  primePreviewBypass,
+  openAdminSession,
   retainServerActionSubmission,
-  sanitizedBrowserOperation,
 } from "../admin-case";
 import {
   makeWorkspaceE2EAdministrationIdentities,
   type WorkspaceE2EAdministrationIdentities,
 } from "../administrators/identities";
+import type { E2EBrowserSession } from "../browser-session";
 import { runE2ECase, type WorkspaceE2EStepRunner } from "../case-runner";
 import { type DatasourceConfig, getDatasourceConfig } from "../config";
 import {
@@ -81,43 +80,42 @@ test("previews the tagged synthetic customer as a draft marketing campaign recip
   addRedaction(environment.VERCEL_AUTOMATION_BYPASS_SECRET);
   const datasourceConfig = getDatasourceConfig(environment);
   const plan = planEmailCampaignPreview();
-  const { context, origin, page } = await openAdminBrowserPage({
-    baseURL,
-    browser,
-    caseName: "email campaign recipient preview",
-  });
-  try {
-    await runEffect(
-      runEmailCampaignPreviewCase({
-        bypassSecret: environment.VERCEL_AUTOMATION_BYPASS_SECRET,
-        context,
-        datasourceConfig,
-        identities,
-        origin,
-        page,
-        plan,
-        reviewScreenshots:
-          environment.WORKSPACE_E2E_CAMPAIGN_REVIEW_SCREENSHOTS === "true",
-      })
-    );
-  } finally {
-    await context.close().catch(() => undefined);
-  }
+  await runEffect(
+    Effect.scoped(
+      Effect.flatMap(
+        openAdminSession({
+          baseURL,
+          browser,
+          caseName: "email campaign recipient preview",
+        }),
+        ({ origin, session }) =>
+          runEmailCampaignPreviewCase({
+            bypassSecret: environment.VERCEL_AUTOMATION_BYPASS_SECRET,
+            datasourceConfig,
+            identities,
+            origin,
+            plan,
+            reviewScreenshots:
+              environment.WORKSPACE_E2E_CAMPAIGN_REVIEW_SCREENSHOTS === "true",
+            session,
+          })
+      )
+    )
+  );
 });
 
 const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
   function* (input: {
     readonly bypassSecret: string | undefined;
-    readonly context: BrowserContext;
     readonly datasourceConfig: DatasourceConfig;
     readonly identities: WorkspaceE2EAdministrationIdentities<"ecp-admin">;
     readonly origin: string;
-    readonly page: Page;
     readonly plan: EmailCampaignPreviewPlan;
     readonly reviewScreenshots: boolean;
+    readonly session: E2EBrowserSession;
   }) {
     const { db } = yield* E2EDatabase;
-    const { page, plan } = input;
+    const { plan } = input;
     // Captured as soon as Dotypos returns it, so an interrupted setup still
     // retires the profile and removes its consent row.
     let customerId: DotyposCustomerId | undefined;
@@ -129,8 +127,9 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
 
     // Submits a hydrated admin form once, retaining its Server Action
     // submission before the click. The submission stays pending until the
-    // request is sent or cleanup closes the browser context.
+    // request is sent or cleanup closes the browser session.
     const submitAction = (
+      page: Page,
       submitLabel: string,
       retain: (submission: Promise<ActionResponseOutcome>) => void
     ) => {
@@ -140,7 +139,7 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
         .click({ timeout: workspaceE2ETimeouts.browserAction });
     };
 
-    const waitForPath = (path: RegExp, timeoutMs: number) =>
+    const waitForPath = (page: Page, path: RegExp, timeoutMs: number) =>
       page.waitForURL((url) => path.test(url.pathname), {
         timeout: timeoutMs,
         waitUntil: "commit",
@@ -160,21 +159,22 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
         }
       );
 
-    const audienceForm = page.locator("form").filter({
-      has: page.getByRole("button", { exact: true, name: "Create audience" }),
-    });
-    const composerForm = page.locator("#campaign-composer");
+    const audienceForm = (page: Page) =>
+      page.locator("form").filter({
+        has: page.getByRole("button", { exact: true, name: "Create audience" }),
+      });
+    const composerForm = (page: Page) => page.locator("#campaign-composer");
 
     const caseBody = (step: WorkspaceE2EStepRunner) => {
       const browserStep = (
         stepId: string,
         timeoutMs: number,
         operation: string,
-        run: () => Promise<unknown>
+        run: (page: Page) => Promise<unknown>
       ) =>
         step({
-          execute: sanitizedBrowserOperation(operation, () =>
-            run().then(() => undefined)
+          execute: input.session.use(operation, (page) =>
+            run(page).then(() => undefined)
           ),
           id: stepId,
           timeoutMs,
@@ -239,11 +239,11 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
           timeoutMs: workspaceE2ETimeouts.cleanupAction,
         });
         yield* step({
-          execute: primePreviewBypass({
-            bypassSecret: input.bypassSecret,
-            context: input.context,
-            origin: input.origin,
-          }),
+          execute: input.session.primePreviewAccess(
+            input.origin,
+            input.bypassSecret,
+            { timeoutMs: workspaceE2ETimeouts.browserAction }
+          ),
           id: "prime-preview-bypass",
           timeoutMs: workspaceE2ETimeouts.browserAction,
         });
@@ -261,7 +261,7 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
           "open-audience-form",
           workspaceE2ETimeouts.browserNavigation,
           "open the new audience admin page",
-          () =>
+          (page) =>
             page.goto(`${input.origin}/en-US/admin/email-audiences/new`, {
               timeout: workspaceE2ETimeouts.browserNavigation,
             })
@@ -270,10 +270,10 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
           "wait-for-audience-form-hydration",
           workspaceE2ETimeouts.uiTransition,
           "wait for the hydrated audience form",
-          () =>
+          (page) =>
             waitForReactSubmitHandler(
               page,
-              audienceForm,
+              audienceForm(page),
               workspaceE2ETimeouts.uiTransition
             )
         );
@@ -281,21 +281,25 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
           "fill-audience-form",
           workspaceE2ETimeouts.browserAction,
           "fill the audience title and synthetic Dotypos tags condition",
-          async () => {
-            await audienceForm
+          async (page) => {
+            await audienceForm(page)
               .getByLabel("Title", { exact: true })
               .fill(plan.audienceTitle, {
                 timeout: workspaceE2ETimeouts.browserAction,
               });
-            await addDotyposTagCondition(page, audienceForm, plan.customerTag);
+            await addDotyposTagCondition(
+              page,
+              audienceForm(page),
+              plan.customerTag
+            );
           }
         );
         yield* browserStep(
           "submit-audience",
           workspaceE2ETimeouts.browserAction,
           "activate the create audience submit control once",
-          () =>
-            submitAction("Create audience", (submission) => {
+          (page) =>
+            submitAction(page, "Create audience", (submission) => {
               audienceSubmission = submission;
             })
         );
@@ -303,8 +307,12 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
           "wait-for-saved-audience",
           workspaceE2ETimeouts.uiTransition,
           "wait for the saved audience page",
-          () =>
-            waitForPath(savedAudiencePath, workspaceE2ETimeouts.uiTransition)
+          (page) =>
+            waitForPath(
+              page,
+              savedAudiencePath,
+              workspaceE2ETimeouts.uiTransition
+            )
         );
         yield* step({
           execute: Effect.gen(function* () {
@@ -333,14 +341,12 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
           "open-campaign-composer",
           workspaceE2ETimeouts.browserNavigation,
           "open the new campaign admin page",
-          () =>
+          (page) =>
             page.goto(`${input.origin}/en-US/admin/email-campaigns/new`, {
               timeout: workspaceE2ETimeouts.browserNavigation,
             })
         );
         if (input.reviewScreenshots) {
-          const actionButton = page.locator('button[form="campaign-composer"]');
-          const preview = page.locator("#main-content .grid > aside");
           const screenshotDirectory = resolve(
             dirname(fileURLToPath(import.meta.url)),
             "../../e2e-artifacts/account-review"
@@ -349,7 +355,7 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
             "open-campaign-composer-czech",
             workspaceE2ETimeouts.browserNavigation,
             "open the Czech campaign composer for review screenshots",
-            () =>
+            (page) =>
               page.goto(`${input.origin}/cs-CZ/admin/email-campaigns/new`, {
                 timeout: workspaceE2ETimeouts.browserNavigation,
               })
@@ -358,7 +364,11 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
             "verify-campaign-composer-render",
             workspaceE2ETimeouts.uiTransition,
             "wait for the Czech campaign action and preview before capturing",
-            async () => {
+            async (page) => {
+              const actionButton = page.locator(
+                'button[form="campaign-composer"]'
+              );
+              const preview = page.locator("#main-content .grid > aside");
               await expect(actionButton).toBeVisible();
               await expect(preview).toBeVisible();
             }
@@ -367,7 +377,7 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
             "capture-sticky-campaign-desktop",
             workspaceE2ETimeouts.browserNavigation,
             "capture the scrolled desktop campaign composer",
-            async () => {
+            async (page) => {
               await page.setViewportSize({ width: 1896, height: 1212 });
               await page.evaluate(() =>
                 window.scrollTo({
@@ -388,7 +398,7 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
             "capture-sticky-campaign-mobile",
             workspaceE2ETimeouts.browserNavigation,
             "capture the scrolled mobile campaign composer",
-            async () => {
+            async (page) => {
               await page.setViewportSize({ width: 390, height: 844 });
               await page.evaluate(() =>
                 window.scrollTo({
@@ -408,7 +418,7 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
             "restore-campaign-composer-english",
             workspaceE2ETimeouts.browserNavigation,
             "return to the English campaign composer",
-            async () => {
+            async (page) => {
               await page.setViewportSize({ width: 1440, height: 900 });
               await page.goto(
                 `${input.origin}/en-US/admin/email-campaigns/new`,
@@ -421,10 +431,10 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
           "wait-for-composer-hydration",
           workspaceE2ETimeouts.uiTransition,
           "wait for the hydrated campaign composer",
-          () =>
+          (page) =>
             waitForReactSubmitHandler(
               page,
-              composerForm,
+              composerForm(page),
               workspaceE2ETimeouts.uiTransition
             )
         );
@@ -432,17 +442,19 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
           "fill-campaign-form",
           workspaceE2ETimeouts.browserAction,
           "fill the campaign title, audience, and Czech content",
-          async () => {
-            await composerForm.getByLabel("Title").fill(plan.campaignTitle, {
-              timeout: workspaceE2ETimeouts.browserAction,
-            });
-            await composerForm
+          async (page) => {
+            await composerForm(page)
+              .getByLabel("Title")
+              .fill(plan.campaignTitle, {
+                timeout: workspaceE2ETimeouts.browserAction,
+              });
+            await composerForm(page)
               .getByRole("combobox", { exact: true, name: "Audience" })
               .click({ timeout: workspaceE2ETimeouts.browserAction });
             await page
               .getByRole("option", { exact: true, name: plan.audienceTitle })
               .click({ timeout: workspaceE2ETimeouts.browserAction });
-            await composerForm
+            await composerForm(page)
               .getByRole("tabpanel")
               .getByLabel("Subject", { exact: true })
               .fill(plan.subject, {
@@ -459,8 +471,8 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
           "submit-campaign-draft",
           workspaceE2ETimeouts.browserAction,
           "activate the create draft control once",
-          () =>
-            submitAction("Create draft", (submission) => {
+          (page) =>
+            submitAction(page, "Create draft", (submission) => {
               campaignSubmission = submission;
             })
         );
@@ -468,8 +480,12 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
           "wait-for-saved-draft",
           workspaceE2ETimeouts.uiTransition,
           "wait for the saved campaign draft page",
-          () =>
-            waitForPath(savedCampaignPath, workspaceE2ETimeouts.uiTransition)
+          (page) =>
+            waitForPath(
+              page,
+              savedCampaignPath,
+              workspaceE2ETimeouts.uiTransition
+            )
         );
         yield* step({
           execute: Effect.gen(function* () {
@@ -490,7 +506,7 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
           "open-recipient-preview",
           workspaceE2ETimeouts.uiTransition,
           "open the recipient preview",
-          async () => {
+          async (page) => {
             const link = page.getByRole("link", {
               exact: true,
               name: "Preview recipients",
@@ -498,6 +514,7 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
             await waitForReactClickHandler(page, link);
             await link.click({ timeout: workspaceE2ETimeouts.browserAction });
             await waitForPath(
+              page,
               recipientPreviewPath,
               workspaceE2ETimeouts.uiTransition
             );
@@ -507,7 +524,7 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
           "assert-tagged-recipient",
           workspaceE2ETimeouts.providerTransition,
           "assert the tagged synthetic customer is the only recipient",
-          async () => {
+          async (page) => {
             const recipients = page.getByRole("table", { name: "Recipients" });
             await expect(
               recipients.getByRole("cell", {
@@ -537,9 +554,7 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
         ).pipe(Effect.as(true)),
         campaignSubmission,
         closeBrowser: withinWorkspaceE2EDeadline(
-          sanitizedBrowserOperation("close the admin browser context", () =>
-            input.context.close()
-          ),
+          input.session.close(),
           `${emailCampaignPreviewCaseId}/close-browser`,
           workspaceE2ETimeouts.browserAction
         ),

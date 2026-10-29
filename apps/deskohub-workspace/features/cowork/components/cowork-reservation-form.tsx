@@ -7,7 +7,7 @@ import Image, { getImageProps } from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useId, useMemo, useRef } from "react";
 import { preload } from "react-dom";
-import { type Control, useForm, useWatch } from "react-hook-form";
+import { type Control, useForm } from "react-hook-form";
 import {
   type AdvertisedPrice,
   getAdvertisedProductItem,
@@ -56,7 +56,10 @@ import {
 } from "@/features/reservation/components/reservation-type-input";
 import { useAdvertisedPrices } from "@/features/reservation/components/use-advertised-price";
 import { useReservationAvailability } from "@/features/reservation/components/use-reservation-availability";
-import { useReservationSelectionUrl } from "@/features/reservation/components/use-reservation-selection-url";
+import {
+  useReservationSelectionUrl,
+  useWatchedSelection,
+} from "@/features/reservation/components/use-reservation-selection-url";
 import {
   getCoworkCoffeeAdvertisedPriceRequest,
   getCoworkFormAdvertisedPriceRequests,
@@ -67,13 +70,10 @@ import {
   coworkReservationSchema,
   getAllowedMonitorOptionsForCoworkTier,
   getCoworkCurrentReservationOrder,
+  getCoworkReservationDefaultValues,
   type NormalizedCoworkReservationOrder,
 } from "@/features/reservation/cowork-reservation";
-import {
-  getCoworkReservationSelectionSearchParams,
-  getReservationDefaultValuesFromPayState,
-  getReservationDefaultValuesFromSearchParams,
-} from "@/features/reservation/cowork-reservation-checkout-query";
+import { coworkSelectionLink } from "@/features/reservation/cowork-selection-link";
 import { getReservationAvailabilityUnavailableMessage } from "@/features/reservation/reservation.i18n";
 import {
   formatReservationInputDate,
@@ -165,27 +165,22 @@ export function CoworkReservationForm({
   const defaultValues =
     initialValues ??
     (initialReservation
-      ? getReservationDefaultValuesFromPayState(initialReservation)
-      : getReservationDefaultValuesFromSearchParams(searchParams));
+      ? getCoworkReservationDefaultValues(initialReservation)
+      : coworkSelectionLink.read(searchParams));
   const form = useForm<CoworkReservationInput, unknown, CoworkReservationData>({
     resolver: effectSchemaResolver(coworkReservationSchema),
     defaultValues,
     mode: "onBlur",
     reValidateMode: "onChange",
   });
-  const [selectedTier, selectedDate, selectedCoffee, selectedMonitorOption] =
-    useWatch({
-      control: form.control,
-      name: ["entryTier", "date", "coffee", "monitorOption"],
-    });
-  useReservationSelectionUrl(
-    getCoworkReservationSelectionSearchParams({
-      entryTier: selectedTier,
-      date: selectedDate,
-      coffee: selectedCoffee,
-      monitorOption: selectedMonitorOption,
-    })
-  );
+  const selection = useWatchedSelection(coworkSelectionLink, form.control);
+  const {
+    entryTier: selectedTier,
+    date: selectedDate,
+    coffee: selectedCoffee,
+    monitorOption: selectedMonitorOption,
+  } = selection;
+  useReservationSelectionUrl(coworkSelectionLink, selection);
   const showCoffeeAddon = getCoworkTierCoffeeAddon(selectedTier) === "optional";
   const showWorkstationAddon =
     getCoworkTierWorkstationAddon(selectedTier) === "optional";
@@ -578,12 +573,9 @@ export function CoworkReservationForm({
         locale
       )}
       selection={{
-        kind: "cowork",
-        fromSearchParams: (searchParams) => {
-          const { entryTier, date, coffee, monitorOption } =
-            getReservationDefaultValuesFromSearchParams(searchParams);
-          return { entryTier, date, coffee, monitorOption };
-        },
+        kind: coworkSelectionLink.kind,
+        fromSearchParams: (searchParams) =>
+          coworkSelectionLink.readSelection(searchParams),
       }}
     >
       <FormField

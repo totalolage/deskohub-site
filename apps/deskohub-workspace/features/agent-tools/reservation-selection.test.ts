@@ -2,11 +2,8 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 import { getShareableReservationUrl } from "@/features/reservation/backend/shareable-reservation-url";
-import {
-  getMeetingRoomReservationDefaultValuesFromSearchParams,
-  getMeetingRoomReservationSelectionSearchParams,
-} from "@/features/reservation/meeting-room-reservation-checkout-query";
 import type { MeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
+import { meetingRoomSelectionLink } from "@/features/reservation/meeting-room-selection-link";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { resolveMeetingRoomSelection } from "./reservation-selection";
 
@@ -47,18 +44,13 @@ const openReservationLink = (
   at = now
 ) =>
   Effect.runPromise(
-    getShareableReservationUrl(
-      "meeting-room",
-      getMeetingRoomReservationSelectionSearchParams({
-        duration: selection.durationKey,
-        startDateTime: selection.startDateTime,
-      })
-    )
+    getShareableReservationUrl({
+      kind: "meeting-room",
+      duration: selection.durationKey,
+      startDateTime: selection.startDateTime,
+    })
   ).then((url) =>
-    getMeetingRoomReservationDefaultValuesFromSearchParams(
-      new URL(url).searchParams,
-      at
-    )
+    meetingRoomSelectionLink.read(new URL(url).searchParams, { now: at })
   );
 
 describe("resolveMeetingRoomSelection", () => {

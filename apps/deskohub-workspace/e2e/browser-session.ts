@@ -1,16 +1,21 @@
 import { AssertionError } from "node:assert";
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import type {
   Browser,
   BrowserContext,
   ConsoleMessage,
+  Cookie,
   Page,
   Request,
   Response,
 } from "@playwright/test";
-import { Deferred, Effect, type Scope } from "effect";
+import { Cause, Deferred, Effect, Exit, FiberSet, type Scope } from "effect";
+import {
+  sanitizeArtifactText,
+  sanitizeHarArtifact,
+} from "./artifact-sanitization";
 import {
   formatNexiBuildFailureLine,
   isNexiBuildApiUrl,
@@ -24,7 +29,8 @@ import {
   workspaceE2ETimeoutError,
 } from "./errors";
 import { withinWorkspaceE2EDeadline } from "./polling";
-import { redact, redactJsonValue } from "./redaction";
+import { primePreviewAccess } from "./preview-access";
+import { redact } from "./redaction";
 import { workspaceE2ETimeouts } from "./timeouts";
 
 /** What the session captured from every page of its context, redacted. */
@@ -41,6 +47,24 @@ type E2EBrowserSessionCookie = {
   readonly value: string;
 };
 
+/**
+ * One cookie of the context for an origin: its attributes and whether it
+ * holds an expected value, never the value itself.
+ */
+export type E2EBrowserCookieDescription =
+  | { readonly present: false }
+  | {
+      readonly httpOnly: boolean;
+      /** Whole days until it expires; `null` for a session cookie. */
+      readonly lifetimeDays: number | null;
+      /** Whether it holds the expected value; `null` when none was given. */
+      readonly matches: boolean | null;
+      readonly path: string;
+      readonly present: true;
+      readonly sameSite: "Lax" | "None" | "Strict";
+      readonly secure: boolean;
+    };
+
 type E2EBrowserDeadline = {
   /**
    * Bounds the whole callback. Playwright actions keep their own `timeout`
@@ -56,7 +80,7 @@ type E2EBrowserDeadline = {
  * Drive it with native Playwright through `use` and `evaluate`. The session
  * owns what Playwright does not: the context lifecycle, the HAR (closed,
  * sanitized, and only then handed out), capped console, error, and network
- * capture across every page, preview bypass priming, redaction, and failure
+ * capture across every page, preview access priming, redaction, and failure
  * classification.
  *
  * `use` drives the active page. A page the app opens becomes active; closing
@@ -75,6 +99,20 @@ type E2EBrowserDeadline = {
  */
 export type E2EBrowserSession = {
   readonly activate: (page: Page) => Effect.Effect<void, WorkspaceE2EError>;
+  /**
+   * Saves what the browser saw into `directory` for failure triage, then
+   * closes the session: `network-requests.txt`, `console.txt` and
+   * `errors.txt` from the capture, the active page's
+   * `snapshot-interactive.txt`, and, when the session records a HAR,
+   * `network.har`, which the close exports. Every artifact is sanitized. A
+   * snapshot that can't be read is written empty and a failed close leaves no
+   * HAR; only a failed write fails the capture. The snapshot read and the
+   * close are not bounded here beyond Playwright's own timeouts, so the
+   * caller bounds the whole capture.
+   */
+  readonly captureFailureArtifacts: (
+    directory: string
+  ) => Effect.Effect<void, WorkspaceE2EError>;
   readonly clearDiagnostics: (
     kind: keyof E2EBrowserDiagnostics
   ) => Effect.Effect<void>;
@@ -84,11 +122,21 @@ export type E2EBrowserSession = {
    * when the export fails. The first call decides the export and cannot be
    * interrupted; later calls wait for it and share its outcome, and fail when
    * they ask for a HAR the first call did not write. The Scope finalizer
-   * closes the context and deletes the raw file too.
+   * closes the context and deletes the raw file too, waiting for the close
+   * at most one browser action.
    */
   readonly close: (options?: {
     readonly harPath?: string;
   }) => Effect.Effect<void, WorkspaceE2EError>;
+  /**
+   * Describes the context's cookie `name` for the URL's origin, comparing it
+   * with `value` when one is given. The value never leaves the session.
+   */
+  readonly describeCookie: (query: {
+    readonly name: string;
+    readonly url: string;
+    readonly value?: string;
+  }) => Effect.Effect<E2EBrowserCookieDescription, WorkspaceE2EError>;
   readonly diagnostics: Effect.Effect<E2EBrowserDiagnostics>;
   /**
    * Evaluates `fn` in the active page. Playwright serializes `fn`, so it must
@@ -101,13 +149,19 @@ export type E2EBrowserSession = {
     options?: E2EBrowserDeadline
   ) => Effect.Effect<A, WorkspaceE2EError>;
   /**
-   * Probes the origin's favicon with the caller's request headers, intact,
-   * once per origin, so Vercel can answer with its bypass cookie. A rejected
-   * probe fails and leaves the origin unprimed.
+   * Lets the context through Vercel protection on the URL's origin with
+   * `primePreviewAccess` (`preview-access.ts`): the secret is exchanged
+   * outside Playwright and only Vercel's cookie enters the context. An origin
+   * is primed once the probe is accepted, with or without a cookie, or when it
+   * is not a Workspace deployment origin and so never gets the secret. Each
+   * origin is probed once; concurrent calls share the probe, bounded by the
+   * first call's `timeoutMs`, and interrupting a caller stops only its wait.
+   * A failed probe fails every waiter and leaves the origin unprimed, so the
+   * next call probes again. Without a secret it does nothing.
    */
   readonly primePreviewAccess: (
     url: string,
-    headers: Readonly<Record<string, string>>,
+    bypassSecret: string | undefined,
     options: { readonly timeoutMs: number }
   ) => Effect.Effect<void, WorkspaceE2EError>;
   /** Adds an HTTP-only, Secure, Lax cookie bound to one HTTPS origin. */
@@ -129,14 +183,26 @@ type SessionState = {
     readonly errors: string[];
     readonly requests: string[];
   };
-  readonly primedOrigins: Set<string>;
+  /** Each origin's probe; a failed probe is removed, a settled one kept. */
+  readonly previewAccess: Map<
+    string,
+    Deferred.Deferred<void, WorkspaceE2EError>
+  >;
   readonly registeredPages: WeakSet<Page>;
 };
 
 const maximumDiagnosticEntries = 500;
+const snapshotTimeoutMs = 60_000;
 
 const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
+  /** Resolves relative `page.goto` URLs, as Playwright's `baseURL` does. */
+  readonly baseURL?: string;
   readonly browser: Browser;
+  /**
+   * Exchanges the preview bypass secret; the global `fetch` by default.
+   * Tests point a Workspace deployment origin at a local server with it.
+   */
+  readonly fetch?: typeof fetch;
   /** Names the raw HAR file; any characters are safe. */
   readonly id: string;
   /**
@@ -156,65 +222,16 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
         );
   // Registered first so it runs last: Playwright writes the HAR on close.
   if (rawHarPath) yield* Effect.addFinalizer(() => removeFile(rawHarPath));
-
-  let closing: Promise<void> | undefined;
-  const closeContextOf = (context: BrowserContext) => {
-    closing ??= context.close({ reason: "Workspace E2E case complete" });
-    return closing;
-  };
-  // Acquired uninterruptibly, so a context created while the caller was
-  // interrupted still gets its release.
-  const context = yield* Effect.acquireRelease(
-    Effect.tryPromise({
-      catch: (cause) => toSessionFailure("open the browser context", cause),
-      try: () =>
-        options.browser.newContext({
-          recordHar: rawHarPath
-            ? { content: "embed", mode: "full", path: rawHarPath }
-            : undefined,
-          viewport: { height: 900, width: 1440 },
-        }),
-    }),
-    (context) =>
-      Effect.tryPromise(() => closeContextOf(context)).pipe(Effect.ignore)
-  );
-  const closeContext = () => closeContextOf(context);
-
-  const initialPage = yield* Effect.tryPromise({
-    catch: (cause) => toSessionFailure("open the browser page", cause),
-    try: () => context.newPage(),
-  });
-  const state: SessionState = {
-    active: initialPage,
-    onActivate: options.onActivate,
-    diagnostics: { console: [], errors: [], requests: [] },
-    primedOrigins: new Set(),
-    registeredPages: new WeakSet(),
-  };
-  context.on("page", (page) => registerPage(state, context, page));
-  registerPage(state, context, initialPage);
-
-  const isClosing = () => closing !== undefined;
-
-  const use = <A>(
-    label: string,
-    drive: (page: Page) => Promise<A>,
-    deadline: E2EBrowserDeadline = {}
-  ) => {
-    const attempt = Effect.tryPromise({
-      catch: (cause) => toSessionFailure(label, cause, isClosing()),
-      try: () => drive(state.active),
-    });
-    return deadline.timeoutMs === undefined
-      ? attempt
-      : withinWorkspaceE2EDeadline(attempt, label, deadline.timeoutMs);
-  };
+  // Preview access probes outlive the caller that started them; closing the
+  // session interrupts them.
+  const probes = yield* FiberSet.make<void, WorkspaceE2EError>();
 
   const closeAndExport = Effect.fn("E2EBrowserSession.close")(
-    function* (harPath: string | undefined) {
+    function* (context: BrowserContext, harPath: string | undefined) {
+      yield* FiberSet.clear(probes);
       yield* Effect.tryPromise({
         catch: (cause) => toSessionFailure("close the browser context", cause),
-        try: closeContext,
+        try: () => context.close({ reason: "Workspace E2E case complete" }),
       });
       if (!(rawHarPath && harPath)) return;
       const har = yield* Effect.tryPromise({
@@ -223,7 +240,7 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
       });
       yield* Effect.tryPromise({
         catch: (cause) => toSessionFailure("write the browser HAR", cause),
-        try: () => writeFile(harPath, sanitizeHarArtifact(har)),
+        try: () => writeFile(harPath, `${sanitizeHarArtifact(har)}\n`),
       });
     },
     (effect) =>
@@ -231,24 +248,26 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
   );
 
   // The first close runs detached, so an interrupted or timed-out caller
-  // stops only its own wait; every caller, the Scope finalizer included,
-  // shares its outcome.
+  // stops only its own wait; every caller, the Scope included, shares its
+  // outcome.
   const closed = yield* Deferred.make<void, WorkspaceE2EError>();
   let closeRequest: { readonly harPath?: string } | undefined;
-  const startClose = (harPath: string | undefined) =>
+  // Closing starts with the first close request, before the context closes.
+  const isClosing = () => closeRequest !== undefined;
+  const startClose = (context: BrowserContext, harPath: string | undefined) =>
     Effect.uninterruptible(
       Effect.suspend(() => {
         if (closeRequest) return Effect.succeed(closeRequest.harPath);
         closeRequest = { harPath };
         return Effect.forkDetach(
-          closeAndExport(harPath).pipe(
+          closeAndExport(context, harPath).pipe(
             Effect.onExit((exit) => Deferred.done(closed, exit))
           )
         ).pipe(Effect.as(harPath));
       })
     );
-  const close = ({ harPath }: { readonly harPath?: string } = {}) =>
-    startClose(harPath).pipe(
+  const closeSession = (context: BrowserContext, harPath?: string) =>
+    startClose(context, harPath).pipe(
       Effect.flatMap((exportedTo) =>
         Deferred.await(closed).pipe(
           Effect.andThen(
@@ -264,9 +283,105 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
         )
       )
     );
-  yield* Effect.addFinalizer(() => close().pipe(Effect.ignore));
+
+  // Acquired uninterruptibly, so a context created while the caller was
+  // interrupted still gets its release. The release, the Scope's only wait
+  // on the browser, waits for the shared close at most one browser action:
+  // a stalled `context.close()` must not hold up the Scope, and the detached
+  // close still finishes and removes the raw HAR.
+  const context = yield* Effect.acquireRelease(
+    Effect.tryPromise({
+      catch: (cause) => toSessionFailure("open the browser context", cause),
+      try: () =>
+        options.browser.newContext({
+          baseURL: options.baseURL,
+          recordHar: rawHarPath
+            ? { content: "embed", mode: "full", path: rawHarPath }
+            : undefined,
+          viewport: { height: 900, width: 1440 },
+        }),
+    }),
+    (context) =>
+      closeSession(context).pipe(
+        Effect.timeout(`${workspaceE2ETimeouts.browserAction} millis`),
+        Effect.ignore
+      )
+  );
+
+  const initialPage = yield* Effect.tryPromise({
+    catch: (cause) => toSessionFailure("open the browser page", cause),
+    try: () => context.newPage(),
+  });
+  const state: SessionState = {
+    active: initialPage,
+    onActivate: options.onActivate,
+    diagnostics: { console: [], errors: [], requests: [] },
+    previewAccess: new Map(),
+    registeredPages: new WeakSet(),
+  };
+  context.on("page", (page) => registerPage(state, context, page));
+  registerPage(state, context, initialPage);
+
+  const use = <A>(
+    label: string,
+    drive: (page: Page) => Promise<A>,
+    deadline: E2EBrowserDeadline = {}
+  ) => {
+    const attempt = Effect.tryPromise({
+      catch: (cause) => toSessionFailure(label, cause, isClosing()),
+      try: () => drive(state.active),
+    });
+    return deadline.timeoutMs === undefined
+      ? attempt
+      : withinWorkspaceE2EDeadline(attempt, label, deadline.timeoutMs);
+  };
+  const close = ({ harPath }: { readonly harPath?: string } = {}) =>
+    closeSession(context, harPath);
+  const diagnostics = Effect.sync(() => ({
+    console: state.diagnostics.console.map(redact),
+    errors: state.diagnostics.errors.map(redact),
+    requests: state.diagnostics.requests.map(redact),
+  }));
 
   return {
+    captureFailureArtifacts: Effect.fn(
+      "E2EBrowserSession.captureFailureArtifacts"
+    )(function* (directory: string) {
+      const captured = yield* diagnostics;
+      yield* writeArtifactText(
+        directory,
+        "network-requests.txt",
+        asCapturedLog(captured.requests.join("\n"))
+      );
+      yield* writeArtifactText(
+        directory,
+        "console.txt",
+        asCapturedLog(captured.console.join("\n"))
+      );
+      yield* writeArtifactText(
+        directory,
+        "errors.txt",
+        asCapturedLog(captured.errors.join("\n\n"))
+      );
+      const snapshot = yield* use(
+        "read interactive browser snapshot",
+        async (page) => {
+          const body = page.locator("body");
+          await body.waitFor({
+            state: "attached",
+            timeout: snapshotTimeoutMs,
+          });
+          return body.ariaSnapshot({
+            mode: "ai",
+            timeout: snapshotTimeoutMs,
+          });
+        }
+      ).pipe(Effect.orElseSucceed(() => ""));
+      yield* writeArtifactText(directory, "snapshot-interactive.txt", snapshot);
+      yield* close(
+        rawHarPath ? { harPath: resolve(directory, "network.har") } : {}
+      ).pipe(Effect.ignore);
+    }),
     activate: (page) =>
       Effect.suspend(() => {
         if (page.isClosed())
@@ -287,11 +402,29 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
         state.diagnostics[kind].length = 0;
       }),
     close,
-    diagnostics: Effect.sync(() => ({
-      console: state.diagnostics.console.map(redact),
-      errors: state.diagnostics.errors.map(redact),
-      requests: state.diagnostics.requests.map(redact),
-    })),
+    describeCookie: ({ name, url, value }) =>
+      Effect.suspend(() => {
+        const origin = URL.parse(url)?.origin;
+        if (!origin || origin === "null")
+          return Effect.fail(
+            workspaceE2EError("Cookie queries need an absolute URL", {
+              operation: readCookieOperation,
+            })
+          );
+        return Effect.tryPromise({
+          catch: (cause) =>
+            toSessionFailure(readCookieOperation, cause, isClosing()),
+          try: () => context.cookies(origin),
+        }).pipe(
+          Effect.map((cookies) =>
+            describeCookie(
+              cookies.find((cookie) => cookie.name === name),
+              value
+            )
+          )
+        );
+      }),
+    diagnostics,
     evaluate: <A, Arg>(
       label: string,
       fn: (arg: Arg) => A | Promise<A>,
@@ -305,7 +438,7 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
         (page) => page.evaluate(fn as (arg: unknown) => A | Promise<A>, arg),
         deadline
       ),
-    primePreviewAccess: (url, headers, { timeoutMs }) =>
+    primePreviewAccess: (url, bypassSecret, { timeoutMs }) =>
       Effect.suspend(() => {
         const origin = URL.parse(url)?.origin;
         if (!origin)
@@ -314,56 +447,51 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
               operation: "prime preview access",
             })
           );
-        if (state.primedOrigins.has(origin)) return Effect.void;
-        return Effect.tryPromise({
-          catch: (cause) =>
-            toSessionFailure("prime preview access", cause, isClosing()),
-          // The wait stays interruptible; a probe answered after an
-          // interruption still has its response disposed.
-          try: (signal) => {
-            const probe = context.request.get(
-              new URL("/favicon.svg", origin).toString(),
-              {
-                headers,
-                maxRedirects: 3,
-                timeout: timeoutMs,
-              }
-            );
-            signal.addEventListener(
-              "abort",
-              () => {
-                probe
-                  .then((response) => response.dispose())
-                  .catch(() => undefined);
-              },
-              { once: true }
-            );
-            return probe;
-          },
-        }).pipe(
-          Effect.flatMap((response) =>
-            (response.ok()
-              ? Effect.sync(() => {
-                  state.primedOrigins.add(origin);
-                })
-              : Effect.fail(
-                  workspaceE2EError(
-                    `Preview bypass probe failed with ${response.status()}`,
-                    { operation: "prime preview access" }
-                  )
-                )
-            ).pipe(
-              Effect.ensuring(
-                Effect.tryPromise(() => response.dispose()).pipe(
-                  Effect.timeout(
-                    `${workspaceE2ETimeouts.browserResponseDisposal} millis`
-                  ),
-                  Effect.ignore
-                )
-              )
+        if (!bypassSecret) return Effect.void;
+        if (isClosing())
+          return Effect.fail(
+            toSessionFailure("prime preview access", undefined, true)
+          );
+        const probe = (primed: Deferred.Deferred<void, WorkspaceE2EError>) =>
+          Effect.tryPromise({
+            catch: (cause) =>
+              toSessionFailure("prime preview access", cause, isClosing()),
+            try: (signal) =>
+              primePreviewAccess(context, origin, bypassSecret, {
+                fetch: options.fetch,
+                signal,
+                timeoutMs,
+              }),
+          }).pipe(
+            Effect.interruptible,
+            Effect.onExit((exit) =>
+              Effect.suspend(() => {
+                if (Exit.isSuccess(exit)) return Deferred.done(primed, exit);
+                state.previewAccess.delete(origin);
+                // Only the session's close interrupts a probe; its waiters
+                // fail as cut off by the close rather than as interrupted.
+                return Cause.hasInterruptsOnly(exit.cause)
+                  ? Deferred.fail(
+                      primed,
+                      toSessionFailure("prime preview access", undefined, true)
+                    )
+                  : Deferred.done(primed, exit);
+              })
             )
-          )
+          );
+        // Registered and forked together, so no caller can find a probe that
+        // never started. The probe belongs to the session, not to the first
+        // caller, so only the session's close ends it early.
+        const started = Effect.uninterruptible(
+          Effect.suspend(() => {
+            const existing = state.previewAccess.get(origin);
+            if (existing) return Effect.succeed(existing);
+            const primed = Deferred.makeUnsafe<void, WorkspaceE2EError>();
+            state.previewAccess.set(origin, primed);
+            return FiberSet.run(probes, probe(primed)).pipe(Effect.as(primed));
+          })
         );
+        return Effect.flatMap(started, Deferred.await);
       }),
     setSessionCookie: (cookie) =>
       Effect.suspend(() => {
@@ -403,8 +531,39 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
 
 export const E2EBrowserSession = { open };
 
+const readCookieOperation = "read browser cookie";
+
+const describeCookie = (
+  cookie: Cookie | undefined,
+  expectedValue: string | undefined
+): E2EBrowserCookieDescription =>
+  cookie === undefined
+    ? { present: false }
+    : {
+        httpOnly: cookie.httpOnly,
+        lifetimeDays:
+          cookie.expires < 0
+            ? null
+            : Math.round((cookie.expires - Date.now() / 1000) / 86_400),
+        matches:
+          expectedValue === undefined ? null : cookie.value === expectedValue,
+        path: cookie.path,
+        present: true,
+        sameSite: cookie.sameSite,
+        secure: cookie.secure,
+      };
+
+// The capture logs keep the layout the argv runner gave them, which failure
+// triage reads: an exit code, then the log when it has entries.
+const asCapturedLog = (text: string) =>
+  text ? `exitCode: 0\n\nstdout:\n${text}` : "exitCode: 0";
+
+// Bounded like the context release, so a stuck filesystem can't hold a Scope.
 const removeFile = (path: string) =>
-  Effect.tryPromise(() => rm(path, { force: true })).pipe(Effect.ignore);
+  Effect.tryPromise(() => rm(path, { force: true })).pipe(
+    Effect.timeout(`${workspaceE2ETimeouts.browserAction} millis`),
+    Effect.ignore
+  );
 
 const registerPage = (
   state: SessionState,
@@ -521,109 +680,20 @@ const toSessionFailure = (
 };
 
 /**
- * Redacts registered secrets, query values, the bypass header, and long
- * token-like runs from text bound for a failure artifact.
+ * Writes one sanitized failure artifact, creating its directory when needed.
  */
-export const sanitizeArtifactText = (text: string) =>
-  sanitizeArtifactUrlText(redact(text))
-    .replace(/([?&][^=&#\s]+)=[^&\s",}]+/g, "$1=[redacted]")
-    .replace(/((?:%3F|%26)[^=%&\s]+)(?:%3D|=)[^%&\s",}]+/gi, "$1%3D[redacted]")
-    .replace(/(x-vercel-protection-bypass[=":\s]+)[^&\s",}]+/gi, "$1[redacted]")
-    .replace(/[A-Za-z0-9_-]{96,}/g, "[token]");
-
-const sanitizeArtifactUrlText = (text: string) =>
-  text.replace(/https?:\/\/[^\s"'<>]+/g, (value) => {
-    try {
-      const url = new URL(value);
-      for (const key of url.searchParams.keys())
-        url.searchParams.set(key, "[redacted]");
-      return url.toString();
-    } catch {
-      return value;
-    }
+export const writeArtifactText = (
+  directory: string,
+  fileName: string,
+  text: string
+): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.tryPromise({
+    catch: (cause) => toSessionFailure(`write ${fileName} artifact`, cause),
+    try: async () => {
+      await mkdir(directory, { recursive: true });
+      await writeFile(
+        resolve(directory, fileName),
+        `${sanitizeArtifactText(text.trim())}\n`
+      );
+    },
   });
-
-// Sanitizes string values only, so short redacted values (such as test card
-// fragments) cannot rewrite timings and sizes into invalid JSON.
-export const sanitizeHarArtifact = (text: string) => {
-  try {
-    const har = JSON.parse(text) as Record<string, unknown>;
-    const log = asRecord(har.log);
-    const entries = Array.isArray(log?.entries) ? log.entries : [];
-
-    for (const entry of entries) {
-      const record = asRecord(entry);
-      if (!record) continue;
-      const request = asRecord(record.request);
-      const requestUrl = typeof request?.url === "string" ? request.url : "";
-      sanitizeHarRequest(request);
-      sanitizeHarResponse(asRecord(record.response), requestUrl);
-    }
-
-    return JSON.stringify(redactJsonValue(har, sanitizeArtifactText), null, 2);
-  } catch {
-    return sanitizeArtifactText(text);
-  }
-};
-
-const sanitizeHarRequest = (request: Record<string, unknown> | undefined) => {
-  if (!request) return;
-  if (typeof request.url === "string")
-    request.url = sanitizeHarUrl(request.url);
-  request.headers = sanitizeHarNamedValues(request.headers);
-  request.cookies = [];
-  request.queryString = sanitizeHarNamedValues(request.queryString);
-
-  const postData = asRecord(request.postData);
-  if (!postData) return;
-  postData.params = [];
-  if (typeof postData.text === "string") postData.text = "[redacted]";
-};
-
-const sanitizeHarResponse = (
-  response: Record<string, unknown> | undefined,
-  requestUrl: string
-) => {
-  if (!response) return;
-  response.headers = sanitizeHarNamedValues(response.headers);
-  response.cookies = [];
-
-  const content = asRecord(response.content);
-  if (!content || typeof content.text !== "string") return;
-  const summary =
-    typeof response.status === "number" &&
-    response.status >= 400 &&
-    isNexiBuildUrl(requestUrl)
-      ? summarizeNexiBuildFailureBody(content.text)
-      : undefined;
-  content.text = summary ? JSON.stringify(summary) : "[redacted]";
-};
-
-const isNexiBuildUrl = (value: string) => {
-  const url = URL.parse(value);
-  return url ? isNexiBuildApiUrl(url) : false;
-};
-
-const sanitizeHarNamedValues = (value: unknown) =>
-  Array.isArray(value)
-    ? value.map((item) => {
-        const record = asRecord(item);
-        return record ? { ...record, value: "[redacted]" } : item;
-      })
-    : value;
-
-const sanitizeHarUrl = (value: string) => {
-  try {
-    const url = new URL(value);
-    for (const key of url.searchParams.keys())
-      url.searchParams.set(key, "[redacted]");
-    return sanitizeArtifactText(url.toString());
-  } catch {
-    return sanitizeArtifactText(value);
-  }
-};
-
-const asRecord = (value: unknown) =>
-  value && typeof value === "object"
-    ? (value as Record<string, unknown>)
-    : undefined;

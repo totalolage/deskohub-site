@@ -16,6 +16,7 @@ import {
   WorkspaceReservationRepository,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { CoworkReservationDetails } from "@/features/reservation/cowork-reservation";
+import { getMeetingRoomEarlySetupField } from "@/features/reservation/meeting-room-early-setup";
 import type { MeetingRoomReservationDetails } from "@/features/reservation/meeting-room-reservation";
 import type { OfficeReservationDetails } from "@/features/reservation/office-reservation";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
@@ -25,7 +26,7 @@ import {
   plainDateStringSchema,
   temporalInstantToDate,
 } from "@/shared/utils/temporal";
-import { WorkspacePaidFulfillmentService } from "../fulfillment/paid-fulfillment.service";
+import { ReservationFulfillment } from "../fulfillment/reservation-fulfillment.service";
 import {
   isReusableHold,
   LatePaymentRecoveryRepository,
@@ -118,6 +119,7 @@ const reconstructReservation = (
     };
   }
   if (isMeetingRoomSnapshot(snapshot)) {
+    if (row.reservationDetails.kind !== "meeting-room") return null;
     const item = snapshot.quote.items[0];
     const reservation: MeetingRoomReservationDetails = {
       kind: "meeting-room",
@@ -130,6 +132,7 @@ const reconstructReservation = (
       ),
       startsAt: snapshot.reservation.startsAt,
       endsAt: snapshot.reservation.endsAt,
+      ...getMeetingRoomEarlySetupField(row.reservationDetails),
     };
     return {
       reservation,
@@ -216,7 +219,7 @@ export class LatePaymentRecoveryService extends Context.Service<
       const availability = yield* WorkspaceAvailabilityService;
       const dotypos = yield* DotyposService;
       const tableAssignments = yield* WorkspaceTableAssignmentService;
-      const fulfillment = yield* WorkspacePaidFulfillmentService;
+      const fulfillment = yield* ReservationFulfillment;
 
       const settleRefund = (input: {
         readonly paymentAttemptId: PaymentAttemptId;
@@ -496,7 +499,7 @@ export class LatePaymentRecoveryService extends Context.Service<
         if (settled?.state === "refund_required") {
           return "refund_required" as const;
         }
-        yield* fulfillment.fulfillPaidOrder({ orderId: reservation.id });
+        yield* fulfillment.run(reservation.id);
         return "recovered" as const;
       });
 
@@ -507,9 +510,7 @@ export class LatePaymentRecoveryService extends Context.Service<
           );
           if (!current) return "ignored" as const;
           if (current.state === "recovered") {
-            yield* fulfillment.fulfillPaidOrder({
-              orderId: current.workspaceReservationId,
-            });
+            yield* fulfillment.run(current.workspaceReservationId);
             return "recovered" as const;
           }
           if (
@@ -614,9 +615,7 @@ export class LatePaymentRecoveryService extends Context.Service<
                   })
                 );
               if (reuse === "reused") {
-                yield* fulfillment.fulfillPaidOrder({
-                  orderId: reservation.id,
-                });
+                yield* fulfillment.run(reservation.id);
                 return "recovered" as const;
               }
               if (reuse === "discount_unavailable") {

@@ -4,7 +4,10 @@ import type {
   DotyposCustomerId,
   DotyposReservationId,
 } from "@deskohub/dotypos";
-import type { ReservationProductFilterType } from "@deskohub/workspace-admin-api";
+import type {
+  AdministrationReservationStatusFilter,
+  ReservationProductFilterType,
+} from "@deskohub/workspace-admin-api";
 import {
   and,
   count,
@@ -36,13 +39,14 @@ import {
   workspaceReservations,
 } from "@/db/schema";
 import { authUser } from "@/db/schema/auth";
-import type { AdministrationReservationStatusFilter } from "@/features/administration/administration.service";
 import {
   bookedReservationConditionAt,
   type ReservationStatusRead,
   reservationStatusCondition,
   undatedStatusChangeAt,
 } from "@/features/administration/reservation-status-condition";
+import { loadEarlySetupDetails } from "@/features/reservation/backend/early-setup-details";
+import type { StoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
 import { temporalInstantToDate } from "@/shared/utils/temporal";
 import type { AudienceDateFacts } from "../audience-filter";
 import type { CampaignPurpose } from "../body/campaign-content";
@@ -247,6 +251,17 @@ export interface ICampaignCandidateRepository {
     >
   ) => Effect.Effect<
     readonly CampaignBookedReservation[],
+    EffectDrizzleQueryError
+  >;
+  /**
+   * The stored details of the early-setup meeting rooms among these Dotypos
+   * reservations, by Dotypos ID: the only details that move a visit's start
+   * off the start Dotypos holds.
+   */
+  readonly earlySetupDetails: (
+    dotyposReservationIds: readonly DotyposReservationId[]
+  ) => Effect.Effect<
+    ReadonlyMap<DotyposReservationId, StoredWorkspaceReservationDetails>,
     EffectDrizzleQueryError
   >;
   /**
@@ -491,6 +506,8 @@ export class CampaignCandidateRepository extends Context.Service<
               : [{ dotyposReservationId, dotyposCustomerId }]
           );
         }),
+        earlySetupDetails: (dotyposReservationIds) =>
+          loadEarlySetupDetails(db, dotyposReservationIds),
         undatedStatusChanges: Effect.fn(
           "CampaignCandidateRepository.undatedStatusChanges"
         )(function* ({ statuses, customers }) {

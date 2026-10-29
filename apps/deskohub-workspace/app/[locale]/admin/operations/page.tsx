@@ -53,6 +53,7 @@ async function OperationsAdministration({
             <OperationCount locale={locale} result={result} />
           </Suspense>
         }
+        filterLayout="inline"
         filters={
           <Suspense fallback={<AdministrationFiltersLoading fields={4} />}>
             <OperationFiltersContent criteria={criteria} />
@@ -99,7 +100,7 @@ async function OperationFiltersContent({
 }: {
   readonly criteria: Promise<OperationCriteria>;
 }) {
-  return <OperationsAdministrationFilterForm {...(await criteria)} />;
+  return <OperationsAdministrationFilterForm query={await criteria} />;
 }
 
 async function OperationResultsContent({

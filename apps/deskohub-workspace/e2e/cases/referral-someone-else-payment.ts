@@ -54,7 +54,12 @@ import {
   waitForNoRememberedReferralCode,
   waitForRememberedReferralCode,
 } from "../referrals/referral-cookie";
-import { addRedaction, assert, type Runner } from "../runtime";
+import {
+  addRedaction,
+  assert,
+  browserSessionFor,
+  type Runner,
+} from "../runtime";
 import type {
   CheckoutData,
   CheckoutFlowState,
@@ -167,7 +172,7 @@ export const planReferralSomeoneElsePaymentCase = ({
  * booker opens a shared referral link and books for the referred customer.
  */
 export const bindReferralSomeoneElsePaymentCase: WorkspaceE2ECaseBinder =
-  async ({ environment, run, runId, testCase }) => {
+  async ({ environment, runId, testCase }) => {
     if (testCase.id !== referralSomeoneElsePaymentCaseId) return testCase;
     const [state] = testCase.checkoutStates;
     if (!state || testCase.checkoutStates.length !== 1) {
@@ -182,7 +187,6 @@ export const bindReferralSomeoneElsePaymentCase: WorkspaceE2ECaseBinder =
       datasourceConfig,
       displayName: (label) => recipientDisplayNames[label],
       journalOwnerId: referralSomeoneElsePaymentCaseId,
-      run,
       runId,
       secret: resolveWorkspaceE2ESessionSigningSecret(environment),
     });
@@ -195,7 +199,7 @@ export const bindReferralSomeoneElsePaymentCase: WorkspaceE2ECaseBinder =
     return {
       ...testCase,
       checkoutStates: [boundState],
-      execute: ({ runStep, session }) =>
+      execute: ({ run, runStep, session }) =>
         executeReferralSomeoneElsePayment({
           config,
           datasourceConfig,
@@ -256,7 +260,9 @@ const executeReferralSomeoneElsePayment = Effect.fn(
   const expectedDiscounts = getReferralSomeoneElseDiscounts(locale);
 
   yield* runStep({
-    execute: waitForNoRememberedReferralCode({ config, run, session }),
+    execute: Effect.flatMap(browserSessionFor(run, session), (browserSession) =>
+      waitForNoRememberedReferralCode({ config, session: browserSession })
+    ),
     id: "starts-without-remembered-referral-code",
     timeoutMs: config.timeouts.uiTransition,
   });
@@ -271,7 +277,7 @@ const executeReferralSomeoneElsePayment = Effect.fn(
     timeoutMs: config.timeouts.datasource,
   });
   yield* runStep({
-    execute: identities.signIn(booker, session),
+    execute: identities.signIn(booker, { run, session }),
     id: "sign-in-synthetic-booker",
     timeoutMs: config.timeouts.datasource,
   });
@@ -310,9 +316,13 @@ const executeReferralSomeoneElsePayment = Effect.fn(
     {
       // The shared reservation link left its code in the booker's cookie,
       // which prefills the box.
-      execute: waitForRememberedReferralCode(
-        { config, run, session },
-        referrer.code
+      execute: Effect.flatMap(
+        browserSessionFor(run, session),
+        (browserSession) =>
+          waitForRememberedReferralCode(
+            { config, session: browserSession },
+            referrer.code
+          )
       ),
       id: "remember-shared-referral-code",
       timeoutMs: config.timeouts.uiTransition,
@@ -384,9 +394,11 @@ const executeReferralSomeoneElsePayment = Effect.fn(
   yield* runStep({
     // Booking for someone else never settles the booker's own referral, so
     // the paid status page leaves the booker's remembered code in place.
-    execute: waitForRememberedReferralCode(
-      { config, run, session },
-      referrer.code
+    execute: Effect.flatMap(browserSessionFor(run, session), (browserSession) =>
+      waitForRememberedReferralCode(
+        { config, session: browserSession },
+        referrer.code
+      )
     ),
     id: "keep-booker-referral-code-after-paid-status",
     timeoutMs: config.timeouts.uiTransition,

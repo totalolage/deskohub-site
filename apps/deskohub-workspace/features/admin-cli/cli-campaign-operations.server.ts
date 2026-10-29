@@ -16,10 +16,7 @@ import { CurrentAdministrator } from "@/features/administrators/backend/current-
 import { CampaignOperations } from "@/features/email-campaigns/backend/campaign-operations.service";
 import { OperationRequestLedger } from "@/features/email-campaigns/backend/operation-request-ledger.service";
 import { mapAdministrationApiFailure } from "./administration-api-failure";
-import {
-  CliMutationIdempotency,
-  mutationScopeOf,
-} from "./cli-mutation-idempotency.service";
+import { AdministrationRequestLedger } from "./administration-request-ledger.service";
 import { cliOperationRequestLedger } from "./cli-operation-request-ledger";
 
 /**
@@ -54,22 +51,22 @@ const toCliFailure = (error: CampaignOperationError) =>
  */
 export const cliCampaignOperationInvoker = Effect.gen(function* () {
   const operations = yield* CampaignOperations;
-  const mutations = yield* CliMutationIdempotency;
+  const ledger = yield* AdministrationRequestLedger;
 
   const invoke = <Name extends CampaignOperationName>(
     name: Name,
     input: OperationInput<CampaignOperationRegistry[Name]>
   ) =>
     CurrentAdministrationCaller.pipe(
-      Effect.flatMap(({ actor, channel }) =>
+      Effect.flatMap((caller) =>
         operations
           .invoke(name, input)
           .pipe(
             mapAdministrationApiFailure(toCliFailure),
-            Effect.provideService(CurrentAdministrator, actor),
+            Effect.provideService(CurrentAdministrator, caller.actor),
             Effect.provideService(
               OperationRequestLedger,
-              cliOperationRequestLedger(mutations, mutationScopeOf(channel))
+              cliOperationRequestLedger(ledger, caller)
             )
           )
       )

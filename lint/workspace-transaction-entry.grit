@@ -1,0 +1,58 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// One way into a Workspace transaction: `transaction` destructured from
+// `yield* WorkspaceDatabase` (db/database.service.ts). It wraps the Drizzle
+// client's own `transaction`, provides `WorkspaceTransaction` and runs the
+// effect one step at a time. This rejects:
+// - in app/, features/ and shared/, tests and test-utils included (db/ is
+//   the database layer; e2e/ and scripts/ own other clients), every member
+//   access `.transaction` or `.withTransaction`, called or not, whatever
+//   the receiver, and
+//   destructuring `transaction` from anything but `yield* WorkspaceDatabase`.
+//   A test about the raw client suppresses it with a reason;
+// - anywhere in the app, tests included, building or providing
+//   `WorkspaceTransaction`, and building `WorkspaceDatabase` with `of` or a
+//   literal: use `WorkspaceDatabase.make(db)`. Test files are not
+//   type-checked, so only this rule stops a hand-built service there.
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/.*\.(?:ts|tsx)$",
+  not $name <: r".*apps/deskohub-workspace/db/database\.service\.ts$",
+  $body <: r"(?s).*(?:ransaction|WorkspaceDatabase).*",
+  $body <: contains bubble or {
+    or {
+      `$receiver.transaction`,
+      `$receiver.withTransaction`,
+      JsComputedMemberExpression() as $access where {
+        $access <: r"(?s).*\[\s*['\"`](?:transaction|withTransaction)['\"`]\s*\]$"
+      },
+      JsVariableDeclarator() as $declarator where {
+        $declarator <: r"(?s)^\{[^}]*\btransaction\b[^}]*\}.*",
+        not $declarator <: r"(?s)^\{[^}]*\}\s*=\s*yield\s*\*\s*WorkspaceDatabase\s*$"
+      }
+    } as $span where {
+      $filename <: r".*apps/deskohub-workspace/(?:app|features|shared)/.*"
+    },
+    or {
+      `WorkspaceTransaction.of($...)`,
+      `WorkspaceTransaction.context($...)`,
+      `WorkspaceDatabase.of($...)`,
+      `Layer.$constructor(WorkspaceDatabase, $value)` where {
+        $constructor <: r"^(?:succeed|sync)$",
+        $value <: r"(?s)^\{.*"
+      },
+      `Effect.provideService($effect, WorkspaceTransaction, $service)`,
+      `Effect.provideServiceEffect($effect, WorkspaceTransaction, $service)`,
+      `Context.add($context, WorkspaceTransaction, $service)`,
+      JsCallExpression() as $call where {
+        $call <: r"(?s)^[\w$.]*\.(?:provideService|provideServiceEffect|succeed|sync|effect|mock|make|add)\s*\(\s*WorkspaceTransaction\b.*"
+      }
+    } as $span
+  } where {
+    register_diagnostic(
+      span = $span,
+      message = "Open Workspace transactions only with `transaction` from `yield* WorkspaceDatabase`; it alone provides WorkspaceTransaction. Build the service with `WorkspaceDatabase.make(db)`.",
+      severity = "error"
+    )
+  }
+}

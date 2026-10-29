@@ -35,7 +35,6 @@ import {
   AutomationRunTransitions,
 } from "./automation-run-transitions";
 import {
-  type AutomationEngineTransaction,
   AutomationUnitDefect,
   AutomationUnitFetchFailure,
   type AutomationUnitHandler,
@@ -182,12 +181,11 @@ export const makeConditionHandler = Effect.gen(function* () {
   const evaluation = yield* AutomationConditionEvaluation;
 
   const endUnavailable = (
-    tx: AutomationEngineTransaction,
     unit: ConditionUnit,
     runIds: readonly AutomationRunId[],
     at: Temporal.Instant
   ) =>
-    AutomationRunTransitions.end(tx, {
+    AutomationRunTransitions.end({
       runIds,
       expect: ownedRunsOf(unit),
       outcome: "failed",
@@ -278,7 +276,6 @@ export const makeConditionHandler = Effect.gen(function* () {
    * Past the cap the runs stay `ready` for the next planner tick.
    */
   const planReached = (
-    tx: AutomationEngineTransaction,
     unit: ConditionUnit,
     input: {
       readonly campaignId: CampaignId;
@@ -288,7 +285,7 @@ export const makeConditionHandler = Effect.gen(function* () {
       readonly at: Temporal.Instant;
     }
   ) =>
-    planReachedStep(tx, facts, {
+    planReachedStep(facts, {
       campaignId: input.campaignId,
       versionId: unit.subject.versionId,
       flow: input.flow,
@@ -303,7 +300,6 @@ export const makeConditionHandler = Effect.gen(function* () {
    * the rest `condition-failed`.
    */
   const commitDecisions = (
-    tx: AutomationEngineTransaction,
     unit: ConditionUnit,
     campaignId: CampaignId,
     decided: Extract<ConditionFetched, { _tag: "Decided" }>,
@@ -333,13 +329,12 @@ export const makeConditionHandler = Effect.gen(function* () {
           // A condition is never last, so a flow without a next step is a defect.
           onNone: () =>
             endUnavailable(
-              tx,
               unit,
               passed.map(({ runId }) => runId),
               at
             ),
           onSome: (next) =>
-            advanceAutomationRuns(tx, {
+            advanceAutomationRuns({
               runs: passed.map(({ runId }) => ({
                 runId,
                 stepId: unit.subject.stepId,
@@ -352,7 +347,7 @@ export const makeConditionHandler = Effect.gen(function* () {
             }).pipe(
               Effect.flatMap((movedIds) => {
                 const moved = new Set(movedIds);
-                return planReached(tx, unit, {
+                return planReached(unit, {
                   campaignId,
                   flow: decided.flow,
                   next,
@@ -367,7 +362,7 @@ export const makeConditionHandler = Effect.gen(function* () {
         Effect.forEach(
           byFailureDetail(failed),
           ({ detail, runIds }) =>
-            AutomationRunTransitions.end(tx, {
+            AutomationRunTransitions.end({
               runIds,
               expect: ownedRunsOf(unit),
               outcome: "condition-failed",
@@ -383,21 +378,20 @@ export const makeConditionHandler = Effect.gen(function* () {
   const handler: AutomationUnitHandler<ConditionSubject, ConditionFetched> = {
     kind: "condition",
     subject: conditionSubjectSchema,
-    expire: (tx, unit, at) =>
+    expire: (unit, at) =>
       Effect.Do.pipe(
         Effect.bind("campaignId", () => campaignOf(unit)),
         Effect.bind("lifecycle", ({ campaignId }) =>
-          lockAutomationForEngine(tx, campaignId)
+          lockAutomationForEngine(campaignId)
         ),
         // A paused or archived automation's runs stay frozen; its commit drops the unit.
         Effect.bind("owned", ({ lifecycle }) =>
           lifecycle.status === "active"
-            ? readOwnedRuns(tx, unit)
+            ? readOwnedRuns(db, unit)
             : Effect.succeed(null)
         ),
         Effect.bind("ended", ({ owned }) =>
           endUnavailable(
-            tx,
             unit,
             (owned ?? [])
               .filter(
@@ -446,10 +440,10 @@ export const makeConditionHandler = Effect.gen(function* () {
           )
         )
       ),
-    commit: (tx, unit, fetched, at) =>
+    commit: (unit, fetched, at) =>
       campaignOf(unit).pipe(
         Effect.tap((campaignId) =>
-          lockAutomationForEngine(tx, campaignId).pipe(
+          lockAutomationForEngine(campaignId).pipe(
             Effect.filterOrFail(
               (lifecycle) => lifecycle.status === "active",
               (lifecycle) =>
@@ -462,10 +456,9 @@ export const makeConditionHandler = Effect.gen(function* () {
         Effect.flatMap((campaignId) =>
           Match.value(fetched).pipe(
             Match.tagsExhaustive({
-              Unavailable: () =>
-                endUnavailable(tx, unit, unit.subject.runIds, at),
+              Unavailable: () => endUnavailable(unit, unit.subject.runIds, at),
               Decided: (decided) =>
-                commitDecisions(tx, unit, campaignId, decided, at),
+                commitDecisions(unit, campaignId, decided, at),
             })
           )
         ),

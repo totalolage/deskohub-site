@@ -1,6 +1,6 @@
 import { and, asc, eq, lte, or, sql } from "drizzle-orm";
 import { Context, Effect, Layer, Match, Option } from "effect";
-import { WorkspaceDatabase } from "@/db/database.service";
+import { WorkspaceDatabase, WorkspaceTransaction } from "@/db/database.service";
 import {
   emailCampaigns as campaigns,
   emailCampaignAutomationRuns as runs,
@@ -25,7 +25,7 @@ import {
   wakeAutomationRuns,
 } from "./automation-run-progress";
 import { AutomationRunTransitions } from "./automation-run-transitions";
-import type { AutomationEngineTransaction } from "./automation-unit-handler";
+
 import {
   automationRunStepKind,
   automationStepPosition,
@@ -99,7 +99,7 @@ export class AutomationTimerPlanning extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const { db } = yield* WorkspaceDatabase;
+      const { db, transaction } = yield* WorkspaceDatabase;
 
       return {
         plan: (at) =>
@@ -107,7 +107,7 @@ export class AutomationTimerPlanning extends Context.Service<
             Effect.bind("due", () => readDueRuns(db, at)),
             Effect.bind("plans", ({ due }) =>
               Effect.forEach(groupByCampaign(due), (automationRuns) =>
-                db.transaction((tx) => moveDueRuns(tx, automationRuns, at))
+                transaction(moveDueRuns(automationRuns, at))
               )
             ),
             Effect.map(({ due, plans }) =>
@@ -188,17 +188,17 @@ const groupByCampaign = (due: readonly DueRun[]) => [
  * Calendar wait reads `resumed_at` under the lock (D12).
  */
 const moveDueRuns = Effect.fn("AutomationTimerPlanning.moveDueRuns")(function* (
-  tx: AutomationEngineTransaction,
   due: readonly DueRun[],
   at: Temporal.Instant
 ) {
+  const { db } = yield* WorkspaceTransaction;
   const [first] = due;
   if (first === undefined) return emptyAutomationTimerPlan;
-  const lifecycle = yield* lockAutomationForEngine(tx, first.campaignId);
+  const lifecycle = yield* lockAutomationForEngine(first.campaignId);
   if (lifecycle.status !== "active") return emptyAutomationTimerPlan;
 
   const flowOf = yield* loadAutomationVersionFlows(
-    tx,
+    db,
     due.map((run) => run.versionId)
   );
   const moves = due.map((run) =>
@@ -209,13 +209,13 @@ const moveDueRuns = Effect.fn("AutomationTimerPlanning.moveDueRuns")(function* (
     })
   );
 
-  const waiting = yield* waitAutomationRuns(tx, {
+  const waiting = yield* waitAutomationRuns({
     runs: moves.flatMap((move) =>
       move._tag === "Wait" ? [{ ...move.run, dueAt: move.dueAt }] : []
     ),
     at,
   });
-  const advanced = yield* advanceAutomationRuns(tx, {
+  const advanced = yield* advanceAutomationRuns({
     runs: moves.flatMap((move) =>
       move._tag === "Advance"
         ? [
@@ -244,7 +244,7 @@ const moveDueRuns = Effect.fn("AutomationTimerPlanning.moveDueRuns")(function* (
       const [first] = group;
       return first === undefined
         ? Effect.void
-        : enterReachedWaits(tx, {
+        : enterReachedWaits({
             campaignId: first.run.campaignId,
             versionId: first.run.versionId,
             flow: flowOf(first.run.versionId),
@@ -256,12 +256,11 @@ const moveDueRuns = Effect.fn("AutomationTimerPlanning.moveDueRuns")(function* (
     },
     { discard: true }
   );
-  const woken = yield* wakeAutomationRuns(tx, {
+  const woken = yield* wakeAutomationRuns({
     runs: moves.flatMap((move) => (move._tag === "Wake" ? [move.run] : [])),
     at,
   });
   const ended = yield* endUnavailable(
-    tx,
     moves.flatMap((move) => (move._tag === "End" ? [move.run] : [])),
     at
   );
@@ -327,11 +326,7 @@ const wakeWaiting = (run: DueRun): TimerMove =>
  * Ends runs that can't move `failed / evaluation-unavailable`, one
  * compare-and-set per position they were read at.
  */
-const endUnavailable = (
-  tx: AutomationEngineTransaction,
-  ending: readonly DueRun[],
-  at: Temporal.Instant
-) => {
+const endUnavailable = (ending: readonly DueRun[], at: Temporal.Instant) => {
   const positions = new Map<
     string,
     {
@@ -351,7 +346,7 @@ const endUnavailable = (
     positions.set(key, position);
   }
   return Effect.forEach(positions.values(), ({ stepId, phase, runIds }) =>
-    AutomationRunTransitions.end(tx, {
+    AutomationRunTransitions.end({
       runIds,
       expect: { status: "active", stepId, phase, workUnitId: null },
       outcome: "failed",

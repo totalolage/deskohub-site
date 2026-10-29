@@ -4,9 +4,9 @@ import {
   processReservationHoldCleanupScheduleMessage,
   ReservationHoldCleanupService,
   reservationHoldCleanupRedelivery,
+  reservationHoldCleanupTopic,
 } from "@/features/checkout/backend/holds";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
-import { defineQueueConsumer } from "@/shared/backend/queue/queue-consumer";
 
 const ReservationHoldCleanupScheduleConsumerLive = Layer.mergeAll(
   ReservationHoldCleanupService.Live,
@@ -15,7 +15,7 @@ const ReservationHoldCleanupScheduleConsumerLive = Layer.mergeAll(
   )
 );
 
-export const POST = defineQueueConsumer(
+export const POST = reservationHoldCleanupTopic.consume(
   "reservationHoldCleanupSchedule",
   (message) =>
     processReservationHoldCleanupScheduleMessage(message).pipe(

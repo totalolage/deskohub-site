@@ -14,7 +14,6 @@ import { makeMeetingRoomCheckoutData } from "../checkout/data";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import { isWorkspaceE2ETimeout } from "../errors";
 import { workspaceE2ENonPaymentCaseIds } from "../playwright-checkout/case-catalog";
-import type { Runner } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
 import type { CheckoutFlowState } from "../types";
 import {
@@ -207,12 +206,6 @@ const linkCaseDatasourceConfig: DatasourceConfig = {
   timeouts: workspaceE2ETimeouts,
 };
 
-const linkCaseRunner: Runner = async () => ({
-  exitCode: 0,
-  stderr: "",
-  stdout: "",
-});
-
 const makeReservationLinkPreparationSlot = (index: number) => {
   const day = String(index + 1).padStart(2, "0");
   const date = `2099-09-${day}`;
@@ -243,7 +236,6 @@ test("constructs reservation-link cases from the reserved preparation partition"
       datasourceConfig: linkCaseDatasourceConfig,
       flowStates,
       preparation,
-      run: linkCaseRunner,
     }).pipe(Effect.provide(FetchHttpClient.layer))
   );
 
@@ -286,7 +278,6 @@ test("fails reservation-link construction when the preparation partition is shor
       datasourceConfig: linkCaseDatasourceConfig,
       flowStates: [],
       preparation,
-      run: linkCaseRunner,
     }).pipe(Effect.provide(FetchHttpClient.layer))
   );
   expect(Exit.isSuccess(exit)).toBe(false);

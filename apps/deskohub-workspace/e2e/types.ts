@@ -27,6 +27,7 @@ import type { WorkspaceE2EHostedPaymentPermitService } from "./coordination/host
 import type { WorkspaceE2EProviderVerificationPermitService } from "./coordination/provider-verification-permit.service";
 import type { WorkspaceE2EError } from "./errors";
 import type { E2EDatabase } from "./integrations/database.service";
+import type { Runner } from "./runtime";
 
 export type CheckoutRow = {
   reservation_id: WorkspaceReservationId;
@@ -131,14 +132,21 @@ export type PaymentTerminalScenario = {
   readonly trigger: "hosted_authentication_failure" | "injected";
 };
 
+/** What a running case gets from the case pool. */
+export type WorkspaceE2ECaseContext = {
+  /** The test's browser runner; `session` names the case's own session. */
+  readonly run: Runner;
+  readonly runStep: WorkspaceE2EStepRunner;
+  readonly session: string;
+};
+
 export type WorkspaceE2ECase = {
   readonly checkoutStates: readonly CheckoutFlowState[];
   readonly id: string;
   readonly timeoutMs: number;
-  readonly execute: (context: {
-    readonly runStep: WorkspaceE2EStepRunner;
-    readonly session: string;
-  }) => Effect.Effect<
+  readonly execute: (
+    context: WorkspaceE2ECaseContext
+  ) => Effect.Effect<
     void,
     WorkspaceE2EError,
     | E2EDatabase

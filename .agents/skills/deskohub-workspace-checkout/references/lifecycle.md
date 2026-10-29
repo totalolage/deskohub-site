@@ -34,8 +34,8 @@ Paths are under `apps/deskohub-workspace/`.
 | Late payment | `features/checkout/backend/payment/late-payment-*.ts`, queue `app/api/queues/workspace/late-payment-recovery` |
 | Refund reconciliation | `features/checkout/backend/payment/payment-refund.service.ts`, cron `app/api/cron/workspace/payment-refunds` |
 | Hold cleanup | `features/checkout/backend/holds/`, queue `app/api/queues/workspace/reservation-hold-cleanup`, daily cron `app/api/cron/workspace/reservation-holds` |
-| Paid fulfillment | `features/checkout/backend/fulfillment/`, queue `app/api/queues/workspace/paid-fulfillment`, daily cron `app/api/cron/workspace/paid-fulfillment` |
-| Email delivery webhook | `app/api/webhooks/resend/route.ts`, `features/checkout/backend/fulfillment/resend-webhook.service.ts` |
+| Paid fulfillment | `features/checkout/backend/fulfillment/reservation-fulfillment.service.ts`, trigger adapters `paid-fulfillment-triggers.ts` for queue `app/api/queues/workspace/paid-fulfillment` and daily cron `app/api/cron/workspace/paid-fulfillment` |
+| Email delivery webhook | `app/api/webhooks/resend/route.ts`, `features/checkout/backend/fulfillment/resend-webhook.service.ts` (decodes; `ReservationFulfillment.recordDelivery` applies) |
 
 Cron schedules are in `vercel.json`. Queue payloads are versionless; evolve their strict decoders directly and never add `schemaVersion`.
 
@@ -104,7 +104,7 @@ State types and check constraints are in `db/schema`. Repositories guard every t
 Lookup keys survive `CHECKOUT_PAY_STATE_KEYS` rotation. Each configured key derives an HKDF subkey; new rows store the active key's `<kid>:<hex>` digest. Lookups accept every configured key's prefixed digest plus the legacy ring-keyed digest: an unprefixed hex HMAC keyed by the whole configured string. Never look up a single freshly derived key.
 
 - Every row of a session stores the same session key. Before inserting, resolve the session's latest stored key under any accepted derivation and reuse it.
-- Draft creation runs in one transaction behind `pg_advisory_xact_lock` on a rotation-independent key derived from the raw session ID (`deriveCheckoutSessionLockKey`), then inserts only if neither the attempt nor the session exists under any derivation.
+- Draft creation runs in one transaction behind `WorkspaceLocks.checkoutSession` on a rotation-independent key derived from the raw session ID (`deriveCheckoutSessionLockKey`), then inserts only if neither the attempt nor the session exists under any derivation.
 
 ### Rotating `CHECKOUT_PAY_STATE_KEYS`
 
@@ -226,6 +226,12 @@ The budget arithmetic is documented in the route and service. Keep these rules w
 ## Fulfillment
 
 Paid fulfillment confirms the Dotypos reservation, issues the access PIN ([reservation-access.md](reservation-access.md)), and sends the customer confirmation with a protected access link, never the PIN.
+
+`ReservationFulfillment` is the module's interface: `run(orderId)` performs a paid-fulfillment run and stays policy-free (callers choose inline or enqueue), and `recordDelivery(report)` applies a decoded customer confirmation delivery report. The Resend webhook only decodes the payload and the sender's tags into that report and maps its outcome to the webhook response. The queue consumer and the stalled-run cron are the module's trigger adapters; routes use them through `paid-fulfillment-triggers.ts` and never see the ledger. The customer confirmation's idempotency keys come from `customer-email-idempotency-key.ts`; the email service only sends the key it is given.
+
+`FulfillmentLedger` (`features/checkout/backend/fulfillment/fulfillment-ledger.repository.ts`) owns the fulfillment-state and delivery-generation writes. Keep it internal to the fulfillment module: no barrel export and no port, because its Postgres suites run against the test database. The held-to-confirmed transition and its booked customer event stay in the reservation repository.
+
+- Fence invariant: completion (`markFulfilled`) and failure fence on fulfillment state alone, not on the claim, so a reclaimed stalled run can still settle the order. Change it only together with the invoice delivery lease's fence.
 
 - Recovery reclaims a stale `processing` claim after `PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS` but never reclaims `awaiting_delivery`.
 - The queue consumer classifies each run from the persisted state the claim reads (`findPaidFulfillmentProgress`). It backs off while the claim can still take the order or fulfillment can still progress: `not_started`, `processing`, or `failed` on a held or confirmed reservation (the claim retakes `failed`, and the daily cron skips it, so only redelivery retries it), a `pending` or `processing` late-payment recovery, or a failed invoice. It acknowledges what no redelivery can change: a missing, unpaid, or cancelled order, a `fulfilled` or `awaiting_delivery` fulfillment, or a late payment that ended `refund_required` or `review_required`. Any other paid state logs an error and keeps backing off. The daily paid-fulfillment cron covers orders stuck there over 15 minutes outside unrecovered late-payment recovery; re-enqueueing can't, because the per-order idempotency key dedupes it. The cron takes the least recently updated orders first, and a claim bumps `updatedAt`, so a repeatedly failing order rotates behind untried ones.

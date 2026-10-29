@@ -3,6 +3,7 @@ import {
   type AdministrationOperationReference,
   AdministrationOperationVariants,
   administrationOperationDeclaration,
+  changeKeyPaths,
   credentialPaths,
   disclosedCredentials,
   WorkspaceAdminApi,
@@ -69,6 +70,8 @@ export interface AdministrationOperationTool {
   readonly argumentNames: ReadonlySet<string>;
   /** The arguments a call must pass. */
   readonly requiredArgumentNames: ReadonlySet<string>;
+  /** The arguments that identify one intended change across retries. */
+  readonly changeKeys: ReadonlyArray<string>;
   /** The published input schema: one strict object of every argument. */
   readonly input: Schema.Top;
   /** The published output schema: the success results and the errors. */
@@ -83,9 +86,6 @@ export interface AdministrationOperationTool {
 }
 
 const confirmArgument = "confirm";
-
-/** The arguments that identify one intended change across retries. */
-const changeKeyArguments = new Set(["requestId", "attemptId", "invoiceId"]);
 
 const toSnakeCase = (value: string) =>
   value
@@ -196,11 +196,12 @@ const confirmProperty = new SchemaAST.PropertySignature(
 const describe = ({
   title,
   behavior,
-  argumentNames,
+  changeKeys,
 }: {
   readonly title: string;
   readonly behavior: Behavior;
-  readonly argumentNames: ReadonlySet<string>;
+  /** The arguments that identify one intended change across retries. */
+  readonly changeKeys: ReadonlyArray<string>;
 }) =>
   [
     `${title}.`,
@@ -214,12 +215,10 @@ const describe = ({
       ),
       Match.exhaustive
     ),
-    ...[...changeKeyArguments]
-      .filter((name) => argumentNames.has(name))
-      .map(
-        (name) =>
-          `${name} is a new UUID for each intended change; repeat the same value only when retrying this exact call.`
-      ),
+    ...changeKeys.map(
+      (name) =>
+        `${name} is a new UUID for each intended change; repeat the same value only when retrying this exact call.`
+    ),
   ].join(" ");
 
 /** Every operation's success schema, at the success status. */
@@ -454,6 +453,10 @@ const deriveEndpointTools = ({
     }
     guardCredentials({ reference, success, errors: errorSchemas });
     const argumentNames = new Set(names);
+    const input = argumentSchema(properties);
+    const changeKeys = changeKeyPaths(input).flatMap((path) =>
+      path.length === 1 ? path : []
+    );
     const paramNames = paramProperties.map(nameOf);
     const queryNames = queryProperties.map(nameOf);
     return {
@@ -461,11 +464,12 @@ const deriveEndpointTools = ({
       operation,
       name,
       title,
-      description: describe({ title, behavior, argumentNames }),
+      description: describe({ title, behavior, changeKeys }),
+      changeKeys,
       behavior,
       argumentNames,
       requiredArgumentNames: new Set(properties.filter(isRequired).map(nameOf)),
-      input: argumentSchema(properties),
+      input,
       output: outputSchema({
         behavior,
         result: successResultSchema({ success, binary, wrapsResult }),

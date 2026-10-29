@@ -4,14 +4,18 @@ import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import { AccountingDocumentSnapshotRepository } from "@/features/accounting/backend/accounting-document-snapshot.repository";
-import { makeCoworkInvoiceDocument } from "@/features/accounting/invoice.test-utils";
+import {
+  makeCoworkInvoiceDocument,
+  makeMeetingRoomInvoiceDocument,
+} from "@/features/accounting/invoice.test-utils";
 import { DiscountClaimError } from "@/features/discounts/errors";
 import {
   WorkspaceAvailabilityService,
   WorkspaceTableUnavailableError,
 } from "@/features/reservation/backend/workspace-availability.service";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
-import { WorkspacePaidFulfillmentService } from "../fulfillment/paid-fulfillment.service";
+import type { StoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
+import { ReservationFulfillment } from "../fulfillment/reservation-fulfillment.service";
 import {
   LatePaymentRecoveryRepository,
   LatePaymentRecoveryStateError,
@@ -28,7 +32,11 @@ import {
 
 type OriginalHoldStatus = "NEW" | "CONFIRMED" | "CANCELLED";
 
-type HarnessReservation = typeof coworkReservation & {
+type HarnessReservation = Omit<
+  typeof coworkReservation,
+  "reservationDetails"
+> & {
+  readonly reservationDetails: StoredWorkspaceReservationDetails;
   readonly reservationState: string;
   readonly failureCode?: string;
   readonly reservationHoldExpiresAt: Temporal.Instant;
@@ -57,6 +65,8 @@ const makeRecoveryHarness = (options: {
   readonly resumedReplacementId?: string;
   readonly ensureAvailable?: () => Effect.Effect<void, unknown>;
   readonly assignTableId?: () => Effect.Effect<unknown, unknown>;
+  /** The paid checkout's accounting document; a cowork one by default. */
+  readonly invoiceDocument?: ReturnType<typeof makeMeetingRoomInvoiceDocument>;
   readonly cancelReservation?: () => Effect.Effect<void, unknown>;
   readonly completeUsingOriginalReservation?: () => Effect.Effect<
     void,
@@ -159,7 +169,7 @@ const makeRecoveryHarness = (options: {
     }),
   };
   const snapshot = {
-    ...makeCoworkInvoiceDocument("en-US"),
+    ...(options.invoiceDocument ?? makeCoworkInvoiceDocument("en-US")),
     workspaceReservationId: "reservation-id",
     dotyposReservationId: "dotypos-reservation-id",
     dotyposCustomerId: "dotypos-customer-id",
@@ -216,8 +226,8 @@ const makeRecoveryHarness = (options: {
         Layer.mock(WorkspaceTableAssignmentService, {
           assignTableId: spies.assignTableId as never,
         }),
-        Layer.mock(WorkspacePaidFulfillmentService, {
-          fulfillPaidOrder: spies.fulfillPaidOrder,
+        Layer.mock(ReservationFulfillment, {
+          run: spies.fulfillPaidOrder,
         })
       )
     )
@@ -289,6 +299,38 @@ describe("LatePaymentRecoveryService with an expired or released hold", () => {
       expect.objectContaining({
         recoveredDotyposReservationId: "replacement-id",
         reservationState: "confirmed",
+      })
+    );
+  });
+
+  test("recreates an early-setup meeting room from its setup start", async () => {
+    const harness = makeRecoveryHarness({
+      reservation: {
+        ...expiredHeldReservation,
+        reservationDetails: {
+          kind: "meeting-room",
+          duration: { unit: "hour", amount: 4 },
+          earlySetup: true,
+        },
+      },
+      originalStatus: "NEW",
+      // Booked 08:00–12:00 UTC.
+      invoiceDocument: makeMeetingRoomInvoiceDocument("en-US"),
+    });
+
+    const result = await harness.recover();
+
+    expect(result).toMatchObject({ _tag: "Success", success: "recovered" });
+    expect(harness.spies.ensureAvailable).toHaveBeenCalledWith(
+      expect.objectContaining({
+        startsAt: "2099-02-03T07:45:00Z",
+        endsAt: "2099-02-03T12:00:00Z",
+      })
+    );
+    expect(harness.spies.createReservation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        startDate: new Date("2099-02-03T07:45:00Z"),
+        endDate: new Date("2099-02-03T12:00:00Z"),
       })
     );
   });

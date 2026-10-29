@@ -9,12 +9,15 @@ import {
   readInIdFilterBatches,
 } from "@deskohub/dotypos";
 import { and, count, inArray, isNotNull, type SQL } from "drizzle-orm";
-import { Context, Data, Effect, Layer, Option, Schema } from "effect";
+import { Context, Data, Effect, Layer, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { workspaceReservations } from "@/db/schema";
 import { bookedReservationCondition } from "@/features/administration/reservation-status-condition";
-import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import { reservationIntervalSchema } from "@/features/reservation/reservation-interval";
+import { decodeBookedReservation } from "@/features/reservation/backend/booked-reservation";
+import type {
+  StoredWorkspaceReservationDetails,
+  WorkspaceReservationId,
+} from "@/features/reservation/persistence-contracts";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 
 /** A Workspace-booked reservation with its live Dotypos times and status. */
@@ -22,6 +25,7 @@ export type ReservationVisit = {
   readonly workspaceReservationId: WorkspaceReservationId;
   readonly dotyposReservationId: DotyposReservationId;
   readonly dotyposCustomerId: DotyposCustomerId;
+  /** The booked time, which an early-setup meeting room is held from before. */
   readonly startsAt: Temporal.Instant;
   readonly endsAt: Temporal.Instant;
   readonly status: "active" | "cancelled";
@@ -249,6 +253,7 @@ export class ReservationVisits extends Context.Service<
               workspaceReservationId: workspaceReservations.id,
               dotyposCustomerId: workspaceReservations.dotyposCustomerId,
               dotyposReservationId: workspaceReservations.dotyposReservationId,
+              reservationDetails: workspaceReservations.reservationDetails,
             })
             .from(workspaceReservations)
             .where(and(countedReservationCondition, condition))
@@ -258,7 +263,7 @@ export class ReservationVisits extends Context.Service<
                   ({
                     dotyposReservationId,
                     ...reservation
-                  }): BookedReservation[] =>
+                  }): CountedReservationLink[] =>
                     dotyposReservationId === null
                       ? []
                       : [{ ...reservation, dotyposReservationId }]
@@ -271,7 +276,7 @@ export class ReservationVisits extends Context.Service<
          * Fetches the visits not memoised yet, ≤ 50 Dotypos ids per request,
          * one request at a time.
          */
-        const lookUp = (booked: readonly BookedReservation[]) =>
+        const lookUp = (booked: readonly CountedReservationLink[]) =>
           readInIdFilterBatches(
             booked
               .filter(
@@ -311,7 +316,7 @@ export class ReservationVisits extends Context.Service<
 
         /** Joins Dotypos rows to booked reservations and memoises the visits. */
         const remember = (
-          booked: readonly BookedReservation[],
+          booked: readonly CountedReservationLink[],
           reservations: readonly DotyposReservation[]
         ) => {
           const bookedByDotyposId = new Map(
@@ -354,10 +359,13 @@ export class ReservationVisits extends Context.Service<
   );
 }
 
-type BookedReservation = {
+/** A counted reservation's Workspace row and the Dotypos ids it links. */
+type CountedReservationLink = {
   readonly workspaceReservationId: WorkspaceReservationId;
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly dotyposReservationId: DotyposReservationId;
+  /** The stored details, which decide an early-setup meeting room's booked time. */
+  readonly reservationDetails: StoredWorkspaceReservationDetails;
 };
 
 /**
@@ -379,30 +387,29 @@ const visitStatuses = {
 >;
 
 const toVisit = (
-  booked: BookedReservation,
+  link: CountedReservationLink,
   reservation: DotyposReservation
 ): Effect.Effect<ReservationVisit, ReservationVisitsUnavailable> =>
-  Schema.decodeEffect(reservationIntervalSchema)({
-    startsAt: reservation.startDate,
-    endsAt: reservation.endDate,
-  }).pipe(
-    // The schema issue quotes the times, so only its kind is kept.
-    Effect.mapError(
-      () =>
-        new ReservationVisitsUnavailable({
-          cause: new InvalidDotyposReservationInterval({
-            message: "Dotypos returned an invalid reservation interval",
-          }),
-        })
-    ),
-    Effect.map(
-      ({ startsAt, endsAt }): ReservationVisit => ({
-        workspaceReservationId: booked.workspaceReservationId,
-        dotyposReservationId: booked.dotyposReservationId,
-        dotyposCustomerId: booked.dotyposCustomerId,
-        startsAt: Temporal.Instant.from(startsAt),
-        endsAt: Temporal.Instant.from(endsAt),
-        status: visitStatuses[reservation.status],
-      })
-    )
+  Option.match(
+    decodeBookedReservation(reservation, link.reservationDetails).interval,
+    {
+      // Only the failure's kind is kept, never the reservation's times.
+      onNone: () =>
+        Effect.fail(
+          new ReservationVisitsUnavailable({
+            cause: new InvalidDotyposReservationInterval({
+              message: "Dotypos returned an invalid reservation interval",
+            }),
+          })
+        ),
+      onSome: ({ startsAt, endsAt }) =>
+        Effect.succeed({
+          workspaceReservationId: link.workspaceReservationId,
+          dotyposReservationId: link.dotyposReservationId,
+          dotyposCustomerId: link.dotyposCustomerId,
+          startsAt,
+          endsAt,
+          status: visitStatuses[reservation.status],
+        }),
+    }
   );

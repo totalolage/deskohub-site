@@ -44,7 +44,7 @@ Settle a subprocess promise before you assert on it. `expect(pending).rejects` a
   bun apps/deskohub-workspace/scripts/refresh-test-timings.ts <run-id>
   ```
 
-  Don't refresh from local runs; they measure a different machine.
+  Pull request runs test your branch merged with `main`, so merge `origin/main` and push before that run; the script rejects a run whose recorded files differ from the checkout's. Don't refresh from local runs; they measure a different machine.
 - Boardgame Bar tests run in `.github/workflows/boardgame-bar-ci.yml`, path-filtered to the Bar, `packages/**`, and root build inputs.
 - Workspace E2E, preview deployments, and preview databases belong to `deskohub-workspace-e2e` and `deskohub-workspace-operations`. A `dhw` or shared administration contract change needs a release-producing commit; see `deskohub-workspace-administration`.
 - Watch a run with `timeout <seconds> gh run watch <run-id> --exit-status --interval <seconds>`, or check once with `gh run view`. Don't poll with `sleep`. A local timeout doesn't cancel the remote run.

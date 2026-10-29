@@ -1,9 +1,12 @@
 import { expect, test } from "bun:test";
 import type { Browser } from "@playwright/test";
+import { Effect } from "effect";
 import {
   addDatabaseUrlRedactions,
   addRedaction,
+  browserSessionFor,
   makePlaywrightBrowserRunner,
+  type Runner,
   redact,
 } from "./runtime";
 
@@ -193,75 +196,6 @@ test("rejects a hanging browser evaluation within the command timeout", async ()
   }
 });
 
-test("primes preview access once per origin and fails closed on a rejected probe", async () => {
-  const target = "https://workspace.test/en-US/reservation/status/order-id";
-  const makePrimingBrowser = (probeStatus: number) => {
-    const probes: string[] = [];
-    const navigations: string[] = [];
-    const page = {
-      goto: async (url: string) => {
-        navigations.push(url);
-      },
-      mainFrame: () => ({}),
-      on: () => undefined,
-      url: () => target,
-    };
-    const context = {
-      close: async () => undefined,
-      newPage: async () => page,
-      on: () => undefined,
-      request: {
-        get: async (url: string) => {
-          probes.push(url);
-          return {
-            dispose: async () => undefined,
-            ok: () => probeStatus < 400,
-            status: () => probeStatus,
-          };
-        },
-      },
-    };
-    return {
-      browser: { newContext: async () => context } as Browser,
-      navigations,
-      probes,
-    };
-  };
-  const open = (run: ReturnType<typeof makePlaywrightBrowserRunner>) =>
-    run(
-      "playwright",
-      [
-        "--session",
-        "preview-priming-test",
-        "--headers",
-        JSON.stringify({ "x-vercel-protection-bypass": "test-bypass" }),
-        "open",
-        target,
-      ],
-      { logCommand: false, logOutput: false, timeoutMs: 5000 }
-    );
-
-  const accepted = makePrimingBrowser(200);
-  const acceptedRun = makePlaywrightBrowserRunner(accepted.browser);
-  try {
-    await open(acceptedRun);
-    await open(acceptedRun);
-  } finally {
-    await acceptedRun.close?.();
-  }
-  expect(accepted.probes).toEqual(["https://workspace.test/favicon.svg"]);
-  expect(accepted.navigations).toEqual([target, target]);
-
-  const rejected = makePrimingBrowser(401);
-  const rejectedRun = makePlaywrightBrowserRunner(rejected.browser);
-  try {
-    await expect(open(rejectedRun)).rejects.toThrow();
-  } finally {
-    await rejectedRun.close?.();
-  }
-  expect(rejected.navigations).toEqual([]);
-});
-
 test("reports destroyed evaluation contexts before the command timeout", async () => {
   const evalRun = runEval(
     {
@@ -296,4 +230,15 @@ test("reports destroyed evaluation contexts before the command timeout", async (
   } finally {
     await evalRun.close();
   }
+});
+
+test("fails typed when a runner has no browser sessions to bridge", async () => {
+  const run: Runner = async () => ({ exitCode: 0, stderr: "", stdout: "" });
+
+  const failure = await Effect.runPromise(
+    Effect.flip(browserSessionFor(run, "no-session"))
+  );
+
+  expect(failure.operation).toBe("open browser session");
+  expect(failure.reason).not.toBe("timeout");
 });

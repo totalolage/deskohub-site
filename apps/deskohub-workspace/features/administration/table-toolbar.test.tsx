@@ -88,6 +88,92 @@ describe("AdministrationTableToolbar", () => {
     ).toBeNull();
   });
 
+  test.each([
+    {
+      filterLayout: "inline",
+      // One wrapping row: the count group fills the line at the controls'
+      // height, so the count stays centred beside them, and the controls
+      // keep to the right.
+      row: { has: ["flex", "flex-wrap"], lacks: ["grid"] },
+      count: { has: ["flex-auto", "min-h-10"], lacks: [] },
+      controls: { has: ["ml-auto", "flex-wrap"], lacks: ["flex-col"] },
+    },
+    {
+      filterLayout: "stacked",
+      // A grid that puts the controls on their own row below the count until
+      // the 2xl breakpoint.
+      row: { has: ["grid"], lacks: ["flex-wrap"] },
+      count: { has: [], lacks: ["flex-auto", "min-h-10"] },
+      controls: { has: ["flex-col"], lacks: ["ml-auto"] },
+    },
+  ] as const)(
+    "lays out $filterLayout filters with the actions after them",
+    async ({ count, controls, filterLayout, row }) => {
+      const { AdministrationTableToolbar } = await import("./table-toolbar");
+      const view = render(
+        <RouteLocaleProvider locale="en-US">
+          <AdministrationTableToolbar
+            actions={<a href="/en-US/admin/email-campaigns/new">New</a>}
+            count={<output aria-label="Count" />}
+            filterLayout={filterLayout}
+            filters={<form aria-label="Filters" />}
+            label="Table controls"
+          />
+        </RouteLocaleProvider>
+      );
+      const rowElement = view.getByRole("region", {
+        name: "Table controls",
+      }).firstElementChild as HTMLElement;
+      const [countGroup, controlsGroup] = rowElement.children;
+      const expectClasses = (
+        element: Element | undefined,
+        classes: {
+          readonly has: readonly string[];
+          readonly lacks: readonly string[];
+        }
+      ) => {
+        const tokens = [...(element?.classList ?? [])];
+        expect(tokens).toEqual(expect.arrayContaining([...classes.has]));
+        for (const token of classes.lacks) expect(tokens).not.toContain(token);
+      };
+
+      expect(rowElement.children).toHaveLength(2);
+      expectClasses(rowElement, row);
+      expectClasses(countGroup, count);
+      expectClasses(controlsGroup, controls);
+      expect(countGroup?.contains(view.getByLabelText("Count"))).toBe(true);
+      const filters = view.getByRole("form", { name: "Filters" });
+      const action = view.getByRole("link");
+      expect(controlsGroup?.firstElementChild).toBe(filters);
+      expect(controlsGroup?.lastElementChild?.contains(action)).toBe(true);
+      expect(filters.contains(action)).toBe(false);
+    }
+  );
+
+  test("keeps the count beside the actions when a list has no filters", async () => {
+    const { AdministrationTableToolbar } = await import("./table-toolbar");
+    const view = render(
+      <RouteLocaleProvider locale="en-US">
+        <AdministrationTableToolbar
+          actions={<a href="/en-US/admin/discounts/new">New</a>}
+          count={null}
+          filterLayout="inline"
+          label="Table controls"
+        />
+      </RouteLocaleProvider>
+    );
+    const rowElement = view.getByRole("region", {
+      name: "Table controls",
+    }).firstElementChild;
+
+    expect([...(rowElement?.classList ?? [])]).toEqual(
+      expect.arrayContaining(["grid", "grid-cols-[minmax(0,1fr)_auto]"])
+    );
+    expect(rowElement?.lastElementChild?.contains(view.getByRole("link"))).toBe(
+      true
+    );
+  });
+
   test("shows a failed export below the controls until the next attempt", async () => {
     const unavailable = () =>
       Response.json(

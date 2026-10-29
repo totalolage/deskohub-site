@@ -11,6 +11,7 @@ import { inArray } from "drizzle-orm";
 import { Effect, Layer } from "effect";
 import { workspaceReservations } from "@/db/schema";
 import { workspaceMeetingRoomCatalog } from "@/features/checkout/product-catalog";
+import { getMeetingRoomSetupStart } from "@/features/reservation/meeting-room-early-setup";
 import { getMeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
 import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
 import {
@@ -314,6 +315,53 @@ describe.skipIf(!testDatabase)(
       expect(rerun.updated).toBe(0);
       expect(sortById(rerun.unresolved)).toEqual(sortById(expectedUnresolved));
       expect(await loadRows()).toEqual(after);
+    });
+
+    test("fills an early-setup meeting room's offer from its booked interval and keeps the flag", async () => {
+      const [{ duration }] = workspaceMeetingRoomCatalog;
+      const interval = getMeetingRoomReservationInterval(
+        "2026-03-11T10:00",
+        duration
+      );
+      if (!interval) throw new Error("catalog interval missing");
+      // Dotypos holds the room from the setup start, before the booked start.
+      const reservationId = await insert({
+        label: "early-setup",
+        details: { kind: "meeting-room", earlySetup: true },
+        dotypos: {
+          startDate: getMeetingRoomSetupStart(
+            Temporal.Instant.from(interval.startsAt)
+          ).toString(),
+          endDate: Temporal.Instant.from(interval.endsAt).toString(),
+          seats: "1",
+        },
+      });
+
+      await runBackfill(false);
+
+      expect((await loadRows()).get(reservationId)?.reservationDetails).toEqual(
+        { kind: "meeting-room", duration, earlySetup: true }
+      );
+    });
+
+    test("leaves a meeting-room row unresolved for a reversed Dotypos interval", async () => {
+      const reservationId = await insert({
+        label: "reversed-interval",
+        details: { kind: "meeting-room" },
+        dotypos: {
+          startDate: "2026-03-10T12:00:00Z",
+          endDate: "2026-03-10T10:00:00Z",
+          seats: "1",
+        },
+      });
+
+      const { unresolved } = await runBackfill(true);
+
+      expect(unresolved).toContainEqual({
+        reservationId,
+        family: "meeting-room",
+        reason: "dotypos_interval_invalid",
+      });
     });
   }
 );

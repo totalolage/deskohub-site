@@ -10,6 +10,7 @@ import {
   PostHogRuntimeConfig,
   type PostHogRuntimeConfigObj,
 } from "@/shared/backend/config/posthog.config";
+import { collectSpanMetadata } from "@/shared/backend/observability/trace-correlation";
 import { temporalInstantToDate } from "@/shared/utils/temporal";
 
 type PostHogEventProperty = string | number | boolean | null;
@@ -72,17 +73,6 @@ const createPostHogCaptureClient = ({
   if (!projectToken) return undefined;
   return new PostHog(projectToken, { host: ingestHost });
 };
-
-const collectSpanMetadata = Effect.gen(function* () {
-  const currentSpan = yield* Effect.currentSpan.pipe(Effect.option);
-  return currentSpan.pipe(
-    Option.map((span) => ({
-      "effect.span_id": span.spanId,
-      "effect.trace_id": span.traceId,
-    })),
-    Option.getOrElse(() => ({}))
-  );
-});
 
 const compactProperties = (properties: PostHogEventProperties | undefined) =>
   Object.fromEntries(

@@ -74,30 +74,27 @@ describe.skipIf(!database)("automation planner", () => {
   /** Plans the same sweep page on every run, as overlapping planners would. */
   const repeatedSweepPage = Layer.effect(
     AutomationSweepPlanning,
-    Effect.map(WorkspaceDatabase, ({ db }) => ({
+    Effect.map(WorkspaceDatabase, ({ transaction }) => ({
       plan: (at) =>
-        db
-          .transaction((tx) =>
-            planAutomationUnits(
-              tx,
-              [
-                {
-                  kind: "sweep-page",
-                  key: "sweep-page:test:window:1",
-                  subject: { label: "window" },
-                  requestCost: 1,
-                },
-              ],
-              at
-            )
+        transaction(
+          planAutomationUnits(
+            [
+              {
+                kind: "sweep-page",
+                key: "sweep-page:test:window:1",
+                subject: { label: "window" },
+                requestCost: 1,
+              },
+            ],
+            at
           )
-          .pipe(
-            Effect.map(({ planned, replanned }) => ({
-              sweepPagesPlanned: planned,
-              sweepPagesReplanned: replanned.length,
-              eventsReconciled: 0,
-            }))
-          ),
+        ).pipe(
+          Effect.map(({ planned, replanned }) => ({
+            sweepPagesPlanned: planned,
+            sweepPagesReplanned: replanned.length,
+            eventsReconciled: 0,
+          }))
+        ),
     }))
   ).pipe(Layer.provide(postgres.layer));
 

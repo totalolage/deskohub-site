@@ -3,9 +3,9 @@ import { describe, expect, test } from "bun:test";
 import { Effect, type Schema } from "effect";
 import type { AdvertisedPriceRequest } from "@/features/checkout/advertised-price";
 import { m } from "@/features/i18n";
-import { getReservationDefaultValuesFromSearchParams } from "@/features/reservation/cowork-reservation-checkout-query";
-import { getMeetingRoomReservationDefaultValuesFromSearchParams } from "@/features/reservation/meeting-room-reservation-checkout-query";
-import { getOfficeReservationDefaultValuesFromSearchParams } from "@/features/reservation/office-reservation-checkout-query";
+import { coworkSelectionLink } from "@/features/reservation/cowork-selection-link";
+import { meetingRoomSelectionLink } from "@/features/reservation/meeting-room-selection-link";
+import { officeSelectionLink } from "@/features/reservation/office-selection-link";
 import type { GetQuoteResult } from "./get-quote.schema";
 
 const {
@@ -118,13 +118,15 @@ describe("get_quote", () => {
       { family: "cowork", date, tier: "reserved-desk" },
       services
     );
-    const restored = getReservationDefaultValuesFromSearchParams(
+    const restored = coworkSelectionLink.read(
       new URL(result.reservation_url).searchParams,
       {
-        kind: "cowork",
-        entryTier: "reserved-desk",
-        coffee: true,
-        monitorOption: "2x27-qhd",
+        lastReservation: {
+          kind: "cowork",
+          entryTier: "reserved-desk",
+          coffee: true,
+          monitorOption: "2x27-qhd",
+        },
       }
     );
 
@@ -190,21 +192,17 @@ describe("get_quote", () => {
     });
 
     expect(
-      getMeetingRoomReservationDefaultValuesFromSearchParams(
+      meetingRoomSelectionLink.read(
         new URL(meetingRoom.reservation_url).searchParams,
-        undefined,
-        { kind: "meeting-room", duration: "day:1" }
+        { lastReservation: { kind: "meeting-room", duration: "day:1" } }
       )
     ).toMatchObject({ duration: "hour:4", startDateTime: `${date}T14:00` });
     expect(
-      getOfficeReservationDefaultValuesFromSearchParams(
-        new URL(office.reservation_url).searchParams,
-        {
-          lastReservation: { kind: "office", dayCount: 5, seats: 4 },
-          seatCapacity: 6,
-          today,
-        }
-      )
+      officeSelectionLink.read(new URL(office.reservation_url).searchParams, {
+        lastReservation: { kind: "office", dayCount: 5, seats: 4 },
+        seatCapacity: 6,
+        today,
+      })
     ).toMatchObject({ startsOn: today, dayCount: 2, seats: 2 });
     expect(office.note).toBe(m.agentToolQuoteNote({}, { locale: "en-US" }));
   });
@@ -222,14 +220,11 @@ describe("get_quote", () => {
       });
 
       expect(
-        getOfficeReservationDefaultValuesFromSearchParams(
-          new URL(office.reservation_url).searchParams,
-          {
-            lastReservation: { kind: "office", dayCount: 5, seats: 4 },
-            seatCapacity: 6,
-            today: workspaceDateFromToday(0),
-          }
-        )
+        officeSelectionLink.read(new URL(office.reservation_url).searchParams, {
+          lastReservation: { kind: "office", dayCount: 5, seats: 4 },
+          seatCapacity: 6,
+          today: workspaceDateFromToday(0),
+        })
       ).toMatchObject({ startsOn, dayCount: 2, seats: 2 });
       expect(office.note).toBe(m.agentToolQuoteNote({}, { locale }));
     }
@@ -255,9 +250,9 @@ describe("get_quote", () => {
       `http://deskohub.test/reservation/meeting-room?startDateTime=${today}T00%3A00&duration=day%3A1`
     );
     expect(
-      getMeetingRoomReservationDefaultValuesFromSearchParams(
+      meetingRoomSelectionLink.read(
         new URL(result.reservation_url).searchParams,
-        now
+        { now }
       )
     ).toMatchObject({ duration: "day:1", startDateTime: `${today}T00:00` });
   });

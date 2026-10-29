@@ -3,18 +3,9 @@ import {
   DotyposService,
   getCustomerDisplayName,
 } from "@deskohub/dotypos";
-import type { Customer, Reservation } from "@deskohub/dotypos/generated";
+import type { Customer } from "@deskohub/dotypos/generated";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import {
-  Clock,
-  Context,
-  Duration,
-  Effect,
-  Layer,
-  Match,
-  Option,
-  Schema,
-} from "effect";
+import { Clock, Context, Duration, Effect, Layer, Match, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import type {
   FulfillmentState,
@@ -33,6 +24,10 @@ import {
 } from "@/features/feature-flags/backend";
 import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
 import { SharedAvailabilityInventoryLive } from "@/features/reservation/backend/availability-inventory-cache.server";
+import {
+  type BookedReservation,
+  decodeBookedReservation,
+} from "@/features/reservation/backend/booked-reservation";
 import { ReservationRecords } from "@/features/reservation/backend/reservation-records";
 import {
   type CustomerReservationTable,
@@ -46,15 +41,14 @@ import {
   WorkspaceReservationRepository,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import { getDotyposReservationTiming } from "@/features/reservation/backend/workspace-reservation.service";
-import { getStoredCoworkReservationSelectionSearchParams } from "@/features/reservation/cowork-reservation-checkout-query";
 import type { StoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
+import { coworkSelectionLink } from "@/features/reservation/cowork-selection-link";
 import type { StoredMeetingRoomReservationDetails } from "@/features/reservation/meeting-room-reservation";
-import { getStoredMeetingRoomReservationSelectionSearchParams } from "@/features/reservation/meeting-room-reservation-checkout-query";
+import { meetingRoomSelectionLink } from "@/features/reservation/meeting-room-selection-link";
 import type { StoredOfficeReservationDetails } from "@/features/reservation/office-reservation";
-import { getStoredOfficeReservationSelectionSearchParams } from "@/features/reservation/office-reservation-checkout-query";
+import { officeSelectionLink } from "@/features/reservation/office-selection-link";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import type { ReservationSelectionSearchParams } from "@/features/reservation/reservation-checkout-query";
-import { dotyposReservationSeatsSchema } from "@/features/reservation/reservation-seats";
+import type { ReservationSelection } from "@/features/reservation/selection-path";
 import { ReviewSandbox } from "@/features/review-accounts";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { nexiRequestTimeout } from "@/shared/backend/config/nexi.config";
@@ -127,7 +121,7 @@ type CheckoutReservationStatusViewModelBase = CheckoutStatusViewModelBase & {
   readonly tableMap?: CheckoutStatusTableMap;
   readonly supportContactPrefill?: CheckoutStatusContactPrefill;
   /** The booked selection a retry status reopens on the reservation page. */
-  readonly retrySearchParams?: ReservationSelectionSearchParams;
+  readonly retrySelection?: ReservationSelection;
   /**
    * Marks a review account's sample or simulated hold, which nothing was
    * reserved or charged for and which has no access code.
@@ -326,13 +320,13 @@ const getRetryDotyposReservationId = (reservation: WorkspaceReservation) =>
   );
 
 /** Projects the booked selection onto the family's reservation-page link. */
-const getRetrySelectionSearchParams = ({
+const getRetrySelection = ({
   reservation,
-  dotyposReservation,
+  booked,
   timing,
 }: {
   readonly reservation: WorkspaceReservation;
-  readonly dotyposReservation: Pick<Reservation, "seats">;
+  readonly booked: Pick<BookedReservation, "seats">;
   readonly timing: Effect.Success<
     ReturnType<typeof getDotyposReservationTiming>
   >;
@@ -340,26 +334,22 @@ const getRetrySelectionSearchParams = ({
   Match.value(reservation.reservationDetails).pipe(
     Match.discriminatorsExhaustive("kind")({
       cowork: (details) =>
-        getStoredCoworkReservationSelectionSearchParams({
+        coworkSelectionLink.fromStored({
           ...details,
           ...timing,
         }),
       "meeting-room": (details) =>
-        getStoredMeetingRoomReservationSelectionSearchParams({
+        meetingRoomSelectionLink.fromStored({
           ...details,
           ...timing,
         }),
       office: (details) => {
-        const seats =
-          Option.getOrUndefined(
-            Schema.decodeUnknownOption(dotyposReservationSeatsSchema)(
-              dotyposReservation.seats
-            )
-          ) ?? details.seats;
+        // Unreadable Dotypos seats fall back to the stored selection's.
+        const seats = Option.getOrUndefined(booked.seats) ?? details.seats;
 
         return seats === undefined
           ? undefined
-          : getStoredOfficeReservationSelectionSearchParams({
+          : officeSelectionLink.fromStored({
               ...details,
               ...timing,
               seats,
@@ -544,9 +534,13 @@ const implementation = Effect.gen(function* () {
         ? getWorkspaceTableMap(dotyposReservation, tables)
         : undefined;
 
+      const booked = decodeBookedReservation(
+        dotyposReservation,
+        reservation.reservationDetails
+      );
       const timing = yield* getDotyposReservationTiming({
         reservationId: reservation.id,
-        reservation: dotyposReservation,
+        reservation: booked,
       }).pipe(
         Effect.tapError((cause) =>
           Effect.logWarning(
@@ -588,12 +582,9 @@ const implementation = Effect.gen(function* () {
             },
           }),
           office: (details) => {
-            const seats = Option.getOrUndefined(
-              Schema.decodeUnknownOption(dotyposReservationSeatsSchema)(
-                dotyposReservation.seats
-              )
-            );
-            if (!seats) return { kind: "office" as const };
+            // Unreadable Dotypos seats leave the office summary out.
+            if (Option.isNone(booked.seats)) return { kind: "office" as const };
+            const seats = booked.seats.value;
 
             return {
               kind: "office" as const,
@@ -662,8 +653,8 @@ const implementation = Effect.gen(function* () {
   });
 
   /**
-   * The booked selection of a payment that ended without settling, as the
-   * reservation-page link parameters a retry reopens. The interval comes from
+   * The booked selection of a payment that ended without settling, which a
+   * retry's reservation-page link reopens. The interval comes from
    * the Dotypos reservation, which stays readable after hold cleanup cancels
    * it. Best effort: without it the page starts a plain new reservation.
    */
@@ -675,16 +666,22 @@ const implementation = Effect.gen(function* () {
       readonly dotyposReservationId: DotyposReservationId;
     }) =>
       Effect.succeed(input).pipe(
-        Effect.bind("dotyposReservation", ({ dotyposReservationId }) =>
-          records.get(dotyposReservationId)
+        Effect.bind("booked", ({ dotyposReservationId, reservation }) =>
+          records
+            .get(dotyposReservationId)
+            .pipe(
+              Effect.map((record) =>
+                decodeBookedReservation(record, reservation.reservationDetails)
+              )
+            )
         ),
-        Effect.bind("timing", ({ reservation, dotyposReservation }) =>
+        Effect.bind("timing", ({ reservation, booked }) =>
           getDotyposReservationTiming({
             reservationId: reservation.id,
-            reservation: dotyposReservation,
+            reservation: booked,
           })
         ),
-        Effect.map(getRetrySelectionSearchParams),
+        Effect.map(getRetrySelection),
         Effect.timeoutOrElse({
           duration: summaryTimeout,
           orElse: () =>
@@ -710,7 +707,7 @@ const implementation = Effect.gen(function* () {
   );
 
   /** Loads the retry selection only for a payment the customer may retry. */
-  const loadRetrySearchParams = (reservation: WorkspaceReservation) =>
+  const loadOfferedRetrySelection = (reservation: WorkspaceReservation) =>
     Option.match(getRetryDotyposReservationId(reservation), {
       onNone: () => Effect.undefined,
       onSome: (dotyposReservationId) =>
@@ -803,7 +800,7 @@ const implementation = Effect.gen(function* () {
       const [
         { latePaymentStatusKind, statusKind, supportContactPrefill },
         reconstruction,
-        retrySearchParams,
+        retrySelection,
       ] = yield* Effect.all(
         [
           resolveStatusKind(reservation, input.includeSupportContact ?? true),
@@ -817,7 +814,7 @@ const implementation = Effect.gen(function* () {
                 ).pipe(Effect.as(timeoutReconstruction)),
             })
           ),
-          loadRetrySearchParams(reservation),
+          loadOfferedRetrySelection(reservation),
         ],
         { concurrency: "inherit" }
       );
@@ -838,7 +835,7 @@ const implementation = Effect.gen(function* () {
         // A late payment that settled takes over the status, and with it the
         // retry of the payment it replaced.
         ...(shouldOfferReservationRetry(statusKind) &&
-          retrySearchParams && { retrySearchParams }),
+          retrySelection && { retrySelection }),
       };
       const result: CheckoutReservationStatusViewModel = {
         ...resultBase,

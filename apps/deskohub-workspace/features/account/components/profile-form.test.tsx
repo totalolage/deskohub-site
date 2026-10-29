@@ -386,6 +386,54 @@ describe("ProfileForm", () => {
     expect(view.container.querySelector("#profile-referral-code")).toBeTruthy();
   });
 
+  test("leaves an over-long referral code to the server's validation", async () => {
+    completeCustomerProfile.mockImplementationOnce(() =>
+      Promise.resolve({
+        validationErrors: {
+          formErrors: [],
+          fieldErrors: { referralCode: ["Too long."] },
+        },
+      })
+    );
+    const { ProfileForm } = await import("./profile-form");
+
+    const view = render(
+      <ProfileForm
+        mode="complete"
+        locale="en-US"
+        email={adaAddress}
+        referralsEnabled
+      />
+    );
+    fireEvent.change(view.getByLabelText("First name"), {
+      target: { value: "Ada" },
+    });
+    const field = view.container.querySelector(
+      "#profile-referral-code"
+    ) as HTMLInputElement;
+    const referralCode = "A".repeat(65);
+    fireEvent.change(field, { target: { value: referralCode } });
+    await act(async () => {
+      fireEvent.submit(view.container.querySelector("#account-profile-form")!);
+    });
+
+    expect(completeCustomerProfile.mock.calls[0]![0]).toEqual({
+      firstName: "Ada",
+      referralCode,
+    });
+    expect(
+      await view.findByText(
+        m.accountProfileValidationError({}, { locale: "en-US" })
+      )
+    ).toBeTruthy();
+    expect(field.getAttribute("aria-invalid")).toBe("true");
+    expect(
+      view.getByText(
+        m.accountProfileReferralCodeUnavailable({}, { locale: "en-US" })
+      ).id
+    ).toBe("profile-referral-code-error");
+  });
+
   test("keeps the full edit snapshot and drafts across identity and billing sections", async () => {
     const { ProfileForm } = await import("./profile-form");
 
@@ -1271,100 +1319,6 @@ describe("ProfileForm", () => {
       );
     } finally {
       window.confirm = originalConfirm;
-    }
-  });
-
-  test("links each rejected billing field to its server error", async () => {
-    updateCustomerProfile.mockImplementationOnce(() =>
-      Promise.resolve({
-        validationErrors: {
-          formErrors: [],
-          fieldErrors: {
-            billing: [
-              "companyName",
-              "companyId",
-              "vatId",
-              "addressLine1",
-              "addressLine2",
-              "city",
-              "zip",
-              "country",
-            ],
-          },
-        },
-      })
-    );
-    const { ProfileForm } = await import("./profile-form");
-
-    const view = render(
-      <ProfileForm
-        mode="edit"
-        locale="en-US"
-        email={adaAddress}
-        profile={businessProfile}
-      />
-    );
-    const form = view.container.querySelector(
-      "#account-profile-form"
-    ) as HTMLFormElement;
-
-    await act(async () => {
-      fireEvent.submit(form);
-      await Promise.resolve();
-    });
-
-    const locale = "en-US";
-    const fields = [
-      [
-        m.accountProfileCompanyNameLabel({}, { locale }),
-        "account-profile-billing-company-name",
-        "Original Company",
-      ],
-      [
-        m.accountAresLookupIcoLabel({}, { locale }),
-        "account-profile-billing-company-id",
-        "12345678",
-      ],
-      [
-        m.accountProfileVatIdLabel({}, { locale }),
-        "account-profile-billing-vat-id",
-        "",
-      ],
-      [
-        m.accountProfileAddressLine1Label({}, { locale }),
-        "account-profile-billing-address-line1",
-        "Original Street 1",
-      ],
-      [
-        m.accountProfileAddressLine2Label({}, { locale }),
-        "account-profile-billing-address-line2",
-        "",
-      ],
-      [
-        m.accountProfileCityLabel({}, { locale }),
-        "account-profile-billing-city",
-        "Prague",
-      ],
-      [
-        m.accountProfileZipLabel({}, { locale }),
-        "account-profile-billing-zip",
-        "11000",
-      ],
-      [
-        m.accountProfileCountryLabel({}, { locale }),
-        "account-profile-billing-country",
-        "CZ",
-      ],
-    ] as const;
-
-    for (const [label, id, value] of fields) {
-      const input = view.getByLabelText(label) as HTMLInputElement;
-      expect(view.container.querySelectorAll(`#${id}`)).toHaveLength(1);
-      expect(input.id).toBe(id);
-      expect(input.value).toBe(value);
-      expect(input.getAttribute("aria-invalid")).toBe("true");
-      expect(input.getAttribute("aria-describedby")).toBe(`${id}-error`);
-      expect(view.container.querySelectorAll(`#${id}-error`)).toHaveLength(1);
     }
   });
 

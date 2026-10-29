@@ -9,9 +9,8 @@ import {
   readAuthCallbackReturnTo,
   signInCallbackReturnParam,
 } from "@/features/account/routes";
-import { accountSectionLabel } from "@/features/account/sections";
+import type { AccountSection } from "@/features/account/sections";
 import { m } from "@/features/i18n";
-import { referralCodeCookieName } from "@/features/referrals/referral-code-cookie";
 import type { WorkspaceE2EStep, WorkspaceE2EStepRunner } from "../case-runner";
 import type { DatasourceConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
@@ -33,6 +32,10 @@ import {
   workspaceE2EReferralOwnerRecipientLabel,
 } from "./config";
 import type { WorkspaceE2EAccountJournal } from "./journal";
+import type {
+  WorkspaceE2EAccountBrowser,
+  WorkspaceE2EAccountLaneBrowser,
+} from "./lane-browser";
 import type { WorkspaceE2EAccountPasskeys } from "./passkeys";
 import {
   type MagicLinkOperation,
@@ -79,7 +82,6 @@ const czechLanguageLabel = "Preferovaný jazyk";
 const englishFaqTitle = "Frequently Asked Questions";
 const czechFaqTitle = "Často kladené otázky";
 const deleteTriggerSelector = "#delete-account-trigger";
-const accountSectionDataAttribute = "data-account-section";
 const deleteReauthSendSelector = "#delete-account-reauth-send";
 const deleteConfirmCheckboxSelector = "#confirm-account-deletion";
 const deleteConfirmSelector = "#delete-account-confirm";
@@ -1211,6 +1213,23 @@ class FakeBrowser {
     }
   }
 
+  /** Selects a section through the account navigation, as the lane does. */
+  selectSection(section: AccountSection) {
+    if (section === "danger" || section === "billing") {
+      this.selectAccountSection(section);
+      return;
+    }
+    if (section !== "profile") {
+      throw new Error(`the account case selected the ${section} section`);
+    }
+    if (this.pageLocale() !== "en-US") {
+      throw new Error("the English account navigation was clicked in Czech");
+    }
+    this.selectAccountSection("profile");
+    this.pageText = `${this.pageText} ${englishLanguageLabel.toLocaleUpperCase()}`;
+    this.languageControlLabel = englishLanguageLabel;
+  }
+
   open(url: string) {
     const parsed = new URL(url);
     this.external.recordBrowserAction({
@@ -1441,16 +1460,11 @@ class FakeBrowser {
   }
 
   /** Native activation of a header language switcher link. */
-  activate(selector: string) {
-    const locale = /a\[href\^="\/(cs-CZ|en-US)"\]/.exec(selector)?.[1] as
-      | FakeLocale
-      | undefined;
-    if (!selector.startsWith("[data-locale-switcher]") || !locale) {
-      throw new Error("the synthetic browser activated an unexpected control");
-    }
+  /** Activates the header's link to the locale. */
+  switchLocale(locale: FakeLocale) {
     this.external.recordBrowserAction({
       kind: "press",
-      selectorOrDestination: selector,
+      selectorOrDestination: `[data-locale-switcher] a[href^="/${locale}"]`,
     });
     // An open listbox takes the activation as an outside interaction.
     if (this.languageListboxOpen) return;
@@ -1536,6 +1550,30 @@ class FakeBrowser {
     this.nativeValidationBlocked = !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value);
   }
 
+  /** Follows the failed-callback card's request-a-new-link action. */
+  requestNewLinkAfterFailedCallback(locale: FakeLocale) {
+    const action = m.accountCallbackFailedAction({}, { locale });
+    this.external.recordBrowserAction({
+      kind: "click",
+      selectorOrDestination: `a:has-text("${action}")`,
+    });
+    const callback = new URL(this.currentUrl);
+    if (
+      locale !== this.pageLocale() ||
+      callback.searchParams.get("error") === null
+    ) {
+      throw new Error("the request-a-new-link action is off the failure card");
+    }
+    this.navigate(
+      `${this.external.config.baseUrl}${getAccountSignInPath(
+        this.pageLocale(),
+        readAuthCallbackReturnTo(
+          callback.searchParams.get(signInCallbackReturnParam)
+        )
+      )}`
+    );
+  }
+
   click(selector: string) {
     this.external.recordBrowserAction({
       kind: "click",
@@ -1593,28 +1631,6 @@ class FakeBrowser {
       this.nativeValidationBlocked = false;
       return;
     }
-    const failedAction = /^a:has-text\("(.+)"\)$/.exec(selector)?.[1];
-    if (
-      failedAction !== undefined &&
-      failedAction ===
-        m.accountCallbackFailedAction({}, { locale: this.pageLocale() })
-    ) {
-      const callback = new URL(this.currentUrl);
-      if (callback.searchParams.get("error") === null) {
-        throw new Error(
-          "the request-a-new-link action is off the failure card"
-        );
-      }
-      this.navigate(
-        `${this.external.config.baseUrl}${getAccountSignInPath(
-          this.pageLocale(),
-          readAuthCallbackReturnTo(
-            callback.searchParams.get(signInCallbackReturnParam)
-          )
-        )}`
-      );
-      return;
-    }
     if (selector === signOutSelector) {
       const locale = this.pageLocale();
       this.external.logout();
@@ -1670,13 +1686,6 @@ class FakeBrowser {
       this.pageText = deletionReauthLinkSent;
       return;
     }
-    if (
-      selector.includes(accountSectionLabel("danger", "en-US")) ||
-      selector.includes(`${accountSectionDataAttribute}="danger"`)
-    ) {
-      this.selectAccountSection("danger");
-      return;
-    }
     if (selector === profileSubmitSelector) {
       if (this.external.submitProfile(this.referralFieldValue) === "saved") {
         this.pageText = "Profile updated.";
@@ -1690,19 +1699,6 @@ class FakeBrowser {
       this.pageText = referralApplied
         ? `Save profile\n${completionReferralApplied}`
         : "Save profile";
-      return;
-    }
-    if (selector.includes(accountSectionLabel("billing", "en-US"))) {
-      this.selectAccountSection("billing");
-      return;
-    }
-    if (selector.includes(accountSectionLabel("profile", "en-US"))) {
-      if (this.pageLocale() !== "en-US") {
-        throw new Error("the English account navigation was clicked in Czech");
-      }
-      this.selectAccountSection("profile");
-      this.pageText = `${this.pageText} ${englishLanguageLabel.toLocaleUpperCase()}`;
-      this.languageControlLabel = englishLanguageLabel;
       return;
     }
     if (selector === languageTriggerSelector) {
@@ -1767,7 +1763,6 @@ class FakeBrowser {
     if (input.includes("validationMessage")) {
       return JSON.stringify({ blocked: this.nativeValidationBlocked });
     }
-    if (input.includes("window.matchMedia")) return "true";
     const cookieWrite =
       /^document\.cookie = "PARAGLIDE_LOCALE=(cs-CZ|en-US); path=\/"$/.exec(
         input
@@ -1829,18 +1824,18 @@ class FakeBrowser {
     return this.pageText;
   }
 
-  waitForCondition(description: string, condition: string) {
-    if (description.startsWith("cowork selection ")) {
-      const page = new URL(this.currentUrl);
-      if (
-        !page.pathname.endsWith("/reservation/cowork") ||
-        page.searchParams.get("entryTier") !== "open-space" ||
-        !condition.includes('input[name="entryTier"]:checked')
-      ) {
-        throw new Error("the cowork page does not show the selection");
-      }
-      return;
+  /** The cowork page renders the entry tier its URL carries as selected. */
+  waitForCoworkSelection(entryTier: string) {
+    const page = new URL(this.currentUrl);
+    if (
+      !page.pathname.endsWith("/reservation/cowork") ||
+      page.searchParams.get("entryTier") !== entryTier
+    ) {
+      throw new Error("the cowork page does not show the selection");
     }
+  }
+
+  waitForCondition(description: string, condition: string) {
     if (description.endsWith(" language control label")) {
       if (
         this.languageControlLabel === null ||
@@ -1860,30 +1855,6 @@ class FakeBrowser {
       }
       return;
     }
-    if (description === "account danger panel hydration") {
-      if (!condition.includes("#delete-account-trigger")) {
-        throw new Error("the danger panel hydration anchor is wrong");
-      }
-      return;
-    }
-    if (description === "account profile panel hydration") {
-      if (!condition.includes("[data-screen='profile-screen']")) {
-        throw new Error("the profile panel hydration anchor is wrong");
-      }
-      return;
-    }
-    if (description === "account billing panel hydration") {
-      if (!condition.includes("[data-screen='profile-screen']")) {
-        throw new Error("the billing panel hydration anchor is wrong");
-      }
-      return;
-    }
-    if (description === "account billing section") {
-      if (this.selectedSection !== "billing") {
-        throw new Error("the billing section is not selected");
-      }
-      return;
-    }
     if (description === "business billing kind") {
       if (this.external.billingKind !== "business") {
         throw new Error("the billing kind is not business");
@@ -1897,12 +1868,6 @@ class FakeBrowser {
       const userId = this.external.currentAuthUserId;
       if (!userId || !this.external.linksByUserId.has(userId)) {
         throw new Error("the linked edit form is not shown");
-      }
-      return;
-    }
-    if (description === "account danger section") {
-      if (this.selectedSection !== "danger") {
-        throw new Error("the danger section is not selected");
       }
       return;
     }
@@ -1937,12 +1902,6 @@ class FakeBrowser {
     if (description === "reauthentication dialog") {
       if (!this.external.reauthenticationDialog) {
         throw new Error("the reauthentication dialog is missing");
-      }
-      return;
-    }
-    if (description === "account profile section") {
-      if (this.selectedSection !== "profile") {
-        throw new Error("the profile section is not selected");
       }
       return;
     }
@@ -2050,6 +2009,47 @@ const requireBrowser = (browserSession = session) => {
   return assistantBrowser;
 };
 
+/**
+ * One account browser's page steps as domain operations over the fake
+ * browser's state, resolved when each step runs; descriptions are ignored.
+ */
+const fakeAccountBrowser = (
+  browser: () => FakeBrowser
+): WorkspaceE2EAccountBrowser => ({
+  open: (url) => Effect.sync(() => browser().open(url)),
+  readText: Effect.sync(() => browser().text()),
+  readUrl: Effect.sync(() => browser().url()),
+  requestNewLinkAfterFailedCallback: (locale) =>
+    Effect.sync(() => browser().requestNewLinkAfterFailedCallback(locale)),
+  signOut: Effect.sync(() => browser().click(signOutSelector)),
+  submitSignInEmail: (email) =>
+    Effect.sync(() => {
+      browser().fill(signInEmailSelector, email);
+      browser().click(signInSubmitSelector);
+    }),
+  switchLocale: (locale) =>
+    Effect.sync(() => {
+      browser().switchLocale(locale);
+      browser().waitForUrl((url) =>
+        new URL(url).pathname.startsWith(`/${locale}`)
+      );
+    }),
+  waitForCoworkSelection: (_description, entryTier) =>
+    Effect.sync(() => browser().waitForCoworkSelection(entryTier)),
+  waitForSignInCodeInput: Effect.sync(() =>
+    browser().waitForHandler(signInCodeSelector, "onChange")
+  ),
+  waitForSignInForm: Effect.sync(() =>
+    browser().waitForFormSubmitHandler(signInFormSelector, [
+      signInEmailSelector,
+    ])
+  ),
+  waitForText: (_description, matches) =>
+    Effect.sync(() => browser().waitForText(matches)),
+  waitForUrl: (_description, matches) =>
+    Effect.sync(() => browser().waitForUrl(matches)),
+});
+
 const realBrowserModule = await import("../browser");
 
 const browserResult = (stdout = ""): BrowserCommandResult => ({
@@ -2065,21 +2065,6 @@ const browserResult = (stdout = ""): BrowserCommandResult => ({
  */
 mock.module("../browser", () => ({
   ...realBrowserModule,
-  closeBrowserSession: (_run: Runner, browserSession: string) =>
-    Effect.sync(() => {
-      if (browserSession !== assistantSession) {
-        throw new Error("the account case closed the lane browser");
-      }
-      if (assistantBrowser) {
-        assistantBrowser = undefined;
-        requireExternal().assistantBrowserEvents.push("close");
-      }
-    }),
-  activateHydratedBrowserElement: (
-    _run: Runner,
-    browserSession: string,
-    selector: string
-  ) => Effect.sync(() => requireBrowser(browserSession).activate(selector)),
   clickBrowserElement: (
     _run: Runner,
     browserSession: string,
@@ -2106,37 +2091,8 @@ mock.module("../browser", () => ({
     selector: string
   ) => Effect.sync(() => requireBrowser(browserSession).focus(selector)),
   normalizeBrowserText: (text: string) => text.replaceAll(/\s+/g, " ").trim(),
-  openBrowserPage: (
-    _config: WorkspaceE2EAccountConfig,
-    _run: Runner,
-    browserSession: string,
-    url: string
-  ) => Effect.sync(() => requireBrowser(browserSession).open(url)),
   pressBrowserKey: (_run: Runner, browserSession: string, key: string) =>
     Effect.sync(() => requireBrowser(browserSession).press(key)),
-  readBrowserText: (_run: Runner, browserSession: string) =>
-    Effect.sync(() => requireBrowser(browserSession).text()),
-  readBrowserCookie: (
-    _run: Runner,
-    browserSession: string,
-    query: { readonly name: string; readonly value?: string }
-  ) =>
-    Effect.sync(() => {
-      const value = requireBrowser(browserSession).referralCookie;
-      return query.name !== referralCodeCookieName || value === undefined
-        ? { present: false as const }
-        : {
-            httpOnly: false,
-            lifetimeDays: 30,
-            matches: query.value === undefined ? null : query.value === value,
-            path: "/",
-            present: true as const,
-            sameSite: "Lax",
-            secure: true,
-          };
-    }),
-  readBrowserUrl: (_run: Runner, browserSession: string) =>
-    Effect.sync(() => requireBrowser(browserSession).url()),
   waitForBrowserCondition: (
     _run: Runner,
     browserSession: string,
@@ -2145,18 +2101,6 @@ mock.module("../browser", () => ({
   ) =>
     Effect.sync(() =>
       requireBrowser(browserSession).waitForCondition(description, condition)
-    ),
-  waitForBrowserReactFormSubmit: (
-    _run: Runner,
-    browserSession: string,
-    selector: string,
-    fieldSelectors: readonly string[]
-  ) =>
-    Effect.sync(() =>
-      requireBrowser(browserSession).waitForFormSubmitHandler(
-        selector,
-        fieldSelectors
-      )
     ),
   waitForBrowserReactHandler: (
     _run: Runner,
@@ -2167,20 +2111,6 @@ mock.module("../browser", () => ({
     Effect.sync(() =>
       requireBrowser(browserSession).waitForHandler(selector, handler)
     ),
-  waitForBrowserText: ({
-    matches,
-    session: browserSession,
-  }: {
-    readonly matches: (text: string) => boolean;
-    readonly session: string;
-  }) => Effect.sync(() => requireBrowser(browserSession).waitForText(matches)),
-  waitForBrowserUrl: ({
-    matches,
-    session: browserSession,
-  }: {
-    readonly matches: (url: string) => boolean;
-    readonly session: string;
-  }) => Effect.sync(() => requireBrowser(browserSession).waitForUrl(matches)),
   waitForInteractiveSnapshot: ({
     matches,
     session: browserSession,
@@ -2360,6 +2290,31 @@ const makeScenario = (
       }),
   };
   const datasourceConfig = {} as DatasourceConfig;
+  const laneBrowser: WorkspaceE2EAccountLaneBrowser = {
+    ...fakeAccountBrowser(() => browser),
+    assistant: {
+      ...fakeAccountBrowser(() => requireBrowser(assistantSession)),
+      close: Effect.sync(() => {
+        if (assistantBrowser) {
+          assistantBrowser = undefined;
+          external.assistantBrowserEvents.push("close");
+        }
+      }),
+    },
+    selectSection: (section) =>
+      Effect.sync(() => browser.selectSection(section)),
+    waitForNoRememberedReferralCode: Effect.sync(() => {
+      if (browser.referralCookie !== undefined) {
+        throw new Error("the lane browser still remembers a referral code");
+      }
+    }),
+    waitForRememberedReferralCode: (code) =>
+      Effect.sync(() => {
+        if (browser.referralCookie !== code) {
+          throw new Error("the lane browser remembers another referral code");
+        }
+      }),
+  };
   const passkeys: WorkspaceE2EAccountPasskeys = {
     confirmDeletionWithPasskey: Effect.sync(() =>
       external.confirmDeletionWithPasskey()
@@ -2391,6 +2346,7 @@ const makeScenario = (
     datasourceConfig,
     external,
     journalRef,
+    laneBrowser,
     lifecycleHandoff,
     operations,
     passkeys,
@@ -2490,6 +2446,7 @@ const buildCase = async (
       : {}),
     config: scenario.config,
     datasourceConfig: scenario.datasourceConfig,
+    laneBrowser: scenario.laneBrowser,
     lifecycleHandoff: scenario.lifecycleHandoff,
     passkeys: scenario.passkeys,
     previewLogs: scenario.previewLogs,

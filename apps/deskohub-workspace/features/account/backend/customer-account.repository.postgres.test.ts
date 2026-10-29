@@ -25,7 +25,9 @@ describe.skipIf(!testDatabase)(
   () => {
     test("creates a sign-up's account as a new one", async () => {
       const account = customerAccountIdSchema.make(crypto.randomUUID());
-      await Effect.runPromise(ensureCustomerAccount(testDatabase!.db, account));
+      await Effect.runPromise(
+        ensureCustomerAccount(account).pipe(Effect.provide(testDatabase!.layer))
+      );
       expect(await isLegacy(account)).toBe(false);
     });
 
@@ -40,7 +42,7 @@ describe.skipIf(!testDatabase)(
               Layer.provide(
                 Layer.succeed(
                   WorkspaceDatabase,
-                  WorkspaceDatabase.of({ db: testDatabase!.db })
+                  WorkspaceDatabase.make(testDatabase!.db)
                 )
               )
             )

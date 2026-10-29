@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { Context, Data, Duration, Effect, Layer, Option } from "effect";
-import { WorkspaceDatabase } from "@/db/database.service";
+import { WorkspaceDatabase, WorkspaceTransaction } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { emailCampaignAutomationWorkUnits as units } from "@/db/schema";
 import { isDatabaseQueryError } from "@/db/sql-constraint";
@@ -8,7 +8,6 @@ import { currentInstant } from "@/shared/utils/temporal";
 import type { CampaignSendId } from "../../campaign-identifiers";
 import type { AutomationWorkUnitId } from "../automation-identifiers";
 import {
-  type AutomationEngineTransaction,
   AutomationUnitDefect,
   type AutomationUnitExpiry,
   type AutomationUnitSubmit,
@@ -137,13 +136,13 @@ export class AutomationUnitProcessor extends Context.Service<
           | { readonly status: "dropped"; readonly code: string }
       ): Effect.Effect<AutomationUnitOutcome, AutomationUnitRedelivery> =>
         slots
-          .handOff((tx, at) =>
+          .handOff((at) =>
             "code" in settlement
-              ? settleClaimed(tx, unit, settlement.status, at, {
+              ? settleClaimed(unit, settlement.status, at, {
                   lastErrorCode: settlement.code,
                   ignoreMark: true,
                 })
-              : settleClaimed(tx, unit, settlement.status, at)
+              : settleClaimed(unit, settlement.status, at)
           )
           .pipe(
             Effect.as<AutomationUnitOutcome>(settlement.status),
@@ -176,8 +175,8 @@ export class AutomationUnitProcessor extends Context.Service<
         }
       ): Effect.Effect<AutomationUnitOutcome, AutomationUnitRedelivery> =>
         slots
-          .handOff((tx, at) =>
-            tx
+          .handOff((at) =>
+            db
               .update(units)
               .set({
                 status: "enqueued",
@@ -202,7 +201,7 @@ export class AutomationUnitProcessor extends Context.Service<
               .pipe(
                 Effect.flatMap(([requeued]) =>
                   requeued === undefined
-                    ? missedRequeue(tx, unit, at)
+                    ? missedRequeue(unit, at)
                     : Effect.succeed("requeued" as const)
                 )
               )
@@ -250,10 +249,10 @@ export class AutomationUnitProcessor extends Context.Service<
           Effect.flatMap((submitSend) => submitSend(unit)),
           Effect.timeout(unitDeadline),
           Effect.flatMap((settlement) =>
-            slots.handOff((tx, at) =>
-              settlement(tx, at).pipe(
+            slots.handOff((at) =>
+              settlement(at).pipe(
                 Effect.andThen(
-                  settleClaimed(tx, unit, "done", at, { ignoreMark: true })
+                  settleClaimed(unit, "done", at, { ignoreMark: true })
                 )
               )
             )
@@ -294,11 +293,11 @@ export class AutomationUnitProcessor extends Context.Service<
         { commit: commitUnit, submit }: FetchedAutomationUnit
       ) =>
         slots
-          .handOff((tx, at) =>
-            commitUnit(tx, at).pipe(
+          .handOff((at) =>
+            commitUnit(at).pipe(
               Effect.flatMap((followUps) =>
-                holdOrSettle(tx, unit, at).pipe(
-                  Effect.tap(() => planAutomationUnits(tx, followUps, at))
+                holdOrSettle(unit, at).pipe(
+                  Effect.tap(() => planAutomationUnits(followUps, at))
                 )
               )
             )
@@ -338,12 +337,12 @@ export class AutomationUnitProcessor extends Context.Service<
       ) =>
         expireSubjects === undefined
           ? Effect.succeed<AutomationUnitExpiry>("remaining")
-          : slots.handOff((tx, at) =>
-              expireSubjects(tx, unit, at).pipe(
+          : slots.handOff((at) =>
+              expireSubjects(unit, at).pipe(
                 Effect.tap((expiry) =>
                   expiry === "settled"
-                    ? settleClaimed(tx, unit, "done", at)
-                    : lockHeldClaim(tx, unit)
+                    ? settleClaimed(unit, "done", at)
+                    : lockHeldClaim(unit)
                 )
               )
             );
@@ -432,7 +431,7 @@ export class AutomationUnitProcessor extends Context.Service<
         WorkspaceDatabase.Default,
         WorkspaceDatabaseAdvisoryLock.Default,
         AutomationUnitHandlers.Live,
-        AutomationUnitQueue.Default
+        AutomationUnitQueue.Live
       )
     )
   );
@@ -443,38 +442,36 @@ export class AutomationUnitProcessor extends Context.Service<
  * `dropped`, unless it persisted a send, which ignores marks; then its claim
  * was taken over.
  */
-const missedRequeue = (
-  tx: AutomationEngineTransaction,
-  unit: ClaimedUnit,
-  at: Temporal.Instant
-) =>
+const missedRequeue = (unit: ClaimedUnit, at: Temporal.Instant) =>
   unit.sendId === null
-    ? settleClaimed(tx, unit, "dropped", at).pipe(Effect.as("dropped" as const))
+    ? settleClaimed(unit, "dropped", at).pipe(Effect.as("dropped" as const))
     : Effect.fail(new AutomationUnitClaimLost());
 
 /**
  * Locks the unit row while the caller's claim holds and the unit is
  * unmarked, or fails with `AutomationUnitClaimLost`.
  */
-const lockHeldClaim = (tx: AutomationEngineTransaction, unit: ClaimedUnit) =>
-  tx
-    .select({ id: units.id })
-    .from(units)
-    .where(
-      and(
-        eq(units.id, unit.id),
-        eq(units.claimId, unit.claimId),
-        isNull(units.cancelRequestedAt)
+const lockHeldClaim = (unit: ClaimedUnit) =>
+  Effect.flatMap(WorkspaceTransaction, ({ db }) =>
+    db
+      .select({ id: units.id })
+      .from(units)
+      .where(
+        and(
+          eq(units.id, unit.id),
+          eq(units.claimId, unit.claimId),
+          isNull(units.cancelRequestedAt)
+        )
       )
-    )
-    .for("update")
-    .pipe(
-      Effect.filterOrFail(
-        (held) => held.length > 0,
-        () => new AutomationUnitClaimLost()
-      ),
-      Effect.asVoid
-    );
+      .for("update")
+      .pipe(
+        Effect.filterOrFail(
+          (held) => held.length > 0,
+          () => new AutomationUnitClaimLost()
+        ),
+        Effect.asVoid
+      )
+  );
 
 /**
  * Settles a committed unit `done` by CAS on the caller's claim, unless its
@@ -484,24 +481,22 @@ const lockHeldClaim = (tx: AutomationEngineTransaction, unit: ClaimedUnit) =>
  * transaction's commit sets `send_id`, so it reads without a lock: settling
  * frees the run rows before its CAS locks the unit row (§5.4).
  */
-const holdOrSettle = (
-  tx: AutomationEngineTransaction,
-  unit: ClaimedUnit,
-  at: Temporal.Instant
-) =>
-  tx
-    .select({ sendId: units.sendId })
-    .from(units)
-    .where(eq(units.id, unit.id))
-    .pipe(
-      Effect.map(([unitRow]) => Option.fromNullishOr(unitRow?.sendId)),
-      Effect.tap(
-        Option.match({
-          onNone: () => settleClaimed(tx, unit, "done", at),
-          onSome: () => lockHeldClaim(tx, unit),
-        })
+const holdOrSettle = (unit: ClaimedUnit, at: Temporal.Instant) =>
+  Effect.flatMap(WorkspaceTransaction, ({ db }) =>
+    db
+      .select({ sendId: units.sendId })
+      .from(units)
+      .where(eq(units.id, unit.id))
+      .pipe(
+        Effect.map(([unitRow]) => Option.fromNullishOr(unitRow?.sendId)),
+        Effect.tap(
+          Option.match({
+            onNone: () => settleClaimed(unit, "done", at),
+            onSome: () => lockHeldClaim(unit),
+          })
+        )
       )
-    );
+  );
 
 const settlementMarkCondition = {
   done: isNull(units.cancelRequestedAt),
@@ -517,7 +512,6 @@ const settlementMarkCondition = {
  * release back with the rest of the transaction.
  */
 const settleClaimed = (
-  tx: AutomationEngineTransaction,
   unit: ClaimedUnit,
   status: "done" | "dropped" | "failed",
   at: Temporal.Instant,
@@ -526,30 +520,34 @@ const settleClaimed = (
     ignoreMark = false,
   }: { readonly lastErrorCode?: string; readonly ignoreMark?: boolean } = {}
 ) =>
-  releaseAutomationUnitSubjects(tx, [unit]).pipe(
-    Effect.andThen(
-      tx
-        .update(units)
-        .set({
-          status,
-          claimId: null,
-          claimExpiresAt: null,
-          settledAt: at,
-          ...(lastErrorCode !== undefined && { lastErrorCode }),
-          ...(status === "failed" && { failures: sql`${units.failures} + 1` }),
-        })
-        .where(
-          and(
-            eq(units.id, unit.id),
-            eq(units.claimId, unit.claimId),
-            ignoreMark ? undefined : settlementMarkCondition[status]
+  Effect.flatMap(WorkspaceTransaction, ({ db }) =>
+    releaseAutomationUnitSubjects([unit]).pipe(
+      Effect.andThen(
+        db
+          .update(units)
+          .set({
+            status,
+            claimId: null,
+            claimExpiresAt: null,
+            settledAt: at,
+            ...(lastErrorCode !== undefined && { lastErrorCode }),
+            ...(status === "failed" && {
+              failures: sql`${units.failures} + 1`,
+            }),
+          })
+          .where(
+            and(
+              eq(units.id, unit.id),
+              eq(units.claimId, unit.claimId),
+              ignoreMark ? undefined : settlementMarkCondition[status]
+            )
           )
-        )
-        .returning({ id: units.id })
-    ),
-    Effect.filterOrFail(
-      (settled) => settled.length > 0,
-      () => new AutomationUnitClaimLost()
-    ),
-    Effect.asVoid
+          .returning({ id: units.id })
+      ),
+      Effect.filterOrFail(
+        (settled) => settled.length > 0,
+        () => new AutomationUnitClaimLost()
+      ),
+      Effect.asVoid
+    )
   );

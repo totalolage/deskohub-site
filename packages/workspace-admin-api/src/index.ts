@@ -11,6 +11,7 @@ export {
   administrationOperations,
   administrationOperationVariantOf,
   CliOnly,
+  changeKeyPaths,
   credentialPaths,
   destructiveOperation,
   disclosedCredentials,
@@ -133,6 +134,10 @@ export {
   type AdministrationCampaignPurpose as AdministrationCampaignPurposeType,
 } from "./campaign-locale-and-purpose";
 export {
+  AdminCliAutomationsApi,
+  AdminCliCampaignsApi,
+} from "./campaign-operation-endpoints";
+export {
   CampaignAudiencePatchInput,
   type CampaignAudiencePatchInput as CampaignAudiencePatchInputType,
   CampaignAudienceRef,
@@ -154,7 +159,6 @@ export {
   type CampaignTemplatePreviewInput as CampaignTemplatePreviewInputType,
   CampaignTestSendInput,
   type CampaignTestSendInput as CampaignTestSendInputType,
-  campaignOperationEndpoints,
   campaignOperations,
   defineOperations,
   type LedgerOperationName,
@@ -163,7 +167,6 @@ export {
   OperationConflict,
   type OperationDecodedInput,
   type OperationDefinition,
-  type OperationEndpoints,
   OperationInProgress,
   type OperationInput,
   OperationInputInvalid,
@@ -172,10 +175,8 @@ export {
   OperationNotFound,
   type OperationOutput,
   type Operations,
-  type OperationsWithoutEndpoint,
   OperationUnauthorized,
   OperationUnavailable,
-  operationEndpoints,
   query,
 } from "./campaign-operations";
 export {
@@ -202,7 +203,6 @@ export {
   emailAutomationTickMinutes,
 } from "./email-automation-cadence";
 export {
-  AdminCliAutomationsApi,
   AutomationActivateInput,
   type AutomationActivateInput as AutomationActivateInputType,
   AutomationActivation,
@@ -322,7 +322,6 @@ export {
   scheduleMinutesOffTick,
 } from "./email-automations";
 export {
-  AdminCliCampaignsApi,
   AdministrationCampaignAudience,
   type AdministrationCampaignAudience as AdministrationCampaignAudienceType,
   AdministrationCampaignAudienceCreateRequest,
@@ -408,6 +407,12 @@ export {
   administrationCampaignAudienceTitleMaxLength,
   campaignsMinimumDhwVersion,
 } from "./email-campaigns";
+export {
+  type OperationInvoke,
+  type OperationRequest,
+  operationGroupHandlers,
+  operationRequest,
+} from "./operation-endpoints";
 export {
   WORKSPACE_SITE_TIME_ZONE,
   type WorkspaceSiteTimeZone,

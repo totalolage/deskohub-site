@@ -1,3 +1,4 @@
+import { Match } from "effect";
 import type { AdvertisedPriceRequest } from "@/features/checkout/advertised-price";
 import { workspaceMeetingRoomCatalog } from "@/features/checkout/meeting-room-product-catalog";
 import {
@@ -30,9 +31,13 @@ import {
 import { type Locale, m } from "@/features/i18n";
 import { getCoworkAdvertisedPriceReservation } from "@/features/reservation/cowork-reservation";
 import { getMeetingRoomDurationAdvertisedPriceRequests } from "@/features/reservation/meeting-room-advertised-price";
-import type { MeetingRoomReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
+import {
+  getMeetingRoomReservationDurationKey,
+  type MeetingRoomReservationDuration,
+} from "@/features/reservation/meeting-room-reservation-duration";
 import { getOfficeAdvertisedPriceRequest } from "@/features/reservation/office-advertised-price";
 import { officeReservationMaximumDurationHours } from "@/features/reservation/office-reservation";
+import type { ReservationSelection } from "@/features/reservation/selection-path";
 import type { Money } from "@/shared/money/money";
 import { joinSentences } from "@/shared/utils/sentences";
 import {
@@ -90,6 +95,28 @@ export type PublicCatalogOffering = PublicOfferingCopy &
         /** Elapsed hours one booking may span, measured between Prague midnights. */
         readonly maximumDurationHours: number;
       }
+  );
+
+/**
+ * The selection an offering's reservation link names: the cowork tier or the
+ * meeting-room duration. The start stays open, so the page opens on the
+ * earliest one, and the customer's last reservation fills the add-ons.
+ */
+export const getPublicOfferingSelection = (
+  offering: PublicCatalogOffering
+): ReservationSelection =>
+  Match.value(offering).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      cowork: ({ tier }): ReservationSelection => ({
+        kind: "cowork",
+        entryTier: tier,
+      }),
+      "meeting-room": ({ duration }): ReservationSelection => ({
+        kind: "meeting-room",
+        duration: getMeetingRoomReservationDurationKey(duration),
+      }),
+      office: (): ReservationSelection => ({ kind: "office" }),
+    })
   );
 
 /** A catalog offering with the request that prices its smallest booking. */

@@ -19,7 +19,8 @@
       "!**/generated",
       "!**/features/i18n/paraglide",
       "!**/features/administration/i18n/paraglide",
-      "!**/db/migrations/**/snapshot.json"
+      "!**/db/migrations/**/snapshot.json",
+      "!**/administration-wire-contract.golden.json"
     ]
   },
   "formatter": {
@@ -63,7 +64,12 @@
     "./lint/no-wildcard-reexport.grit",
     "./lint/prefer-effect-when.grit",
     "./lint/prefer-effect-fn.grit",
-    "./lint/prefer-effect-value.grit"
+    "./lint/prefer-effect-value.grit",
+    "./lint/workspace-database-clients.grit",
+    "./lint/workspace-transaction-concurrency.grit",
+    "./lint/workspace-transaction-entry.grit",
+    "./lint/workspace-lock-statements.grit",
+    "./lint/workspace-transaction-executors.grit"
   ],
   "linter": {
     "rules": {

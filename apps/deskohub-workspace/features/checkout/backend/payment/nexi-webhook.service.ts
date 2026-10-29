@@ -21,7 +21,7 @@ import {
   capturePaymentCompleted,
   capturePaymentFailed,
 } from "../analytics/posthog-lifecycle-events";
-import { WorkspacePaidFulfillmentService } from "../fulfillment/paid-fulfillment.service";
+import { ReservationFulfillment } from "../fulfillment/reservation-fulfillment.service";
 import { LatePaymentRecoveryRepository } from "../repositories/late-payment-recovery.repository";
 import {
   isNexiPaymentAttempt,
@@ -84,7 +84,7 @@ export class NexiWebhookService extends Context.Service<
     Layer.provide(PaymentAttemptRepository.Default),
     Layer.provide(PaymentLifecycleRepository.Default),
     Layer.provide(LatePaymentRecoveryRepository.Default),
-    Layer.provide(LatePaymentRecoveryQueueService.Default),
+    Layer.provide(LatePaymentRecoveryQueueService.Live),
     Layer.provide(PostHogEventService.Live),
     Layer.provide(WorkspaceReservationRepository.Default),
     Layer.provide(
@@ -93,7 +93,7 @@ export class NexiWebhookService extends Context.Service<
       )
     ),
     Layer.provide(WorkspaceDatabase.Default),
-    Layer.provide(WorkspacePaidFulfillmentService.Live)
+    Layer.provide(ReservationFulfillment.Live)
   );
 }
 
@@ -157,7 +157,7 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
       const paymentLifecycle = yield* PaymentLifecycleRepository;
       const reservations = yield* WorkspaceReservationRepository;
       const nexi = yield* NexiService;
-      const fulfillment = yield* WorkspacePaidFulfillmentService;
+      const fulfillment = yield* ReservationFulfillment;
       const posthogEvents = yield* PostHogEventService;
       const latePaymentRecoveries = yield* LatePaymentRecoveryRepository;
       const latePaymentRecoveryQueue = yield* LatePaymentRecoveryQueueService;
@@ -621,28 +621,25 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
               }
               yield* Effect.logInfo("Nexi webhook payment attempt marked paid");
 
-              yield* fulfillment
-                .fulfillPaidOrder({ orderId: reservation.id })
-                .pipe(
-                  Effect.mapError(
-                    (cause) =>
-                      new NexiWebhookProcessingError({
-                        errorCode: "nexi_webhook_fulfillment_failed",
-                        eventId,
-                        orderId: providerOrderId,
-                        message:
-                          "Paid workspace reservation fulfillment failed.",
-                        cause,
-                      })
-                  ),
-                  Effect.catch((error) =>
-                    failAfterMarkingEvent(
-                      webhookEvents,
-                      { type: "eventId", eventId },
-                      error
-                    )
+              yield* fulfillment.run(reservation.id).pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new NexiWebhookProcessingError({
+                      errorCode: "nexi_webhook_fulfillment_failed",
+                      eventId,
+                      orderId: providerOrderId,
+                      message: "Paid workspace reservation fulfillment failed.",
+                      cause,
+                    })
+                ),
+                Effect.catch((error) =>
+                  failAfterMarkingEvent(
+                    webhookEvents,
+                    { type: "eventId", eventId },
+                    error
                   )
-                );
+                )
+              );
               yield* Effect.logInfo("Nexi webhook paid order fulfilled");
             } else if (verification.status === "failure") {
               const terminalState = classifyNexiFailureStatus(providerStatus);

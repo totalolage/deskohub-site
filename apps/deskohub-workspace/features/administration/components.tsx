@@ -25,7 +25,6 @@ import {
   formatAdministrationReservationDate,
 } from "./formatters";
 import { m } from "./i18n";
-import { getAdministrationListHref } from "./list-href";
 import { NexiOrderLink } from "./nexi-order-link";
 import { getAdministrationPaymentProviderLabel } from "./payment-presentation";
 import {
@@ -47,7 +46,6 @@ export { AdministrationCustomerTable } from "./customer-table";
 export {
   AdministrationDataTable,
   type AdministrationDataTableColumn,
-  type AdministrationDataTableSorting,
 } from "./data-table";
 export {
   AdministrationDetailSection,
@@ -360,25 +358,17 @@ function Reference({
 }
 
 export function Pagination({
-  basePath,
+  href,
   locale,
   page,
   pageCount,
-  pageParam = "page",
-  params = {},
 }: {
-  readonly basePath: AdministrationHref;
+  /** The list on a page, keeping its filters and order. */
+  readonly href: (page: number) => AdministrationHref;
   readonly locale: Locale;
   readonly page: number;
   readonly pageCount: number;
-  readonly pageParam?: string;
-  readonly params?: Readonly<Record<string, string | undefined>>;
 }) {
-  const href = (target: number) =>
-    getAdministrationListHref(basePath, {
-      ...params,
-      [pageParam]: target > 1 ? String(target) : undefined,
-    });
   if (pageCount <= 1) return null;
   return (
     <nav

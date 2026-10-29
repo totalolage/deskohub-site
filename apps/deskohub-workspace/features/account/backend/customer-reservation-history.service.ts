@@ -11,6 +11,10 @@ import { Context, Effect, Layer, Option } from "effect";
 import type { SqlError } from "effect/unstable/sql";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { workspaceReservations } from "@/db/schema";
+import {
+  type BookedReservation,
+  decodeBookedReservation,
+} from "@/features/reservation/backend/booked-reservation";
 import type { ReservationRecord } from "@/features/reservation/backend/reservation-record";
 import {
   ReservationRecords,
@@ -103,16 +107,11 @@ const getReservationStatus = (
     : "pending";
 };
 
-const startInstantOrder = (reservation: ReservationRecord) => {
-  const time = Date.parse(reservation.startDate ?? "");
-  return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time;
-};
-
 /**
  * The account's own customer's reservations and the ones the account booked
- * for other customers, newest start first. An unparseable start sorts last.
+ * for other customers, each once.
  */
-const mergeByStartDescending = (
+const mergeReservations = (
   own: readonly ReservationRecord[],
   bookedForOthers: readonly ReservationRecord[]
 ) => {
@@ -122,8 +121,15 @@ const mergeByStartDescending = (
     ...bookedForOthers.filter(
       (reservation) => !reservation.id || !ownIds.has(reservation.id)
     ),
-  ].toSorted((a, b) => startInstantOrder(b) - startInstantOrder(a));
+  ];
 };
+
+/** Newest booked start first; an unparseable start sorts last. */
+const startOrder = ({ booked }: HistoryEntry) =>
+  Option.match(booked.start, {
+    onNone: () => Number.NEGATIVE_INFINITY,
+    onSome: (start) => start.epochMilliseconds,
+  });
 
 /**
  * What the account history knows about a row's other party. A row for another
@@ -174,9 +180,24 @@ const toReservationParty = (
     : { kind: "booked-by", authorName: name };
 };
 
-const toReservationSummary = (
+/**
+ * The booked start. An early-setup meeting room's Dotypos start is its setup
+ * start; other reservations keep Dotypos's start.
+ */
+const getBookedStartFields = (
   reservation: ReservationRecord,
-  row: ReservationRow | undefined,
+  booked: BookedReservation
+): Pick<CustomerReservationSummary, "startsAt"> =>
+  Option.match(
+    Option.all({ setupStart: booked.setupStart, start: booked.start }),
+    {
+      onNone: () => ({ startsAt: reservation.startDate }),
+      onSome: ({ start }) => ({ startsAt: start.toString() }),
+    }
+  );
+
+const toReservationSummary = (
+  { reservation, row, booked }: HistoryEntry,
   party: CustomerReservationParty | undefined,
   index: number
 ): CustomerReservationSummary => ({
@@ -184,9 +205,10 @@ const toReservationSummary = (
   ...(row?.id && { workspaceReservationId: row.id }),
   ...(party && { party }),
   product: getReservationProduct(row),
-  startsAt: reservation.startDate,
+  ...getBookedStartFields(reservation, booked),
   endsAt: reservation.endDate,
-  seats: /^\d+$/.test(reservation.seats) ? Number(reservation.seats) : null,
+  // History shows no seat count when Dotypos's is unreadable.
+  seats: Option.getOrNull(booked.seats),
   status: getReservationStatus(reservation, row),
 });
 
@@ -200,6 +222,8 @@ type ReservationSources = {
 type HistoryEntry = {
   readonly reservation: ReservationRecord;
   readonly row: ReservationRow | undefined;
+  /** Decoded with the row's stored details, so it holds the booked time. */
+  readonly booked: BookedReservation;
   readonly relation: PartyRelation | undefined;
 };
 
@@ -226,18 +250,19 @@ const relateReservations = ({
       row.dotyposReservationId ? [[row.dotyposReservationId, row] as const] : []
     )
   );
-  return mergeByStartDescending(sources.own, sources.bookedForOthers).map(
-    (reservation) => {
+  return mergeReservations(sources.own, sources.bookedForOthers)
+    .map((reservation): HistoryEntry => {
       const row = reservation.id
         ? rowsByReservationId.get(reservation.id)
         : undefined;
       return {
         reservation,
         row,
+        booked: decodeBookedReservation(reservation, row?.reservationDetails),
         relation: row && getPartyRelation(account, row, sources.authors),
       };
-    }
-  );
+    })
+    .toSorted((a, b) => startOrder(b) - startOrder(a));
 };
 
 const toReservationHistory = ({
@@ -249,11 +274,10 @@ const toReservationHistory = ({
 }): CustomerReservationHistory => ({
   kind: "available",
   groups: groupCustomerReservations(
-    entries.map(({ reservation, row, relation }, index) =>
+    entries.map((entry, index) =>
       toReservationSummary(
-        reservation,
-        row,
-        relation && toReservationParty(relation, names),
+        entry,
+        entry.relation && toReservationParty(entry.relation, names),
         index
       )
     )

@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
-import { Effect, Exit } from "effect";
+import { Effect } from "effect";
 import { m } from "@/features/i18n";
 import { makeCoworkCheckoutData } from "../checkout/data";
 import type { WorkspaceE2EConfig } from "../config";
+import { WorkspaceE2EError } from "../errors";
 import {
   assertDiscountApplications,
   type DiscountApplicationRow,
@@ -243,11 +244,19 @@ test("plans the someone-else referral payment on its own date and requires bindi
     "2099-08-03",
   ]);
   expect(flowStates.at(-1)).toBe(planned.checkoutStates[0]);
-  const exit = await Effect.runPromiseExit(
-    planned.execute({
-      runStep: (step) => step.execute,
-      session: "session",
-    }) as Effect.Effect<void, unknown>
+  // The unbound case fails with its binding error before it could reach a
+  // browser.
+  const error = await Effect.runPromise(
+    Effect.flip(
+      planned.execute({
+        run: undefined as never,
+        runStep: (step) => step.execute,
+        session: "session",
+      }) as Effect.Effect<void, unknown>
+    )
   );
-  expect(Exit.isFailure(exit)).toBe(true);
+  expect(error).toBeInstanceOf(WorkspaceE2EError);
+  expect(error).toMatchObject({
+    operation: "bind someone-else referral payment case",
+  });
 });

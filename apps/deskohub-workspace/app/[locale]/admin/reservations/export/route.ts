@@ -1,8 +1,8 @@
 import { Effect } from "effect";
 import { AdministrationService } from "@/features/administration/administration.service";
 import { defineAdministrationListExportRoute } from "@/features/administration/list-export.server";
-import { parseAdministrationReservationExportSearchParams } from "@/features/administration/page-data.server";
 import { getAdministrationReservationExportColumns } from "@/features/administration/reservation-export";
+import { reservationListQuery } from "@/features/administration/reservation-list-query";
 
 // The export reads Dotypos in sequence: the date range, then batches of
 // bookings and customers. Each read can wait out the 30-second Dotypos request
@@ -15,7 +15,7 @@ const exportReservations = defineAdministrationListExportRoute({
   rows: (params) =>
     Effect.flatMap(AdministrationService, (administration) =>
       administration.exportReservations(
-        parseAdministrationReservationExportSearchParams(params)
+        reservationListQuery.parseExport(params)
       )
     ),
 });

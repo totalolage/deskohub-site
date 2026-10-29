@@ -1,27 +1,16 @@
-import { type DotyposCustomerId, DotyposService } from "@deskohub/dotypos";
-import { and, asc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
+import type { DotyposCustomerId } from "@deskohub/dotypos";
+import { and, eq, isNull } from "drizzle-orm";
 import { Context, Effect, Layer, Schema } from "effect";
-import {
-  WorkspaceDatabase,
-  type WorkspaceDatabaseClient,
-} from "@/db/database.service";
+import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { customerAccounts } from "@/db/schema";
 import { authUser } from "@/db/schema/auth";
-import { discountApplications } from "@/db/schema/discount-applications";
 import { promotionCodes } from "@/db/schema/discounts";
-import { paymentAttempts } from "@/db/schema/payment-attempts";
-import {
-  referralAttributions,
-  referralCodes,
-  referralInvitationClaims,
-} from "@/db/schema/referrals";
+import { referralAttributions, referralCodes } from "@/db/schema/referrals";
 import { workspaceReservations } from "@/db/schema/workspace-reservations";
+import { WorkspaceLocks } from "@/db/workspace-locks";
 import { requireAccountActivity } from "@/features/account/backend/customer-account-activity";
-import {
-  CustomerAccountLinkRepository,
-  customerAccountLockKey,
-} from "@/features/account/backend/customer-account-link.repository";
+import { CustomerAccountLinkRepository } from "@/features/account/backend/customer-account-link.repository";
 import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
 import type { LinkedCustomerAccount } from "@/features/account/customer-account";
 import {
@@ -39,11 +28,6 @@ import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import type { Money } from "@/shared/money/money";
-import {
-  referralAdvisoryLockStatement,
-  referralFirstBookingLockKey,
-  referralGraphAdvisoryLockKey,
-} from "./advisory-locks";
 import { evaluateReferralAttribution } from "./attribution";
 import { parseReferralCode, type ReferralCode } from "./client";
 import {
@@ -57,14 +41,9 @@ import {
   getReferralInvitationDiscountId,
   getReferralReferrerDiscountId,
 } from "./discount-identifiers";
-import {
-  countEligibleReferralInvitees,
-  hasPreviousPaidBooking,
-  hasPriorConfirmedDotyposBooking,
-  type ReferralHistoryEvidence,
-} from "./eligibility";
 import { referralInvitationDiscountBasisPoints } from "./program";
 import { ReferralFeatureFlagService } from "./referral-feature-flag.service";
+import { makeReferralStandingReads } from "./referral-standing";
 import {
   calculateReferrerDiscountAmount,
   formatReferrerDiscountPercentage,
@@ -165,14 +144,6 @@ type InvitationReferral = {
   readonly promotionCodeId: PromotionCodeId;
 };
 
-const isReservationCancelled = (input: {
-  readonly dotyposStatus: string;
-  readonly reservationState?: string;
-}) =>
-  input.dotyposStatus === "CANCELLED" ||
-  input.reservationState === "cancelled" ||
-  input.reservationState === "hold_expired";
-
 export class ReferralService extends Context.Service<
   ReferralService,
   IReferralService
@@ -180,9 +151,9 @@ export class ReferralService extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const { db } = yield* WorkspaceDatabase;
+      const { db, transaction } = yield* WorkspaceDatabase;
       const advisoryLock = yield* WorkspaceDatabaseAdvisoryLock;
-      const dotypos = yield* DotyposService;
+      const standing = yield* makeReferralStandingReads;
       const accountResolver = yield* CustomerAccountResolver;
       const accountLinks = yield* CustomerAccountLinkRepository;
       const featureFlag = yield* ReferralFeatureFlagService;
@@ -233,8 +204,8 @@ export class ReferralService extends Context.Service<
       );
 
       const findReferralCode = Effect.fn("ReferralService.findReferralCode")(
-        (code: ReferralCode, executor: WorkspaceDatabaseClient = db) =>
-          executor
+        (code: ReferralCode) =>
+          db
             .select({
               promotionCodeId: referralCodes.promotionCodeId,
               referrerDotyposCustomerId:
@@ -261,183 +232,6 @@ export class ReferralService extends Context.Service<
             .pipe(Effect.map((rows) => rows[0]))
       );
 
-      const loadCustomerHistory = Effect.fn(
-        "ReferralService.loadCustomerHistory"
-      )(
-        (
-          dotyposCustomerId: DotyposCustomerId,
-          executor: WorkspaceDatabaseClient = db
-        ) =>
-          Effect.all(
-            [
-              executor
-                .select({
-                  dotyposReservationId:
-                    workspaceReservations.dotyposReservationId,
-                  reservationState: workspaceReservations.reservationState,
-                  paymentState: workspaceReservations.paymentState,
-                })
-                .from(workspaceReservations)
-                .where(
-                  eq(workspaceReservations.dotyposCustomerId, dotyposCustomerId)
-                ),
-              dotypos.listReservations({
-                customerId: dotyposCustomerId,
-                order: "startDateDescending",
-              }),
-            ],
-            // A failed Dotypos call would interrupt an in-flight transaction
-            // query and break its rollback, so transaction reads run in turn.
-            { concurrency: executor === db ? "inherit" : 1 }
-          ).pipe(
-            Effect.map(([localReservations, dotyposReservations]) => {
-              const localById = new Map(
-                localReservations.flatMap((reservation) =>
-                  reservation.dotyposReservationId
-                    ? [[reservation.dotyposReservationId, reservation] as const]
-                    : []
-                )
-              );
-              const evidence: ReferralHistoryEvidence[] =
-                dotyposReservations.map((reservation) => {
-                  const local = reservation.id
-                    ? localById.get(reservation.id)
-                    : undefined;
-                  const localPaymentState = (() => {
-                    if (!local) return null;
-                    if (local.paymentState === "paid") return "paid";
-                    return "unpaid";
-                  })();
-                  return {
-                    dotyposCustomerId,
-                    localPaymentState,
-                    dotyposStatus: reservation.status,
-                    cancelled: isReservationCancelled({
-                      dotyposStatus: reservation.status,
-                      reservationState: local?.reservationState,
-                    }),
-                    endsAt: Temporal.Instant.from(reservation.endDate),
-                  };
-                });
-              const hasLocalPaidBooking = localReservations.some(
-                ({ paymentState }) => paymentState === "paid"
-              );
-              return {
-                evidence,
-                hasPreviousPaidBooking: hasPreviousPaidBooking({
-                  hasLocalPaidBooking,
-                  hasPriorConfirmedDotyposBooking:
-                    hasPriorConfirmedDotyposBooking(evidence),
-                }),
-              };
-            })
-          )
-      );
-
-      const findInvitees = Effect.fn("ReferralService.findInvitees")(
-        (referrerDotyposCustomerId: DotyposCustomerId) =>
-          db
-            .select({
-              invitedDotyposCustomerId:
-                referralAttributions.invitedDotyposCustomerId,
-            })
-            .from(referralAttributions)
-            .where(
-              eq(
-                referralAttributions.referrerDotyposCustomerId,
-                referrerDotyposCustomerId
-              )
-            )
-            .pipe(
-              Effect.map((rows) =>
-                rows.map(
-                  ({ invitedDotyposCustomerId }) => invitedDotyposCustomerId
-                )
-              )
-            )
-      );
-
-      const countEligibleInvitees = Effect.fn(
-        "ReferralService.countEligibleInvitees"
-      )((invitees: readonly DotyposCustomerId[]) =>
-        Effect.forEach(invitees, (invitee) => loadCustomerHistory(invitee), {
-          concurrency: 4,
-        }).pipe(
-          Effect.map((histories) =>
-            countEligibleReferralInvitees({
-              now: Temporal.Now.instant(),
-              referrals: histories.flatMap(({ evidence }) => evidence),
-            })
-          )
-        )
-      );
-
-      const eligibleInviteeCount = Effect.fn(
-        "ReferralService.eligibleInviteeCount"
-      )((referrerDotyposCustomerId: DotyposCustomerId) =>
-        findInvitees(referrerDotyposCustomerId).pipe(
-          Effect.flatMap(countEligibleInvitees)
-        )
-      );
-
-      /**
-       * Sums both referral benefits (the first-booking invitation and the
-       * referrer discount) on the customer's own successfully paid bookings.
-       * A refunded payment keeps only the unrefunded share of each discount,
-       * rounded to the minor unit; a payment marked for refund keeps none.
-       */
-      const findSavings = Effect.fn("ReferralService.findSavings")(
-        (dotyposCustomerId: DotyposCustomerId) => {
-          const saved = sql<number>`coalesce(sum(case
-            when ${paymentAttempts.refundState} = 'refunded'
-              then round(
-                ${discountApplications.appliedAmountValue}::numeric
-                  * greatest(${paymentAttempts.amountValue} - ${paymentAttempts.refundedAmountValue}, 0)
-                  / ${paymentAttempts.amountValue}
-              )
-            else ${discountApplications.appliedAmountValue}
-          end), 0)::integer`;
-          return db
-            .select({
-              currency: discountApplications.appliedAmountCurrency,
-              exponent: discountApplications.appliedAmountExponent,
-              value: saved,
-            })
-            .from(discountApplications)
-            .innerJoin(
-              paymentAttempts,
-              eq(paymentAttempts.id, discountApplications.paymentAttemptId)
-            )
-            .innerJoin(
-              workspaceReservations,
-              eq(
-                workspaceReservations.id,
-                discountApplications.workspaceReservationId
-              )
-            )
-            .where(
-              and(
-                eq(workspaceReservations.dotyposCustomerId, dotyposCustomerId),
-                inArray(discountApplications.publicDiscountId, [
-                  getReferralInvitationDiscountId(dotyposCustomerId),
-                  getReferralReferrerDiscountId(dotyposCustomerId),
-                ]),
-                eq(paymentAttempts.state, "paid"),
-                inArray(paymentAttempts.refundState, [
-                  "not_required",
-                  "refunded",
-                ])
-              )
-            )
-            .groupBy(
-              discountApplications.appliedAmountCurrency,
-              discountApplications.appliedAmountExponent
-            )
-            .having(gt(saved, 0))
-            .orderBy(asc(discountApplications.appliedAmountCurrency));
-        }
-      );
-
       const findAttribution = Effect.fn("ReferralService.findAttribution")(
         (dotyposCustomerId: DotyposCustomerId) =>
           db
@@ -455,43 +249,6 @@ export class ReferralService extends Context.Service<
             )
             .limit(1)
             .pipe(Effect.map(([attribution]) => attribution))
-      );
-
-      /**
-       * `closed` once the customer has a prior paid booking, `claimed` while
-       * another payment holds the invitation, otherwise `open`.
-       */
-      const findInvitationWindow = Effect.fn(
-        "ReferralService.findInvitationWindow"
-      )((dotyposCustomerId: DotyposCustomerId) =>
-        Effect.all(
-          [
-            loadCustomerHistory(dotyposCustomerId),
-            db
-              .select({ state: referralInvitationClaims.state })
-              .from(referralInvitationClaims)
-              .where(
-                and(
-                  eq(
-                    referralInvitationClaims.invitedDotyposCustomerId,
-                    dotyposCustomerId
-                  ),
-                  inArray(referralInvitationClaims.state, [
-                    "reserved",
-                    "redeemed",
-                  ])
-                )
-              )
-              .limit(1),
-          ],
-          { concurrency: "inherit" }
-        ).pipe(
-          Effect.map(([history, activeClaims]) => {
-            if (history.hasPreviousPaidBooking) return "closed" as const;
-            if (activeClaims.length > 0) return "claimed" as const;
-            return "open" as const;
-          })
-        )
       );
 
       /**
@@ -567,7 +324,9 @@ export class ReferralService extends Context.Service<
             : yield* fail("already_attributed");
         }
 
-        const window = yield* findInvitationWindow(input.dotyposCustomerId);
+        const window = yield* standing.findInvitationWindow(
+          input.dotyposCustomerId
+        );
         if (window === "closed") return yield* fail("ineligible");
         if (window === "claimed") return yield* fail("pending_payment");
 
@@ -670,7 +429,9 @@ export class ReferralService extends Context.Service<
         }) {
           const attribution = yield* findAttribution(input.dotyposCustomerId);
           if (attribution) {
-            const window = yield* findInvitationWindow(input.dotyposCustomerId);
+            const window = yield* standing.findInvitationWindow(
+              input.dotyposCustomerId
+            );
             return window === "open"
               ? makeInvitationCandidate({ ...input, referral: attribution })
               : undefined;
@@ -702,7 +463,7 @@ export class ReferralService extends Context.Service<
           readonly locale: Locale;
           readonly remainingSubtotal: Money;
         }) =>
-          eligibleInviteeCount(input.dotyposCustomerId).pipe(
+          standing.eligibleInviteeCount(input.dotyposCustomerId).pipe(
             Effect.map((count) => {
               if (count === 0) return undefined;
               const amount = calculateReferrerDiscountAmount({
@@ -740,9 +501,9 @@ export class ReferralService extends Context.Service<
       const ensureReferralCode = Effect.fn(
         "ReferralService.ensureReferralCode"
       )((referrerDotyposCustomerId: DotyposCustomerId) =>
-        db.transaction(
-          Effect.fn(function* (tx) {
-            const [existing] = yield* tx
+        transaction(
+          Effect.gen(function* () {
+            const [existing] = yield* db
               .select({ code: promotionCodes.code })
               .from(referralCodes)
               .innerJoin(
@@ -766,7 +527,7 @@ export class ReferralService extends Context.Service<
               const candidate = generatePromotionCode();
               const referralCode = parseReferralCode(candidate);
               if (!referralCode) continue;
-              const [promotion] = yield* tx
+              const [promotion] = yield* db
                 .insert(promotionCodes)
                 .values({
                   kind: "referral",
@@ -777,7 +538,7 @@ export class ReferralService extends Context.Service<
                 .returning({ id: promotionCodes.id });
               if (!promotion) continue;
 
-              const [created] = yield* tx
+              const [created] = yield* db
                 .insert(referralCodes)
                 .values({
                   promotionCodeId: promotion.id,
@@ -787,7 +548,7 @@ export class ReferralService extends Context.Service<
                 .returning({ promotionCodeId: referralCodes.promotionCodeId });
               if (created) return referralCode;
 
-              const [raced] = yield* tx
+              const [raced] = yield* db
                 .select({
                   code: promotionCodes.code,
                   promotionCodeId: promotionCodes.id,
@@ -805,7 +566,7 @@ export class ReferralService extends Context.Service<
                 )
                 .limit(1);
               if (raced) {
-                yield* tx
+                yield* db
                   .delete(promotionCodes)
                   .where(eq(promotionCodes.id, promotion.id));
                 const code = parseReferralCode(raced.code);
@@ -854,35 +615,10 @@ export class ReferralService extends Context.Service<
             Effect.flatMap((identity) =>
               withActiveCurrentAccount(
                 identity,
-                Effect.all(
-                  [
-                    ensureReferralCode(identity.dotyposCustomerId),
-                    findInvitees(identity.dotyposCustomerId).pipe(
-                      Effect.flatMap((invitees) =>
-                        countEligibleInvitees(invitees).pipe(
-                          Effect.map((eligible) => ({
-                            total: invitees.length,
-                            eligible,
-                          }))
-                        )
-                      )
-                    ),
-                    findSavings(identity.dotyposCustomerId),
-                  ],
-                  { concurrency: "inherit" }
-                ).pipe(
-                  Effect.map(
-                    ([code, invitees, savings]): ReferralAccountSummary => ({
-                      code,
-                      inviteeCount: invitees.total,
-                      eligibleInviteeCount: invitees.eligible,
-                      discount: formatReferrerDiscountPercentage(
-                        invitees.eligible
-                      ),
-                      savings,
-                    })
-                  )
-                )
+                standing.loadAccountSummary({
+                  referrerDotyposCustomerId: identity.dotyposCustomerId,
+                  code: ensureReferralCode(identity.dotyposCustomerId),
+                })
               )
             ),
             Effect.mapError((error) =>
@@ -923,24 +659,19 @@ export class ReferralService extends Context.Service<
                   const referrerAccountId = ownerLink
                     ? yield* decodeLinkedAccountId(ownerLink.accountId)
                     : undefined;
-                  const accountIds = [
-                    identity.accountId,
-                    ...(referrerAccountId ? [referrerAccountId] : []),
-                  ].sort();
-                  const lockKeys = [
-                    referralGraphAdvisoryLockKey,
-                    ...accountIds.map(customerAccountLockKey),
-                    referralFirstBookingLockKey(identity.dotyposCustomerId),
-                  ];
-
                   return yield* advisoryLock.withTransactionPermit(
-                    db.transaction(
-                      Effect.fn(function* (tx) {
-                        for (const key of lockKeys) {
-                          yield* tx.execute(referralAdvisoryLockStatement(key));
-                        }
+                    transaction(
+                      Effect.gen(function* () {
+                        yield* WorkspaceLocks.referralGraph();
+                        yield* WorkspaceLocks.customerAccounts([
+                          identity.accountId,
+                          ...(referrerAccountId ? [referrerAccountId] : []),
+                        ]);
+                        yield* WorkspaceLocks.referralFirstBooking(
+                          identity.dotyposCustomerId
+                        );
 
-                        const [inviteeActivity] = yield* tx
+                        const [inviteeActivity] = yield* db
                           .select({
                             deletionRequestedAt: authUser.deletionRequestedAt,
                           })
@@ -956,7 +687,7 @@ export class ReferralService extends Context.Service<
                         ) {
                           return yield* fail("account_unavailable");
                         }
-                        const [currentLink] = yield* tx
+                        const [currentLink] = yield* db
                           .select({
                             dotyposCustomerId:
                               customerAccounts.dotyposCustomerId,
@@ -974,7 +705,7 @@ export class ReferralService extends Context.Service<
                           return yield* fail("account_unavailable");
                         }
 
-                        const referral = yield* findReferralCode(code, tx).pipe(
+                        const referral = yield* findReferralCode(code).pipe(
                           Effect.mapError(() => fail("unavailable"))
                         );
                         if (
@@ -996,7 +727,7 @@ export class ReferralService extends Context.Service<
                           return yield* fail("self_referral");
                         }
 
-                        const [owner] = yield* tx
+                        const [owner] = yield* db
                           .select({ accountId: customerAccounts.id })
                           .from(customerAccounts)
                           .innerJoin(
@@ -1023,7 +754,7 @@ export class ReferralService extends Context.Service<
                           return yield* fail("unavailable");
                         }
 
-                        const [existingAttribution] = yield* tx
+                        const [existingAttribution] = yield* db
                           .select({
                             referrerDotyposCustomerId:
                               referralAttributions.referrerDotyposCustomerId,
@@ -1044,14 +775,13 @@ export class ReferralService extends Context.Service<
                             : yield* fail("already_attributed");
                         }
 
-                        const history = yield* loadCustomerHistory(
-                          identity.dotyposCustomerId,
-                          tx
-                        ).pipe(Effect.mapError(() => fail("unavailable")));
+                        const history = yield* standing
+                          .loadCustomerHistoryInTurn(identity.dotyposCustomerId)
+                          .pipe(Effect.mapError(() => fail("unavailable")));
                         if (history.hasPreviousPaidBooking) {
                           return yield* fail("ineligible");
                         }
-                        const [pendingAttempt] = yield* tx
+                        const [pendingAttempt] = yield* db
                           .select({ id: workspaceReservations.id })
                           .from(workspaceReservations)
                           .where(
@@ -1072,7 +802,7 @@ export class ReferralService extends Context.Service<
                           return yield* fail("pending_payment");
                         }
 
-                        const existingRows = yield* tx
+                        const existingRows = yield* db
                           .select({
                             invitedDotyposCustomerId:
                               referralAttributions.invitedDotyposCustomerId,
@@ -1100,7 +830,7 @@ export class ReferralService extends Context.Service<
                           return yield* fail("cycle");
                         }
 
-                        yield* tx
+                        yield* db
                           .insert(referralAttributions)
                           .values({
                             invitedDotyposCustomerId:
@@ -1131,9 +861,9 @@ export class ReferralService extends Context.Service<
           Effect.flatMap((attribution) =>
             attribution
               ? Effect.succeed(true)
-              : findInvitationWindow(input.dotyposCustomerId).pipe(
-                  Effect.map((window) => window === "closed")
-                )
+              : standing
+                  .findInvitationWindow(input.dotyposCustomerId)
+                  .pipe(Effect.map((window) => window === "closed"))
           ),
           Effect.mapError(() => fail("unavailable"))
         )

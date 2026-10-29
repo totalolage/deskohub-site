@@ -194,7 +194,7 @@ export class CampaignSendService extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const { db } = yield* WorkspaceDatabase;
+      const { db, transaction } = yield* WorkspaceDatabase;
       const campaigns = yield* CampaignService;
       const audiences = yield* CampaignAudienceService;
       const recipientResolution = yield* CampaignRecipientService;
@@ -453,81 +453,78 @@ export class CampaignSendService extends Context.Service<
         }
       );
 
-      type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
-
       /**
        * Under the campaign row lock, moves a Failed campaign back to Sending
        * and puts its undelivered recipients into a new delivery attempt.
        */
-      const startRetry = Effect.fn("CampaignSendService.startRetry")(function* (
-        tx: Transaction,
-        input: {
+      const startRetry = Effect.fn("CampaignSendService.startRetry")(
+        function* (input: {
           readonly campaignId: CampaignId;
           readonly includeUnconfirmed: boolean;
           readonly now: Temporal.Instant;
-        }
-      ) {
-        const { campaignId, now } = input;
-        const [campaign] = yield* tx
-          .select({
-            delivery: emailCampaigns.delivery,
-            status: emailCampaigns.status,
-          })
-          .from(emailCampaigns)
-          .where(eq(emailCampaigns.id, campaignId))
-          .for("update");
-        if (!campaign) {
-          return yield* new CampaignNotFound({ campaignId });
-        }
-        if (!isOnceCampaign(campaign)) {
-          return yield* new CampaignDeliveryMismatch({
-            campaignId,
-            delivery: campaign.delivery,
-          });
-        }
-        if (campaign.status !== "failed") {
-          return yield* new CampaignNotRetryable({
-            campaignId,
-            status: campaign.status,
-          });
-        }
-        const [send] = yield* tx
-          .update(emailCampaignSends)
-          .set({
-            deliveryAttempt: sql`${emailCampaignSends.deliveryAttempt} + 1`,
-          })
-          .where(onceCampaignSend(campaignId))
-          .returning({
-            sendId: emailCampaignSends.id,
-            deliveryAttempt: emailCampaignSends.deliveryAttempt,
-          });
-        const retried = yield* tx
-          .update(emailCampaignRecipients)
-          .set({
-            deliveryAttempt: send!.deliveryAttempt,
-            status: "pending",
-            statusUpdatedAt: now,
-          })
-          .where(
-            and(
-              eq(emailCampaignRecipients.sendId, send!.sendId),
-              inArray(
-                emailCampaignRecipients.status,
-                input.includeUnconfirmed
-                  ? ["pending", "failed", "unconfirmed"]
-                  : ["pending", "failed"]
+        }) {
+          const { campaignId, now } = input;
+          const [campaign] = yield* db
+            .select({
+              delivery: emailCampaigns.delivery,
+              status: emailCampaigns.status,
+            })
+            .from(emailCampaigns)
+            .where(eq(emailCampaigns.id, campaignId))
+            .for("update");
+          if (!campaign) {
+            return yield* new CampaignNotFound({ campaignId });
+          }
+          if (!isOnceCampaign(campaign)) {
+            return yield* new CampaignDeliveryMismatch({
+              campaignId,
+              delivery: campaign.delivery,
+            });
+          }
+          if (campaign.status !== "failed") {
+            return yield* new CampaignNotRetryable({
+              campaignId,
+              status: campaign.status,
+            });
+          }
+          const [send] = yield* db
+            .update(emailCampaignSends)
+            .set({
+              deliveryAttempt: sql`${emailCampaignSends.deliveryAttempt} + 1`,
+            })
+            .where(onceCampaignSend(campaignId))
+            .returning({
+              sendId: emailCampaignSends.id,
+              deliveryAttempt: emailCampaignSends.deliveryAttempt,
+            });
+          const retried = yield* db
+            .update(emailCampaignRecipients)
+            .set({
+              deliveryAttempt: send!.deliveryAttempt,
+              status: "pending",
+              statusUpdatedAt: now,
+            })
+            .where(
+              and(
+                eq(emailCampaignRecipients.sendId, send!.sendId),
+                inArray(
+                  emailCampaignRecipients.status,
+                  input.includeUnconfirmed
+                    ? ["pending", "failed", "unconfirmed"]
+                    : ["pending", "failed"]
+                )
               )
             )
-          )
-          .returning({
-            dotyposCustomerId: emailCampaignRecipients.dotyposCustomerId,
-          });
-        yield* tx
-          .update(emailCampaigns)
-          .set({ status: "sending", updatedAt: now })
-          .where(eq(emailCampaigns.id, campaignId));
-        return { ...send!, retriedCount: retried.length };
-      });
+            .returning({
+              dotyposCustomerId: emailCampaignRecipients.dotyposCustomerId,
+            });
+          yield* db
+            .update(emailCampaigns)
+            .set({ status: "sending", updatedAt: now })
+            .where(eq(emailCampaigns.id, campaignId));
+          return { ...send!, retriedCount: retried.length };
+        }
+      );
 
       return {
         testSend: Effect.fn("CampaignSendService.testSend")((input) =>
@@ -587,9 +584,7 @@ export class CampaignSendService extends Context.Service<
           ({ campaignId, includeUnconfirmed = false }) =>
             currentInstant.pipe(
               Effect.flatMap((now) =>
-                db.transaction((tx) =>
-                  startRetry(tx, { campaignId, includeUnconfirmed, now })
-                )
+                transaction(startRetry({ campaignId, includeUnconfirmed, now }))
               ),
               Effect.tap(({ sendId, deliveryAttempt }) =>
                 enqueueOrFail({ campaignId, sendId, deliveryAttempt })
@@ -641,7 +636,7 @@ export class CampaignSendService extends Context.Service<
             Layer.provide(NodeCrypto.layer)
           ),
           CampaignEmailConfig.Default,
-          CampaignSendQueueService.Default,
+          CampaignSendQueueService.Live,
           EmailServiceTag.RecipientRouted.pipe(Layer.provide(EmailConfigLayer))
         )
       ),
