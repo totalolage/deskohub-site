@@ -453,7 +453,7 @@ test.skipIf(!chromiumAvailable)(
     const run = makePlaywrightBrowserRunner(browser, { recordHar: false });
     const id = `referral-account-cancel-${randomUUID()}`;
     const observations: E2ETelemetryObservation[] = [];
-    const started = Effect.runSync(Deferred.make<void>());
+    const started = Deferred.makeUnsafe<void>();
     try {
       const fiber = Effect.runFork(
         runE2ECase({
