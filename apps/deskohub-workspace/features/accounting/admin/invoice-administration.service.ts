@@ -29,6 +29,7 @@ import {
   Schema,
 } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
+import { WorkspaceLocks } from "@/db/workspace-locks";
 import {
   type InvoiceBuyer,
   invoiceBuyerSchema,
@@ -202,6 +203,7 @@ export class InvoiceAdministrationInProgressError extends Data.TaggedError(
 }> {}
 
 const makeInvoiceAdministrationService = Effect.gen(function* () {
+  const { transaction } = yield* WorkspaceDatabase;
   const invoices = yield* InvoiceRepository;
   const deliveries = yield* InvoiceEmailDeliveryService;
   const deliveryLedger = yield* InvoiceEmailDeliveryRepository;
@@ -356,57 +358,68 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
         ...prepared.forCustomer(dotyposCustomerId),
         issuedBy: issuer.administrator,
       });
-    const issuance = yield* creationRequests.withLock(
-      invoiceId,
-      Effect.gen(function* () {
-        const claim = yield* creationRequests.claim({
-          invoiceId,
-          normalizedRequestJson: getManualInvoiceCreationRequestJson(
-            input,
-            provenance
-          ),
-        });
-        if (claim.kind === "mismatch") {
-          return yield* new InvoiceAdministrationCustomerError({
-            reason: "invoice-id-reused",
-            message: "Invoice id was already used with different input.",
-          });
-        }
-        if (claim.kind === "in-progress") {
-          return yield* new InvoiceAdministrationInProgressError({
-            invoiceId: input.invoiceId,
-            message:
-              "This invoice is already being created. Try the same request again shortly.",
-          });
-        }
-        const existing = yield* invoices.findById(input.invoiceId);
-        if (claim.kind === "completed" && !existing) {
-          return yield* new ManualInvoiceCreationRequestError({
-            message: "The completed invoice creation request has no invoice.",
-          });
-        }
-        const customerResolution = resolveCustomer(dotypos, input.customer);
-        const lockedIssuance = existing
-          ? yield* issueForCustomer(
-              input.customer.kind === "existing"
-                ? yield* decodeDotyposCustomerId(input.customer.customerId)
-                : DotyposCustomerIdSchema.make(existing.dotyposCustomerId)
-            )
-          : yield* (
-              input.customer.kind === "new"
-                ? creationRequests.withNewCustomerLock(customerResolution)
-                : customerResolution
-            ).pipe(
-              Effect.flatMap((customer) =>
-                decodeDotyposCustomerId(customer.id)
+    const issuance = yield* transaction(
+      WorkspaceLocks.manualInvoiceCreation(invoiceId).pipe(
+        Effect.andThen(
+          Effect.gen(function* () {
+            const claim = yield* creationRequests.claim({
+              invoiceId,
+              normalizedRequestJson: getManualInvoiceCreationRequestJson(
+                input,
+                provenance
               ),
-              Effect.flatMap(issueForCustomer)
-            );
-        if (claim.kind === "claimed") {
-          yield* creationRequests.complete(invoiceId);
-        }
-        return lockedIssuance;
-      })
+            });
+            if (claim.kind === "mismatch") {
+              return yield* new InvoiceAdministrationCustomerError({
+                reason: "invoice-id-reused",
+                message: "Invoice id was already used with different input.",
+              });
+            }
+            if (claim.kind === "in-progress") {
+              return yield* new InvoiceAdministrationInProgressError({
+                invoiceId: input.invoiceId,
+                message:
+                  "This invoice is already being created. Try the same request again shortly.",
+              });
+            }
+            const existing = yield* invoices.findById(input.invoiceId);
+            if (claim.kind === "completed" && !existing) {
+              return yield* new ManualInvoiceCreationRequestError({
+                message:
+                  "The completed invoice creation request has no invoice.",
+              });
+            }
+            const customerResolution = resolveCustomer(dotypos, input.customer);
+            const lockedIssuance = existing
+              ? yield* issueForCustomer(
+                  input.customer.kind === "existing"
+                    ? yield* decodeDotyposCustomerId(input.customer.customerId)
+                    : DotyposCustomerIdSchema.make(existing.dotyposCustomerId)
+                )
+              : yield* (
+                  input.customer.kind === "new"
+                    ? // ponytail: one global new-customer lock avoids putting email
+                      // PII in SQL; shard by a keyed normalized-email digest if
+                      // admin throughput matters.
+                      transaction(
+                        WorkspaceLocks.manualInvoiceNewCustomer().pipe(
+                          Effect.andThen(customerResolution)
+                        )
+                      )
+                    : customerResolution
+                ).pipe(
+                  Effect.flatMap((customer) =>
+                    decodeDotyposCustomerId(customer.id)
+                  ),
+                  Effect.flatMap(issueForCustomer)
+                );
+            if (claim.kind === "claimed") {
+              yield* creationRequests.complete(invoiceId);
+            }
+            return lockedIssuance;
+          })
+        )
+      )
     );
     yield* deliveries
       .deliverByInvoiceId({ invoiceId: issuance.invoice.id })
@@ -778,6 +791,7 @@ function getDependencies() {
     Layer.provide(storage)
   );
   return Layer.mergeAll(
+    WorkspaceDatabase.Default,
     InvoiceRepository.Live,
     InvoiceEmailDeliveryRepository.Live,
     creationRequests,

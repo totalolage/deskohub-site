@@ -767,7 +767,8 @@ const rules: { name: string; diagnostic: string; module: string; cases: Row[] }[
       ["permits raw transactions in Postgres tests", "db.transaction(() => effect);\n", false, "apps/deskohub-workspace/features/reservation/backend/probe.postgres.test.ts"],
       ["permits E2E clients", "db.transaction((tx) => tx);\n", false, "apps/deskohub-workspace/e2e/probe.ts"],
       ["permits the wrapper's home", "db.transaction(() => effect);\nWorkspaceDatabase.of({ db, transaction });\n", false, "apps/deskohub-workspace/db/database.service.ts"],
-      ["permits a file the ratchet still lists", "db.transaction((tx) => tx);\n", false, "apps/deskohub-workspace/features/legal/backend/marketing-management.service.ts"],
+      ["permits a file the ratchet still lists", "db.transaction((tx) => tx);\n", false, "apps/deskohub-workspace/features/discounts/admin/discount-administration.service.ts"],
+      ["rejects a raw transaction in a file that left the ratchet", "db.transaction((tx) => tx);\n", true, "apps/deskohub-workspace/features/legal/backend/marketing-management.service.ts"],
     ],
   },
   {

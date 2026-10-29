@@ -16,6 +16,7 @@ import {
   WorkspaceReservationRepository,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { CoworkReservationDetails } from "@/features/reservation/cowork-reservation";
+import { getMeetingRoomEarlySetupField } from "@/features/reservation/meeting-room-early-setup";
 import type { MeetingRoomReservationDetails } from "@/features/reservation/meeting-room-reservation";
 import type { OfficeReservationDetails } from "@/features/reservation/office-reservation";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
@@ -118,6 +119,7 @@ const reconstructReservation = (
     };
   }
   if (isMeetingRoomSnapshot(snapshot)) {
+    if (row.reservationDetails.kind !== "meeting-room") return null;
     const item = snapshot.quote.items[0];
     const reservation: MeetingRoomReservationDetails = {
       kind: "meeting-room",
@@ -130,6 +132,7 @@ const reconstructReservation = (
       ),
       startsAt: snapshot.reservation.startsAt,
       endsAt: snapshot.reservation.endsAt,
+      ...getMeetingRoomEarlySetupField(row.reservationDetails),
     };
     return {
       reservation,
