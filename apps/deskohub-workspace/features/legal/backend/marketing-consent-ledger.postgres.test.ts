@@ -46,7 +46,7 @@ const uniqueCustomerId = () =>
 const marketingDocumentHash = (locale: Locale) =>
   hashLegalDocument(getLegalDocument(locale, "marketing-communications"));
 
-/** A clock fixed at the instant. */
+/** A clock fixed at the instant, to its nanosecond. */
 const clockAt = (instant: Temporal.Instant): Clock.Clock => ({
   currentTimeMillisUnsafe: () => instant.epochMilliseconds,
   currentTimeMillis: Effect.sync(() => instant.epochMilliseconds),
@@ -301,7 +301,7 @@ describe.skipIf(!testDatabase)(
       });
     });
 
-    test("a grant in the same millisecond as the withdrawal leaves it withdrawn", async () => {
+    test("a grant within the withdrawal's millisecond but after it reactivates consent", async () => {
       const customerId = uniqueCustomerId();
 
       const status = await runLedger((ledger) =>
@@ -322,12 +322,12 @@ describe.skipIf(!testDatabase)(
         })
       );
 
-      expect(status).toBe("withdrawn");
+      expect(status).toBe("active");
       await expectStored(customerId, {
         locale: "en-US",
-        grantedAt: "2026-09-01T10:00:00Z",
-        withdrawnAt: "2026-09-05T10:00:00Z",
-        channel: "reservation_form",
+        grantedAt: "2026-09-05T10:00:00.000900Z",
+        withdrawnAt: null,
+        channel: "account",
       });
     });
 
@@ -425,7 +425,10 @@ describe.skipIf(!testDatabase)(
             grant(customerId, "explicit", { channel: "link" })
           )(ledger);
           return [
-            yield* withdrawActiveAt("2026-09-02T10:00:00Z", customerId)(ledger),
+            yield* withdrawActiveAt(
+              "2026-09-02T10:00:00.000900Z",
+              customerId
+            )(ledger),
             yield* withdrawActiveAt("2026-09-03T10:00:00Z", customerId)(ledger),
             yield* withdrawActiveAt(
               "2026-09-03T10:00:00Z",
@@ -440,6 +443,7 @@ describe.skipIf(!testDatabase)(
       await expectStored(customerId, {
         locale: "en-US",
         grantedAt: "2026-09-01T10:00:00Z",
+        // One-click unsubscribe records the millisecond.
         withdrawnAt: "2026-09-02T10:00:00Z",
         channel: "link",
       });

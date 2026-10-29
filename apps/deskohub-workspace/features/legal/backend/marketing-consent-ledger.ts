@@ -11,7 +11,7 @@ import { getLegalDocumentVersion } from "@/features/legal/document-version";
 import type { MarketingConsentGrantSource } from "@/features/legal/marketing-consent-grant-source";
 import type { MarketingConsentStatus } from "@/features/legal/marketing-consent-status";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
-import { currentInstant } from "@/shared/utils/temporal";
+import { currentInstant, currentPreciseInstant } from "@/shared/utils/temporal";
 
 /** The marketing consent ledger could not be read or written. */
 export class MarketingConsentUnavailable extends Data.TaggedError(
@@ -173,7 +173,7 @@ export class MarketingConsentLedger extends Context.Service<
               "marketing-communications"
             ),
             locale: input.locale,
-            grantedAt: yield* currentInstant,
+            grantedAt: yield* currentPreciseInstant,
           };
           if (input.choice === "withdraw") {
             yield* withdraw(consent);
@@ -197,6 +197,7 @@ export class MarketingConsentLedger extends Context.Service<
         }, Effect.mapError(unavailable)),
         withdrawActive: Effect.fn("MarketingConsentLedger.withdrawActive")(
           function* (customerId) {
+            // One-click unsubscribe has always recorded the millisecond.
             const withdrawnAt = yield* currentInstant;
             const withdrawn = yield* db
               .update(customerMarketingConsents)
