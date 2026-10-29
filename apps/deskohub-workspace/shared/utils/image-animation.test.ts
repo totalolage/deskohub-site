@@ -71,14 +71,49 @@ const webp = ({ animated, frames }: { animated: boolean; frames: number }) => {
   ]);
 };
 
-const avif = (brands: string[]) => {
+const isoBox = (type: string, data: number[]) => [
+  ...uint32(8 + data.length),
+  ...ascii(type),
+  ...data,
+];
+
+/** An AVIF whose first track lists `samples` frames, after its media data. */
+const avif = (brands: string[], samples?: number) => {
   const box = [
     ...ascii("ftyp"),
     ...ascii("avif"),
     ...uint32(0),
     ...brands.flatMap(ascii),
   ];
-  return new Uint8Array([...uint32(4 + box.length), ...box]);
+  const sampleTable =
+    samples === undefined
+      ? []
+      : isoBox("moov", [
+          ...isoBox("mvhd", [0, 0, 0, 0]),
+          ...isoBox(
+            "trak",
+            isoBox(
+              "mdia",
+              isoBox(
+                "minf",
+                isoBox(
+                  "stbl",
+                  isoBox("stsz", [
+                    ...uint32(0),
+                    ...uint32(0),
+                    ...uint32(samples),
+                  ])
+                )
+              )
+            )
+          ),
+        ]);
+  return new Uint8Array([
+    ...uint32(4 + box.length),
+    ...box,
+    ...isoBox("mdat", [0, 0, 0, 0]),
+    ...sampleTable,
+  ]);
 };
 
 describe("imageFrameCount", () => {
@@ -98,8 +133,12 @@ describe("imageFrameCount", () => {
     expect(imageFrameCount(webp({ animated: true, frames: 5 }))).toBe(5);
   });
 
-  test("counts an AVIF sequence as an animation", () => {
+  test("counts an AVIF sequence's samples", () => {
     expect(imageFrameCount(avif(["mif1", "avif"]))).toBe(1);
+    expect(imageFrameCount(avif(["avis", "msf1"], 51))).toBe(51);
+  });
+
+  test("counts an AVIF sequence without a sample table as an animation", () => {
     expect(imageFrameCount(avif(["avis", "msf1"]))).toBe(2);
   });
 

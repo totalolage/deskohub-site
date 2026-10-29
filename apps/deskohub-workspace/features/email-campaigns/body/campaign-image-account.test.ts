@@ -30,6 +30,8 @@ describe("isUploadedCampaignImage", () => {
       `https://res.cloudinary.com/synthetic-cloud/image/fetch/v1/${campaignImageFolder("preview")}/a.jpg`,
       `http://res.cloudinary.com/synthetic-cloud/image/upload/v1/${campaignImageFolder("preview")}/a.jpg`,
       `https://images.example/synthetic-cloud/image/upload/v1/${campaignImageFolder("preview")}/a.jpg`,
+      `https://res.cloudinary.com:8443/synthetic-cloud/image/upload/v1/${campaignImageFolder("preview")}/a.jpg`,
+      `https://user:secret@res.cloudinary.com/synthetic-cloud/image/upload/v1/${campaignImageFolder("preview")}/a.jpg`,
       "not a URL",
     ]) {
       expect(isUploadedCampaignImage(source, cloudName)).toBe(false);

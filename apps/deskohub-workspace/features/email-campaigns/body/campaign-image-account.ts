@@ -32,8 +32,9 @@ export const isUploadedCampaignImage = (
 ): boolean => {
   const url = URL.parse(source);
   if (
-    url?.protocol !== "https:" ||
-    url.hostname !== "res.cloudinary.com" ||
+    url?.origin !== "https://res.cloudinary.com" ||
+    url.username !== "" ||
+    url.password !== "" ||
     url.search !== "" ||
     url.hash !== ""
   ) {

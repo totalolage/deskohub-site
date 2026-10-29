@@ -191,9 +191,10 @@ const shrinkCampaignImage = ({
   );
 
 const readFrameCount = (file: Blob) =>
-  Effect.promise(() => file.arrayBuffer()).pipe(
-    Effect.map((buffer) => imageFrameCount(new Uint8Array(buffer)))
-  );
+  Effect.tryPromise({
+    try: () => file.arrayBuffer(),
+    catch: (cause) => new CampaignImageUploadError({ cause }),
+  }).pipe(Effect.map((buffer) => imageFrameCount(new Uint8Array(buffer))));
 
 /**
  * The picture to upload: the file as chosen, or shrunk first in the browser
@@ -203,7 +204,10 @@ const readFrameCount = (file: Blob) =>
 const prepareCampaignImage = (input: {
   readonly file: File;
   readonly onStage: CampaignImageUploadProgress;
-}): Effect.Effect<Blob, ImageDecodeError | CampaignImageTooLargeError> =>
+}): Effect.Effect<
+  Blob,
+  ImageDecodeError | CampaignImageTooLargeError | CampaignImageUploadError
+> =>
   Effect.all({
     size: readImageSize(input.file),
     frames: readFrameCount(input.file),

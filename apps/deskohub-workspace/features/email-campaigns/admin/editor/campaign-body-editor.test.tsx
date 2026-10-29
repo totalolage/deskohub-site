@@ -426,6 +426,25 @@ test("refuses an animation above the account's limits rather than flatten it", a
   expect(insertButton(view)).toHaveProperty("disabled", false);
 });
 
+test("says the upload failed when the browser can't read the chosen file", async () => {
+  const file = png("gone.png");
+  file.arrayBuffer = () => Promise.reject(new Error("The file was moved"));
+  const { view, changes } = await renderEditor();
+  const before = changes.length;
+
+  chooseImage(view, file);
+
+  await waitFor(() =>
+    expect(view.getByRole("status").textContent).toBe(
+      m.emailCampaignsImageUploadFailed({}, { locale })
+    )
+  );
+  expect(fetchSpy.mock.calls.map(([url]) => url)).not.toContain(
+    authorization.url
+  );
+  expect(changes.slice(before)).toEqual([]);
+});
+
 test("uploads an animation within the account's limits as it is", async () => {
   const { view } = await renderEditor();
 

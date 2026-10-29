@@ -2,7 +2,7 @@
  * How many frames the image file holds: more than one for an animated GIF,
  * PNG (APNG), WebP or AVIF, and one for any other picture. Reads only the
  * container structure, so it's cheap and doesn't decode a pixel. An AVIF
- * sequence doesn't list its frames up front, so it counts as two, the fewest
+ * sequence whose sample table it can't find counts as two frames, the fewest
  * an animation has. Bytes it can't make sense of count as one frame.
  */
 export const imageFrameCount = (bytes: Uint8Array): number => {
@@ -11,7 +11,9 @@ export const imageFrameCount = (bytes: Uint8Array): number => {
   if (startsWith(bytes, 0, "RIFF") && startsWith(bytes, 8, "WEBP")) {
     return webpFrameCount(bytes);
   }
-  if (startsWith(bytes, 4, "ftyp") && isAvifSequence(bytes)) return 2;
+  if (startsWith(bytes, 4, "ftyp") && isAvifSequence(bytes)) {
+    return avifSequenceFrameCount(bytes, 0, bytes.length) || 2;
+  }
   return 1;
 };
 
@@ -102,4 +104,52 @@ const isAvifSequence = (bytes: Uint8Array) => {
     if (offset !== 12 && startsWith(bytes, offset, "avis")) return true;
   }
   return false;
+};
+
+/** The boxes that lead from the file down to a track's sample table. */
+const sampleTableContainers: ReadonlySet<string> = new Set([
+  "moov",
+  "trak",
+  "mdia",
+  "minf",
+  "stbl",
+]);
+
+/**
+ * The most samples any track of the sequence lists in its `stsz` box, each
+ * sample a frame; 0 when no track lists them.
+ */
+const avifSequenceFrameCount = (
+  bytes: Uint8Array,
+  start: number,
+  end: number
+): number => {
+  let frames = 0;
+  let offset = start;
+  while (offset + 8 <= end) {
+    const declared = readUint32(bytes, offset);
+    const headerSize = declared === 1 ? 16 : 8;
+    if (offset + headerSize > end) break;
+    const size =
+      declared === 0
+        ? end - offset
+        : declared === 1
+          ? readUint32(bytes, offset + 8) * 2 ** 32 +
+            readUint32(bytes, offset + 12)
+          : declared;
+    if (size < headerSize) break;
+    const boxEnd = Math.min(offset + size, end);
+    const type = String.fromCharCode(...bytes.subarray(offset + 4, offset + 8));
+    if (sampleTableContainers.has(type)) {
+      frames = Math.max(
+        frames,
+        avifSequenceFrameCount(bytes, offset + headerSize, boxEnd)
+      );
+    } else if (type === "stsz" && offset + headerSize + 12 <= boxEnd) {
+      // After its version, flags and default sample size: the sample count.
+      frames = Math.max(frames, readUint32(bytes, offset + headerSize + 8));
+    }
+    offset += size;
+  }
+  return frames;
 };
