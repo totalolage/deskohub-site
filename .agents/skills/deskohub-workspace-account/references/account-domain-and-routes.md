@@ -129,7 +129,9 @@ glossary defines the customer account, reservation author, and tombstone.
   (`features/account/account-page-capabilities.server.ts`). That composition
   replaces a capability whose layer fails to build (Dotypos or Cloudinary
   configuration, or a server module it loads) with an interface-checked
-  stand-in whose operations replay the failure as a defect. A section that may
+  stand-in whose operations replay the failure as a defect; a step that can
+  finish without using its capability starts with `replayBuildFailure(tag)`,
+  so it still fails first, as when it provided that layer. A section that may
   fail degrades through `degradable(code, fallback)`, which recovers from any
   cause except interruption and Next.js control flow, so a failed build or a
   dying read degrades that section alone and a skipped section is unaffected.
