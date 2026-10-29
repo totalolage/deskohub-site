@@ -21,7 +21,10 @@ const cookieWrites: { name: string; value: string }[] = [];
 mock.module("next/headers", () => ({
   headers: async () => requestHeaders,
   cookies: async () => ({
-    get: () => undefined,
+    get: (name: string) =>
+      name === "deskohub-referral-code" && rememberedReferralCode !== undefined
+        ? { value: rememberedReferralCode }
+        : undefined,
     getAll: () => [],
     set: (name: string, value: string) => {
       cookieWrites.push({ name, value });
@@ -302,24 +305,6 @@ Object.assign(Referrals, {
 mock.module("@/features/referrals", () => ({ ReferralService: Referrals }));
 
 let rememberedReferralCode: string | undefined;
-const forgetRememberedReferralCode = mock(async () => undefined);
-mock.module("@/features/referrals/remembered-referral-code.server", () => ({
-  // Like the real reader: the request's provided decision, then the cookie.
-  readRememberedReferralCode: ReferralFeatureFlag.pipe(
-    Effect.flatMap((featureFlag) => featureFlag.isEnabled),
-    Effect.flatMap((released) =>
-      released
-        ? Effect.promise(async () => {
-            const { parseReferralCode } = await import(
-              "@/features/referrals/client"
-            );
-            return parseReferralCode(rememberedReferralCode);
-          })
-        : Effect.undefined
-    )
-  ),
-  forgetRememberedReferralCode,
-}));
 
 type PreferenceSave = {
   readonly accountId: "@test/account-id";
@@ -395,7 +380,6 @@ describe("account actions", () => {
     referralAcceptance = Effect.succeed({ kind: "accepted" });
     settledReferral = Effect.succeed(false);
     rememberedReferralCode = undefined;
-    forgetRememberedReferralCode.mockClear();
     revalidatePath.mockClear();
     referralsEnabled = true;
     areReferralsEnabled.mockReset();
@@ -587,7 +571,10 @@ describe("account actions", () => {
       op: "hasSettledReferral",
       args: { dotyposCustomerId: "60222" },
     });
-    expect(forgetRememberedReferralCode).toHaveBeenCalledTimes(1);
+    expect(cookieWrites).toContainEqual({
+      name: "deskohub-referral-code",
+      value: "",
+    });
   });
 
   test("decides the referral program once per action, so a later flag outage cannot skip its referral work", async () => {
@@ -611,7 +598,10 @@ describe("account actions", () => {
       data: { status: "completed", referral: { status: "applied" } },
     });
     // The remembered-code reader used the same decision as the completion.
-    expect(forgetRememberedReferralCode).toHaveBeenCalledTimes(1);
+    expect(cookieWrites).toContainEqual({
+      name: "deskohub-referral-code",
+      value: "",
+    });
   });
 
   test("keeps the remembered code while the customer's referral is open or unknown", async () => {
@@ -638,7 +628,10 @@ describe("account actions", () => {
     expect(
       referralCalls.filter(({ op }) => op === "hasSettledReferral")
     ).toHaveLength(2);
-    expect(forgetRememberedReferralCode).not.toHaveBeenCalled();
+    expect(cookieWrites).not.toContainEqual({
+      name: "deskohub-referral-code",
+      value: "",
+    });
   });
 
   test("never checks whether the referral is settled without a remembered code", async () => {
@@ -655,7 +648,10 @@ describe("account actions", () => {
       "findAvailableCode",
       "acceptReferral",
     ]);
-    expect(forgetRememberedReferralCode).not.toHaveBeenCalled();
+    expect(cookieWrites).not.toContainEqual({
+      name: "deskohub-referral-code",
+      value: "",
+    });
   });
 
   test("ignores a referral code when completion finds an already linked customer", async () => {
@@ -776,7 +772,10 @@ describe("account actions", () => {
     ]);
     expect(storedIntent).toBeUndefined();
     expect(referralCalls).toEqual([]);
-    expect(forgetRememberedReferralCode).not.toHaveBeenCalled();
+    expect(cookieWrites).not.toContainEqual({
+      name: "deskohub-referral-code",
+      value: "",
+    });
   });
 
   test("acknowledges the settled signup referral notice", async () => {
