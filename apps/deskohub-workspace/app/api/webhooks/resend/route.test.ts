@@ -1,9 +1,6 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
-import { createHmac } from "node:crypto";
-import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { EmailDeliveryIdSchema } from "@deskohub/email";
 import { Effect } from "effect";
@@ -18,6 +15,10 @@ import {
   seedCampaignSend,
 } from "@/features/email-campaigns/backend/email-campaigns.test-utils";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import {
+  restoreRealResendModule,
+  signedResendWebhookRequest,
+} from "@/shared/backend/email/delivery-reports.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 
 // Resend webhooks verify through a Resend client, which needs an API key the
@@ -33,10 +34,7 @@ mock.module("@/env", () => ({
 
 const { POST } = await import("./route");
 
-const realResendModule = await import(
-  pathToFileURL(createRequire(import.meta.url).resolve("resend")).href
-);
-mock.module("resend", () => realResendModule);
+await restoreRealResendModule();
 
 const webhookSigningSecret = env.RESEND_WEBHOOK_SECRET;
 if (!webhookSigningSecret) {
@@ -65,20 +63,6 @@ const deliveredEventPayload = (input: {
     },
   });
 
-const signResendWebhookPayload = (input: {
-  readonly id: string;
-  readonly timestamp: string;
-  readonly payload: string;
-}) => {
-  const signingKey = Buffer.from(
-    webhookSigningSecret.replace(/^whsec_/, ""),
-    "base64"
-  );
-  return `v1,${createHmac("sha256", signingKey)
-    .update(`${input.id}.${input.timestamp}.${input.payload}`)
-    .digest("base64")}`;
-};
-
 interface ResendWebhookResponseBody {
   readonly error?: string;
   readonly code?: string;
@@ -91,23 +75,10 @@ const sendResendWebhook = async (input: {
   readonly payload: string;
   readonly signature?: string;
 }) => {
-  const id = `evt-${crypto.randomUUID()}`;
-  const timestamp = Math.floor(Date.now() / 1000).toString();
-  const request = new Request(
-    "https://workspace.deskohub.test/api/webhooks/resend",
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "svix-id": id,
-        "svix-timestamp": timestamp,
-        "svix-signature":
-          input.signature ??
-          signResendWebhookPayload({ id, timestamp, payload: input.payload }),
-      },
-      body: input.payload,
-    }
-  );
+  const { request } = signedResendWebhookRequest({
+    secret: webhookSigningSecret,
+    ...input,
+  });
 
   const response = await POST(request);
   return {

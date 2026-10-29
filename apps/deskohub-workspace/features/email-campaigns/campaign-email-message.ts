@@ -1,10 +1,34 @@
-import type { DotyposCustomerId } from "@deskohub/dotypos";
+import {
+  type DotyposCustomerId,
+  DotyposCustomerIdSchema,
+} from "@deskohub/dotypos";
 import type { EmailMessage, EmailRecipient } from "@deskohub/email";
-import { Option } from "effect";
-import type { CampaignSendId } from "./campaign-identifiers";
+import { Option, Schema } from "effect";
+import {
+  type EmailKind,
+  emailKindTags,
+} from "@/shared/backend/email/email-kind";
+import {
+  type CampaignSendId,
+  campaignSendIdSchema,
+} from "./campaign-identifiers";
 
-/** Resend `category` tag of campaign deliveries, which the webhook matches. */
-export const campaignEmailCategory = "email-campaign";
+const CampaignEmailMetadata = Schema.Struct({
+  campaignSendId: campaignSendIdSchema,
+  dotyposCustomerId: DotyposCustomerIdSchema,
+});
+
+/** The frozen recipient a campaign delivery's tags name. */
+export type CampaignEmailRecipient = typeof CampaignEmailMetadata.Type;
+
+/**
+ * A campaign delivery. Its tags name the frozen recipient, so delivery
+ * reports find it even before its message ID is stored.
+ */
+export const campaignEmailKind: EmailKind<CampaignEmailRecipient> = {
+  category: "email-campaign",
+  metadata: Schema.toStandardSchemaV1(CampaignEmailMetadata),
+};
 
 /** Resend `category` tag of campaign test emails, which aren't deliveries. */
 const campaignTestEmailCategory = "email-campaign-test";
@@ -48,12 +72,11 @@ export const campaignDeliveryMessage = (input: {
       "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
     }),
   }),
-  tags: [campaignEmailCategory],
-  metadata: {
+  ...emailKindTags(campaignEmailKind, {
     campaignSendId: input.recipient.sendId,
     dotyposCustomerId: input.recipient.dotyposCustomerId,
     deploymentEnvironment: input.deploymentEnvironment,
-  },
+  }),
 });
 
 /**

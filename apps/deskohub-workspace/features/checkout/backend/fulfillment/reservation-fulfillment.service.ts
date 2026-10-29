@@ -71,8 +71,9 @@ class CustomerEmailDeliveryGenerationClosed extends Data.TaggedError(
 export const PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS = 60 * 1000;
 
 /**
- * One decoded provider report about a sent email. The webhook decodes the
- * provider payload and the sender's tags; fulfillment applies the report.
+ * One decoded provider report about this deployment's customer
+ * confirmation. The delivery report ingress verifies the provider payload
+ * and the deployment; fulfillment applies the report.
  */
 export interface ReservationAccessDeliveryReport {
   /** The provider's ID of the reported send. */
@@ -83,13 +84,10 @@ export interface ReservationAccessDeliveryReport {
   readonly occurredAt: Temporal.Instant;
   /**
    * The customer access email the sender's tags declare. Undefined when the
-   * tags declare another email (the internal notification, the author
-   * confirmation) or carry no valid reservation ID.
+   * tags carry another source or no valid reservation ID.
    */
   readonly accessEmail?: {
     readonly reservationId: WorkspaceReservationId;
-    /** Whether the deployment tag names this deployment. */
-    readonly deployment: "current" | "other" | "missing";
   };
 }
 
@@ -97,8 +95,6 @@ type ReservationDeliveryIgnoredReason =
   | "unknown_email_delivery"
   | "unrelated_email"
   | "reservation_mismatch"
-  | "deployment_environment_missing"
-  | "deployment_environment_mismatch"
   | "reservation_already_fulfilled"
   | "reservation_already_failed"
   | "reservation_delivery_state_changed";
@@ -142,8 +138,8 @@ export interface IReservationFulfillment {
   >;
   /**
    * Applies a delivery report for the customer confirmation: completes or
-   * fails the delivery it matches, and ignores reports for other emails,
-   * deployments, or outcomes that are no longer current.
+   * fails the delivery it matches, and ignores reports for other emails or
+   * outcomes that are no longer current.
    */
   readonly recordDelivery: (
     report: ReservationAccessDeliveryReport
@@ -734,7 +730,7 @@ export class ReservationFulfillment extends Context.Service<
               );
 
             if (!reservation) {
-              if (accessEmail?.deployment === "current") {
+              if (accessEmail) {
                 yield* Effect.logWarning(
                   "Resend webhook arrived before the customer delivery was attached",
                   { workspaceReservationId }
@@ -766,14 +762,6 @@ export class ReservationFulfillment extends Context.Service<
               );
 
               return ignoredDelivery("reservation_mismatch");
-            }
-
-            if (accessEmail.deployment !== "current") {
-              return ignoredDelivery(
-                accessEmail.deployment === "missing"
-                  ? "deployment_environment_missing"
-                  : "deployment_environment_mismatch"
-              );
             }
 
             if (report.outcome === "delivered") {
