@@ -276,24 +276,6 @@ export const evalBrowserScript = (
     ...options,
   });
 
-export const fillBrowserField = (
-  run: Runner,
-  session: string,
-  selector: string,
-  value: string,
-  options: { readonly timeoutMs?: number } = {}
-): Effect.Effect<void, WorkspaceE2EError> =>
-  runBrowserCommand(
-    "fill browser field",
-    run,
-    session,
-    ["fill", selector, value],
-    {
-      logOutput: false,
-      timeoutMs: options.timeoutMs ?? 60_000,
-    }
-  ).pipe(Effect.asVoid);
-
 export const clickBrowserElement = (
   run: Runner,
   session: string,
@@ -391,30 +373,6 @@ export const readInteractiveSnapshot = (
     ["snapshot", "-i"],
     { allowFailure, logOutput: false, timeoutMs: 60_000 }
   ).pipe(Effect.map((result) => (result.exitCode === 0 ? result.stdout : "")));
-
-export const waitForInteractiveSnapshot = ({
-  description,
-  matches,
-  run,
-  session,
-  timeoutMs,
-}: {
-  description: string;
-  matches: (snapshot: string) => boolean;
-  run: Runner;
-  session: string;
-  timeoutMs: number;
-}) =>
-  pollUntil(
-    readInteractiveSnapshot(run, session, true).pipe(
-      Effect.map((snapshot) => (matches(snapshot) ? snapshot : undefined))
-    ),
-    {
-      intervalMs: workspaceE2EPollIntervalMs.browser,
-      label: description,
-      timeoutMs,
-    }
-  );
 
 const readBrowserText = (
   run: Runner,
@@ -821,6 +779,50 @@ export const waitForPageText = ({
     readPolledSession(session, readPageText).pipe(
       Effect.orElseSucceed(() => ""),
       Effect.map((text) => (matches(text) ? text : undefined))
+    ),
+    {
+      intervalMs: workspaceE2EPollIntervalMs.browser,
+      label: description,
+      timeoutMs,
+    }
+  );
+
+/**
+ * The page body's interactive aria snapshot (`ai` mode) with registered
+ * secrets redacted, as the argv `snapshot -i` output was. Each Playwright
+ * wait is bounded by that command's 60 s.
+ */
+const readPageSnapshot = (
+  session: E2EBrowserSession
+): Effect.Effect<string, WorkspaceE2EError> =>
+  session
+    .use("read interactive browser snapshot", async (page) => {
+      const body = page.locator("body");
+      await body.waitFor({ state: "attached", timeout: 60_000 });
+      return body.ariaSnapshot({ mode: "ai", timeout: 60_000 });
+    })
+    .pipe(Effect.map(redact));
+
+/**
+ * Polls the interactive aria snapshot until `matches` accepts it and returns
+ * it. A read that fails, including a browser that fails to open, counts as
+ * an empty snapshot.
+ */
+export const waitForPageSnapshot = ({
+  description,
+  matches,
+  session,
+  timeoutMs,
+}: {
+  readonly description: string;
+  readonly matches: (snapshot: string) => boolean;
+  readonly session: PolledBrowserSession;
+  readonly timeoutMs: number;
+}): Effect.Effect<string, WorkspaceE2EError> =>
+  pollUntil(
+    readPolledSession(session, readPageSnapshot).pipe(
+      Effect.orElseSucceed(() => ""),
+      Effect.map((snapshot) => (matches(snapshot) ? snapshot : undefined))
     ),
     {
       intervalMs: workspaceE2EPollIntervalMs.browser,

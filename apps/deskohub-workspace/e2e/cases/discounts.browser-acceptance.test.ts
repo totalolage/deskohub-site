@@ -6,6 +6,7 @@ import { Effect } from "effect";
 import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import {
+  type BrowserStepDriver,
   failedStepAnnotation,
   runBrowserStep,
 } from "../case-runner.browser.test-utils";
@@ -124,50 +125,63 @@ const config = {
   timeouts: { ...workspaceE2ETimeouts, browserAction: 2000 },
 } as WorkspaceE2EConfig;
 
-const assertCalendarDiscountOn = (html: string) => {
+/**
+ * How a caller hands over the browser: argv callers pass the runner and the
+ * session id, session callers (the referral cases) the session itself.
+ */
+const browserInputs = {
+  runner: ({ id, run }: BrowserStepDriver) => ({ run, session: id }),
+  session: ({ session }: BrowserStepDriver) => ({ session }),
+} as const;
+
+const assertCalendarDiscountOn = (
+  html: string,
+  input: (typeof browserInputs)[keyof typeof browserInputs]
+) => {
   if (!browser) throw new Error("Chromium is not running");
   return runBrowserStep({
     browser,
-    drive: ({ id, run }) =>
+    drive: (driver) =>
       assertDisplayedDiscounts({
         config,
         discounts: [calendarDiscountExpectation],
-        run,
-        session: id,
         timeoutMs: 2000,
+        ...input(driver),
       }),
     prepare: (session) =>
       session.use("show the pay page", (payPage) => payPage.setContent(html)),
   });
 };
 
-test.skipIf(!chromiumAvailable)(
-  "asserts a displayed discount through its tooltip",
-  async () => {
-    const result = await assertCalendarDiscountOn(discountDetails());
-    expect(result.succeeded).toBe(true);
-    expect(result.annotations).toEqual([]);
-  },
-  60_000
-);
+for (const [caller, input] of Object.entries(browserInputs)) {
+  test.skipIf(!chromiumAvailable)(
+    `asserts a displayed discount through its tooltip (${caller})`,
+    async () => {
+      const result = await assertCalendarDiscountOn(discountDetails(), input);
+      expect(result.succeeded).toBe(true);
+      expect(result.annotations).toEqual([]);
+    },
+    60_000
+  );
 
-// The Calendar sale advertisement retries only these timeouts.
-test.skipIf(!chromiumAvailable)(
-  "times out a discount the tooltip never shows and a trigger never hydrated",
-  async () => {
-    for (const html of [
-      discountDetails({ detail: "No discounts" }),
-      discountDetails({ handlers: [] }),
-      // A hidden trigger scrolls but never takes focus.
-      discountDetails({ hidden: true }),
-    ]) {
-      const result = await assertCalendarDiscountOn(html);
-      expect(result.annotations).toEqual(failedStepAnnotation("timeout"));
-      expect(result.failures.map(({ timeout }) => timeout)).toEqual([true]);
-    }
-  },
-  90_000
-);
+  // The Calendar sale advertisement retries only these timeouts.
+  test.skipIf(!chromiumAvailable)(
+    `times out a discount the tooltip never shows and a trigger never hydrated (${caller})`,
+    async () => {
+      for (const html of [
+        discountDetails({ detail: "No discounts" }),
+        discountDetails({ handlers: [] }),
+        // A hidden trigger scrolls but never takes focus.
+        discountDetails({ hidden: true }),
+      ]) {
+        const result = await assertCalendarDiscountOn(html, input);
+        expect(result.annotations).toEqual(failedStepAnnotation("timeout"));
+        expect(result.failures.map(({ timeout }) => timeout)).toEqual([true]);
+      }
+    },
+    90_000
+  );
+}
 
 // The reservation form behind the Calendar sale advertisement: the selection
 // is already made, and the sale shows from the `showFromLoad`th load on.
