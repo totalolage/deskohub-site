@@ -19,6 +19,7 @@ import type {
 } from "@deskohub/workspace-admin-api";
 import { sql } from "drizzle-orm";
 import { Effect, type Layer } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
 import {
   emailCampaignAutomationRunEvents,
   emailCampaignAutomationRuns,
@@ -422,69 +423,71 @@ describe.skipIf(!testDatabase)(
       const at = (minute: number) => minutes(4).add({ minutes: minute });
       const dueAt = minutes(4).add({ hours: 1 }).toString();
       await Effect.runPromise(
-        db.transaction((tx) =>
-          Effect.gen(function* () {
-            // A newer build may record a kind this one doesn't know.
-            yield* tx.execute(
-              sql.raw(
-                `alter table email_campaign_automation_run_events drop constraint ${kindCheck}`
-              )
-            );
-            yield* tx.insert(emailCampaignAutomationRunEvents).values([
-              {
-                runId,
-                sequence: 4,
-                kind: "rerouted" as never,
-                stepId: stepId("s2"),
-                at: at(3),
-                detail: { toStepId: "s3" } as never,
-              },
-              {
-                runId,
-                sequence: 2,
-                kind: "condition-passed",
-                stepId: stepId("s1"),
-                at: at(1),
-              },
-              {
-                runId,
-                sequence: 1,
-                kind: "started",
-                stepId: null,
-                at: at(0),
-              },
-              {
-                runId,
-                sequence: 3,
-                kind: "waiting",
-                stepId: stepId("s2"),
-                at: at(2),
-                detail: { dueAt },
-              },
-              {
-                runId,
-                sequence: 5,
-                kind: "waiting",
-                stepId: stepId("s2"),
-                at: at(4),
-                detail: { dueAt: 5 } as never,
-              },
-              {
-                runId,
-                sequence: 6,
-                kind: "woke",
-                stepId: stepId("s2"),
-                at: at(5),
-                detail: sql`'"oops"'::jsonb` as never,
-              },
-            ]);
-            yield* tx.execute(
-              sql.raw(
-                `alter table email_campaign_automation_run_events add constraint ${kindCheck} ${kindCheckDefinition} not valid`
-              )
-            );
-          })
-        )
+        Effect.flatMap(WorkspaceDatabase, ({ transaction }) =>
+          transaction(
+            Effect.gen(function* () {
+              // A newer build may record a kind this one doesn't know.
+              yield* db.execute(
+                sql.raw(
+                  `alter table email_campaign_automation_run_events drop constraint ${kindCheck}`
+                )
+              );
+              yield* db.insert(emailCampaignAutomationRunEvents).values([
+                {
+                  runId,
+                  sequence: 4,
+                  kind: "rerouted" as never,
+                  stepId: stepId("s2"),
+                  at: at(3),
+                  detail: { toStepId: "s3" } as never,
+                },
+                {
+                  runId,
+                  sequence: 2,
+                  kind: "condition-passed",
+                  stepId: stepId("s1"),
+                  at: at(1),
+                },
+                {
+                  runId,
+                  sequence: 1,
+                  kind: "started",
+                  stepId: null,
+                  at: at(0),
+                },
+                {
+                  runId,
+                  sequence: 3,
+                  kind: "waiting",
+                  stepId: stepId("s2"),
+                  at: at(2),
+                  detail: { dueAt },
+                },
+                {
+                  runId,
+                  sequence: 5,
+                  kind: "waiting",
+                  stepId: stepId("s2"),
+                  at: at(4),
+                  detail: { dueAt: 5 } as never,
+                },
+                {
+                  runId,
+                  sequence: 6,
+                  kind: "woke",
+                  stepId: stepId("s2"),
+                  at: at(5),
+                  detail: sql`'"oops"'::jsonb` as never,
+                },
+              ]);
+              yield* db.execute(
+                sql.raw(
+                  `alter table email_campaign_automation_run_events add constraint ${kindCheck} ${kindCheckDefinition} not valid`
+                )
+              );
+            })
+          )
+        ).pipe(Effect.provide(layer))
       );
 
       const detail = await run((log) => log.getRun({ runId }));

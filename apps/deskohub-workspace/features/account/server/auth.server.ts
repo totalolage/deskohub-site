@@ -94,9 +94,9 @@ export const auth = makeWorkspaceAuth({
   sendMagicLink: workspaceSendMagicLink,
   beforeDeleteUser: workspaceBeforeDeleteUser,
   createCustomerAccount: (accountId) =>
-    Effect.flatMap(WorkspaceDatabase, ({ db }) =>
-      ensureCustomerAccount(db, accountId)
-    ).pipe(Effect.provide(WorkspaceDatabase.Default)),
+    ensureCustomerAccount(accountId).pipe(
+      Effect.provide(WorkspaceDatabase.Default)
+    ),
   hasAdministratorGrant: (accountId) =>
     Effect.flatMap(AccountRoleGrants, (grants) =>
       grants.has({ accountId, role: "administrator" })

@@ -5,7 +5,11 @@ import type {
 } from "@deskohub/workspace-admin-api";
 import { inArray, sql } from "drizzle-orm";
 import { Effect } from "effect";
-import type { WorkspaceDatabaseClient } from "@/db/database.service";
+import {
+  WorkspaceDatabase,
+  type WorkspaceDatabaseClient,
+} from "@/db/database.service";
+import type { RootDatabaseClient } from "@/db/database-client";
 import {
   emailCampaignAutomationRuns,
   emailCampaignAutomationScheduleFires,
@@ -302,62 +306,66 @@ export const seedAutomatedSend = (
  * operator would need.
  */
 export const deleteAutomatedCampaigns = (
-  db: WorkspaceDatabaseClient,
+  db: RootDatabaseClient,
   campaignIds: readonly CampaignId[]
 ) =>
   Effect.runPromise(
-    db.transaction((tx) =>
-      Effect.gen(function* () {
-        yield* tx
-          .delete(emailCampaignAutomationTriggerReceipts)
-          .where(
-            inArray(
-              emailCampaignAutomationTriggerReceipts.campaignId,
-              campaignIds
-            )
+    Effect.flatMap(WorkspaceDatabase, ({ transaction }) =>
+      transaction(
+        Effect.gen(function* () {
+          yield* db
+            .delete(emailCampaignAutomationTriggerReceipts)
+            .where(
+              inArray(
+                emailCampaignAutomationTriggerReceipts.campaignId,
+                campaignIds
+              )
+            );
+          yield* db
+            .delete(emailCampaignAutomationRuns)
+            .where(
+              inArray(emailCampaignAutomationRuns.campaignId, campaignIds)
+            );
+          yield* db
+            .delete(emailCampaignAutomationWorkUnits)
+            .where(
+              inArray(emailCampaignAutomationWorkUnits.campaignId, campaignIds)
+            );
+          yield* db
+            .delete(emailCampaignAutomationScheduleFires)
+            .where(
+              inArray(
+                emailCampaignAutomationScheduleFires.campaignId,
+                campaignIds
+              )
+            );
+          // The automation row references its active version.
+          yield* db
+            .delete(emailCampaignAutomations)
+            .where(inArray(emailCampaignAutomations.campaignId, campaignIds));
+          yield* db
+            .delete(emailCampaignSends)
+            .where(inArray(emailCampaignSends.campaignId, campaignIds));
+          yield* db.execute(
+            sql`lock table ${emailCampaignAutomationVersions} in access exclusive mode`
           );
-        yield* tx
-          .delete(emailCampaignAutomationRuns)
-          .where(inArray(emailCampaignAutomationRuns.campaignId, campaignIds));
-        yield* tx
-          .delete(emailCampaignAutomationWorkUnits)
-          .where(
-            inArray(emailCampaignAutomationWorkUnits.campaignId, campaignIds)
+          yield* db.execute(
+            sql`alter table ${emailCampaignAutomationVersions} disable trigger email_campaign_automation_versions_immutable`
           );
-        yield* tx
-          .delete(emailCampaignAutomationScheduleFires)
-          .where(
-            inArray(
-              emailCampaignAutomationScheduleFires.campaignId,
-              campaignIds
-            )
+          yield* db
+            .delete(emailCampaignAutomationVersions)
+            .where(
+              inArray(emailCampaignAutomationVersions.campaignId, campaignIds)
+            );
+          yield* db.execute(
+            sql`alter table ${emailCampaignAutomationVersions} enable trigger email_campaign_automation_versions_immutable`
           );
-        // The automation row references its active version.
-        yield* tx
-          .delete(emailCampaignAutomations)
-          .where(inArray(emailCampaignAutomations.campaignId, campaignIds));
-        yield* tx
-          .delete(emailCampaignSends)
-          .where(inArray(emailCampaignSends.campaignId, campaignIds));
-        yield* tx.execute(
-          sql`lock table ${emailCampaignAutomationVersions} in access exclusive mode`
-        );
-        yield* tx.execute(
-          sql`alter table ${emailCampaignAutomationVersions} disable trigger email_campaign_automation_versions_immutable`
-        );
-        yield* tx
-          .delete(emailCampaignAutomationVersions)
-          .where(
-            inArray(emailCampaignAutomationVersions.campaignId, campaignIds)
-          );
-        yield* tx.execute(
-          sql`alter table ${emailCampaignAutomationVersions} enable trigger email_campaign_automation_versions_immutable`
-        );
-        yield* tx
-          .delete(emailCampaigns)
-          .where(inArray(emailCampaigns.id, campaignIds));
-      })
-    )
+          yield* db
+            .delete(emailCampaigns)
+            .where(inArray(emailCampaigns.id, campaignIds));
+        })
+      )
+    ).pipe(Effect.provideService(WorkspaceDatabase, WorkspaceDatabase.make(db)))
   );
 
 /** Deletes campaigns with their sends and recipients. */

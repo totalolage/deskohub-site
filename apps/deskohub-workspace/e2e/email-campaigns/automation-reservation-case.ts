@@ -6,7 +6,7 @@ import { type Browser, expect, type Page } from "@playwright/test";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { AutomationFlow } from "@deskohub/workspace-admin-api";
 import { Effect, Schema } from "effect";
-import type { DatabaseClient } from "@/db/database-client";
+import type { DatabaseClient, RootDatabaseClient } from "@/db/database-client";
 import {
   customerEvents,
   customerMarketingConsents,
@@ -854,7 +854,7 @@ const readCustomerRuns = (
  */
 const deleteAutomationJourneyRows = Effect.fn("deleteAutomationJourneyRows")(
   function* (
-    db: DatabaseClient,
+    db: RootDatabaseClient,
     rows: {
       readonly audienceTitles: readonly string[];
       readonly campaignTitles: readonly string[];
@@ -943,7 +943,7 @@ export const deleteRunAutomationJourneys = Effect.fn(
 )(function* (input: {
   readonly contacts: readonly CheckoutData[];
   readonly datasourceConfig: DatasourceConfig;
-  readonly db: DatabaseClient;
+  readonly db: RootDatabaseClient;
   readonly runId: WorkspaceE2ERunId;
 }) {
   const { db } = input;
