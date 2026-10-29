@@ -80,6 +80,29 @@ describe.skipIf(!testDatabase)("loadEarlySetupDetails on Postgres", () => {
     ]);
   });
 
+  test("leaves out an early-setup meeting room whose stored details are malformed", async () => {
+    await insert([
+      {
+        label: "malformed",
+        details: { kind: "meeting-room", earlySetup: true },
+      },
+    ]);
+    // Only a write outside the encoder could store a field the schema lacks.
+    await testDatabase.pool.query(
+      "update workspace_reservations set reservation_details = $1::jsonb where dotypos_reservation_id = $2",
+      [
+        JSON.stringify({ kind: "meeting-room", earlySetup: true, room: "A" }),
+        dotyposId("malformed"),
+      ]
+    );
+
+    const details = await Effect.runPromise(
+      loadEarlySetupDetails(testDatabase.db, [dotyposId("malformed")])
+    );
+
+    expect(details.size).toBe(0);
+  });
+
   test("reads nothing for no IDs", async () => {
     const details = await Effect.runPromise(
       loadEarlySetupDetails(testDatabase.db, [])

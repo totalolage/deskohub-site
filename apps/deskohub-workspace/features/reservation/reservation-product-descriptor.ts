@@ -153,6 +153,15 @@ export const reservationProductProperty = (
     ({ id }) => id === property
   );
 
+/** Whether the family's catalog has a property with this stored ID. */
+export const isReservationProductPropertyId = <
+  Family extends WorkspaceReservationKind,
+>(
+  family: Family,
+  property: string
+): property is ReservationProductPropertyIds[Family] =>
+  reservationProductProperty(family, property) !== undefined;
+
 /** A property condition's value schema, by the property's kind. */
 const propertyConditionSchema = (
   property: ReservationProductProperty

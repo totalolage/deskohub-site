@@ -1,19 +1,19 @@
 import type { DotyposReservationId } from "@deskohub/dotypos";
-import type { WorkspaceReservation } from "@/db/schema";
+import type { WorkspaceReservationRow } from "@/db/schema";
 
 export const supersedableReservationPaymentStates = [
   "not_started",
   "failed",
   "cancelled",
   "expired",
-] as const satisfies readonly WorkspaceReservation["paymentState"][];
+] as const satisfies readonly WorkspaceReservationRow["paymentState"][];
 
-export type SupersedableReservation = WorkspaceReservation & {
+export type SupersedableReservation = WorkspaceReservationRow & {
   readonly dotyposReservationId: DotyposReservationId;
 };
 
 export const isReservationSupersedable = (
-  reservation: WorkspaceReservation
+  reservation: WorkspaceReservationRow
 ): reservation is SupersedableReservation =>
   reservation.reservationState === "held" &&
   supersedableReservationPaymentStates.some(

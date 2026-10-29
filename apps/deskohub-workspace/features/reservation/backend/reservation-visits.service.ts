@@ -14,6 +14,7 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { workspaceReservations } from "@/db/schema";
 import { bookedReservationCondition } from "@/features/administration/reservation-status-condition";
 import { decodeBookedReservation } from "@/features/reservation/backend/booked-reservation";
+import { StoredReservationDetails } from "@/features/reservation/backend/stored-reservation-details.server";
 import type {
   StoredWorkspaceReservationDetails,
   WorkspaceReservationId,
@@ -266,7 +267,17 @@ export class ReservationVisits extends Context.Service<
                   }): CountedReservationLink[] =>
                     dotyposReservationId === null
                       ? []
-                      : [{ ...reservation, dotyposReservationId }]
+                      : [
+                          {
+                            ...reservation,
+                            dotyposReservationId,
+                            reservationDetails: Option.getOrUndefined(
+                              StoredReservationDetails.project(
+                                reservation.reservationDetails
+                              )
+                            ),
+                          },
+                        ]
                 )
               ),
               Effect.orDie
@@ -364,8 +375,11 @@ type CountedReservationLink = {
   readonly workspaceReservationId: WorkspaceReservationId;
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly dotyposReservationId: DotyposReservationId;
-  /** The stored details, which decide an early-setup meeting room's booked time. */
-  readonly reservationDetails: StoredWorkspaceReservationDetails;
+  /**
+   * The stored details, which decide an early-setup meeting room's booked
+   * time; undefined when the stored document is malformed.
+   */
+  readonly reservationDetails: StoredWorkspaceReservationDetails | undefined;
 };
 
 /**

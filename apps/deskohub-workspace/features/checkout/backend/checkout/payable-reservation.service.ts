@@ -2,9 +2,9 @@ import { type DotyposReadFailure, DotyposService } from "@deskohub/dotypos";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer } from "effect";
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
+import type { WorkspaceReservationDetailsMalformedError } from "@/features/reservation/backend/stored-reservation-details.server";
 import {
   type WorkspaceReservation,
-  type WorkspaceReservationDetailsMalformedError,
   WorkspaceReservationRepository,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
