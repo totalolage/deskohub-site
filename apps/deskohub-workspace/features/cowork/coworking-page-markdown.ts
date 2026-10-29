@@ -8,9 +8,8 @@ import {
   type StaticLocalizedPageRoute,
 } from "@/features/i18n";
 import { getOfferingSale } from "@/features/pricing/offering-sale";
-import { getCoworkOfferSearchParams } from "@/features/reservation/cowork-reservation-checkout-query";
-import { setReservationSelectionSearchParams } from "@/features/reservation/reservation-checkout-query";
 import { getShareableReservationStartPath } from "@/features/reservation/routes";
+import { getShareableSelectionPath } from "@/features/reservation/selection-path";
 import {
   type MarkdownBlocks,
   markdownHeading,
@@ -64,11 +63,6 @@ export const coworkingPageMarkdown = (
           candidate.kind === "cowork" && candidate.tier === desk.tier
       );
       const sale = offering && getOfferingSale(offering, locale);
-      const searchParams = new URLSearchParams();
-      setReservationSelectionSearchParams(
-        searchParams,
-        getCoworkOfferSearchParams({ entryTier: desk.tier })
-      );
 
       return [
         markdownHeading(3, getWorkspaceProductTierTitle(desk.tier, locale)),
@@ -90,7 +84,10 @@ export const coworkingPageMarkdown = (
         markdownParagraph(
           markdownLink(
             getWorkspacePageUrl(
-              getShareableReservationStartPath("cowork", searchParams)
+              getShareableSelectionPath({
+                kind: "cowork",
+                entryTier: desk.tier,
+              })
             ),
             desk.cta
           )

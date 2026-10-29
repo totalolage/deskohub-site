@@ -2,12 +2,13 @@ import { Match } from "effect";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { PublicOfferingsStructuredData } from "@/features/checkout/components/public-offerings-structured-data";
-import type { PublicPriceListOffering } from "@/features/checkout/public-offerings";
+import {
+  getPublicOfferingSelection,
+  type PublicPriceListOffering,
+} from "@/features/checkout/public-offerings";
 import { type Locale, m } from "@/features/i18n";
-import { getCoworkOfferSearchParams } from "@/features/reservation/cowork-reservation-checkout-query";
-import { getMeetingRoomReservationSelectionSearchParams } from "@/features/reservation/meeting-room-reservation-checkout-query";
 import { getMeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
-import { getReservationSelectionPath } from "@/features/reservation/reservation-checkout-query";
+import { getSelectionPath } from "@/features/reservation/selection-path";
 import { Container } from "@/shared/components/container";
 import { GuardedLink as Link } from "@/shared/components/guarded-link";
 import { Button } from "@/shared/components/ui/button";
@@ -214,6 +215,10 @@ const getPriceRow = (
   const reserveLabel = (product: string) =>
     m.pricingReserveLabel({ product }, { locale });
   const sale = getOfferingSale(offering, locale);
+  const reservationPath = getSelectionPath(
+    locale,
+    getPublicOfferingSelection(offering)
+  );
 
   return Match.value(offering).pipe(
     Match.discriminatorsExhaustive("kind")({
@@ -230,11 +235,7 @@ const getPriceRow = (
               )
         ),
         ...(sale && { sale: m.pricingSalePrice(sale, { locale }) }),
-        reservationPath: getReservationSelectionPath(
-          locale,
-          "cowork",
-          getCoworkOfferSearchParams({ entryTier: cowork.tier })
-        ),
+        reservationPath,
         reserveLabel: reserveLabel(cowork.name),
       }),
       "meeting-room": (meetingRoom): PriceRow => {
@@ -248,15 +249,7 @@ const getPriceRow = (
           price: format(meetingRoom.price),
           extras: [],
           ...(sale && { sale: m.pricingSalePrice(sale, { locale }) }),
-          reservationPath: getReservationSelectionPath(
-            locale,
-            "meeting-room",
-            // No start yet: the page opens on the earliest one.
-            getMeetingRoomReservationSelectionSearchParams({
-              duration,
-              startDateTime: "",
-            })
-          ),
+          reservationPath,
           reserveLabel: reserveLabel(
             m.pricingMeetingRoomProduct(
               { name: meetingRoom.name, duration: meetingRoom.durationLabel },
@@ -276,7 +269,7 @@ const getPriceRow = (
           ),
         ],
         ...(sale && { sale: m.pricingOfficeSalePrice(sale, { locale }) }),
-        reservationPath: getReservationSelectionPath(locale, "office"),
+        reservationPath,
         reserveLabel: reserveLabel(office.name),
       }),
     })

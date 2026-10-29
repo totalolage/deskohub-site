@@ -3,21 +3,18 @@ import "@/shared/polyfills/temporal";
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Schema } from "effect";
-import { normalizedCoworkReservationOrderSchema } from "./cowork-reservation";
 import {
-  getCoworkOfferSearchParams,
-  getCoworkReservationSelectionSearchParams,
-  getReservationDefaultValuesFromPayState,
-  getReservationDefaultValuesFromSearchParams,
-  getStoredCoworkReservationSelectionSearchParams,
-} from "./cowork-reservation-checkout-query";
+  getCoworkReservationDefaultValues,
+  normalizedCoworkReservationOrderSchema,
+} from "./cowork-reservation";
+import { coworkSelectionLink } from "./cowork-selection-link";
 import { setReservationSelectionSearchParams } from "./reservation-checkout-query";
 
 const adaEmail = testEmailAddress("ada");
 
-describe("getReservationDefaultValuesFromSearchParams", () => {
+describe("coworkSelectionLink.read", () => {
   test("decodes customer fields independently as URLSearchParams", () => {
-    const values = getReservationDefaultValuesFromSearchParams(
+    const values = coworkSelectionLink.read(
       new URLSearchParams("name=Ada%20Lovelace&email=invalid@")
     );
 
@@ -27,45 +24,18 @@ describe("getReservationDefaultValuesFromSearchParams", () => {
   });
 });
 
-describe("getReservationDefaultValuesFromPayState", () => {
-  test("restores all reservation details while resetting marketing consent", () => {
-    const reservation = Schema.decodeUnknownSync(
-      normalizedCoworkReservationOrderSchema
-    )({
-      kind: "cowork",
-      entryTier: "reserved-desk",
-      date: "2099-06-10",
-      coffee: true,
-      monitorOption: "2x27-qhd",
-      name: "Ada Lovelace",
-      email: adaEmail,
-      phone: "+420 777 000 111",
-    });
-
-    expect(getReservationDefaultValuesFromPayState(reservation)).toEqual({
-      entryTier: "reserved-desk",
-      date: "2099-06-10",
-      coffee: true,
-      monitorOption: "2x27-qhd",
-      name: "Ada Lovelace",
-      email: adaEmail,
-      phone: "+420 777 000 111",
-      billing: { purpose: "personal", invoice: "none" },
-      marketingConsent: false,
-    });
-  });
-});
-
 describe("customer last reservation defaults", () => {
   test("fills an open cowork offer from the last reservation", () => {
     expect(
-      getReservationDefaultValuesFromSearchParams(
+      coworkSelectionLink.read(
         { date: "2099-06-10" },
         {
-          kind: "cowork",
-          entryTier: "reserved-desk",
-          coffee: true,
-          monitorOption: "2x27-qhd",
+          lastReservation: {
+            kind: "cowork",
+            entryTier: "reserved-desk",
+            coffee: true,
+            monitorOption: "2x27-qhd",
+          },
         }
       )
     ).toMatchObject({
@@ -85,9 +55,9 @@ describe("customer last reservation defaults", () => {
     } as const;
 
     expect(
-      getReservationDefaultValuesFromSearchParams(
+      coworkSelectionLink.read(
         { tier: "reserved-desk", monitorOption: "2x32-4k" },
-        lastReservation
+        { lastReservation }
       )
     ).toMatchObject({
       entryTier: "reserved-desk",
@@ -96,17 +66,30 @@ describe("customer last reservation defaults", () => {
     });
     // Another tier replaces the whole remembered offer.
     expect(
-      getReservationDefaultValuesFromSearchParams(
-        { tier: "open-space" },
-        lastReservation
-      )
-    ).toEqual(
-      getReservationDefaultValuesFromSearchParams({ tier: "open-space" })
-    );
+      coworkSelectionLink.read({ tier: "open-space" }, { lastReservation })
+    ).toEqual(coworkSelectionLink.read({ tier: "open-space" }));
   });
 });
 
-describe("getCoworkReservationSelectionSearchParams", () => {
+describe("coworkSelectionLink.write", () => {
+  test("names the selection in the declared order", () => {
+    expect(
+      Object.entries(
+        coworkSelectionLink.write({
+          monitorOption: "2x32-4k",
+          coffee: true,
+          date: "2099-06-12",
+          entryTier: "reserved-desk",
+        })
+      )
+    ).toEqual([
+      ["entryTier", "reserved-desk"],
+      ["date", "2099-06-12"],
+      ["coffee", "true"],
+      ["monitorOption", "2x32-4k"],
+    ]);
+  });
+
   test.each([
     {
       entryTier: "open-space",
@@ -138,10 +121,10 @@ describe("getCoworkReservationSelectionSearchParams", () => {
     );
     setReservationSelectionSearchParams(
       searchParams,
-      getCoworkReservationSelectionSearchParams(selection)
+      coworkSelectionLink.write(selection)
     );
 
-    expect(getReservationDefaultValuesFromSearchParams(searchParams)).toEqual(
+    expect(coworkSelectionLink.read(searchParams)).toEqual(
       expect.objectContaining({ ...selection })
     );
     expect(searchParams.get("discountCode")).toBe("SPRING");
@@ -157,7 +140,7 @@ describe("getCoworkReservationSelectionSearchParams", () => {
     const searchParams = new URLSearchParams();
     setReservationSelectionSearchParams(
       searchParams,
-      getCoworkReservationSelectionSearchParams({
+      coworkSelectionLink.write({
         entryTier: "reserved-desk",
         date: "2099-06-12",
         coffee: true,
@@ -167,13 +150,13 @@ describe("getCoworkReservationSelectionSearchParams", () => {
 
     expect(searchParams.get("monitorOption")).toBe("none");
     expect(
-      getReservationDefaultValuesFromSearchParams(searchParams, lastReservation)
+      coworkSelectionLink.read(searchParams, { lastReservation })
     ).toMatchObject({ entryTier: "reserved-desk", monitorOption: undefined });
     // A link that leaves the option open still takes the remembered one.
     expect(
-      getReservationDefaultValuesFromSearchParams(
+      coworkSelectionLink.read(
         { entryTier: "reserved-desk" },
-        lastReservation
+        { lastReservation }
       )
     ).toMatchObject({ monitorOption: "2x27-qhd" });
   });
@@ -181,7 +164,7 @@ describe("getCoworkReservationSelectionSearchParams", () => {
   test("a tier without an optional workstation writes no monitor option", () => {
     for (const entryTier of ["open-space", "profi"] as const) {
       expect(
-        getCoworkReservationSelectionSearchParams({
+        coworkSelectionLink.write({
           entryTier,
           date: "2099-06-12",
           coffee: true,
@@ -192,7 +175,7 @@ describe("getCoworkReservationSelectionSearchParams", () => {
   });
 });
 
-describe("getCoworkOfferSearchParams", () => {
+describe("cowork offer links", () => {
   test("names the tier and date and leaves the add-ons to the last reservation", () => {
     const lastReservation = {
       kind: "cowork",
@@ -203,7 +186,7 @@ describe("getCoworkOfferSearchParams", () => {
     const searchParams = new URLSearchParams();
     setReservationSelectionSearchParams(
       searchParams,
-      getCoworkOfferSearchParams({
+      coworkSelectionLink.write({
         entryTier: "reserved-desk",
         date: "2099-06-12",
       })
@@ -213,7 +196,7 @@ describe("getCoworkOfferSearchParams", () => {
       "entryTier=reserved-desk&date=2099-06-12"
     );
     expect(
-      getReservationDefaultValuesFromSearchParams(searchParams, lastReservation)
+      coworkSelectionLink.read(searchParams, { lastReservation })
     ).toMatchObject({
       entryTier: "reserved-desk",
       date: "2099-06-12",
@@ -223,14 +206,16 @@ describe("getCoworkOfferSearchParams", () => {
   });
 
   test("writes no date when the offer has none", () => {
-    expect(getCoworkOfferSearchParams({ entryTier: "open-space" })).toEqual({
+    expect(coworkSelectionLink.write({ entryTier: "open-space" })).toEqual({
       entryTier: "open-space",
       date: undefined,
+      coffee: undefined,
+      monitorOption: undefined,
     });
   });
 });
 
-describe("getStoredCoworkReservationSelectionSearchParams", () => {
+describe("coworkSelectionLink.fromStored", () => {
   // Shortly after midnight in Prague, still the previous day in UTC.
   const reservedFrom = Temporal.Instant.from("2099-06-11T22:30:00Z");
 
@@ -247,14 +232,23 @@ describe("getStoredCoworkReservationSelectionSearchParams", () => {
   ] as const)(
     "the parser reads back the stored reservation %o on its workspace date",
     (details) => {
-      const selection = getStoredCoworkReservationSelectionSearchParams({
+      const selection = coworkSelectionLink.fromStored({
         ...details,
         reservedFrom,
       });
+      expect(selection).toMatchObject({
+        kind: "cowork",
+        entryTier: details.entryTier,
+        date: "2099-06-12",
+      });
+      if (!selection) throw new Error("Expected a cowork selection.");
       const searchParams = new URLSearchParams();
-      setReservationSelectionSearchParams(searchParams, selection ?? {});
+      setReservationSelectionSearchParams(
+        searchParams,
+        coworkSelectionLink.write(selection)
+      );
 
-      expect(getReservationDefaultValuesFromSearchParams(searchParams)).toEqual(
+      expect(coworkSelectionLink.read(searchParams)).toEqual(
         expect.objectContaining({
           entryTier: details.entryTier,
           date: "2099-06-12",
@@ -271,7 +265,7 @@ describe("getStoredCoworkReservationSelectionSearchParams", () => {
 
   test("gives no selection for a historical tier", () => {
     expect(
-      getStoredCoworkReservationSelectionSearchParams({
+      coworkSelectionLink.fromStored({
         kind: "cowork",
         entryTier: "basic",
         coffee: false,
@@ -279,4 +273,44 @@ describe("getStoredCoworkReservationSelectionSearchParams", () => {
       })
     ).toBeUndefined();
   });
+});
+
+describe("coworkSelectionLink.restore", () => {
+  const restored = getCoworkReservationDefaultValues(
+    Schema.decodeUnknownSync(normalizedCoworkReservationOrderSchema)({
+      kind: "cowork",
+      entryTier: "reserved-desk",
+      date: "2099-06-10",
+      coffee: true,
+      monitorOption: "2x27-qhd",
+      name: "Ada Lovelace",
+      email: adaEmail,
+      phone: "+420 777 000 111",
+    })
+  );
+
+  test("keeps the restored selection without a selection parameter", () => {
+    expect(
+      coworkSelectionLink.restore(restored, {
+        payState: "signed",
+        discountCode: "SPRING",
+      })
+    ).toEqual(restored);
+  });
+
+  test.each([
+    ["entryTier", { entryTier: "open-space" }],
+    ["legacy tier", { tier: "open-space" }],
+  ] as const)(
+    "lets the %s parameter replace the whole restored selection",
+    (_label, searchParams) => {
+      expect(coworkSelectionLink.restore(restored, searchParams)).toEqual({
+        ...restored,
+        entryTier: "open-space",
+        date: "",
+        coffee: false,
+        monitorOption: undefined,
+      });
+    }
+  );
 });
