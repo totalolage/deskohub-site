@@ -23,6 +23,7 @@ import {
   waitForBrowserTextContent,
   waitForBrowserUrl,
   waitForPageCondition,
+  waitForPageSnapshot,
   waitForPageText,
   waitForPageTextContent,
   waitForPageUrl,
@@ -35,7 +36,11 @@ import {
   type BrowserStepDriver as HelperDriver,
   runBrowserStep,
 } from "./case-runner.browser.test-utils";
-import { isWorkspaceE2ETimeout, type WorkspaceE2EError } from "./errors";
+import {
+  isWorkspaceE2ETimeout,
+  type WorkspaceE2EError,
+  workspaceE2EError,
+} from "./errors";
 import { pollUntil } from "./polling";
 import { addRedaction } from "./redaction";
 import { browserSessionFor, makePlaywrightBrowserRunner } from "./runtime";
@@ -221,6 +226,61 @@ test.skipIf(!chromiumAvailable)(
       waitForPageText({
         description: "saved text",
         matches: (text) => text.includes("Saved"),
+        session,
+        timeoutMs: 1_500,
+      })
+    );
+
+    expect(isTimeout(exit)).toBe(true);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "polls the interactive snapshot past an unopened browser and redacts it",
+  async () => {
+    const secret = `secret-${randomUUID()}`;
+    addRedaction(secret, true);
+    const html = `<main></main><script>
+      setTimeout(() => {
+        document.querySelector("main").innerHTML =
+          "<h2>Past reservations</h2><button>Cancel for ${secret}</button>";
+      }, 500);
+    </script>`;
+    let reads = 0;
+
+    const exit = await onPage(html, (session) =>
+      waitForPageSnapshot({
+        description: "past reservations",
+        matches: (snapshot) =>
+          snapshot.includes("Past reservations") &&
+          snapshot.includes("Cancel for"),
+        // The first read finds no browser, as a lane browser that failed to
+        // open; the poll keeps reading.
+        session: Effect.suspend(() => {
+          reads += 1;
+          return reads === 1
+            ? Effect.fail(workspaceE2EError("open browser session failed"))
+            : Effect.succeed(session);
+        }),
+        timeoutMs: 10_000,
+      })
+    );
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isFailure(exit)) return;
+    expect(reads).toBeGreaterThan(1);
+    expect(exit.value).toContain('heading "Past reservations"');
+    expect(exit.value).not.toContain(secret);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "times out polling a snapshot that never matches",
+  async () => {
+    const exit = await onPage("<h2>Current and upcoming</h2>", (session) =>
+      waitForPageSnapshot({
+        description: "past reservations",
+        matches: (snapshot) => snapshot.includes("Past reservations"),
         session,
         timeoutMs: 1_500,
       })
