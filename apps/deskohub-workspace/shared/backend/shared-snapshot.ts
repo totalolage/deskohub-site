@@ -52,7 +52,7 @@ export interface SharedSnapshotPolicy<A, F> {
  * `notFound`, rejects unchanged with its entry expired at once, since a
  * remote cache handler still receives an entry whose render errored.
  */
-export async function readSharedSnapshot<A, E, F = never>(
+export function readSharedSnapshot<A, E, F = never>(
   operation: string,
   load: Effect.Effect<A, E, never>,
   { boundary, complete, incomplete, failure }: SharedSnapshotPolicy<A, F>
@@ -65,7 +65,7 @@ export async function readSharedSnapshot<A, E, F = never>(
       })
     )
   );
-  const read = await (failure
+  const read = failure
     ? shared.pipe(
         runWorkspaceEffectOrElse(operation, {
           boundary,
@@ -76,15 +76,20 @@ export async function readSharedSnapshot<A, E, F = never>(
           }),
         })
       )
-    : shared.pipe(runWorkspaceEffect(operation, { boundary }))
-  ).catch((cause: unknown) => {
-    cacheLife({ expire: 0 });
-    throw cause;
-  });
+    : shared.pipe(runWorkspaceEffect(operation, { boundary }));
 
-  setLifetime(read.share.lifetime);
-  if (read.share.tags?.length) cacheTag(...read.share.tags);
-  return read.value;
+  // Recovery stays with the runner; this only keeps any rejection, including
+  // one from applying the outcome's lifetime, out of the shared cache.
+  return read
+    .then(({ value, share }) => {
+      setLifetime(share.lifetime);
+      if (share.tags?.length) cacheTag(...share.tags);
+      return value;
+    })
+    .catch((cause: unknown) => {
+      cacheLife({ expire: 0 });
+      throw cause;
+    });
 }
 
 interface SharedRead<A> {

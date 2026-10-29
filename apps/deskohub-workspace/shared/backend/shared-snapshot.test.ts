@@ -8,7 +8,7 @@ import {
   test,
 } from "bun:test";
 import { Data, Effect } from "effect";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { recordNextCache } from "@/shared/testing/next-cache-recorder.test-utils";
 
 const nextCache = recordNextCache();
@@ -161,21 +161,74 @@ describe("readSharedSnapshot", () => {
     expect(nextCache.calls).toEqual([{ cacheLife: { expire: 0 } }]);
   });
 
-  test("passes Next.js control flow through unchanged and unshared, without the fallback", async () => {
-    const { fallback, failure } = withFallback();
+  test.each([
+    ["notFound", () => notFound(), "NEXT_HTTP_ERROR_FALLBACK;404"],
+    ["redirect", () => redirect("/target"), "NEXT_REDIRECT"],
+  ] as const)(
+    "passes Next.js %s through unchanged and unshared, without the fallback",
+    async (_name, control, digest) => {
+      const { fallback, failure } = withFallback();
+
+      await expect(
+        readSharedSnapshot("synthetic.snapshot.load", Effect.sync(control), {
+          complete,
+          failure,
+        })
+      ).rejects.toMatchObject({ digest: expect.stringContaining(digest) });
+
+      expect(fallback).not.toHaveBeenCalled();
+      expect(nextCache.calls).toEqual([{ cacheLife: { expire: 0 } }]);
+    }
+  );
+
+  test("answers an incompleteness check that throws as a failure", async () => {
+    const checkFailure = new Error("synthetic check failure");
+    const throwingCheck = {
+      ...incomplete,
+      when: () => {
+        throw checkFailure;
+      },
+    };
 
     await expect(
       readSharedSnapshot(
         "synthetic.snapshot.load",
-        Effect.sync(() => notFound()),
-        { complete, failure }
+        Effect.succeed<Snapshot>({ complete: true }),
+        { complete, incomplete: throwingCheck, ...withFallback() }
       )
-    ).rejects.toMatchObject({
-      digest: expect.stringContaining("NEXT_HTTP_ERROR_FALLBACK;404"),
-    });
+    ).resolves.toBe(fallbackSnapshot);
+    expect(nextCache.calls).toEqual([
+      { cacheLife: { stale: 30, revalidate: 60, expire: 300 } },
+      { cacheTag: ["synthetic:failure"] },
+    ]);
 
-    expect(fallback).not.toHaveBeenCalled();
+    nextCache.clear();
+    await expect(
+      readSharedSnapshot(
+        "synthetic.snapshot.load",
+        Effect.succeed<Snapshot>({ complete: true }),
+        { complete, incomplete: throwingCheck }
+      )
+    ).rejects.toBe(checkFailure);
     expect(nextCache.calls).toEqual([{ cacheLife: { expire: 0 } }]);
+  });
+
+  test("rejects unshared when applying the outcome's tags throws", async () => {
+    const tagFailure = new Error("synthetic tag failure");
+    nextCache.failNext("cacheTag", tagFailure);
+
+    await expect(
+      readSharedSnapshot(
+        "synthetic.snapshot.load",
+        Effect.succeed<Snapshot>({ complete: true }),
+        { complete }
+      )
+    ).rejects.toBe(tagFailure);
+    expect(nextCache.calls).toEqual([
+      { cacheLife: "minutes" },
+      { cacheTag: ["synthetic:all"] },
+      { cacheLife: { expire: 0 } },
+    ]);
   });
 
   test("rejects an interrupted load unshared, without the fallback", async () => {
