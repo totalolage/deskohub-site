@@ -22,7 +22,7 @@ import { ReferralFeatureFlagService } from "./referral-feature-flag.service";
  * Whose referral the remembered code serves. Booking for someone else never
  * settles the booker's code.
  */
-export type Booker =
+type Booker =
   /** The linked customer an account page or action resolved for the session. */
   | { readonly kind: "account"; readonly customerId: DotyposCustomerId }
   /**
@@ -37,7 +37,7 @@ export type Booker =
     };
 
 /** Who a checkout booking is for. */
-export type BookingFor =
+type BookingFor =
   | { readonly for: "account"; readonly customerId: DotyposCustomerId }
   | { readonly for: "someone-else" };
 
@@ -56,7 +56,7 @@ export type RememberedReferralForBooking =
   /** A booking for someone else prefills the Pay page's code box. */
   | { readonly kind: "prefill"; readonly code: CanonicalPromotionCode };
 
-export class RememberedReferralError extends Data.TaggedError(
+class RememberedReferralError extends Data.TaggedError(
   "RememberedReferralError"
 )<{ readonly cause: unknown }> {}
 

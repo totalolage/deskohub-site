@@ -4,9 +4,7 @@ import { Data, Effect } from "effect";
 import { cookies } from "next/headers";
 import { unstable_rethrow } from "next/navigation";
 
-export class RequestCookiesError extends Data.TaggedError(
-  "RequestCookiesError"
-)<{
+class RequestCookiesError extends Data.TaggedError("RequestCookiesError")<{
   readonly cause: unknown;
   readonly message: string;
 }> {}
