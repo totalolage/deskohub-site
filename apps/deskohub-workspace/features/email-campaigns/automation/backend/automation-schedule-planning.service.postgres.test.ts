@@ -7,6 +7,7 @@ import type {
 } from "@deskohub/workspace-admin-api";
 import { eq, isNull } from "drizzle-orm";
 import { Data, Effect, Layer } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
 import {
   emailCampaignAutomations as automationsTable,
   customerMarketingConsents,
@@ -156,15 +157,15 @@ describe.skipIf(!database)("schedule fires on Postgres", () => {
     // An empty marketing pool means no active consent anywhere, so the
     // transaction withdraws them all and rolls back.
     const result = await Effect.runPromise(
-      db
-        .transaction((tx) =>
+      Effect.flatMap(WorkspaceDatabase, ({ db, transaction }) =>
+        transaction(
           Effect.gen(function* () {
-            yield* tx
+            yield* db
               .update(customerMarketingConsents)
               .set({ withdrawnAt: now })
               .where(isNull(customerMarketingConsents.withdrawnAt));
-            const plan = yield* planNextFire(tx, campaignId, now);
-            const fires = yield* tx
+            const plan = yield* planNextFire(campaignId, now);
+            const fires = yield* db
               .select({
                 fireAt: firesTable.fireAt,
                 status: firesTable.status,
@@ -173,7 +174,7 @@ describe.skipIf(!database)("schedule fires on Postgres", () => {
               .from(firesTable)
               .where(eq(firesTable.campaignId, campaignId))
               .orderBy(firesTable.fireAt);
-            const [automationRow] = yield* tx
+            const [automationRow] = yield* db
               .select({ nextFireAt: automationsTable.nextFireAt })
               .from(automationsTable)
               .where(eq(automationsTable.campaignId, campaignId));
@@ -182,10 +183,10 @@ describe.skipIf(!database)("schedule fires on Postgres", () => {
             });
           })
         )
-        .pipe(
-          Effect.catchTag("RolledBack", ({ result }) => Effect.succeed(result)),
-          Effect.provide(evaluationFacts)
-        )
+      ).pipe(
+        Effect.catchTag("RolledBack", ({ result }) => Effect.succeed(result)),
+        Effect.provide(Layer.mergeAll(database.layer, evaluationFacts))
+      )
     );
 
     expect(result.plan).toEqual({

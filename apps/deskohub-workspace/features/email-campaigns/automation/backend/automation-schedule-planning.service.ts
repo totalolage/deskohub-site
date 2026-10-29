@@ -44,7 +44,7 @@ export class AutomationSchedulePlanning extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const { db } = yield* WorkspaceDatabase;
+      const { db, transaction } = yield* WorkspaceDatabase;
       const facts = yield* AutomationEvaluationFacts;
 
       return {
@@ -77,7 +77,7 @@ export class AutomationSchedulePlanning extends Context.Service<
             .pipe(
               Effect.flatMap((due) =>
                 Effect.forEach(due, ({ campaignId }) =>
-                  db.transaction((tx) => planNextFire(tx, campaignId, at))
+                  transaction(planNextFire(campaignId, at))
                 )
               ),
               Effect.map((plans) =>

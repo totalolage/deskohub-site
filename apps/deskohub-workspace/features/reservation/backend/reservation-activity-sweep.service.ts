@@ -1,7 +1,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer, Option } from "effect";
-import type { WorkspaceDatabaseClient } from "@/db/database.service";
+import { WorkspaceTransaction } from "@/db/database.service";
 import { customerEventSweeps } from "@/db/schema";
 import type { NewCustomerEvent } from "@/shared/backend/customer-events/customer-event-outbox";
 import { recordCustomerEvent } from "@/shared/backend/customer-events/customer-event-outbox";
@@ -30,11 +30,11 @@ interface IReservationActivitySweep {
    * open a window once.
    */
   readonly duePages: (
-    executor: WorkspaceDatabaseClient,
     at: Temporal.Instant
   ) => Effect.Effect<
     ReadonlyArray<ReservationActivityPage>,
-    EffectDrizzleQueryError
+    EffectDrizzleQueryError,
+    WorkspaceTransaction
   >;
   /**
    * Fetches one page with a single `ReservationVisits` request. Visits are
@@ -54,13 +54,13 @@ interface IReservationActivitySweep {
    * next, if any; none when the cursor has already moved past this page.
    */
   readonly commitPage: (
-    executor: WorkspaceDatabaseClient,
     page: ReservationActivityPage,
     fetched: ReservationActivityFetch,
     at: Temporal.Instant
   ) => Effect.Effect<
     Option.Option<ReservationActivityPage>,
-    EffectDrizzleQueryError
+    EffectDrizzleQueryError,
+    WorkspaceTransaction
   >;
 }
 
@@ -76,10 +76,10 @@ export class ReservationActivitySweep extends Context.Service<
 >()("@deskohub-workspace/reservation/ReservationActivitySweep") {
   static Default = Layer.succeed(this, {
     duePages: Effect.fn("ReservationActivitySweep.duePages")(function* (
-      executor: WorkspaceDatabaseClient,
       at: Temporal.Instant
     ) {
-      const cursors = yield* executor.select().from(customerEventSweeps);
+      const { db } = yield* WorkspaceTransaction;
+      const cursors = yield* db.select().from(customerEventSweeps);
       const pages = yield* Effect.forEach(cursors, (cursor) =>
         cursor.windowStartsAt && cursor.windowEndsAt && cursor.nextPage
           ? Effect.succeed(
@@ -101,7 +101,7 @@ export class ReservationActivitySweep extends Context.Service<
               {
                 onNone: () => Effect.succeedNone,
                 onSome: (window) =>
-                  openWindow(executor, {
+                  openWindow({
                     source: cursor.source,
                     sweptUntil: cursor.sweptUntil,
                     window,
@@ -123,19 +123,19 @@ export class ReservationActivitySweep extends Context.Service<
       } satisfies ReservationActivityFetch;
     }),
     commitPage: Effect.fn("ReservationActivitySweep.commitPage")(function* (
-      executor: WorkspaceDatabaseClient,
       page: ReservationActivityPage,
       fetched: ReservationActivityFetch,
       at: Temporal.Instant
     ) {
+      const { db } = yield* WorkspaceTransaction;
       yield* Effect.forEach(
         visitEvents(fetched.visits, at),
-        (event) => recordCustomerEvent(executor, { ...event, recordedAt: at }),
+        (event) => recordCustomerEvent(db, { ...event, recordedAt: at }),
         { discard: true }
       );
 
       const next = nextCursor(page, fetched, at);
-      const advanced = yield* executor
+      const advanced = yield* db
         .update(customerEventSweeps)
         .set({ ...next.cursor, updatedAt: at })
         .where(
@@ -154,43 +154,42 @@ export class ReservationActivitySweep extends Context.Service<
 }
 
 /** Opens `window` by CAS, so overlapping planners open it once. */
-const openWindow = (
-  executor: WorkspaceDatabaseClient,
-  {
-    source,
-    sweptUntil,
-    window,
-    at,
-  }: {
-    readonly source: ReservationActivityPage["source"];
-    readonly sweptUntil: Temporal.Instant;
-    readonly window: ReservationActivityWindow;
-    readonly at: Temporal.Instant;
-  }
-) =>
-  executor
-    .update(customerEventSweeps)
-    .set({
-      windowStartsAt: window.startsAt,
-      windowEndsAt: window.endsAt,
-      nextPage: 1,
-      updatedAt: at,
-    })
-    .where(
-      and(
-        eq(customerEventSweeps.source, source),
-        eq(customerEventSweeps.sweptUntil, sweptUntil),
-        isNull(customerEventSweeps.windowStartsAt)
+const openWindow = ({
+  source,
+  sweptUntil,
+  window,
+  at,
+}: {
+  readonly source: ReservationActivityPage["source"];
+  readonly sweptUntil: Temporal.Instant;
+  readonly window: ReservationActivityWindow;
+  readonly at: Temporal.Instant;
+}) =>
+  Effect.flatMap(WorkspaceTransaction, ({ db }) =>
+    db
+      .update(customerEventSweeps)
+      .set({
+        windowStartsAt: window.startsAt,
+        windowEndsAt: window.endsAt,
+        nextPage: 1,
+        updatedAt: at,
+      })
+      .where(
+        and(
+          eq(customerEventSweeps.source, source),
+          eq(customerEventSweeps.sweptUntil, sweptUntil),
+          isNull(customerEventSweeps.windowStartsAt)
+        )
       )
-    )
-    .returning({ source: customerEventSweeps.source })
-    .pipe(
-      Effect.map((opened) =>
-        opened.length > 0
-          ? Option.some<ReservationActivityPage>({ source, window, page: 1 })
-          : Option.none()
+      .returning({ source: customerEventSweeps.source })
+      .pipe(
+        Effect.map((opened) =>
+          opened.length > 0
+            ? Option.some<ReservationActivityPage>({ source, window, page: 1 })
+            : Option.none()
+        )
       )
-    );
+  );
 
 /**
  * A visit has started once its start is past and finished once its end is

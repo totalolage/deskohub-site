@@ -31,10 +31,7 @@ file($name, $body) where {
       }
     } as $span where {
       $filename <: r".*apps/deskohub-workspace/(?:app|features|shared)/.*",
-      not $filename <: r".*\.(?:test|test-utils)\.(?:ts|tsx)$",
-      // Raw transactions not yet migrated. Each migration stage deletes its
-      // files; the closing stage deletes this clause.
-      not $filename <: r".*apps/deskohub-workspace/features/(?:email-campaigns/automation/backend/(?:automation-condition-planning\.service|automation-dry-run\.service|automation-intake-planning\.service|automation-lifecycle\.service|automation-planner\.service|automation-preview-unit|automation-schedule-planning\.service|automation-send-planning\.service|automation-sweep-planning\.service|automation-timer-planning\.service|automation-unit-slots|fire-chunk|intake)|email-campaigns/backend/campaign-delivery\.service)\.ts$"
+      not $filename <: r".*\.(?:test|test-utils)\.(?:ts|tsx)$"
     },
     or {
       `WorkspaceTransaction.of($...)`,

@@ -14,7 +14,10 @@ import type {
 } from "@deskohub/workspace-admin-api";
 import { and, asc, desc, eq, gt, inArray, or } from "drizzle-orm";
 import { Array as Arr, Context, Effect, Layer, Option, Schema } from "effect";
-import { WorkspaceDatabase } from "@/db/database.service";
+import {
+  WorkspaceDatabase,
+  type WorkspaceTransaction,
+} from "@/db/database.service";
 import {
   emailCampaignAutomationPreviewRows as previewRows,
   emailCampaignAutomationPreviews as previews,
@@ -70,7 +73,7 @@ import {
   replayEventScope,
   selectReplayEvents,
 } from "./automation-previews";
-import type { AutomationEngineTransaction } from "./automation-unit-handler";
+
 import { planAutomationUnits } from "./automation-unit-planning";
 import {
   type AutomationWorkingCopy,
@@ -136,7 +139,7 @@ export class AutomationDryRun extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const { db } = yield* WorkspaceDatabase;
+      const { db, transaction } = yield* WorkspaceDatabase;
       const facts = yield* AutomationEvaluationFacts;
       const candidates = yield* CampaignCandidateRepository;
       const dotypos = yield* DotyposService;
@@ -185,15 +188,12 @@ export class AutomationDryRun extends Context.Service<
        * The latest running or completed dry run of this draft, after
        * failing a running one that stalled.
        */
-      const reusablePreview = (
-        tx: AutomationEngineTransaction,
-        input: {
-          readonly campaignId: CampaignId;
-          readonly draftHash: AutomationDraftHash;
-          readonly now: Temporal.Instant;
-        }
-      ) =>
-        tx
+      const reusablePreview = (input: {
+        readonly campaignId: CampaignId;
+        readonly draftHash: AutomationDraftHash;
+        readonly now: Temporal.Instant;
+      }) =>
+        db
           .select()
           .from(previews)
           .where(
@@ -205,9 +205,7 @@ export class AutomationDryRun extends Context.Service<
           .orderBy(desc(previews.createdAt))
           .pipe(
             Effect.flatMap((rows) =>
-              Effect.forEach(rows, (row) =>
-                failStalledPreview(tx, row, input.now)
-              )
+              Effect.forEach(rows, (row) => failStalledPreview(row, input.now))
             ),
             Effect.map((rows) =>
               Arr.findFirst(
@@ -220,14 +218,11 @@ export class AutomationDryRun extends Context.Service<
           );
 
       /** The campaign's running dry run of another draft gives way (§8). */
-      const supersedeRunning = (
-        tx: AutomationEngineTransaction,
-        input: {
-          readonly campaignId: CampaignId;
-          readonly now: Temporal.Instant;
-        }
-      ) =>
-        tx
+      const supersedeRunning = (input: {
+        readonly campaignId: CampaignId;
+        readonly now: Temporal.Instant;
+      }) =>
+        db
           .select({ id: previews.id })
           .from(previews)
           .where(
@@ -241,7 +236,7 @@ export class AutomationDryRun extends Context.Service<
               Effect.forEach(
                 running,
                 ({ id }) =>
-                  closePreview(tx, {
+                  closePreview({
                     previewId: id,
                     status: "superseded",
                     at: input.now,
@@ -321,15 +316,12 @@ export class AutomationDryRun extends Context.Service<
        * days, their distinct customers chunked in id order, each chunk
        * also paying for the live re-check of its events' visits (§8.2).
        */
-      const planReplay = (
-        tx: AutomationEngineTransaction,
-        input: {
-          readonly campaignId: CampaignId;
-          readonly flow: AutomationFlow;
-          readonly audienceFilter: AutomationPlanInput["audienceFilter"];
-          readonly now: Temporal.Instant;
-        }
-      ) => {
+      const planReplay = (input: {
+        readonly campaignId: CampaignId;
+        readonly flow: AutomationFlow;
+        readonly audienceFilter: AutomationPlanInput["audienceFilter"];
+        readonly now: Temporal.Instant;
+      }) => {
         const kind = automationTriggerKind(input.flow.trigger);
         const context: AudienceEvaluationContext = {
           now: input.now,
@@ -350,8 +342,8 @@ export class AutomationDryRun extends Context.Service<
               Effect.die(new Error("A schedule trigger has no replay")),
             onSome: (scope) =>
               Effect.Do.pipe(
-                Effect.bind("eventsTotal", () => countReplayEvents(tx, scope)),
-                Effect.bind("events", () => selectReplayEvents(tx, scope)),
+                Effect.bind("eventsTotal", () => countReplayEvents(scope)),
+                Effect.bind("events", () => selectReplayEvents(scope)),
                 Effect.bind("plan", () =>
                   facts.plan({
                     filters: {
@@ -390,29 +382,30 @@ export class AutomationDryRun extends Context.Service<
         );
       };
 
-      const createPreview = (
-        tx: AutomationEngineTransaction,
-        input: AutomationPlanInput
-      ) =>
+      const createPreview = (input: AutomationPlanInput) =>
         Effect.Do.pipe(
           Effect.bind(
             "planned",
-            (): Effect.Effect<PlannedPreview, AutomationDryRunStartError> =>
+            (): Effect.Effect<
+              PlannedPreview,
+              AutomationDryRunStartError,
+              WorkspaceTransaction
+            > =>
               input.flow.trigger._tag === "Schedule"
                 ? planScheduleFire({
                     ...input,
                     calendar: input.flow.trigger.calendar,
                   })
-                : planReplay(tx, input)
+                : planReplay(input)
           ),
           Effect.tap(() =>
-            supersedeRunning(tx, {
+            supersedeRunning({
               campaignId: input.campaignId,
               now: input.now,
             })
           ),
           Effect.bind("preview", ({ planned }) =>
-            tx
+            db
               .insert(previews)
               .values({
                 campaignId: input.campaignId,
@@ -430,7 +423,6 @@ export class AutomationDryRun extends Context.Service<
           ),
           Effect.tap(({ planned, preview }) =>
             planAutomationUnits(
-              tx,
               planned.chunks.map((chunk, index) =>
                 plannedPreviewUnit({
                   previewId: preview.id,
@@ -450,16 +442,14 @@ export class AutomationDryRun extends Context.Service<
         "AutomationDryRun.start"
       )(function* (campaignId) {
         const now = yield* currentInstant;
-        return yield* db.transaction((tx) =>
+        return yield* transaction(
           Effect.Do.pipe(
             // Serialises concurrent starts, and with activation and archive.
-            Effect.tap(() => lockAutomationForLifecycle(tx, campaignId)),
-            Effect.bind("copy", () =>
-              loadAutomationWorkingCopy(tx, campaignId)
-            ),
+            Effect.tap(() => lockAutomationForLifecycle(campaignId)),
+            Effect.bind("copy", () => loadAutomationWorkingCopy(campaignId)),
             Effect.bind("draft", ({ copy }) => draftOf(copy)),
             Effect.bind("reusable", ({ draft }) =>
-              reusablePreview(tx, {
+              reusablePreview({
                 campaignId,
                 draftHash: draft.draftHash,
                 now,
@@ -469,7 +459,7 @@ export class AutomationDryRun extends Context.Service<
               Option.match(reusable, {
                 onSome: Effect.succeed,
                 onNone: () =>
-                  createPreview(tx, {
+                  createPreview({
                     campaignId,
                     copy: draft.copy,
                     flow: draft.flow,
@@ -539,10 +529,10 @@ export class AutomationDryRun extends Context.Service<
           const position = yield* Effect.transposeOption(
             Option.map(Option.fromUndefinedOr(input.cursor), rowCursor.decode)
           );
-          const { preview, rows, copy } = yield* db.transaction((tx) =>
+          const { preview, rows, copy } = yield* transaction(
             Effect.Do.pipe(
               Effect.bind("stored", () =>
-                tx
+                db
                   .select()
                   .from(previews)
                   .where(eq(previews.id, input.previewId))
@@ -559,10 +549,10 @@ export class AutomationDryRun extends Context.Service<
                   )
               ),
               Effect.bind("preview", ({ stored }) =>
-                failStalledPreview(tx, stored, now)
+                failStalledPreview(stored, now)
               ),
               Effect.bind("rows", ({ preview }) =>
-                tx
+                db
                   .select()
                   .from(previewRows)
                   .where(
@@ -590,7 +580,7 @@ export class AutomationDryRun extends Context.Service<
                   .limit(limit + 1)
               ),
               Effect.bind("copy", ({ preview }) =>
-                loadAutomationWorkingCopy(tx, preview.campaignId).pipe(
+                loadAutomationWorkingCopy(preview.campaignId).pipe(
                   Effect.map(Option.some),
                   Effect.catchTags({
                     CampaignNotFound: () => Effect.succeed(Option.none()),

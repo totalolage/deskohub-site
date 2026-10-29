@@ -1,0 +1,32 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Advisory locks and lock waits are taken only through the Workspace lock
+// registry (db/workspace-locks.ts), whose operations require
+// `WorkspaceTransaction`, keep each key's existing encoding and check rank
+// order. Elsewhere this rejects SQL text, in a string or template, that takes
+// or tries an advisory lock or sets `lock_timeout`, and the pre-registry
+// statement builders. The registry's private ledger issues the statements, and
+// session-held sections stay in db/postgres-advisory-lock.ts. Tests and E2E
+// coordination keep their own barriers and probes.
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/.*\.(?:ts|tsx)$",
+  not $name <: r".*apps/deskohub-workspace/db/(?:workspace-locks|workspace-lock-ledger|postgres-advisory-lock)\.ts$",
+  not $name <: r".*apps/deskohub-workspace/(?:e2e|scripts)/.*",
+  not $name <: r".*\.(?:test|test-utils)\.(?:ts|tsx)$",
+  $body <: r"(?s).*(?:dvisory|lock_timeout|LockStatement).*",
+  $body <: contains bubble or {
+    or { JsStringLiteralExpression(), JsTemplateExpression() } as $span where {
+      $span <: r"(?is).*(?:\bpg_(?:try_)?advisory_\w*lock\w*|\block_timeout\b).*"
+    },
+    JsReferenceIdentifier() as $span where {
+      $span <: r"^(?:postgresAdvisoryTransactionLockStatement|withPostgresAdvisoryLocks?)$"
+    }
+  } where {
+    register_diagnostic(
+      span = $span,
+      message = "Take advisory locks and bounded lock waits through the Workspace lock registry (`WorkspaceLocks`), never as SQL text or statement builders.",
+      severity = "error"
+    )
+  }
+}

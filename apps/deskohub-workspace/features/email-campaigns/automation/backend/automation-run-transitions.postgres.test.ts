@@ -4,6 +4,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { AutomationStepId } from "@deskohub/workspace-admin-api";
 import { Effect } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
 import {
   deleteAutomatedCampaigns,
   seedAutomatedCampaign,
@@ -153,16 +154,18 @@ describe.skipIf(!testDatabase)(
         ]
       );
       await Effect.runPromise(
-        db.transaction((tx) =>
-          appendAutomationRunProgress(tx, [
-            {
-              runId: run!.id,
-              kind: "started",
-              stepId: AutomationStepId.make("condition-1"),
-              at: Temporal.Instant.from("2026-10-19T08:00:00Z"),
-            },
-          ])
-        )
+        Effect.flatMap(WorkspaceDatabase, ({ transaction }) =>
+          transaction(
+            appendAutomationRunProgress([
+              {
+                runId: run!.id,
+                kind: "started",
+                stepId: AutomationStepId.make("condition-1"),
+                at: Temporal.Instant.from("2026-10-19T08:00:00Z"),
+              },
+            ])
+          )
+        ).pipe(Effect.provide(testDatabase.layer))
       );
       return run!.id;
     };
@@ -173,14 +176,16 @@ describe.skipIf(!testDatabase)(
       ending: AutomationRunEnding = { outcome: "sent" }
     ) =>
       Effect.runPromise(
-        db.transaction((tx) =>
-          AutomationRunTransitions.end(tx, {
-            ...ending,
-            runIds,
-            expect,
-            at: endedAt,
-          })
-        )
+        Effect.flatMap(WorkspaceDatabase, ({ transaction }) =>
+          transaction(
+            AutomationRunTransitions.end({
+              ...ending,
+              runIds,
+              expect,
+              at: endedAt,
+            })
+          )
+        ).pipe(Effect.provide(testDatabase.layer))
       );
 
     const storedRun = async (runId: AutomationRunId) => {
