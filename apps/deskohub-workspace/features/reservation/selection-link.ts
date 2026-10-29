@@ -75,10 +75,14 @@ export const defineSelectionLink = <
       restored: Restored,
       searchParams: SupportedSearchParams,
       ...args: ReadArgs
-    ): Restored =>
-      restored && hasReservationSelectionSearchParams(searchParams, namedParams)
-        ? ({ ...restored, ...readSelection(searchParams, ...args) } as Restored)
-        : restored,
+    ): Restoration<Restored, Pick<Values, Param>> => {
+      const restoration: object | undefined =
+        restored &&
+        hasReservationSelectionSearchParams(searchParams, namedParams)
+          ? { ...restored, ...readSelection(searchParams, ...args) }
+          : restored;
+      return restoration as Restoration<Restored, Pick<Values, Param>>;
+    },
     /** A selection as link parameters, in the declared order. */
     write: (
       selection: Selection
@@ -99,6 +103,11 @@ export const defineSelectionLink = <
     },
   };
 };
+
+/** Restored values with their selection fields replaced by a link's. */
+type Restoration<Restored, Selection> = Restored extends undefined
+  ? undefined
+  : Omit<Restored, keyof Selection> & Selection;
 
 /** A selection one family's link can name, tagged with its family. */
 export type LinkedSelection<

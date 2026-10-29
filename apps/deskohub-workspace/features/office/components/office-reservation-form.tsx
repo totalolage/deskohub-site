@@ -119,10 +119,11 @@ export function OfficeReservationForm({
     mode: "onBlur",
     reValidateMode: "onChange",
   });
-  const { startsOn, dayCount, seats } = useWatchedSelection(
+  const watchedSelection = useWatchedSelection(
     officeSelectionLink,
     form.control
   );
+  const { startsOn, dayCount, seats } = watchedSelection;
   const selection = useMemo(
     () => getSelection(startsOn, dayCount, seats),
     [dayCount, seats, startsOn]
@@ -207,7 +208,7 @@ export function OfficeReservationForm({
   useReservationSelectionUrl(
     officeSelectionLink,
     startsOn && Predicate.isNumber(dayCount) && dayCount <= maximumDayCount
-      ? { startsOn, dayCount, seats }
+      ? watchedSelection
       : undefined
   );
   const unavailable = Boolean(
