@@ -1,4 +1,3 @@
-import type { Locator, Page } from "@playwright/test";
 import { Effect } from "effect";
 import type { AccountSection } from "@/features/account/sections";
 import { type Locale, m } from "@/features/i18n";
@@ -480,14 +479,6 @@ const makeAccountBrowser = (
   const withSession = <A>(
     drive: (opened: E2EBrowserSession) => Effect.Effect<A, WorkspaceE2EError>
   ) => Effect.flatMap(browserSession, drive);
-  const click = (label: string, locate: (page: Page) => Locator) =>
-    withSession((opened) =>
-      opened.use(label, (page) =>
-        locate(page)
-          .filter({ visible: true })
-          .click({ timeout: timeouts.browserAction })
-      )
-    );
   return {
     open: (url) =>
       withSession((opened) =>
@@ -498,13 +489,22 @@ const makeAccountBrowser = (
       Effect.orElseSucceed(() => undefined)
     ),
     requestNewLinkAfterFailedCallback: (locale) =>
-      click("click browser element", (page) =>
-        page
-          .locator("a")
-          .filter({ hasText: m.accountCallbackFailedAction({}, { locale }) })
+      withSession((opened) =>
+        opened.use("click browser element", (page) =>
+          page
+            .locator("a")
+            .filter({ hasText: m.accountCallbackFailedAction({}, { locale }) })
+            .filter({ visible: true })
+            .click({ timeout: timeouts.browserAction })
+        )
       ),
-    signOut: click("click browser element", (page) =>
-      page.locator(signOutSelector)
+    signOut: withSession((opened) =>
+      opened.use("click browser element", (page) =>
+        page
+          .locator(signOutSelector)
+          .filter({ visible: true })
+          .click({ timeout: timeouts.browserAction })
+      )
     ),
     submitSignInEmail: (email) =>
       Effect.andThen(
@@ -516,8 +516,13 @@ const makeAccountBrowser = (
               .fill(email, { timeout: timeouts.browserAction })
           )
         ),
-        click("click browser element", (page) =>
-          page.locator(signInSubmitSelector)
+        withSession((opened) =>
+          opened.use("click browser element", (page) =>
+            page
+              .locator(signInSubmitSelector)
+              .filter({ visible: true })
+              .click({ timeout: timeouts.browserAction })
+          )
         )
       ),
     switchLocale: (locale) =>
@@ -585,23 +590,6 @@ export const makeWorkspaceE2EAccountLaneBrowser = ({
       drive
     );
   const { browserAction, uiTransition } = config.timeouts;
-  const click = (label: string, locate: (page: Page) => Locator) =>
-    withLaneSession((laneSession) =>
-      laneSession.use(label, (page) =>
-        locate(page).filter({ visible: true }).click({ timeout: browserAction })
-      )
-    );
-  const clickSelector = (selector: string) =>
-    click("click browser element", (page) => page.locator(selector));
-  const fill = (selector: string, value: string) =>
-    withLaneSession((laneSession) =>
-      laneSession.use("fill browser field", (page) =>
-        page
-          .locator(selector)
-          .filter({ visible: true })
-          .fill(value, { timeout: browserAction })
-      )
-    );
   // As the argv `press` command, a key press has no timeout of its own; the
   // calling step bounds it.
   const press = (key: string) =>
@@ -632,6 +620,14 @@ export const makeWorkspaceE2EAccountLaneBrowser = ({
       })
     );
   const scopedLanguageTrigger = `${accountSectionLandmarks.profile} ${languageTriggerSelector}`;
+  const openLanguageList = withLaneSession((laneSession) =>
+    laneSession.use("click browser element", (page) =>
+      page
+        .locator(languageTriggerSelector)
+        .filter({ visible: true })
+        .click({ timeout: browserAction })
+    )
+  );
   const assistantSession = `${session}-assistant`;
   return {
     ...makeAccountBrowser(config, run, session),
@@ -683,23 +679,48 @@ export const makeWorkspaceE2EAccountLaneBrowser = ({
           { timeoutMs: uiTransition }
         )
       );
-      yield* clickSelector(languageTriggerSelector);
-      yield* click("click browser element", (page) =>
-        page
-          .locator('[role="option"]')
-          .filter({ hasText: languageOptionLabels[locale] })
+      yield* openLanguageList;
+      yield* withLaneSession((laneSession) =>
+        laneSession.use("click browser element", (page) =>
+          page
+            .locator('[role="option"]')
+            .filter({ hasText: languageOptionLabels[locale] })
+            .filter({ visible: true })
+            .click({ timeout: browserAction })
+        )
       );
     }),
     confirmAccountDeletion: Effect.gen(function* () {
-      yield* clickSelector(deleteTriggerSelector);
+      yield* withLaneSession((laneSession) =>
+        laneSession.use("click browser element", (page) =>
+          page
+            .locator(deleteTriggerSelector)
+            .filter({ visible: true })
+            .click({ timeout: browserAction })
+        )
+      );
       yield* waitFor(
         "deletion confirmation dialog",
         hasElement,
         deleteConfirmSelector,
         browserAction
       );
-      yield* clickSelector(deleteConfirmCheckboxSelector);
-      yield* clickSelector(deleteConfirmSelector);
+      yield* withLaneSession((laneSession) =>
+        laneSession.use("click browser element", (page) =>
+          page
+            .locator(deleteConfirmCheckboxSelector)
+            .filter({ visible: true })
+            .click({ timeout: browserAction })
+        )
+      );
+      yield* withLaneSession((laneSession) =>
+        laneSession.use("click browser element", (page) =>
+          page
+            .locator(deleteConfirmSelector)
+            .filter({ visible: true })
+            .click({ timeout: browserAction })
+        )
+      );
     }),
     dismissLanguageList: Effect.gen(function* () {
       yield* press("Escape");
@@ -710,16 +731,31 @@ export const makeWorkspaceE2EAccountLaneBrowser = ({
       );
       return !open;
     }),
-    enterSignInCode: (code) => fill(signInCodeSelector, code),
+    enterSignInCode: (code) =>
+      withLaneSession((laneSession) =>
+        laneSession.use("fill browser field", (page) =>
+          page
+            .locator(signInCodeSelector)
+            .filter({ visible: true })
+            .fill(code, { timeout: browserAction })
+        )
+      ),
     fillProfileField: (field, value) =>
-      fill(accountProfileFieldSelectors[field], value),
+      withLaneSession((laneSession) =>
+        laneSession.use("fill browser field", (page) =>
+          page
+            .locator(accountProfileFieldSelectors[field])
+            .filter({ visible: true })
+            .fill(value, { timeout: browserAction })
+        )
+      ),
     hasLocaleCookie: (locale) =>
       evaluate(
         "read the locale cookie",
         hasDocumentCookie,
         `${localeCookieName}=${locale}`
       ),
-    openLanguageList: clickSelector(languageTriggerSelector),
+    openLanguageList,
     readCompletionLoginEmail: (email) =>
       evaluate(
         "assert the completion login email is read-only",
@@ -757,11 +793,31 @@ export const makeWorkspaceE2EAccountLaneBrowser = ({
       signInEmailSelector
     ),
     restartSignIn: (buttonLabel) =>
-      click("click browser element", (page) =>
-        page.locator("button").filter({ hasText: buttonLabel })
+      withLaneSession((laneSession) =>
+        laneSession.use("click browser element", (page) =>
+          page
+            .locator("button")
+            .filter({ hasText: buttonLabel })
+            .filter({ visible: true })
+            .click({ timeout: browserAction })
+        )
       ),
-    saveProfile: clickSelector(profileSubmitSelector),
-    sendReauthenticationLink: clickSelector(deleteReauthSendSelector),
+    saveProfile: withLaneSession((laneSession) =>
+      laneSession.use("click browser element", (page) =>
+        page
+          .locator(profileSubmitSelector)
+          .filter({ visible: true })
+          .click({ timeout: browserAction })
+      )
+    ),
+    sendReauthenticationLink: withLaneSession((laneSession) =>
+      laneSession.use("click browser element", (page) =>
+        page
+          .locator(deleteReauthSendSelector)
+          .filter({ visible: true })
+          .click({ timeout: browserAction })
+      )
+    ),
     setLocaleCookie: (locale) =>
       evaluate(
         `overwrite the locale cookie with ${locale}`,
