@@ -3,7 +3,7 @@ import { type Browser, chromium, type Page } from "@playwright/test";
 import { Effect, Schema } from "effect";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
-import { readActiveBrowserTabId } from "../browser";
+import { readActiveBrowserTabId, waitForPageUrl } from "../browser";
 import {
   failedStepAnnotation,
   runBrowserStep,
@@ -1041,6 +1041,7 @@ test.skipIf(!chromiumAvailable)(
     const scenario = "popup-status";
     resetScenario(scenario);
     let checkoutPage: Page | undefined;
+    let popupFollowed = false;
     const result = await runBrowserStep({
       browser: requireBrowser(),
       prepare: showPayPage(scenario),
@@ -1054,18 +1055,40 @@ test.skipIf(!chromiumAvailable)(
         ),
       afterStep: ({ session }) =>
         Effect.gen(function* () {
-          if (!checkoutPage) throw new Error("checkout page was not returned");
-          yield* session.activate(checkoutPage);
-          yield* session.use("wait for reservation status", (page) =>
-            page.waitForURL((url) =>
-              url.pathname.includes("/reservation/status/")
-            )
+          const opener = checkoutPage;
+          if (!opener) throw new Error("checkout page was not returned");
+          // Playwright reports the popup some time after the pay handler
+          // opened it, and the session makes it active only then. Activating
+          // the checkout page before that lets the late popup take over.
+          const popup = yield* session.use(
+            "wait for the payment popup",
+            async () => {
+              const context = opener.context();
+              return (
+                context.pages().find((page) => page !== opener) ??
+                (await context.waitForEvent("page", {
+                  timeout: shortTimeouts.providerTransition,
+                }))
+              );
+            }
           );
+          popupFollowed = yield* session.use(
+            "read the active page",
+            async (page) => page === popup
+          );
+          yield* session.activate(opener);
+          yield* waitForPageUrl({
+            description: "checkout status page in original tab",
+            matches: (url) => url.includes("/reservation/status/"),
+            session,
+            timeoutMs: shortTimeouts.providerTransition,
+          });
         }),
     });
 
     expectSucceeded(result);
-    expect(await checkoutPage?.url()).toContain("/reservation/status/");
+    expect(popupFollowed).toBe(true);
+    expect(checkoutPage?.url()).toContain("/reservation/status/");
   }
 );
 
