@@ -59,7 +59,11 @@ const timeouts = {
   browserNavigation: 5_000,
   uiTransition: 1_500,
 };
-const config = { baseUrl: server.url.origin, timeouts };
+const config = {
+  baseUrl: server.url.origin,
+  bypassSecret: undefined,
+  timeouts,
+};
 const open = (path: string) => (session: E2EBrowserSession) =>
   session.use("open synthetic checkout page", async (page) => {
     await page.goto(new URL(path, server.url).href);
@@ -143,7 +147,7 @@ browserTest("fails terminal copy that never offers a retry", async () => {
         timeouts,
       }),
   });
-  failed(result, "error");
+  failed(result, "timeout");
 });
 
 for (const problem of ["none", "contact-in-url", "wrong-selection"] as const) {

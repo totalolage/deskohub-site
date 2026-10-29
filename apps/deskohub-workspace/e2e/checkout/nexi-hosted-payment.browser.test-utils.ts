@@ -21,7 +21,7 @@ export type HostedScenario = {
   readonly disabledChallenge?: boolean;
 };
 
-export type HostedState = {
+type HostedState = {
   readonly options: HostedScenario;
   readonly actions: string[];
   readonly authorizationActions: string[][];

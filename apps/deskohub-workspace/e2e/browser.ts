@@ -42,7 +42,7 @@ export const runBrowserCommand = (
     )
   );
 
-export const readBrowserUrl = (
+const readBrowserUrl = (
   run: Runner,
   session: string
 ): Effect.Effect<string | undefined, WorkspaceE2EError> =>
@@ -155,7 +155,7 @@ export const evalBrowserScript = (
     ...options,
   });
 
-export const focusBrowserElement = (
+const focusBrowserElement = (
   run: Runner,
   session: string,
   selector: string,
@@ -190,7 +190,7 @@ export const scrollBrowserElementIntoView = (
     }
   ).pipe(Effect.asVoid);
 
-export const pressBrowserKey = (
+const pressBrowserKey = (
   run: Runner,
   session: string,
   key: string,

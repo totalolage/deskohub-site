@@ -276,7 +276,7 @@ function payPage(scenario: string, id: string) {
             };
             if (scenario === 'hosted-popup-delayed-open') setTimeout(openHosted, 350);
             else openHosted();
-            setTimeout(() => location.assign('/reservation/status/${id}?scenario=' + scenario), 100);
+            setTimeout(() => location.assign('/reservation/status/${id}?scenario=' + scenario), scenario === 'hosted-popup-delayed-open' || scenario === 'hosted-popup-delayed-navigation' ? 600 : 100);
           } else if (scenario === 'hosted-same-tab') {
             location.assign('/hpp/nexi/${id}?scenario=' + scenario);
           }
