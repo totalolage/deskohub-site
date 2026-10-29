@@ -32,6 +32,8 @@ Dotypos owns reservation facts. Local stored details for meeting rooms and offic
 
 Keep historical and provider-owned projections structural, so current purchase limits never make older data undecodable. Historical cowork tiers stay decodable.
 
+Read `workspace_reservations.reservation_details` only through `StoredReservationDetails` (`features/reservation/backend/stored-reservation-details.server.ts`). Use `decode`, `decodeRow` or `decodeRows` where a malformed document must fail the read with the reservation's ID, and `project` where a view shows less instead. In SQL, use its `kind`, `property` and `earlySetupMeetingRoom` accessors; they yield null for a malformed value, never a cast error. Don't hand-build JSON paths or trust the column's Drizzle `$type`.
+
 ## Meeting rooms
 
 - The duration is the semantic union defined by the catalog in `features/checkout/meeting-room-product-catalog.ts`: `{ unit: "hour", amount: 1 | 4 } | { unit: "day", amount: 1 }`. Carry it, with the selected Prague date, through form decoding, advertised pricing, normalized reservations, quote fingerprints, checkout details, and external reservation creation.
