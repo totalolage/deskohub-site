@@ -39,7 +39,7 @@ export type ReservationSelection =
  * How an hourly meeting-room start is entered: typed into the time input, or
  * picked from the listed free start times.
  */
-export type MeetingRoomStartTimeEntry = "listed" | "typed";
+type MeetingRoomStartTimeEntry = "listed" | "typed";
 
 export type ReservationSelectionOptions = {
   readonly startTimeEntry?: MeetingRoomStartTimeEntry;

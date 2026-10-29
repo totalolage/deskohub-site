@@ -457,35 +457,6 @@ export const summarizeHostedPaymentSnapshot = (snapshot: string) => {
     : "Nexi HPP snapshot summary unavailable";
 };
 
-const findSnapshotRef = (
-  snapshot: string,
-  labels: readonly string[],
-  role?: string
-) => {
-  for (const line of snapshot.split("\n")) {
-    if (!hasSnapshotRole(line, role)) continue;
-    const ref = getSnapshotRef(line);
-    if (!ref) continue;
-
-    const name = line
-      .match(/"([^"]+)"/)?.[1]
-      ?.trim()
-      .toLowerCase();
-    if (name && labels.some((label) => name === label.toLowerCase()))
-      return ref;
-  }
-
-  for (const line of snapshot.split("\n")) {
-    if (!hasSnapshotRole(line, role)) continue;
-    const ref = getSnapshotRef(line);
-    if (!ref) continue;
-
-    const lowerLine = line.toLowerCase();
-    if (labels.some((label) => lowerLine.includes(label.toLowerCase())))
-      return ref;
-  }
-};
-
 const hasSnapshotRole = (line: string, role: string | undefined) =>
   role === undefined ||
   line.match(/^\s*-\s+(\S+)/)?.[1]?.toLowerCase() === role.toLowerCase();
@@ -523,82 +494,6 @@ export const findEnabledSnapshotRef = (
 
 const hasDisabledSnapshotState = (line: string) =>
   /\[[^\]]*\bdisabled\b[^\]]*\]/i.test(line);
-
-export const requireSnapshotRef = ({
-  description,
-  labels,
-  role,
-  run,
-  session,
-  timeoutMs = 60_000,
-}: {
-  description: string;
-  labels: readonly string[];
-  role?: string;
-  run: Runner;
-  session: string;
-  timeoutMs?: number;
-}): Effect.Effect<string, WorkspaceE2EError> =>
-  pollUntil(
-    readInteractiveSnapshot(run, session).pipe(
-      Effect.map((snapshot) => findSnapshotRef(snapshot, labels, role))
-    ),
-    {
-      intervalMs: workspaceE2EPollIntervalMs.browser,
-      label: description,
-      timeoutMs,
-    }
-  ).pipe(
-    Effect.catch((error) =>
-      readInteractiveSnapshot(run, session, true).pipe(
-        Effect.flatMap((snapshot) =>
-          Effect.fail(
-            toWorkspaceE2EError(
-              description,
-              new Error(`${error.message}\n${snapshot}`)
-            )
-          )
-        )
-      )
-    )
-  );
-
-export const requireEnabledSnapshotRef = ({
-  description,
-  labels,
-  run,
-  session,
-  timeoutMs = 60_000,
-}: {
-  description: string;
-  labels: readonly string[];
-  run: Runner;
-  session: string;
-  timeoutMs?: number;
-}): Effect.Effect<string, WorkspaceE2EError> =>
-  pollUntil(
-    readInteractiveSnapshot(run, session).pipe(
-      Effect.map((snapshot) => findEnabledSnapshotRef(snapshot, labels))
-    ),
-    {
-      intervalMs: workspaceE2EPollIntervalMs.browser,
-      label: description,
-      timeoutMs,
-    }
-  ).pipe(
-    Effect.catch((error) =>
-      readInteractiveSnapshot(run, session, true).pipe(
-        Effect.flatMap((snapshot) =>
-          Effect.fail(
-            toWorkspaceE2EError(
-              description,
-              new Error(`${error.message}\n${snapshot}`)
-            )
-          )
-        )
-      )
-    )
-  );
 
 export const getSnapshotRef = (line: string) =>
   line.match(/\bref=((?:f\d+)?e\d+)\b/)?.[1]?.replace(/^/, "@") ??
