@@ -41,8 +41,8 @@ Paths are relative to `apps/deskohub-workspace` unless they start with
 - Serialize account mutations with the account advisory lock
   (`CustomerAccountLinkRepository.withAccountLock`). The lock isn't reentrant (requesting it again inside the section is a defect, not a hang): under
   `OptionalAccountActivityGuard`, read the contact with
-  `CustomerAccountContactService.current` and never call
-  `resolveCurrentCustomerAccount`.
+  `CustomerAccountContactService.current` and never resolve through
+  `CustomerAccountResolver`.
 - Keep Drizzle as the only migration authority. Never run Better Auth runtime
   migrations.
 - Prefer Better Auth, Effect, and Next built-in APIs over hand-rolled

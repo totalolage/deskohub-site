@@ -3,12 +3,12 @@
 ## Customer resolution
 
 - `CustomerAccountResolver` is the replaceable identity-to-customer capability
-  for authenticated route composition and provider-independent tests.
-  `resolveCurrentCustomerAccount` is its Live-wired page convenience. Both
-  return only `CustomerAccountId` and `DotyposCustomerId`; the convenience
-  adds `autoLinked`, true only when this resolution claimed the link to an
-  existing exact-email customer, which the account page uses to record a
-  remembered referral. Keep other callers on `resolve`.
+  for authenticated route composition and provider-independent tests. Both
+  `resolve` and `resolveLink` return only `CustomerAccountId` and
+  `DotyposCustomerId`; `resolveLink` adds `autoLinked`, true only when this
+  resolution claimed the link to an existing exact-email customer, which the
+  account page uses to record a remembered referral. Keep other callers on
+  `resolve`.
 - Require the authoritative current session and a verified email, then resolve
   in this order:
   1. An existing durable link wins.
@@ -122,6 +122,15 @@ glossary defines the customer account, reservation author, and tombstone.
   posts included, its pathname (`withRequestPathname`), which
   `getRequestPathname` reads; a render without one is not found. The page's
   own check still covers client navigations, which skip the shared layout.
+- `loadAccountPageState` (`features/account/page-data.server.ts`) declares
+  every capability it reads in its requirements, and `loadCustomerAccountPage`
+  provides them once at the page's single runtime edge. A section that may
+  fail degrades through `degradable(code, fallback)` with a fixed code. A
+  capability whose layer can fail to build (Dotypos or Cloudinary
+  configuration) stays in `AccountPageSectionLayers`, and its step provides
+  that layer inside its own recovery, so a failed build degrades that section
+  alone and a skipped section is never built. Never provide such a layer at
+  the edge. Test the loader with Layer fakes, never module mocks.
 - Keep the account page in that layout, never in a page. The navigation
   switches sections with `history.replaceState`, which leaves Next's router
   tree on the path the page loaded at; a Server Action that revalidates, or
