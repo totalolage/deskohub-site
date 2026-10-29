@@ -110,10 +110,23 @@ const openCheckout = (pages: CheckoutPages) =>
  * Returns the case's annotations as the reporter would see them, the step's
  * failures, and the exported spans.
  */
+/** Runs a helper's own step inline, inside the harness step. */
+const inlineStep: WorkspaceE2EStepRunner = ({ execute }) => execute;
+
 const runCheckoutStep = async <S>(
   setup: Effect.Effect<S, WorkspaceE2EError, Scope.Scope>,
-  execute: (checkout: S) => Effect.Effect<unknown, WorkspaceE2EError>,
-  { stepTimeoutMs = 15_000 }: { readonly stepTimeoutMs?: number } = {}
+  execute: (
+    checkout: S,
+    runStep: WorkspaceE2EStepRunner
+  ) => Effect.Effect<unknown, WorkspaceE2EError>,
+  {
+    ownStep = false,
+    stepTimeoutMs = 15_000,
+  }: {
+    /** `execute` runs its own step through the case runner's `runStep`. */
+    readonly ownStep?: boolean;
+    readonly stepTimeoutMs?: number;
+  } = {}
 ) => {
   const annotations: WorkspaceE2EFailureDiagnostic[] = [];
   const failures: WorkspaceE2EError[] = [];
@@ -151,18 +164,22 @@ const runCheckoutStep = async <S>(
       runE2ECase({
         body: (step) =>
           Effect.scoped(
-            Effect.flatMap(setup, (checkout) =>
-              step({
-                execute: execute(checkout).pipe(
+            Effect.flatMap(setup, (checkout) => {
+              const recorded = (runStep: WorkspaceE2EStepRunner) =>
+                execute(checkout, runStep).pipe(
                   Effect.tapError((failure) =>
                     Effect.sync(() => failures.push(failure))
                   ),
                   Effect.asVoid
-                ),
-                id: stepId,
-                timeoutMs: stepTimeoutMs,
-              })
-            )
+                );
+              return ownStep
+                ? recorded(step)
+                : step({
+                    execute: recorded(inlineStep),
+                    id: stepId,
+                    timeoutMs: stepTimeoutMs,
+                  });
+            })
           ),
         caseId,
         watchdogMs: stepTimeoutMs + 15_000,
@@ -818,9 +835,6 @@ test.skipIf(!chromiumAvailable)(
   60_000
 );
 
-/** Runs a helper's own step inline, inside the harness step. */
-const inlineStep: WorkspaceE2EStepRunner = ({ execute }) => execute;
-
 const freshPayUrl = `${origin}/${locale}/checkout/pay?payState=fresh&orderId=${orderId}`;
 const appliedMessage = referralAppliedMessage(locale);
 
@@ -844,11 +858,18 @@ const applyingCheckout = (redirectTo: string) => (url: URL) =>
 
 const applyThroughRunner = (
   redirectTo: string,
-  onApplied: (url: string) => void = () => undefined
+  {
+    onApplied = () => undefined,
+    ownStep = false,
+  }: {
+    readonly onApplied?: (url: string) => void;
+    /** Runs under the helper's own step and deadline, not the harness's. */
+    readonly ownStep?: boolean;
+  } = {}
 ) =>
   runCheckoutStep(
     openRunnerCheckout(applyingCheckout(redirectTo)),
-    (checkout) =>
+    (checkout, runStep) =>
       applyCodeAndReadFreshPayUrl({
         ...checkout,
         appliedMessage,
@@ -857,17 +878,21 @@ const applyThroughRunner = (
         currentPayUrl: payUrl,
         locale,
         orderId,
-        runStep: inlineStep,
+        runStep,
         stepId,
-      }).pipe(Effect.tap((url) => Effect.sync(() => onApplied(url))))
+      }).pipe(Effect.tap((url) => Effect.sync(() => onApplied(url)))),
+    { ownStep }
   );
 
 test.skipIf(!chromiumAvailable)(
   "returns the fresh pay state an applied code re-signs",
   async () => {
     let appliedUrl: string | undefined;
-    const result = await applyThroughRunner(freshPayUrl, (url) => {
-      appliedUrl = url;
+    const result = await applyThroughRunner(freshPayUrl, {
+      onApplied: (url) => {
+        appliedUrl = url;
+      },
+      ownStep: true,
     });
 
     expect(classify(result)).toEqual(passed);
@@ -879,9 +904,16 @@ test.skipIf(!chromiumAvailable)(
 test.skipIf(!chromiumAvailable)(
   "times out an applied code that keeps the pay state",
   async () => {
+    // The fresh pay state poll runs out on its own...
     expect(classify(await applyThroughRunner(`${payUrl}&applied=1`))).toEqual(
       timedOut("fresh signed checkout pay state")
     );
+    // ...and inside its own step, whose deadline ends the poll first.
+    expect(
+      classify(
+        await applyThroughRunner(`${payUrl}&applied=1`, { ownStep: true })
+      )
+    ).toEqual(timedOut(`${caseId}/${stepId}`));
   },
   60_000
 );

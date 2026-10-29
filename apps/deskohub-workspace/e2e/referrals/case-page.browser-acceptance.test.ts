@@ -300,3 +300,29 @@ test.skipIf(!chromiumAvailable)(
   },
   60_000
 );
+
+test.skipIf(!chromiumAvailable)(
+  "fails the review capture plainly when the pay page's discounts never show",
+  async () => {
+    const result = await runCaptureStep({
+      // The owned pay page without its discount details, and a short default
+      // timeout, so the capture's wait for them times out before any
+      // screenshot.
+      prepare: (session) =>
+        session.use("show the owned pay page", async (page) => {
+          await page.context().route(`${origin}/**`, (route) =>
+            route.fulfill({
+              body: "<main></main>",
+              contentType: "text/html; charset=utf-8",
+            })
+          );
+          await page.goto(payUrl);
+          page.setDefaultTimeout(300);
+        }),
+      screenshots: true,
+    });
+
+    expect(result).toEqual(failedCapture);
+  },
+  60_000
+);
