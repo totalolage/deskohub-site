@@ -1,16 +1,22 @@
 import type { Page } from "@playwright/test";
-import type { Effect } from "effect";
+import { Effect } from "effect";
 import type { AccountReviewDestination } from "../account/review-screenshots";
 import type { E2EBrowserSession } from "../browser-session";
-import { type WorkspaceE2EError, withoutWorkspaceE2ETimeout } from "../errors";
+import {
+  type WorkspaceE2EError,
+  withoutWorkspaceE2ETimeout,
+  workspaceE2EError,
+} from "../errors";
 import type { WorkspaceE2EReferralCheckoutCapture } from "./checkout";
 import { captureReferralCheckoutReview } from "./checkout-review";
 
 /**
  * Drives the case's active page natively, once its browser holds that page
- * alone. A referral case passes its step id as the label, and a Playwright
- * timeout fails the step rather than timing it out, as the referral page
- * steps did before the session.
+ * alone. A referral case passes its step id as the label. As the referral
+ * page steps did before the session, every rejection of `drive` fails as
+ * `<label> failed` with the rejection as its cause: a Playwright timeout
+ * fails the step, and a Workspace E2E error the callback throws keeps its
+ * timeout but not its diagnostic code.
  */
 export const onReferralCasePage = <A>(
   session: E2EBrowserSession,
@@ -26,9 +32,18 @@ export const onReferralCasePage = <A>(
       if (pages.length !== 1 || pages[0] !== page) {
         throw new Error("referral case has no single owned page");
       }
-      return drive(page);
+      return page;
     })
-    .pipe(withoutWorkspaceE2ETimeout(label));
+    .pipe(
+      withoutWorkspaceE2ETimeout(label),
+      Effect.flatMap((page) =>
+        Effect.tryPromise({
+          catch: (cause) =>
+            workspaceE2EError(`${label} failed`, { cause, operation: label }),
+          try: () => drive(page),
+        })
+      )
+    );
 
 /** Captures the case's pay page for review, on the case's only page. */
 export const captureReferralCheckoutOnCasePage =

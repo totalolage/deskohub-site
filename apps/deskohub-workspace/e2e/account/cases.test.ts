@@ -1577,38 +1577,35 @@ class FakeBrowser {
   }
 
   /** The accepted step's button that starts another sign-in request. */
+  /**
+   * The accepted step's restart control: the code step's "use a different
+   * email", or the link card's "send another link". The label must name the
+   * control the page shows.
+   */
   restartSignIn(buttonLabel: string) {
     this.external.recordBrowserAction({
       kind: "click",
       selectorOrDestination: `button:has-text("${buttonLabel}")`,
     });
-    if (buttonLabel === useDifferentEmailLabel) {
-      if (this.codeStep === undefined || this.codeStep.dialog) {
-        throw new Error("a different email was chosen outside the code step");
-      }
-      // The form returns with the address prefilled for editing.
-      this.storedRequest = undefined;
-      this.emailValue = this.codeStep.recipient;
-      this.codeStep = undefined;
-      this.pageText = "Sign in";
-      this.formReady = true;
-      this.nativeValidationBlocked = false;
-      return;
+    if (this.codeStep?.dialog) {
+      throw new Error("the deletion dialog's code step has no restart control");
     }
-    if (buttonLabel === "Send another link") {
-      if (this.codeStep !== undefined) {
-        throw new Error("the code step offers no Send another link control");
-      }
-      // The accepted card drops its request and resets the form in place;
-      // the URL keeps its query.
-      this.storedRequest = undefined;
-      this.pageText = "Sign in";
-      this.formReady = true;
-      this.emailValue = "";
-      this.nativeValidationBlocked = false;
-      return;
+    const shown =
+      this.codeStep === undefined
+        ? "Send another link"
+        : useDifferentEmailLabel;
+    if (buttonLabel !== shown) {
+      throw new Error("the restart control has another label");
     }
-    throw new Error("the synthetic browser has no such restart button");
+    this.storedRequest = undefined;
+    this.pageText = "Sign in";
+    this.formReady = true;
+    this.nativeValidationBlocked = false;
+    // A different email returns the form with the address prefilled for
+    // editing; another link resets the form in place, and the URL keeps its
+    // query.
+    this.emailValue = this.codeStep?.recipient ?? "";
+    this.codeStep = undefined;
   }
 
   click(selector: string) {
@@ -1858,7 +1855,12 @@ class FakeBrowser {
     }
   }
 
-  waitForLinkedProfileForm() {
+  waitForLinkedProfileForm(submitLabel: string) {
+    if (submitLabel !== "Save profile") {
+      throw new Error(
+        "the linked edit form's submit control has another label"
+      );
+    }
     const userId = this.external.currentAuthUserId;
     if (!userId || !this.external.linksByUserId.has(userId)) {
       throw new Error("the linked edit form is not shown");
@@ -2274,8 +2276,8 @@ const makeScenario = (
     ),
     waitForLanguageControlLabel: (_description, label) =>
       Effect.sync(() => browser.waitForLanguageControlLabel(label)),
-    waitForLinkedProfileForm: () =>
-      Effect.sync(() => browser.waitForLinkedProfileForm()),
+    waitForLinkedProfileForm: (submitLabel) =>
+      Effect.sync(() => browser.waitForLinkedProfileForm(submitLabel)),
     waitForPageHeading: (_description, heading) =>
       Effect.sync(() => browser.waitForHeading(heading)),
     waitForProfilePanel: () => Effect.sync(() => browser.waitForProfilePanel()),

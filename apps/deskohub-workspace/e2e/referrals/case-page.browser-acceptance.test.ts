@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
+import { AssertionError } from "node:assert";
 import { randomUUID } from "node:crypto";
 import { type Browser, chromium, errors, type Page } from "@playwright/test";
 import { Cause, Effect, Exit, Option } from "effect";
@@ -12,7 +13,11 @@ import {
   failedStepAnnotation,
   runBrowserStep,
 } from "../case-runner.browser.test-utils";
-import type { WorkspaceE2EError } from "../errors";
+import {
+  type WorkspaceE2EError,
+  workspaceE2EError,
+  workspaceE2ETimeoutError,
+} from "../errors";
 import {
   assert,
   browserSessionFor,
@@ -104,6 +109,43 @@ test.skipIf(!chromiumAvailable)(
       expect(result.failures).toEqual([
         { message: "drive-referral-page failed", timeout: false },
       ]);
+    }
+  },
+  60_000
+);
+
+test.skipIf(!chromiumAvailable)(
+  "keeps a callback's own Workspace E2E failure as the cause of the step failure",
+  async () => {
+    const outcomes = [];
+    for (const [thrown, failureKind] of [
+      [
+        workspaceE2EError("fixture cleanup did not converge", {
+          diagnosticCode: "postgres_account_fixture_convergence_failed",
+        }),
+        "error",
+      ],
+      [workspaceE2ETimeoutError("provider profile read timed out"), "timeout"],
+      [new AssertionError({ message: "the savings tile is missing" }), "error"],
+    ] as const) {
+      const result = await runPageStep("<main></main>", ({ session }) =>
+        onReferralCasePage(session, "drive-referral-page", async () => {
+          throw thrown;
+        })
+      );
+      outcomes.push({
+        annotations: result.annotations,
+        expected: failedStepAnnotation(failureKind),
+        messages: result.failures.map(({ message }) => message),
+      });
+    }
+
+    // As the referral page steps before the session: the step fails with
+    // its own message, the callback's code never reaches the annotation,
+    // and a timeout it raised still times the step out.
+    for (const { annotations, expected, messages } of outcomes) {
+      expect(annotations).toEqual(expected);
+      expect(messages).toEqual(["drive-referral-page failed"]);
     }
   },
   60_000
