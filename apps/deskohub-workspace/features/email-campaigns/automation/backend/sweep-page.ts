@@ -70,9 +70,9 @@ export const makeSweepPageHandler = Effect.gen(function* () {
           Effect.provideContext(context),
           Effect.mapError(AutomationUnitFetchFailure.fromReservationVisits)
         ),
-    commit: (tx, unit, fetched, at) =>
+    commit: (unit, fetched, at) =>
       sweep
-        .commitPage(tx, toPage(unit.subject), fetched, at)
+        .commitPage(toPage(unit.subject), fetched, at)
         .pipe(
           Effect.map((next) =>
             Option.toArray(Option.map(next, plannedSweepPage))

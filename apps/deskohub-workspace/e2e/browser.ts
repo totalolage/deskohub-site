@@ -416,7 +416,7 @@ export const waitForInteractiveSnapshot = ({
     }
   );
 
-export const readBrowserText = (
+const readBrowserText = (
   run: Runner,
   session: string,
   allowFailure = false
@@ -487,15 +487,6 @@ export const requireMainFrame = (
           )
     )
   );
-
-export const closeBrowserSession = (
-  run: Runner,
-  session: string
-): Effect.Effect<void, WorkspaceE2EError> =>
-  runBrowserCommand("close browser session", run, session, ["close"], {
-    allowFailure: true,
-    logOutput: false,
-  }).pipe(Effect.asVoid);
 
 export const summarizeHostedPaymentSnapshot = (snapshot: string) => {
   const lines = snapshot
@@ -781,6 +772,36 @@ export const waitForPageTextContent = (
     .pipe(Effect.asVoid);
 
 /**
+ * The page's visible text with registered secrets redacted, as argv output
+ * was. A read that overruns its 30 s bound fails rather than timing out, as
+ * the argv `eval` it replaces did.
+ */
+export const readPageText = (
+  session: E2EBrowserSession
+): Effect.Effect<string, WorkspaceE2EError> =>
+  session
+    .evaluate("read browser text", readBodyText, undefined, {
+      timeoutMs: 30_000,
+    })
+    .pipe(withoutWorkspaceE2ETimeout("read browser text"), Effect.map(redact));
+
+/**
+ * The session a poller reads, or the runner bridge that resolves it
+ * (`browserSessionFor`). A poller resolves a bridge on every read, so a
+ * browser that fails to open reads as an unreadable page, as an argv read
+ * that allowed failure did.
+ */
+export type PolledBrowserSession =
+  | E2EBrowserSession
+  | Effect.Effect<E2EBrowserSession, WorkspaceE2EError>;
+
+const readPolledSession = <A, E>(
+  session: PolledBrowserSession,
+  read: (session: E2EBrowserSession) => Effect.Effect<A, E>
+): Effect.Effect<A, E | WorkspaceE2EError> =>
+  Effect.isEffect(session) ? Effect.flatMap(session, read) : read(session);
+
+/**
  * Polls the page's visible text until `matches` accepts it and returns that
  * text with registered secrets redacted. A read that fails or overruns its
  * own bound counts as empty text.
@@ -793,19 +814,14 @@ export const waitForPageText = ({
 }: {
   readonly description: string;
   readonly matches: (text: string) => boolean;
-  readonly session: E2EBrowserSession;
+  readonly session: PolledBrowserSession;
   readonly timeoutMs: number;
 }): Effect.Effect<string, WorkspaceE2EError> =>
   pollUntil(
-    session
-      .evaluate("read browser text", readPageText, undefined, {
-        timeoutMs: 30_000,
-      })
-      .pipe(
-        Effect.map(redact),
-        Effect.orElseSucceed(() => ""),
-        Effect.map((text) => (matches(text) ? text : undefined))
-      ),
+    readPolledSession(session, readPageText).pipe(
+      Effect.orElseSucceed(() => ""),
+      Effect.map((text) => (matches(text) ? text : undefined))
+    ),
     {
       intervalMs: workspaceE2EPollIntervalMs.browser,
       label: description,
@@ -1003,23 +1019,32 @@ export const waitForPageUrl = ({
 }: {
   readonly description: string;
   readonly matches: (url: string) => boolean;
-  readonly session: E2EBrowserSession;
+  readonly session: PolledBrowserSession;
   readonly timeoutMs: number;
 }): Effect.Effect<string, WorkspaceE2EError> =>
-  pollForUrl(readPageUrl(session), {
-    description,
-    matches,
-    readDiagnostics: readBrowserPageDiagnostics(session).pipe(
-      Effect.map(redact),
-      // The argv evaluation it replaces ran under the runner's default
-      // command bound.
-      Effect.timeoutOrElse({
-        duration: `${argvCommandTimeoutMs} millis`,
-        orElse: () => Effect.succeed(unavailableBrowserDiagnostics),
-      })
+  pollForUrl(
+    readPolledSession(session, readPageUrl).pipe(
+      Effect.orElseSucceed(() => undefined)
     ),
-    timeoutMs,
-  });
+    {
+      description,
+      matches,
+      readDiagnostics: readPolledSession(
+        session,
+        readBrowserPageDiagnostics
+      ).pipe(
+        Effect.orElseSucceed(() => unavailableBrowserDiagnostics),
+        Effect.map(redact),
+        // The argv evaluation it replaces ran under the runner's default
+        // command bound.
+        Effect.timeoutOrElse({
+          duration: `${argvCommandTimeoutMs} millis`,
+          orElse: () => Effect.succeed(unavailableBrowserDiagnostics),
+        })
+      ),
+      timeoutMs,
+    }
+  );
 
 type PageTextOptions = {
   readonly caseSensitive?: boolean;
@@ -1044,7 +1069,7 @@ const toPageTextQuery = (
 // anything; argv callers get them as an expression through `inPageCall`
 // (`browser-scripts.ts`).
 
-const readPageText = () => document.body?.innerText ?? "";
+const readBodyText = () => document.body?.innerText ?? "";
 
 const pageTextIncludes = ({ caseSensitive, text }: PageTextQuery) => {
   const pageText = document.body?.innerText;

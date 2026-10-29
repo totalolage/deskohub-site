@@ -3,6 +3,10 @@ import "server-only";
 import type { AutomationRunEventDetail } from "@deskohub/workspace-admin-api";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { Effect, Match } from "effect";
+import {
+  type WorkspaceDatabaseClient,
+  WorkspaceTransaction,
+} from "@/db/database.service";
 import { emailCampaignAutomationRuns } from "@/db/schema";
 import type { CampaignRecipientSkipReason } from "../../campaign-states";
 import type {
@@ -18,7 +22,6 @@ import {
   type AutomationRunEndingEntry,
   appendAutomationRunEndings,
 } from "./automation-run-timeline";
-import type { AutomationEngineTransaction } from "./automation-unit-handler";
 
 /**
  * How runs end. `skipped` and `failed` carry their reason, which is also
@@ -76,11 +79,11 @@ export const AutomationRunTransitions = {
    * reservations, before sends, recipients, batches and units.
    */
   end: Effect.fn("AutomationRunTransitions.end")(function* (
-    tx: AutomationEngineTransaction,
     input: AutomationRunEnd
   ) {
+    const { db } = yield* WorkspaceTransaction;
     const recorded = endingRecord(input);
-    const ended = yield* tx
+    const ended = yield* db
       .update(emailCampaignAutomationRuns)
       .set({
         status: "ended",
@@ -95,7 +98,7 @@ export const AutomationRunTransitions = {
         and(
           inArray(
             emailCampaignAutomationRuns.id,
-            lockedInIdOrder(tx, input.runIds, input.expect)
+            lockedInIdOrder(db, input.runIds, input.expect)
           ),
           expectationCondition(input.expect)
         )
@@ -105,7 +108,6 @@ export const AutomationRunTransitions = {
         stepId: emailCampaignAutomationRuns.stepId,
       });
     yield* appendAutomationRunEndings(
-      tx,
       ended.map((run) => recorded.entry({ ...run, at: input.at }))
     );
     return ended.map((run): AutomationRunId => run.runId);
@@ -191,11 +193,11 @@ const endingRecord = (
  * deadlock. The outer statement rechecks `expect` after any lock wait.
  */
 const lockedInIdOrder = (
-  tx: AutomationEngineTransaction,
+  db: Pick<WorkspaceDatabaseClient, "select">,
   runIds: readonly AutomationRunId[],
   expect: AutomationRunExpectation
 ) =>
-  tx
+  db
     .select({ id: emailCampaignAutomationRuns.id })
     .from(emailCampaignAutomationRuns)
     .where(

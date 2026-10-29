@@ -3,6 +3,7 @@ import "server-only";
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
 import { Effect, Option } from "effect";
+import { WorkspaceTransaction } from "@/db/database.service";
 import {
   emailCampaignAutomations as automations,
   customerEvents,
@@ -26,7 +27,7 @@ import {
 } from "../automation-versions";
 import { takenReceiptKeys } from "./automation-run-entry";
 import { triggeringCustomerEvent } from "./automation-triggering-events";
-import type { AutomationEngineTransaction } from "./automation-unit-handler";
+
 import { loadAutomationVersionActivations } from "./automation-version-activations";
 
 /** A recorded customer event as intake reads it. */
@@ -86,11 +87,10 @@ const intakeDedupKey = (event: IntakeEvent) =>
  * Reads only; the caller's transaction gives it one snapshot.
  */
 export const matchIntakeEvents = Effect.fn("automationIntake.match")(function* (
-  tx: AutomationEngineTransaction,
   events: readonly IntakeEvent[]
 ) {
   if (events.length === 0) return [];
-  const accepting = yield* acceptingAutomations(tx);
+  const accepting = yield* acceptingAutomations();
   const triggering = events.filter((event) => event.triggering);
 
   const candidates = accepting.flatMap((automation) =>
@@ -110,7 +110,6 @@ export const matchIntakeEvents = Effect.fn("automationIntake.match")(function* (
   );
 
   const productMatches = yield* reservationsOfProducts(
-    tx,
     candidates.flatMap(({ event, version }) =>
       "product" in version.trigger &&
       version.trigger.product !== undefined &&
@@ -148,7 +147,6 @@ export const matchIntakeEvents = Effect.fn("automationIntake.match")(function* (
     Map.groupBy(matches, ({ campaignId }) => campaignId),
     ([campaignId, ofCampaign]) =>
       takenReceiptKeys(
-        tx,
         campaignId,
         ofCampaign.map(({ dedupKey }) => dedupKey)
       ).pipe(
@@ -164,37 +162,39 @@ const receiptOf = (campaignId: CampaignId, dedupKey: string) =>
   `${campaignId}\u0000${dedupKey}`;
 
 /** Active automations accepting events, each with its versions. */
-const acceptingAutomations = (tx: AutomationEngineTransaction) =>
-  tx
-    .select({
-      campaignId: automations.campaignId,
-      acceptingSince: automations.acceptingSince,
-    })
-    .from(automations)
-    .innerJoin(emailCampaigns, eq(emailCampaigns.id, automations.campaignId))
-    .where(
-      and(
-        eq(emailCampaigns.status, "active"),
-        isNotNull(automations.acceptingSince)
+const acceptingAutomations = () =>
+  Effect.flatMap(WorkspaceTransaction, ({ db }) =>
+    db
+      .select({
+        campaignId: automations.campaignId,
+        acceptingSince: automations.acceptingSince,
+      })
+      .from(automations)
+      .innerJoin(emailCampaigns, eq(emailCampaigns.id, automations.campaignId))
+      .where(
+        and(
+          eq(emailCampaigns.status, "active"),
+          isNotNull(automations.acceptingSince)
+        )
       )
-    )
-    .orderBy(asc(automations.campaignId))
-    .pipe(
-      Effect.flatMap((rows) =>
-        Effect.forEach(rows, ({ campaignId, acceptingSince }) =>
-          loadAutomationVersionActivations(tx, campaignId).pipe(
-            Effect.map(
-              (versions): AcceptingAutomation => ({
-                campaignId,
-                // Filtered on non-null above.
-                acceptingSince: acceptingSince!,
-                versions,
-              })
+      .orderBy(asc(automations.campaignId))
+      .pipe(
+        Effect.flatMap((rows) =>
+          Effect.forEach(rows, ({ campaignId, acceptingSince }) =>
+            loadAutomationVersionActivations(campaignId).pipe(
+              Effect.map(
+                (versions): AcceptingAutomation => ({
+                  campaignId,
+                  // Filtered on non-null above.
+                  acceptingSince: acceptingSince!,
+                  versions,
+                })
+              )
             )
           )
         )
       )
-    );
+  );
 
 type ProductFilter = NonNullable<
   Extract<
@@ -210,29 +210,30 @@ const productKey = (
 
 /** The (product filter, reservation) pairs whose reservation is of the product, in SQL. */
 const reservationsOfProducts = (
-  tx: AutomationEngineTransaction,
   pairs: readonly {
     readonly product: ProductFilter;
     readonly reservationId: WorkspaceReservationId;
   }[]
 ) =>
-  Effect.forEach(
-    Map.groupBy(pairs, ({ product }) => canonicalJson(product)),
-    ([, group]) =>
-      tx
-        .select({ id: workspaceReservations.id })
-        .from(workspaceReservations)
-        .where(
-          and(
-            inArray(workspaceReservations.id, [
-              ...new Set(group.map(({ reservationId }) => reservationId)),
-            ]),
-            reservationProductCondition(group[0]!.product)
+  Effect.flatMap(WorkspaceTransaction, ({ db }) =>
+    Effect.forEach(
+      Map.groupBy(pairs, ({ product }) => canonicalJson(product)),
+      ([, group]) =>
+        db
+          .select({ id: workspaceReservations.id })
+          .from(workspaceReservations)
+          .where(
+            and(
+              inArray(workspaceReservations.id, [
+                ...new Set(group.map(({ reservationId }) => reservationId)),
+              ]),
+              reservationProductCondition(group[0]!.product)
+            )
           )
-        )
-        .pipe(
-          Effect.map((rows) =>
-            rows.map(({ id }) => productKey(group[0]!.product, id))
+          .pipe(
+            Effect.map((rows) =>
+              rows.map(({ id }) => productKey(group[0]!.product, id))
+            )
           )
-        )
-  ).pipe(Effect.map((keys) => new Set(keys.flat())));
+    ).pipe(Effect.map((keys) => new Set(keys.flat())))
+  );

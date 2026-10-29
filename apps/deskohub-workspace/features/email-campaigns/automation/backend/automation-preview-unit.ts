@@ -12,7 +12,7 @@ import type {
 } from "@deskohub/workspace-admin-api";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { Data, Effect, Match, Option, Schema } from "effect";
-import { WorkspaceDatabase } from "@/db/database.service";
+import { WorkspaceDatabase, WorkspaceTransaction } from "@/db/database.service";
 import { toStoredInstant } from "@/db/instant";
 import {
   emailCampaignAutomationPreviews as previews,
@@ -73,7 +73,6 @@ import {
   selectReplayEvents,
 } from "./automation-previews";
 import {
-  type AutomationEngineTransaction,
   AutomationUnitFetchFailure,
   type AutomationUnitHandler,
   type ClaimedAutomationUnit,
@@ -151,7 +150,7 @@ class PreviewConditionUnavailable extends Data.TaggedError(
  * lifecycle lock; a changed working copy supersedes the dry run instead.
  */
 export const makePreviewUnitHandler = Effect.gen(function* () {
-  const { db } = yield* WorkspaceDatabase;
+  const { db, transaction } = yield* WorkspaceDatabase;
   const facts = yield* AutomationEvaluationFacts;
   const recipients = yield* CampaignRecipientService;
   const conditions = yield* AutomationConditionEvaluation;
@@ -165,29 +164,26 @@ export const makePreviewUnitHandler = Effect.gen(function* () {
 
   /** Reads the running dry run, its working copy and its events in one snapshot. */
   const loadJob = (subject: PreviewUnitSubject) =>
-    db
-      .transaction((tx) =>
-        selectPreview(tx, subject.previewId).pipe(
-          Effect.flatMap(
-            Option.match({
-              onNone: () =>
-                Effect.succeed<LoadedPreviewJob>(PreviewUnitFetch.Closed()),
-              onSome: (preview) =>
-                preview.status !== "running"
-                  ? Effect.succeed<LoadedPreviewJob>(PreviewUnitFetch.Closed())
-                  : loadCurrentJob(tx, preview, subject.customerIds),
-            })
-          )
+    transaction(
+      selectPreview(subject.previewId).pipe(
+        Effect.flatMap(
+          Option.match({
+            onNone: () =>
+              Effect.succeed<LoadedPreviewJob>(PreviewUnitFetch.Closed()),
+            onSome: (preview) =>
+              preview.status !== "running"
+                ? Effect.succeed<LoadedPreviewJob>(PreviewUnitFetch.Closed())
+                : loadCurrentJob(preview, subject.customerIds),
+          })
         )
       )
-      .pipe(Effect.mapError(databaseFailure));
+    ).pipe(Effect.mapError(databaseFailure));
 
   const loadCurrentJob = (
-    tx: AutomationEngineTransaction,
     preview: AutomationPreviewRow,
     customers: readonly DotyposCustomerId[]
   ) =>
-    workingCopyOf(tx, preview).pipe(
+    workingCopyOf(preview).pipe(
       Effect.flatMap(
         Option.match({
           onNone: () => Effect.succeed(PreviewUnitFetch.Changed()),
@@ -197,7 +193,7 @@ export const makePreviewUnitHandler = Effect.gen(function* () {
                 readonly ReplayEvent[],
                 DatabaseQueryError
               > => Effect.succeed([]),
-              onSome: (scope) => selectReplayEvents(tx, scope, customers),
+              onSome: (scope) => selectReplayEvents(scope, customers),
             }).pipe(
               Effect.map(
                 (events): LoadedPreviewJob => ({
@@ -737,23 +733,23 @@ export const makePreviewUnitHandler = Effect.gen(function* () {
             )
         )
       ),
-    commit: (tx, unit, fetched, at) =>
-      lockPreview(tx, unit.subject.previewId).pipe(
+    commit: (unit, fetched, at) =>
+      lockPreview(unit.subject.previewId).pipe(
         Effect.flatMap(
           Option.match({
             onNone: () => Effect.void,
             onSome: (preview) =>
               PreviewUnitFetch.$match(fetched, {
                 Closed: () => Effect.void,
-                Changed: () => supersede(tx, { preview, unitId: unit.id, at }),
+                Changed: () => supersede({ preview, unitId: unit.id, at }),
                 Evaluated: ({ rows }) =>
-                  workingCopyOf(tx, preview).pipe(
+                  workingCopyOf(preview).pipe(
                     Effect.flatMap(
                       Option.match({
                         onNone: () =>
-                          supersede(tx, { preview, unitId: unit.id, at }),
+                          supersede({ preview, unitId: unit.id, at }),
                         onSome: () =>
-                          recordPreviewUnit(tx, {
+                          recordPreviewUnit({
                             previewId: preview.id,
                             rows,
                             at,
@@ -771,37 +767,32 @@ export const makePreviewUnitHandler = Effect.gen(function* () {
   return registerAutomationUnitHandler(handler);
 });
 
-const selectPreview = (
-  tx: AutomationEngineTransaction,
-  previewId: AutomationPreviewId
-) =>
-  tx
-    .select()
-    .from(previews)
-    .where(eq(previews.id, previewId))
-    .pipe(Effect.map(([preview]) => Option.fromUndefinedOr(preview)));
+const selectPreview = (previewId: AutomationPreviewId) =>
+  Effect.flatMap(WorkspaceTransaction, ({ db }) =>
+    db
+      .select()
+      .from(previews)
+      .where(eq(previews.id, previewId))
+      .pipe(Effect.map(([preview]) => Option.fromUndefinedOr(preview)))
+  );
 
 /** The running dry run, locked against a concurrent supersede (§8). */
-const lockPreview = (
-  tx: AutomationEngineTransaction,
-  previewId: AutomationPreviewId
-) =>
-  tx
-    .select()
-    .from(previews)
-    .where(and(eq(previews.id, previewId), eq(previews.status, "running")))
-    .for("update")
-    .pipe(Effect.map(([preview]) => Option.fromUndefinedOr(preview)));
+const lockPreview = (previewId: AutomationPreviewId) =>
+  Effect.flatMap(WorkspaceTransaction, ({ db }) =>
+    db
+      .select()
+      .from(previews)
+      .where(and(eq(previews.id, previewId), eq(previews.status, "running")))
+      .for("update")
+      .pipe(Effect.map(([preview]) => Option.fromUndefinedOr(preview)))
+  );
 
-const supersede = (
-  tx: AutomationEngineTransaction,
-  input: {
-    readonly preview: AutomationPreviewRow;
-    readonly unitId: AutomationWorkUnitId;
-    readonly at: Temporal.Instant;
-  }
-) =>
-  closePreview(tx, {
+const supersede = (input: {
+  readonly preview: AutomationPreviewRow;
+  readonly unitId: AutomationWorkUnitId;
+  readonly at: Temporal.Instant;
+}) =>
+  closePreview({
     previewId: input.preview.id,
     status: "superseded",
     at: input.at,
@@ -814,13 +805,13 @@ const supersede = (
  * loads.
  */
 const workingCopyOf = (
-  tx: AutomationEngineTransaction,
   preview: AutomationPreviewRow
 ): Effect.Effect<
   Option.Option<Omit<PreviewJob, "preview" | "events">>,
-  DatabaseQueryError
+  DatabaseQueryError,
+  WorkspaceTransaction
 > =>
-  loadAutomationWorkingCopy(tx, preview.campaignId).pipe(
+  loadAutomationWorkingCopy(preview.campaignId).pipe(
     Effect.map((copy) =>
       Option.filter(
         Option.all({

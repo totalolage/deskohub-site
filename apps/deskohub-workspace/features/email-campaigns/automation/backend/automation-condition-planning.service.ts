@@ -17,7 +17,6 @@ import {
 } from "./automation-condition-units";
 import { AutomationEvaluationFacts } from "./automation-evaluation-facts.service";
 import { lockAutomationForEngine } from "./automation-lifecycle-lock";
-import type { AutomationEngineTransaction } from "./automation-unit-handler";
 import {
   automationRunStepKind,
   loadAutomationVersionFlows,
@@ -53,7 +52,7 @@ export class AutomationConditionPlanning extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const { db } = yield* WorkspaceDatabase;
+      const { db, transaction } = yield* WorkspaceDatabase;
       const facts = yield* AutomationEvaluationFacts;
 
       /**
@@ -63,18 +62,15 @@ export class AutomationConditionPlanning extends Context.Service<
        */
       const planAutomation = Effect.fn(
         "AutomationConditionPlanning.planAutomation"
-      )(function* (
-        tx: AutomationEngineTransaction,
-        input: {
-          readonly campaignId: CampaignId;
-          readonly runIds: readonly AutomationRunId[];
-          readonly at: Temporal.Instant;
-        }
-      ) {
-        const lifecycle = yield* lockAutomationForEngine(tx, input.campaignId);
+      )(function* (input: {
+        readonly campaignId: CampaignId;
+        readonly runIds: readonly AutomationRunId[];
+        readonly at: Temporal.Instant;
+      }) {
+        const lifecycle = yield* lockAutomationForEngine(input.campaignId);
         if (lifecycle.status !== "active") return emptyAutomationConditionPlan;
 
-        const locked = yield* tx
+        const locked = yield* db
           .select({
             runId: runs.id,
             versionId: runs.versionId,
@@ -96,10 +92,10 @@ export class AutomationConditionPlanning extends Context.Service<
           .orderBy(runs.id)
           .for("update", { skipLocked: true });
         const flowOf = yield* loadAutomationVersionFlows(
-          tx,
+          db,
           locked.map((run) => run.versionId)
         );
-        return yield* planConditionSteps(tx, facts, {
+        return yield* planConditionSteps(facts, {
           campaignId: input.campaignId,
           steps: [
             ...Map.groupBy(
@@ -153,8 +149,8 @@ export class AutomationConditionPlanning extends Context.Service<
               Effect.forEach(
                 Map.groupBy(unplanned, (run) => run.campaignId),
                 ([campaignId, campaignRuns]) =>
-                  db.transaction((tx) =>
-                    planAutomation(tx, {
+                  transaction(
+                    planAutomation({
                       campaignId,
                       runIds: campaignRuns.map((run) => run.runId),
                       at,

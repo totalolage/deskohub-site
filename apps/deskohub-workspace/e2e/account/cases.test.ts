@@ -32,7 +32,10 @@ import {
   workspaceE2EReferralOwnerRecipientLabel,
 } from "./config";
 import type { WorkspaceE2EAccountJournal } from "./journal";
-import type { WorkspaceE2EAccountLaneBrowser } from "./lane-browser";
+import type {
+  WorkspaceE2EAccountBrowser,
+  WorkspaceE2EAccountLaneBrowser,
+} from "./lane-browser";
 import type { WorkspaceE2EAccountPasskeys } from "./passkeys";
 import {
   type MagicLinkOperation,
@@ -1457,16 +1460,11 @@ class FakeBrowser {
   }
 
   /** Native activation of a header language switcher link. */
-  activate(selector: string) {
-    const locale = /a\[href\^="\/(cs-CZ|en-US)"\]/.exec(selector)?.[1] as
-      | FakeLocale
-      | undefined;
-    if (!selector.startsWith("[data-locale-switcher]") || !locale) {
-      throw new Error("the synthetic browser activated an unexpected control");
-    }
+  /** Activates the header's link to the locale. */
+  switchLocale(locale: FakeLocale) {
     this.external.recordBrowserAction({
       kind: "press",
-      selectorOrDestination: selector,
+      selectorOrDestination: `[data-locale-switcher] a[href^="/${locale}"]`,
     });
     // An open listbox takes the activation as an outside interaction.
     if (this.languageListboxOpen) return;
@@ -1552,6 +1550,30 @@ class FakeBrowser {
     this.nativeValidationBlocked = !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value);
   }
 
+  /** Follows the failed-callback card's request-a-new-link action. */
+  requestNewLinkAfterFailedCallback(locale: FakeLocale) {
+    const action = m.accountCallbackFailedAction({}, { locale });
+    this.external.recordBrowserAction({
+      kind: "click",
+      selectorOrDestination: `a:has-text("${action}")`,
+    });
+    const callback = new URL(this.currentUrl);
+    if (
+      locale !== this.pageLocale() ||
+      callback.searchParams.get("error") === null
+    ) {
+      throw new Error("the request-a-new-link action is off the failure card");
+    }
+    this.navigate(
+      `${this.external.config.baseUrl}${getAccountSignInPath(
+        this.pageLocale(),
+        readAuthCallbackReturnTo(
+          callback.searchParams.get(signInCallbackReturnParam)
+        )
+      )}`
+    );
+  }
+
   click(selector: string) {
     this.external.recordBrowserAction({
       kind: "click",
@@ -1607,28 +1629,6 @@ class FakeBrowser {
       this.formReady = true;
       this.emailValue = "";
       this.nativeValidationBlocked = false;
-      return;
-    }
-    const failedAction = /^a:has-text\("(.+)"\)$/.exec(selector)?.[1];
-    if (
-      failedAction !== undefined &&
-      failedAction ===
-        m.accountCallbackFailedAction({}, { locale: this.pageLocale() })
-    ) {
-      const callback = new URL(this.currentUrl);
-      if (callback.searchParams.get("error") === null) {
-        throw new Error(
-          "the request-a-new-link action is off the failure card"
-        );
-      }
-      this.navigate(
-        `${this.external.config.baseUrl}${getAccountSignInPath(
-          this.pageLocale(),
-          readAuthCallbackReturnTo(
-            callback.searchParams.get(signInCallbackReturnParam)
-          )
-        )}`
-      );
       return;
     }
     if (selector === signOutSelector) {
@@ -1824,18 +1824,18 @@ class FakeBrowser {
     return this.pageText;
   }
 
-  waitForCondition(description: string, condition: string) {
-    if (description.startsWith("cowork selection ")) {
-      const page = new URL(this.currentUrl);
-      if (
-        !page.pathname.endsWith("/reservation/cowork") ||
-        page.searchParams.get("entryTier") !== "open-space" ||
-        !condition.includes('input[name="entryTier"]:checked')
-      ) {
-        throw new Error("the cowork page does not show the selection");
-      }
-      return;
+  /** The cowork page renders the entry tier its URL carries as selected. */
+  waitForCoworkSelection(entryTier: string) {
+    const page = new URL(this.currentUrl);
+    if (
+      !page.pathname.endsWith("/reservation/cowork") ||
+      page.searchParams.get("entryTier") !== entryTier
+    ) {
+      throw new Error("the cowork page does not show the selection");
     }
+  }
+
+  waitForCondition(description: string, condition: string) {
     if (description.endsWith(" language control label")) {
       if (
         this.languageControlLabel === null ||
@@ -2009,6 +2009,47 @@ const requireBrowser = (browserSession = session) => {
   return assistantBrowser;
 };
 
+/**
+ * One account browser's page steps as domain operations over the fake
+ * browser's state, resolved when each step runs; descriptions are ignored.
+ */
+const fakeAccountBrowser = (
+  browser: () => FakeBrowser
+): WorkspaceE2EAccountBrowser => ({
+  open: (url) => Effect.sync(() => browser().open(url)),
+  readText: Effect.sync(() => browser().text()),
+  readUrl: Effect.sync(() => browser().url()),
+  requestNewLinkAfterFailedCallback: (locale) =>
+    Effect.sync(() => browser().requestNewLinkAfterFailedCallback(locale)),
+  signOut: Effect.sync(() => browser().click(signOutSelector)),
+  submitSignInEmail: (email) =>
+    Effect.sync(() => {
+      browser().fill(signInEmailSelector, email);
+      browser().click(signInSubmitSelector);
+    }),
+  switchLocale: (locale) =>
+    Effect.sync(() => {
+      browser().switchLocale(locale);
+      browser().waitForUrl((url) =>
+        new URL(url).pathname.startsWith(`/${locale}`)
+      );
+    }),
+  waitForCoworkSelection: (_description, entryTier) =>
+    Effect.sync(() => browser().waitForCoworkSelection(entryTier)),
+  waitForSignInCodeInput: Effect.sync(() =>
+    browser().waitForHandler(signInCodeSelector, "onChange")
+  ),
+  waitForSignInForm: Effect.sync(() =>
+    browser().waitForFormSubmitHandler(signInFormSelector, [
+      signInEmailSelector,
+    ])
+  ),
+  waitForText: (_description, matches) =>
+    Effect.sync(() => browser().waitForText(matches)),
+  waitForUrl: (_description, matches) =>
+    Effect.sync(() => browser().waitForUrl(matches)),
+});
+
 const realBrowserModule = await import("../browser");
 
 const browserResult = (stdout = ""): BrowserCommandResult => ({
@@ -2024,21 +2065,6 @@ const browserResult = (stdout = ""): BrowserCommandResult => ({
  */
 mock.module("../browser", () => ({
   ...realBrowserModule,
-  closeBrowserSession: (_run: Runner, browserSession: string) =>
-    Effect.sync(() => {
-      if (browserSession !== assistantSession) {
-        throw new Error("the account case closed the lane browser");
-      }
-      if (assistantBrowser) {
-        assistantBrowser = undefined;
-        requireExternal().assistantBrowserEvents.push("close");
-      }
-    }),
-  activateHydratedBrowserElement: (
-    _run: Runner,
-    browserSession: string,
-    selector: string
-  ) => Effect.sync(() => requireBrowser(browserSession).activate(selector)),
   clickBrowserElement: (
     _run: Runner,
     browserSession: string,
@@ -2065,18 +2091,8 @@ mock.module("../browser", () => ({
     selector: string
   ) => Effect.sync(() => requireBrowser(browserSession).focus(selector)),
   normalizeBrowserText: (text: string) => text.replaceAll(/\s+/g, " ").trim(),
-  openBrowserPage: (
-    _config: WorkspaceE2EAccountConfig,
-    _run: Runner,
-    browserSession: string,
-    url: string
-  ) => Effect.sync(() => requireBrowser(browserSession).open(url)),
   pressBrowserKey: (_run: Runner, browserSession: string, key: string) =>
     Effect.sync(() => requireBrowser(browserSession).press(key)),
-  readBrowserText: (_run: Runner, browserSession: string) =>
-    Effect.sync(() => requireBrowser(browserSession).text()),
-  readBrowserUrl: (_run: Runner, browserSession: string) =>
-    Effect.sync(() => requireBrowser(browserSession).url()),
   waitForBrowserCondition: (
     _run: Runner,
     browserSession: string,
@@ -2085,18 +2101,6 @@ mock.module("../browser", () => ({
   ) =>
     Effect.sync(() =>
       requireBrowser(browserSession).waitForCondition(description, condition)
-    ),
-  waitForBrowserReactFormSubmit: (
-    _run: Runner,
-    browserSession: string,
-    selector: string,
-    fieldSelectors: readonly string[]
-  ) =>
-    Effect.sync(() =>
-      requireBrowser(browserSession).waitForFormSubmitHandler(
-        selector,
-        fieldSelectors
-      )
     ),
   waitForBrowserReactHandler: (
     _run: Runner,
@@ -2107,20 +2111,6 @@ mock.module("../browser", () => ({
     Effect.sync(() =>
       requireBrowser(browserSession).waitForHandler(selector, handler)
     ),
-  waitForBrowserText: ({
-    matches,
-    session: browserSession,
-  }: {
-    readonly matches: (text: string) => boolean;
-    readonly session: string;
-  }) => Effect.sync(() => requireBrowser(browserSession).waitForText(matches)),
-  waitForBrowserUrl: ({
-    matches,
-    session: browserSession,
-  }: {
-    readonly matches: (url: string) => boolean;
-    readonly session: string;
-  }) => Effect.sync(() => requireBrowser(browserSession).waitForUrl(matches)),
   waitForInteractiveSnapshot: ({
     matches,
     session: browserSession,
@@ -2301,6 +2291,16 @@ const makeScenario = (
   };
   const datasourceConfig = {} as DatasourceConfig;
   const laneBrowser: WorkspaceE2EAccountLaneBrowser = {
+    ...fakeAccountBrowser(() => browser),
+    assistant: {
+      ...fakeAccountBrowser(() => requireBrowser(assistantSession)),
+      close: Effect.sync(() => {
+        if (assistantBrowser) {
+          assistantBrowser = undefined;
+          external.assistantBrowserEvents.push("close");
+        }
+      }),
+    },
     selectSection: (section) =>
       Effect.sync(() => browser.selectSection(section)),
     waitForNoRememberedReferralCode: Effect.sync(() => {
