@@ -27,6 +27,8 @@ export const campaignImageUploadLimits = {
   maxAnimationPixels: 50_000_000,
 } as const;
 
+type CampaignImagePreparation = "upload" | "shrink" | "refuse";
+
 /**
  * What the editor does with a file before Cloudinary takes it: uploads it as
  * it is, shrinks it, or refuses it. Shrinking keeps only an animation's first
@@ -42,7 +44,7 @@ export const campaignImagePreparation = ({
   readonly bytes: number;
   readonly size: Option.Option<ImageSize>;
   readonly frames: number;
-}): "upload" | "shrink" | "refuse" => {
+}): CampaignImagePreparation => {
   const { maxBytes, maxPixels, maxAnimationPixels } = campaignImageUploadLimits;
   const pixels = Option.match(size, {
     onNone: () => 0,
@@ -172,13 +174,13 @@ type CampaignImageUploadProgress = (
   stage: CampaignImageUploadStage
 ) => Effect.Effect<void>;
 
-const shrinkCampaignImage = ({
-  file,
-  onStage,
-}: {
+/** The file the admin chose, and where the upload reports its stage. */
+interface ChosenCampaignImage {
   readonly file: File;
   readonly onStage: CampaignImageUploadProgress;
-}) =>
+}
+
+const shrinkCampaignImage = ({ file, onStage }: ChosenCampaignImage) =>
   onStage("shrinking").pipe(
     Effect.andThen(
       downscaleImage(file, {
@@ -201,10 +203,9 @@ const readFrameCount = (file: Blob) =>
  * when it's a still picture above the account's limits. An animation above
  * them is refused.
  */
-const prepareCampaignImage = (input: {
-  readonly file: File;
-  readonly onStage: CampaignImageUploadProgress;
-}): Effect.Effect<
+const prepareCampaignImage = (
+  input: ChosenCampaignImage
+): Effect.Effect<
   Blob,
   ImageDecodeError | CampaignImageTooLargeError | CampaignImageUploadError
 > =>
@@ -218,18 +219,19 @@ const prepareCampaignImage = (input: {
     Effect.flatMap(
       (
         preparation
-      ): Effect.Effect<Blob, ImageDecodeError | CampaignImageTooLargeError> => {
-        switch (preparation) {
-          case "upload":
-            return Effect.succeed<Blob>(input.file);
-          case "shrink":
-            return shrinkCampaignImage(input);
-          case "refuse":
-            return Effect.fail(new CampaignImageTooLargeError());
-        }
-      }
+      ): Effect.Effect<Blob, ImageDecodeError | CampaignImageTooLargeError> =>
+        preparations[preparation](input)
     )
   );
+
+const preparations = {
+  upload: ({ file }: ChosenCampaignImage) => Effect.succeed<Blob>(file),
+  shrink: shrinkCampaignImage,
+  refuse: () => Effect.fail(new CampaignImageTooLargeError()),
+} satisfies Record<
+  CampaignImagePreparation,
+  (input: ChosenCampaignImage) => Effect.Effect<Blob, unknown>
+>;
 
 /**
  * Uploads a body image straight to Cloudinary, which shrinks it to the

@@ -1,5 +1,6 @@
 import type { JSONContent, MarkdownToken } from "@tiptap/core";
 import Image from "@tiptap/extension-image";
+import { Predicate } from "effect";
 import type {
   CampaignBodyAttributeValue,
   CampaignBodyNode,
@@ -48,7 +49,7 @@ export const isCampaignImageWidth = (
 export const campaignBodyImageSources = (
   node: CampaignBodyNode
 ): ReadonlyArray<string> => [
-  ...(node.type === "image" && typeof node.attrs?.src === "string"
+  ...(node.type === "image" && Predicate.isString(node.attrs?.src)
     ? [node.attrs.src]
     : []),
   ...(node.content ?? []).flatMap(campaignBodyImageSources),

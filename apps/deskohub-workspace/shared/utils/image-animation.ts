@@ -116,6 +116,25 @@ const sampleTableContainers: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * A box's size: as declared, from its 64-bit size field when it declares 1,
+ * or up to `end` when it declares 0.
+ */
+const boxSize = (
+  bytes: Uint8Array,
+  offset: number,
+  end: number,
+  declared: number
+) => {
+  if (declared === 0) return end - offset;
+  if (declared === 1) {
+    return (
+      readUint32(bytes, offset + 8) * 2 ** 32 + readUint32(bytes, offset + 12)
+    );
+  }
+  return declared;
+};
+
+/**
  * The most samples any track of the sequence lists in its `stsz` box, each
  * sample a frame; 0 when no track lists them.
  */
@@ -130,13 +149,7 @@ const avifSequenceFrameCount = (
     const declared = readUint32(bytes, offset);
     const headerSize = declared === 1 ? 16 : 8;
     if (offset + headerSize > end) break;
-    const size =
-      declared === 0
-        ? end - offset
-        : declared === 1
-          ? readUint32(bytes, offset + 8) * 2 ** 32 +
-            readUint32(bytes, offset + 12)
-          : declared;
+    const size = boxSize(bytes, offset, end, declared);
     if (size < headerSize) break;
     const boxEnd = Math.min(offset + size, end);
     const type = String.fromCharCode(...bytes.subarray(offset + 4, offset + 8));

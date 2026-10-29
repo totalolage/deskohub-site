@@ -82,7 +82,7 @@ const richDocument = (words: {
           {
             type: "image",
             attrs: {
-              src: "https://res.cloudinary.com/cloud/image/upload/v1/campaigns/autumn.jpg",
+              src: "https://res.cloudinary.com/cloud/image/upload/v1/email-campaigns/preview/autumn.jpg",
               alt: words.heading,
             },
           },
