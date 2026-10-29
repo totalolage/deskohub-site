@@ -47,6 +47,3 @@ export const customerMarketingConsents = pgTable(
     ),
   ]
 );
-
-export type CustomerMarketingConsent =
-  typeof customerMarketingConsents.$inferSelect;

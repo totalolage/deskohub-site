@@ -1,5 +1,5 @@
 import type { Locale } from "@/features/i18n";
-import type { AdministrationCustomerMarketingConsentState } from "./customer-list-query";
+import type { MarketingConsentStatus } from "@/features/legal/marketing-consent-status";
 import type { AdministrationCustomerName } from "./customer-name";
 import { m } from "./i18n";
 
@@ -14,11 +14,11 @@ export const getAdministrationCustomerName = (
 
 /** Names a customer's current marketing consent state in the operator's language. */
 export const getAdministrationCustomerMarketingConsentLabel = (
-  state: AdministrationCustomerMarketingConsentState,
+  state: MarketingConsentStatus,
   locale: Locale
 ) =>
   ({
-    granted: m.administrationCustomerMarketingConsentGranted,
-    never: m.administrationCustomerMarketingConsentNever,
+    active: m.administrationCustomerMarketingConsentGranted,
+    absent: m.administrationCustomerMarketingConsentNever,
     withdrawn: m.administrationCustomerMarketingConsentWithdrawn,
   })[state]({}, { locale });

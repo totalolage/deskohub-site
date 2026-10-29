@@ -3,7 +3,7 @@ import "server-only";
 import { Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { CustomerAccountResolver } from "@/features/account";
-import { CustomerMarketingConsentRepository } from "./backend/customer-marketing-consent.repository";
+import { MarketingConsentLedger } from "./backend/marketing-consent-ledger";
 import { MarketingManagementService } from "./backend/marketing-management.service";
 
 /**
@@ -14,7 +14,7 @@ import { MarketingManagementService } from "./backend/marketing-management.servi
 export const marketingPreferencesLive = Layer.mergeAll(
   CustomerAccountResolver.Live,
   MarketingManagementService.Default,
-  CustomerMarketingConsentRepository.Default
+  MarketingConsentLedger.Default
 ).pipe(Layer.provide(WorkspaceDatabase.Default));
 
 export const marketingManagementLive = MarketingManagementService.Default.pipe(

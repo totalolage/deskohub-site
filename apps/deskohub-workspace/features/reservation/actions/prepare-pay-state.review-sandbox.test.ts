@@ -29,7 +29,7 @@ import {
   discountAdvertisementQuoteCodec,
 } from "@/features/discounts";
 import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
-import { CustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository";
+import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
 import { WithheldReferralService } from "@/features/referrals/referral.service.mock";
 import {
@@ -183,8 +183,8 @@ describe.skipIf(!database)(
       Layer.mock(ReservationHoldCleanupScheduleService, {
         enqueueCleanup: unreachable("Hold cleanup"),
       }),
-      Layer.mock(CustomerMarketingConsentRepository, {
-        grantInitial: unreachable("Marketing consent"),
+      Layer.mock(MarketingConsentLedger, {
+        record: unreachable("Marketing consent"),
       }),
       // The profile contact fails as unavailable, so an ordinary account's
       // booking ends in a captured failure.

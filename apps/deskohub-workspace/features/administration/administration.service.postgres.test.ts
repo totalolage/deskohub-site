@@ -515,7 +515,7 @@ describe.skipIf(!testDatabase)(
           withdrawn,
           Temporal.Instant.from("2026-03-01T00:00:00Z")
         );
-        await seed({ customerId: never, inRange: true, label: "never" });
+        await seed({ customerId: never, inRange: true, label: "absent" });
       });
 
       const listInRange = (
@@ -657,24 +657,24 @@ describe.skipIf(!testDatabase)(
             ])
             .sort();
 
-        expect(await states("granted")).toEqual([[twice, "granted"]]);
+        expect(await states("active")).toEqual([[twice, "active"]]);
         expect(await states("withdrawn")).toEqual(
           [
             [unsuccessfulInRange, "withdrawn"],
             [withdrawn, "withdrawn"],
           ].sort()
         );
-        expect(await states("never")).toEqual(
+        expect(await states("absent")).toEqual(
           [
-            [never, "never"],
-            [outOfRange, "never"],
+            [never, "absent"],
+            [outOfRange, "absent"],
           ].sort()
         );
         expect(await states()).toEqual(
           [
-            [never, "never"],
-            [outOfRange, "never"],
-            [twice, "granted"],
+            [never, "absent"],
+            [outOfRange, "absent"],
+            [twice, "active"],
             [unsuccessfulInRange, "withdrawn"],
             [withdrawn, "withdrawn"],
           ].sort()
@@ -683,9 +683,9 @@ describe.skipIf(!testDatabase)(
 
       test("combines the date range with the consent filter", async () => {
         for (const [marketingConsent, expected] of [
-          ["granted", twice],
+          ["active", twice],
           ["withdrawn", withdrawn],
-          ["never", never],
+          ["absent", never],
         ] as const) {
           const result = await listInRange({ ...range, marketingConsent });
           expect(result.total).toBe(1);
@@ -700,7 +700,7 @@ describe.skipIf(!testDatabase)(
           (administration) =>
             administration.listCustomers({
               ...range,
-              marketingConsent: "never",
+              marketingConsent: "absent",
             }),
           {
             listReservations: () =>
@@ -733,9 +733,9 @@ describe.skipIf(!testDatabase)(
         test("exports the customers the list shows under each filter", async () => {
           for (const marketingConsent of [
             undefined,
-            "granted",
+            "active",
             "withdrawn",
-            "never",
+            "absent",
           ] as const) {
             const exported = await run((administration) =>
               administration.exportCustomers({ marketingConsent })
@@ -780,7 +780,7 @@ describe.skipIf(!testDatabase)(
       test("doesn't read Dotypos without a range", async () => {
         const result = await run(
           (administration) =>
-            administration.listCustomers({ marketingConsent: "granted" }),
+            administration.listCustomers({ marketingConsent: "active" }),
           {
             listReservations: () =>
               Effect.die(new Error("Dotypos must not be read")),

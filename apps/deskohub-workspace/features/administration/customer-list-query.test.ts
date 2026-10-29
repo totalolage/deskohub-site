@@ -59,11 +59,26 @@ describe("customerListQuery", () => {
     ).toEqual({ direction: "desc", page: 1, sort: "activity" });
   });
 
-  test("accepts every consent state", () => {
-    for (const marketingConsent of ["granted", "withdrawn", "never"]) {
+  test("accepts every current consent state", () => {
+    for (const marketingConsent of ["active", "withdrawn", "absent"]) {
       expect(
         customerListQuery.parse({ marketingConsent }).marketingConsent
       ).toBe(marketingConsent);
+    }
+  });
+
+  test("maps legacy consent filters to the current state in generated links", () => {
+    for (const [legacy, current] of [
+      ["granted", "active"],
+      ["never", "absent"],
+    ] as const) {
+      const query = customerListQuery.parse(
+        fromHref(`/admin/customers?marketingConsent=${legacy}`)
+      );
+      expect(query.marketingConsent).toBe(current);
+      expect(customerListQuery.href(query)).toContain(
+        `marketingConsent=${current}`
+      );
     }
   });
 
@@ -71,14 +86,14 @@ describe("customerListQuery", () => {
     const query = customerListQuery.parse({
       direction: "asc",
       from: "2026-10-01",
-      marketingConsent: "granted",
+      marketingConsent: "active",
       page: "4",
       sort: "reservations",
       to: "2026-10-31",
     });
 
     expect(customerListQuery.href(query, { page: 4 })).toBe(
-      "/admin/customers?direction=asc&from=2026-10-01&marketingConsent=granted&sort=reservations&to=2026-10-31&page=4"
+      "/admin/customers?direction=asc&from=2026-10-01&marketingConsent=active&sort=reservations&to=2026-10-31&page=4"
     );
     expect(
       customerListQuery.parse(
@@ -97,13 +112,13 @@ describe("customerListQuery", () => {
 
   test("exports the list's filters and order without the page", () => {
     const query = customerListQuery.parse({
-      marketingConsent: "never",
+      marketingConsent: "absent",
       page: "3",
     });
     const href = customerListQuery.exportHref(query);
 
     expect(href).toBe(
-      "/admin/customers/export?direction=desc&marketingConsent=never&sort=activity"
+      "/admin/customers/export?direction=desc&marketingConsent=absent&sort=activity"
     );
     const { page: _, ...withoutPage } = query;
     expect(customerListQuery.parseExport(fromHref(href))).toEqual(withoutPage);
@@ -111,12 +126,12 @@ describe("customerListQuery", () => {
 
   test("sorts the table by the list's order and links each header to a new one", () => {
     const { getSortHref, sorting } = customerListQuery.tableSorting(
-      customerListQuery.parse({ marketingConsent: "granted" })
+      customerListQuery.parse({ marketingConsent: "active" })
     );
 
     expect(sorting).toEqual([{ desc: true, id: "activity" }]);
     expect(getSortHref("reservations", "asc")).toBe(
-      "/admin/customers?direction=asc&marketingConsent=granted&sort=reservations"
+      "/admin/customers?direction=asc&marketingConsent=active&sort=reservations"
     );
   });
 

@@ -393,7 +393,7 @@ describe("administration filter forms", () => {
         customerFilterForm({
           direction: "asc",
           from: "2026-10-01",
-          marketingConsent: "granted",
+          marketingConsent: "active",
           sort: "reservations",
           to: "2026-10-31",
         })
@@ -420,12 +420,12 @@ describe("administration filter forms", () => {
         ])
       ).toEqual([
         ["", "All consent states"],
-        ["granted", "Granted"],
+        ["active", "Granted"],
         ["withdrawn", "Withdrawn"],
-        ["never", "Never granted"],
+        ["absent", "Never granted"],
       ]);
       expect(formEntries(form)).toEqual([
-        ["marketingConsent", "granted"],
+        ["marketingConsent", "active"],
         ["from", "2026-10-01"],
         ["to", "2026-10-31"],
         ["sort", "reservations"],
@@ -478,7 +478,7 @@ describe("administration filter forms", () => {
     test("labels the customer filters in Czech", () => {
       const view = render(
         <RouteLocaleProvider locale="cs-CZ">
-          {customerFilterForm({ marketingConsent: "never" })}
+          {customerFilterForm({ marketingConsent: "absent" })}
         </RouteLocaleProvider>
       );
 

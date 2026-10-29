@@ -57,7 +57,7 @@ const customers: readonly AdministrationCustomerSummary[] = [
       phone: "+420 777 000 000",
     },
     customerId: customerId("dotypos-customer-1"),
-    marketingConsent: "granted",
+    marketingConsent: "active",
     reservationCount: 3,
     lastActivityAt: "2026-08-01T07:35:00Z",
   },
@@ -78,7 +78,7 @@ const customers: readonly AdministrationCustomerSummary[] = [
     // Dotypos doesn't have this customer.
     customer: null,
     customerId: customerId("dotypos-customer-3"),
-    marketingConsent: "never",
+    marketingConsent: "absent",
     reservationCount: 0,
     lastActivityAt: "2026-06-30T22:30:00Z",
   },
@@ -105,7 +105,7 @@ describe("GET /[locale]/admin/customers/export", () => {
   test("hides the export from anyone the administrator guard refuses, before reading customers", async () => {
     access.set("not-administrator");
 
-    const response = await requestExport("?marketingConsent=granted");
+    const response = await requestExport("?marketingConsent=active");
 
     expect(response.status).toBe(404);
     expect(response.headers.get("Content-Type")).toContain("application/json");

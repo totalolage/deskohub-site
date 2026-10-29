@@ -14,7 +14,6 @@ import {
   eq,
   inArray,
   isNotNull,
-  isNull,
   max,
   min,
   or,
@@ -45,6 +44,7 @@ import {
   reservationStatusCondition,
   undatedStatusChangeAt,
 } from "@/features/administration/reservation-status-condition";
+import { marketingConsentState } from "@/features/legal/backend/marketing-consent-ledger";
 import { loadEarlySetupDetails } from "@/features/reservation/backend/early-setup-details";
 import type { StoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
 import { temporalInstantToDate } from "@/shared/utils/temporal";
@@ -323,7 +323,7 @@ export class CampaignCandidateRepository extends Context.Service<
           .select({
             dotyposCustomerId: customerMarketingConsents.dotyposCustomerId,
             locale: customerMarketingConsents.locale,
-            active: sql<boolean>`${customerMarketingConsents.withdrawnAt} is null`,
+            active: sql<boolean>`${marketingConsentState(customerMarketingConsents.dotyposCustomerId)} = 'active'`,
           })
           .from(customerMarketingConsents)
           .where(
@@ -562,7 +562,10 @@ export const listCampaignCandidateIds = Effect.fn("listCampaignCandidateIds")(
       .from(customerMarketingConsents);
     if (purpose === "marketing") {
       const active = yield* consents.where(
-        isNull(customerMarketingConsents.withdrawnAt)
+        eq(
+          marketingConsentState(customerMarketingConsents.dotyposCustomerId),
+          "active"
+        )
       );
       return sortedCustomerIds(active);
     }
