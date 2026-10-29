@@ -22,23 +22,27 @@ export const campaignDeliveryReports = deliveryReportHandlerOwningIgnores(
       onNone: () =>
         Effect.succeed(ignoredDeliveryReport("campaign_email_id_missing")),
       onSome: (providerMessageId) =>
-        CampaignDeliveryStatusService.use((deliveryStatus) =>
-          deliveryStatus.record({
-            type: report.event,
-            providerMessageId,
-            recipient: report.metadata,
-            occurredAt: report.occurredAt,
-          })
-        ).pipe(
-          Effect.mapError(
-            (cause) =>
-              new DeliveryReportError({
-                errorCode: "resend_webhook_campaign_update_failed",
-                message:
-                  "Resend webhook could not record the campaign delivery status.",
-                cause,
+        Effect.service(CampaignDeliveryStatusService)
+          .pipe(
+            Effect.flatMap((deliveryStatus) =>
+              deliveryStatus.record({
+                type: report.event,
+                providerMessageId,
+                recipient: report.metadata,
+                occurredAt: report.occurredAt,
               })
+            )
           )
-        ),
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new DeliveryReportError({
+                  errorCode: "resend_webhook_campaign_update_failed",
+                  message:
+                    "Resend webhook could not record the campaign delivery status.",
+                  cause,
+                })
+            )
+          ),
     })
 );
