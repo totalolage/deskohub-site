@@ -159,13 +159,16 @@ interface IAccountPageSectionLayers {
     Layer.Error<typeof ReferralService.Live>,
     ReferralFeatureFlagService
   >;
+  readonly assistants: Layer.Layer<CustomerAgentConnections>;
+  readonly featureFlags: Layer.Layer<AccountFeatureFlagService>;
 }
 
 /**
- * The capabilities whose construction can fail on Dotypos or Cloudinary
- * configuration. Each step builds its section's layer inside its own
- * recovery, so a failed build degrades that section alone, like an outage of
- * its provider, and a section the page skips is never built.
+ * The capabilities whose construction can fail: on Dotypos or Cloudinary
+ * configuration, or while loading their server modules. Each step builds its
+ * section's layer inside its own recovery, so a failed build degrades that
+ * section alone, like an outage of its provider, and a section the page
+ * skips is never built.
  */
 export class AccountPageSectionLayers extends Context.Service<
   AccountPageSectionLayers,
@@ -177,6 +180,8 @@ export class AccountPageSectionLayers extends Context.Service<
     history: CustomerReservationHistoryService.Live,
     avatar: CustomerAvatarService.Live,
     referrals: ReferralService.Live,
+    assistants: CustomerAgentConnections.Default,
+    featureFlags: AccountFeatureFlagService.Live,
   });
 }
 
@@ -193,16 +198,17 @@ type AccountSectionFailureCode =
   | "account.review.unavailable"
   | "account.signup-referral.unavailable";
 
-/** Everything the account page reads while it loads. */
+/**
+ * Everything the account page reads while it loads. The capabilities whose
+ * construction can fail come through `AccountPageSectionLayers`.
+ */
 type AccountPageCapabilities =
   | CustomerAuthentication
   | CustomerPasskeys
-  | CustomerAgentConnections
   | ReviewAccounts
   | ReferralSignupIntentRepository
   | ReferralFeatureFlagService
   | RememberedReferralCode
-  | AccountFeatureFlagService
   | AccountPageSectionLayers;
 
 /**
@@ -265,22 +271,26 @@ export const loadAccountPageState: Effect.Effect<
 export const loadCustomerAccountPage = cache(
   (): Promise<CustomerAccountPageState> =>
     loadAccountPageState.pipe(
-      Effect.provide(
-        Layer.mergeAll(
-          CustomerAuthentication.Default,
-          CustomerPasskeys.Default,
-          CustomerAgentConnections.Default,
-          ReviewAccounts.Live,
-          ReferralSignupIntentRepository.Live,
-          RememberedReferralCode.Live,
-          AccountFeatureFlagService.Live,
-          ReferralFeatureFlagRequest,
-          AccountPageSectionLayers.Live
-        )
-      ),
+      Effect.provide(accountPageCapabilities),
       runWorkspaceEffect("account.page", { boundary: "page" })
     )
 );
+
+/**
+ * The page's capabilities as its edge provides them. Its type admits no
+ * construction failure: a layer that can fail to build belongs in
+ * `AccountPageSectionLayers`.
+ */
+const accountPageCapabilities: Layer.Layer<AccountPageCapabilities> =
+  Layer.mergeAll(
+    CustomerAuthentication.Default,
+    CustomerPasskeys.Default,
+    ReviewAccounts.Live,
+    ReferralSignupIntentRepository.Live,
+    RememberedReferralCode.Live,
+    ReferralFeatureFlagRequest,
+    AccountPageSectionLayers.Live
+  );
 
 const unavailable = (): CustomerAccountPageState => ({ kind: "unavailable" });
 
@@ -322,6 +332,16 @@ const withSectionLayer =
     );
 
 /**
+ * Reads an account release flag, which fails closed: a flag capability that
+ * can't be built, or a defect while evaluating, counts as off.
+ */
+const accountFlag = <E, R>(flag: Effect.Effect<boolean, E, R>) =>
+  flag.pipe(
+    withSectionLayer((layers) => layers.featureFlags),
+    Effect.catchCause(() => Effect.succeed(false))
+  );
+
+/**
  * Degrades a non-blocking section to `fallback`, logging only its fixed
  * code; the provider or database cause is never attached.
  */
@@ -349,10 +369,12 @@ const referralsReleased = ReferralFeatureFlagService.pipe(
  * an unavailable notice.
  */
 const loadPasskeySettings = Effect.fn(function* (accountId: CustomerAccountId) {
-  const passkeysEnabled = yield* AccountFeatureFlagService.pipe(
-    Effect.flatMap((featureFlag) => featureFlag.isPasskeyEnabled),
-    withOperation("account.passkeys-enabled")
-  );
+  const passkeysEnabled = yield* accountFlag(
+    Effect.flatMap(
+      AccountFeatureFlagService,
+      (featureFlag) => featureFlag.isPasskeyEnabled
+    )
+  ).pipe(withOperation("account.passkeys-enabled"));
   if (!passkeysEnabled) return undefined;
   const passkeys = yield* Effect.flatMap(
     CustomerPasskeys,
@@ -372,6 +394,7 @@ const loadCustomerAgentConnections = Effect.flatMap(
   CustomerAgentConnections,
   (connections) => connections.list
 ).pipe(
+  withSectionLayer((layers) => layers.assistants),
   degradable("account.assistants.unavailable", () => null),
   withOperation("account.assistants")
 );
@@ -427,7 +450,7 @@ const loadLinkedAccount = Effect.fn(function* (
   const history = yield* loadReservationHistory(account);
 
   // An unavailable avatar capability evaluation fails closed to hidden.
-  const avatarsEnabled = yield* accountAvatarsEnabled.pipe(
+  const avatarsEnabled = yield* accountFlag(accountAvatarsEnabled).pipe(
     withOperation("account.avatars-enabled")
   );
   let avatar: CustomerAvatarPresentation = { kind: "hidden" };

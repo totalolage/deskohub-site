@@ -243,6 +243,24 @@ const sectionLayers = (): AccountPageSectionLayers["Service"] => ({
       return settledReferralEffect as never;
     },
   }),
+  assistants: Layer.mock(CustomerAgentConnections, {
+    list: Effect.suspend(() => {
+      assistantListCalls += 1;
+      return assistantListEffect;
+    }) as never,
+  }),
+  featureFlags: AccountFeatureFlagService.Default.pipe(
+    Layer.provide(
+      WorkspaceFeatureFlagServiceMock({
+        isEnabled: (key) =>
+          Effect.tryPromise(() =>
+            key in flagValues
+              ? flagValues[key as keyof typeof flagValues]()
+              : Promise.reject(new Error(`unexpected flag ${key}`))
+          ) as never,
+      })
+    )
+  ),
   ...sectionLayerOverrides,
 });
 
@@ -260,12 +278,6 @@ const pageLayer = () =>
       list: Effect.suspend(() => {
         passkeyListCalls += 1;
         return passkeyListEffect;
-      }) as never,
-    }),
-    Layer.mock(CustomerAgentConnections, {
-      list: Effect.suspend(() => {
-        assistantListCalls += 1;
-        return assistantListEffect;
       }) as never,
     }),
     ReviewAccountsMock({
@@ -297,18 +309,6 @@ const pageLayer = () =>
         return parseReferralCode(rememberedReferralCode);
       }),
     }),
-    AccountFeatureFlagService.Default.pipe(
-      Layer.provide(
-        WorkspaceFeatureFlagServiceMock({
-          isEnabled: (key) =>
-            Effect.tryPromise(() =>
-              key in flagValues
-                ? flagValues[key as keyof typeof flagValues]()
-                : Promise.reject(new Error(`unexpected flag ${key}`))
-            ) as never,
-        })
-      )
-    ),
     Layer.unwrap(
       Effect.promise(() => referralsFlag()).pipe(
         Effect.map(ReferralFeatureFlagService.fromDecision)
@@ -1277,6 +1277,12 @@ describe("loadAccountPageState", () => {
         Effect.fail(new Error("configuration broken"))
       ) as never;
 
+    /** A section layer whose server module can't load. */
+    const unloadable = () =>
+      Layer.effectDiscard(
+        Effect.die(new Error("module failed to load"))
+      ) as never;
+
     const loadWithWarnings = async (remembered?: string) => {
       const lines: string[] = [];
       const capture = (...args: unknown[]) => {
@@ -1473,6 +1479,49 @@ describe("loadAccountPageState", () => {
       });
       expect(warnings(output)).toContain("account.referral-code.unavailable");
       expect(availableReferralCodeCalls).toEqual([]);
+    });
+    test("fails every account flag closed when the flag capability can't load", async () => {
+      passkeysFlag.mockResolvedValue(true);
+      sectionLayerOverrides = { featureFlags: unloadable() };
+
+      await expect(loadPageState()).resolves.toMatchObject({
+        kind: "linked",
+        avatar: { kind: "hidden" },
+      });
+      expect(passkeyListCalls).toBe(0);
+      expect(avatarLookupCalls).toBe(0);
+    });
+
+    test("fails a flag closed when its evaluation dies", async () => {
+      passkeysFlag.mockResolvedValue(true);
+      sectionLayerOverrides = {
+        featureFlags: Layer.mock(AccountFeatureFlagService, {
+          isPasskeyEnabled: Effect.die(new Error("evaluation crashed")),
+          isAvatarEnabled: Effect.die(new Error("evaluation crashed")),
+        }),
+      };
+
+      const state = await loadPageState();
+
+      expect(state).toMatchObject({
+        kind: "linked",
+        avatar: { kind: "hidden" },
+      });
+      expect(state).not.toHaveProperty("passkeys");
+    });
+
+    test("never loads the assistants capability for a pending deletion", async () => {
+      currentUserEffect = Effect.succeed({
+        ...activeSession,
+        deletionRequested: true,
+      });
+      sectionLayerOverrides = { assistants: unloadable() };
+
+      await expect(loadPageState()).resolves.toEqual({
+        kind: "deletion-pending",
+        deletion: "pending",
+        email: customerEmail,
+      });
     });
   });
 });

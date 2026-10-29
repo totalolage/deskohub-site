@@ -127,10 +127,13 @@ glossary defines the customer account, reservation author, and tombstone.
   provides them once at the page's single runtime edge. A section that may
   fail degrades through `degradable(code, fallback)` with a fixed code. A
   capability whose layer can fail to build (Dotypos or Cloudinary
-  configuration) stays in `AccountPageSectionLayers`, and its step provides
-  that layer inside its own recovery, so a failed build degrades that section
-  alone and a skipped section is never built. Never provide such a layer at
-  the edge. Test the loader with Layer fakes, never module mocks.
+  configuration, or a server module it loads, as for agent connections and
+  the account flags) stays in `AccountPageSectionLayers`, and its step
+  provides that layer inside its own recovery, so a failed build degrades
+  that section alone and a skipped section is never built. Never provide such
+  a layer at the edge; the edge layer's type admits no construction failure.
+  Account flags fail closed on any failure, as the Promise helpers did. Test
+  the loader with Layer fakes, never module mocks.
 - Keep the account page in that layout, never in a page. The navigation
   switches sections with `history.replaceState`, which leaves Next's router
   tree on the path the page loaded at; a Server Action that revalidates, or
