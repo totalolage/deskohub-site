@@ -203,6 +203,7 @@ for (const mode of [
   "same-tab",
   "closed-popup",
   "stuck-close",
+  "cancelled-delay",
 ] as const) {
   browserTest(
     `leaves a rejected hosted payment with ${mode}`,
@@ -247,12 +248,21 @@ for (const mode of [
             session,
           });
         },
+        stepTimeoutMs: mode === "cancelled-delay" ? 1_000 : 15_000,
         afterStep: ({ session }) =>
           session.use("read active page after restart", async (page) => {
+            // Observe beyond the real restart delay to catch an abandoned action.
+            if (mode === "cancelled-delay") await page.waitForTimeout(5_200);
             activeAfter = page;
           }),
       });
-      if (mode === "closed-popup" || mode === "stuck-close") {
+      if (mode === "cancelled-delay") {
+        expect(result.succeeded).toBe(false);
+        expect(result.annotations).toEqual(failedStepAnnotation("timeout"));
+        expect(result.failures).toEqual([]);
+        expect(hosted?.page.isClosed()).toBe(true);
+        expect(requests.slice(before)).not.toContain(payPath);
+      } else if (mode === "closed-popup" || mode === "stuck-close") {
         failed(result, mode === "stuck-close" ? "timeout" : "error");
         expect(requests.slice(before)).not.toContain(payPath);
       } else {
