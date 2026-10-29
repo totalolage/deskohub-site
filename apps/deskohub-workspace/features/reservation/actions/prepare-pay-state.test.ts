@@ -50,6 +50,7 @@ import type {
   CustomerMarketingConsentRepository as CustomerMarketingConsentRepositoryService,
   ICustomerMarketingConsentRepository,
 } from "@/features/legal/backend/customer-marketing-consent.repository";
+import { getLegalDocumentVersion } from "@/features/legal/document-version";
 import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
 import { ReferralError } from "@/features/referrals/contracts";
 import type { ReferralService } from "@/features/referrals/referral.service";
@@ -73,25 +74,6 @@ const testEmailAddressForAda = testEmailAddress("ada");
 const testEmailAddressForGrace = testEmailAddress("grace");
 
 mock.module("server-only", () => ({}));
-
-mock.module("@/features/legal/acceptance-snapshot", () => ({
-  getLegalAcceptanceSnapshot: mock(() =>
-    Effect.succeed({
-      privacyPolicy: {
-        path: "/legal/privacy.md",
-        content: "Privacy test content",
-        hash: "privacy-hash",
-        hashAlgorithm: "sha256",
-      },
-      marketingCommunications: {
-        path: "/legal/marketing.md",
-        content: "Marketing test content",
-        hash: "marketing-hash",
-        hashAlgorithm: "sha256",
-      },
-    })
-  ),
-}));
 
 mock.module("next/headers", () => ({
   cookies: async () => ({ get: () => undefined }),
@@ -1428,7 +1410,10 @@ describe("prepareWorkspacePayState", () => {
     expect(result.result.status).toBe("ready");
     expect(result.grantInitialMarketingConsent).toHaveBeenCalledWith({
       dotyposCustomerId: "customer-id",
-      documentHash: "marketing-hash",
+      documentHash: getLegalDocumentVersion(
+        "en-US",
+        "marketing-communications"
+      ),
       locale: "en-US",
       grantedAt: expect.any(Temporal.Instant),
       source: "reservation_form",

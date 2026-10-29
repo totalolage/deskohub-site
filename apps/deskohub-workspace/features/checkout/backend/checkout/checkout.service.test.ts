@@ -72,23 +72,6 @@ class CheckoutTestFailure extends Data.TaggedError("CheckoutTestFailure")<{
   readonly message: string;
 }> {}
 
-mock.module("@/features/legal/acceptance-snapshot", () => ({
-  getLegalAcceptanceSnapshot: mock(() =>
-    Effect.succeed({
-      termsAndConditions: {
-        path: "/legal/terms.md",
-        hash: "terms-test-hash",
-        hashAlgorithm: "sha256",
-      },
-      operatingRules: {
-        path: "/legal/rules.md",
-        hash: "rules-test-hash",
-        hashAlgorithm: "sha256",
-      },
-    })
-  ),
-}));
-
 const reservationData = Schema.decodeUnknownSync(
   normalizedCoworkReservationOrderSchema
 )({
