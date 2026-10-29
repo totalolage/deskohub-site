@@ -818,7 +818,7 @@ export const prepareReservationForm = ({
   // Booking as a linked account renders no contact inputs, and a
   // profile-missing account's email is read-only, so only rendered, editable
   // inputs are filled; booking for someone else also repeats the email.
-  const fillContact = (contact: ReservationContact) => {
+  const fillContact = async (contact: ReservationContact) => {
     const form = document.querySelector("#reservation-submit")?.closest("form");
     if (!(form instanceof HTMLFormElement)) {
       throw new Error("reservation contact step is not shown");
@@ -883,7 +883,7 @@ export const prepareReservationForm = ({
         if (document.querySelector("#reservation-continue") !== null) {
           await select(preparation.selection);
         } else {
-          fillContact(preparation.contact);
+          await fillContact(preparation.contact);
         }
         return waitForEnabledAction(preparation.actionTimeoutMs);
       case "prepared":
@@ -896,7 +896,7 @@ export const prepareReservationForm = ({
   const state: { error?: string; status: "failed" | "pending" | "ready" } = {
     status: "pending",
   };
-  (globalThis as unknown as Record<string, unknown>)[detachInto] = state;
+  Reflect.set(globalThis, detachInto, state);
   Promise.resolve()
     .then(prepare)
     .then(
@@ -918,6 +918,4 @@ export const prepareReservationForm = ({
  * started. Runs in the browser.
  */
 export const readReservationPreparationState = (key: string): unknown =>
-  (globalThis as unknown as Record<string, unknown>)[key] ?? {
-    status: "pending",
-  };
+  Reflect.get(globalThis, key) ?? { status: "pending" };

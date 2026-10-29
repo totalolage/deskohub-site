@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { Cause, Effect, Exit, Schema } from "effect";
 import {
   type WorkspaceReservationId,
@@ -623,89 +623,95 @@ export const submitCheckoutPayment = (
 // The argv runner found the consent and the pay button in the interactive
 // snapshot, polling for at most `checkoutPayControl` and failing, not timing
 // out, when they never showed; it focused them within `browserAction`.
-const giveCheckoutPayConsent = (
+const giveCheckoutPayConsent = Effect.fnUntraced(function* (
   session: E2EBrowserSession,
   timeouts: WorkspaceE2ETimeouts
-) =>
-  Effect.gen(function* () {
-    yield* waitForReactHydration(session, "#checkout-pay-legal-consent", {
-      timeoutMs: timeouts.checkoutPayControl,
-    });
-    yield* session
-      .use("payment legal consent", (page) =>
-        findCheckoutPayControl(page, "consent").waitFor({
-          timeout: timeouts.checkoutPayControl,
-        })
-      )
-      .pipe(withoutWorkspaceE2ETimeout("payment legal consent"));
-    yield* session.use("focus browser element", async (page) =>
-      (await locateCheckoutPayControl(page, "consent")).focus({
-        timeout: timeouts.browserAction,
-      })
-    );
-    // As the argv `press` command, the key press has no timeout of its own.
-    yield* session.use("press browser key", (page) =>
-      page.keyboard.press("Space")
-    );
+) {
+  yield* waitForReactHydration(session, "#checkout-pay-legal-consent", {
+    timeoutMs: timeouts.checkoutPayControl,
   });
+  const nameMatch = yield* session
+    .use(
+      "payment legal consent",
+      (page) =>
+        waitForPayControl(
+          (match) => checkoutPayConsent(page, match),
+          timeouts.checkoutPayControl
+        ),
+      { timeoutMs: timeouts.checkoutPayControl }
+    )
+    .pipe(withoutWorkspaceE2ETimeout("payment legal consent"));
+  yield* session.use("focus browser element", (page) =>
+    checkoutPayConsent(page, nameMatch).focus({
+      timeout: timeouts.browserAction,
+    })
+  );
+  // As the argv `press` command, the key press has no timeout of its own.
+  yield* session.use("press browser key", (page) =>
+    page.keyboard.press("Space")
+  );
+});
 
-const activateCheckoutPayButton = (
+const activateCheckoutPayButton = Effect.fnUntraced(function* (
   session: E2EBrowserSession,
   timeouts: WorkspaceE2ETimeouts
-) =>
-  Effect.gen(function* () {
-    yield* session
-      .use("enabled payment submit button", (page) =>
-        findCheckoutPayControl(page, "payButton").waitFor({
-          timeout: timeouts.checkoutPayControl,
-        })
-      )
-      .pipe(withoutWorkspaceE2ETimeout("enabled payment submit button"));
-    yield* session.use("focus browser element", async (page) =>
-      (await locateCheckoutPayControl(page, "payButton")).focus({
-        timeout: timeouts.browserAction,
-      })
-    );
-    yield* session.use("press browser key", (page) =>
-      page.keyboard.press("Enter")
-    );
-  });
+) {
+  const nameMatch = yield* session
+    .use(
+      "enabled payment submit button",
+      (page) =>
+        waitForPayControl(
+          (match) => checkoutPayButton(page, match),
+          timeouts.checkoutPayControl
+        ),
+      { timeoutMs: timeouts.checkoutPayControl }
+    )
+    .pipe(withoutWorkspaceE2ETimeout("enabled payment submit button"));
+  yield* session.use("focus browser element", (page) =>
+    checkoutPayButton(page, nameMatch).focus({
+      timeout: timeouts.browserAction,
+    })
+  );
+  yield* session.use("press browser key", (page) =>
+    page.keyboard.press("Enter")
+  );
+});
 
-// The pay page's consent checkbox and its enabled pay button, by their
-// English or Czech accessible names.
-const checkoutPayControls = {
-  consent: { labels: "I agree to the|Souhlasím", role: "checkbox" },
-  payButton: { disabled: false, labels: "Order and pay", role: "button" },
-} as const;
+/** Whether a control is matched by its exact accessible name. */
+type NameMatch = "contains" | "equals";
 
-type CheckoutPayControl = keyof typeof checkoutPayControls;
+// The pay page's controls by their English or Czech accessible names.
+const payControlName = (labels: string, nameMatch: NameMatch) =>
+  new RegExp(nameMatch === "equals" ? `^(?:${labels})$` : labels, "i");
 
-/** The first visible control whose accessible name contains a label. */
-const findCheckoutPayControl = (
-  page: Page,
-  control: CheckoutPayControl,
-  nameMatch: "contains" | "equals" = "contains"
-) => {
-  const { labels, role, ...options } = checkoutPayControls[control];
-  const pattern = nameMatch === "equals" ? `^(?:${labels})$` : labels;
-  return page
-    .getByRole(role, { ...options, name: new RegExp(pattern, "i") })
+const checkoutPayConsent = (page: Page, nameMatch: NameMatch) =>
+  page
+    .getByRole("checkbox", {
+      name: payControlName("I agree to the|Souhlasím", nameMatch),
+    })
     .filter({ visible: true })
     .first();
-};
+
+const checkoutPayButton = (page: Page, nameMatch: NameMatch) =>
+  page
+    .getByRole("button", {
+      disabled: false,
+      name: payControlName("Order and pay", nameMatch),
+    })
+    .filter({ visible: true })
+    .first();
 
 /**
- * As the argv snapshot lookup did, a control named exactly a label wins over
- * one whose name only contains it.
+ * Waits for a visible control and tells how to match it: as the argv
+ * snapshot lookup did, a control named exactly a label wins over one whose
+ * name only contains it.
  */
-const locateCheckoutPayControl = async (
-  page: Page,
-  control: CheckoutPayControl
-) => {
-  const exact = findCheckoutPayControl(page, control, "equals");
-  return (await exact.count()) > 0
-    ? exact
-    : findCheckoutPayControl(page, control);
+const waitForPayControl = async (
+  locate: (nameMatch: NameMatch) => Locator,
+  timeout: number
+): Promise<NameMatch> => {
+  await locate("contains").waitFor({ timeout });
+  return (await locate("equals").count()) > 0 ? "equals" : "contains";
 };
 
 const getSearchOrderId = (value: string | undefined) => {
