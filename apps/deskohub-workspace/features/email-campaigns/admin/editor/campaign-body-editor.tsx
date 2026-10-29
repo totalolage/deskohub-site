@@ -15,6 +15,7 @@ import { cn } from "@/shared/utils";
 import type { CampaignBodyNode } from "../../body/campaign-body-document";
 import { campaignBodyExtensions } from "../../body/campaign-body-extensions";
 import { CampaignCtaButton } from "../../body/campaign-cta-button";
+import { campaignBodyColumnWidth } from "../../body/campaign-image";
 import { CampaignBodyToolbar } from "./campaign-body-toolbar";
 import { CtaButtonNodeView } from "./cta-button-node-view";
 
@@ -68,6 +69,7 @@ export function CampaignBodyEditor({
         "aria-label": label,
         "aria-multiline": "true",
         lang: contentLocale,
+        style: `--campaign-image-max-width:${campaignBodyColumnWidth}px`,
         ...(id && { id }),
         ...(invalid && { "aria-invalid": "true" }),
         class: cn(
@@ -78,7 +80,7 @@ export function CampaignBodyEditor({
           "[&_p]:my-2 [&_a]:text-burned-orange-ink [&_a]:underline",
           "[&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_li_p]:my-0.5",
           "[&_hr]:my-5 [&_hr]:border-navy-blue/20",
-          "[&_img]:my-3 [&_img]:block [&_img]:max-w-full [&_img]:rounded-md [&_img.ProseMirror-selectednode]:ring-2 [&_img.ProseMirror-selectednode]:ring-navy-blue",
+          "[&_img]:my-3 [&_img]:block [&_img]:h-auto [&_img]:max-w-[min(100%,var(--campaign-image-max-width))] [&_img:not([width])]:w-[var(--campaign-image-max-width)] [&_img]:rounded-md [&_img.ProseMirror-selectednode]:ring-2 [&_img.ProseMirror-selectednode]:ring-navy-blue",
           "[&_img[data-align=center]]:mx-auto [&_img[data-align=right]]:ml-auto",
           "[&_hr.ProseMirror-selectednode]:border-navy-blue",
           "[&_.is-editor-empty:first-child]:before:pointer-events-none [&_.is-editor-empty:first-child]:before:float-left [&_.is-editor-empty:first-child]:before:h-0 [&_.is-editor-empty:first-child]:before:text-navy-blue/40 [&_.is-editor-empty:first-child]:before:content-[attr(data-placeholder)]"
