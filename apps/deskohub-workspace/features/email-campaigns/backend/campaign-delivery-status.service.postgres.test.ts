@@ -2,10 +2,14 @@ import "@/shared/testing/workspace-test-env";
 
 import { afterAll, describe, expect, test } from "bun:test";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Option } from "effect";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import type { CampaignEmailRecipient } from "../campaign-email-message";
 import type { CampaignRecipientStatus } from "../campaign-states";
-import { CampaignDeliveryStatusService } from "./campaign-delivery-status.service";
+import {
+  type CampaignDeliveryEvent,
+  CampaignDeliveryStatusService,
+} from "./campaign-delivery-status.service";
 import {
   deleteCampaigns,
   seedCampaignSend,
@@ -40,16 +44,22 @@ describe.skipIf(!testDatabase)(
     };
 
     const record = (event: {
-      readonly type: string;
+      readonly type:
+        | Option.Option.Value<CampaignDeliveryEvent["type"]>
+        | "email.opened";
       readonly providerMessageId: string;
-      readonly tags?: Record<string, string>;
+      readonly recipient?: CampaignEmailRecipient;
     }) =>
       Effect.runPromise(
         CampaignDeliveryStatusService.pipe(
           Effect.flatMap((statuses) =>
             statuses.record({
               ...event,
-              tags: new Map(Object.entries(event.tags ?? {})),
+              type: Option.liftPredicate(
+                event.type,
+                (type) => type !== "email.opened"
+              ),
+              recipient: Option.fromUndefinedOr(event.recipient),
               occurredAt,
             })
           ),
@@ -96,7 +106,7 @@ describe.skipIf(!testDatabase)(
         await record({
           type: "email.delivered",
           providerMessageId: messageId,
-          tags: { campaignSendId: sendId, dotyposCustomerId: customerId },
+          recipient: { campaignSendId: sendId, dotyposCustomerId: customerId },
         })
       ).toEqual({ status: "processed" });
       expect(await stored(sendId)).toMatchObject({
@@ -114,7 +124,10 @@ describe.skipIf(!testDatabase)(
           await record({
             type: "email.delivered",
             providerMessageId: messageId,
-            tags: { campaignSendId: sendId, dotyposCustomerId: customerId },
+            recipient: {
+              campaignSendId: sendId,
+              dotyposCustomerId: customerId,
+            },
           })
         ).toEqual({ status: "processed" });
         expect(await stored(sendId)).toMatchObject({

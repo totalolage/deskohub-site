@@ -62,7 +62,7 @@ const deliveryReport = (
   deliveryId: customerEmailDeliveryId,
   outcome: "delivered",
   occurredAt: reportedAt,
-  accessEmail: { reservationId, deployment: "current" },
+  accessEmail: { reservationId },
   ...overrides,
 });
 
@@ -438,17 +438,7 @@ describe("ReservationFulfillment.recordDelivery", () => {
     );
   });
 
-  test.each([
-    ["another email", undefined],
-    [
-      "another deployment's access email",
-      { reservationId, deployment: "other" as const },
-    ],
-    [
-      "an access email without a deployment",
-      { reservationId, deployment: "missing" as const },
-    ],
-  ])("ignores an unknown delivery of %s", async (_, accessEmail) => {
+  test("ignores an unknown delivery of another email", async () => {
     const ledger = {
       findByActiveCustomerEmailDeliveryId: mock(() => Effect.succeed(null)),
       ...untouchedDelivery(),
@@ -457,7 +447,7 @@ describe("ReservationFulfillment.recordDelivery", () => {
     const outcome = await Effect.runPromise(
       recordDelivery({
         ledger,
-        report: deliveryReport({ outcome: "failed", accessEmail }),
+        report: deliveryReport({ outcome: "failed", accessEmail: undefined }),
       })
     );
 
@@ -477,19 +467,8 @@ describe("ReservationFulfillment.recordDelivery", () => {
         reservationId: workspaceReservationIdSchema.make(
           "other-reservation-id"
         ),
-        deployment: "current" as const,
       },
       "reservation_mismatch",
-    ],
-    [
-      "another deployment's access email",
-      { reservationId, deployment: "other" as const },
-      "deployment_environment_mismatch",
-    ],
-    [
-      "an access email without a deployment",
-      { reservationId, deployment: "missing" as const },
-      "deployment_environment_missing",
     ],
   ] as const)(
     "ignores an active delivery reported for %s",

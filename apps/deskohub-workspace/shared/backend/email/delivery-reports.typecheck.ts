@@ -1,8 +1,5 @@
 import type { EmailDeliveryId } from "@deskohub/email";
-import type {
-  ResendEmailId,
-  ResendWebhookEventId,
-} from "./resend-webhook.service";
+import type { ResendEmailId, ResendWebhookEventId } from "./delivery-reports";
 
 type IsAssignable<From, To> = [From] extends [To] ? true : false;
 type AssertFalse<Value extends false> = Value;
