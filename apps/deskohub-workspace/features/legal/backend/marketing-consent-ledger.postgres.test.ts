@@ -46,7 +46,7 @@ const uniqueCustomerId = () =>
 const marketingDocumentHash = (locale: Locale) =>
   hashLegalDocument(getLegalDocument(locale, "marketing-communications"));
 
-/** A clock fixed at the instant, to its nanosecond. */
+/** A clock fixed at the instant. */
 const clockAt = (instant: Temporal.Instant): Clock.Clock => ({
   currentTimeMillisUnsafe: () => instant.epochMilliseconds,
   currentTimeMillis: Effect.sync(() => instant.epochMilliseconds),
@@ -301,7 +301,7 @@ describe.skipIf(!testDatabase)(
       });
     });
 
-    test("a grant a microsecond after the withdrawal reactivates consent", async () => {
+    test("a grant in the same millisecond as the withdrawal leaves it withdrawn", async () => {
       const customerId = uniqueCustomerId();
 
       const status = await runLedger((ledger) =>
@@ -311,23 +311,23 @@ describe.skipIf(!testDatabase)(
             grant(customerId, "initial")
           )(ledger);
           yield* recordAt(
-            "2026-09-05T10:00:00.000001Z",
+            "2026-09-05T10:00:00.000100Z",
             withdraw(customerId)
           )(ledger);
           yield* recordAt(
-            "2026-09-05T10:00:00.000002Z",
+            "2026-09-05T10:00:00.000900Z",
             grant(customerId, "explicit", { channel: "account" })
           )(ledger);
           return yield* ledger.status(customerId);
         })
       );
 
-      expect(status).toBe("active");
+      expect(status).toBe("withdrawn");
       await expectStored(customerId, {
         locale: "en-US",
-        grantedAt: "2026-09-05T10:00:00.000002Z",
-        withdrawnAt: null,
-        channel: "account",
+        grantedAt: "2026-09-01T10:00:00Z",
+        withdrawnAt: "2026-09-05T10:00:00Z",
+        channel: "reservation_form",
       });
     });
 
@@ -361,7 +361,9 @@ describe.skipIf(!testDatabase)(
       const customerId = uniqueCustomerId();
 
       await Promise.all([
-        runLedger(recordAt("2026-09-07T10:00:00Z", grant(customerId, "initial"))),
+        runLedger(
+          recordAt("2026-09-07T10:00:00Z", grant(customerId, "initial"))
+        ),
         runLedger(recordAt("2026-09-08T10:00:00Z", withdraw(customerId))),
       ]);
 
@@ -481,7 +483,9 @@ describe.skipIf(!testDatabase)(
           )
       );
       expect(
-        Object.fromEntries(rows.map((row) => [row.dotyposCustomerId, row.state]))
+        Object.fromEntries(
+          rows.map((row) => [row.dotyposCustomerId, row.state])
+        )
       ).toEqual({ [active]: "active", [withdrawn]: "withdrawn" });
     });
 

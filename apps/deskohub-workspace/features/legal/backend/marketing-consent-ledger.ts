@@ -11,7 +11,7 @@ import { getLegalDocumentVersion } from "@/features/legal/document-version";
 import type { MarketingConsentGrantSource } from "@/features/legal/marketing-consent-grant-source";
 import type { MarketingConsentStatus } from "@/features/legal/marketing-consent-status";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
-import { currentPreciseInstant } from "@/shared/utils/temporal";
+import { currentInstant } from "@/shared/utils/temporal";
 
 /** The marketing consent ledger could not be read or written. */
 export class MarketingConsentUnavailable extends Data.TaggedError(
@@ -131,7 +131,10 @@ export class MarketingConsentLedger extends Context.Service<
               isNull(customerMarketingConsents.withdrawnAt),
               lt(
                 customerMarketingConsents.withdrawnAt,
-                sql.param(consent.grantedAt, customerMarketingConsents.grantedAt)
+                sql.param(
+                  consent.grantedAt,
+                  customerMarketingConsents.grantedAt
+                )
               )
             ),
           });
@@ -160,47 +163,41 @@ export class MarketingConsentLedger extends Context.Service<
           });
 
       return {
-        record: Effect.fn("MarketingConsentLedger.record")(
-          function* (input) {
-            // The instant is read once, before the statement, so waiting on
-            // a concurrent write cannot make a grant look newer than it was.
-            const consent = {
-              dotyposCustomerId: input.customerId,
-              documentHash: getLegalDocumentVersion(
-                input.locale,
-                "marketing-communications"
-              ),
-              locale: input.locale,
-              grantedAt: yield* currentPreciseInstant,
-            };
-            if (input.choice === "withdraw") {
-              yield* withdraw(consent);
-            } else if (input.mode === "initial") {
-              yield* grantInitial({ ...consent, grantSource: input.channel });
-            } else {
-              yield* grant({ ...consent, grantSource: input.channel });
-            }
-          },
-          Effect.mapError(unavailable)
-        ),
-        status: Effect.fn("MarketingConsentLedger.status")(
-          function* (customerId) {
-            const [consent] = yield* db
-              .select({
-                state: storedConsentState(customerMarketingConsents.withdrawnAt),
-              })
-              .from(customerMarketingConsents)
-              .where(
-                eq(customerMarketingConsents.dotyposCustomerId, customerId)
-              )
-              .limit(1);
-            return consent?.state ?? "absent";
-          },
-          Effect.mapError(unavailable)
-        ),
+        record: Effect.fn("MarketingConsentLedger.record")(function* (input) {
+          // The instant is read once, before the statement, so waiting on
+          // a concurrent write cannot make a grant look newer than it was.
+          const consent = {
+            dotyposCustomerId: input.customerId,
+            documentHash: getLegalDocumentVersion(
+              input.locale,
+              "marketing-communications"
+            ),
+            locale: input.locale,
+            grantedAt: yield* currentInstant,
+          };
+          if (input.choice === "withdraw") {
+            yield* withdraw(consent);
+          } else if (input.mode === "initial") {
+            yield* grantInitial({ ...consent, grantSource: input.channel });
+          } else {
+            yield* grant({ ...consent, grantSource: input.channel });
+          }
+        }, Effect.mapError(unavailable)),
+        status: Effect.fn("MarketingConsentLedger.status")(function* (
+          customerId
+        ) {
+          const [consent] = yield* db
+            .select({
+              state: storedConsentState(customerMarketingConsents.withdrawnAt),
+            })
+            .from(customerMarketingConsents)
+            .where(eq(customerMarketingConsents.dotyposCustomerId, customerId))
+            .limit(1);
+          return consent?.state ?? "absent";
+        }, Effect.mapError(unavailable)),
         withdrawActive: Effect.fn("MarketingConsentLedger.withdrawActive")(
           function* (customerId) {
-            const withdrawnAt = yield* currentPreciseInstant;
+            const withdrawnAt = yield* currentInstant;
             const withdrawn = yield* db
               .update(customerMarketingConsents)
               .set({ withdrawnAt })
