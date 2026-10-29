@@ -156,6 +156,88 @@ describe.skipIf(!testDatabase)(
       ).toEqual(["fourHourRoom"]);
     });
 
+    test("compares every catalog property with every operator it allows", async () => {
+      const cases: readonly [ReservationProductFilterType, readonly Role[]][] =
+        [
+          [
+            {
+              family: "cowork",
+              properties: [{ property: "coffee", operator: "is", value: true }],
+            },
+            ["reservedDesk", "retiredProfi"],
+          ],
+          [
+            {
+              family: "cowork",
+              properties: [
+                { property: "tier", operator: "noneOf", value: ["open-space"] },
+              ],
+            },
+            ["reservedDesk", "retiredProfi"],
+          ],
+          [
+            {
+              family: "cowork",
+              properties: [
+                {
+                  property: "monitor",
+                  operator: "anyOf",
+                  value: ["2x27-4k", "2x32-qhd"],
+                },
+              ],
+            },
+            ["reservedDesk", "retiredProfi"],
+          ],
+          [
+            {
+              family: "meeting-room",
+              properties: [
+                { property: "offer", operator: "noneOf", value: ["hour:4"] },
+              ],
+            },
+            [],
+          ],
+          [
+            {
+              family: "office",
+              properties: [{ property: "seats", operator: "eq", value: 2 }],
+            },
+            ["smallOffice"],
+          ],
+          [
+            {
+              family: "office",
+              properties: [{ property: "seats", operator: "lte", value: 6 }],
+            },
+            ["bigOffice", "smallOffice"],
+          ],
+          [
+            {
+              family: "office",
+              properties: [{ property: "days", operator: "gt", value: 2 }],
+            },
+            ["smallOffice"],
+          ],
+          [
+            {
+              family: "office",
+              properties: [{ property: "days", operator: "gte", value: 2 }],
+            },
+            ["bigOffice", "smallOffice"],
+          ],
+          [
+            {
+              family: "office",
+              properties: [{ property: "days", operator: "ne", value: 5 }],
+            },
+            ["bigOffice"],
+          ],
+        ];
+      for (const [product, expected] of cases) {
+        expect(await matching(product)).toEqual([...expected]);
+      }
+    });
+
     test("matches nothing for an unknown property", async () => {
       expect(
         await matching({
