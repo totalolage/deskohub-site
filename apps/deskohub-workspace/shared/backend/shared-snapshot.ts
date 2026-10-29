@@ -18,7 +18,7 @@ export type SharedSnapshotLifetime =
     };
 
 /** How long one outcome of a snapshot is shared, and what expires it early. */
-export interface SnapshotShare {
+interface SnapshotShare {
   readonly lifetime: SharedSnapshotLifetime;
   readonly tags?: ReadonlyArray<string>;
 }
