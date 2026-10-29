@@ -137,20 +137,17 @@ export const executeCheckoutFlow = ({
         ? yield* flow.startReservation
         : yield* runStep({
             execute: Effect.gen(function* () {
-              yield* openPage(
-                yield* browserSessionFor(run, session),
-                config,
-                data.checkoutUrl,
-                { timeoutMs: config.timeouts.browserNavigation }
-              );
+              const browser = yield* browserSessionFor(run, session);
+              yield* openPage(browser, config, data.checkoutUrl, {
+                timeoutMs: config.timeouts.browserNavigation,
+              });
               if (beforeReservationSubmit) yield* beforeReservationSubmit;
               return yield* submitReservationForPayPage({
                 onOrderId: (startedOrderId) => {
                   state.orderId = startedOrderId;
                 },
-                run,
-                session,
-                submitReservationScript: flow.submitReservationScript(data),
+                session: browser,
+                preparation: flow.toReservationPreparation(data),
                 timeouts: config.timeouts,
               });
             }),
@@ -291,7 +288,7 @@ export const executeCheckoutFlow = ({
  * pay page.
  */
 export type CheckoutFlowStart =
-  | Pick<CheckoutFlow, "id" | "submitReservationScript">
+  | Pick<CheckoutFlow, "id" | "toReservationPreparation">
   | {
       readonly id: CheckoutFlow["id"];
       readonly startReservation: Effect.Effect<

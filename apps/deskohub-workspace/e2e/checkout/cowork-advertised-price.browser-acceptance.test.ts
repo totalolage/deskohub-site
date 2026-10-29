@@ -6,7 +6,7 @@ import { type Browser, chromium, type Page } from "@playwright/test";
 import { Effect } from "effect";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import { evalBrowserScript } from "../browser";
-import { getPrepareCoworkAdvertisedPriceScript } from "../browser-scripts";
+import { toReservationSelectionPreparation } from "../browser-scripts";
 import { browserSessionFor, makePlaywrightBrowserRunner } from "../runtime";
 import {
   type CoworkAdvertisedPriceSelection,
@@ -259,7 +259,7 @@ test.skipIf(!chromiumAvailable)(
             "prepare advertised price",
             run,
             id,
-            getPrepareCoworkAdvertisedPriceScript(editedDateData),
+            toReservationSelectionPreparation(editedDateData),
             { timeoutMs: 10_000 }
           );
           const date = yield* session.use("read date", (argvPage) =>

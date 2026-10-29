@@ -130,7 +130,6 @@ const config = {
  * session id, session callers (the referral cases) the session itself.
  */
 const browserInputs = {
-  runner: ({ id, run }: BrowserStepDriver) => ({ run, session: id }),
   session: ({ session }: BrowserStepDriver) => ({ session }),
 } as const;
 

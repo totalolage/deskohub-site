@@ -10,22 +10,13 @@ import {
   openPage,
   readPageUrl,
   scrollIntoView,
-  switchToBrowserTab,
   waitForPageCondition,
   waitForPageTextContent,
   waitForReactHandler,
 } from "../browser";
-import {
-  getSubmitCoworkReservationScript,
-  submitPreparedCoworkReservationScript,
-} from "../browser-scripts";
 import type { E2EBrowserSession } from "../browser-session";
 import { workspaceE2EMaximumSameDateCoworkReservations } from "../capacity";
 import type { WorkspaceE2EStep, WorkspaceE2EStepRunner } from "../case-runner";
-import {
-  prepareCoworkAdvertisedPrice,
-  toCoworkAdvertisedPriceSelection,
-} from "../checkout/cowork-advertised-price";
 import {
   loadAvailableCoworkDates,
   makeCoworkCheckoutData,
@@ -41,6 +32,12 @@ import {
   submitCheckoutPayment,
   submitReservationForPayPage,
 } from "../checkout/payment";
+import {
+  preparedReservationForm,
+  prepareReservationForm,
+  toReservationSelectionPreparation,
+  toReservationStep,
+} from "../checkout/reservation-form-preparation";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EHostedPaymentPermitService } from "../coordination/hosted-payment-permit.service";
 import type { WorkspaceE2EProviderVerificationPermitService } from "../coordination/provider-verification-permit.service";
@@ -680,16 +677,15 @@ export const waitForAdvertisedCalendarSale = ({
       yield* browser
         .evaluate(
           "prepare advertised Calendar sale",
-          prepareCoworkAdvertisedPrice,
-          toCoworkAdvertisedPriceSelection(data),
+          prepareReservationForm,
+          { preparation: toReservationSelectionPreparation(data) },
           { timeoutMs: config.timeouts.checkoutStart }
         )
         .pipe(withoutWorkspaceE2ETimeout("prepare advertised Calendar sale"));
       return yield* assertDisplayedDiscounts({
         config,
         discounts: [calendarDiscountExpectation],
-        run,
-        session,
+        session: browser,
         timeoutMs: config.timeouts.calendarSaleAdvertisementAttempt,
       }).pipe(
         Effect.as(true),
@@ -735,37 +731,34 @@ const executeCalendarSalePricingChanges = ({
       timeoutMs: calendarSaleAdvertisementStepTimeoutMs(config),
     });
     const { orderId: paymentChangeOrderId, payPageUrl } = yield* runStep({
-      execute: submitReservationForPayPage({
-        onOrderId: (startedOrderId) => {
-          paymentChangeState.orderId = startedOrderId;
-        },
-        run,
-        session,
-        submitReservationScript: submitPreparedCoworkReservationScript,
-        timeouts: config.timeouts,
-      }).pipe(
-        Effect.flatMap((orderId) =>
-          browserSessionFor(run, session).pipe(
-            Effect.flatMap(readPageUrl),
-            Effect.flatMap((url) =>
-              tryWorkspaceE2ESync("read Calendar pay page URL", () => {
-                assert(url, "Calendar pay page URL missing");
-                return { orderId, payPageUrl: url };
-              })
-            )
-          )
-        )
-      ),
+      execute: Effect.gen(function* () {
+        const browser = yield* browserSessionFor(run, session);
+        const orderId = yield* submitReservationForPayPage({
+          onOrderId: (startedOrderId) => {
+            paymentChangeState.orderId = startedOrderId;
+          },
+          preparation: preparedReservationForm,
+          session: browser,
+          timeouts: config.timeouts,
+        });
+        const url = yield* readPageUrl(browser);
+        return yield* tryWorkspaceE2ESync("read Calendar pay page URL", () => {
+          assert(url, "Calendar pay page URL missing");
+          return { orderId, payPageUrl: url };
+        });
+      }),
       id: "prepare-calendar-pay-page",
       timeoutMs: config.timeouts.checkoutStart,
     });
     paymentChangeState.orderId = paymentChangeOrderId;
     yield* runStep({
-      execute: assertDisplayedDiscounts({
-        config,
-        discounts: [calendarDiscountExpectation],
-        run,
-        session,
+      execute: Effect.gen(function* () {
+        const browser = yield* browserSessionFor(run, session);
+        yield* assertDisplayedDiscounts({
+          config,
+          discounts: [calendarDiscountExpectation],
+          session: browser,
+        });
       }),
       id: "assert-calendar-pay-page-discount",
       timeoutMs: config.timeouts.uiTransition,
@@ -789,21 +782,19 @@ const executeCalendarSalePricingChanges = ({
     });
 
     const quoteChangeOrderId = yield* runStep({
-      execute: submitReservationForPayPage({
-        onOrderId: (startedOrderId) => {
-          quoteChangeState.orderId = startedOrderId;
-        },
-        run,
-        session,
-        submitReservationScript: submitPreparedCoworkReservationScript,
-        timeouts: config.timeouts,
-      }).pipe(
-        Effect.tap(() =>
-          Effect.flatMap(browserSessionFor(run, session), (browser) =>
-            waitForPricingChanged(config, browser)
-          )
-        )
-      ),
+      execute: Effect.gen(function* () {
+        const browser = yield* browserSessionFor(run, session);
+        const orderId = yield* submitReservationForPayPage({
+          onOrderId: (startedOrderId) => {
+            quoteChangeState.orderId = startedOrderId;
+          },
+          preparation: preparedReservationForm,
+          session: browser,
+          timeouts: config.timeouts,
+        });
+        yield* waitForPricingChanged(config, browser);
+        return orderId;
+      }),
       id: "assert-calendar-quote-pricing-change",
       timeoutMs: config.timeouts.checkoutStart,
     });
@@ -816,31 +807,26 @@ const executeCalendarSalePricingChanges = ({
     log(`Calendar quote-change e2e passed for order ${quoteChangeOrderId}`);
 
     yield* runStep({
-      execute: browserSessionFor(run, session).pipe(
-        Effect.flatMap((browser) =>
-          openPage(browser, config, payPageUrl, {
-            timeoutMs: config.timeouts.browserNavigation,
-          })
-        ),
-        Effect.andThen(
-          assertDisplayedDiscounts({
-            config,
-            discounts: [calendarDiscountExpectation],
-            run,
-            session,
-          })
-        )
-      ),
+      execute: Effect.gen(function* () {
+        const browser = yield* browserSessionFor(run, session);
+        yield* openPage(browser, config, payPageUrl, {
+          timeoutMs: config.timeouts.browserNavigation,
+        });
+        yield* assertDisplayedDiscounts({
+          config,
+          discounts: [calendarDiscountExpectation],
+          session: browser,
+        });
+      }),
       id: "reopen-calendar-pay-page",
       timeoutMs:
         config.timeouts.browserNavigation + config.timeouts.uiTransition,
     });
     yield* runStep({
-      execute: submitCheckoutPaymentAndWaitForPricingChanged(
-        config,
-        run,
-        session
-      ),
+      execute: Effect.gen(function* () {
+        const browser = yield* browserSessionFor(run, session);
+        yield* submitCheckoutPaymentAndWaitForPricingChanged(config, browser);
+      }),
       id: "assert-calendar-payment-pricing-change",
       timeoutMs: config.timeouts.providerTransition,
     });
@@ -886,19 +872,16 @@ const executeCustomerDiscountChangesBeforePayment = ({
     state.startedAt = new Date();
     const orderId = yield* runStep({
       execute: Effect.gen(function* () {
-        yield* openPage(
-          yield* browserSessionFor(run, session),
-          config,
-          data.checkoutUrl,
-          { timeoutMs: config.timeouts.browserNavigation }
-        );
+        const browser = yield* browserSessionFor(run, session);
+        yield* openPage(browser, config, data.checkoutUrl, {
+          timeoutMs: config.timeouts.browserNavigation,
+        });
         return yield* submitReservationForPayPage({
           onOrderId: (startedOrderId) => {
             state.orderId = startedOrderId;
           },
-          run,
-          session,
-          submitReservationScript: getSubmitCoworkReservationScript(data),
+          preparation: toReservationStep(data),
+          session: browser,
           timeouts: config.timeouts,
         });
       }),
@@ -906,11 +889,11 @@ const executeCustomerDiscountChangesBeforePayment = ({
       timeoutMs: config.timeouts.checkoutStart,
     });
     state.orderId = orderId;
+    const browser = yield* browserSessionFor(run, session);
     yield* assertDisplayedDiscounts({
       config,
       discounts: [customerDiscount],
-      run,
-      session,
+      session: browser,
     });
     const customerId = yield* runStep({
       execute: waitForCheckoutRow(datasourceConfig, orderId).pipe(
@@ -934,11 +917,10 @@ const executeCustomerDiscountChangesBeforePayment = ({
       timeoutMs: config.timeouts.datasource,
     });
     yield* runStep({
-      execute: submitCheckoutPaymentAndWaitForPricingChanged(
-        config,
-        run,
-        session
-      ),
+      execute: Effect.gen(function* () {
+        const browser = yield* browserSessionFor(run, session);
+        yield* submitCheckoutPaymentAndWaitForPricingChanged(config, browser);
+      }),
       id: "assert-customer-discount-pricing-change",
       timeoutMs: config.timeouts.providerTransition,
     });
@@ -995,7 +977,7 @@ const executeConsumedDiscountCode = ({
       runStep,
       session,
       state: ownerState,
-      submitReservationScript: getSubmitCoworkReservationScript(ownerData),
+      preparation: toReservationStep(ownerData),
     });
     yield* executeUnavailableDiscountCode({
       code,
@@ -1046,7 +1028,7 @@ const executeVoucherReuse = ({
       session,
       state: ownerState,
       stepIdPrefix: "first-voucher-",
-      submitReservationScript: getSubmitCoworkReservationScript(ownerData),
+      preparation: toReservationStep(ownerData),
     });
     yield* executeZeroTotalCheckout({
       appliedMessage: "Promotion applied:",
@@ -1059,7 +1041,7 @@ const executeVoucherReuse = ({
       session,
       state: reuseState,
       stepIdPrefix: "reused-voucher-",
-      submitReservationScript: getSubmitCoworkReservationScript(reuseData),
+      preparation: toReservationStep(reuseData),
     });
     const orderIds = yield* tryWorkspaceE2ESync(
       "read voucher checkout order IDs",
@@ -1215,11 +1197,13 @@ const executeDiscountCheckout = ({
 > =>
   executeCheckoutFlow({
     beforeReservationSubmit: reservationPageDiscounts
-      ? assertDisplayedDiscounts({
-          config,
-          discounts: reservationPageDiscounts,
-          run,
-          session,
+      ? Effect.gen(function* () {
+          const browser = yield* browserSessionFor(run, session);
+          yield* assertDisplayedDiscounts({
+            config,
+            discounts: reservationPageDiscounts,
+            session: browser,
+          });
         })
       : undefined,
     config,
@@ -1234,11 +1218,13 @@ const executeDiscountCheckout = ({
       const steps: WorkspaceE2EStep<void>[] = [];
       if (automaticDiscounts.length > 0) {
         steps.push({
-          execute: assertDisplayedDiscounts({
-            config,
-            discounts: automaticDiscounts,
-            run,
-            session,
+          execute: Effect.gen(function* () {
+            const browser = yield* browserSessionFor(run, session);
+            yield* assertDisplayedDiscounts({
+              config,
+              discounts: automaticDiscounts,
+              session: browser,
+            });
           }),
           id: "assert-automatic-checkout-discounts",
           timeoutMs: config.timeouts.uiTransition,
@@ -1246,23 +1232,27 @@ const executeDiscountCheckout = ({
       }
       if (discountCode) {
         steps.push({
-          execute: applyDiscountCode({
-            appliedMessage,
-            code: discountCode,
-            config,
-            run,
-            session,
+          execute: Effect.gen(function* () {
+            const browser = yield* browserSessionFor(run, session);
+            yield* applyDiscountCode({
+              appliedMessage,
+              code: discountCode,
+              config,
+              session: browser,
+            });
           }),
           id: "apply-checkout-discount-code",
           timeoutMs: config.timeouts.uiTransition,
         });
       }
       steps.push({
-        execute: assertDisplayedDiscounts({
-          config,
-          discounts: expectedDiscounts,
-          run,
-          session,
+        execute: Effect.gen(function* () {
+          const browser = yield* browserSessionFor(run, session);
+          yield* assertDisplayedDiscounts({
+            config,
+            discounts: expectedDiscounts,
+            session: browser,
+          });
         }),
         id: "assert-final-checkout-discounts",
         timeoutMs: config.timeouts.uiTransition,
@@ -1297,19 +1287,16 @@ const executeUnavailableDiscountCode = ({
     state.startedAt = new Date();
     const orderId = yield* runStep({
       execute: Effect.gen(function* () {
-        yield* openPage(
-          yield* browserSessionFor(run, session),
-          config,
-          data.checkoutUrl,
-          { timeoutMs: config.timeouts.browserNavigation }
-        );
+        const browser = yield* browserSessionFor(run, session);
+        yield* openPage(browser, config, data.checkoutUrl, {
+          timeoutMs: config.timeouts.browserNavigation,
+        });
         return yield* submitReservationForPayPage({
           onOrderId: (startedOrderId) => {
             state.orderId = startedOrderId;
           },
-          run,
-          session,
-          submitReservationScript: getSubmitCoworkReservationScript(data),
+          preparation: toReservationStep(data),
+          session: browser,
           timeouts: config.timeouts,
         });
       }),
@@ -1318,24 +1305,17 @@ const executeUnavailableDiscountCode = ({
     });
     state.orderId = orderId;
     yield* runStep({
-      execute: applyUnavailableDiscountCode({
-        code,
-        config,
-        run,
-        session,
-      }).pipe(
-        Effect.andThen(
-          Effect.flatMap(browserSessionFor(run, session), (browser) =>
-            assertPageCheck(
-              browser,
-              "assert existing summary remains payable",
-              findUnpayableSummaryProblem,
-              undefined,
-              { timeoutMs: config.timeouts.uiTransition }
-            )
-          )
-        )
-      ),
+      execute: Effect.gen(function* () {
+        const browser = yield* browserSessionFor(run, session);
+        yield* applyUnavailableDiscountCode({ code, config, session: browser });
+        yield* assertPageCheck(
+          browser,
+          "assert existing summary remains payable",
+          findUnpayableSummaryProblem,
+          undefined,
+          { timeoutMs: config.timeouts.uiTransition }
+        );
+      }),
       id: "submit-unavailable-discount-code",
       timeoutMs: config.timeouts.uiTransition,
     });
@@ -1370,19 +1350,16 @@ const executeDiscountCodeExpiresBeforePayment = ({
     state.startedAt = new Date();
     const orderId = yield* runStep({
       execute: Effect.gen(function* () {
-        yield* openPage(
-          yield* browserSessionFor(run, session),
-          config,
-          data.checkoutUrl,
-          { timeoutMs: config.timeouts.browserNavigation }
-        );
+        const browser = yield* browserSessionFor(run, session);
+        yield* openPage(browser, config, data.checkoutUrl, {
+          timeoutMs: config.timeouts.browserNavigation,
+        });
         return yield* submitReservationForPayPage({
           onOrderId: (startedOrderId) => {
             state.orderId = startedOrderId;
           },
-          run,
-          session,
-          submitReservationScript: getSubmitCoworkReservationScript(data),
+          preparation: toReservationStep(data),
+          session: browser,
           timeouts: config.timeouts,
         });
       }),
@@ -1391,12 +1368,14 @@ const executeDiscountCodeExpiresBeforePayment = ({
     });
     state.orderId = orderId;
     yield* runStep({
-      execute: applyDiscountCode({
-        appliedMessage: "Promotion applied: 10% off 🎉",
-        code,
-        config,
-        run,
-        session,
+      execute: Effect.gen(function* () {
+        const browser = yield* browserSessionFor(run, session);
+        yield* applyDiscountCode({
+          appliedMessage: "Promotion applied: 10% off 🎉",
+          code,
+          config,
+          session: browser,
+        });
       }),
       id: "apply-code-before-expiration",
       timeoutMs: config.timeouts.uiTransition,
@@ -1407,11 +1386,10 @@ const executeDiscountCodeExpiresBeforePayment = ({
       timeoutMs: config.timeouts.datasource,
     });
     yield* runStep({
-      execute: submitCheckoutPaymentAndWaitForPricingChanged(
-        config,
-        run,
-        session
-      ),
+      execute: Effect.gen(function* () {
+        const browser = yield* browserSessionFor(run, session);
+        yield* submitCheckoutPaymentAndWaitForPricingChanged(config, browser);
+      }),
       id: "assert-expired-code-pricing-change",
       timeoutMs: config.timeouts.providerTransition,
     });
@@ -1444,39 +1422,31 @@ const makeCustomerDiscountExpectation = (
 
 const discountCheckoutFlow = (id: string) => ({
   id,
-  submitReservationScript: getSubmitCoworkReservationScript,
+  toReservationPreparation: toReservationStep,
 });
 
 /**
- * Asserts each discount through the pay page's discount tooltip. Callers
- * still on argv commands pass `run` and the session id; the session is then
- * reached inside their step.
+ * Asserts each discount through the pay page's discount tooltip.
  */
 export const assertDisplayedDiscounts = ({
   config,
   discounts,
+  session,
   timeoutMs = config.timeouts.uiTransition,
-  ...browserInput
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly discounts: readonly ExpectedDiscountApplication[];
+  readonly session: E2EBrowserSession;
   readonly timeoutMs?: number;
-} & (
-  | { readonly run: Runner; readonly session: string }
-  | { readonly session: E2EBrowserSession }
-)): Effect.Effect<void, WorkspaceE2EError> =>
+}): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const browser =
-      "run" in browserInput
-        ? yield* browserSessionFor(browserInput.run, browserInput.session)
-        : browserInput.session;
-    yield* waitForReactHandler(browser, discountDetailsTrigger, "onFocus", {
+    yield* waitForReactHandler(session, discountDetailsTrigger, "onFocus", {
       timeoutMs,
     });
-    yield* scrollIntoView(browser, discountDetailsTrigger, {
+    yield* scrollIntoView(session, discountDetailsTrigger, {
       timeoutMs: config.timeouts.browserAction,
     });
-    yield* browser.use("focus browser element", (page) =>
+    yield* session.use("focus browser element", (page) =>
       page
         .locator(discountDetailsTrigger)
         .filter({ visible: true })
@@ -1484,7 +1454,7 @@ export const assertDisplayedDiscounts = ({
     );
     for (const discount of discounts) {
       yield* waitForPageCondition(
-        browser,
+        session,
         `${discount.label} discount detail`,
         isDiscountDetailShown,
         toDiscountDetail(discount),
@@ -1581,14 +1551,9 @@ const waitForPricingChanged = (
 
 const submitCheckoutPaymentAndWaitForPricingChanged = (
   config: WorkspaceE2EConfig,
-  run: Runner,
-  session: string
+  browser: E2EBrowserSession
 ) =>
-  // The payment and its argv tab id stay argv until stage 5.
-  submitCheckoutPayment(run, session).pipe(
-    Effect.flatMap((checkoutTabId) =>
-      switchToBrowserTab(run, session, checkoutTabId)
-    ),
-    Effect.andThen(browserSessionFor(run, session)),
-    Effect.flatMap((browser) => waitForPricingChanged(config, browser))
+  submitCheckoutPayment(browser, config.timeouts).pipe(
+    Effect.flatMap(browser.activate),
+    Effect.andThen(waitForPricingChanged(config, browser))
   );

@@ -7,13 +7,13 @@ import type { WorkspaceReservationId } from "@/features/reservation/persistence-
 import { reservationCustomerQueryParam } from "@/features/reservation/reservation-checkout-query";
 import { formatMoney, type Money } from "@/shared/money/money";
 import { openPage, readPageUrl } from "../browser";
-import { getSubmitCoworkReservationScript } from "../browser-scripts";
 import type { E2EBrowserSession } from "../browser-session";
 import {
   applyDiscountCode,
   submitDiscountCode,
 } from "../checkout/discount-code";
 import { submitReservationForPayPage } from "../checkout/payment";
+import { toReservationStep } from "../checkout/reservation-form-preparation";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import {
   tryWorkspaceE2ESync,
@@ -25,7 +25,7 @@ import {
   waitForCheckoutRow,
 } from "../integrations/database";
 import { pollUntil } from "../polling";
-import { addRedaction, assert, parseUrl, type Runner } from "../runtime";
+import { addRedaction, assert, parseUrl } from "../runtime";
 import { workspaceE2EPollIntervalMs } from "../timeouts";
 import type {
   CheckoutData,
@@ -105,9 +105,7 @@ export const startPayPage = ({
   data,
   datasourceConfig,
   referralCode,
-  run,
   runStep,
-  session,
   state,
   stepPrefix,
 }: {
@@ -117,9 +115,7 @@ export const startPayPage = ({
   readonly datasourceConfig: DatasourceConfig;
   /** Starts the reservation from a share link carrying this code. */
   readonly referralCode?: string;
-  readonly run: Runner;
   readonly runStep: Parameters<WorkspaceE2ECase["execute"]>[0]["runStep"];
-  readonly session: string;
   readonly state: CheckoutFlowState;
   readonly stepPrefix: string;
   /** The browser session `session` names for `run`. */
@@ -140,9 +136,8 @@ export const startPayPage = ({
         onOrderId: (value) => {
           state.orderId = value;
         },
-        run,
-        session,
-        submitReservationScript: getSubmitCoworkReservationScript(data),
+        session: browserSession,
+        preparation: toReservationStep(data),
         timeouts: config.timeouts,
       });
       state.orderId = orderId;
@@ -179,9 +174,7 @@ export const applyCodeAndReadFreshPayUrl = ({
   currentPayUrl,
   locale,
   orderId,
-  run,
   runStep,
-  session,
   stepId,
 }: {
   readonly appliedMessage: string;
@@ -190,9 +183,7 @@ export const applyCodeAndReadFreshPayUrl = ({
   readonly currentPayUrl: string;
   readonly locale: CheckoutData["locale"];
   readonly orderId: WorkspaceReservationId;
-  readonly run: Runner;
   readonly runStep: Parameters<WorkspaceE2ECase["execute"]>[0]["runStep"];
-  readonly session: string;
   readonly stepId: string;
   /** The browser session `session` names for `run`. */
   readonly browserSession: E2EBrowserSession;
@@ -203,8 +194,7 @@ export const applyCodeAndReadFreshPayUrl = ({
         appliedMessage,
         code,
         config,
-        run,
-        session,
+        session: browserSession,
       });
       return yield* waitForFreshPayStateUrl({
         config,
@@ -256,8 +246,6 @@ export const rejectReferralCode = ({
   locale,
   message,
   orderId,
-  run,
-  session,
 }: {
   readonly code: string;
   readonly config: WorkspaceE2EConfig;
@@ -266,13 +254,11 @@ export const rejectReferralCode = ({
   readonly locale: CheckoutData["locale"];
   readonly message: string;
   readonly orderId: WorkspaceReservationId;
-  readonly run: Runner;
   /** The browser session `session` names for `run`. */
   readonly browserSession: E2EBrowserSession;
-  readonly session: string;
 }) =>
   Effect.gen(function* () {
-    yield* submitDiscountCode({ code, config, run, session });
+    yield* submitDiscountCode({ code, config, session: browserSession });
     const rejectedUrl = yield* pollUntil(
       readPageUrl(browserSession).pipe(
         Effect.map((url) =>

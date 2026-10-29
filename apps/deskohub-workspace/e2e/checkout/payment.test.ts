@@ -25,7 +25,7 @@ test("retries a transient reservation preparation failure without requiring non-
   let focusedRef: string | undefined;
   let reservationStep: "contact" | "selection" = "selection";
   let reservationSubmitPresses = 0;
-  const submitReservationScript = "submit-reservation";
+  const preparation = "submit-reservation";
   const run = mock<Runner>(async (_command, args, options = {}) => {
     const browserArgs = args.slice(2);
     const commandIndex = browserArgs.findIndex((arg) =>
@@ -68,10 +68,7 @@ test("retries a transient reservation preparation failure without requiring non-
       return success();
     }
 
-    if (
-      commandArgs[0] === "eval" &&
-      options.input?.includes(submitReservationScript)
-    ) {
+    if (commandArgs[0] === "eval" && options.input?.includes(preparation)) {
       reservationSubmitAttempts += 1;
       return success();
     }
@@ -164,7 +161,7 @@ test("retries a transient reservation preparation failure without requiring non-
       data: makeCheckoutData(),
       run,
       session: "test-session",
-      submitReservationScript,
+      preparation,
     })
   );
 
@@ -184,7 +181,7 @@ test("retries a transient reservation preparation failure without requiring non-
 });
 
 test("detaches long reservation preparation from one Playwright evaluation", async () => {
-  const submitReservationScript = "new Promise(() => undefined)";
+  const preparation = "new Promise(() => undefined)";
   let focusedRef: string | undefined;
   let preparationKickoffs = 0;
   let preparationStateReads = 0;
@@ -195,13 +192,13 @@ test("detaches long reservation preparation from one Playwright evaluation", asy
     const commandArgs = args.slice(2);
 
     if (commandArgs[0] === "eval") {
-      if (options.input === submitReservationScript) {
+      if (options.input === preparation) {
         throw new Error("Playwright evaluation timed out");
       }
       if (options.input?.includes('"#reservation-continue") !== null')) {
         return success("false");
       }
-      if (options.input?.includes(submitReservationScript)) {
+      if (options.input?.includes(preparation)) {
         preparationKickoffs += 1;
         hydrationOrder.push("prepare");
         return success();
@@ -246,7 +243,7 @@ test("detaches long reservation preparation from one Playwright evaluation", asy
     submitReservationForPayPage({
       run,
       session: "detached-preparation",
-      submitReservationScript,
+      preparation,
       timeouts: workspaceE2ETimeouts,
     })
   );
@@ -259,16 +256,12 @@ test("detaches long reservation preparation from one Playwright evaluation", asy
 });
 
 test("preserves a detached reservation preparation failure without submitting", async () => {
-  const submitReservationScript =
-    "Promise.reject(new Error('advertised price failed'))";
+  const preparation = "Promise.reject(new Error('advertised price failed'))";
   let reservationSubmitActivations = 0;
   const run = mock<Runner>(async (_command, args, options = {}) => {
     const commandArgs = args.slice(2);
 
-    if (
-      commandArgs[0] === "eval" &&
-      options.input?.includes(submitReservationScript)
-    ) {
+    if (commandArgs[0] === "eval" && options.input?.includes(preparation)) {
       return success();
     }
     if (
@@ -292,7 +285,7 @@ test("preserves a detached reservation preparation failure without submitting", 
     submitReservationForPayPage({
       run,
       session: "failed-detached-preparation",
-      submitReservationScript,
+      preparation,
       timeouts: workspaceE2ETimeouts,
     })
   );

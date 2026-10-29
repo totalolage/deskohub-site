@@ -4,13 +4,13 @@ import { getWorkspaceOfficePrice } from "@/features/checkout/product-catalog";
 import { formatMoney } from "@/shared/money/money";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
 import { waitForPageText } from "../browser";
-import { getSubmitOfficeReservationScript } from "../browser-scripts";
 import {
   loadOfficeAvailability,
   makeOfficeCheckoutData,
   type OfficeCheckoutSlot,
   selectAvailableOfficeSlots,
 } from "../checkout/data";
+import { toReservationStep } from "../checkout/reservation-form-preparation";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import {
   toWorkspaceE2EError,
@@ -103,7 +103,7 @@ export const makeOfficeE2ECases = ({
             datasourceConfig,
             flow: {
               id: "office-paid-multi-day",
-              submitReservationScript: getSubmitOfficeReservationScript,
+              toReservationPreparation: toReservationStep,
             },
             payPageSteps: () => [
               {

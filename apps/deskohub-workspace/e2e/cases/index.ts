@@ -1,10 +1,6 @@
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
-import {
-  getPrepareCoworkAdvertisedPriceScript,
-  getSubmitCoworkReservationScript,
-} from "../browser-scripts";
 import { workspaceE2EMaximumSameDateCoworkReservations } from "../capacity";
 import {
   checkoutFlows,
@@ -13,6 +9,10 @@ import {
   reuseCoworkCheckoutContact,
   selectCoworkDates,
 } from "../checkout/data";
+import {
+  toReservationSelectionPreparation,
+  toReservationStep,
+} from "../checkout/reservation-form-preparation";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import { toWorkspaceE2EError, type WorkspaceE2EError } from "../errors";
 import { discountCodeFixtures } from "../integrations/discount-fixtures";
@@ -148,7 +148,7 @@ export const makeWorkspaceE2ECases = ({
               scenario,
               session,
               state,
-              submitReservationScript: getSubmitCoworkReservationScript(data),
+              preparation: toReservationStep(data),
             }).pipe(
               Effect.mapError((cause) =>
                 toWorkspaceE2EError(
@@ -183,7 +183,7 @@ export const makeWorkspaceE2ECases = ({
               scenario,
               session,
               state,
-              submitReservationScript: getSubmitCoworkReservationScript(data),
+              preparation: toReservationStep(data),
             }).pipe(
               Effect.provideService(HttpClient.HttpClient, httpClient),
               Effect.mapError((cause) =>
@@ -234,14 +234,14 @@ export const makeWorkspaceE2ECases = ({
             config,
             data: reservationReplacementData,
             datasourceConfig,
-            prepareReservationScript: getPrepareCoworkAdvertisedPriceScript,
+            toSelectionPreparation: toReservationSelectionPreparation,
             replacementData: editedReservationReplacementData,
             reservationPath: "/en-US/reservation/cowork",
             run,
             runStep,
             session,
             state: reservationReplacementState,
-            submitReservationScript: getSubmitCoworkReservationScript,
+            toReservationPreparation: toReservationStep,
           }).pipe(
             Effect.mapError((cause) =>
               toWorkspaceE2EError("run reservation replacement e2e case", cause)
@@ -273,8 +273,7 @@ export const makeWorkspaceE2ECases = ({
             runStep,
             session,
             state: zeroTotalState,
-            submitReservationScript:
-              getSubmitCoworkReservationScript(zeroTotalData),
+            preparation: toReservationStep(zeroTotalData),
             discountCode: discountCodeFixtures.zeroTotal.code,
           }).pipe(
             Effect.mapError((cause) =>
@@ -310,8 +309,7 @@ export const makeWorkspaceE2ECases = ({
             session,
             state: automationState,
             stepIdPrefix: "automation-",
-            submitReservationScript:
-              getSubmitCoworkReservationScript(automationData),
+            preparation: toReservationStep(automationData),
             discountCode: discountCodeFixtures.zeroTotal.code,
           }).pipe(
             Effect.mapError((cause) =>

@@ -24,10 +24,6 @@ import {
   waitForPageUrl,
   waitForReactHandler,
 } from "../browser";
-import {
-  getSubmitMeetingRoomReservationScript,
-  submitPreparedMeetingRoomReservationScript,
-} from "../browser-scripts";
 import type { WorkspaceE2EStepRunner } from "../case-runner";
 import {
   type MeetingRoomCheckoutSlot,
@@ -43,6 +39,10 @@ import {
   isPrefilledReservation,
   toPrefilledReservation,
 } from "../checkout/prefilled-reservation";
+import {
+  preparedReservationForm,
+  toReservationStep,
+} from "../checkout/reservation-form-preparation";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import {
   toWorkspaceE2EError,
@@ -424,14 +424,13 @@ const runReservationLinkZeroTotalCase = ({
           run,
           session,
         });
+        const browser = yield* browserSessionFor(run, session);
         return yield* submitReservationForPayPage({
           onOrderId: (orderId) => {
             replacementState.orderId = orderId;
           },
-          run,
-          session,
-          submitReservationScript:
-            getSubmitMeetingRoomReservationScript(replacementData),
+          session: browser,
+          preparation: toReservationStep(replacementData),
           timeouts: config.timeouts,
         });
       }),
@@ -551,25 +550,27 @@ const runReservationLinkUnknownCodeCase = ({
     // The link's unusable referral code neither blocks the booking nor
     // replaces the requested discount code in the code box.
     yield* runStep({
-      execute: assertRequestedOnlyDiscountCode({
-        code: unknownLinkCode,
-        config,
-        run,
-        session,
+      execute: Effect.gen(function* () {
+        const browser = yield* browserSessionFor(run, session);
+        yield* assertRequestedOnlyDiscountCode({
+          code: unknownLinkCode,
+          config,
+          session: browser,
+        });
       }),
       id: "assert-unknown-code-requested-only",
       timeoutMs: config.timeouts.uiTransition,
     });
     yield* runStep({
       execute: Effect.gen(function* () {
+        const browser = yield* browserSessionFor(run, session);
         yield* submitDiscountCode({
           code: unknownLinkCode,
           config,
-          run,
-          session,
+          session: browser,
         });
         yield* waitForPageTextContent(
-          yield* browserSessionFor(run, session),
+          browser,
           m.checkoutDiscountCodeUnavailable({}, { locale: data.locale }),
           { timeoutMs: config.timeouts.uiTransition }
         );
@@ -579,11 +580,11 @@ const runReservationLinkUnknownCodeCase = ({
     });
     yield* runStep({
       execute: Effect.gen(function* () {
+        const browser = yield* browserSessionFor(run, session);
         yield* assertRequestedOnlyDiscountCode({
           code: unknownLinkCode,
           config,
-          run,
-          session,
+          session: browser,
         });
         yield* captureLinkScreenshot({
           config,
@@ -597,14 +598,14 @@ const runReservationLinkUnknownCodeCase = ({
     });
     yield* runStep({
       execute: Effect.gen(function* () {
+        const browser = yield* browserSessionFor(run, session);
         yield* submitDiscountCode({
           code: zeroTotalCode,
           config,
-          run,
-          session,
+          session: browser,
         });
         yield* waitForPageTextContent(
-          yield* browserSessionFor(run, session),
+          browser,
           appliedDiscountMessage(data.locale),
           { timeoutMs: config.timeouts.uiTransition }
         );
@@ -701,11 +702,10 @@ const openLinkAndHoldReservation = ({
         onOrderId: (orderId) => {
           state.orderId = orderId;
         },
-        run,
-        session,
+        session: browser,
         // Submit-only helper: the prefilled query already prepared the form,
         // so the script only waits for the hydrated submit control.
-        submitReservationScript: submitPreparedMeetingRoomReservationScript,
+        preparation: preparedReservationForm,
         timeouts: config.timeouts,
       });
     }),

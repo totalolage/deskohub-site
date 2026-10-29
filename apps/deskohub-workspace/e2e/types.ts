@@ -22,6 +22,7 @@ import type {
 } from "../features/reservation/persistence-contracts";
 import type { ReservationInterval } from "../features/reservation/reservation-interval";
 import type { WorkspaceE2EStepRunner } from "./case-runner";
+import type { ReservationFormPreparation } from "./checkout/reservation-form-preparation";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "./config";
 import type { WorkspaceE2EHostedPaymentPermitService } from "./coordination/hosted-payment-permit.service";
 import type { WorkspaceE2EProviderVerificationPermitService } from "./coordination/provider-verification-permit.service";
@@ -105,7 +106,9 @@ export type CheckoutFlow = {
     datasourceConfig: DatasourceConfig,
     date: string
   ) => Effect.Effect<CheckoutData | undefined, WorkspaceE2EError>;
-  readonly submitReservationScript: (data: CheckoutData) => string;
+  readonly toReservationPreparation: (
+    data: CheckoutData
+  ) => ReservationFormPreparation;
 };
 
 export type CheckoutFlowState = {

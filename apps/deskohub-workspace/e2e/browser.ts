@@ -1,9 +1,5 @@
 import { Effect } from "effect";
-import {
-  browserDiagnosticsScript,
-  browserTextScript,
-  inPageCall,
-} from "./browser-scripts";
+import { browserTextScript, inPageCall } from "./browser-scripts";
 import { type E2EBrowserSession, isPlaywrightTimeout } from "./browser-session";
 import type { WorkspaceE2EConfig } from "./config";
 import {
@@ -641,7 +637,7 @@ const readBrowserDiagnostics = (
     ["eval", "--stdin"],
     {
       allowFailure: true,
-      input: browserDiagnosticsScript,
+      input: inPageCall(summarizeCheckoutPage, undefined),
       logOutput: false,
     }
   ).pipe(
@@ -1195,6 +1191,47 @@ const isReactFormSubmitReady = ({
 };
 
 /**
+ * The checkout page summary diagnostics report: URL without its secret
+ * parameters, title, alerts, body text, and the reservation action's state.
+ * Runs in the browser.
+ */
+export const summarizeCheckoutPage = () => {
+  const cleanUrl = (value: string) => {
+    try {
+      const url = new URL(value);
+      for (const key of [
+        "payState",
+        "contact",
+        "checkoutToken",
+        "accessToken",
+        "_vercel_share",
+        "x-vercel-protection-bypass",
+      ]) {
+        if (url.searchParams.has(key)) url.searchParams.set(key, "[redacted]");
+      }
+      return url.toString();
+    } catch {
+      return "[unavailable]";
+    }
+  };
+  const submit = document.querySelector(
+    "#reservation-continue, #reservation-submit"
+  );
+  const alerts = [...document.querySelectorAll('[role="alert"]')]
+    .map((element) => element.textContent?.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  return {
+    alerts,
+    body: (document.body?.innerText ?? "").replace(/\s+/g, " ").slice(0, 1200),
+    submitDisabled:
+      submit instanceof HTMLButtonElement ? submit.disabled : null,
+    submitText: submit?.textContent?.replace(/\s+/g, " ").trim() ?? null,
+    title: document.title,
+    url: cleanUrl(location.href),
+  };
+};
+
+/**
  * The checkout page summary for a failure artifact: URL, title, alerts, and
  * the reservation action's state. It has no deadline of its own; the caller
  * bounds it.
@@ -1204,7 +1241,7 @@ export const readBrowserPageDiagnostics = (
 ): Effect.Effect<string> =>
   session
     .use("read browser diagnostics", (page) =>
-      page.evaluate(browserDiagnosticsScript)
+      page.evaluate(summarizeCheckoutPage)
     )
     .pipe(
       Effect.map((summary) =>
