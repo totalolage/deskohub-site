@@ -1447,21 +1447,29 @@ const discountCheckoutFlow = (id: string) => ({
   submitReservationScript: getSubmitCoworkReservationScript,
 });
 
+/**
+ * Asserts each discount through the pay page's discount tooltip. Callers
+ * still on argv commands pass `run` and the session id; the session is then
+ * reached inside their step.
+ */
 export const assertDisplayedDiscounts = ({
   config,
   discounts,
-  run,
-  session,
   timeoutMs = config.timeouts.uiTransition,
+  ...browserInput
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly discounts: readonly ExpectedDiscountApplication[];
-  readonly run: Runner;
-  readonly session: string;
   readonly timeoutMs?: number;
-}): Effect.Effect<void, WorkspaceE2EError> =>
+} & (
+  | { readonly run: Runner; readonly session: string }
+  | { readonly session: E2EBrowserSession }
+)): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const browser = yield* browserSessionFor(run, session);
+    const browser =
+      "run" in browserInput
+        ? yield* browserSessionFor(browserInput.run, browserInput.session)
+        : browserInput.session;
     yield* waitForReactHandler(browser, discountDetailsTrigger, "onFocus", {
       timeoutMs,
     });

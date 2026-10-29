@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test";
-import type { Browser } from "@playwright/test";
 import { Effect } from "effect";
 import { makeWorkspaceE2EAccountRecipientForRunId } from "../account/config";
 import { makeCoworkCheckoutData } from "../checkout/data";
@@ -24,7 +23,6 @@ const environment = (secrets: string | undefined) =>
     WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL:
       "postgresql://provider-permit:synthetic-password@ep-coordinator.eu.neon.tech/neondb",
   }) as WorkspaceE2EEnvironment;
-const browser = { contexts: () => [] } as unknown as Browser;
 
 const plannedCase = (id: string): WorkspaceE2ECase => ({
   checkoutStates: (
@@ -49,7 +47,6 @@ test("binds every referral-lane case and books checkouts for the case's own run-
   for (const id of workspaceE2EReferralCaseIds) {
     const planned = plannedCase(id);
     const bound = bindWorkspaceE2EReferralCase({
-      browser,
       environment: environment(signingSecrets),
       runId,
       testCase: planned,
@@ -72,7 +69,6 @@ test("binds every referral-lane case and books checkouts for the case's own run-
 test("fails closed before a referral case runs without the preview signing secret", () => {
   expect(() =>
     bindWorkspaceE2EReferralCase({
-      browser,
       environment: environment(undefined),
       runId,
       testCase: plannedCase("referral-auto-linked-sign-in"),

@@ -14,6 +14,7 @@
 - The referral cases never pay and run in the shared `checkout-cases` pool with every other case. They need no magic link or shared account, so they take no account-lane budget.
 - The three unpaid referral checkouts share one planned open-space date, each for its own customer. `bindCheckoutContact` adds `customer=account` to the planned link; its contact fields alone open a signed-in page in "book for someone else" mode, where a remembered code only prefills the box. `cases.pw.ts` binds each case to its seeded identities through `registerWorkspaceE2ECases`' `bindCase`.
 - The account lane runs no referral overview, eligibility, or checkout case. Its main-recipient link starts anonymously from the locale-free share link `/account?ref=CODE` of the synthetic `referral-owner`, seeded before any send. Consumption must land on completion with the field prefilled from the remembered cookie; no sign-in, callback, or account URL carries `ref`.
+- A referral case resolves its browser session in its first step and drives its one page through it. The account page's opens, waits and profile completion are in `e2e/referrals/account-page.ts`. Playwright-native steps and review captures go through `onReferralCasePage` (`e2e/referrals/case-page.ts`): it fails the step unless the browser holds that page alone, and a Playwright timeout fails the step rather than timing it out. The case context keeps `run` only for the argv reservation-submit and discount-code helpers.
 - `checkout-referral-someone-else` (a paid pool case under the [hosted-payment permit](suite-orchestration.md#hosted-payment-permit)) signs in a seeded booker, opens the shared link, and books for the referred customer. The referrer's code is prefilled and applied on the Pay page; the paid order must attribute the customer and redeem its claim, and the booker's browser keeps the remembered code because booking for someone else never settles the booker's own referral.
 
 ## Seeded sessions
@@ -33,7 +34,7 @@ Sign referral-case identities in by seeding a session, never by sending a magic 
 
 ## Referral cookie
 
-- A shared link sets the first-party `deskohub-referral-code` cookie (first link wins). Only the shown top-level page stores it, after hydration and only while the `referrals` flag is on, so open shared links with `openBrowserPage` or `page.goto` and wait for the cookie before navigating away.
+- A shared link sets the first-party `deskohub-referral-code` cookie (first link wins). Only the shown top-level page stores it, after hydration and only while the `referrals` flag is on, so open shared links with `openPage` (`e2e/browser.ts`) or `page.goto` and wait for the cookie before navigating away.
 - Assert it with `session.describeCookie` (`waitForRememberedReferralCode` and `waitForNoRememberedReferralCode`, `e2e/referrals/referral-cookie.ts`), which reports presence, attributes, and whether it holds an expected code, never the value.
 - Every referral case and the paid someone-else referral case first prove their context starts without it. Cases that open several shared links in one context order them so each meets the cookie state it needs.
 
