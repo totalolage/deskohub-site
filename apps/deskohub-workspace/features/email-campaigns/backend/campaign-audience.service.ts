@@ -110,7 +110,7 @@ export class CampaignAudienceService extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const { db } = yield* WorkspaceDatabase;
+      const { db, transaction } = yield* WorkspaceDatabase;
 
       const requireUpdated =
         (audienceId: CampaignAudienceId) =>
@@ -144,10 +144,8 @@ export class CampaignAudienceService extends Context.Service<
         }
       });
 
-      type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
-
-      const draftsUsing = (tx: Transaction, audienceId: CampaignAudienceId) =>
-        tx
+      const draftsUsing = (audienceId: CampaignAudienceId) =>
+        db
           .select({ id: emailCampaigns.id })
           .from(emailCampaigns)
           .where(
@@ -163,13 +161,10 @@ export class CampaignAudienceService extends Context.Service<
        * has a condition on the audience. Archived ones never evaluate again,
        * and runs of older versions fail the condition once it's gone.
        */
-      const automationsReferencing = (
-        tx: Transaction,
-        audienceId: CampaignAudienceId
-      ) => {
+      const automationsReferencing = (audienceId: CampaignAudienceId) => {
         const references = (flow: AnyColumn) =>
           sql`jsonb_path_exists(${flow}, '$.steps[*].filter.** ? (@._tag == "InAudience" && @.audienceId == $id)', jsonb_build_object('id', ${audienceId}::text))`;
-        return tx
+        return db
           .select({ id: emailCampaigns.id })
           .from(emailCampaignAutomations)
           .innerJoin(
@@ -201,8 +196,8 @@ export class CampaignAudienceService extends Context.Service<
        * and be detached by the delete.
        */
       const deleteUnused = Effect.fn("CampaignAudienceService.deleteUnused")(
-        function* (tx: Transaction, audienceId: CampaignAudienceId) {
-          const [audience] = yield* tx
+        function* (audienceId: CampaignAudienceId) {
+          const [audience] = yield* db
             .select({ id: emailCampaignAudiences.id })
             .from(emailCampaignAudiences)
             .where(eq(emailCampaignAudiences.id, audienceId))
@@ -210,8 +205,8 @@ export class CampaignAudienceService extends Context.Service<
           if (!audience) {
             return yield* new CampaignAudienceNotFound({ audienceId });
           }
-          const drafts = yield* draftsUsing(tx, audienceId);
-          const automations = yield* automationsReferencing(tx, audienceId);
+          const drafts = yield* draftsUsing(audienceId);
+          const automations = yield* automationsReferencing(audienceId);
           if (drafts.length > 0 || automations.length > 0) {
             return yield* new CampaignAudienceInUse({
               audienceId,
@@ -219,7 +214,7 @@ export class CampaignAudienceService extends Context.Service<
               automationCampaignIds: automations.map(({ id }) => id),
             });
           }
-          yield* tx
+          yield* db
             .delete(emailCampaignAudiences)
             .where(eq(emailCampaignAudiences.id, audienceId));
         }
@@ -297,7 +292,7 @@ export class CampaignAudienceService extends Context.Service<
           }
         ),
         delete: Effect.fn("CampaignAudienceService.delete")((audienceId) =>
-          db.transaction((tx) => deleteUnused(tx, audienceId))
+          transaction(deleteUnused(audienceId))
         ),
       } satisfies ICampaignAudienceService;
     })
