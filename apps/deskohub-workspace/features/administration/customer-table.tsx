@@ -9,7 +9,10 @@ import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { AdministrationLink as Link } from "./admin-link";
 import type { AdministrationCustomerSummary } from "./administration.service";
 import { administrationHref } from "./administration-href";
-import { type CustomerListQuery, customerListQuery } from "./customer-list-query";
+import {
+  type CustomerListQuery,
+  customerListQuery,
+} from "./customer-list-query";
 import {
   getAdministrationCustomerMarketingConsentLabel,
   getAdministrationCustomerName,
