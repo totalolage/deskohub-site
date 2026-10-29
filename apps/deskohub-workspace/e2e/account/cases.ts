@@ -10,20 +10,9 @@ import {
   getAccountSignInPath,
 } from "@/features/account/routes";
 import { type Locale, m } from "@/features/i18n";
-import { localeCookieName } from "@/features/i18n/routing";
 import { getReservationStartPath } from "@/features/reservation/routes";
 import { maskEmailAddress } from "@/shared/utils";
-import {
-  clickBrowserElement,
-  evalBrowserScript,
-  fillBrowserField,
-  focusBrowserElement,
-  normalizeBrowserText,
-  pressBrowserKey,
-  waitForBrowserCondition,
-  waitForBrowserReactHandler,
-  waitForInteractiveSnapshot,
-} from "../browser";
+import { normalizeBrowserText } from "../browser";
 import type { DatasourceConfig } from "../config";
 import {
   type WorkspaceE2EError,
@@ -31,13 +20,12 @@ import {
   workspaceE2ETimeoutError,
 } from "../errors";
 import { pollUntil } from "../polling";
-import { addRedaction, assert, parseUrl, type Runner } from "../runtime";
+import { addRedaction, assert, parseUrl } from "../runtime";
 import {
   workspaceE2EPollInitialIntervalMs,
   workspaceE2EPollIntervalMs,
   workspaceE2ETimeouts,
 } from "../timeouts";
-import { accountSectionLandmarks } from "./account-sections";
 import {
   assertNoAuthRows,
   countAccountPasskeys,
@@ -134,21 +122,6 @@ const callbackSuffix = "/auth/callback";
  * capture never touch the shared Cloudinary quota.
  */
 const publicPreferenceProbeSuffix = "/faq";
-
-const signInEmailSelector = "#account-sign-in-email";
-const signInCodeSelector = "#account-sign-in-code";
-const profileFirstNameSelector = "#account-profile-first-name";
-const profileLastNameSelector = "#account-profile-last-name";
-const profilePhoneSelector = "#account-profile-phone";
-const profileEmailSelector = "#account-profile-email";
-const profileSubmitSelector = "#account-profile-form button[type=submit]";
-const profileReferralCodeSelector = "#profile-referral-code";
-const billingKindSelector = "#account-profile-billing-kind";
-const billingCompanyNameSelector = "#account-profile-billing-company-name";
-const deleteTriggerSelector = "#delete-account-trigger";
-const deleteReauthSendSelector = "#delete-account-reauth-send";
-const deleteConfirmCheckboxSelector = "#confirm-account-deletion";
-const deleteConfirmSelector = "#delete-account-confirm";
 
 const billingCompanyFixture = "E2E Draft Company";
 const passkeyNameFixture = "Workspace E2E passkey";
@@ -262,8 +235,6 @@ export type WorkspaceE2EAccountCaseInputs = {
   readonly passkeys: WorkspaceE2EAccountPasskeys;
   readonly previewLogs: WorkspaceE2EPreviewLogs;
   readonly rateBudget: MagicLinkRateBudget;
-  readonly run: Runner;
-  readonly session: string;
   readonly signInReturns: WorkspaceE2ESignInReturns;
 };
 
@@ -283,8 +254,6 @@ export const makeWorkspaceE2EAccountCases = ({
   passkeys,
   previewLogs,
   rateBudget,
-  run,
-  session,
   signInReturns,
 }: WorkspaceE2EAccountCaseInputs): readonly WorkspaceE2EAccountCase[] => {
   const recipient = makeWorkspaceE2EAccountRecipient(
@@ -443,17 +412,7 @@ export const makeWorkspaceE2EAccountCases = ({
           try: () => captureLanguagePreferenceReview(stage),
         });
 
-  const waitDefaultReservations = (description: string) =>
-    waitForBrowserCondition(
-      run,
-      session,
-      description,
-      `(() => {
-        const landmark = document.querySelector(${JSON.stringify(accountSectionLandmarks.reservations)});
-        return landmark !== null && landmark.closest("[hidden]") === null;
-      })()`,
-      { timeoutMs: uiTransition }
-    );
+  const waitDefaultReservations = laneBrowser.waitForReservationsPanel;
 
   const withoutTrailingSlash = (url: string) =>
     url.length > 1 && url.endsWith("/") ? url.slice(0, -1) : url;
@@ -523,19 +482,7 @@ export const makeWorkspaceE2EAccountCases = ({
     yield* waitSignInForm();
   });
 
-  const waitReferralFieldValue = (description: string, value: string) =>
-    waitForBrowserCondition(
-      run,
-      session,
-      description,
-      `(() => {
-          const input = document.querySelector(${JSON.stringify(profileReferralCodeSelector)});
-          return input instanceof HTMLInputElement &&
-            input.name === "referralCode" &&
-            input.value === ${JSON.stringify(value)};
-        })()`,
-      { timeoutMs: uiTransition }
-    );
+  const waitReferralFieldValue = laneBrowser.waitForReferralFieldValue;
 
   const requireReferralInvitation = () =>
     Effect.sync(() => {
@@ -653,34 +600,6 @@ export const makeWorkspaceE2EAccountCases = ({
           try: () => captureSignInHandoffReview(stage),
         });
 
-  /**
-   * Whether the browser's session belongs to the email, read from the page
-   * it is on through Better Auth's session endpoint. Only the match leaves
-   * the page, never the session.
-   */
-  const readSessionMatches = (browserSession: string, email: string) =>
-    evalBrowserScript(
-      "read the browser session's account",
-      run,
-      browserSession,
-      `(async () => {
-        const response = await fetch("/api/auth/get-session", {
-          cache: "no-store",
-          credentials: "same-origin",
-        });
-        const body = response.ok ? await response.json() : null;
-        return JSON.stringify({
-          sessionMatches: body?.user?.email === ${JSON.stringify(email)},
-        });
-      })()`,
-      { timeoutMs: browserTimeout }
-    ).pipe(
-      Effect.map(
-        (command) =>
-          (JSON.parse(command.stdout) as { sessionMatches: boolean })
-            .sessionMatches
-      )
-    );
 
   const passkeysOffered = () => lifecycleHandoff.passkeySignIn === "offered";
 
@@ -811,21 +730,8 @@ export const makeWorkspaceE2EAccountCases = ({
               // stays loaded for the first accepted request.
               yield* waitShareLinkSignIn(invitation.code);
               yield* fillAndSubmitEmail("not-an-email");
-              const validation = yield* evalBrowserScript(
-                "assert native validation blocked the invalid email",
-                run,
-                session,
-                `(() => {
-                    const input = document.querySelector(${JSON.stringify(signInEmailSelector)});
-                    return JSON.stringify({
-                      blocked: input instanceof HTMLInputElement && input.validationMessage !== "",
-                    });
-                  })()`,
-                { timeoutMs: browserTimeout }
-              ).pipe(Effect.map((command) => command.stdout));
-              const parsed = JSON.parse(validation) as { blocked: boolean };
               assert(
-                parsed.blocked,
+                yield* laneBrowser.readSignInEmailBlocked,
                 "the browser accepted an invalid email without native validation"
               );
               yield* Effect.sleep(invalidEmailSettleMs);
@@ -886,12 +792,7 @@ export const makeWorkspaceE2EAccountCases = ({
                   firstAccepted.confirmation === "code"
                     ? useDifferentEmailLabel
                     : sendAnotherLinkLabel;
-                yield* clickBrowserElement(
-                  run,
-                  session,
-                  `button:has-text("${restartLabel}")`,
-                  { timeoutMs: browserTimeout }
-                );
+                yield* laneBrowser.restartSignIn(restartLabel);
                 yield* waitSignInForm();
                 lifecycleHandoff.secondAcceptedRequestedAt = new Date();
                 yield* fillAndSubmitEmail(acceptedRecipientTwo);
@@ -974,24 +875,11 @@ export const makeWorkspaceE2EAccountCases = ({
             "reject-wrong-sign-in-code",
             Effect.gen(function* () {
               yield* waitSignInCodeInput();
-              yield* fillBrowserField(
-                run,
-                session,
-                signInCodeSelector,
-                code === "000000" ? "111111" : "000000",
-                { timeoutMs: browserTimeout }
+              yield* laneBrowser.enterSignInCode(
+                code === "000000" ? "111111" : "000000"
               );
               yield* waitText("wrong code status", signInCodeInvalid);
-              yield* waitForBrowserCondition(
-                run,
-                session,
-                "emptied code input after a wrong code",
-                `(() => {
-                  const input = document.querySelector(${JSON.stringify(signInCodeSelector)});
-                  return input instanceof HTMLInputElement && !input.disabled && input.value === "";
-                })()`,
-                { timeoutMs: uiTransition }
-              );
+              yield* laneBrowser.waitForEmptiedSignInCode;
             }),
             providerTransition
           )
@@ -1000,9 +888,7 @@ export const makeWorkspaceE2EAccountCases = ({
           step(
             "sign-in-with-emailed-code",
             Effect.gen(function* () {
-              yield* fillBrowserField(run, session, signInCodeSelector, code, {
-                timeoutMs: browserTimeout,
-              });
+              yield* laneBrowser.enterSignInCode(code);
               // The code signs in from the selection's sign-in, so it returns
               // there; the completion state is on the account page.
               yield* waitReturnLanding(
@@ -1090,7 +976,7 @@ export const makeWorkspaceE2EAccountCases = ({
                   "cowork selection kept after the link"
                 );
                 assert(
-                  yield* readSessionMatches(session, recipient),
+                  yield* laneBrowser.readSessionMatches(recipient),
                   "the selection is not signed in as the main recipient"
                 );
                 // The completion state and every later case continue on the
@@ -1130,23 +1016,8 @@ export const makeWorkspaceE2EAccountCases = ({
             "assert-completion-login-email-read-only",
             Effect.gen(function* () {
               yield* waitText("completion page", completionTitle);
-              const result = yield* evalBrowserScript(
-                "assert the completion login email is read-only",
-                run,
-                session,
-                `(() => {
-                    const input = document.querySelector(${JSON.stringify(profileEmailSelector)});
-                    return JSON.stringify({
-                      readOnly: input instanceof HTMLInputElement && input.readOnly,
-                      matches: input instanceof HTMLInputElement && input.value === ${JSON.stringify(recipient)},
-                    });
-                  })()`,
-                { timeoutMs: browserTimeout }
-              ).pipe(Effect.map((command) => command.stdout));
-              const parsed = JSON.parse(result) as {
-                matches: boolean;
-                readOnly: boolean;
-              };
+              const parsed =
+                yield* laneBrowser.readCompletionLoginEmail(recipient);
               assert(
                 parsed.readOnly,
                 "the completion login email input is editable"
@@ -1167,31 +1038,17 @@ export const makeWorkspaceE2EAccountCases = ({
                 "completion referral field still holding the share code",
                 invitation.code
               );
-              yield* fillBrowserField(
-                run,
-                session,
-                profileFirstNameSelector,
-                workspaceE2EAccountProfileFixture.firstName,
-                { timeoutMs: browserTimeout }
+              yield* laneBrowser.fillProfileField(
+                "firstName",
+                workspaceE2EAccountProfileFixture.firstName
               );
-              yield* clickBrowserElement(run, session, profileSubmitSelector, {
-                timeoutMs: browserTimeout,
-              });
+              yield* laneBrowser.saveProfile;
               // The completion feedback is transient: the successful action
               // intentionally refreshes into the linked edit view, replacing
               // it. The durable contract is the edit form's submit control,
               // whose accessible name only the linked edit view renders.
-              yield* waitForBrowserCondition(
-                run,
-                session,
-                "linked account edit form with its Save profile submit control",
-                `(() => {
-                    const button = document.querySelector(${JSON.stringify(profileSubmitSelector)});
-                    return button instanceof HTMLButtonElement &&
-                      button.type === "submit" &&
-                      button.textContent?.trim() === ${JSON.stringify(linkedEditSubmitLabel)};
-                  })()`,
-                { timeoutMs: uiTransition }
+              yield* laneBrowser.waitForLinkedProfileForm(
+                linkedEditSubmitLabel
               );
               // The outcome shows on the linked account until dismissed, and
               // the recorded referral uses up the remembered code.
@@ -1243,28 +1100,7 @@ export const makeWorkspaceE2EAccountCases = ({
             "assert-linked-login-email-read-only",
             Effect.gen(function* () {
               yield* laneBrowser.selectSection("profile");
-              const result = yield* evalBrowserScript(
-                "assert the linked login email display is read-only",
-                run,
-                session,
-                `(() => {
-                    const profile = document.querySelector(${JSON.stringify(accountSectionLandmarks.profile)});
-                    const emailField = profile instanceof HTMLElement
-                      ? Array.from(profile.querySelectorAll("fieldset")).find((field) =>
-                          field.textContent?.includes(${JSON.stringify(recipient)})
-                        )
-                      : undefined;
-                    return JSON.stringify({
-                      editable: emailField?.querySelector("input, textarea, select") !== null,
-                      matches: emailField?.textContent?.includes(${JSON.stringify(recipient)}) === true,
-                    });
-                  })()`,
-                { timeoutMs: browserTimeout }
-              ).pipe(Effect.map((command) => command.stdout));
-              const parsed = JSON.parse(result) as {
-                editable: boolean;
-                matches: boolean;
-              };
+              const parsed = yield* laneBrowser.readLinkedLoginEmail(recipient);
               assert(
                 parsed.matches,
                 "the linked login email display shows a different address"
@@ -1281,73 +1117,27 @@ export const makeWorkspaceE2EAccountCases = ({
             "persist-optional-profile-and-billing-fields",
             Effect.gen(function* () {
               yield* laneBrowser.selectSection("profile");
-              yield* fillBrowserField(
-                run,
-                session,
-                profileLastNameSelector,
-                workspaceE2EAccountProfileFixture.lastName,
-                { timeoutMs: browserTimeout }
+              yield* laneBrowser.fillProfileField(
+                "lastName",
+                workspaceE2EAccountProfileFixture.lastName
               );
-              yield* fillBrowserField(
-                run,
-                session,
-                profilePhoneSelector,
-                workspaceE2EAccountProfileFixture.phone,
-                { timeoutMs: browserTimeout }
+              yield* laneBrowser.fillProfileField(
+                "phone",
+                workspaceE2EAccountProfileFixture.phone
               );
               yield* laneBrowser.selectSection("billing");
-              yield* focusBrowserElement(run, session, billingKindSelector, {
-                timeoutMs: browserTimeout,
-              });
-              yield* pressBrowserKey(run, session, "End", {
-                timeoutMs: browserTimeout,
-              });
-              yield* pressBrowserKey(run, session, "Tab", {
-                timeoutMs: browserTimeout,
-              });
-              yield* waitForBrowserCondition(
-                run,
-                session,
-                "business billing kind",
-                `(() => document.querySelector(${JSON.stringify(billingKindSelector)})?.value === "business")()`,
-                { timeoutMs: uiTransition }
-              );
-              yield* fillBrowserField(
-                run,
-                session,
-                billingCompanyNameSelector,
-                billingCompanyFixture,
-                { timeoutMs: browserTimeout }
+              yield* laneBrowser.chooseBusinessBilling;
+              yield* laneBrowser.fillProfileField(
+                "billingCompanyName",
+                billingCompanyFixture
               );
               yield* laneBrowser.selectSection("profile");
-              const drafts = yield* evalBrowserScript(
-                "assert profile and billing drafts survived section navigation",
-                run,
-                session,
-                `(() => {
-                    const firstName = document.querySelector(${JSON.stringify(profileFirstNameSelector)});
-                    const lastName = document.querySelector(${JSON.stringify(profileLastNameSelector)});
-                    const phone = document.querySelector(${JSON.stringify(profilePhoneSelector)});
-                    const companyName = document.querySelector(${JSON.stringify(billingCompanyNameSelector)});
-                    return JSON.stringify({
-                      profilePreserved:
-                        firstName instanceof HTMLInputElement &&
-                        lastName instanceof HTMLInputElement &&
-                        phone instanceof HTMLInputElement &&
-                        firstName.value === ${JSON.stringify(workspaceE2EAccountProfileFixture.firstName)} &&
-                        lastName.value === ${JSON.stringify(workspaceE2EAccountProfileFixture.lastName)} &&
-                        phone.value === ${JSON.stringify(workspaceE2EAccountProfileFixture.phone)},
-                      billingPreserved:
-                        companyName instanceof HTMLInputElement &&
-                        companyName.value === ${JSON.stringify(billingCompanyFixture)},
-                    });
-                  })()`,
-                { timeoutMs: browserTimeout }
-              ).pipe(Effect.map((command) => command.stdout));
-              const parsedDrafts = JSON.parse(drafts) as {
-                billingPreserved: boolean;
-                profilePreserved: boolean;
-              };
+              const parsedDrafts = yield* laneBrowser.readProfileDrafts({
+                billingCompanyName: billingCompanyFixture,
+                firstName: workspaceE2EAccountProfileFixture.firstName,
+                lastName: workspaceE2EAccountProfileFixture.lastName,
+                phone: workspaceE2EAccountProfileFixture.phone,
+              });
               assert(
                 parsedDrafts.profilePreserved,
                 "profile drafts changed across section navigation"
@@ -1356,9 +1146,7 @@ export const makeWorkspaceE2EAccountCases = ({
                 parsedDrafts.billingPreserved,
                 "billing drafts changed across section navigation"
               );
-              yield* clickBrowserElement(run, session, profileSubmitSelector, {
-                timeoutMs: browserTimeout,
-              });
+              yield* laneBrowser.saveProfile;
               yield* waitText("profile update saved", profileSaved);
               const customer = yield* readProviderProfile(customerId);
               assert(
@@ -1428,15 +1216,13 @@ export const makeWorkspaceE2EAccountCases = ({
               // One aria-snapshot poll samples the interactive tree for both
               // assertions; body innerText missed content the sanitized
               // snapshot already showed in the hosted context.
-              yield* waitForInteractiveSnapshot({
-                description: "current reservations group with a confirmed card",
-                matches: (snapshot) =>
+              yield* laneBrowser.waitForSnapshot(
+                "current reservations group with a confirmed card",
+                (snapshot) =>
                   snapshot.includes(currentReservationsTitle) &&
                   snapshot.includes(confirmedStatus),
-                run,
-                session,
-                timeoutMs: datasourceTimeout,
-              });
+                datasourceTimeout
+              );
             }),
             accountPageLoadTimeout
           )
@@ -1460,15 +1246,13 @@ export const makeWorkspaceE2EAccountCases = ({
             "assert-cancelled-reservation-in-past-group",
             Effect.gen(function* () {
               yield* openPage(localized(accountSuffix));
-              yield* waitForInteractiveSnapshot({
-                description: "past reservations group with a cancelled card",
-                matches: (snapshot) =>
+              yield* laneBrowser.waitForSnapshot(
+                "past reservations group with a cancelled card",
+                (snapshot) =>
                   snapshot.includes(pastReservationsTitle) &&
                   snapshot.includes(cancelledStatus),
-                run,
-                session,
-                timeoutMs: datasourceTimeout,
-              });
+                datasourceTimeout
+              );
             }),
             accountPageLoadTimeout
           )
@@ -1513,32 +1297,8 @@ export const makeWorkspaceE2EAccountCases = ({
           step(
             "request-reauthentication-at-stale-session-gate",
             Effect.gen(function* () {
-              yield* clickBrowserElement(run, session, deleteTriggerSelector, {
-                timeoutMs: browserTimeout,
-              });
-              yield* waitForBrowserCondition(
-                run,
-                session,
-                "deletion confirmation dialog",
-                `(() => document.querySelector(${JSON.stringify(deleteConfirmSelector)}) !== null)()`,
-                { timeoutMs: browserTimeout }
-              );
-              yield* clickBrowserElement(
-                run,
-                session,
-                deleteConfirmCheckboxSelector,
-                { timeoutMs: browserTimeout }
-              );
-              yield* clickBrowserElement(run, session, deleteConfirmSelector, {
-                timeoutMs: browserTimeout,
-              });
-              yield* waitForBrowserCondition(
-                run,
-                session,
-                "reauthentication dialog",
-                `(() => document.querySelector(${JSON.stringify(deleteReauthSendSelector)}) !== null)()`,
-                { timeoutMs: browserTimeout }
-              );
+              yield* laneBrowser.confirmAccountDeletion;
+              yield* laneBrowser.waitForReauthenticationDialog;
             })
           )
         );
@@ -1555,12 +1315,7 @@ export const makeWorkspaceE2EAccountCases = ({
             step(
               "send-reauthentication-link",
               Effect.gen(function* () {
-                yield* clickBrowserElement(
-                  run,
-                  session,
-                  deleteReauthSendSelector,
-                  { timeoutMs: browserTimeout }
-                );
+                yield* laneBrowser.sendReauthenticationLink;
                 // With sign-in codes on, the dialog opens its code step
                 // instead. The emailed link still signs in, and the session
                 // lifecycle case consumes it.
@@ -1693,25 +1448,7 @@ export const makeWorkspaceE2EAccountCases = ({
           step(
             "complete-deletion-on-retry",
             Effect.gen(function* () {
-              yield* clickBrowserElement(run, session, deleteTriggerSelector, {
-                timeoutMs: browserTimeout,
-              });
-              yield* waitForBrowserCondition(
-                run,
-                session,
-                "deletion confirmation dialog",
-                `(() => document.querySelector(${JSON.stringify(deleteConfirmSelector)}) !== null)()`,
-                { timeoutMs: browserTimeout }
-              );
-              yield* clickBrowserElement(
-                run,
-                session,
-                deleteConfirmCheckboxSelector,
-                { timeoutMs: browserTimeout }
-              );
-              yield* clickBrowserElement(run, session, deleteConfirmSelector, {
-                timeoutMs: browserTimeout,
-              });
+              yield* laneBrowser.confirmAccountDeletion;
               yield* waitText("deleted page", deletedTitle, providerTransition);
             }),
             providerTransition
@@ -1873,7 +1610,7 @@ export const makeWorkspaceE2EAccountCases = ({
                     "cowork selection kept after the sign-in"
                   );
                   assert(
-                    yield* readSessionMatches(session, recipient),
+                    yield* laneBrowser.readSessionMatches(recipient),
                     "the selection is not signed in as the reactivated recipient"
                   );
                   const newUserId = yield* requireAuthUserId(recipient);
@@ -2042,16 +1779,13 @@ export const makeWorkspaceE2EAccountCases = ({
             "assert-retained-reservation-history",
             Effect.gen(function* () {
               yield* openPage(localized(accountSuffix));
-              yield* waitForInteractiveSnapshot({
-                description:
-                  "retained past reservations group with a cancelled card",
-                matches: (snapshot) =>
+              yield* laneBrowser.waitForSnapshot(
+                "retained past reservations group with a cancelled card",
+                (snapshot) =>
                   snapshot.includes(pastReservationsTitle) &&
                   snapshot.includes(cancelledStatus),
-                run,
-                session,
-                timeoutMs: datasourceTimeout,
-              });
+                datasourceTimeout
+              );
             }),
             accountPageLoadTimeout
           )
@@ -2202,8 +1936,6 @@ export const makeWorkspaceE2EAccountCases = ({
     ),
     makeCase("account-locale-preference", ({ runStep }) =>
       Effect.gen(function* () {
-        const languageTriggerSelector = '[data-slot="select-trigger"]';
-        const languageOptionCsSelector = '[role="option"]:has-text("Čeština")';
         const czechProfileUrl = new URL(
           getAccountSectionPath("cs-CZ", "profile"),
           config.baseUrl
@@ -2214,85 +1946,23 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         const czechFaqTitle = m.faqPageTitle({}, { locale: "cs-CZ" });
 
-        /**
-         * Waits until the profile's language control is labelled with the
-         * given text. It reads the label through the control's `labels`
-         * and compares `textContent`, so CSS text-transform on the label
-         * (it renders uppercase) cannot hide the match the way rendered
-         * page text would.
-         */
-        const waitLanguageControlLabel = (description: string, label: string) =>
-          waitForBrowserCondition(
-            run,
-            session,
-            `${description} language control label`,
-            `(() => {
-                const expected = ${JSON.stringify(label)};
-                return Array.from(
-                  document.querySelectorAll(${JSON.stringify(`${accountSectionLandmarks.profile} ${languageTriggerSelector}`)})
-                ).some((control) =>
-                  Array.from(control.labels ?? []).some(
-                    (labelElement) => labelElement.textContent?.trim() === expected
-                  )
-                );
-              })()`,
-            { timeoutMs: uiTransition }
-          );
-
-        /** Waits for the page's main heading by its text content. */
-        const waitPageHeading = (description: string, heading: string) =>
-          waitForBrowserCondition(
-            run,
-            session,
-            `${description} heading`,
-            `Array.from(document.querySelectorAll("h1")).some(
-              (element) => element.textContent?.trim() === ${JSON.stringify(heading)}
-            )`,
-            { timeoutMs: uiTransition }
-          );
 
         /**
          * Waits until the selected option, read from the open listbox, is
-         * the given language. The option labels name each language in its
-         * own language, so the check reads the same on every site locale.
+         * the locale's language. The option labels name each language in
+         * its own language, so the check reads the same on every site
+         * locale.
          */
-        const requireSelectedLanguage = (
-          optionLabel: string,
-          description: string
-        ) =>
+        const requireSelectedLanguage = (locale: Locale, description: string) =>
           Effect.gen(function* () {
-            yield* clickBrowserElement(run, session, languageTriggerSelector, {
-              timeoutMs: browserTimeout,
-            });
-            yield* waitForBrowserCondition(
-              run,
-              session,
-              description,
-              `(() => {
-                  const selected = document.querySelector('[role="option"][aria-selected="true"]');
-                  return selected !== null &&
-                    selected.textContent?.includes(${JSON.stringify(optionLabel)}) === true;
-                })()`,
-              { timeoutMs: uiTransition }
-            );
+            yield* laneBrowser.openLanguageList;
+            yield* laneBrowser.waitForSelectedLanguage(description, locale);
             // An Escape can land before the listbox listens for it, and an
             // open listbox swallows the next step's header click.
             yield* pollUntil(
-              Effect.gen(function* () {
-                yield* pressBrowserKey(run, session, "Escape", {
-                  timeoutMs: browserTimeout,
-                });
-                const open = yield* evalBrowserScript(
-                  "check whether the language list is still open",
-                  run,
-                  session,
-                  `JSON.stringify(document.querySelector('[role="listbox"]') !== null)`,
-                  { logOutput: false, timeoutMs: browserTimeout }
-                ).pipe(
-                  Effect.map((command) => JSON.parse(command.stdout) as boolean)
-                );
-                return open ? undefined : true;
-              }),
+              laneBrowser.dismissLanguageList.pipe(
+                Effect.map((closed) => (closed ? true : undefined))
+              ),
               {
                 intervalMs: workspaceE2EPollIntervalMs.browser,
                 label: "language list to close",
@@ -2310,19 +1980,11 @@ export const makeWorkspaceE2EAccountCases = ({
         const openCzechProfile = (description: string) =>
           Effect.gen(function* () {
             yield* openPage(czechProfileUrl);
-            yield* waitForBrowserCondition(
-              run,
-              session,
-              `${description} panel`,
-              `(() => {
-                  const panel = document.querySelector(${JSON.stringify(accountSectionLandmarks.profile)});
-                  return panel !== null &&
-                    panel.closest("[hidden]") === null &&
-                    Object.keys(panel).some((key) => key.startsWith("__reactProps$"));
-                })()`,
-              { timeoutMs: uiTransition }
+            yield* laneBrowser.waitForProfilePanel(description);
+            yield* laneBrowser.waitForLanguageControlLabel(
+              description,
+              czechLanguageLabel
             );
-            yield* waitLanguageControlLabel(description, czechLanguageLabel);
           });
 
         // The case reuses the session the reactivation sign-in opened: the
@@ -2354,25 +2016,7 @@ export const makeWorkspaceE2EAccountCases = ({
               // The English account shows English (US), the page locale.
               // Choosing Čeština saves the preference through the shared
               // locale switch, which then moves the document to Czech.
-              yield* waitForBrowserReactHandler(
-                run,
-                session,
-                `${accountSectionLandmarks.profile} ${languageTriggerSelector}`,
-                "onPointerDown",
-                { timeoutMs: uiTransition }
-              );
-              yield* clickBrowserElement(
-                run,
-                session,
-                languageTriggerSelector,
-                { timeoutMs: browserTimeout }
-              );
-              yield* clickBrowserElement(
-                run,
-                session,
-                languageOptionCsSelector,
-                { timeoutMs: browserTimeout }
-              );
+              yield* laneBrowser.chooseLanguage("cs-CZ");
               yield* waitPathname(
                 "Czech account after choosing Čeština",
                 (pathname) => pathname.startsWith(`/cs-CZ${accountSuffix}`)
@@ -2387,7 +2031,7 @@ export const makeWorkspaceE2EAccountCases = ({
             Effect.gen(function* () {
               yield* openCzechProfile("Czech profile after the save");
               yield* requireSelectedLanguage(
-                "Čeština",
+                "cs-CZ",
                 "saved Čeština option selected"
               );
               yield* captureLanguageReview("czech-profile");
@@ -2399,35 +2043,19 @@ export const makeWorkspaceE2EAccountCases = ({
           step(
             "redirect-conflicting-locale-to-czech",
             Effect.gen(function* () {
-              yield* evalBrowserScript(
-                "overwrite the locale cookie with en-US",
-                run,
-                session,
-                `document.cookie = ${JSON.stringify(`${localeCookieName}=en-US; path=/`)}`,
-                { logOutput: false, timeoutMs: browserTimeout }
-              );
+              yield* laneBrowser.setLocaleCookie("en-US");
               yield* openPage(localized(publicPreferenceProbeSuffix));
               yield* waitPathname(
                 "saved-preference redirect to the Czech page",
                 (pathname) =>
                   pathname === `/cs-CZ${publicPreferenceProbeSuffix}`
               );
-              yield* waitPageHeading(
+              yield* laneBrowser.waitForPageHeading(
                 "Czech page after the redirect",
                 czechFaqTitle
               );
-              const cookie = yield* evalBrowserScript(
-                "read the locale cookie after the redirect",
-                run,
-                session,
-                `JSON.stringify({
-                  czech: document.cookie.split("; ").includes(${JSON.stringify(`${localeCookieName}=cs-CZ`)}),
-                })`,
-                { logOutput: false, timeoutMs: browserTimeout }
-              ).pipe(Effect.map((command) => command.stdout));
-              const parsed = JSON.parse(cookie) as { czech: boolean };
               assert(
-                parsed.czech,
+                yield* laneBrowser.hasLocaleCookie("cs-CZ"),
                 "the preference redirect did not move the locale cookie to cs-CZ"
               );
               yield* captureLanguageReview("preference-redirect");
@@ -2441,7 +2069,7 @@ export const makeWorkspaceE2EAccountCases = ({
             Effect.gen(function* () {
               yield* openCzechProfile("Czech profile after the redirect");
               yield* requireSelectedLanguage(
-                "Čeština",
+                "cs-CZ",
                 "kept Čeština option selected"
               );
             }),
@@ -2480,7 +2108,7 @@ export const makeWorkspaceE2EAccountCases = ({
             Effect.gen(function* () {
               yield* laneBrowser.selectSection("profile");
               yield* requireSelectedLanguage(
-                "English (US)",
+                "en-US",
                 "switched English (US) option selected"
               );
             }),

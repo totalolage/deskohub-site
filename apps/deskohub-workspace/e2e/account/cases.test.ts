@@ -16,9 +16,9 @@ import type { DatasourceConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
 import { formatWorkspaceE2EFailureAnnotation } from "../github-actions";
 import { E2EDatabase } from "../integrations/database.service";
-import type { BrowserCommandResult, Runner } from "../runtime";
 import { makeE2ETelemetryMock } from "../services/telemetry.mock";
 import { workspaceE2ETimeouts } from "../timeouts";
+import { accountSectionLandmarks } from "./account-sections";
 import {
   type WorkspaceE2EAccountCaseId,
   workspaceE2EAccountCaseIds,
@@ -32,9 +32,11 @@ import {
   workspaceE2EReferralOwnerRecipientLabel,
 } from "./config";
 import type { WorkspaceE2EAccountJournal } from "./journal";
-import type {
-  WorkspaceE2EAccountBrowser,
-  WorkspaceE2EAccountLaneBrowser,
+import {
+  type AccountProfileField,
+  accountProfileFieldSelectors,
+  type WorkspaceE2EAccountBrowser,
+  type WorkspaceE2EAccountLaneBrowser,
 } from "./lane-browser";
 import type { WorkspaceE2EAccountPasskeys } from "./passkeys";
 import {
@@ -1574,6 +1576,41 @@ class FakeBrowser {
     );
   }
 
+  /** The accepted step's button that starts another sign-in request. */
+  restartSignIn(buttonLabel: string) {
+    this.external.recordBrowserAction({
+      kind: "click",
+      selectorOrDestination: `button:has-text("${buttonLabel}")`,
+    });
+    if (buttonLabel === useDifferentEmailLabel) {
+      if (this.codeStep === undefined || this.codeStep.dialog) {
+        throw new Error("a different email was chosen outside the code step");
+      }
+      // The form returns with the address prefilled for editing.
+      this.storedRequest = undefined;
+      this.emailValue = this.codeStep.recipient;
+      this.codeStep = undefined;
+      this.pageText = "Sign in";
+      this.formReady = true;
+      this.nativeValidationBlocked = false;
+      return;
+    }
+    if (buttonLabel === "Send another link") {
+      if (this.codeStep !== undefined) {
+        throw new Error("the code step offers no Send another link control");
+      }
+      // The accepted card drops its request and resets the form in place;
+      // the URL keeps its query.
+      this.storedRequest = undefined;
+      this.pageText = "Sign in";
+      this.formReady = true;
+      this.emailValue = "";
+      this.nativeValidationBlocked = false;
+      return;
+    }
+    throw new Error("the synthetic browser has no such restart button");
+  }
+
   click(selector: string) {
     this.external.recordBrowserAction({
       kind: "click",
@@ -1603,32 +1640,6 @@ class FakeBrowser {
       this.pageText =
         message.kind === "reauthentication" ? deletionReauthLinkSent : response;
       this.formReady = false;
-      return;
-    }
-    if (selector.includes(useDifferentEmailLabel)) {
-      if (this.codeStep === undefined || this.codeStep.dialog) {
-        throw new Error("a different email was chosen outside the code step");
-      }
-      // The form returns with the address prefilled for editing.
-      this.storedRequest = undefined;
-      this.emailValue = this.codeStep.recipient;
-      this.codeStep = undefined;
-      this.pageText = "Sign in";
-      this.formReady = true;
-      this.nativeValidationBlocked = false;
-      return;
-    }
-    if (selector.includes("Send another link")) {
-      if (this.codeStep !== undefined) {
-        throw new Error("the code step offers no Send another link control");
-      }
-      // The accepted card drops its request and resets the form in place;
-      // the URL keeps its query.
-      this.storedRequest = undefined;
-      this.pageText = "Sign in";
-      this.formReady = true;
-      this.emailValue = "";
-      this.nativeValidationBlocked = false;
       return;
     }
     if (selector === signOutSelector) {
@@ -1748,58 +1759,52 @@ class FakeBrowser {
     }
   }
 
-  eval(input: string) {
-    if (input.includes("/api/auth/get-session")) {
-      const userId = this.external.currentAuthUserId;
-      const email =
-        this.signedIn() && userId !== undefined
-          ? this.external.usersById.get(userId)?.email
-          : undefined;
-      return JSON.stringify({
-        sessionMatches:
-          email !== undefined && input.includes(JSON.stringify(email)),
-      });
-    }
-    if (input.includes("validationMessage")) {
-      return JSON.stringify({ blocked: this.nativeValidationBlocked });
-    }
-    const cookieWrite =
-      /^document\.cookie = "PARAGLIDE_LOCALE=(cs-CZ|en-US); path=\/"$/.exec(
-        input
-      );
-    if (cookieWrite) {
-      this.localeCookie = cookieWrite[1] as FakeLocale;
-      return "";
-    }
-    if (input.includes("readOnly:")) {
-      return JSON.stringify({
-        matches: input.includes(JSON.stringify(this.external.mainRecipient)),
-        readOnly: true,
-      });
-    }
-    if (input.includes("editable:")) {
-      return JSON.stringify({
-        editable: false,
-        matches: input.includes(JSON.stringify(this.external.mainRecipient)),
-      });
-    }
-    if (input.includes("profilePreserved")) {
-      const drafts = this.external.profileDrafts;
-      const preserved = (selector: string) =>
-        drafts.has(selector) &&
-        input.includes(JSON.stringify(drafts.get(selector)));
-      return JSON.stringify({
-        billingPreserved: preserved(billingCompanyNameSelector),
-        profilePreserved: profileDraftSelectors.every(preserved),
-      });
-    }
-    if (input.includes(`document.querySelector('[role="listbox"]')`)) {
-      return JSON.stringify(this.languageListboxOpen);
-    }
-    if (input.includes("document.cookie.split")) {
-      return JSON.stringify({ czech: this.localeCookie === "cs-CZ" });
-    }
-    throw new Error("the synthetic browser evaluated an unexpected script");
+  /** Whether the page's Better Auth session is the email's. */
+  sessionMatches(email: string) {
+    const userId = this.external.currentAuthUserId;
+    return (
+      this.signedIn() &&
+      userId !== undefined &&
+      this.external.usersById.get(userId)?.email === email
+    );
+  }
+
+  signInEmailBlocked() {
+    return this.nativeValidationBlocked;
+  }
+
+  setLocaleCookie(locale: FakeLocale) {
+    this.localeCookie = locale;
+  }
+
+  hasLocaleCookie(locale: FakeLocale) {
+    return this.localeCookie === locale;
+  }
+
+  /** The completion form's login email input is read-only. */
+  completionLoginEmail(email: string) {
+    return { matches: email === this.external.mainRecipient, readOnly: true };
+  }
+
+  /** The linked profile shows the login email as text only. */
+  linkedLoginEmail(email: string) {
+    return { editable: false, matches: email === this.external.mainRecipient };
+  }
+
+  profileDrafts(drafts: Readonly<Record<AccountProfileField, string>>) {
+    const preserved = (field: AccountProfileField) =>
+      this.external.profileDrafts.get(accountProfileFieldSelectors[field]) ===
+      drafts[field];
+    return {
+      billingPreserved: preserved("billingCompanyName"),
+      profilePreserved: (["firstName", "lastName", "phone"] as const).every(
+        preserved
+      ),
+    };
+  }
+
+  isLanguageListOpen() {
+    return this.languageListboxOpen;
   }
 
   waitForFormSubmitHandler(
@@ -1835,112 +1840,81 @@ class FakeBrowser {
     }
   }
 
-  waitForCondition(description: string, condition: string) {
-    if (description.endsWith(" language control label")) {
-      if (
-        this.languageControlLabel === null ||
-        !condition.includes(JSON.stringify(this.languageControlLabel)) ||
-        !condition.includes(".labels")
-      ) {
-        throw new Error("the language control does not carry that label");
-      }
-      return;
+  waitForLanguageControlLabel(label: string) {
+    if (this.languageControlLabel !== label) {
+      throw new Error("the language control does not carry that label");
     }
-    if (description.endsWith(" heading")) {
-      if (
-        this.heading === null ||
-        !condition.includes(JSON.stringify(this.heading))
-      ) {
-        throw new Error("the page heading does not match");
-      }
-      return;
+  }
+
+  waitForHeading(heading: string) {
+    if (this.heading !== heading) {
+      throw new Error("the page heading does not match");
     }
-    if (description === "business billing kind") {
-      if (this.external.billingKind !== "business") {
-        throw new Error("the billing kind is not business");
-      }
-      return;
+  }
+
+  waitForBusinessBilling() {
+    if (this.external.billingKind !== "business") {
+      throw new Error("the billing kind is not business");
     }
-    if (
-      description ===
-      "linked account edit form with its Save profile submit control"
-    ) {
-      const userId = this.external.currentAuthUserId;
-      if (!userId || !this.external.linksByUserId.has(userId)) {
-        throw new Error("the linked edit form is not shown");
-      }
-      return;
+  }
+
+  waitForLinkedProfileForm() {
+    const userId = this.external.currentAuthUserId;
+    if (!userId || !this.external.linksByUserId.has(userId)) {
+      throw new Error("the linked edit form is not shown");
     }
-    if (description === "emptied code input after a wrong code") {
-      if (
-        this.codeStep === undefined ||
-        !this.codeInputEmpty ||
-        !condition.includes(JSON.stringify(signInCodeSelector))
-      ) {
-        throw new Error("the code input was not emptied for another try");
-      }
-      return;
+  }
+
+  waitForEmptiedSignInCode() {
+    if (this.codeStep === undefined || !this.codeInputEmpty) {
+      throw new Error("the code input was not emptied for another try");
     }
-    if (description === "deletion confirmation dialog") {
-      if (!this.external.deletionDialog) {
-        throw new Error("the deletion confirmation dialog is missing");
-      }
-      return;
+  }
+
+  waitForDeletionDialog() {
+    if (!this.external.deletionDialog) {
+      throw new Error("the deletion confirmation dialog is missing");
     }
-    if (condition.includes("#profile-referral-code")) {
-      const expected = /input\.value === ("(?:[^"\\]|\\.)*")/.exec(
-        condition
-      )?.[1];
-      if (
-        expected === undefined ||
-        this.referralFieldValue !== JSON.parse(expected)
-      ) {
-        throw new Error("the completion referral field holds another value");
-      }
-      return;
+  }
+
+  waitForReauthenticationDialog() {
+    if (!this.external.reauthenticationDialog) {
+      throw new Error("the reauthentication dialog is missing");
     }
-    if (description === "reauthentication dialog") {
-      if (!this.external.reauthenticationDialog) {
-        throw new Error("the reauthentication dialog is missing");
-      }
-      return;
+  }
+
+  waitForReferralFieldValue(value: string) {
+    if (this.referralFieldValue !== value) {
+      throw new Error("the completion referral field holds another value");
     }
-    if (description.endsWith("option selected")) {
-      if (!this.languageListboxOpen) {
-        throw new Error("the selected language check ran without a listbox");
-      }
-      const expected = description.includes("Čeština") ? "cs-CZ" : "en-US";
-      if (this.languageValue !== expected) {
-        throw new Error(`the selected language option is not ${expected}`);
-      }
-      return;
+  }
+
+  waitForSelectedLanguage(locale: FakeLocale) {
+    if (!this.languageListboxOpen) {
+      throw new Error("the selected language check ran without a listbox");
     }
-    if (
-      description.endsWith(" panel") &&
-      condition.includes("[data-screen='profile-screen']") &&
-      condition.includes("__reactProps$")
-    ) {
-      if (this.selectedSection !== "profile") {
-        throw new Error("the deep-linked profile panel is not shown");
-      }
-      return;
+    if (this.languageValue !== locale) {
+      throw new Error(`the selected language option is not ${locale}`);
     }
-    if (condition.includes("account-reservations-past-title")) {
-      const userId = this.external.currentAuthUserId;
-      const customerId = userId
-        ? this.external.linksByUserId.get(userId)
-        : undefined;
-      if (!this.external.historyReady || !userId || !customerId) {
-        throw new Error("the synthetic reservation history is not available");
-      }
-      if (this.pageText === supportTitle) {
-        throw new Error("ambiguous account exposed reservation history");
-      }
-      return;
+  }
+
+  waitForProfilePanel() {
+    if (this.selectedSection !== "profile") {
+      throw new Error("the deep-linked profile panel is not shown");
     }
-    throw new Error(
-      `the synthetic browser waited for an unknown condition: ${description}`
-    );
+  }
+
+  waitForReservationsPanel() {
+    const userId = this.external.currentAuthUserId;
+    const customerId = userId
+      ? this.external.linksByUserId.get(userId)
+      : undefined;
+    if (!this.external.historyReady || !userId || !customerId) {
+      throw new Error("the synthetic reservation history is not available");
+    }
+    if (this.pageText === supportTitle) {
+      throw new Error("ambiguous account exposed reservation history");
+    }
   }
 
   /**
@@ -2049,77 +2023,6 @@ const fakeAccountBrowser = (
   waitForUrl: (_description, matches) =>
     Effect.sync(() => browser().waitForUrl(matches)),
 });
-
-const realBrowserModule = await import("../browser");
-
-const browserResult = (stdout = ""): BrowserCommandResult => ({
-  exitCode: 0,
-  stderr: "",
-  stdout,
-});
-
-/*
- * These are the only browser, delivery, auth-row, and provider-fixture
- * boundaries replaced in this regression. The case factory and its semantic
- * steps remain the implementation under test.
- */
-mock.module("../browser", () => ({
-  ...realBrowserModule,
-  clickBrowserElement: (
-    _run: Runner,
-    browserSession: string,
-    selector: string
-  ) => Effect.sync(() => requireBrowser(browserSession).click(selector)),
-  evalBrowserScript: (
-    _operation: string,
-    _run: Runner,
-    browserSession: string,
-    input: string
-  ) =>
-    Effect.sync(() =>
-      browserResult(requireBrowser(browserSession).eval(input))
-    ),
-  fillBrowserField: (
-    _run: Runner,
-    browserSession: string,
-    selector: string,
-    value: string
-  ) => Effect.sync(() => requireBrowser(browserSession).fill(selector, value)),
-  focusBrowserElement: (
-    _run: Runner,
-    browserSession: string,
-    selector: string
-  ) => Effect.sync(() => requireBrowser(browserSession).focus(selector)),
-  normalizeBrowserText: (text: string) => text.replaceAll(/\s+/g, " ").trim(),
-  pressBrowserKey: (_run: Runner, browserSession: string, key: string) =>
-    Effect.sync(() => requireBrowser(browserSession).press(key)),
-  waitForBrowserCondition: (
-    _run: Runner,
-    browserSession: string,
-    description: string,
-    condition: string
-  ) =>
-    Effect.sync(() =>
-      requireBrowser(browserSession).waitForCondition(description, condition)
-    ),
-  waitForBrowserReactHandler: (
-    _run: Runner,
-    browserSession: string,
-    selector: string,
-    handler: string
-  ) =>
-    Effect.sync(() =>
-      requireBrowser(browserSession).waitForHandler(selector, handler)
-    ),
-  waitForInteractiveSnapshot: ({
-    matches,
-    session: browserSession,
-  }: {
-    readonly matches: (snapshot: string) => boolean;
-    readonly session: string;
-  }) =>
-    Effect.sync(() => requireBrowser(browserSession).waitForSnapshot(matches)),
-}));
 
 mock.module("./auth-rows", () => ({
   assertNoAuthRows: (userId: string) =>
@@ -2261,9 +2164,6 @@ const makeScenario = (
       return realBudget.run(operation, effect);
     },
   };
-  const run: Runner = async () => {
-    throw new Error("the account case bypassed the mocked browser boundary");
-  };
   const previewLogs: WorkspaceE2EPreviewLogs = {
     listSyntheticLogEntryIds: (request) =>
       Effect.sync(() => external.listMessageIds(request.recipient)),
@@ -2314,6 +2214,80 @@ const makeScenario = (
           throw new Error("the lane browser remembers another referral code");
         }
       }),
+    chooseBusinessBilling: Effect.sync(() => {
+      browser.focus(billingKindSelector);
+      browser.press("End");
+      browser.press("Tab");
+      browser.waitForBusinessBilling();
+    }),
+    chooseLanguage: (locale) =>
+      Effect.sync(() => {
+        browser.waitForHandler(
+          `${accountSectionLandmarks.profile} ${languageTriggerSelector}`,
+          "onPointerDown"
+        );
+        browser.click(languageTriggerSelector);
+        browser.click(
+          locale === "cs-CZ" ? languageOptionCsSelector : languageOptionEnSelector
+        );
+      }),
+    confirmAccountDeletion: Effect.sync(() => {
+      browser.click(deleteTriggerSelector);
+      browser.waitForDeletionDialog();
+      browser.click(deleteConfirmCheckboxSelector);
+      browser.click(deleteConfirmSelector);
+    }),
+    dismissLanguageList: Effect.sync(() => {
+      browser.press("Escape");
+      return !browser.isLanguageListOpen();
+    }),
+    enterSignInCode: (code) =>
+      Effect.sync(() => browser.fill(signInCodeSelector, code)),
+    fillProfileField: (field, value) =>
+      Effect.sync(() =>
+        browser.fill(accountProfileFieldSelectors[field], value)
+      ),
+    hasLocaleCookie: (locale) =>
+      Effect.sync(() => browser.hasLocaleCookie(locale)),
+    openLanguageList: Effect.sync(() => browser.click(languageTriggerSelector)),
+    readCompletionLoginEmail: (email) =>
+      Effect.sync(() => browser.completionLoginEmail(email)),
+    readLinkedLoginEmail: (email) =>
+      Effect.sync(() => browser.linkedLoginEmail(email)),
+    readProfileDrafts: (drafts) =>
+      Effect.sync(() => browser.profileDrafts(drafts)),
+    readSessionMatches: (email) =>
+      Effect.sync(() => browser.sessionMatches(email)),
+    readSignInEmailBlocked: Effect.sync(() => browser.signInEmailBlocked()),
+    restartSignIn: (buttonLabel) =>
+      Effect.sync(() => browser.restartSignIn(buttonLabel)),
+    saveProfile: Effect.sync(() => browser.click(profileSubmitSelector)),
+    sendReauthenticationLink: Effect.sync(() =>
+      browser.click(deleteReauthSendSelector)
+    ),
+    setLocaleCookie: (locale) =>
+      Effect.sync(() => browser.setLocaleCookie(locale)),
+    waitForEmptiedSignInCode: Effect.sync(() =>
+      browser.waitForEmptiedSignInCode()
+    ),
+    waitForLanguageControlLabel: (_description, label) =>
+      Effect.sync(() => browser.waitForLanguageControlLabel(label)),
+    waitForLinkedProfileForm: () =>
+      Effect.sync(() => browser.waitForLinkedProfileForm()),
+    waitForPageHeading: (_description, heading) =>
+      Effect.sync(() => browser.waitForHeading(heading)),
+    waitForProfilePanel: () => Effect.sync(() => browser.waitForProfilePanel()),
+    waitForReauthenticationDialog: Effect.sync(() =>
+      browser.waitForReauthenticationDialog()
+    ),
+    waitForReferralFieldValue: (_description, code) =>
+      Effect.sync(() => browser.waitForReferralFieldValue(code)),
+    waitForReservationsPanel: () =>
+      Effect.sync(() => browser.waitForReservationsPanel()),
+    waitForSelectedLanguage: (_description, locale) =>
+      Effect.sync(() => browser.waitForSelectedLanguage(locale)),
+    waitForSnapshot: (_description, matches) =>
+      Effect.sync(() => browser.waitForSnapshot(matches)),
   };
   const passkeys: WorkspaceE2EAccountPasskeys = {
     confirmDeletionWithPasskey: Effect.sync(() =>
@@ -2353,7 +2327,6 @@ const makeScenario = (
     previewLogs,
     rateBudget,
     retries,
-    run,
   };
 };
 
@@ -2457,8 +2430,6 @@ const buildCase = async (
       });
     },
     rateBudget: scenario.rateBudget,
-    run: scenario.run,
-    session,
     signInReturns: makeWorkspaceE2ESignInReturns(fixedNowMs),
   });
   const selected = cases.find(({ id }) => id === caseId);
