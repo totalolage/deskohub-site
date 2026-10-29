@@ -133,6 +133,35 @@ describe.skipIf(!testDatabase)("campaign editor content", () => {
     });
   });
 
+  test("keeps a chosen image width through save and editor readback", async () => {
+    const { id } = await createDraft();
+    const bodyDocument = {
+      formatVersion: 1 as const,
+      doc: {
+        type: "doc",
+        content: [
+          {
+            type: "image",
+            attrs: {
+              src: "https://res.cloudinary.com/cloud/image/upload/v1/email-campaigns/preview/synthetic.png",
+              width: 180,
+              height: null,
+              align: "center",
+              alt: "Synthetic QR",
+            },
+          },
+        ],
+      },
+    };
+    await invoke("updateCampaign", {
+      campaignId: id,
+      content: { "en-US": { bodyDocument } },
+    });
+    const saved = await invoke("getCampaignEditorContent", { campaignId: id });
+    expect(saved.content["en-US"]?.bodyDocument).toEqual(bodyDocument);
+    expect(saved.content["cs-CZ"]).toEqual(czech);
+  });
+
   test("still takes a Markdown body next to document ones", async () => {
     const { id } = await createDraft();
     await invoke("updateCampaign", {

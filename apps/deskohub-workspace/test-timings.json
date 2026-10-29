@@ -620,6 +620,7 @@
     "features/email-campaigns/admin/composer/campaign-composer.browser-acceptance.test.tsx": 4236,
     "features/email-campaigns/admin/composer/campaign-composer.test.tsx": 1935,
     "features/email-campaigns/admin/editor/actions.test.ts": 965,
+    "features/email-campaigns/admin/editor/campaign-body-editor.browser.test.tsx": 5818,
     "features/email-campaigns/admin/editor/campaign-body-editor.server-action.test.tsx": 485,
     "features/email-campaigns/admin/editor/campaign-body-editor.test.tsx": 1191,
     "features/email-campaigns/admin/editor/campaign-image-upload.test.ts": 153,
