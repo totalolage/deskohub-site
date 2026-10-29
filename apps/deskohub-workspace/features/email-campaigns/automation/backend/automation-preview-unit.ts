@@ -56,6 +56,11 @@ import {
 } from "../automation-identifiers";
 import type { AutomationTriggerKind } from "../automation-states";
 import { automationTickAtOrAfter } from "../automation-ticks";
+import {
+  readsTriggeringVisit,
+  triggeringVisitVerdict,
+  withdrawnByCancellation,
+} from "../automation-trigger-verification";
 import { automationTriggerKind } from "../automation-triggers";
 import type { AutomationConditionAudienceMissing } from "../errors";
 import { AutomationConditionEvaluation } from "./automation-condition-evaluation.service";
@@ -477,7 +482,7 @@ export const makePreviewUnitHandler = Effect.gen(function* () {
         )
       ),
       Effect.bind("visits", () =>
-        rechecksVisit(kind) && reservationIds.length > 0
+        readsTriggeringVisit(kind) && reservationIds.length > 0
           ? withVisits((visits) => visits.ofReservations(reservationIds)).pipe(
               Effect.mapError(AutomationUnitFetchFailure.fromReservationVisits)
             )
@@ -854,19 +859,12 @@ export const conditionFilterOf = (
       });
 };
 
-/** Whether intake re-checks the triggering visit live for this kind (§5.6). */
-export const rechecksVisit = (kind: AutomationTriggerKind) =>
-  kind === "reservation-booked" ||
-  kind === "reservation-started" ||
-  kind === "reservation-finished";
-
 /**
- * Intake's live re-check of the triggering visit (§5.6): a visit Dotypos
- * no longer has or cancelled withdraws the event, and a started or
- * finished event whose live time is later than it is superseded and
- * hidden, because the sweep records the moved visit as a later event. A
- * reservation Workspace cancelled is left to the pre-submit check, which
- * knows when. None when the event stands.
+ * Intake's live re-check of the triggering visit (§5.6), as of the event
+ * and at stored precision: a withdrawn trigger withdraws the event, and a
+ * moved one is superseded and hidden, because the sweep records the moved
+ * visit as a later event. A reservation Workspace cancelled is left to the
+ * pre-submit check, which knows when. None when the event stands.
  */
 const recheck = (input: {
   readonly kind: AutomationTriggerKind;
@@ -878,38 +876,34 @@ const recheck = (input: {
   readonly cancellations: ReadonlyMap<WorkspaceReservationId, Temporal.Instant>;
 }): Option.Option<ReplayedEvent> => {
   const reservationId = input.event.workspaceReservationId;
-  if (
-    !rechecksVisit(input.kind) ||
-    reservationId === null ||
-    input.cancellations.has(reservationId)
-  ) {
+  if (reservationId === null || input.cancellations.has(reservationId)) {
     return Option.none();
   }
-  const visit = Option.flatten(
-    Option.fromUndefinedOr(input.visits.get(reservationId))
-  ).pipe(Option.filter(({ status }) => status === "active"));
-  if (Option.isNone(visit)) {
-    return Option.some({
-      _tag: "Withdrawn",
-      stepId: Option.none(),
-      at: Option.none(),
-    });
-  }
-  const liveAt = Match.value(input.kind).pipe(
-    Match.when("reservation-started", () => Option.some(visit.value.startsAt)),
-    Match.when("reservation-finished", () => Option.some(visit.value.endsAt)),
-    Match.orElse(() => Option.none<Temporal.Instant>())
+  const verdict = triggeringVisitVerdict({
+    kind: input.kind,
+    visit: Option.flatten(
+      Option.fromUndefinedOr(input.visits.get(reservationId))
+    ).pipe(
+      Option.map((visit) => ({
+        ...visit,
+        startsAt: toStoredInstant(visit.startsAt),
+        endsAt: toStoredInstant(visit.endsAt),
+      }))
+    ),
+    asOf: toStoredInstant(input.event.occurredAt),
+  });
+  return Match.value(verdict).pipe(
+    Match.when("current", () => Option.none<ReplayedEvent>()),
+    Match.when("withdrawn", () =>
+      Option.some<ReplayedEvent>({
+        _tag: "Withdrawn",
+        stepId: Option.none(),
+        at: Option.none(),
+      })
+    ),
+    Match.when("moved", () => Option.some<ReplayedEvent>({ _tag: "Hidden" })),
+    Match.exhaustive
   );
-  return Option.exists(
-    liveAt,
-    (at) =>
-      Temporal.Instant.compare(
-        toStoredInstant(at),
-        toStoredInstant(input.event.occurredAt)
-      ) > 0
-  )
-    ? Option.some({ _tag: "Hidden" })
-    : Option.none();
 };
 
 /**
@@ -926,7 +920,7 @@ const preSubmit = (input: {
 }): ReplayedEvent => {
   const cancelledAt = Option.fromNullishOr(
     input.event.workspaceReservationId === null ||
-      input.kind === "reservation-cancelled"
+      !withdrawnByCancellation(input.kind)
       ? undefined
       : input.cancellations.get(input.event.workspaceReservationId)
   ).pipe(Option.filter((at) => Temporal.Instant.compare(at, input.end.at) < 0));

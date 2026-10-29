@@ -43,6 +43,7 @@ import { campaignLocales } from "../../recipient-locale";
 import type { AutomationDraftHash } from "../automation-draft-hash";
 import { automationPageCursor } from "../automation-page-cursor";
 import { automationTickAtOrAfter } from "../automation-ticks";
+import { readsTriggeringVisit } from "../automation-trigger-verification";
 import {
   automationTriggerKind,
   automationTriggerSummary,
@@ -61,7 +62,6 @@ import { lockAutomationForLifecycle } from "./automation-lifecycle-lock";
 import {
   conditionFilterOf,
   plannedPreviewUnit,
-  rechecksVisit,
 } from "./automation-preview-unit";
 import {
   type AutomationPreviewRow,
@@ -372,7 +372,7 @@ export class AutomationDryRun extends Context.Service<
                     ...chunk,
                     requestCost:
                       chunk.requestCost +
-                      (rechecksVisit(kind)
+                      (readsTriggeringVisit(kind)
                         ? recheckCost(events, chunk.customers)
                         : 0),
                   })),

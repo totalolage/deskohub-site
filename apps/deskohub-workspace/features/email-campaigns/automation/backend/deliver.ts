@@ -6,7 +6,7 @@ import {
   readInIdFilterBatches,
 } from "@deskohub/dotypos";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
-import { Array as Arr, Effect, Option, Schema } from "effect";
+import { Array as Arr, Effect, Match, Option, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   emailCampaignSends,
@@ -41,9 +41,9 @@ import {
 import type { AutomationTriggerKind } from "../automation-states";
 import { automationTickAtOrBefore } from "../automation-ticks";
 import {
-  type AutomationTriggerVerdict,
-  stillHolds,
-  verifiesTriggeringVisit,
+  readsTriggeringVisit,
+  triggeringVisitVerdict,
+  withdrawnByCancellation,
 } from "../automation-trigger-verification";
 import { lockAutomationForEngine } from "./automation-lifecycle-lock";
 import { appendAutomationRunProgress } from "./automation-run-timeline";
@@ -182,7 +182,7 @@ export const makeDeliverHandler = Effect.gen(function* () {
       visits.ofReservations(
         open.flatMap((run) =>
           run.triggerReservationId !== null &&
-          verifiesTriggeringVisit(run.triggerKind)
+          readsTriggeringVisit(run.triggerKind)
             ? [run.triggerReservationId]
             : []
         )
@@ -530,27 +530,39 @@ export const makeDeliverHandler = Effect.gen(function* () {
   return registerAutomationUnitHandler(handler);
 });
 
-/** What the pre-submit check makes of one run. */
+/**
+ * What the pre-submit check (§5.9) makes of one run at the send instant:
+ * `send`, `withdraw` because its reservation was cancelled or is gone
+ * (D28), or `defer` because Dotypos moved its visit so the trigger hasn't
+ * happened yet.
+ */
 const verdictOf = (input: {
   readonly run: DeliverRun;
   readonly facts: DeliverFacts;
   readonly cancelled: ReadonlySet<WorkspaceReservationId>;
   readonly at: Temporal.Instant;
-}): AutomationTriggerVerdict => {
+}): "send" | "withdraw" | "defer" => {
   const { run } = input;
   const reservation = run.triggerReservationId;
   if (reservation === null) return "send";
   if (
-    verifiesTriggeringVisit(run.triggerKind) &&
+    withdrawnByCancellation(run.triggerKind) &&
     input.cancelled.has(reservation)
   ) {
     return "withdraw";
   }
-  return stillHolds({
-    kind: run.triggerKind,
-    visit: Option.flatten(
-      Option.fromNullishOr(input.facts.visits.get(reservation))
-    ),
-    at: input.at,
-  });
+  return Match.value(
+    triggeringVisitVerdict({
+      kind: run.triggerKind,
+      visit: Option.flatten(
+        Option.fromNullishOr(input.facts.visits.get(reservation))
+      ),
+      asOf: input.at,
+    })
+  ).pipe(
+    Match.when("current", () => "send" as const),
+    Match.when("withdrawn", () => "withdraw" as const),
+    Match.when("moved", () => "defer" as const),
+    Match.exhaustive
+  );
 };

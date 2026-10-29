@@ -267,6 +267,86 @@ describe.skipIf(!database)("deliver units on disposable Postgres", () => {
     expect(send.status).toBe("active");
   });
 
+  test("the pre-submit check reads each trigger kind's own moment and never withdraws a cancellation trigger", async () => {
+    const startedNow = customerId("kind-started-now");
+    const startedLater = customerId("kind-started-later");
+    const finishedGone = customerId("kind-finished-gone");
+    const cancellation = customerId("kind-cancellation");
+    const visits = await seedVisits("kind", [
+      {
+        // Started at the send instant itself.
+        label: "started-now",
+        customer: startedNow,
+        startsAt: startedAt,
+        endsAt: startedAt.add({ hours: 2 }),
+      },
+      {
+        // Moved in Dotypos to start after now.
+        label: "started-later",
+        customer: startedLater,
+        startsAt: startedAt.add({ hours: 1 }),
+        endsAt: startedAt.add({ hours: 3 }),
+      },
+      {
+        label: "finished-gone",
+        customer: finishedGone,
+        startsAt: startedAt.subtract({ hours: 3 }),
+        endsAt: startedAt.subtract({ hours: 1 }),
+      },
+      {
+        label: "cancellation",
+        customer: cancellation,
+        startsAt: startedAt.add({ hours: 24 }),
+        endsAt: startedAt.add({ hours: 26 }),
+        dotyposStatus: "CANCELLED",
+        cancelledAt: startedAt.subtract({ minutes: 5 }),
+      },
+    ]);
+    const engine = await setUp({
+      customers: [startedNow, startedLater, finishedGone, cancellation].map(
+        (id) => deliverProfile(id)
+      ),
+    });
+    // Dotypos no longer returns the finished visit.
+    engine.dotypos.setReservations(
+      visits.dotypos.filter((_, index) => index !== 2)
+    );
+    const seeded = await seedAutomation({ text: "Verze druhů spouštěčů" });
+    await seedRuns(seeded, [
+      {
+        customer: startedNow,
+        triggerKind: "reservation-started",
+        reservationId: visits.ids.get("started-now"),
+      },
+      {
+        customer: startedLater,
+        triggerKind: "reservation-started",
+        reservationId: visits.ids.get("started-later"),
+      },
+      {
+        customer: finishedGone,
+        triggerKind: "reservation-finished",
+        reservationId: visits.ids.get("finished-gone"),
+      },
+      {
+        customer: cancellation,
+        triggerKind: "reservation-cancelled",
+        reservationId: visits.ids.get("cancellation"),
+      },
+    ]);
+
+    await engine.tick(startedAt);
+
+    const runs = await runsOf(seeded.campaignId);
+    expect(outcomesOf(runs)).toEqual({
+      [startedNow]: ["ended", "sent", null],
+      [startedLater]: ["active", null, null],
+      [finishedGone]: ["ended", "withdrawn", null],
+      [cancellation]: ["ended", "sent", null],
+    });
+    expect(runs.get(startedLater)!.events).toEqual(["deferred"]);
+  });
+
   test("a refused first request ends the runs failed / delivery-refused", async () => {
     const id = customerId("refused");
     const engine = await setUp({ customers: [deliverProfile(id)] });

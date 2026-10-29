@@ -3,7 +3,7 @@ import "@/shared/polyfills/temporal";
 import type { DotyposCustomerId, DotyposService } from "@deskohub/dotypos";
 import type { AutomationFlowType as AutomationFlow } from "@deskohub/workspace-admin-api";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
-import { Effect, Option, Schema } from "effect";
+import { Effect, Match, Option, Schema } from "effect";
 import { WorkspaceDatabase, WorkspaceTransaction } from "@/db/database.service";
 import { customerEvents } from "@/db/schema";
 import {
@@ -24,6 +24,11 @@ import {
 import type { AudienceDotyposReads } from "../../backend/audience-facts.service";
 import { CampaignRecipientService } from "../../backend/campaign-recipient.service";
 import type { AutomationWorkUnitId } from "../automation-identifiers";
+import {
+  readsTriggeringVisit,
+  triggeringVisitVerdict,
+  withdrawnByCancellation,
+} from "../automation-trigger-verification";
 import { versionInForce } from "../automation-versions";
 import { AutomationEvaluationFacts } from "./automation-evaluation-facts.service";
 import {
@@ -78,20 +83,13 @@ export const plannedIntakeUnit = (
   requestCost: unit.requestCost,
 });
 
-/** Kinds whose visit intake re-checks live before entering (D35). */
-const revisitedKinds = new Set([
-  "reservation-booked",
-  "reservation-started",
-  "reservation-finished",
-]);
-
 /** The triggering reservations whose visits intake re-checks, each once. */
 export const revisitedReservations = (
   events: readonly IntakeEvent[]
 ): readonly WorkspaceReservationId[] => [
   ...new Set(
     events.flatMap(({ kind, workspaceReservationId }) =>
-      revisitedKinds.has(kind) && workspaceReservationId !== null
+      readsTriggeringVisit(kind) && workspaceReservationId !== null
         ? [workspaceReservationId]
         : []
     )
@@ -111,37 +109,23 @@ type IntakeDecision = IntakeMatch & {
 };
 
 /**
- * The live re-check (§5.6, D35). A visit Dotypos no longer returns, or
- * returns cancelled, withdraws the event (D28). A started or finished
- * visit Dotypos moved past `now` supersedes it: the sweep records a new
- * event at the new time. Booked needs only an active visit.
+ * The live re-check (§5.6, D35) at `now`. A withdrawn trigger withdraws
+ * the event (D28). A moved one supersedes it: the sweep records a new
+ * event at the visit's new time.
  */
 const recheckVisit = (
   event: IntakeEvent,
   visit: Option.Option<ReservationVisit>,
   now: Temporal.Instant
-): "withdrawn" | "superseded" | "current" => {
-  if (!revisitedKinds.has(event.kind)) return "current";
-  if (Option.isNone(visit) || visit.value.status === "cancelled") {
-    return "withdrawn";
-  }
-  const reached = triggeringInstant(event, visit.value);
-  return reached !== undefined && Temporal.Instant.compare(reached, now) > 0
-    ? "superseded"
-    : "current";
-};
-
-/** When a started or finished event's visit reaches its trigger. */
-const triggeringInstant = (event: IntakeEvent, visit: ReservationVisit) => {
-  switch (event.kind) {
-    case "reservation-started":
-      return visit.startsAt;
-    case "reservation-finished":
-      return visit.endsAt;
-    default:
-      return undefined;
-  }
-};
+): "withdrawn" | "superseded" | "current" =>
+  Match.value(
+    triggeringVisitVerdict({ kind: event.kind, visit, asOf: now })
+  ).pipe(
+    Match.when("current", () => "current" as const),
+    Match.when("withdrawn", () => "withdrawn" as const),
+    Match.when("moved", () => "superseded" as const),
+    Match.exhaustive
+  );
 
 const ownedEvents = (
   unitId: AutomationWorkUnitId,
@@ -188,8 +172,7 @@ const isAfterOrAt = (left: Temporal.Instant, right: Temporal.Instant) =>
  * (D28): runs triggered by a cancellation are never withdrawn, as in planning.
  */
 const isWithdrawable = (decision: IntakeDecision) =>
-  decision.outcome !== "failed" &&
-  decision.event.kind !== "reservation-cancelled";
+  decision.outcome !== "failed" && withdrawnByCancellation(decision.event.kind);
 
 /**
  * Writes intake decisions in the caller's transaction. First the events'

@@ -12,7 +12,7 @@ import type {
   AutomationVersionId,
 } from "../automation-identifiers";
 import type { AutomationTriggerKind } from "../automation-states";
-import { verifiesTriggeringVisit } from "../automation-trigger-verification";
+import { readsTriggeringVisit } from "../automation-trigger-verification";
 import { lockAutomationForEngine } from "./automation-lifecycle-lock";
 import { planAutomationRunUnits } from "./automation-run-units";
 
@@ -77,7 +77,7 @@ export const planDeliverRuns = (
           versionId: chunk[0].versionId,
           runIds,
           reservations: chunk.filter((run) =>
-            verifiesTriggeringVisit(run.triggerKind)
+            readsTriggeringVisit(run.triggerKind)
           ).length,
           customers: chunk.length,
           at,
