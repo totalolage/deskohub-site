@@ -5,7 +5,7 @@ import { CheckoutPricingService } from "@/features/checkout/backend/checkout";
 import { ReservationHoldCleanupScheduleService } from "@/features/checkout/backend/holds";
 import { WorkspaceTableAssignmentService } from "@/features/checkout/backend/reservation";
 import { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend";
-import { CustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository";
+import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
 import { ReferralService } from "@/features/referrals";
 import { ReferralFeatureFlagRequest } from "@/features/referrals/referral-feature-flag.server";
@@ -24,7 +24,7 @@ import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 export const payStatePreparationServices = Layer.mergeAll(
   Layer.mergeAll(
     WorkspaceReservationRepository.Default,
-    CustomerMarketingConsentRepository.Default,
+    MarketingConsentLedger.Default,
     ReviewAccounts.Default,
     ReviewSandbox.Default
   ).pipe(Layer.provide(WorkspaceDatabase.Default)),

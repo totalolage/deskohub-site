@@ -124,6 +124,6 @@ export {
   paymentStates,
   type ReservationState,
   reservationStates,
-  type WorkspaceReservation,
+  type WorkspaceReservationRow,
   workspaceReservations,
 } from "./workspace-reservations";

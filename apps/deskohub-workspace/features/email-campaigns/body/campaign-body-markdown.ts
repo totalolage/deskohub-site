@@ -42,7 +42,8 @@ const markdownDoc = (
 /**
  * Spells a Markdown body as a versioned TipTap document, not yet checked
  * against any content rules. Besides CommonMark, a line
- * `[[button: Label](https://example.com)]` makes a button.
+ * `[[button: Label](https://example.com)]` makes a button, and an image line
+ * may end in `{align=center width=240}`.
  */
 export const campaignBodyFromMarkdown = (markdown: string) =>
   markdownDoc(markdown).pipe(

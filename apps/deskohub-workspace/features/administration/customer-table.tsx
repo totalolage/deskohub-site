@@ -4,12 +4,12 @@ import Interpolate from "@doist/react-interpolate";
 import { useMemo } from "react";
 import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
+import type { MarketingConsentStatus } from "@/features/legal/marketing-consent-status";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { AdministrationLink as Link } from "./admin-link";
 import type { AdministrationCustomerSummary } from "./administration.service";
 import { administrationHref } from "./administration-href";
 import {
-  type AdministrationCustomerMarketingConsentState,
   type CustomerListQuery,
   customerListQuery,
 } from "./customer-list-query";
@@ -114,15 +114,15 @@ function CustomerMarketingConsentBadge({
   state,
 }: {
   readonly locale: Locale;
-  readonly state: AdministrationCustomerMarketingConsentState;
+  readonly state: MarketingConsentStatus;
 }) {
   return (
     <StatusBadge
       tone={
         (
           {
-            granted: "positive",
-            never: "neutral",
+            active: "positive",
+            absent: "neutral",
             withdrawn: "attention",
           } as const
         )[state]

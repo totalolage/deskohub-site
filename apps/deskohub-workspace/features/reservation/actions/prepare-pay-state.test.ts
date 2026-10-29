@@ -19,7 +19,7 @@ import { TestClock } from "effect/testing";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   customerMarketingConsents,
-  type WorkspaceReservation,
+  type WorkspaceReservationRow,
 } from "@/db/schema";
 import type { OptionalAccountActivityFixture } from "@/features/account/backend/customer-account-activity.test-utils";
 import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
@@ -47,9 +47,10 @@ import {
 import { PromotionCodeUnavailableError } from "@/features/discounts/errors";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import type {
-  CustomerMarketingConsentRepository as CustomerMarketingConsentRepositoryService,
-  ICustomerMarketingConsentRepository,
-} from "@/features/legal/backend/customer-marketing-consent.repository";
+  IMarketingConsentLedger,
+  MarketingConsentLedger as MarketingConsentLedgerService,
+} from "@/features/legal/backend/marketing-consent-ledger";
+import { getLegalDocumentVersion } from "@/features/legal/document-version";
 import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
 import { ReferralError } from "@/features/referrals/contracts";
 import type { ReferralService } from "@/features/referrals/referral.service";
@@ -73,25 +74,6 @@ const testEmailAddressForAda = testEmailAddress("ada");
 const testEmailAddressForGrace = testEmailAddress("grace");
 
 mock.module("server-only", () => ({}));
-
-mock.module("@/features/legal/acceptance-snapshot", () => ({
-  getLegalAcceptanceSnapshot: mock(() =>
-    Effect.succeed({
-      privacyPolicy: {
-        path: "/legal/privacy.md",
-        content: "Privacy test content",
-        hash: "privacy-hash",
-        hashAlgorithm: "sha256",
-      },
-      marketingCommunications: {
-        path: "/legal/marketing.md",
-        content: "Marketing test content",
-        hash: "marketing-hash",
-        hashAlgorithm: "sha256",
-      },
-    })
-  ),
-}));
 
 mock.module("next/headers", () => ({
   cookies: async () => ({ get: () => undefined }),
@@ -315,8 +297,8 @@ const makeAdvertisementAffirmation = (basisPoints?: number) => {
 const signedInAccountId = "5b6f31d0-2c1a-4f0e-9a3d-6c7b8e2f1a01";
 
 const makeReusableReservation = (
-  overrides: Partial<WorkspaceReservation> = {}
-): WorkspaceReservation =>
+  overrides: Partial<WorkspaceReservationRow> = {}
+): WorkspaceReservationRow =>
   ({
     id: "existing-reservation-id",
     authorAccountId: signedInAccountId,
@@ -352,7 +334,7 @@ const makeReusableReservation = (
     createdAt: Temporal.Instant.from("2026-07-01T09:55:00.000Z"),
     updatedAt: Temporal.Instant.from("2026-07-01T09:55:00.000Z"),
     ...overrides,
-  }) as WorkspaceReservation;
+  }) as WorkspaceReservationRow;
 
 // Only a signed-in account books, so scenarios run signed in unless they
 // pass their own session authority.
@@ -411,12 +393,12 @@ const runReusableReservationScenario = async (input: {
   readonly now?: Temporal.Instant;
   readonly marketingConsent?: boolean;
   readonly marketingConsentSource?: "site_tool";
-  /** Replaces the mocked marketing consent repository. */
-  readonly marketingConsentRepository?: Layer.Layer<CustomerMarketingConsentRepositoryService>;
+  /** Replaces the mocked marketing consent ledger. */
+  readonly marketingConsentLedger?: Layer.Layer<MarketingConsentLedgerService>;
   readonly affirmAdvertisement?: ReturnType<typeof mock>;
   readonly quoteForCustomer?: ReturnType<typeof mock>;
   readonly ensureAvailable?: ReturnType<typeof mock>;
-  readonly grantInitialMarketingConsent?: ReturnType<typeof mock>;
+  readonly recordMarketingConsent?: ReturnType<typeof mock>;
   readonly findOrCreateCustomer?: ReturnType<typeof mock>;
   readonly reservation?: Omit<typeof reservation, "billing"> & {
     readonly billing: ReservationBillingSelectionInput;
@@ -451,8 +433,8 @@ const runReusableReservationScenario = async (input: {
   const { PostHogEventService } = await import(
     "@/shared/backend/analytics/posthog-event.service"
   );
-  const { CustomerMarketingConsentRepository } = await import(
-    "@/features/legal/backend/customer-marketing-consent.repository"
+  const { MarketingConsentLedger } = await import(
+    "@/features/legal/backend/marketing-consent-ledger"
   );
   const { ReservationHoldCleanupScheduleService } = await import(
     "@/features/checkout/backend/holds"
@@ -469,11 +451,8 @@ const runReusableReservationScenario = async (input: {
 
   const enqueueCleanup = mock(() => Effect.void);
   const updateReservationDetails = mock(() => Effect.void);
-  const grantInitialMarketingConsent =
-    input.grantInitialMarketingConsent ?? mock(() => Effect.void);
-  const grantMarketingConsent = mock(() => Effect.void);
-  const getMarketingConsent = mock(() => Effect.succeed(null));
-  const withdrawMarketingConsent = mock(() => Effect.void);
+  const recordMarketingConsent =
+    input.recordMarketingConsent ?? mock(() => Effect.void);
   const withdrawActiveMarketingConsent = mock(() => Effect.succeed(false));
   const ensureAvailable = input.ensureAvailable ?? mock(() => Effect.void);
   const verifyHuman = mock(() => Effect.void);
@@ -606,14 +585,12 @@ const runReusableReservationScenario = async (input: {
       markCancelled,
       markCancellationFailed,
     }),
-    input.marketingConsentRepository ??
-      Layer.mock(CustomerMarketingConsentRepository, {
-        grantInitial: grantInitialMarketingConsent,
-        grant: grantMarketingConsent,
-        get: getMarketingConsent,
-        withdraw: withdrawMarketingConsent,
+    input.marketingConsentLedger ??
+      Layer.mock(MarketingConsentLedger, {
+        record: recordMarketingConsent,
+        status: mock(() => Effect.succeed("absent")),
         withdrawActive: withdrawActiveMarketingConsent,
-      } satisfies ICustomerMarketingConsentRepository),
+      } satisfies IMarketingConsentLedger),
     Layer.mock(ReservationHoldCleanupScheduleService, {
       enqueueCleanup,
     } as never),
@@ -671,9 +648,7 @@ const runReusableReservationScenario = async (input: {
     guardEvents: accountAuthority.events,
     enqueueCleanup,
     updateReservationDetails,
-    grantInitialMarketingConsent,
-    grantMarketingConsent,
-    withdrawMarketingConsent,
+    recordMarketingConsent,
     withdrawActiveMarketingConsent,
     ensureAvailable,
     findLatestByAgentSelectionKey,
@@ -742,8 +717,8 @@ const runMeetingRoomNewHoldScenario = async (
   const { ReservationHoldCleanupScheduleService } = await import(
     "@/features/checkout/backend/holds"
   );
-  const { CustomerMarketingConsentRepository } = await import(
-    "@/features/legal/backend/customer-marketing-consent.repository"
+  const { MarketingConsentLedger } = await import(
+    "@/features/legal/backend/marketing-consent-ledger"
   );
   const { DiscountServiceMock } = await import(
     "@/features/discounts/discount.service.mock"
@@ -862,12 +837,11 @@ const runMeetingRoomNewHoldScenario = async (
       markCancelled: mock(() => Effect.void),
       markCancellationFailed: mock(() => Effect.void),
     }),
-    Layer.mock(CustomerMarketingConsentRepository, {
-      grantInitial: mock(() => Effect.void),
-      grant: mock(() => Effect.void),
-      get: mock(() => Effect.succeed(null)),
-      withdraw: mock(() => Effect.void),
-    } satisfies ICustomerMarketingConsentRepository),
+    Layer.mock(MarketingConsentLedger, {
+      record: mock(() => Effect.void),
+      status: mock(() => Effect.succeed("absent")),
+      withdrawActive: mock(() => Effect.succeed(false)),
+    } satisfies IMarketingConsentLedger),
     WorkspaceTableAssignmentServiceMock({ assignTableId }),
     Layer.mock(ReservationHoldCleanupScheduleService, {
       enqueueCleanup,
@@ -1174,8 +1148,8 @@ describe("prepareWorkspacePayState", () => {
     const { openPayState, payStateTokenQueryParam } = await import(
       "@/features/checkout/backend/checkout"
     );
-    const { CustomerMarketingConsentRepository } = await import(
-      "@/features/legal/backend/customer-marketing-consent.repository"
+    const { MarketingConsentLedger } = await import(
+      "@/features/legal/backend/marketing-consent-ledger"
     );
     const { ReservationHoldCleanupScheduleService } = await import(
       "@/features/checkout/backend/holds"
@@ -1234,8 +1208,7 @@ describe("prepareWorkspacePayState", () => {
         eventOrder.push("enqueue");
       })
     );
-    const grantInitialMarketingConsent = mock(() => Effect.void);
-    const grantMarketingConsent = mock(() => Effect.void);
+    const recordMarketingConsent = mock(() => Effect.void);
     const createReservation = mock(() =>
       Effect.succeed({ id: "dotypos-reservation-id" } as never)
     );
@@ -1299,12 +1272,11 @@ describe("prepareWorkspacePayState", () => {
         markCancelled: mock(() => Effect.void),
         markCancellationFailed: mock(() => Effect.void),
       }),
-      Layer.mock(CustomerMarketingConsentRepository, {
-        grantInitial: grantInitialMarketingConsent,
-        grant: grantMarketingConsent,
-        get: mock(() => Effect.succeed(null)),
-        withdraw: mock(() => Effect.void),
-      } satisfies ICustomerMarketingConsentRepository),
+      Layer.mock(MarketingConsentLedger, {
+        record: recordMarketingConsent,
+        status: mock(() => Effect.succeed("absent")),
+        withdrawActive: mock(() => Effect.succeed(false)),
+      } satisfies IMarketingConsentLedger),
       WorkspaceTableAssignmentServiceMock({
         assignTableId,
       }),
@@ -1366,7 +1338,7 @@ describe("prepareWorkspacePayState", () => {
       verifiedBots: { allow: customerAgentNames },
       callSite: "reservation.prepare-pay-state",
     });
-    expect(grantInitialMarketingConsent).not.toHaveBeenCalled();
+    expect(recordMarketingConsent).not.toHaveBeenCalled();
 
     expect(result.status).toBe("ready");
     if (result.status !== "ready") throw new Error("Expected ready result");
@@ -1426,16 +1398,14 @@ describe("prepareWorkspacePayState", () => {
     });
 
     expect(result.result.status).toBe("ready");
-    expect(result.grantInitialMarketingConsent).toHaveBeenCalledWith({
-      dotyposCustomerId: "customer-id",
-      documentHash: "marketing-hash",
+    expect(result.recordMarketingConsent).toHaveBeenCalledWith({
+      customerId: "customer-id",
       locale: "en-US",
-      grantedAt: expect.any(Temporal.Instant),
-      source: "reservation_form",
+      choice: "grant",
+      mode: "initial",
+      channel: "reservation_form",
     });
-    // An initial grant keeps an existing row, so a withdrawn consent is never
-    // reactivated; only `grant` reactivates.
-    expect(result.grantMarketingConsent).not.toHaveBeenCalled();
+    // An initial grant keeps an existing row, including a withdrawal.
   });
 
   test("labels an opt-in submitted through the site's tools", async () => {
@@ -1446,14 +1416,15 @@ describe("prepareWorkspacePayState", () => {
     });
 
     expect(result.result.status).toBe("ready");
-    expect(result.grantInitialMarketingConsent).toHaveBeenCalledTimes(1);
-    expect(result.grantInitialMarketingConsent).toHaveBeenCalledWith(
+    expect(result.recordMarketingConsent).toHaveBeenCalledTimes(1);
+    expect(result.recordMarketingConsent).toHaveBeenCalledWith(
       expect.objectContaining({
-        dotyposCustomerId: "customer-id",
-        source: "site_tool",
+        customerId: "customer-id",
+        choice: "grant",
+        mode: "initial",
+        channel: "site_tool",
       })
     );
-    expect(result.grantMarketingConsent).not.toHaveBeenCalled();
   });
 
   test.each([
@@ -1470,9 +1441,7 @@ describe("prepareWorkspacePayState", () => {
       });
 
       expect(result.result.status).toBe("ready");
-      expect(result.grantInitialMarketingConsent).not.toHaveBeenCalled();
-      expect(result.grantMarketingConsent).not.toHaveBeenCalled();
-      expect(result.withdrawMarketingConsent).not.toHaveBeenCalled();
+      expect(result.recordMarketingConsent).not.toHaveBeenCalled();
       expect(result.withdrawActiveMarketingConsent).not.toHaveBeenCalled();
     }
   );
@@ -1556,8 +1525,8 @@ describe("prepareWorkspacePayState", () => {
       }
     ) => {
       const { db } = testDatabase!;
-      const { CustomerMarketingConsentRepository } = await import(
-        "@/features/legal/backend/customer-marketing-consent.repository"
+      const { MarketingConsentLedger } = await import(
+        "@/features/legal/backend/marketing-consent-ledger"
       );
       await Effect.runPromise(
         db
@@ -1577,12 +1546,11 @@ describe("prepareWorkspacePayState", () => {
           Effect.succeed(makeReusableReservation())
         ),
         ...input,
-        marketingConsentRepository:
-          CustomerMarketingConsentRepository.Default.pipe(
-            Layer.provide(
-              Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.make(db))
-            )
-          ),
+        marketingConsentLedger: MarketingConsentLedger.Default.pipe(
+          Layer.provide(
+            Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.make(db))
+          )
+        ),
       });
       expect(scenario.result?.status).toBe("ready");
 
@@ -1641,12 +1609,18 @@ describe("prepareWorkspacePayState", () => {
       });
       expect(row?.grantSource).toBe("site_tool");
       expect(row?.withdrawnAt).toBeNull();
+      expect(row?.documentHash).toBe(
+        getLegalDocumentVersion("en-US", "marketing-communications")
+      );
     });
 
     test("a form opt-in stores reservation_form as the source", async () => {
       const row = await runWithStoredConsent(null, { marketingConsent: true });
       expect(row?.grantSource).toBe("reservation_form");
       expect(row?.withdrawnAt).toBeNull();
+      expect(row?.documentHash).toBe(
+        getLegalDocumentVersion("en-US", "marketing-communications")
+      );
     });
 
     const bookingAgent = {
@@ -1661,6 +1635,9 @@ describe("prepareWorkspacePayState", () => {
       });
       expect(row?.grantSource).toBe("mcp_tool");
       expect(row?.withdrawnAt).toBeNull();
+      expect(row?.documentHash).toBe(
+        getLegalDocumentVersion("en-US", "marketing-communications")
+      );
     });
 
     test("an agent's absent choice writes no consent row", async () => {
@@ -1694,7 +1671,7 @@ describe("prepareWorkspacePayState", () => {
     const { error } = await runReusableReservationScenario({
       findByAttemptKeys: mock(() => Effect.succeed(makeReusableReservation())),
       marketingConsent: true,
-      grantInitialMarketingConsent: mock(() => Effect.fail(persistenceFailure)),
+      recordMarketingConsent: mock(() => Effect.fail(persistenceFailure)),
     });
 
     expect(error).toMatchObject({
@@ -1753,7 +1730,7 @@ describe("prepareWorkspacePayState", () => {
     expect(scenario.guardEvents).toEqual([]);
     expect(scenario.findOrCreateCustomer).not.toHaveBeenCalled();
     expect(scenario.createDraft).not.toHaveBeenCalled();
-    expect(scenario.grantInitialMarketingConsent).not.toHaveBeenCalled();
+    expect(scenario.recordMarketingConsent).not.toHaveBeenCalled();
   });
 
   test("stops a deletion-marked authenticated preparation before any mutation", async () => {
@@ -1784,7 +1761,7 @@ describe("prepareWorkspacePayState", () => {
     ]);
     expect(scenario.findOrCreateCustomer).not.toHaveBeenCalled();
     expect(scenario.createDraft).not.toHaveBeenCalled();
-    expect(scenario.grantInitialMarketingConsent).not.toHaveBeenCalled();
+    expect(scenario.recordMarketingConsent).not.toHaveBeenCalled();
   });
 
   test("stops preparation when the account row disappears during the authority window", async () => {
@@ -1851,7 +1828,7 @@ describe("prepareWorkspacePayState", () => {
           expect(scenario.completeProfileUnderHeldLock).not.toHaveBeenCalled();
           expect(scenario.findOrCreateCustomer).not.toHaveBeenCalled();
           expect(scenario.quoteForCustomer).not.toHaveBeenCalled();
-          expect(scenario.grantInitialMarketingConsent).not.toHaveBeenCalled();
+          expect(scenario.recordMarketingConsent).not.toHaveBeenCalled();
           expect(scenario.createDraft).not.toHaveBeenCalled();
           expect(scenario.createReservation).not.toHaveBeenCalled();
           expect(scenario.enqueueCleanup).not.toHaveBeenCalled();
@@ -1936,7 +1913,7 @@ describe("prepareWorkspacePayState", () => {
         ...linkedAccountBooking(),
         bookingAgent,
       });
-      const agentHold = (overrides: Partial<WorkspaceReservation> = {}) =>
+      const agentHold = (overrides: Partial<WorkspaceReservationRow> = {}) =>
         makeReusableReservation({
           authorAccountId: accountId as never,
           agentClientId: bookingAgent.clientId,
@@ -1991,7 +1968,7 @@ describe("prepareWorkspacePayState", () => {
         id: string,
         input: CreateWorkspaceReservationDraftInput,
         bookedAt: Temporal.Instant,
-        overrides: Partial<WorkspaceReservation> = {}
+        overrides: Partial<WorkspaceReservationRow> = {}
       ) =>
         agentHold({
           id,
@@ -2581,10 +2558,12 @@ describe("prepareWorkspacePayState", () => {
         });
 
         expect(
-          scenario.grantInitialMarketingConsent.mock.calls[0]?.[0]
+          scenario.recordMarketingConsent.mock.calls[0]?.[0]
         ).toMatchObject({
-          dotyposCustomerId: accountDotyposCustomerId,
-          source: "mcp_tool",
+          customerId: accountDotyposCustomerId,
+          choice: "grant",
+          mode: "initial",
+          channel: "mcp_tool",
         });
       });
 
@@ -2602,9 +2581,7 @@ describe("prepareWorkspacePayState", () => {
           });
 
           expect(scenario.result?.status).toBe("ready");
-          expect(scenario.grantInitialMarketingConsent).not.toHaveBeenCalled();
-          expect(scenario.grantMarketingConsent).not.toHaveBeenCalled();
-          expect(scenario.withdrawMarketingConsent).not.toHaveBeenCalled();
+          expect(scenario.recordMarketingConsent).not.toHaveBeenCalled();
           expect(
             scenario.withdrawActiveMarketingConsent
           ).not.toHaveBeenCalled();
@@ -2796,7 +2773,7 @@ describe("prepareWorkspacePayState", () => {
             makeReusableReservation({
               reservationState: "draft",
               authorAccountId:
-                "0d9c6a2e-7f41-4b8a-a6e3-2c5d9b1f4e70" as WorkspaceReservation["authorAccountId"],
+                "0d9c6a2e-7f41-4b8a-a6e3-2c5d9b1f4e70" as WorkspaceReservationRow["authorAccountId"],
             })
           )
         ),
@@ -3397,7 +3374,7 @@ describe("prepareWorkspacePayState", () => {
       });
       expect(checkContactEmailDomain).toHaveBeenCalledWith(reservation.email);
       expect(scenario.findOrCreateCustomer).not.toHaveBeenCalled();
-      expect(scenario.grantInitialMarketingConsent).not.toHaveBeenCalled();
+      expect(scenario.recordMarketingConsent).not.toHaveBeenCalled();
       expect(scenario.createDraft).not.toHaveBeenCalled();
       expect(scenario.createReservation).not.toHaveBeenCalled();
       expect(scenario.enqueueCleanup).not.toHaveBeenCalled();

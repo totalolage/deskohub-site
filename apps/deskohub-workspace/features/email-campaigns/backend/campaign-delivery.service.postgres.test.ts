@@ -110,8 +110,8 @@ const { EmailConfigTag, EmailServiceTag } = await import("@deskohub/email");
 const { connectWorkspacePostgresTestDatabase } = await import(
   "@/shared/testing/workspace-postgres-test-database.test-utils"
 );
-const { CustomerMarketingConsentRepository } = await import(
-  "@/features/legal/backend/customer-marketing-consent.repository"
+const { MarketingConsentLedger } = await import(
+  "@/features/legal/backend/marketing-consent-ledger"
 );
 const { MarketingManagementService } = await import(
   "@/features/legal/backend/marketing-management.service"
@@ -214,7 +214,7 @@ describe.skipIf(!testDatabase)(
             CampaignUnsubscribeService.Default.pipe(
               Layer.provide(
                 Layer.mergeAll(
-                  CustomerMarketingConsentRepository.Default,
+                  MarketingConsentLedger.Default,
                   MarketingManagementService.Default
                 )
               )

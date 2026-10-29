@@ -24,11 +24,7 @@ import {
 import { getCoworkCheckoutSummary } from "@/features/checkout/checkout-summary-cowork";
 import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
 import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-office";
-import {
-  type LegalEvidenceMap,
-  legalEvidenceMapSchema,
-  paymentSubmitLegalEvidenceSource,
-} from "@/features/checkout/legal-evidence";
+import type { LegalEvidenceMap } from "@/features/checkout/legal-evidence";
 import {
   isWorkspaceCoworkCurrentProductTier,
   type WorkspaceCoworkProductTier,
@@ -38,11 +34,8 @@ import { getMeetingRoomCheckoutDetails } from "@/features/checkout/schemas/check
 import { getOfficeCheckoutDetails } from "@/features/checkout/schemas/checkout-details-office";
 import type { DiscountCommitment } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
-import {
-  type CheckoutLegalAcceptanceSnapshot,
-  getLegalAcceptanceSnapshot,
-} from "@/features/legal/acceptance-snapshot";
 import { isEarlyPerformanceRequestRequired } from "@/features/legal/early-performance";
+import { getPaymentSubmitLegalEvidence } from "@/features/legal/payment-submit-evidence";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { getCoworkReservationIntervalInput } from "@/features/reservation/cowork-reservation";
 import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
@@ -99,12 +92,6 @@ import {
 import { getReservationStatusPath } from "./reservation-status-url";
 import { appendVercelPreviewProtectionBypass } from "./vercel-preview-protection-bypass";
 
-const decodeLegalEvidenceMap = Schema.decodeUnknownSync(
-  legalEvidenceMapSchema,
-  {
-    onExcessProperty: "error",
-  }
-);
 const decodeDotyposCustomerId = Schema.decodeUnknownEffect(
   dotyposCustomerIdSchema
 );
@@ -322,73 +309,6 @@ const getNotificationUrl: Effect.Effect<string, CheckoutError> = Effect.gen(
 ).pipe(Effect.catchTag("WorkspaceUrlConfigError", toCheckoutUrlError));
 
 const toNexiAmount = Schema.encodeEffect(NexiAmountFromWorkspaceMoney);
-
-const getCheckoutLegalAcceptanceSnapshot: (
-  locale: Locale
-) => Effect.Effect<CheckoutLegalAcceptanceSnapshot, CheckoutError> = Effect.fn(
-  "getCheckoutLegalAcceptanceSnapshot"
-)((locale) =>
-  getLegalAcceptanceSnapshot(locale).pipe(
-    Effect.mapError(
-      (cause) =>
-        new CheckoutError({
-          code: "checkout_failed",
-          message: "Legal acceptance snapshot could not be created.",
-          cause,
-        })
-    )
-  )
-);
-
-const toCheckoutLegalDocuments = (
-  documents: CheckoutLegalAcceptanceSnapshot
-) => ({
-  termsAndConditions: {
-    path: documents.termsAndConditions.path,
-    hash: documents.termsAndConditions.hash,
-    hashAlgorithm: documents.termsAndConditions.hashAlgorithm,
-  },
-  operatingRules: {
-    path: documents.operatingRules.path,
-    hash: documents.operatingRules.hash,
-    hashAlgorithm: documents.operatingRules.hashAlgorithm,
-  },
-});
-
-const getCheckoutLegalEvidence = (input: {
-  readonly acceptedAt: string;
-  readonly earlyPerformanceRequested: boolean;
-  readonly locale: Locale;
-  readonly legalDocuments: CheckoutLegalAcceptanceSnapshot;
-}): LegalEvidenceMap => {
-  const documents = toCheckoutLegalDocuments(input.legalDocuments);
-
-  return decodeLegalEvidenceMap({
-    [documents.termsAndConditions.hash]: {
-      documentKey: "termsAndConditions",
-      documentHash: documents.termsAndConditions.hash,
-      accepted: true,
-      acceptedAt: input.acceptedAt,
-      locale: input.locale,
-      source: paymentSubmitLegalEvidenceSource,
-      document: documents.termsAndConditions,
-      acknowledgements: input.earlyPerformanceRequested
-        ? {
-            earlyPerformanceConsent: true,
-          }
-        : undefined,
-    },
-    [documents.operatingRules.hash]: {
-      documentKey: "operatingRules",
-      documentHash: documents.operatingRules.hash,
-      accepted: true,
-      acceptedAt: input.acceptedAt,
-      locale: input.locale,
-      source: paymentSubmitLegalEvidenceSource,
-      document: documents.operatingRules,
-    },
-  });
-};
 
 const getCheckoutDetails = (
   prepared: PaymentPriceAffirmation,
@@ -1103,14 +1023,10 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                     locale,
                   });
 
-                  const acceptedAt = contractAt.toString();
-                  const legalDocuments =
-                    yield* getCheckoutLegalAcceptanceSnapshot(locale);
-                  const legalEvidence = getCheckoutLegalEvidence({
-                    acceptedAt,
-                    earlyPerformanceRequested: earlyPerformanceRequired,
+                  const legalEvidence = getPaymentSubmitLegalEvidence({
                     locale,
-                    legalDocuments,
+                    acceptedAt: contractAt.toString(),
+                    earlyPerformanceConsent: earlyPerformanceRequired,
                   });
                   const checkoutDetails = getCheckoutDetails(
                     prepared,

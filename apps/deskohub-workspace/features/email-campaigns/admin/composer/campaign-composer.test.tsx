@@ -22,7 +22,7 @@ mock.module("../campaign-operations.actions", () => ({
   runCampaignOperation: mock(),
 }));
 mock.module("../editor/actions", () => ({
-  uploadCampaignImage: mock(),
+  authorizeCampaignImageUpload: mock(),
 }));
 
 registerWorkspaceComponentTestEnv();

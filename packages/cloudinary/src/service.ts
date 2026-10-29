@@ -1,7 +1,7 @@
 import "server-only";
 
 import { v2 as cloudinary } from "cloudinary";
-import { Context, Effect, Layer, pipe } from "effect";
+import { Clock, Context, Effect, Layer, pipe } from "effect";
 import * as Schema from "effect/Schema";
 import { FetchHttpClient, HttpClient } from "effect/unstable/http";
 import { decodeCloudinaryAsset } from "./asset-decoding";
@@ -44,6 +44,27 @@ export interface CloudinaryImageUploadInput {
   readonly folder: string;
 }
 
+/**
+ * What a browser may store with a signed upload. Every value is signed on
+ * the server, so the browser can't change any of them.
+ */
+export interface CloudinarySignedImageUploadInput {
+  readonly publicId: CloudinaryPublicId;
+  readonly folder: string;
+  /** Applied before Cloudinary stores the image, which keeps only its output. */
+  readonly transformation: string;
+  /** Formats stored as they are. */
+  readonly allowedFormats: readonly string[];
+  /** The format an image in any other format is converted to. */
+  readonly fallbackFormat: string;
+}
+
+/** A browser uploads by posting `fields` and the file to `url`. */
+export interface CloudinarySignedImageUpload {
+  readonly url: string;
+  readonly fields: Readonly<Record<string, string>>;
+}
+
 export interface ICloudinaryService {
   readonly getByPublicId: (
     publicId: CloudinaryPublicId
@@ -82,6 +103,13 @@ export interface ICloudinaryService {
   readonly uploadImage: (
     input: CloudinaryImageUploadInput
   ) => Effect.Effect<CloudinaryAsset, CloudinaryUploadError>;
+  /**
+   * Signs an image upload a browser sends straight to Cloudinary. The
+   * signature is valid for an hour and covers every field.
+   */
+  readonly signImageUpload: (
+    input: CloudinarySignedImageUploadInput
+  ) => Effect.Effect<CloudinarySignedImageUpload>;
   readonly destroyAsset: (
     publicId: CloudinaryPublicId
   ) => Effect.Effect<CloudinaryDestroyOutcome, CloudinaryDestroyError>;
@@ -113,6 +141,7 @@ export class CloudinaryService extends Context.Service<
       const executeSanitizedSearch = createSearchExecutor(config, true);
       const getByPublicId = createPublicIdLookupExecutor();
       const uploadImage = createUploadExecutor();
+      const signImageUpload = createUploadSigner(config);
       const destroyAsset = createDestroyExecutor();
       const deleteResourcesByPublicIdPrefix = createPrefixDeleteExecutor();
       const renameAsset = createRenameExecutor();
@@ -199,6 +228,7 @@ export class CloudinaryService extends Context.Service<
         searchByExpression,
         listTaggedAssets,
         uploadImage,
+        signImageUpload,
         destroyAsset,
         deleteResourcesByPublicIdPrefix,
         renameAsset,
@@ -649,6 +679,35 @@ function createUploadExecutor() {
     },
     (effect) => Effect.scoped(effect)
   );
+}
+
+function createUploadSigner(config: CloudinaryConfig) {
+  return Effect.fn("cloudinary.signImageUpload")(function* (
+    input: CloudinarySignedImageUploadInput
+  ) {
+    const now = yield* Clock.currentTimeMillis;
+    const signed = {
+      allowed_formats: input.allowedFormats.join(","),
+      folder: input.folder,
+      format: input.fallbackFormat,
+      // A replay within the signature's hour can't replace the stored image.
+      overwrite: "false",
+      public_id: input.publicId,
+      timestamp: String(Math.floor(now / 1000)),
+      transformation: input.transformation,
+    };
+    return {
+      url: cloudinary.utils.api_url("upload", {
+        cloud_name: config.cloudName,
+        resource_type: "image",
+      }),
+      fields: {
+        ...signed,
+        api_key: config.apiKey,
+        signature: cloudinary.utils.api_sign_request(signed, config.apiSecret),
+      },
+    } satisfies CloudinarySignedImageUpload;
+  });
 }
 
 function toDestroyOutcome(

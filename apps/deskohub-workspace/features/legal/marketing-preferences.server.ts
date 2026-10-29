@@ -6,7 +6,7 @@ import { CustomerAccountResolver } from "@/features/account";
 import type { Locale } from "@/features/i18n";
 import { marketingPreferencesLive } from "@/features/legal/marketing-preferences-composition.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
-import { CustomerMarketingConsentRepository } from "./backend/customer-marketing-consent.repository";
+import { MarketingConsentLedger } from "./backend/marketing-consent-ledger";
 import { MarketingManagementService } from "./backend/marketing-management.service";
 import {
   createMarketingManagementCookies,
@@ -17,10 +17,7 @@ import {
   MarketingPreferencesAuthorityError,
   resolveMarketingPreferencesAuthority,
 } from "./backend/marketing-preferences-authority";
-import {
-  getMarketingPreferenceStatus,
-  type MarketingPreferencesState,
-} from "./marketing-preferences";
+import type { MarketingPreferencesState } from "./marketing-preferences";
 
 /**
  * Loads the public marketing-preference projection. A management cookie always
@@ -106,9 +103,9 @@ const readMarketingPreferencesEffect = Effect.fn(function* (
     } satisfies MarketingPreferencesState;
   }
 
-  const consents = yield* CustomerMarketingConsentRepository;
-  const consent = yield* consents
-    .get(authority.customerId)
+  const ledger = yield* MarketingConsentLedger;
+  const status = yield* ledger
+    .status(authority.customerId)
     .pipe(
       Effect.mapError(
         () => new MarketingPreferencesAuthorityError({ reason: "unavailable" })
@@ -117,13 +114,13 @@ const readMarketingPreferencesEffect = Effect.fn(function* (
 
   return authority.kind === "link"
     ? ({
-        status: getMarketingPreferenceStatus(consent),
+        status,
         source: authority.source,
         context: authority.context,
         dismissalContext,
       } satisfies MarketingPreferencesState)
     : ({
-        status: getMarketingPreferenceStatus(consent),
+        status,
         source: authority.source,
         context: authority.context,
       } satisfies MarketingPreferencesState);

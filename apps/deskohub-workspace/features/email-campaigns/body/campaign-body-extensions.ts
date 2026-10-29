@@ -3,13 +3,13 @@ import Bold from "@tiptap/extension-bold";
 import Document from "@tiptap/extension-document";
 import Heading from "@tiptap/extension-heading";
 import HorizontalRule from "@tiptap/extension-horizontal-rule";
-import Image from "@tiptap/extension-image";
 import Italic from "@tiptap/extension-italic";
 import Link from "@tiptap/extension-link";
 import { BulletList, ListItem, OrderedList } from "@tiptap/extension-list";
 import Paragraph from "@tiptap/extension-paragraph";
 import Text from "@tiptap/extension-text";
 import { CampaignCtaButton } from "./campaign-cta-button";
+import { CampaignImage } from "./campaign-image";
 
 const campaignHeadingLevels = [1, 2, 3] as const;
 
@@ -35,7 +35,7 @@ export const campaignBodyExtensions: Extensions = [
   BulletList,
   OrderedList,
   ListItem,
-  Image.configure({ allowBase64: false, inline: false }),
+  CampaignImage.configure({ allowBase64: false, inline: false }),
   HorizontalRule,
   CampaignCtaButton,
 ];

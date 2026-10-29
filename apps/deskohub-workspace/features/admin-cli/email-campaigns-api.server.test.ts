@@ -49,6 +49,7 @@ import {
   CampaignAudienceNotFound,
   CampaignConfirmationRejected,
   CampaignFallbackContentMissing,
+  CampaignImageNotUploaded,
   CampaignLocaleContentMissing,
   CampaignNotFound,
   CampaignRecipientResolutionError,
@@ -221,6 +222,8 @@ describe("campaign admin API", () => {
   });
 
   test("creates a campaign from per-locale Markdown and exports it back", async () => {
+    const alignedImageMarkdown =
+      "![Zasedačka](https://res.cloudinary.com/cloud/image/upload/v1/campaigns/room.jpg){align=left width=240}";
     const created: CampaignLocalizedContent[] = [];
     const detail = await callCampaignsApi(
       (client) =>
@@ -236,8 +239,7 @@ describe("campaign admin API", () => {
                 "cs-CZ": {
                   subject: "Novinky",
                   preheader: "Co je nového",
-                  bodyMarkdown:
-                    "# Novinky\n\nOtevíráme **novou** zasedačku.\n\n[[button: Rezervovat](https://workspace.deskohub.cz/cs-CZ/meeting-room)]",
+                  bodyMarkdown: `# Novinky\n\nOtevíráme **novou** zasedačku.\n\n${alignedImageMarkdown}\n\n[[button: Rezervovat](https://workspace.deskohub.cz/cs-CZ/meeting-room)]`,
                   operationalReason: "Máte u nás rezervaci.",
                 },
               },
@@ -272,6 +274,9 @@ describe("campaign admin API", () => {
     });
     expect(detail.content["cs-CZ"]?.bodyMarkdown).toContain("# Novinky");
     expect(detail.content["cs-CZ"]?.bodyMarkdown).toContain("**novou**");
+    expect(detail.content["cs-CZ"]?.bodyMarkdown).toContain(
+      alignedImageMarkdown
+    );
     expect(detail.content["cs-CZ"]?.bodyMarkdown).toContain(
       "[[button: Rezervovat](https://workspace.deskohub.cz/cs-CZ/meeting-room)]"
     );
@@ -367,6 +372,34 @@ describe("campaign admin API", () => {
       message:
         "The campaign has no en-US content yet, so it needs a subject and a body.",
     });
+  });
+
+  test("refuses an imported image from another folder with a code released dhw knows", async () => {
+    const source =
+      "https://res.cloudinary.com/cloud/image/upload/v1/campaigns/room.jpg";
+    const error = await callCampaignsApi(
+      (client) =>
+        client
+          .updateCampaign({
+            params: { campaignId },
+            payload: {
+              content: { "cs-CZ": { bodyMarkdown: `![Zasedačka](${source})` } },
+            },
+          })
+          .pipe(Effect.flip),
+      {
+        campaigns: {
+          patch: () =>
+            Effect.fail(
+              new CampaignImageNotUploaded({ locale: "cs-CZ", source })
+            ),
+        },
+      }
+    );
+
+    expect(error).toBeInstanceOf(CliInputInvalid);
+    expect(error).toMatchObject({ code: "content-invalid" });
+    expect(error.message).toContain(source);
   });
 
   test("passes the confirmation code to the send and explains a rejected code", async () => {

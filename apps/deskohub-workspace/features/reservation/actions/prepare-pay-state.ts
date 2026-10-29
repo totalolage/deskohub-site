@@ -70,8 +70,7 @@ import {
   canonicalPromotionCodeSchema,
 } from "@/features/discounts/contracts";
 import { type Locale, m } from "@/features/i18n";
-import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
-import { CustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository";
+import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import { ensureOfficeReservationsEnabled } from "@/features/office/backend/office-reservation-feature-flag.service";
 import { ReferralService } from "@/features/referrals";
 import type { ReferralCode } from "@/features/referrals/client";
@@ -1423,14 +1422,15 @@ const prepareSubmission = Effect.fn("prepareWorkspacePayState.submission")(
           reservation.billing ?? defaultReservationBillingSelection;
         if (input.marketingConsent === true) {
           yield* Effect.gen(function* () {
-            const documents = yield* getLegalAcceptanceSnapshot(input.locale);
-            const consents = yield* CustomerMarketingConsentRepository;
-            yield* consents.grantInitial({
-              dotyposCustomerId,
-              documentHash: documents.marketingCommunications.hash,
+            const ledger = yield* MarketingConsentLedger;
+            // A checked box records an initial grant; an unchecked one
+            // records nothing, never a withdrawal.
+            yield* ledger.record({
+              customerId: dotyposCustomerId,
               locale: input.locale,
-              grantedAt: Temporal.Now.instant(),
-              source: Option.isSome(bookingAgent)
+              choice: "grant",
+              mode: "initial",
+              channel: Option.isSome(bookingAgent)
                 ? "mcp_tool"
                 : (input.marketingConsentSource ?? "reservation_form"),
             });

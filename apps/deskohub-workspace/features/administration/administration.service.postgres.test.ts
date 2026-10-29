@@ -22,6 +22,7 @@ import { ReservationAuthorDirectory } from "@/features/account";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
 import {
+  type StoredWorkspaceReservationDetails,
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
@@ -514,7 +515,7 @@ describe.skipIf(!testDatabase)(
           withdrawn,
           Temporal.Instant.from("2026-03-01T00:00:00Z")
         );
-        await seed({ customerId: never, inRange: true, label: "never" });
+        await seed({ customerId: never, inRange: true, label: "absent" });
       });
 
       const listInRange = (
@@ -656,24 +657,24 @@ describe.skipIf(!testDatabase)(
             ])
             .sort();
 
-        expect(await states("granted")).toEqual([[twice, "granted"]]);
+        expect(await states("active")).toEqual([[twice, "active"]]);
         expect(await states("withdrawn")).toEqual(
           [
             [unsuccessfulInRange, "withdrawn"],
             [withdrawn, "withdrawn"],
           ].sort()
         );
-        expect(await states("never")).toEqual(
+        expect(await states("absent")).toEqual(
           [
-            [never, "never"],
-            [outOfRange, "never"],
+            [never, "absent"],
+            [outOfRange, "absent"],
           ].sort()
         );
         expect(await states()).toEqual(
           [
-            [never, "never"],
-            [outOfRange, "never"],
-            [twice, "granted"],
+            [never, "absent"],
+            [outOfRange, "absent"],
+            [twice, "active"],
             [unsuccessfulInRange, "withdrawn"],
             [withdrawn, "withdrawn"],
           ].sort()
@@ -682,9 +683,9 @@ describe.skipIf(!testDatabase)(
 
       test("combines the date range with the consent filter", async () => {
         for (const [marketingConsent, expected] of [
-          ["granted", twice],
+          ["active", twice],
           ["withdrawn", withdrawn],
-          ["never", never],
+          ["absent", never],
         ] as const) {
           const result = await listInRange({ ...range, marketingConsent });
           expect(result.total).toBe(1);
@@ -699,7 +700,7 @@ describe.skipIf(!testDatabase)(
           (administration) =>
             administration.listCustomers({
               ...range,
-              marketingConsent: "never",
+              marketingConsent: "absent",
             }),
           {
             listReservations: () =>
@@ -732,9 +733,9 @@ describe.skipIf(!testDatabase)(
         test("exports the customers the list shows under each filter", async () => {
           for (const marketingConsent of [
             undefined,
-            "granted",
+            "active",
             "withdrawn",
-            "never",
+            "absent",
           ] as const) {
             const exported = await run((administration) =>
               administration.exportCustomers({ marketingConsent })
@@ -779,7 +780,7 @@ describe.skipIf(!testDatabase)(
       test("doesn't read Dotypos without a range", async () => {
         const result = await run(
           (administration) =>
-            administration.listCustomers({ marketingConsent: "granted" }),
+            administration.listCustomers({ marketingConsent: "active" }),
           {
             listReservations: () =>
               Effect.die(new Error("Dotypos must not be read")),
@@ -1356,6 +1357,193 @@ describe.skipIf(!testDatabase)(
             to: "2026-10-10",
           })
         ).toEqual(bookedOrder);
+      });
+    });
+
+    describe("stored reservation details", () => {
+      const customerId = makeCustomerId("stored-details");
+      const favoriteOfficeCustomerId = makeCustomerId("stored-details-office");
+      const products = {
+        openSpace: openSpaceDetails,
+        reservedDesk: {
+          kind: "cowork",
+          entryTier: "reserved-desk",
+          coffee: true,
+          monitorOption: "2x27-4k",
+        },
+        retiredProfi: {
+          kind: "cowork",
+          entryTier: "profi",
+          coffee: true,
+          monitorOption: "2x32-qhd",
+        },
+        meetingRoom: {
+          kind: "meeting-room",
+          duration: { unit: "hour", amount: 4 },
+        },
+        office: { kind: "office", seats: 4, dayCount: 3 },
+      } as const satisfies Record<string, StoredWorkspaceReservationDetails>;
+      type Product = keyof typeof products;
+      const ids = new Map<WorkspaceReservationId, Product>();
+
+      const insert = async (
+        customer: DotyposCustomerId,
+        label: string,
+        details: StoredWorkspaceReservationDetails
+      ) => {
+        const { id } = await Effect.runPromise(
+          workspaceFixtures(testDatabase.db).reservation({
+            stage: {
+              reservation: "confirmed",
+              payment: "paid",
+              fulfillment: "fulfilled",
+            },
+            customer,
+            details,
+            overrides: {
+              dotyposReservationId: bookingId(`stored-details-${label}`),
+            },
+          })
+        );
+        reservationIds.push(id);
+        return id;
+      };
+
+      beforeAll(async () => {
+        for (const product of Object.keys(products) as Product[]) {
+          ids.set(
+            await insert(customerId, product, products[product]),
+            product
+          );
+        }
+        await insert(favoriteOfficeCustomerId, "office-a", products.office);
+        await insert(favoriteOfficeCustomerId, "office-b", products.office);
+        await insert(favoriteOfficeCustomerId, "cowork", products.openSpace);
+      });
+
+      const productsOf = (items: readonly { readonly id: string }[]) =>
+        items.map(({ id }) => ids.get(id as WorkspaceReservationId));
+
+      test("filters reservations by their product family", async () => {
+        const listed = await Promise.all(
+          (["cowork", "meeting-room", "office"] as const).map((type) =>
+            run((administration) =>
+              administration.listReservations({ customerId, type })
+            )
+          )
+        );
+
+        expect(listed.map(({ items }) => productsOf(items).sort())).toEqual([
+          ["openSpace", "reservedDesk", "retiredProfi"],
+          ["meetingRoom"],
+          ["office"],
+        ]);
+      });
+
+      test("sorts reservations by their product, with offices last", async () => {
+        const [ascending, descending] = await Promise.all(
+          (["asc", "desc"] as const).map((direction) =>
+            run((administration) =>
+              administration.listReservations({
+                customerId,
+                direction,
+                sort: "reservation",
+              })
+            )
+          )
+        );
+
+        expect(productsOf(ascending?.items ?? [])).toEqual([
+          "openSpace",
+          "retiredProfi",
+          "reservedDesk",
+          "meetingRoom",
+          "office",
+        ]);
+        expect(productsOf(descending?.items ?? [])).toEqual([
+          "office",
+          "meetingRoom",
+          "reservedDesk",
+          "retiredProfi",
+          "openSpace",
+        ]);
+      });
+
+      test("names each reservation's product", async () => {
+        const { items } = await run((administration) =>
+          administration.listReservations({ customerId, sort: "created" })
+        );
+        const loaded = await Promise.all(
+          [...ids.keys()].map((id) =>
+            run((administration) => administration.loadReservationProduct(id))
+          )
+        );
+
+        expect(
+          Object.fromEntries(
+            items.map((item) => [
+              ids.get(item.id),
+              { type: item.type, product: item.product, label: item.typeLabel },
+            ])
+          )
+        ).toEqual({
+          openSpace: {
+            type: "cowork",
+            product: { kind: "cowork", tier: "open-space" },
+            label: "Open Space",
+          },
+          reservedDesk: {
+            type: "cowork",
+            product: { kind: "cowork", tier: "reserved-desk" },
+            label: "Reserved Desk",
+          },
+          retiredProfi: {
+            type: "cowork",
+            product: { kind: "cowork", tier: "profi" },
+            label: "Profi Workstation",
+          },
+          meetingRoom: {
+            type: "meeting-room",
+            product: { kind: "meeting-room" },
+            label: "Meeting Room",
+          },
+          office: {
+            type: "office",
+            product: { kind: "office" },
+            label: "Private Office",
+          },
+        });
+        expect(loaded).toEqual([
+          { kind: "cowork", tier: "open-space" },
+          { kind: "cowork", tier: "reserved-desk" },
+          { kind: "cowork", tier: "profi" },
+          { kind: "meeting-room" },
+          { kind: "office" },
+        ]);
+      });
+
+      test("picks the most booked product as the customer's favorite", async () => {
+        const [mixed, offices] = await Promise.all(
+          [customerId, favoriteOfficeCustomerId].map((customer) =>
+            run((administration) =>
+              administration.loadCustomerActivity(customer)
+            )
+          )
+        );
+
+        // A tie goes to the first family and tier by name.
+        expect(mixed?.stats.favoriteReservationProduct).toEqual({
+          kind: "cowork",
+          tier: "open-space",
+        });
+        expect(mixed?.stats.favoriteProduct).toBe("Cowork Open-space");
+        expect(offices?.stats.favoriteReservationProduct).toEqual({
+          kind: "office",
+        });
+        expect(offices?.stats.favoriteProduct).toBeNull();
+        expect(productsOf(mixed?.reservations ?? []).sort()).toEqual(
+          Object.keys(products).sort()
+        );
       });
     });
   }

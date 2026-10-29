@@ -1,12 +1,14 @@
+import type { MarketingConsentStatus } from "./marketing-consent-status";
+
 export type MarketingPreferencesManagedState =
   | {
-      readonly status: "absent" | "active" | "withdrawn";
+      readonly status: MarketingConsentStatus;
       readonly source: "link";
       readonly context: string;
       readonly dismissalContext: string;
     }
   | {
-      readonly status: "absent" | "active" | "withdrawn";
+      readonly status: MarketingConsentStatus;
       readonly source: "account";
       readonly context: string;
     };
@@ -25,17 +27,6 @@ export type MarketingPreferencesState =
   | {
       readonly status: "unavailable";
     };
-
-/**
- * A customer's stored marketing consent: none recorded, currently granted, or
- * withdrawn after a grant.
- */
-export const getMarketingPreferenceStatus = (
-  consent: { readonly withdrawnAt: Temporal.Instant | null } | null
-): MarketingPreferencesManagedState["status"] => {
-  if (consent === null) return "absent";
-  return consent.withdrawnAt === null ? "active" : "withdrawn";
-};
 
 /**
  * Managed states render the marketing preference as a controllable row with a

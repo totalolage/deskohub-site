@@ -2,7 +2,6 @@ import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Context, Effect, Layer } from "effect";
-import { m } from "@/features/administration/i18n";
 import { mockAdministratorAccess } from "@/features/administrators/server/administrator-access.test-utils";
 
 const access = mockAdministratorAccess("campaign-image-upload");
@@ -26,72 +25,53 @@ mock.module("@/instrumentation", () => ({
   },
 }));
 
-const upload = mock((_file: File) =>
-  Effect.succeed({ url: "https://images.deskohub.test/campaign.png" })
-);
+const authorization = {
+  url: "https://api.cloudinary.test/v1_1/cloud/image/upload",
+  fields: { signature: "fake-upload-signature" },
+  publicId: "email-campaigns/preview/4f1c0b9e",
+};
+const authorizations = mock(() => authorization);
+const authorizeUpload = Effect.sync(authorizations);
 
 class StubCampaignImageService extends Context.Service<
   StubCampaignImageService,
-  { readonly upload: typeof upload }
+  { readonly authorizeUpload: typeof authorizeUpload }
 >()("@test/CampaignImageService") {}
 
 mock.module(
   "@/features/email-campaigns/backend/campaign-image.service",
   () => ({
     CampaignImageService: Object.assign(StubCampaignImageService, {
-      Live: Layer.succeed(StubCampaignImageService, { upload }),
+      Live: Layer.succeed(StubCampaignImageService, { authorizeUpload }),
     }),
   })
 );
 
-const { uploadCampaignImage } = await import("./actions");
-
-const locale = "en-US";
-
-const uploadForm = (file?: File) => {
-  const form = new FormData();
-  if (file) form.set("file", file);
-  return form;
-};
-
-const image = () =>
-  new File([new Uint8Array([1, 2, 3])], "campaign.png", { type: "image/png" });
+const { authorizeCampaignImageUpload } = await import("./actions");
 
 beforeEach(() => {
   access.set("administrator");
-  upload.mockClear();
+  authorizations.mockClear();
 });
 
-describe("uploadCampaignImage", () => {
-  test("uploads an administrator's image", async () => {
-    const result = await uploadCampaignImage(uploadForm(image()));
+describe("authorizeCampaignImageUpload", () => {
+  test("authorizes an administrator's upload", async () => {
+    const result = await authorizeCampaignImageUpload();
 
-    expect(result?.data).toEqual({
-      url: "https://images.deskohub.test/campaign.png",
-    });
-    expect(upload).toHaveBeenCalledTimes(1);
-  });
-
-  test("tells an administrator why a file can't be uploaded", async () => {
-    const result = await uploadCampaignImage(uploadForm());
-
-    expect(result?.serverError).toBe(
-      m.emailCampaignsImageUploadMissing({}, { locale })
-    );
-    expect(upload).not.toHaveBeenCalled();
+    expect(result?.data).toEqual(authorization);
+    expect(authorizations).toHaveBeenCalledTimes(1);
   });
 
   test.each(["signed-out", "not-administrator"] as const)(
-    "refuses a %s caller before reading the file",
+    "refuses a %s caller without signing anything",
     async (caller) => {
       access.set(caller);
 
-      const result = await uploadCampaignImage(uploadForm());
+      const result = await authorizeCampaignImageUpload();
 
-      expect(result?.serverError).toBe(
-        m.emailCampaignsImageUploadFailed({}, { locale })
-      );
-      expect(upload).not.toHaveBeenCalled();
+      expect(result?.data).toBeUndefined();
+      expect(result?.serverError).toEqual(expect.any(String));
+      expect(authorizations).not.toHaveBeenCalled();
     }
   );
 });

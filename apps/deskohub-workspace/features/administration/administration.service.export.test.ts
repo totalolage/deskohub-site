@@ -346,7 +346,7 @@ describe("AdministrationService.exportReservations", () => {
 describe("AdministrationService.exportCustomers", () => {
   const customerRow = (id: string) => ({
     customerId: id,
-    marketingConsent: "granted",
+    marketingConsent: "active",
     reservationCount: 2,
     lastActivityAt: instant,
   });
@@ -369,7 +369,7 @@ describe("AdministrationService.exportCustomers", () => {
       },
       (administration) =>
         administration
-          .exportCustomers({ marketingConsent: "granted" })
+          .exportCustomers({ marketingConsent: "active" })
           .pipe(Effect.result)
     ).then(({ value }) => value);
 

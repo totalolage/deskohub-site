@@ -5,6 +5,10 @@ import type {
   CampaignBodyNode,
 } from "./campaign-body-document";
 import { campaignBodySchema } from "./campaign-body-extensions";
+import {
+  isCampaignImageAlignment,
+  isCampaignImageWidth,
+} from "./campaign-image";
 
 type IssuePath = ReadonlyArray<PropertyKey>;
 
@@ -18,6 +22,8 @@ export type CampaignBodyIssue = Data.TaggedEnum<{
   StructureInvalid: { readonly path: IssuePath; readonly reason: string };
   LinkHrefInvalid: { readonly path: IssuePath };
   ImageSourceInvalid: { readonly path: IssuePath };
+  /** The alignment isn't left, center or right, or the width isn't whole pixels. */
+  ImageLayoutInvalid: { readonly path: IssuePath };
   ButtonLabelMissing: { readonly path: IssuePath };
   /** Markdown turns carriage returns into line breaks, losing them on export. */
   ButtonLabelLineBreaks: { readonly path: IssuePath };
@@ -39,6 +45,8 @@ export const englishCampaignBodyIssueMessage = (
     LinkHrefInvalid: () => "A link must use an https: or mailto: URL.",
     ImageSourceInvalid: () =>
       "An image must come from the Deskohub Cloudinary account.",
+    ImageLayoutInvalid: () =>
+      "An image must align left, center or right, and give its width in whole pixels.",
     ButtonLabelMissing: () => "A button needs a label.",
     ButtonLabelLineBreaks: () =>
       "A button label must break lines with line feeds only.",
@@ -122,6 +130,31 @@ const nodeIssues = (
     own.push(
       CampaignBodyIssue.ImageSourceInvalid({ path: [...path, "attrs", "src"] })
     );
+  }
+
+  if (node.type === "image") {
+    const align = node.attrs?.align;
+    const width = node.attrs?.width;
+    // An unset alignment or width keeps the default: centered, filling the
+    // column.
+    if (
+      align !== undefined &&
+      align !== null &&
+      !isCampaignImageAlignment(align)
+    ) {
+      own.push(
+        CampaignBodyIssue.ImageLayoutInvalid({
+          path: [...path, "attrs", "align"],
+        })
+      );
+    }
+    if (width !== undefined && width !== null && !isCampaignImageWidth(width)) {
+      own.push(
+        CampaignBodyIssue.ImageLayoutInvalid({
+          path: [...path, "attrs", "width"],
+        })
+      );
+    }
   }
 
   if (node.type === "ctaButton") {

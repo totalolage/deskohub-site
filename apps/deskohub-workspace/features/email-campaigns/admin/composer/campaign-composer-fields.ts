@@ -261,6 +261,8 @@ export const localeContentIssueMessage = (
         m.emailCampaignsBodyLinkHrefInvalid({}, { locale }),
       ImageSourceInvalid: () =>
         m.emailCampaignsBodyImageSourceInvalid({}, { locale }),
+      ImageLayoutInvalid: () =>
+        m.emailCampaignsBodyImageLayoutInvalid({}, { locale }),
       ButtonLabelMissing: () =>
         m.emailCampaignsBodyButtonLabelMissing({}, { locale }),
       ButtonLabelLineBreaks: () =>

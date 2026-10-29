@@ -249,4 +249,4 @@ export const workspaceReservations = pgTable(
   ]
 );
 
-export type WorkspaceReservation = typeof workspaceReservations.$inferSelect;
+export type WorkspaceReservationRow = typeof workspaceReservations.$inferSelect;

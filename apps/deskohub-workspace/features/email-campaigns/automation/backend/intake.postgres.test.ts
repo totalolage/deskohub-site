@@ -45,6 +45,10 @@ const finishedFlow: AutomationFlow = {
   trigger: { _tag: "ReservationFinished" },
   steps: [{ _tag: "Send", id: "send" as AutomationStepId }],
 };
+const triggeredBy = (trigger: AutomationFlow["trigger"]): AutomationFlow => ({
+  ...finishedFlow,
+  trigger,
+});
 
 describe.skipIf(!database)("intake units on Postgres", () => {
   if (!database) return;
@@ -62,6 +66,7 @@ describe.skipIf(!database)("intake units on Postgres", () => {
     input: {
       readonly purpose?: CampaignPurpose;
       readonly audienceFilter?: AudienceFilter;
+      readonly flow?: AutomationFlow;
     } = {}
   ) => {
     const purpose = input.purpose ?? "operational";
@@ -70,7 +75,7 @@ describe.skipIf(!database)("intake units on Postgres", () => {
     const versionId = await seedAutomationVersion(db, {
       campaignId,
       purpose,
-      flow: finishedFlow,
+      flow: input.flow ?? finishedFlow,
       ...(input.audienceFilter && { audienceFilter: input.audienceFilter }),
       activatedAt: now.subtract({ hours: 72 }),
     });
@@ -276,6 +281,117 @@ describe.skipIf(!database)("intake units on Postgres", () => {
     const runs = await runsOf(campaignId);
     expect(runs).toHaveLength(1);
     expect(runs[0].trigger_ms).toBe(String(newEnd.epochMilliseconds));
+  });
+
+  test("enters a finished event whose visit Dotypos extended to an end already past, at its first end (D35)", async () => {
+    const campaignId = await automation();
+    const customer = await fixtures.addCustomer("extended-past");
+    const visit = await finishedVisit({
+      label: "extended-past",
+      customer,
+      hoursAgo: 3,
+    });
+    // Later than the event but before now: intake re-checks as of now.
+    fixtures.moveVisit(visit.reservationId, {
+      startsAt: visit.endsAt.subtract({ hours: 2 }),
+      endsAt: now.subtract({ hours: 1 }),
+    });
+    const { process } = await engine();
+
+    await process();
+
+    expect(await receipts(campaignId)).toEqual([
+      {
+        key: `reservation-finished:${visit.reservationId}`,
+        disposition: "started",
+        run: true,
+      },
+    ]);
+    const [run] = await runsOf(campaignId);
+    expect(run.trigger_ms).toBe(String(visit.endsAt.epochMilliseconds));
+  });
+
+  test("enters a booked event whose visit Dotypos moved later, and supersedes a started one (D35)", async () => {
+    const bookedCampaign = await automation({
+      flow: triggeredBy({ _tag: "ReservationBooked" }),
+    });
+    const startedCampaign = await automation({
+      flow: triggeredBy({ _tag: "ReservationStarted" }),
+    });
+    const customer = await fixtures.addCustomer("moved-later");
+    const startsAt = now.subtract({ hours: 1 });
+    const reservationId = await fixtures.book({
+      label: "moved-later",
+      customer,
+      startsAt,
+      endsAt: startsAt.add({ hours: 2 }),
+    });
+    const booked = await fixtures.recordEvent({
+      kind: "reservation-booked",
+      customer,
+      reservationId,
+      occurredAt: startsAt.subtract({ hours: 2 }),
+    });
+    const started = await fixtures.recordEvent({
+      kind: "reservation-started",
+      customer,
+      reservationId,
+      occurredAt: startsAt,
+    });
+    const movedStart = now.add({ hours: 3 });
+    fixtures.moveVisit(reservationId, {
+      startsAt: movedStart,
+      endsAt: movedStart.add({ hours: 2 }),
+    });
+    const { process } = await engine();
+
+    await process();
+
+    expect(await processed([booked, started])).toBe(true);
+    expect(await receipts(bookedCampaign)).toEqual([
+      {
+        key: `reservation-booked:${reservationId}`,
+        disposition: "started",
+        run: true,
+      },
+    ]);
+    expect(await receipts(startedCampaign)).toEqual([]);
+    expect(await runsOf(startedCampaign)).toEqual([]);
+  });
+
+  test("enters a cancellation event, which its own Workspace cancellation never withdraws (D28)", async () => {
+    const campaignId = await automation({
+      flow: triggeredBy({ _tag: "ReservationCancelled" }),
+    });
+    const customer = await fixtures.addCustomer("cancellation");
+    const startsAt = now.add({ hours: 24 });
+    const reservationId = await fixtures.book({
+      label: "cancellation",
+      customer,
+      startsAt,
+      endsAt: startsAt.add({ hours: 2 }),
+    });
+    const cancelledAt = now.subtract({ minutes: 30 });
+    await fixtures.cancelInWorkspace(reservationId, cancelledAt);
+    fixtures.cancelVisit(reservationId);
+    const event = await fixtures.recordEvent({
+      kind: "reservation-cancelled",
+      customer,
+      reservationId,
+      occurredAt: cancelledAt,
+    });
+    const { process } = await engine();
+
+    await process();
+
+    expect(await processed([event])).toBe(true);
+    expect(await receipts(campaignId)).toEqual([
+      {
+        key: `reservation-cancelled:${reservationId}`,
+        disposition: "started",
+        run: true,
+      },
+    ]);
   });
 
   test("withdraws an event whose visit Dotypos cancelled or no longer returns (D28)", async () => {
