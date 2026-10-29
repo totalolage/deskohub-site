@@ -24,7 +24,7 @@ export class MarketingConsentUnavailable extends Data.TaggedError(
  * explicit grant, from account settings or the signed email link, renews the
  * consent and reactivates a withdrawn one, unless the withdrawal is newer.
  */
-export type MarketingConsentChoice =
+type MarketingConsentChoice =
   | {
       readonly choice: "grant";
       readonly mode: "initial" | "explicit";
