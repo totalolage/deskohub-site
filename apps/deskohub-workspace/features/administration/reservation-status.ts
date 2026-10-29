@@ -2,14 +2,14 @@ import type {
   FulfillmentState,
   PaymentState,
   ReservationState,
-  WorkspaceReservation,
+  WorkspaceReservationRow,
 } from "@/db/schema";
 
 export const ADMINISTRATION_CANCELLATION_RETRY_AFTER_MS = 60 * 1000;
 
 export const canCancelReservation = (
   reservation: Pick<
-    WorkspaceReservation,
+    WorkspaceReservationRow,
     | "dotyposReservationId"
     | "fulfillmentState"
     | "paymentState"

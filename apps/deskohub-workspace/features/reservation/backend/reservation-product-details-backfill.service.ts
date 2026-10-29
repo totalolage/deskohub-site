@@ -9,22 +9,24 @@ import {
   Match,
   Option,
   Result,
-  Schema,
 } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import { workspaceReservations } from "@/db/schema/workspace-reservations";
+import {
+  type WorkspaceReservationRow,
+  workspaceReservations,
+} from "@/db/schema/workspace-reservations";
 import {
   type BookedInterval,
   type BookedReservation,
   decodeBookedReservation,
 } from "@/features/reservation/backend/booked-reservation";
+import { StoredReservationDetails } from "@/features/reservation/backend/stored-reservation-details.server";
 import { getMeetingRoomEarlySetupField } from "@/features/reservation/meeting-room-early-setup";
 import { findMeetingRoomReservationDuration } from "@/features/reservation/meeting-room-reservation-time";
 import { getOfficeReservationSelection } from "@/features/reservation/office-reservation";
-import {
-  type StoredWorkspaceReservationDetails,
-  storedWorkspaceReservationDetailsSchema,
-  type WorkspaceReservationId,
+import type {
+  StoredWorkspaceReservationDetails,
+  WorkspaceReservationId,
 } from "@/features/reservation/persistence-contracts";
 import {
   meetingRoomReservationKind,
@@ -88,7 +90,7 @@ type BackfillRow = {
   readonly id: WorkspaceReservationId;
   readonly family: ReservationProductDetailsBackfillFamily;
   readonly dotyposReservationId: DotyposReservationId | null;
-  readonly reservationDetails: unknown;
+  readonly reservationDetails: WorkspaceReservationRow["reservationDetails"];
 };
 
 type IncompleteRow = BackfillRow & {
@@ -103,12 +105,8 @@ type ResolvedRow = IncompleteRow & {
 type UnresolvedRow =
   ReservationProductDetailsBackfillBatch["unresolved"][number];
 
-const storedFamily = sql<ReservationProductDetailsBackfillFamily>`${workspaceReservations.reservationDetails}->>'kind'`;
-
-const decodeStoredDetails = Schema.decodeUnknownOption(
-  storedWorkspaceReservationDetailsSchema,
-  { onExcessProperty: "error" }
-);
+// The batch reads only backfilled families.
+const storedFamily = sql<ReservationProductDetailsBackfillFamily>`${StoredReservationDetails.kind}`;
 
 const isComplete = Match.type<StoredWorkspaceReservationDetails>().pipe(
   Match.discriminatorsExhaustive("kind")({
@@ -132,7 +130,7 @@ const unresolvedRow = ({
 const triageRow = (
   row: BackfillRow
 ): Result.Result<Option.Option<IncompleteRow>, UnresolvedRow> => {
-  const details = decodeStoredDetails(row.reservationDetails);
+  const details = StoredReservationDetails.project(row.reservationDetails);
   if (Option.isNone(details)) {
     return Result.fail(
       unresolvedRow({ row, reason: "stored_details_malformed" })

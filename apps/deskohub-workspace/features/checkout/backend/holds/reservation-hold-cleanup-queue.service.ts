@@ -1,6 +1,6 @@
 import { Context, Data, Duration, Effect, Layer, Schema } from "effect";
 import { toStoredInstant } from "@/db/instant";
-import type { WorkspaceReservation } from "@/db/schema";
+import type { WorkspaceReservationRow } from "@/db/schema";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
   type WorkspaceReservationId,
@@ -158,7 +158,7 @@ export class ReservationHoldCleanupScheduleService extends Context.Service<
 const dueReservationStates = ["held", "cancelling", "cancellation_failed"];
 
 const isDueReservation = (
-  reservation: WorkspaceReservation | null,
+  reservation: WorkspaceReservationRow | null,
   reservationHoldExpiresAt: Temporal.Instant,
   now: Temporal.Instant
 ) =>

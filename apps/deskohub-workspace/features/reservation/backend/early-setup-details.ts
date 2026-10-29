@@ -1,9 +1,10 @@
 import type { DotyposReservationId } from "@deskohub/dotypos";
-import { and, sql } from "drizzle-orm";
-import { Effect } from "effect";
+import { and } from "drizzle-orm";
+import { Effect, Option } from "effect";
 import type { WorkspaceDatabaseClient } from "@/db/database.service";
 import { equalsAny } from "@/db/equals-any";
 import { workspaceReservations } from "@/db/schema";
+import { StoredReservationDetails } from "@/features/reservation/backend/stored-reservation-details.server";
 import type { StoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
 
 /**
@@ -32,7 +33,7 @@ export const loadEarlySetupDetails = (
               workspaceReservations.dotyposReservationId,
               dotyposReservationIds
             ),
-            sql`${workspaceReservations.reservationDetails} @> '{"kind":"meeting-room","earlySetup":true}'::jsonb`
+            StoredReservationDetails.earlySetupMeetingRoom
           )
         )
         .pipe(
@@ -42,7 +43,16 @@ export const loadEarlySetupDetails = (
                 rows.flatMap(({ dotyposReservationId, reservationDetails }) =>
                   dotyposReservationId === null
                     ? []
-                    : [[dotyposReservationId, reservationDetails] as const]
+                    : Option.match(
+                        StoredReservationDetails.project(reservationDetails),
+                        {
+                          // A malformed document moves no booked start.
+                          onNone: () => [],
+                          onSome: (details) => [
+                            [dotyposReservationId, details] as const,
+                          ],
+                        }
+                      )
                 )
               )
           )

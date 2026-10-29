@@ -19,15 +19,15 @@ import { retryDatabaseRead } from "@/db/retry-database-read";
 import {
   type LatePaymentRecoveryState,
   latePaymentRecoveries,
-  type WorkspaceReservation as WorkspaceReservationRow,
+  type WorkspaceReservationRow,
   workspaceReservations,
 } from "@/db/schema";
 import type { Locale } from "@/features/i18n";
+import type { WorkspaceReservationDetailsMalformedError } from "@/features/reservation/backend/stored-reservation-details.server";
 import {
   decodeOptionalWorkspaceReservation,
   ensureUpdated,
   type WorkspaceReservation,
-  type WorkspaceReservationDetailsMalformedError,
   type WorkspaceReservationStateError,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";

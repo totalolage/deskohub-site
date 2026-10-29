@@ -3,7 +3,7 @@ import {
   PostHogEventId,
 } from "@deskohub/posthog/identifiers";
 import { Effect } from "effect";
-import type { WorkspaceReservation } from "@/db/schema";
+import type { WorkspaceReservationRow } from "@/db/schema";
 import type { PaymentAttempt } from "@/features/checkout/backend/repositories/payment-attempt.repository";
 import type {
   CheckoutAttemptId,
@@ -23,9 +23,9 @@ import { CurrentPostHogRequestContext } from "@/shared/backend/analytics/posthog
 import { CurrentAgentTraffic } from "@/shared/backend/workspace-request-context";
 import { moneyMajorAmount } from "@/shared/money/money";
 
-type LifecycleEventTimestamp = WorkspaceReservation["createdAt"];
+type LifecycleEventTimestamp = WorkspaceReservationRow["createdAt"];
 
-type LifecycleReservation = Pick<WorkspaceReservation, "id">;
+type LifecycleReservation = Pick<WorkspaceReservationRow, "id">;
 
 const reservationProperties = (
   reservation: LifecycleReservation

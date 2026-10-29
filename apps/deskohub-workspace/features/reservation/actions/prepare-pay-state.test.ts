@@ -19,7 +19,7 @@ import { TestClock } from "effect/testing";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   customerMarketingConsents,
-  type WorkspaceReservation,
+  type WorkspaceReservationRow,
 } from "@/db/schema";
 import type { OptionalAccountActivityFixture } from "@/features/account/backend/customer-account-activity.test-utils";
 import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
@@ -297,8 +297,8 @@ const makeAdvertisementAffirmation = (basisPoints?: number) => {
 const signedInAccountId = "5b6f31d0-2c1a-4f0e-9a3d-6c7b8e2f1a01";
 
 const makeReusableReservation = (
-  overrides: Partial<WorkspaceReservation> = {}
-): WorkspaceReservation =>
+  overrides: Partial<WorkspaceReservationRow> = {}
+): WorkspaceReservationRow =>
   ({
     id: "existing-reservation-id",
     authorAccountId: signedInAccountId,
@@ -334,7 +334,7 @@ const makeReusableReservation = (
     createdAt: Temporal.Instant.from("2026-07-01T09:55:00.000Z"),
     updatedAt: Temporal.Instant.from("2026-07-01T09:55:00.000Z"),
     ...overrides,
-  }) as WorkspaceReservation;
+  }) as WorkspaceReservationRow;
 
 // Only a signed-in account books, so scenarios run signed in unless they
 // pass their own session authority.
@@ -1921,7 +1921,7 @@ describe("prepareWorkspacePayState", () => {
         ...linkedAccountBooking(),
         bookingAgent,
       });
-      const agentHold = (overrides: Partial<WorkspaceReservation> = {}) =>
+      const agentHold = (overrides: Partial<WorkspaceReservationRow> = {}) =>
         makeReusableReservation({
           authorAccountId: accountId as never,
           agentClientId: bookingAgent.clientId,
@@ -1976,7 +1976,7 @@ describe("prepareWorkspacePayState", () => {
         id: string,
         input: CreateWorkspaceReservationDraftInput,
         bookedAt: Temporal.Instant,
-        overrides: Partial<WorkspaceReservation> = {}
+        overrides: Partial<WorkspaceReservationRow> = {}
       ) =>
         agentHold({
           id,
@@ -2781,7 +2781,7 @@ describe("prepareWorkspacePayState", () => {
             makeReusableReservation({
               reservationState: "draft",
               authorAccountId:
-                "0d9c6a2e-7f41-4b8a-a6e3-2c5d9b1f4e70" as WorkspaceReservation["authorAccountId"],
+                "0d9c6a2e-7f41-4b8a-a6e3-2c5d9b1f4e70" as WorkspaceReservationRow["authorAccountId"],
             })
           )
         ),

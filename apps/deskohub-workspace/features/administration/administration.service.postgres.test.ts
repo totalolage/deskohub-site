@@ -1371,10 +1371,15 @@ describe.skipIf(!testDatabase)(
           coffee: true,
           monitorOption: "2x27-4k",
         },
-        retiredProfi: { kind: "cowork", entryTier: "profi", coffee: true },
+        retiredProfi: {
+          kind: "cowork",
+          entryTier: "profi",
+          coffee: true,
+          monitorOption: "2x32-qhd",
+        },
         meetingRoom: {
           kind: "meeting-room",
-          duration: { unit: "hour", amount: 2 },
+          duration: { unit: "hour", amount: 4 },
         },
         office: { kind: "office", seats: 4, dayCount: 3 },
       } as const satisfies Record<string, StoredWorkspaceReservationDetails>;
@@ -1406,7 +1411,10 @@ describe.skipIf(!testDatabase)(
 
       beforeAll(async () => {
         for (const product of Object.keys(products) as Product[]) {
-          ids.set(await insert(customerId, product, products[product]), product);
+          ids.set(
+            await insert(customerId, product, products[product]),
+            product
+          );
         }
         await insert(favoriteOfficeCustomerId, "office-a", products.office);
         await insert(favoriteOfficeCustomerId, "office-b", products.office);
@@ -1533,9 +1541,9 @@ describe.skipIf(!testDatabase)(
           kind: "office",
         });
         expect(offices?.stats.favoriteProduct).toBeNull();
-        expect(
-          productsOf(mixed?.reservations ?? []).sort()
-        ).toEqual(Object.keys(products).sort());
+        expect(productsOf(mixed?.reservations ?? []).sort()).toEqual(
+          Object.keys(products).sort()
+        );
       });
     });
   }

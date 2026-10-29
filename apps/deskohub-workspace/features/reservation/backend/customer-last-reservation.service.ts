@@ -15,6 +15,7 @@ import {
   type BookedReservation,
   decodeBookedReservation,
 } from "@/features/reservation/backend/booked-reservation";
+import { StoredReservationDetails } from "@/features/reservation/backend/stored-reservation-details.server";
 import { getMeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
 import { findMeetingRoomReservationDuration } from "@/features/reservation/meeting-room-reservation-time";
 import { getOfficeReservationSelection } from "@/features/reservation/office-reservation";
@@ -96,14 +97,22 @@ export class CustomerLastReservationService extends Context.Service<
             and(
               eq(workspaceReservations.dotyposCustomerId, dotyposCustomerId),
               isNotNull(workspaceReservations.reservationConfirmedAt),
-              sql`${workspaceReservations.reservationDetails}->>'kind' = ${kind}`
+              sql`${StoredReservationDetails.kind} = ${kind}`
             )
           )
           .orderBy(desc(workspaceReservations.createdAt))
           .limit(1);
         if (!row) return null;
+        // A malformed document names no options to repeat.
+        const stored = StoredReservationDetails.project(row.reservationDetails);
+        if (Option.isNone(stored)) return null;
+        const reservationDetails = stored.value;
+        const booking = {
+          dotyposReservationId: row.dotyposReservationId,
+          reservationDetails,
+        };
 
-        return yield* Match.value(row.reservationDetails).pipe(
+        return yield* Match.value(reservationDetails).pipe(
           Match.discriminatorsExhaustive("kind")({
             cowork: (details) =>
               Effect.succeed<CustomerLastReservation | null>(
@@ -119,7 +128,7 @@ export class CustomerLastReservationService extends Context.Service<
                   : null
               ),
             "meeting-room": () =>
-              readBooked(row).pipe(
+              readBooked(booking).pipe(
                 Effect.map((booked): CustomerLastReservation | null =>
                   booked.pipe(
                     Option.flatMap(({ interval }) => interval),
@@ -136,7 +145,7 @@ export class CustomerLastReservationService extends Context.Service<
                 )
               ),
             office: () =>
-              readBooked(row).pipe(
+              readBooked(booking).pipe(
                 Effect.map((booked): CustomerLastReservation | null =>
                   booked.pipe(
                     Option.flatMap(({ interval, seats }) =>

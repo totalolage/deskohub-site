@@ -142,6 +142,34 @@ describe.skipIf(!testDatabase)(
       expect(listReservations).not.toHaveBeenCalled();
     });
 
+    test("returns null when the latest reservation's stored details are malformed", async () => {
+      const customerId = uniqueCustomerId();
+      const dotyposReservationId = await insertReservation({
+        dotyposCustomerId: customerId,
+        reservationDetails: {
+          kind: "cowork",
+          entryTier: "open-space",
+          coffee: true,
+        },
+        createdAt: "2026-07-01T09:00:00.000Z",
+      });
+      // Only a write outside the encoder could store this.
+      await testDatabase!.pool.query(
+        "update workspace_reservations set reservation_details = $1::jsonb where dotypos_reservation_id = $2",
+        [
+          JSON.stringify({ kind: "cowork", entryTier: "open-space" }),
+          dotyposReservationId,
+        ]
+      );
+
+      const { lastReservation } = await loadLastReservation(
+        customerId,
+        "cowork"
+      );
+
+      expect(lastReservation).toBeNull();
+    });
+
     test("repeats the latest confirmed current cowork tier with its monitor option", async () => {
       const customerId = uniqueCustomerId();
       await insertReservation({
