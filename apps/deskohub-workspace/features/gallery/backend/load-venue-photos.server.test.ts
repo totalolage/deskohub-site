@@ -182,7 +182,10 @@ describe("loadVenuePhotos projection", () => {
     resources = [
       { ...resource({}, { width: 0, height: 600 }), public_id: "zero-width" },
       { ...resource({}, { width: 800, height: 0 }), public_id: "zero-height" },
-      { ...resource({}, { width: 800, height: -1 }), public_id: "negative-height" },
+      {
+        ...resource({}, { width: 800, height: -1 }),
+        public_id: "negative-height",
+      },
     ];
     expect(await loadVenuePhotos("gallery", "en-US")).toEqual([]);
     resources.push({ ...resource(), public_id: "valid-photo" });
