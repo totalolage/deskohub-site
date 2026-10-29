@@ -64,6 +64,27 @@ const projectDetails = Schema.decodeUnknownOption(
 
 const details = workspaceReservations.reservationDetails;
 
+// Each reads a field as its JSON type holds it, and null for any other type. A
+// CASE runs its result only for the rows its condition admits, so no cast sees
+// a value it can't convert.
+
+/** A string or number field as text. */
+const scalarTextAt = (field: SQL, type: "string" | "number") =>
+  sql`case when jsonb_typeof(${field}) = ${sql.raw(`'${type}'`)}
+    then ${field} #>> '{}' end`;
+
+/** A boolean field. */
+const booleanAt = (field: SQL) =>
+  sql`case when jsonb_typeof(${field}) = 'boolean' then (${field})::boolean end`;
+
+/** A whole number in the int range, every value the plain text cast read. */
+const integerAt = (field: SQL) =>
+  sql`case when jsonb_typeof(${field}) = 'number' then
+    case when (${field})::numeric = trunc((${field})::numeric)
+      and (${field})::numeric between -2147483648 and 2147483647
+    then (${field})::numeric::int end
+  end`;
+
 /**
  * Where each catalog property lives in a document. A document that lacks the
  * field (a reservation the backfill couldn't resolve) or holds it in another
@@ -75,21 +96,16 @@ const propertyValues: {
   };
 } = {
   cowork: {
-    tier: sql`${details}->>'entryTier'`,
-    coffee: sql`case when jsonb_typeof(${details}->'coffee') = 'boolean'
-      then (${details}->>'coffee')::boolean end`,
-    monitor: sql`${details}->>'monitorOption'`,
+    tier: scalarTextAt(sql`${details}->'entryTier'`, "string"),
+    coffee: booleanAt(sql`${details}->'coffee'`),
+    monitor: scalarTextAt(sql`${details}->'monitorOption'`, "string"),
   },
   "meeting-room": {
-    offer: sql`(${details}->'duration'->>'unit') || ':' || (${details}->'duration'->>'amount')`,
+    offer: sql`${scalarTextAt(sql`${details}->'duration'->'unit'`, "string")} || ':' || ${scalarTextAt(sql`${details}->'duration'->'amount'`, "number")}`,
   },
   office: {
-    seats: sql`case when jsonb_typeof(${details}->'seats') = 'number'
-      and ${details}->>'seats' ~ '^-?[0-9]{1,9}$'
-      then (${details}->>'seats')::int end`,
-    days: sql`case when jsonb_typeof(${details}->'dayCount') = 'number'
-      and ${details}->>'dayCount' ~ '^-?[0-9]{1,9}$'
-      then (${details}->>'dayCount')::int end`,
+    seats: integerAt(sql`${details}->'seats'`),
+    days: integerAt(sql`${details}->'dayCount'`),
   },
 };
 

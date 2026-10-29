@@ -39,6 +39,13 @@ const documents = {
     coffee: "yes",
   },
   fractionalValues: { kind: "office", seats: 2.5, dayCount: 1e12 },
+  largeValues: { kind: "office", seats: 2147483647, dayCount: 2147483648 },
+  nonTextValues: {
+    kind: "cowork",
+    entryTier: {},
+    monitorOption: 5,
+    duration: { unit: "hour", amount: "4" },
+  },
   stringCoffee: { kind: "cowork", entryTier: "open-space", coffee: "true" },
   scalar: "cowork",
   array: [{ kind: "office", seats: 2 }],
@@ -99,6 +106,8 @@ describe.skipIf(!testDatabase)(
         unknownKind: null,
         textValues: "office",
         fractionalValues: "office",
+        largeValues: "office",
+        nonTextValues: "cowork",
         stringCoffee: "cowork",
         scalar: null,
         array: null,
@@ -114,53 +123,30 @@ describe.skipIf(!testDatabase)(
         read(StoredReservationDetails.property("office", "seats")),
         read(StoredReservationDetails.property("office", "days")),
       ]);
-      const of = (label: Label) => properties.map((values) => values[label]);
+      const none = [null, null, null, null, null, null];
 
-      expect(of("cowork")).toEqual([
-        "reserved-desk",
-        true,
-        "2x27-4k",
-        null,
-        null,
-        null,
-      ]);
-      expect(of("meetingRoom")).toEqual([
-        null,
-        null,
-        null,
-        "hour:4",
-        null,
-        null,
-      ]);
-      expect(of("office")).toEqual([null, null, null, null, 6, 2]);
-      expect(of("unresolvedOffice")).toEqual([
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-      ]);
-      expect(of("textValues")).toEqual([null, null, null, null, null, null]);
-      expect(of("fractionalValues")).toEqual([
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-      ]);
-      expect(of("stringCoffee")).toEqual([
-        "open-space",
-        null,
-        null,
-        null,
-        null,
-        null,
-      ]);
-      for (const label of ["scalar", "array"] as const) {
-        expect(of(label)).toEqual([null, null, null, null, null, null]);
-      }
+      expect(
+        Object.fromEntries(
+          (Object.keys(documents) as Label[]).map((label) => [
+            label,
+            properties.map((values) => values[label]),
+          ])
+        )
+      ).toEqual({
+        cowork: ["reserved-desk", true, "2x27-4k", null, null, null],
+        meetingRoom: [null, null, null, "hour:4", null, null],
+        office: [null, null, null, null, 6, 2],
+        unresolvedOffice: none,
+        // A property reads its own field; callers pair it with the family.
+        unknownKind: [null, null, null, null, 2, null],
+        textValues: none,
+        fractionalValues: none,
+        largeValues: [null, null, null, null, 2147483647, null],
+        nonTextValues: none,
+        stringCoffee: ["open-space", null, null, null, null, null],
+        scalar: none,
+        array: none,
+      });
     });
 
     test("finds only the early-setup meeting room", async () => {
@@ -185,9 +171,9 @@ describe.skipIf(!testDatabase)(
           .orderBy(kind)
       );
       expect(rows).toEqual([
-        { kind: "cowork", count: 2 },
+        { kind: "cowork", count: 3 },
         { kind: "meeting-room", count: 1 },
-        { kind: "office", count: 4 },
+        { kind: "office", count: 5 },
         { kind: null, count: 3 },
       ]);
     });
