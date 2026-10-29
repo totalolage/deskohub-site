@@ -810,6 +810,49 @@ describe("reservation step composition in Chromium", () => {
   );
 
   test.skipIf(!chromiumAvailable)(
+    "waits for Submit after contact input disables and re-enables it",
+    async () => {
+      const html = `
+        <form>
+          <input name="name" />
+          <input name="email" />
+          <input name="emailConfirmation" />
+          <input name="phone" />
+          <button id="reservation-submit" type="submit"></button>
+        </form>
+        <script>
+          const submit = document.querySelector("#reservation-submit");
+          window.submitEnabledAgain = false;
+          document.querySelector('input[name="name"]').addEventListener("input", () => {
+            queueMicrotask(() => {
+              Promise.resolve().then(() => {
+                submit.disabled = true;
+                setTimeout(() => {
+                  submit.disabled = false;
+                  window.submitEnabledAgain = true;
+                }, 500);
+              });
+            });
+          });
+        </script>
+      `;
+      await expect(
+        prepareOn(html, withWaits(toReservationStep(data), 1_000, 1_500))
+      ).resolves.toBe("about:blank");
+      await expect(
+        getPage().evaluate(() => ({
+          enabledAgain: (
+            window as typeof window & { submitEnabledAgain: boolean }
+          ).submitEnabledAgain,
+          submitDisabled: document.querySelector<HTMLButtonElement>(
+            "#reservation-submit"
+          )?.disabled,
+        }))
+      ).resolves.toEqual({ enabledAgain: true, submitDisabled: false });
+    }
+  );
+
+  test.skipIf(!chromiumAvailable)(
     "fills only rendered editable contact inputs, including confirmation",
     async () => {
       const html = `

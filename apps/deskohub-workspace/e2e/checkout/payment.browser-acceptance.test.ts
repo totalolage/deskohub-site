@@ -8,6 +8,7 @@ import {
   runBrowserStep,
 } from "../case-runner.browser.test-utils";
 import type { WorkspaceE2EConfig } from "../config";
+import { redact } from "../redaction";
 import { addRedaction } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
 import { makeCoworkCheckoutData } from "./data";
@@ -39,6 +40,7 @@ const requireBrowser = () => {
 };
 
 const orderId = "019f7082-1bec-7ab4-8fcd-2f0fdfd9dd71";
+const redactedOrderId = "39a8d46a-8636-42d1-bc7a-b15a2945c720";
 const diagnosticSecret = "synthetic-diagnostic-secret-739182";
 const syntheticIdSecret = "reservation-submit";
 const date = "2099-09-01";
@@ -113,18 +115,22 @@ const server = Bun.serve({
 
       const payUrl = new URL("/checkout/pay", server.url.origin);
       payUrl.searchParams.set("scenario", scenario);
-      if (scenario !== "order-in-body")
+      if (
+        scenario !== "order-in-body" &&
+        scenario !== "order-read-overrun" &&
+        scenario !== "order-redaction"
+      )
         payUrl.searchParams.set("orderId", orderId);
       return json({ redirect: payUrl.toString() });
     }
 
     if (url.pathname === "/checkout/pay") {
-      return new Response(
-        payPage(scenario, url.searchParams.get("orderId") ?? orderId),
-        {
-          headers: { "content-type": "text/html; charset=utf-8" },
-        }
-      );
+      let id = url.searchParams.get("orderId") ?? orderId;
+      if (scenario === "order-redaction") id = redactedOrderId;
+      if (scenario === "order-read-overrun") id = "";
+      return new Response(payPage(scenario, id), {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
     }
 
     if (url.pathname === "/payment-click" && request.method === "POST") {
@@ -231,7 +237,7 @@ function payPage(scenario: string, id: string) {
   const buttons =
     scenario === "exact-name"
       ? '<button type="button" data-handler="similar">Order and pay 100 Kč</button><button type="button" data-handler="exact">Order and pay</button>'
-      : `<button type="button" data-handler="pay"${scenario === "disabled-pay" ? " disabled" : ""}>Order and pay</button>`;
+      : `<button id="checkout-pay-submit" type="button" data-handler="pay"${scenario === "disabled-pay" || scenario === "disabled-pay-step-deadline" ? " disabled" : ""}>Order and pay</button>`;
   return `<!doctype html><html lang="en-US"><body>
     <main>${id}</main>
     ${consent}
@@ -239,9 +245,10 @@ function payPage(scenario: string, id: string) {
     <script>
       const scenario = ${JSON.stringify(scenario)};
       const consent = document.querySelector('#checkout-pay-legal-consent');
-      if (consent) consent.__reactProps$test = {};
+      if (consent && scenario !== 'consent-never-hydrated') consent.__reactProps$test = {};
       for (const button of document.querySelectorAll('[data-handler]')) {
         button.addEventListener('click', () => {
+          if (window.paymentClicks !== undefined) window.paymentClicks++;
           const handler = button.dataset.handler;
           void fetch('/payment-click?scenario=' + scenario + '&handler=' + handler, { method: 'POST' });
           if (scenario === 'hosted-popup' || scenario === 'popup-status') {
@@ -251,6 +258,22 @@ function payPage(scenario: string, id: string) {
             location.assign('/hpp/nexi/${id}?scenario=' + scenario);
           }
         });
+      }
+      if (scenario === 'order-read-overrun') {
+        Object.defineProperty(document.body, 'innerText', {
+          configurable: true,
+          get() {
+            const until = Date.now() + 31_000;
+            while (Date.now() < until) {}
+            return '';
+          }
+        });
+      }
+      if (scenario === 'disabled-pay-step-deadline') {
+        window.paymentClicks = 0;
+        window.paymentButtonFocuses = 0;
+        const button = document.querySelector('[data-handler="pay"]');
+        button.addEventListener('focus', () => window.paymentButtonFocuses++);
       }
     </script>
   </body></html>`;
@@ -385,6 +408,108 @@ test.skipIf(!chromiumAvailable)(
 
     expectSucceeded(result);
     expect(result.value).toBe(orderId);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "redacts an order id read from pay page text",
+  async () => {
+    const scenario = "order-redaction";
+    resetScenario(scenario);
+    const data = dataFor(scenario);
+    const receivedOrderIds: string[] = [];
+    const result = await runBrowserStep({
+      browser: requireBrowser(),
+      prepare: showReservation(scenario),
+      drive: ({ session }) => {
+        addRedaction(redactedOrderId);
+        return submitReservationForPayPage({
+          onOrderId: (value) => receivedOrderIds.push(value),
+          preparation: preparationFor(data),
+          session,
+          timeouts: shortTimeouts,
+        });
+      },
+    });
+
+    expectSucceeded(result);
+    expect(result.value).not.toBe(redactedOrderId);
+    expect(result.value).toBe(redact(redactedOrderId));
+    expect(receivedOrderIds).toEqual([redact(redactedOrderId)]);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "classifies a pay page order id read overrun as a failure",
+  async () => {
+    const scenario = "order-read-overrun";
+    resetScenario(scenario);
+    const data = dataFor(scenario);
+    const result = await runBrowserStep({
+      browser: requireBrowser(),
+      prepare: showReservation(scenario),
+      drive: ({ session }) =>
+        submitReservationForPayPage({
+          preparation: preparationFor(data),
+          session,
+          timeouts: shortTimeouts,
+        }),
+      stepTimeoutMs: 55_000,
+    });
+
+    expectOutcome(result, "error");
+    expect(
+      result.failures[0]?.message.startsWith("read pay page order id failed")
+    ).toBe(true);
+  },
+  75_000
+);
+
+test.skipIf(!chromiumAvailable)(
+  "classifies a preparation kickoff overrun as a failure",
+  async () => {
+    const scenario = "preparation-kickoff-overrun";
+    resetScenario(scenario);
+    const data = dataFor(scenario);
+    const result = await runBrowserStep({
+      browser: requireBrowser(),
+      prepare: (session) =>
+        showReservation(scenario)(session).pipe(
+          Effect.andThen(
+            session.evaluate(
+              "block preparation kickoff",
+              () => {
+                Object.defineProperty(
+                  globalThis,
+                  "__deskohubWorkspaceE2EPreparation",
+                  {
+                    configurable: true,
+                    set() {
+                      const until = Date.now() + 3_000;
+                      while (Date.now() < until) {}
+                    },
+                  }
+                );
+              },
+              undefined
+            )
+          )
+        ),
+      drive: ({ session }) =>
+        submitReservationForPayPage({
+          preparation: preparationFor(data),
+          session,
+          timeouts: shortTimeouts,
+        }),
+      stepTimeoutMs: 10_000,
+    });
+
+    expectOutcome(result, "error");
+    expect(
+      result.failures[0]?.message.startsWith(
+        "start checkout reservation preparation failed"
+      )
+    ).toBe(true);
   }
 );
 
@@ -744,6 +869,22 @@ test.skipIf(!chromiumAvailable)(
 );
 
 test.skipIf(!chromiumAvailable)(
+  "times out when payment legal consent never hydrates",
+  async () => {
+    const scenario = "consent-never-hydrated";
+    resetScenario(scenario);
+    const result = await runBrowserStep({
+      browser: requireBrowser(),
+      prepare: showPayPage(scenario),
+      drive: ({ session }) => submitCheckoutPayment(session, shortTimeouts),
+      stepTimeoutMs: 5_000,
+    });
+
+    expectOutcome(result, "timeout");
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
   "fails when the payment submit button stays disabled",
   async () => {
     const scenario = "disabled-pay";
@@ -759,6 +900,59 @@ test.skipIf(!chromiumAvailable)(
       "enabled payment submit button failed"
     );
     expect(state.paymentHandlers).toEqual([]);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "does not activate or focus a pay button enabled after the step deadline",
+  async () => {
+    const scenario = "disabled-pay-step-deadline";
+    resetScenario(scenario);
+    let afterDeadline:
+      | {
+          activeElementId: string;
+          clickCount: number;
+          focusCount: number;
+        }
+      | undefined;
+    const result = await runBrowserStep({
+      browser: requireBrowser(),
+      prepare: showPayPage(scenario),
+      drive: ({ session }) =>
+        submitCheckoutPayment(session, {
+          ...shortTimeouts,
+          checkoutPayControl: 15_000,
+        }),
+      stepTimeoutMs: 2_500,
+      afterStep: ({ session }) =>
+        session
+          .use("observe delayed payment button", async (page) => {
+            await page.evaluate(() => {
+              setTimeout(() => {
+                const button = document.querySelector<HTMLButtonElement>(
+                  '[data-handler="pay"]'
+                );
+                if (button) button.disabled = false;
+              }, 100);
+            });
+            await page.waitForTimeout(1_000);
+            afterDeadline = await page.evaluate(() => ({
+              activeElementId:
+                (document.activeElement as HTMLElement | null)?.id ?? "",
+              clickCount: (window as typeof window & { paymentClicks: number })
+                .paymentClicks,
+              focusCount: (
+                window as typeof window & { paymentButtonFocuses: number }
+              ).paymentButtonFocuses,
+            }));
+          })
+          .pipe(Effect.asVoid),
+    });
+
+    expectOutcome(result, "timeout");
+    expect(afterDeadline?.activeElementId).not.toBe("checkout-pay-submit");
+    expect(afterDeadline?.clickCount).toBe(0);
+    expect(afterDeadline?.focusCount).toBe(0);
   }
 );
 
