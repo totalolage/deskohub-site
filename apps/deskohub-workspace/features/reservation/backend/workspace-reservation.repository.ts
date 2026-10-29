@@ -384,21 +384,6 @@ export interface IWorkspaceReservationRepository {
     void,
     EffectDrizzleQueryError | WorkspaceReservationStateError
   >;
-  readonly markFulfillmentDeliveryFailed: (input: {
-    readonly id: WorkspaceReservationId;
-    readonly failureCode: string;
-    readonly failedAt: Temporal.Instant;
-  }) => Effect.Effect<
-    WorkspaceReservation | null,
-    EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
-  >;
-  readonly recoverEmailDeliveryFailure: (input: {
-    readonly id: WorkspaceReservationId;
-    readonly deliveredAt: Temporal.Instant;
-  }) => Effect.Effect<
-    WorkspaceReservation | null,
-    EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
-  >;
   /** Records the booked customer event in the confirmation's transaction. */
   readonly markReservationConfirmed: (input: {
     readonly id: WorkspaceReservationId;
@@ -1607,73 +1592,6 @@ export class WorkspaceReservationRepository extends Context.Service<
             input.id,
             "Only processing paid reservations can be marked fulfillment failed."
           );
-        }),
-        markFulfillmentDeliveryFailed: Effect.fn(
-          "workspaceReservations.markFulfillmentDeliveryFailed"
-        )(function* (input) {
-          const failureStillApplies = or(
-            eq(workspaceReservations.fulfillmentState, "processing"),
-            and(
-              eq(workspaceReservations.fulfillmentState, "fulfilled"),
-              sql`${workspaceReservations.fulfilledAt} is not null`,
-              lt(workspaceReservations.fulfilledAt, input.failedAt)
-            ),
-            and(
-              eq(workspaceReservations.fulfillmentState, "failed"),
-              eq(
-                workspaceReservations.fulfillmentFailureCode,
-                input.failureCode
-              ),
-              sql`${workspaceReservations.fulfillmentFailedAt} is not null`,
-              lt(workspaceReservations.fulfillmentFailedAt, input.failedAt)
-            )
-          );
-          const [failed] = yield* db
-            .update(workspaceReservations)
-            .set({
-              fulfillmentState: "failed",
-              fulfilledAt: null,
-              fulfillmentFailedAt: input.failedAt,
-              fulfillmentFailureCode: input.failureCode,
-              updatedAt: Temporal.Now.instant(),
-            })
-            .where(
-              and(
-                eq(workspaceReservations.id, input.id),
-                eq(workspaceReservations.paymentState, "paid"),
-                failureStillApplies
-              )
-            )
-            .returning();
-          return yield* decodeOptionalWorkspaceReservation(failed);
-        }),
-        recoverEmailDeliveryFailure: Effect.fn(
-          "workspaceReservations.recoverEmailDeliveryFailure"
-        )(function* (input) {
-          const [recovered] = yield* db
-            .update(workspaceReservations)
-            .set({
-              fulfillmentState: "fulfilled",
-              fulfilledAt: input.deliveredAt,
-              // Keeps the failure's time, as `markCustomerEmailDeliveryFulfilled` does.
-              fulfillmentFailureCode: null,
-              updatedAt: Temporal.Now.instant(),
-            })
-            .where(
-              and(
-                eq(workspaceReservations.id, input.id),
-                eq(workspaceReservations.paymentState, "paid"),
-                eq(workspaceReservations.fulfillmentState, "failed"),
-                eq(
-                  workspaceReservations.fulfillmentFailureCode,
-                  "fulfillment_email_failed"
-                ),
-                sql`${workspaceReservations.fulfillmentFailedAt} is not null`,
-                lt(workspaceReservations.fulfillmentFailedAt, input.deliveredAt)
-              )
-            )
-            .returning();
-          return yield* decodeOptionalWorkspaceReservation(recovered);
         }),
         markReservationConfirmed: Effect.fn(
           "workspaceReservations.markReservationConfirmed"
