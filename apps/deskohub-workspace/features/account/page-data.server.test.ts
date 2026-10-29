@@ -1338,7 +1338,7 @@ describe("loadAccountPageState", () => {
       expect(output.join("\n")).not.toContain("configuration broken");
     });
 
-    test("never builds the capability of a section the page skips", async () => {
+    test("ignores a capability that can't be built while the page skips its section", async () => {
       layerOverrides = { avatar: unbuildable() };
       avatarsFlag.mockResolvedValue(false);
 
@@ -1569,7 +1569,7 @@ describe("loadAccountPageState", () => {
         email: customerEmail,
       });
     });
-    test("shows a settled signup outcome when the referral capability can't be built", async () => {
+    test("degrades the signup referral before reading a settled outcome when the referral capability can't be built", async () => {
       storedSignupIntent = {
         code: "RFLPENDING",
         promotionCodeId: "@test/promotion-code-id",
@@ -1578,12 +1578,22 @@ describe("loadAccountPageState", () => {
       };
       layerOverrides = { referrals: unbuildable() };
 
-      // The stored outcome needs no referral service; only a retry would.
-      await expect(loadPageState()).resolves.toMatchObject({
-        kind: "linked",
-        signupReferral: { status: "applied" },
-      });
-      expect(acceptReferralCalls).toEqual([]);
+      const { state, output } = await loadWithWarnings();
+
+      expect(state).toMatchObject({ kind: "linked" });
+      expect(state).not.toHaveProperty("signupReferral");
+      expect(warnings(output)).toContain("account.signup-referral.unavailable");
+    });
+
+    test("logs the auto-link acceptance as unavailable without an auto-link when the referral capability can't be built", async () => {
+      layerOverrides = { referrals: unbuildable() };
+
+      const { state, output } = await loadWithWarnings();
+
+      expect(state).toMatchObject({ kind: "linked" });
+      expect(warnings(output)).toContain(
+        "account.auto-link.referral.unavailable"
+      );
     });
 
     test("lets Next.js control flow from a section reach Next.js", async () => {

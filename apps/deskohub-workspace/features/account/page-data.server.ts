@@ -7,6 +7,7 @@ import {
   type AccountPageCapabilities,
   accountPageCapabilities,
   liveAccountPageLayers,
+  replayBuildFailure,
 } from "@/features/account/account-page-capabilities.server";
 import { AccountFeatureFlagService } from "@/features/account/backend/account-feature-flag.service";
 import { CustomerAgentConnections } from "@/features/account/backend/auth/customer-agent-connections.service";
@@ -342,7 +343,8 @@ const loadLinkedAccount = Effect.fn(function* (
   // page is certain to render, so the visit that settles the code is the one
   // that shows its outcome. A withheld program leaves the stored code as is.
   const signupReferral = referralsEnabled
-    ? yield* recordSignupReferral(account).pipe(
+    ? yield* replayBuildFailure(ReferralService).pipe(
+        Effect.andThen(recordSignupReferral(account)),
         Effect.catchCause(() =>
           logDegradedAccountSection("account.signup-referral.unavailable").pipe(
             Effect.as(undefined)
@@ -531,10 +533,10 @@ const loadSignedInAccount = Effect.fn(function* (
   if (Result.isSuccess(resolution)) {
     // Resolution has released the account lock that acceptance takes.
     if (referralsEnabled) {
-      yield* acceptAutoLinkedReferral(
-        resolution.success,
-        rememberedReferralCode
-      ).pipe(
+      yield* replayBuildFailure(ReferralService).pipe(
+        Effect.andThen(
+          acceptAutoLinkedReferral(resolution.success, rememberedReferralCode)
+        ),
         Effect.catchCause(() =>
           logDegradedAccountSection("account.auto-link.referral.unavailable")
         ),

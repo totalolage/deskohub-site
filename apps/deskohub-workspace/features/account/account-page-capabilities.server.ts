@@ -173,6 +173,23 @@ export const accountPageCapabilities = (
   ).pipe(Layer.provideMerge(layers.referralRelease));
 
 /**
+ * The build failure each stand-in replays, so a step can replay it before
+ * it reads anything else.
+ */
+const buildFailures = new WeakMap<object, Effect.Effect<never>>();
+
+/**
+ * Replays the build failure of the capability `tag` names when its layer
+ * couldn't be built, and does nothing otherwise. A step that may finish
+ * without using the capability starts with it, so it fails as when it
+ * provided that layer itself.
+ */
+export const replayBuildFailure = <I, S extends object>(
+  tag: Context.Key<I, S>
+) =>
+  Effect.flatMap(tag, (service) => buildFailures.get(service) ?? Effect.void);
+
+/**
  * Provides `tag` from a layer, or, when that layer can't be built, the
  * capability `unavailable` makes from an Effect that replays the build
  * failure, typed failures as defects. The failure then surfaces where the
@@ -180,16 +197,16 @@ export const accountPageCapabilities = (
  * and interruption or Next.js control flow stays what it was.
  */
 const unavailableUntilUsed =
-  <I, S>(
+  <I, S extends object>(
     tag: Context.Key<I, S>,
     unavailable: (failure: Effect.Effect<never>) => S
   ) =>
   <E, R>(layer: Layer.Layer<I, E, R>): Layer.Layer<I, never, R> =>
     layer.pipe(
-      Layer.catchCause((cause) =>
-        Layer.succeed(
-          tag,
-          unavailable(Effect.failCause(failuresAsDefects(cause)))
-        )
-      )
+      Layer.catchCause((cause) => {
+        const failure = Effect.failCause(failuresAsDefects(cause));
+        const standIn = unavailable(failure);
+        buildFailures.set(standIn, failure);
+        return Layer.succeed(tag, standIn);
+      })
     );
