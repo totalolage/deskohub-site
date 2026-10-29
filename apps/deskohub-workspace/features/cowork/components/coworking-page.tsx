@@ -9,12 +9,11 @@ import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.serv
 import { type Locale, m } from "@/features/i18n";
 import { getOfferingSale } from "@/features/pricing/offering-sale";
 import { PublicPageBreadcrumbs } from "@/features/public-pages/components/public-page-breadcrumbs";
-import { getCoworkOfferSearchParams } from "@/features/reservation/cowork-reservation-checkout-query";
-import { getReservationSelectionPath } from "@/features/reservation/reservation-checkout-query";
 import {
   getCoworkReservationPath,
   getMeetingRoomReservationPath,
 } from "@/features/reservation/routes";
+import { getSelectionPath } from "@/features/reservation/selection-path";
 import { Button } from "@/shared/components/ui/button";
 import { textLink } from "@/shared/components/ui/text-link";
 import { formatMoney } from "@/shared/money/money";
@@ -300,11 +299,10 @@ function CoworkingDesks({
                     className="sm:w-auto"
                   >
                     <Link
-                      href={getReservationSelectionPath(
-                        locale,
-                        "cowork",
-                        getCoworkOfferSearchParams({ entryTier: desk.tier })
-                      )}
+                      href={getSelectionPath(locale, {
+                        kind: "cowork",
+                        entryTier: desk.tier,
+                      })}
                     >
                       {desk.cta}
                     </Link>

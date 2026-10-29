@@ -1,13 +1,12 @@
 import { Effect, Match, Schema } from "effect";
 import { loadPublicOfferings } from "@/features/checkout/backend/checkout/public-offerings";
 import {
+  getPublicOfferingSelection,
   getPublicOpeningHours,
   type PublicOffering,
 } from "@/features/checkout/public-offerings";
 import { type Locale, m } from "@/features/i18n";
 import { getShareableReservationUrl } from "@/features/reservation/backend/shareable-reservation-url";
-import { getCoworkOfferSearchParams } from "@/features/reservation/cowork-reservation-checkout-query";
-import { getMeetingRoomReservationSelectionSearchParams } from "@/features/reservation/meeting-room-reservation-checkout-query";
 import { getMeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
@@ -82,81 +81,57 @@ const getBusiness = (locale: Locale): ListOfferingsResult["business"] => {
 };
 
 const toAgentOffering = (offering: PublicOffering) =>
-  Match.value(offering).pipe(
-    Match.discriminatorsExhaustive("kind")({
-      cowork: (cowork) =>
-        getShareableReservationUrl(
-          "cowork",
-          getCoworkOfferSearchParams({ entryTier: cowork.tier })
-        ).pipe(
-          Effect.map(
-            (reservationUrl): AgentOffering => ({
-              family: "cowork",
-              tier: cowork.tier,
-              ...getOfferingCopy(cowork),
-              price: toAgentToolMoney(cowork.price),
+  getShareableReservationUrl(getPublicOfferingSelection(offering)).pipe(
+    Effect.map((reservationUrl) =>
+      Match.value(offering).pipe(
+        Match.discriminatorsExhaustive("kind")({
+          cowork: (cowork): AgentOffering => ({
+            family: "cowork",
+            tier: cowork.tier,
+            ...getOfferingCopy(cowork),
+            price: toAgentToolMoney(cowork.price),
+            price_unit: "day",
+            ...getAdvertisedPrice(cowork),
+            add_ons: cowork.addOns.map((addOn) => ({
+              id: addOn.id,
+              name: addOn.name,
+              price: toAgentToolMoney(addOn.price),
               price_unit: "day",
-              ...getAdvertisedPrice(cowork),
-              add_ons: cowork.addOns.map((addOn) => ({
-                id: addOn.id,
-                name: addOn.name,
-                price: toAgentToolMoney(addOn.price),
-                price_unit: "day",
-                included: addOn.included,
-                ...(addOn.options && { options: addOn.options }),
-              })),
-              reservation_url: reservationUrl,
-            })
-          )
-        ),
-      "meeting-room": (meetingRoom) => {
-        const duration = getMeetingRoomReservationDurationKey(
-          meetingRoom.duration
-        );
-
-        return getShareableReservationUrl(
-          "meeting-room",
-          // No start yet: the page opens on the earliest one.
-          getMeetingRoomReservationSelectionSearchParams({
-            duration,
-            startDateTime: "",
-          })
-        ).pipe(
-          Effect.map(
-            (reservationUrl): AgentOffering => ({
-              family: "meeting-room",
-              duration,
-              duration_label: meetingRoom.durationLabel,
-              ...getOfferingCopy(meetingRoom),
-              price: toAgentToolMoney(meetingRoom.price),
-              price_unit: "booking",
-              ...getAdvertisedPrice(meetingRoom),
-              add_ons: [],
-              reservation_url: reservationUrl,
-            })
-          )
-        );
-      },
-      office: (office) =>
-        getShareableReservationUrl("office").pipe(
-          Effect.map(
-            (reservationUrl): AgentOffering => ({
-              family: "office",
-              ...getOfferingCopy(office),
-              price: toAgentToolMoney(office.price),
-              price_unit: "day",
-              ...getAdvertisedPrice(office),
-              seat_price: toAgentToolMoney(office.seatPrice),
-              ...(office.maximumSeats !== undefined && {
-                max_seats: office.maximumSeats,
-              }),
-              max_duration_hours: office.maximumDurationHours,
-              add_ons: [],
-              reservation_url: reservationUrl,
-            })
-          )
-        ),
-    })
+              included: addOn.included,
+              ...(addOn.options && { options: addOn.options }),
+            })),
+            reservation_url: reservationUrl,
+          }),
+          "meeting-room": (meetingRoom): AgentOffering => ({
+            family: "meeting-room",
+            duration: getMeetingRoomReservationDurationKey(
+              meetingRoom.duration
+            ),
+            duration_label: meetingRoom.durationLabel,
+            ...getOfferingCopy(meetingRoom),
+            price: toAgentToolMoney(meetingRoom.price),
+            price_unit: "booking",
+            ...getAdvertisedPrice(meetingRoom),
+            add_ons: [],
+            reservation_url: reservationUrl,
+          }),
+          office: (office): AgentOffering => ({
+            family: "office",
+            ...getOfferingCopy(office),
+            price: toAgentToolMoney(office.price),
+            price_unit: "day",
+            ...getAdvertisedPrice(office),
+            seat_price: toAgentToolMoney(office.seatPrice),
+            ...(office.maximumSeats !== undefined && {
+              max_seats: office.maximumSeats,
+            }),
+            max_duration_hours: office.maximumDurationHours,
+            add_ons: [],
+            reservation_url: reservationUrl,
+          }),
+        })
+      )
+    )
   );
 
 const getOfferingCopy = ({

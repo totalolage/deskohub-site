@@ -1200,17 +1200,19 @@ describe("CheckoutStatusPage payment retry", () => {
   const retries = [
     {
       kind: "cowork",
-      retrySearchParams: {
+      retrySelection: {
+        kind: "cowork",
         entryTier: "reserved-desk",
         date: "2099-06-12",
-        coffee: "true",
-        monitorOption: "none",
+        coffee: true,
+        monitorOption: undefined,
       },
       href: "/en-US/reservation/cowork?entryTier=reserved-desk&date=2099-06-12&coffee=true&monitorOption=none",
     },
     {
       kind: "meeting-room",
-      retrySearchParams: {
+      retrySelection: {
+        kind: "meeting-room",
         startDateTime: "2099-08-13T14:00",
         duration: "hour:4",
       },
@@ -1218,7 +1220,12 @@ describe("CheckoutStatusPage payment retry", () => {
     },
     {
       kind: "office",
-      retrySearchParams: { startsOn: "2099-06-20", dayCount: "5", seats: "4" },
+      retrySelection: {
+        kind: "office",
+        startsOn: "2099-06-20",
+        dayCount: 5,
+        seats: 4,
+      },
       href: "/en-US/reservation/office?startsOn=2099-06-20&dayCount=5&seats=4",
     },
   ] as const;
@@ -1234,7 +1241,7 @@ describe("CheckoutStatusPage payment retry", () => {
     )
   )(
     "offers Try again with the $kind selection after a $status payment",
-    ({ href, kind, paymentStatus, retrySearchParams, status }) => {
+    ({ href, kind, paymentStatus, retrySelection, status }) => {
       const view = render(
         <CheckoutStatusPage
           locale="en-US"
@@ -1244,7 +1251,7 @@ describe("CheckoutStatusPage payment retry", () => {
             status,
             paymentStatus,
             fulfillmentStatus: "not_started",
-            retrySearchParams,
+            retrySelection,
           }}
         />
       );
@@ -1270,7 +1277,7 @@ describe("CheckoutStatusPage payment retry", () => {
           status: "late_payment_refund",
           paymentStatus: "expired",
           fulfillmentStatus: "not_started",
-          retrySearchParams: retries[0].retrySearchParams,
+          retrySelection: retries[0].retrySelection,
         }}
       />
     );

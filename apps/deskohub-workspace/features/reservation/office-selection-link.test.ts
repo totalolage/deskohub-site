@@ -4,10 +4,10 @@ import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
-  getOfficeReservationDefaultValuesFromSearchParams,
-  getOfficeReservationSelectionSearchParams,
-  getStoredOfficeReservationSelectionSearchParams,
-} from "./office-reservation-checkout-query";
+  getOfficeReservationDefaultValues,
+  type NormalizedOfficeReservationOrder,
+} from "./office-reservation";
+import { officeSelectionLink } from "./office-selection-link";
 import { setReservationSelectionSearchParams } from "./reservation-checkout-query";
 
 const workspaceMidnight = (date: string) =>
@@ -15,10 +15,10 @@ const workspaceMidnight = (date: string) =>
     .toZonedDateTime(workspaceSiteConstants.location.timeZone)
     .toInstant();
 
-describe("getOfficeReservationDefaultValuesFromSearchParams", () => {
+describe("officeSelectionLink.read", () => {
   test("prefills safe office shape on a fresh date", () => {
     expect(
-      getOfficeReservationDefaultValuesFromSearchParams(
+      officeSelectionLink.read(
         {
           dayCount: "3",
           seats: "4",
@@ -45,7 +45,7 @@ describe("getOfficeReservationDefaultValuesFromSearchParams", () => {
 
   test("falls back for malformed or stale office shape", () => {
     expect(
-      getOfficeReservationDefaultValuesFromSearchParams(
+      officeSelectionLink.read(
         { dayCount: "999", seats: "7" },
         { seatCapacity: 3, today: "2099-10-01" }
       )
@@ -55,7 +55,7 @@ describe("getOfficeReservationDefaultValuesFromSearchParams", () => {
       seats: 1,
     });
     expect(
-      getOfficeReservationDefaultValuesFromSearchParams(
+      officeSelectionLink.read(
         { dayCount: "Infinity", seats: "0" },
         { seatCapacity: 3, today: "2099-10-01" }
       )
@@ -66,10 +66,7 @@ describe("getOfficeReservationDefaultValuesFromSearchParams", () => {
 describe("office start date links", () => {
   const today = "2099-06-12";
   const startsOnFrom = (startsOn: string) =>
-    getOfficeReservationDefaultValuesFromSearchParams(
-      { startsOn },
-      { seatCapacity: 6, today }
-    ).startsOn;
+    officeSelectionLink.read({ startsOn }, { seatCapacity: 6, today }).startsOn;
 
   test("opens on a linked start date inside the booking window", () => {
     expect(startsOnFrom("2099-06-12")).toBe("2099-06-12");
@@ -91,13 +88,13 @@ describe("office start date links", () => {
 
   test("fits the day count to the window from the linked start date", () => {
     expect(
-      getOfficeReservationDefaultValuesFromSearchParams(
+      officeSelectionLink.read(
         { startsOn: "2099-07-10", dayCount: "3" },
         { seatCapacity: 6, today }
       )
     ).toMatchObject({ startsOn: "2099-07-10", dayCount: 3 });
     expect(
-      getOfficeReservationDefaultValuesFromSearchParams(
+      officeSelectionLink.read(
         { startsOn: "2099-07-10", dayCount: "4" },
         { seatCapacity: 6, today }
       )
@@ -105,7 +102,31 @@ describe("office start date links", () => {
   });
 });
 
-describe("getOfficeReservationSelectionSearchParams", () => {
+describe("officeSelectionLink.write", () => {
+  test("names the selection in the declared order", () => {
+    expect(
+      Object.entries(
+        officeSelectionLink.write({
+          seats: 4,
+          dayCount: 5,
+          startsOn: "2099-06-20",
+        })
+      )
+    ).toEqual([
+      ["startsOn", "2099-06-20"],
+      ["dayCount", "5"],
+      ["seats", "4"],
+    ]);
+  });
+
+  test("leaves an open selection out of the link", () => {
+    expect(officeSelectionLink.write({})).toEqual({
+      startsOn: undefined,
+      dayCount: undefined,
+      seats: undefined,
+    });
+  });
+
   test.each([
     { startsOn: "2099-06-12", dayCount: 1, seats: 1 },
     { startsOn: "2099-06-20", dayCount: 5, seats: 4 },
@@ -116,11 +137,11 @@ describe("getOfficeReservationSelectionSearchParams", () => {
     );
     setReservationSelectionSearchParams(
       searchParams,
-      getOfficeReservationSelectionSearchParams(selection)
+      officeSelectionLink.write(selection)
     );
 
     expect(
-      getOfficeReservationDefaultValuesFromSearchParams(searchParams, {
+      officeSelectionLink.read(searchParams, {
         seatCapacity: 6,
         today: "2099-06-12",
       })
@@ -134,19 +155,19 @@ describe("customer last reservation defaults", () => {
     const lastReservation = { kind: "office", dayCount: 2, seats: 3 } as const;
 
     expect(
-      getOfficeReservationDefaultValuesFromSearchParams(
+      officeSelectionLink.read(
         {},
         { lastReservation, seatCapacity: 6, today: "2099-06-12" }
       )
     ).toMatchObject({ dayCount: 2, seats: 3 });
     expect(
-      getOfficeReservationDefaultValuesFromSearchParams(
+      officeSelectionLink.read(
         { dayCount: "4", seats: "9" },
         { lastReservation, seatCapacity: 6, today: "2099-06-12" }
       )
     ).toMatchObject({ dayCount: 4, seats: 3 });
     expect(
-      getOfficeReservationDefaultValuesFromSearchParams(
+      officeSelectionLink.read(
         {},
         { lastReservation, seatCapacity: 2, today: "2099-06-12" }
       )
@@ -154,47 +175,87 @@ describe("customer last reservation defaults", () => {
   });
 });
 
-describe("getStoredOfficeReservationSelectionSearchParams", () => {
+describe("officeSelectionLink.fromStored", () => {
   test.each([
     { startsOn: "2099-06-12", endsBefore: "2099-06-13", seats: 1 },
     { startsOn: "2099-06-20", endsBefore: "2099-06-25", seats: 4 },
   ])("the parser reads back the stored reservation %o", (reservation) => {
+    const selection = officeSelectionLink.fromStored({
+      kind: "office",
+      reservedFrom: workspaceMidnight(reservation.startsOn),
+      reservedUntil: workspaceMidnight(reservation.endsBefore),
+      seats: reservation.seats,
+    });
+    const dayCount = Temporal.PlainDate.from(reservation.startsOn).until(
+      reservation.endsBefore
+    ).days;
+    expect(selection).toEqual({
+      kind: "office",
+      startsOn: reservation.startsOn,
+      dayCount,
+      seats: reservation.seats,
+    });
+
     const searchParams = new URLSearchParams();
     setReservationSelectionSearchParams(
       searchParams,
-      getStoredOfficeReservationSelectionSearchParams({
-        kind: "office",
-        reservedFrom: workspaceMidnight(reservation.startsOn),
-        reservedUntil: workspaceMidnight(reservation.endsBefore),
-        seats: reservation.seats,
-      }) ?? {}
+      officeSelectionLink.write(selection ?? {})
     );
-
     expect(
-      getOfficeReservationDefaultValuesFromSearchParams(searchParams, {
+      officeSelectionLink.read(searchParams, {
         seatCapacity: 6,
         today: "2099-06-12",
       })
     ).toMatchObject({
       startsOn: reservation.startsOn,
-      dayCount: Temporal.PlainDate.from(reservation.startsOn).until(
-        reservation.endsBefore
-      ).days,
+      dayCount,
       seats: reservation.seats,
     });
-    for (const contactKey of ["name", "email", "phone", "customer"]) {
-      expect(searchParams.has(contactKey)).toBe(false);
-    }
   });
 
   test("gives no selection for an interval that isn't whole workspace days", () => {
     expect(
-      getStoredOfficeReservationSelectionSearchParams({
+      officeSelectionLink.fromStored({
         kind: "office",
         reservedFrom: workspaceMidnight("2099-06-20").add({ hours: 9 }),
         reservedUntil: workspaceMidnight("2099-06-21"),
         seats: 2,
       })
     ).toBeUndefined();
+  });
+});
+
+describe("officeSelectionLink.restore", () => {
+  const restored = getOfficeReservationDefaultValues({
+    kind: "office",
+    startsOn: "2099-06-20",
+    endsOn: "2099-06-21",
+    seats: 3,
+    name: "Ada Lovelace",
+    email: testEmailAddress("ada"),
+    phone: "+420777777777",
+    billing: { purpose: "personal", invoice: "none" },
+  } as NormalizedOfficeReservationOrder);
+  const context = { seatCapacity: 6, today: "2099-06-12" };
+
+  test("keeps the restored selection without a selection parameter", () => {
+    expect(
+      officeSelectionLink.restore(
+        restored,
+        { payState: "signed", discountCode: "SPRING" },
+        context
+      )
+    ).toEqual(restored);
+  });
+
+  test("lets any selection parameter replace the whole restored selection", () => {
+    expect(
+      officeSelectionLink.restore(restored, { seats: "5" }, context)
+    ).toEqual({
+      ...restored,
+      startsOn: "2099-06-12",
+      dayCount: 1,
+      seats: 5,
+    });
   });
 });

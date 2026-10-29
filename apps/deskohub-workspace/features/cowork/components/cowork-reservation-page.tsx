@@ -8,14 +8,12 @@ import { isRememberedCoworkOfferAvailable } from "@/features/reservation/backend
 import { preloadPageAvailability } from "@/features/reservation/backend/workspace-availability-loader";
 import { createReservationPage } from "@/features/reservation/components/create-reservation-page.server";
 import { getCoworkDateAdvertisedPriceRequests } from "@/features/reservation/cowork-advertised-price";
-import type {
-  CoworkReservationInput,
-  NormalizedCoworkReservationOrder,
-} from "@/features/reservation/cowork-reservation";
 import {
-  getCoworkRestoredReservationValues,
-  getReservationDefaultValuesFromSearchParams,
-} from "@/features/reservation/cowork-reservation-checkout-query";
+  type CoworkReservationInput,
+  getCoworkReservationDefaultValues,
+  type NormalizedCoworkReservationOrder,
+} from "@/features/reservation/cowork-reservation";
+import { coworkSelectionLink } from "@/features/reservation/cowork-selection-link";
 import type { ReservationCheckoutContact } from "@/features/reservation/reservation-checkout-contact";
 import { getReservationCustomerQueryMode } from "@/features/reservation/reservation-checkout-query";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
@@ -91,13 +89,13 @@ const getCoworkQueryValues = async (
   today: string
 ) => {
   const queryValues = withWorkspaceDate(
-    getReservationDefaultValuesFromSearchParams(searchParams),
+    coworkSelectionLink.read(searchParams),
     today
   );
   if (!lastReservation) return queryValues;
 
   const rememberedValues = withWorkspaceDate(
-    getReservationDefaultValuesFromSearchParams(searchParams, lastReservation),
+    coworkSelectionLink.read(searchParams, { lastReservation }),
     today
   );
   if (
@@ -142,7 +140,10 @@ export async function renderCoworkReservationContent({
   const today = getCurrentWorkspaceDate().toString();
   const restoredOrQueryValues = initialReservation
     ? withWorkspaceDate(
-        getCoworkRestoredReservationValues(initialReservation, searchParams),
+        coworkSelectionLink.restore(
+          getCoworkReservationDefaultValues(initialReservation),
+          searchParams
+        ),
         today
       )
     : await getCoworkQueryValues(
