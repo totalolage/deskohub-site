@@ -266,6 +266,10 @@ describe("ResendWebhookService", () => {
       "an email without a reservation ID",
       withTag(customerFailurePayload, "workspaceReservationId", undefined),
     ],
+    [
+      "an email with an invalid reservation ID",
+      withTag(customerFailurePayload, "workspaceReservationId", ""),
+    ],
   ])("reports %s without a customer access email", async (_, payload) => {
     verifiedPayload = payload;
     const recordDelivery = recordDeliveryAs({ ignored: "unrelated_email" });
