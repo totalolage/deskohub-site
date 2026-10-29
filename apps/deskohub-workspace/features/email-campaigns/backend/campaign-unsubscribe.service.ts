@@ -11,7 +11,10 @@ import {
   emailCampaigns,
 } from "@/db/schema";
 import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend/checkout/vercel-preview-protection-bypass";
-import { CustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository";
+import {
+  MarketingConsentLedger,
+  type MarketingConsentUnavailable,
+} from "@/features/legal/backend/marketing-consent-ledger";
 import {
   type MarketingManagementError,
   MarketingManagementService,
@@ -21,7 +24,6 @@ import {
   getWorkspaceRuntimeCallbackOrigin,
   type WorkspaceUrlConfigError,
 } from "@/shared/backend/config/workspace-url.config";
-import { currentInstant } from "@/shared/utils/temporal";
 import {
   type CampaignUnsubscribeRecipient,
   openCampaignUnsubscribeToken,
@@ -53,7 +55,9 @@ export interface ICampaignUnsubscribeService {
     token: string
   ) => Effect.Effect<
     CampaignUnsubscribeOutcome,
-    CampaignUnsubscribeTokenInvalid | EffectDrizzleQueryError
+    | CampaignUnsubscribeTokenInvalid
+    | EffectDrizzleQueryError
+    | MarketingConsentUnavailable
   >;
   /** A fresh marketing preferences link for the token's recipient. */
   readonly preferencesUrl: (
@@ -76,7 +80,7 @@ export class CampaignUnsubscribeService extends Context.Service<
     this,
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
-      const consents = yield* CustomerMarketingConsentRepository;
+      const consents = yield* MarketingConsentLedger;
       const marketingManagement = yield* MarketingManagementService;
       const keys = yield* loadCampaignSigningKeys("unsubscribe-token");
 
@@ -139,10 +143,7 @@ export class CampaignUnsubscribeService extends Context.Service<
         unsubscribe: Effect.fn("CampaignUnsubscribeService.unsubscribe")(
           function* (token) {
             const { dotyposCustomerId } = yield* findRecipient(token);
-            const withdrawn = yield* consents.withdrawActive({
-              dotyposCustomerId,
-              withdrawnAt: yield* currentInstant,
-            });
+            const withdrawn = yield* consents.withdrawActive(dotyposCustomerId);
             return withdrawn ? "withdrawn" : "unchanged";
           }
         ),
@@ -161,7 +162,7 @@ export class CampaignUnsubscribeService extends Context.Service<
   static Live = this.Default.pipe(
     Layer.provide(
       Layer.mergeAll(
-        CustomerMarketingConsentRepository.Default,
+        MarketingConsentLedger.Default,
         MarketingManagementService.Default
       )
     ),

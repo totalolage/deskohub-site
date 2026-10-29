@@ -47,6 +47,7 @@ import {
 } from "@/db/schema";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
 import { type Locale, locales } from "@/features/i18n";
+import { marketingConsentState } from "@/features/legal/backend/marketing-consent-ledger";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 import { currentInstant } from "@/shared/utils/temporal";
@@ -541,7 +542,12 @@ export class CampaignDeliveryService extends Context.Service<
               inArray(customerMarketingConsents.dotyposCustomerId, [
                 ...customerIds,
               ]),
-              isNull(customerMarketingConsents.withdrawnAt)
+              eq(
+                marketingConsentState(
+                  customerMarketingConsents.dotyposCustomerId
+                ),
+                "active"
+              )
             )
           )
           .pipe(

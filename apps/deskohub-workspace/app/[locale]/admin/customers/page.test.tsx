@@ -79,7 +79,7 @@ async function prerenderCustomersPage() {
 const filteredInput = {
   direction: "asc",
   from: "2026-10-01",
-  marketingConsent: "granted",
+  marketingConsent: "active",
   page: 2,
   sort: "reservations",
   to: "2026-10-31",
@@ -107,7 +107,7 @@ describe("CustomersAdministrationPage", () => {
             customerId:
               "customer-one" as AdministrationCustomerSummary["customerId"],
             lastActivityAt: "2026-10-10T08:00:00Z",
-            marketingConsent: "granted",
+            marketingConsent: "active",
             reservationCount: 2,
           },
         ],
@@ -129,10 +129,10 @@ describe("CustomersAdministrationPage", () => {
     expect(
       view.getByRole("link", { name: "Previous" }).getAttribute("href")
     ).toBe(
-      "/en-US/admin/customers?direction=asc&from=2026-10-01&marketingConsent=granted&sort=reservations&to=2026-10-31"
+      "/en-US/admin/customers?direction=asc&from=2026-10-01&marketingConsent=active&sort=reservations&to=2026-10-31"
     );
     expect(view.getByRole("link", { name: "Next" }).getAttribute("href")).toBe(
-      "/en-US/admin/customers?direction=asc&from=2026-10-01&marketingConsent=granted&sort=reservations&to=2026-10-31&page=3"
+      "/en-US/admin/customers?direction=asc&from=2026-10-01&marketingConsent=active&sort=reservations&to=2026-10-31&page=3"
     );
     const table = view.getByRole("table", { name: "Customers" });
     expect(
@@ -140,7 +140,7 @@ describe("CustomersAdministrationPage", () => {
         .getByRole("link", { name: "Last activity" })
         .getAttribute("href")
     ).toBe(
-      "/en-US/admin/customers?direction=asc&from=2026-10-01&marketingConsent=granted&sort=activity&to=2026-10-31"
+      "/en-US/admin/customers?direction=asc&from=2026-10-01&marketingConsent=active&sort=activity&to=2026-10-31"
     );
   });
 
@@ -154,7 +154,7 @@ describe("CustomersAdministrationPage", () => {
     expect(
       view.getByRole("link", { name: "Export CSV" }).getAttribute("href")
     ).toBe(
-      "/en-US/admin/customers/export?direction=asc&from=2026-10-01&marketingConsent=granted&sort=reservations&to=2026-10-31"
+      "/en-US/admin/customers/export?direction=asc&from=2026-10-01&marketingConsent=active&sort=reservations&to=2026-10-31"
     );
   });
 

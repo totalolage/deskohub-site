@@ -4,7 +4,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import { customerMarketingConsents } from "@/db/schema";
-import { CustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository";
+import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import { MarketingManagementService } from "@/features/legal/backend/marketing-management.service";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type { CampaignPurpose } from "../body/campaign-content";
@@ -88,7 +88,7 @@ describe.skipIf(!testDatabase)(
             CampaignUnsubscribeService.Default.pipe(
               Layer.provide(
                 Layer.mergeAll(
-                  CustomerMarketingConsentRepository.Default,
+                  MarketingConsentLedger.Default,
                   MarketingManagementService.Default
                 )
               ),

@@ -27,7 +27,7 @@ import { Effect, Fiber, Layer, Result } from "effect";
 import { TestClock } from "effect/testing";
 import { customerEvents, customerMarketingConsents } from "@/db/schema";
 import type { CustomerAccountId } from "@/features/account/customer-account";
-import { CustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository";
+import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import { MarketingManagementService } from "@/features/legal/backend/marketing-management.service";
 import { ReservationActivitySweep } from "@/features/reservation/backend/reservation-activity-sweep.service";
 import {
@@ -501,7 +501,7 @@ export const automationScenarioLayer = async (input: {
         CampaignUnsubscribeService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
-              CustomerMarketingConsentRepository.Default,
+              MarketingConsentLedger.Default,
               MarketingManagementService.Default
             )
           )

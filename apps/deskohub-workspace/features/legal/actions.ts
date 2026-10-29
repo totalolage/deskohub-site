@@ -17,7 +17,7 @@ import {
   marketingPreferencesLive,
 } from "@/features/legal/marketing-preferences-composition.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
-import { CustomerMarketingConsentRepository } from "./backend/customer-marketing-consent.repository";
+import { MarketingConsentLedger } from "./backend/marketing-consent-ledger";
 import {
   type MarketingManagementError,
   MarketingManagementService,
@@ -34,7 +34,6 @@ import {
   matchesMarketingManagementContext,
   resolveMarketingPreferencesAuthority,
 } from "./backend/marketing-preferences-authority";
-import { getLegalDocumentVersion } from "./document-version";
 
 const marketingPreferencesContextSchema = Schema.NonEmptyString;
 
@@ -99,26 +98,23 @@ const saveMarketingPreferences = Effect.fn(function* (
     return yield* mutationFailureError("stale-context");
   }
 
-  const consents = yield* CustomerMarketingConsentRepository;
-  const consentInput = {
-    dotyposCustomerId: currentAuthority.customerId,
-    documentHash: getLegalDocumentVersion(
-      input.locale,
-      "marketing-communications"
-    ),
+  const ledger = yield* MarketingConsentLedger;
+  const customer = {
+    customerId: currentAuthority.customerId,
     locale: input.locale,
-    grantedAt: Temporal.Now.instant(),
   };
-
-  if (input.granted) {
-    yield* consents
-      .grant({ ...consentInput, source: input.source })
-      .pipe(Effect.mapError(() => mutationError("unavailable")));
-  } else {
-    yield* consents
-      .withdraw(consentInput)
-      .pipe(Effect.mapError(() => mutationError("unavailable")));
-  }
+  yield* ledger
+    .record(
+      input.granted
+        ? {
+            ...customer,
+            choice: "grant",
+            mode: "explicit",
+            channel: input.source,
+          }
+        : { ...customer, choice: "withdraw" }
+    )
+    .pipe(Effect.mapError(() => mutationError("unavailable")));
 
   return { status: "saved" as const };
 });
