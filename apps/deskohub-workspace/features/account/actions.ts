@@ -12,13 +12,13 @@ import {
 import type { AresBusinessBillingDraft } from "@/features/account/backend/ares-business-draft";
 import { toAresBusinessBillingDraft } from "@/features/account/backend/ares-business-draft";
 import { deleteCurrentAccountThroughAuthEndpoint } from "@/features/account/backend/auth/delete-account-endpoint";
+import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
 import { CustomerAccountLinkRepository } from "@/features/account/backend/customer-account-link.repository";
 import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { saveAccountLocalePreference } from "@/features/account/backend/customer-locale-preference";
 import { CustomerProfileService } from "@/features/account/backend/customer-profile.service";
 import { completeNewCustomerProfile } from "@/features/account/backend/profile-completion";
-import { isRememberedReferralCodeUsed } from "@/features/account/backend/remembered-referral-code";
 import { acknowledgeSignupReferral } from "@/features/account/backend/signup-referral";
 import {
   type CustomerProfileInput,
@@ -37,11 +37,7 @@ import type { Locale } from "@/features/i18n";
 import { locales, m } from "@/features/i18n";
 import { ReferralService } from "@/features/referrals";
 import { ReferralFeatureFlagRequest } from "@/features/referrals/referral-feature-flag.server";
-import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
-import {
-  forgetRememberedReferralCode,
-  readRememberedReferralCode,
-} from "@/features/referrals/remembered-referral-code.server";
+import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import { ReferralSignupIntentRepository } from "@/features/referrals/signup-intent.repository";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 
@@ -121,24 +117,25 @@ const saveCustomerProfile = Effect.fn(
 /**
  * Forgets the referral code this browser remembers once the customer's
  * referral is settled, whether by this completion or earlier. The completion
- * field, not the remembered code, decides which code this save records. A
- * withheld referral program neither checks nor forgets the code.
+ * field, not the remembered code, decides which code this save records.
  */
-const forgetUsedRememberedReferralCode = (account: LinkedCustomerAccount) =>
-  readRememberedReferralCode.pipe(
-    // Forgetting is best effort; an unreadable cookie keeps the code.
-    Effect.orElseSucceed(() => undefined),
-    Effect.flatMap((rememberedCode) =>
-      isRememberedReferralCodeUsed(rememberedCode, account)
-    ),
-    Effect.flatMap((used) =>
-      used ? Effect.promise(forgetRememberedReferralCode) : Effect.void
-    ),
-    Effect.when(
-      Effect.flatMap(ReferralFeatureFlagService, (flag) => flag.isEnabled)
-    ),
-    Effect.asVoid,
-    Effect.provide(ReferralService.Live)
+const forgetSettledRememberedReferral = (account: LinkedCustomerAccount) =>
+  Effect.flatMap(RememberedReferral, (remembered) =>
+    remembered.forgetIfSettled({
+      kind: "account",
+      customerId: account.dotyposCustomerId,
+    })
+  ).pipe(
+    Effect.provide(
+      RememberedReferral.Cookies.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            ReferralService.Live,
+            CustomerAccountContactService.Live
+          )
+        )
+      )
+    )
   );
 
 /**
@@ -178,7 +175,7 @@ const completeCustomerProfileAction = defineWorkspaceAction(
     );
     if (outcome.status === "referral-code-unavailable") return outcome;
 
-    yield* forgetUsedRememberedReferralCode(outcome.account);
+    yield* forgetSettledRememberedReferral(outcome.account);
     return outcome.status === "completed" && outcome.referral
       ? { status: "completed" as const, referral: outcome.referral }
       : { status: "completed" as const };

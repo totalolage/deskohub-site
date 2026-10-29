@@ -783,7 +783,7 @@
     "features/referrals/referrer-discount.test.ts": 69,
     "features/referrals/remember-shared-referral-code.browser.test.ts": 3764,
     "features/referrals/remember-shared-referral-code.test.tsx": 218,
-    "features/referrals/remembered-referral-code.server.test.ts": 76,
+    "features/referrals/remembered-referral.service.test.ts": 76,
     "features/reservation-access/backend/reservation-access.repository.postgres.test.ts": 545,
     "features/reservation-access/backend/reservation-access.service.postgres.test.ts": 471,
     "features/reservation-access/backend/reservation-access.service.test.ts": 317,

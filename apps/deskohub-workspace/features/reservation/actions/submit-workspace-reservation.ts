@@ -1,37 +1,13 @@
 import { Effect, Match } from "effect";
 import { CheckoutService } from "@/features/checkout/backend/checkout";
-import { isBookerReferralSettled } from "@/features/checkout/backend/checkout/booker-referral-settlement";
 import { m } from "@/features/i18n";
-import {
-  forgetRememberedReferralCode,
-  readRememberedReferralCode,
-} from "@/features/referrals/remembered-referral-code.server";
+import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import type { SubmitReservationInput } from "@/features/reservation/actions/submit-reservation-input";
 import { WorkspaceTableUnavailableError } from "@/features/reservation/backend/workspace-availability.service";
 import { getReservationAvailabilityUnavailableMessage } from "@/features/reservation/reservation.i18n";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
-
-/**
- * A paid order records any carried referral, and the booker's first paid
- * order closes their referral window, so the browser's remembered code is of
- * no further use once the booker's own referral is settled. Booking for
- * someone else keeps it. The payment already succeeded, so a failure here is
- * only logged.
- */
-const forgetUsedReferralCode = Effect.gen(function* () {
-  const rememberedCode = yield* readRememberedReferralCode;
-  if (!rememberedCode) return;
-  if (!(yield* isBookerReferralSettled({ paid: true }))) return;
-  yield* Effect.tryPromise(() => forgetRememberedReferralCode());
-}).pipe(
-  Effect.catch((cause) =>
-    Effect.logWarning("Remembered referral code could not be forgotten", {
-      cause,
-    })
-  )
-);
 
 export const submitWorkspaceReservation = Effect.fn(
   "submitWorkspaceReservation"
@@ -59,8 +35,12 @@ export const submitWorkspaceReservation = Effect.fn(
 
     // The signed-in author follows the status page by session, so the
     // checkout sets no access cookie of its own.
+    // A paid order records any carried referral, and the booker's first paid
+    // order closes their referral window. Booking for someone else keeps the
+    // booker's code.
     if (checkout.status === "redirect" && checkout.paid) {
-      yield* forgetUsedReferralCode;
+      const remembered = yield* RememberedReferral;
+      yield* remembered.forgetIfSettled({ kind: "order", paid: true });
     }
 
     yield* Effect.logInfo("Workspace checkout started");

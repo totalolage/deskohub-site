@@ -2,6 +2,7 @@ import "server-only";
 
 import { type Context, Effect, Layer } from "effect";
 import { AccountFeatureFlagService } from "@/features/account/backend/account-feature-flag.service";
+import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
 import { CustomerAgentConnections } from "@/features/account/backend/auth/customer-agent-connections.service";
 import { CustomerPasskeys } from "@/features/account/backend/auth/customer-passkeys.service";
 import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
@@ -12,7 +13,7 @@ import { CustomerReservationHistoryService } from "@/features/account/backend/cu
 import { ReferralService } from "@/features/referrals";
 import { ReferralFeatureFlagRequest } from "@/features/referrals/referral-feature-flag.server";
 import type { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
-import { RememberedReferralCode } from "@/features/referrals/remembered-referral-code.service";
+import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import { ReferralSignupIntentRepository } from "@/features/referrals/signup-intent.repository";
 import { ReviewAccounts } from "@/features/review-accounts";
 import { failuresAsDefects } from "@/shared/backend/workspace-effect";
@@ -30,7 +31,7 @@ export type AccountPageCapabilities =
   | ReferralService
   | ReferralSignupIntentRepository
   | ReferralFeatureFlagService
-  | RememberedReferralCode
+  | RememberedReferral
   | AccountFeatureFlagService;
 
 /**
@@ -66,7 +67,11 @@ export type AccountPageLayers = {
   >;
   readonly signupIntents: Layer.Layer<ReferralSignupIntentRepository>;
   readonly referralRelease: Layer.Layer<ReferralFeatureFlagService>;
-  readonly rememberedReferralCode: Layer.Layer<RememberedReferralCode>;
+  readonly rememberedReferral: Layer.Layer<
+    RememberedReferral,
+    Layer.Error<typeof CustomerAccountContactService.Live>,
+    ReferralService | ReferralFeatureFlagService
+  >;
   readonly featureFlags: Layer.Layer<AccountFeatureFlagService>;
 };
 
@@ -82,7 +87,9 @@ export const liveAccountPageLayers: AccountPageLayers = {
   referrals: ReferralService.Live,
   signupIntents: ReferralSignupIntentRepository.Live,
   referralRelease: ReferralFeatureFlagRequest,
-  rememberedReferralCode: RememberedReferralCode.Live,
+  rememberedReferral: RememberedReferral.Cookies.pipe(
+    Layer.provide(CustomerAccountContactService.Live)
+  ),
   featureFlags: AccountFeatureFlagService.Live,
 };
 
@@ -95,8 +102,20 @@ export const liveAccountPageLayers: AccountPageLayers = {
  */
 export const accountPageCapabilities = (
   layers: AccountPageLayers
-): Layer.Layer<AccountPageCapabilities> =>
-  Layer.mergeAll(
+): Layer.Layer<AccountPageCapabilities> => {
+  const referrals = layers.referrals.pipe(
+    unavailableUntilUsed(ReferralService, (failure) => ({
+      getAccountSummary: () => failure,
+      acceptReferral: () => failure,
+      lookupCodeKind: () => failure,
+      findAvailableCode: () => failure,
+      evaluateCheckoutReferral: () => failure,
+      hasSettledReferral: () => failure,
+      resolveInvitationCandidate: () => failure,
+      resolveReferrerCandidate: () => failure,
+    }))
+  );
+  return Layer.mergeAll(
     layers.authentication,
     layers.resolver.pipe(
       unavailableUntilUsed(CustomerAccountResolver, (failure) => ({
@@ -141,18 +160,7 @@ export const accountPageCapabilities = (
         register: () => failure,
       }))
     ),
-    layers.referrals.pipe(
-      unavailableUntilUsed(ReferralService, (failure) => ({
-        getAccountSummary: () => failure,
-        acceptReferral: () => failure,
-        lookupCodeKind: () => failure,
-        findAvailableCode: () => failure,
-        evaluateCheckoutReferral: () => failure,
-        hasSettledReferral: () => failure,
-        resolveInvitationCandidate: () => failure,
-        resolveReferrerCandidate: () => failure,
-      }))
-    ),
+    referrals,
     layers.signupIntents.pipe(
       unavailableUntilUsed(ReferralSignupIntentRepository, (failure) => ({
         find: () => failure,
@@ -162,7 +170,18 @@ export const accountPageCapabilities = (
         acknowledge: () => failure,
       }))
     ),
-    layers.rememberedReferralCode,
+    // Over the same referral capability, so its build failure surfaces
+    // where the remembered code is checked.
+    layers.rememberedReferral.pipe(
+      Layer.provide(referrals),
+      unavailableUntilUsed(RememberedReferral, (failure) => ({
+        code: failure,
+        forBooking: () => failure,
+        remember: () => failure,
+        forgetIfSettled: () => failure,
+        isSettled: () => failure,
+      }))
+    ),
     layers.featureFlags.pipe(
       unavailableUntilUsed(AccountFeatureFlagService, (failure) => ({
         isSignInCodeEnabled: failure,
@@ -171,6 +190,7 @@ export const accountPageCapabilities = (
       }))
     )
   ).pipe(Layer.provideMerge(layers.referralRelease));
+};
 
 /**
  * The build failure each stand-in replays, so a step can replay it before
