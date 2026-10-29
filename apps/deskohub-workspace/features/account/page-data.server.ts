@@ -54,6 +54,7 @@ import { ReviewAccounts } from "@/features/review-accounts";
 import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/workspace-url.config";
 import {
   catchRecoverableCause,
+  failuresAsDefects,
   isRecoverableCause,
   runWorkspaceEffect,
 } from "@/shared/backend/workspace-effect";
@@ -513,11 +514,14 @@ const loadSignedInAccount = Effect.fn(function* (
     (resolver) => resolver.resolveLink
   ).pipe(
     // A resolver that couldn't be built reads as the unavailable lock.
-    Effect.catchCause((cause) =>
-      Cause.hasFails(cause) || !isRecoverableCause(cause)
+    Effect.catchCause((cause) => {
+      if (!isRecoverableCause(cause)) {
+        return Effect.failCause(failuresAsDefects(cause));
+      }
+      return Cause.hasFails(cause)
         ? Effect.failCause(cause)
-        : Effect.fail(customerAccountUnavailable("account-link.lock"))
-    ),
+        : Effect.fail(customerAccountUnavailable("account-link.lock"));
+    }),
     Effect.tapError((error) =>
       Effect.logError("Account resolution failed", { error })
     ),

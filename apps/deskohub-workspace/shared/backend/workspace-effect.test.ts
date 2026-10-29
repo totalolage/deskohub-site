@@ -1,5 +1,5 @@
 import { describe, expect, mock, spyOn, test } from "bun:test";
-import { Deferred, Effect } from "effect";
+import { Cause, Deferred, Effect } from "effect";
 import { redirect } from "next/navigation";
 import { CENSORED_LOG_VALUE } from "@/shared/utils/log-classification";
 
@@ -12,8 +12,13 @@ mock.module("@/instrumentation", () => ({
   },
 }));
 
-const { defineWorkspaceTask, runWorkspaceEffect, runWorkspaceEffectOrElse } =
-  await import("./workspace-effect");
+const {
+  catchRecoverableCause,
+  defineWorkspaceTask,
+  findNextControlFlow,
+  runWorkspaceEffect,
+  runWorkspaceEffectOrElse,
+} = await import("./workspace-effect");
 
 describe("Workspace Effect execution", () => {
   test("provides the censored Workspace logger", async () => {
@@ -327,3 +332,45 @@ const settle = (promise: Promise<unknown>) =>
       reason: { name: reason.name, message: reason.message },
     })
   );
+
+describe("catchRecoverableCause", () => {
+  const redirectError = Effect.runSync(
+    Effect.flip(
+      Effect.try({ try: () => redirect("/target"), catch: (thrown) => thrown })
+    )
+  );
+  const recover = catchRecoverableCause(() => Effect.succeed("fallback"));
+
+  test("answers typed failures and defects", async () => {
+    for (const cause of [
+      Cause.fail("broken"),
+      Cause.die(new Error("crashed")),
+    ]) {
+      await expect(
+        Effect.runPromise(Effect.failCause(cause).pipe(recover))
+      ).resolves.toBe("fallback");
+    }
+  });
+
+  test("keeps Next.js control flow that sits beside a typed failure", async () => {
+    const exit = await Effect.runPromiseExit(
+      Effect.failCause(
+        Cause.combine(Cause.fail("broken"), Cause.die(redirectError))
+      ).pipe(recover)
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      expect(findNextControlFlow(exit.cause)).toBe(redirectError);
+      expect(Cause.hasFails(exit.cause)).toBe(false);
+    }
+  });
+
+  test("lets interruption through", async () => {
+    const exit = await Effect.runPromiseExit(Effect.interrupt.pipe(recover));
+
+    expect(exit._tag === "Failure" && Cause.hasInterruptsOnly(exit.cause)).toBe(
+      true
+    );
+  });
+});

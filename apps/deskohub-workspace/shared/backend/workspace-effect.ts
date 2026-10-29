@@ -173,6 +173,17 @@ export const findNextControlFlow = (cause: Cause.Cause<unknown>) =>
   causeFailures(cause).find(isNextControlFlow);
 
 /**
+ * `cause` with each typed failure as a defect and every other reason, such as
+ * interruption or Next.js control flow beside it, kept as it was.
+ */
+export const failuresAsDefects = <E>(cause: Cause.Cause<E>) =>
+  Cause.fromReasons<never>(
+    cause.reasons.map((reason) =>
+      Cause.isFailReason(reason) ? Cause.makeDieReason(reason.error) : reason
+    )
+  );
+
+/**
  * Whether a fallback may answer `cause`: it is neither only interruption nor
  * carries Next.js control flow, both of which must propagate unchanged.
  */
@@ -182,7 +193,8 @@ export const isRecoverableCause = (cause: Cause.Cause<unknown>) =>
 /**
  * Answers every failure a fallback may answer, defects included, with
  * `onFailure`. Interruption and Next.js control flow propagate, with any typed
- * failure beside them as a defect, so the result never fails.
+ * failure beside them as a defect (`failuresAsDefects`), so the result never
+ * fails.
  */
 export const catchRecoverableCause =
   <B, R2>(
@@ -195,7 +207,7 @@ export const catchRecoverableCause =
       Effect.catchCause((cause) =>
         isRecoverableCause(cause)
           ? onFailure(cause)
-          : Effect.orDie(Effect.failCause(cause))
+          : Effect.failCause(failuresAsDefects(cause))
       )
     );
 

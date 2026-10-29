@@ -15,6 +15,7 @@ import type { ReferralFeatureFlagService } from "@/features/referrals/referral-f
 import { RememberedReferralCode } from "@/features/referrals/remembered-referral-code.service";
 import { ReferralSignupIntentRepository } from "@/features/referrals/signup-intent.repository";
 import { ReviewAccounts } from "@/features/review-accounts";
+import { failuresAsDefects } from "@/shared/backend/workspace-effect";
 
 /** Everything the account page reads while it loads. */
 export type AccountPageCapabilities =
@@ -186,6 +187,9 @@ const unavailableUntilUsed =
   <E, R>(layer: Layer.Layer<I, E, R>): Layer.Layer<I, never, R> =>
     layer.pipe(
       Layer.catchCause((cause) =>
-        Layer.succeed(tag, unavailable(Effect.orDie(Effect.failCause(cause))))
+        Layer.succeed(
+          tag,
+          unavailable(Effect.failCause(failuresAsDefects(cause)))
+        )
       )
     );

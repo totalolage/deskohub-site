@@ -2,7 +2,7 @@ import { testEmailAddress } from "@deskohub/test-email";
 import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { Effect, Layer, Predicate } from "effect";
+import { Cause, Effect, Layer, Predicate } from "effect";
 import { redirect } from "next/navigation";
 import { AccountFeatureFlagService } from "@/features/account/backend/account-feature-flag.service";
 import { CustomerAgentConnections } from "@/features/account/backend/auth/customer-agent-connections.service";
@@ -33,6 +33,7 @@ import { RememberedReferralCode } from "@/features/referrals/remembered-referral
 import { ReferralSignupIntentRepository } from "@/features/referrals/signup-intent.repository";
 import { ReviewAccountsMock } from "@/features/review-accounts/backend/review-accounts.repository.mock";
 import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/workspace-url.config";
+import { findNextControlFlow } from "@/shared/backend/workspace-effect";
 import {
   type AccountPageLayers,
   accountPageCapabilities,
@@ -1512,7 +1513,7 @@ describe("loadAccountPageState", () => {
       expect(state).not.toHaveProperty("passkeys");
     });
 
-    test("never loads the assistants capability for a pending deletion", async () => {
+    test("keeps a pending deletion whole when the assistants capability can't load", async () => {
       currentUserEffect = Effect.succeed({
         ...activeSession,
         deletionRequested: true,
@@ -1589,6 +1590,56 @@ describe("loadAccountPageState", () => {
       historyEffect = Effect.sync(() => redirect("/target"));
 
       await expect(loadPageState()).rejects.toThrow("NEXT_REDIRECT");
+    });
+    describe("with Next.js control flow beside a typed failure", () => {
+      const redirectError = Effect.runSync(
+        Effect.flip(
+          Effect.try({
+            try: () => redirect("/target"),
+            catch: (thrown) => thrown,
+          })
+        )
+      );
+      const composite = Cause.combine(
+        Cause.fail(new Error("broken")),
+        Cause.die(redirectError)
+      );
+      const loadExit = () =>
+        Effect.runPromiseExit(
+          loadAccountPageState.pipe(Effect.provide(pageLayer()))
+        );
+
+      test("keeps the control flow of a section read", async () => {
+        historyEffect = Effect.failCause(composite);
+
+        const exit = await loadExit();
+
+        expect(exit._tag === "Failure" && findNextControlFlow(exit.cause)).toBe(
+          redirectError
+        );
+      });
+
+      test("keeps the control flow of a capability that failed to build", async () => {
+        layerOverrides = {
+          history: Layer.effectDiscard(Effect.failCause(composite)) as never,
+        };
+
+        const exit = await loadExit();
+
+        expect(exit._tag === "Failure" && findNextControlFlow(exit.cause)).toBe(
+          redirectError
+        );
+      });
+
+      test("keeps the control flow of the resolution", async () => {
+        resolveEffect = Effect.failCause(composite) as never;
+
+        const exit = await loadExit();
+
+        expect(exit._tag === "Failure" && findNextControlFlow(exit.cause)).toBe(
+          redirectError
+        );
+      });
     });
   });
 });
