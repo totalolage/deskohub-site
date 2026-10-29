@@ -116,7 +116,7 @@ type AccountBrowserConfig = Pick<
 >;
 
 /** Whether the cowork form has the entry tier selected. */
-export const isCoworkEntryTierSelected = (entryTier: string) => {
+const isCoworkEntryTierSelected = (entryTier: string) => {
   const tier = document.querySelector('input[name="entryTier"]:checked');
   return tier instanceof HTMLInputElement && tier.value === entryTier;
 };

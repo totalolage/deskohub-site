@@ -416,7 +416,7 @@ export const waitForInteractiveSnapshot = ({
     }
   );
 
-export const readBrowserText = (
+const readBrowserText = (
   run: Runner,
   session: string,
   allowFailure = false
@@ -487,15 +487,6 @@ export const requireMainFrame = (
           )
     )
   );
-
-export const closeBrowserSession = (
-  run: Runner,
-  session: string
-): Effect.Effect<void, WorkspaceE2EError> =>
-  runBrowserCommand("close browser session", run, session, ["close"], {
-    allowFailure: true,
-    logOutput: false,
-  }).pipe(Effect.asVoid);
 
 export const summarizeHostedPaymentSnapshot = (snapshot: string) => {
   const lines = snapshot
