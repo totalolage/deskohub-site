@@ -34,7 +34,7 @@ type RunBrowserOptions = {
   timeoutMs?: number;
 };
 
-export type BrowserCommandResult = {
+type BrowserCommandResult = {
   readonly exitCode: number;
   readonly stderr: string;
   readonly stdout: string;

@@ -19,7 +19,7 @@ import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser
 import { createCensoredOtelSpanExporter } from "../../shared/backend/logging/censorship";
 import { createTracingLive } from "../../shared/backend/observability/otel-tracing";
 import { E2EBrowserSession } from "../browser-session";
-import { runE2ECase } from "../case-runner";
+import { runE2ECase, type WorkspaceE2EStepRunner } from "../case-runner";
 import type { WorkspaceE2EConfig } from "../config";
 import { makeTestE2EEnvironment } from "../e2e-env.test-fixture";
 import { isWorkspaceE2ETimeout, type WorkspaceE2EError } from "../errors";
@@ -31,6 +31,7 @@ import {
 } from "../services/telemetry";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
+  applyCodeAndReadFreshPayUrl,
   assertOrdinaryCodeSlotAvailable,
   assertReferralConfirmationCleared,
   assertReferrerDiscountMatchesRemainingSubtotal,
@@ -109,10 +110,23 @@ const openCheckout = (pages: CheckoutPages) =>
  * Returns the case's annotations as the reporter would see them, the step's
  * failures, and the exported spans.
  */
+/** Runs a helper's own step inline, inside the harness step. */
+const inlineStep: WorkspaceE2EStepRunner = ({ execute }) => execute;
+
 const runCheckoutStep = async <S>(
   setup: Effect.Effect<S, WorkspaceE2EError, Scope.Scope>,
-  execute: (checkout: S) => Effect.Effect<unknown, WorkspaceE2EError>,
-  { stepTimeoutMs = 15_000 }: { readonly stepTimeoutMs?: number } = {}
+  execute: (
+    checkout: S,
+    runStep: WorkspaceE2EStepRunner
+  ) => Effect.Effect<unknown, WorkspaceE2EError>,
+  {
+    ownStep = false,
+    stepTimeoutMs = 15_000,
+  }: {
+    /** `execute` runs its own step through the case runner's `runStep`. */
+    readonly ownStep?: boolean;
+    readonly stepTimeoutMs?: number;
+  } = {}
 ) => {
   const annotations: WorkspaceE2EFailureDiagnostic[] = [];
   const failures: WorkspaceE2EError[] = [];
@@ -150,18 +164,22 @@ const runCheckoutStep = async <S>(
       runE2ECase({
         body: (step) =>
           Effect.scoped(
-            Effect.flatMap(setup, (checkout) =>
-              step({
-                execute: execute(checkout).pipe(
+            Effect.flatMap(setup, (checkout) => {
+              const recorded = (runStep: WorkspaceE2EStepRunner) =>
+                execute(checkout, runStep).pipe(
                   Effect.tapError((failure) =>
                     Effect.sync(() => failures.push(failure))
                   ),
                   Effect.asVoid
-                ),
-                id: stepId,
-                timeoutMs: stepTimeoutMs,
-              })
-            )
+                );
+              return ownStep
+                ? recorded(step)
+                : step({
+                    execute: recorded(inlineStep),
+                    id: stepId,
+                    timeoutMs: stepTimeoutMs,
+                  });
+            })
           ),
         caseId,
         watchdogMs: stepTimeoutMs + 15_000,
@@ -694,7 +712,17 @@ const rejectedCode = "RFLSYNTHETICREJECT";
  * re-signed pay state that reports the rejection; `invalid` marks the field.
  */
 const rejectionCheckout =
-  (message: string, { invalid }: { readonly invalid: boolean }) =>
+  (
+    message: string,
+    {
+      invalid,
+      redirectTo = rejectedPayUrl,
+    }: {
+      readonly invalid: boolean;
+      /** Where the submit goes; `null` keeps the pay page. */
+      readonly redirectTo?: string | null;
+    }
+  ) =>
   (url: URL) =>
     url.searchParams.get("payState") === "rejected"
       ? `<form id="checkout-discount-code-form">
@@ -713,7 +741,7 @@ const rejectionCheckout =
           form.addEventListener("submit", (event) => {
             event.preventDefault();
             sessionStorage.setItem("submittedCode", form.elements.submittedCode.value);
-            location.assign(${JSON.stringify(rejectedPayUrl)});
+            ${redirectTo === null ? "" : `location.assign(${JSON.stringify(redirectTo)});`}
           });
         </script>`;
 
@@ -723,10 +751,10 @@ const rejectionMessage = m.checkoutReferralCodeAlreadyAttributed(
 );
 
 /**
- * The argv runner on the rejection checkout, with the session it bridges, as
- * the referral cases drive it.
+ * The argv runner on the checkout `pages` serve, with the session it bridges,
+ * as the referral cases drive it.
  */
-const openRejectionCheckout = (invalid: boolean) =>
+const openRunnerCheckout = (pages: CheckoutPages) =>
   Effect.gen(function* () {
     if (!browser) return yield* Effect.die("Chromium is not running");
     const run = makePlaywrightBrowserRunner(browser, { recordHar: false });
@@ -735,29 +763,31 @@ const openRejectionCheckout = (invalid: boolean) =>
     );
     const session = `referral-reject-test-${randomUUID()}`;
     const browserSession = yield* browserSessionFor(run, session);
-    yield* showCheckout(
-      browserSession,
-      rejectionCheckout(rejectionMessage, { invalid })
-    );
+    yield* showCheckout(browserSession, pages);
     return { browserSession, run, session };
   });
 
 /** Rejects the code through the runner; the bridged session waits for the alert. */
 const rejectThroughRunner = (
   invalid: boolean,
-  onRejected: (url: string) => void = () => undefined
+  onRejected: (url: string) => void = () => undefined,
+  redirectTo?: string | null
 ) =>
-  runCheckoutStep(openRejectionCheckout(invalid), (checkout) =>
-    rejectReferralCode({
-      ...checkout,
-      code: rejectedCode,
-      config,
-      currentPayUrl: payUrl,
-      error: rejectionError,
-      locale,
-      message: rejectionMessage,
-      orderId,
-    }).pipe(Effect.tap((url) => Effect.sync(() => onRejected(url))))
+  runCheckoutStep(
+    openRunnerCheckout(
+      rejectionCheckout(rejectionMessage, { invalid, redirectTo })
+    ),
+    (checkout) =>
+      rejectReferralCode({
+        ...checkout,
+        code: rejectedCode,
+        config,
+        currentPayUrl: payUrl,
+        error: rejectionError,
+        locale,
+        message: rejectionMessage,
+        orderId,
+      }).pipe(Effect.tap((url) => Effect.sync(() => onRejected(url))))
   );
 
 test.skipIf(!chromiumAvailable)(
@@ -787,4 +817,103 @@ test.skipIf(!chromiumAvailable)(
       JSON.stringify(result.failures.map(({ message }) => message))
     ).not.toContain(rejectedCode);
   }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "times out a rejection that never reaches a re-signed pay state of the order",
+  async () => {
+    const otherOrderUrl = rejectedPayUrl.replace(
+      orderId,
+      "workspace-reservation-456"
+    );
+    for (const redirectTo of [null, otherOrderUrl]) {
+      expect(
+        classify(await rejectThroughRunner(true, undefined, redirectTo))
+      ).toEqual(timedOut("rejected referral code on a re-signed pay state"));
+    }
+  },
+  60_000
+);
+
+const freshPayUrl = `${origin}/${locale}/checkout/pay?payState=fresh&orderId=${orderId}`;
+const appliedMessage = referralAppliedMessage(locale);
+
+/**
+ * The pay page's code box carries React-like handlers and submits to
+ * `redirectTo`, which reports the applied code.
+ */
+const applyingCheckout = (redirectTo: string) => (url: URL) =>
+  url.href === payUrl
+    ? `${ordinaryCodeForm()}
+      <script>
+        const form = document.getElementById("checkout-discount-code-form");
+        form.__reactProps$test = { onSubmit() {} };
+        form.elements.submittedCode.__reactProps$test = { onChange() {} };
+        form.addEventListener("submit", (event) => {
+          event.preventDefault();
+          location.assign(${JSON.stringify(redirectTo)});
+        });
+      </script>`
+    : `<p>${Bun.escapeHTML(appliedMessage)}</p>`;
+
+const applyThroughRunner = (
+  redirectTo: string,
+  {
+    onApplied = () => undefined,
+    ownStep = false,
+  }: {
+    readonly onApplied?: (url: string) => void;
+    /** Runs under the helper's own step and deadline, not the harness's. */
+    readonly ownStep?: boolean;
+  } = {}
+) =>
+  runCheckoutStep(
+    openRunnerCheckout(applyingCheckout(redirectTo)),
+    (checkout, runStep) =>
+      applyCodeAndReadFreshPayUrl({
+        ...checkout,
+        appliedMessage,
+        code: rejectedCode,
+        config,
+        currentPayUrl: payUrl,
+        locale,
+        orderId,
+        runStep,
+        stepId,
+      }).pipe(Effect.tap((url) => Effect.sync(() => onApplied(url)))),
+    { ownStep }
+  );
+
+test.skipIf(!chromiumAvailable)(
+  "returns the fresh pay state an applied code re-signs",
+  async () => {
+    let appliedUrl: string | undefined;
+    const result = await applyThroughRunner(freshPayUrl, {
+      onApplied: (url) => {
+        appliedUrl = url;
+      },
+      ownStep: true,
+    });
+
+    expect(classify(result)).toEqual(passed);
+    expect(appliedUrl).toBe(freshPayUrl);
+  },
+  60_000
+);
+
+test.skipIf(!chromiumAvailable)(
+  "times out an applied code that keeps the pay state",
+  async () => {
+    // The fresh pay state poll runs out on its own...
+    expect(classify(await applyThroughRunner(`${payUrl}&applied=1`))).toEqual(
+      timedOut("fresh signed checkout pay state")
+    );
+    // ...and inside its own step, whose deadline ends the poll first.
+    expect(
+      classify(
+        await applyThroughRunner(`${payUrl}&applied=1`, { ownStep: true })
+      )
+    ).toEqual(timedOut(`${caseId}/${stepId}`));
+  },
+  60_000
 );

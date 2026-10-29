@@ -279,8 +279,6 @@ for (const caseId of workspaceE2EAccountCaseIds) {
         passkeys: accountLane.passkeys,
         previewLogs: accountLane.previewLogs,
         rateBudget: accountLane.rateBudget,
-        run: accountLane.run,
-        session: accountLane.session,
         signInReturns,
       });
       const selected = cases.find((testCase) => testCase.id === caseId);
