@@ -692,14 +692,31 @@ const checkoutPayConsent = (page: Page, nameMatch: NameMatch) =>
     .filter({ visible: true })
     .first();
 
-const checkoutPayButton = (page: Page, nameMatch: NameMatch) =>
-  page
-    .getByRole("button", {
-      disabled: false,
-      name: payControlName("Order and pay", nameMatch),
-    })
+// The argv runner looked the pay button up by name in the page's whole
+// accessibility snapshot, whatever its role, so any enabled widget named so
+// qualifies, the first in document order.
+const payButtonRoles = [
+  "button",
+  "checkbox",
+  "link",
+  "menuitem",
+  "menuitemcheckbox",
+  "menuitemradio",
+  "option",
+  "radio",
+  "switch",
+  "tab",
+  "treeitem",
+] as const;
+
+const checkoutPayButton = (page: Page, nameMatch: NameMatch) => {
+  const name = payControlName("Order and pay", nameMatch);
+  return payButtonRoles
+    .map((role) => page.getByRole(role, { disabled: false, name }))
+    .reduce((controls, control) => controls.or(control))
     .filter({ visible: true })
     .first();
+};
 
 /**
  * Waits for a visible control and tells how to match it: as the argv

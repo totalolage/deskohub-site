@@ -241,10 +241,17 @@ function payPage(scenario: string, id: string) {
     scenario === "consent-missing"
       ? '<div id="checkout-pay-legal-consent"></div>'
       : '<input id="checkout-pay-legal-consent" type="checkbox" /><label for="checkout-pay-legal-consent">I agree to the terms</label>';
-  const buttons =
-    scenario === "exact-name"
-      ? '<button type="button" data-handler="similar">Order and pay 100 Kč</button><button type="button" data-handler="exact">Order and pay</button>'
-      : `<button id="checkout-pay-submit" type="button" data-handler="pay"${scenario === "disabled-pay" || scenario === "disabled-pay-step-deadline" ? " disabled" : ""}>Order and pay</button>`;
+  let buttons: string;
+  if (scenario === "exact-name") {
+    buttons =
+      '<button type="button" data-handler="similar">Order and pay 100 Kč</button><button type="button" data-handler="exact">Order and pay</button>';
+  } else if (scenario === "pay-link") {
+    buttons = `<a href="/payment-click?scenario=${scenario}&handler=link" data-handler="link">Order and pay</a>`;
+  } else if (scenario === "exact-name-across-roles") {
+    buttons = `<button type="button" data-handler="similar">Order and pay 100 Kč</button><a href="/payment-click?scenario=${scenario}&handler=exact" data-handler="exact">Order and pay</a>`;
+  } else {
+    buttons = `<button id="checkout-pay-submit" type="button" data-handler="pay"${scenario === "disabled-pay" || scenario === "disabled-pay-step-deadline" ? " disabled" : ""}>Order and pay</button>`;
+  }
   return `<!doctype html><html lang="en-US"><body>
     <main>${id}</main>
     ${consent}
@@ -253,10 +260,11 @@ function payPage(scenario: string, id: string) {
       const scenario = ${JSON.stringify(scenario)};
       const consent = document.querySelector('#checkout-pay-legal-consent');
       if (consent && scenario !== 'consent-never-hydrated') consent.__reactProps$test = {};
-      for (const button of document.querySelectorAll('[data-handler]')) {
-        button.addEventListener('click', () => {
+      for (const control of document.querySelectorAll('[data-handler]')) {
+        control.addEventListener('click', (event) => {
+          if (control instanceof HTMLAnchorElement) event.preventDefault();
           if (window.paymentClicks !== undefined) window.paymentClicks++;
-          const handler = button.dataset.handler;
+          const handler = control.dataset.handler;
           void fetch('/payment-click?scenario=' + scenario + '&handler=' + handler, { method: 'POST' });
           if (scenario === 'hosted-popup' || scenario === 'popup-status') {
             window.open('/hpp/nexi/${id}?scenario=' + scenario, '_blank');
@@ -853,6 +861,70 @@ test.skipIf(!chromiumAvailable)(
     expect(result.value?.returnedPage).toBe(initialPage);
     expect(result.value?.wasChecked).toBe(true);
     expect(state.paymentHandlers).toEqual(["exact"]);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "activates a pay link named like the pay button",
+  async () => {
+    const scenario = "pay-link";
+    const state = resetScenario(scenario);
+    const result = await runBrowserStep({
+      browser: requireBrowser(),
+      prepare: showPayPage(scenario),
+      drive: ({ session }) => submitCheckoutPayment(session, shortTimeouts),
+    });
+
+    expectSucceeded(result);
+    expect(state.paymentHandlers).toEqual(["link"]);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "prefers the exact accessible name across payment control roles",
+  async () => {
+    const scenario = "exact-name-across-roles";
+    const state = resetScenario(scenario);
+    const result = await runBrowserStep({
+      browser: requireBrowser(),
+      prepare: showPayPage(scenario),
+      drive: ({ session }) => submitCheckoutPayment(session, shortTimeouts),
+    });
+
+    expectSucceeded(result);
+    expect(state.paymentHandlers).toEqual(["exact"]);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "times out when focusing payment consent exceeds its browser-action deadline",
+  async () => {
+    const scenario = "payment-focus-deadline";
+    const state = resetScenario(scenario);
+    let consentChecked: boolean | undefined;
+    const result = await runBrowserStep({
+      browser: requireBrowser(),
+      prepare: showPayPage(scenario),
+      drive: ({ session }) =>
+        submitCheckoutPayment(session, { ...shortTimeouts, browserAction: 1 }),
+      afterStep: ({ session }) =>
+        session
+          .use("read consent after payment step", (page) =>
+            page.locator("#checkout-pay-legal-consent").isChecked()
+          )
+          .pipe(
+            Effect.tap((checked) =>
+              Effect.sync(() => {
+                consentChecked = checked;
+              })
+            ),
+            Effect.asVoid
+          ),
+    });
+
+    expectOutcome(result, "timeout");
+    expect(consentChecked).toBe(false);
+    expect(state.paymentHandlers).toEqual([]);
   }
 );
 
