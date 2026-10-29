@@ -2,11 +2,40 @@ import { testEmailAddress } from "@deskohub/test-email";
 import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { Context, Effect, Layer, Predicate } from "effect";
-import type { ReservationHistoryAccount } from "@/features/account/backend/customer-reservation-history.service";
-import type { CustomerAccountId } from "@/features/account/customer-account";
+import { Effect, Layer, Predicate } from "effect";
+import { AccountFeatureFlagService } from "@/features/account/backend/account-feature-flag.service";
+import { CustomerAgentConnections } from "@/features/account/backend/auth/customer-agent-connections.service";
+import { CustomerPasskeys } from "@/features/account/backend/auth/customer-passkeys.service";
+import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
+import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
+import { CustomerAvatarService } from "@/features/account/backend/customer-avatar.service";
+import { CustomerProfileService } from "@/features/account/backend/customer-profile.service";
+import {
+  CustomerReservationHistoryService,
+  type ReservationHistoryAccount,
+} from "@/features/account/backend/customer-reservation-history.service";
+import {
+  CustomerAccountAccessError,
+  type CustomerAccountId,
+} from "@/features/account/customer-account";
 import type { CustomerAgentConnection } from "@/features/account/customer-agent-connections";
+import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
+import {
+  getReferralShareUrl,
+  parseReferralCode,
+  type ReferralCode,
+} from "@/features/referrals/client";
+import { ReferralError } from "@/features/referrals/contracts";
+import { ReferralServiceMock } from "@/features/referrals/referral.service.mock";
 import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
+import { RememberedReferralCode } from "@/features/referrals/remembered-referral-code.service";
+import { ReferralSignupIntentRepository } from "@/features/referrals/signup-intent.repository";
+import { ReviewAccountsMock } from "@/features/review-accounts/backend/review-accounts.repository.mock";
+import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/workspace-url.config";
+import {
+  AccountPageSectionLayers,
+  loadAccountPageState,
+} from "./page-data.server";
 
 const customerEmail = testEmailAddress("ada");
 
@@ -18,26 +47,6 @@ let currentUserEffect: Effect.Effect<
   } | null,
   unknown
 >;
-
-const Authentication = Context.Service<
-  Authentication,
-  {
-    readonly currentUser: typeof currentUserEffect;
-  }
->()("@test/AccountAuthentication");
-
-const AuthenticationLayer = Layer.effect(
-  Authentication,
-  Effect.succeed({
-    get currentUser() {
-      return currentUserEffect;
-    },
-  })
-);
-Object.assign(Authentication, {
-  Default: AuthenticationLayer,
-  Live: AuthenticationLayer,
-});
 
 const accountId = "auth-account-1" as CustomerAccountId;
 const activeSession = {
@@ -54,7 +63,7 @@ let resolveEffect: Effect.Effect<
     };
     readonly autoLinked: boolean;
   },
-  { readonly reason: string; readonly linkReason?: string }
+  CustomerAccountAccessError
 >;
 let resolverCalls = 0;
 let events: string[] = [];
@@ -62,16 +71,6 @@ let profileLoadCalls = 0;
 let historyLoadCalls = 0;
 let historyLoadAccounts: ReservationHistoryAccount[] = [];
 let avatarLookupCalls = 0;
-
-const Resolver = Context.Service<
-  Resolver,
-  { readonly resolve: () => typeof resolveEffect }
->()("@test/AccountResolver");
-
-const ResolverLayer = Layer.succeed(Resolver, {
-  resolve: () => resolveEffect,
-});
-Object.assign(Resolver, { Live: ResolverLayer });
 
 const resolverOutcome = (
   outcome:
@@ -85,43 +84,29 @@ const resolverOutcome = (
         readonly reason: string;
         readonly linkReason?: string;
       }
-) =>
+): typeof resolveEffect =>
   outcome.kind === "success"
     ? Effect.succeed({
         account: { accountId, dotyposCustomerId: outcome.customerId },
         autoLinked: outcome.autoLinked ?? false,
       })
-    : Effect.fail({ reason: outcome.reason, linkReason: outcome.linkReason });
+    : Effect.fail(
+        new CustomerAccountAccessError({
+          reason: outcome.reason,
+          linkReason: outcome.linkReason,
+        } as never)
+      );
 
-const Profile = Context.Service<
-  Profile,
-  {
-    readonly load: () => Effect.Effect<
-      {
-        readonly firstName: string;
-        readonly lastName: string | null;
-        readonly phone: string | null;
-        readonly billing: null;
-      },
-      unknown
-    >;
-  }
->()("@test/AccountProfile");
-
-const profileLoadEffect = Effect.succeed({
+const linkedProfile = Effect.succeed({
   firstName: "Ada",
   lastName: "Lovelace",
   phone: null,
   billing: null,
 });
-
-const ProfileLayer = Layer.succeed(Profile, {
-  load: () => {
-    profileLoadCalls += 1;
-    return profileLoadEffect;
-  },
-});
-Object.assign(Profile, { Live: ProfileLayer });
+let profileLoadEffect: Effect.Effect<
+  Effect.Success<typeof linkedProfile>,
+  unknown
+>;
 
 let historyEffect: Effect.Effect<
   | {
@@ -136,96 +121,12 @@ let historyEffect: Effect.Effect<
   unknown
 >;
 
-const History = Context.Service<
-  History,
-  {
-    readonly load: (account: ReservationHistoryAccount) => typeof historyEffect;
-  }
->()("@test/AccountReservationHistory");
-
-const HistoryLayer = Layer.succeed(History, {
-  load: (account) => {
-    historyLoadCalls += 1;
-    historyLoadAccounts.push(account);
-    return historyEffect;
-  },
-});
-Object.assign(History, { Live: HistoryLayer });
-
-mock.module(
-  "@/features/account/backend/customer-authentication.service",
-  () => ({
-    CustomerAuthentication: Authentication,
-  })
-);
-mock.module(
-  "@/features/account/backend/customer-account-resolver.service",
-  () => ({
-    resolveCurrentCustomerAccount: Effect.suspend(() => {
-      resolverCalls += 1;
-      return resolveEffect.pipe(
-        Effect.ensuring(Effect.sync(() => events.push("resolved")))
-      );
-    }),
-    CustomerAccountResolver: Resolver,
-  })
-);
-mock.module("@/features/account/backend/customer-profile.service", () => ({
-  CustomerProfileService: Profile,
-}));
-mock.module(
-  "@/features/account/backend/customer-reservation-history.service",
-  () => ({
-    CustomerReservationHistoryService: History,
-  })
-);
-
 let reviewAccountEffect: Effect.Effect<boolean, unknown>;
-
-const Review = Context.Service<
-  Review,
-  {
-    readonly isReviewAccount: (
-      accountId: CustomerAccountId
-    ) => typeof reviewAccountEffect;
-  }
->()("@test/ReviewAccounts");
-
-Object.assign(Review, {
-  Live: Layer.succeed(Review, {
-    isReviewAccount: () => reviewAccountEffect,
-  }),
-});
-
-mock.module("@/features/review-accounts", () => ({
-  ReviewAccounts: Review,
-}));
 
 let avatarLookupEffect: Effect.Effect<
   { readonly url: string; readonly version?: number } | null,
   unknown
 >;
-
-const Avatar = Context.Service<
-  Avatar,
-  {
-    readonly lookup: (
-      accountId: CustomerAccountId
-    ) => typeof avatarLookupEffect;
-  }
->()("@test/AccountAvatar");
-
-const AvatarLayer = Layer.succeed(Avatar, {
-  lookup: () => {
-    avatarLookupCalls += 1;
-    return avatarLookupEffect;
-  },
-});
-Object.assign(Avatar, { Live: AvatarLayer });
-
-mock.module("@/features/account/backend/customer-avatar.service", () => ({
-  CustomerAvatarService: Avatar,
-}));
 
 const referralSummary = {
   code: "RFL12345",
@@ -241,7 +142,7 @@ let referralSummaryCalls: Array<{
 }> = [];
 let availableReferralCodeEffect: Effect.Effect<string | undefined, unknown>;
 let availableReferralCodeCalls: Array<{ readonly code: unknown }> = [];
-let acceptReferralEffect: Effect.Effect<unknown, { readonly reason: string }>;
+let acceptReferralEffect: Effect.Effect<unknown, ReferralError>;
 let settledReferralEffect: Effect.Effect<boolean, unknown>;
 let settledReferralCalls: Array<{ readonly dotyposCustomerId: string }> = [];
 let acceptReferralCalls: Array<{
@@ -249,55 +150,12 @@ let acceptReferralCalls: Array<{
   readonly customerAccountId: CustomerAccountId;
   readonly dotyposCustomerId: string;
 }> = [];
-type TestReferralService = {
-  readonly getAccountSummary: (input: {
-    readonly customerAccountId: CustomerAccountId;
-    readonly dotyposCustomerId: string;
-  }) => typeof referralSummaryEffect;
-  readonly findAvailableCode: (input: {
-    readonly code: unknown;
-  }) => typeof availableReferralCodeEffect;
-  readonly acceptReferral: (
-    input: (typeof acceptReferralCalls)[number]
-  ) => typeof acceptReferralEffect;
-  readonly hasSettledReferral: (input: {
-    readonly dotyposCustomerId: string;
-  }) => typeof settledReferralEffect;
-};
-const Referrals = Context.Service<Referrals, TestReferralService>()(
-  "@test/AccountReferrals"
-);
-const ReferralsLayer = Layer.succeed(Referrals, {
-  getAccountSummary: (input) => {
-    referralSummaryCalls.push(input);
-    events.push("summary");
-    return referralSummaryEffect;
-  },
-  acceptReferral: (input) => {
-    acceptReferralCalls.push(input);
-    events.push("accept");
-    return acceptReferralEffect;
-  },
-  findAvailableCode: (input) => {
-    availableReferralCodeCalls.push(input);
-    return availableReferralCodeEffect;
-  },
-  hasSettledReferral: (input) => {
-    settledReferralCalls.push(input);
-    events.push("settled");
-    return settledReferralEffect;
-  },
-});
-Object.assign(Referrals, { Live: ReferralsLayer });
-mock.module("@/features/referrals", () => ({ ReferralService: Referrals }));
-mock.module("@/shared/backend/config/workspace-url.config", () => ({
-  getWorkspaceRuntimeCallbackOrigin: Effect.succeed(
-    new URL("https://workspace.example")
-  ),
-}));
 const accountReferrals = {
   summary: referralSummary,
-  shareUrl: "https://workspace.example/account?ref=RFL12345",
+  shareUrl: getReferralShareUrl(
+    referralSummary.code as ReferralCode,
+    Effect.runSync(getWorkspaceRuntimeCallbackOrigin)
+  ),
 };
 
 type StoredSignupIntent = {
@@ -308,65 +166,13 @@ type StoredSignupIntent = {
   readonly acknowledged?: boolean;
 };
 let storedSignupIntent: StoredSignupIntent | undefined;
-const SignupIntents = Context.Service<
-  SignupIntents,
-  {
-    readonly find: (accountId: CustomerAccountId) => Effect.Effect<
-      | (StoredSignupIntent & {
-          readonly outcome: string | null;
-          readonly acknowledged: boolean;
-        })
-      | undefined
-    >;
-    readonly settle: (
-      accountId: CustomerAccountId,
-      promotionCodeId: string,
-      outcome: string
-    ) => Effect.Effect<boolean>;
-  }
->()("@test/AccountSignupIntents");
-Object.assign(SignupIntents, {
-  Live: Layer.succeed(SignupIntents, {
-    find: () =>
-      Effect.sync(() =>
-        storedSignupIntent
-          ? {
-              ...storedSignupIntent,
-              outcome: storedSignupIntent.outcome ?? null,
-              acknowledged: storedSignupIntent.acknowledged ?? false,
-            }
-          : undefined
-      ),
-    settle: (_accountId, _promotionCodeId, outcome) =>
-      Effect.sync(() => {
-        if (!storedSignupIntent || (storedSignupIntent.outcome ?? null)) {
-          return false;
-        }
-        storedSignupIntent = { ...storedSignupIntent, outcome };
-        return true;
-      }),
-  }),
-});
-mock.module("@/features/referrals/signup-intent.repository", () => ({
-  ReferralSignupIntentRepository: SignupIntents,
-}));
 
 let rememberedReferralCode: string | undefined;
 let rememberedReferralCodeReads = 0;
-mock.module("@/features/referrals/remembered-referral-code.server", () => ({
-  readRememberedReferralCode: Effect.promise(async () => {
-    rememberedReferralCodeReads += 1;
-    const { parseReferralCode } = await import("@/features/referrals/client");
-    return parseReferralCode(rememberedReferralCode);
-  }),
-}));
 
-const areAccountAvatarsEnabled = mock(() => Promise.resolve(true));
-const arePasskeysEnabled = mock(() => Promise.resolve(false));
-mock.module("@/features/account/server/account-feature-flag.server", () => ({
-  areAccountAvatarsEnabled,
-  arePasskeysEnabled,
-}));
+const avatarsFlag = mock(() => Promise.resolve(true));
+const passkeysFlag = mock(() => Promise.resolve(false));
+const referralsFlag = mock(() => Promise.resolve(true));
 
 const accountPasskey = {
   id: "passkey-1",
@@ -379,72 +185,149 @@ let passkeyListEffect: Effect.Effect<
   unknown
 >;
 let passkeyListCalls = 0;
-const Passkeys = Context.Service<
-  Passkeys,
-  { readonly list: typeof passkeyListEffect }
->()("@test/CustomerPasskeys");
-Object.assign(Passkeys, {
-  Default: Layer.succeed(Passkeys, {
-    list: Effect.suspend(() => {
-      passkeyListCalls += 1;
-      return passkeyListEffect;
-    }),
-  }),
-});
-mock.module(
-  "@/features/account/backend/auth/customer-passkeys.service",
-  () => ({ CustomerPasskeys: Passkeys })
-);
 let assistantListEffect: Effect.Effect<
   readonly CustomerAgentConnection[],
   unknown
 >;
 let assistantListCalls = 0;
-const Assistants = Context.Service<
-  Assistants,
-  { readonly list: typeof assistantListEffect }
->()("@test/CustomerAgentConnections");
-Object.assign(Assistants, {
-  Default: Layer.succeed(Assistants, {
-    list: Effect.suspend(() => {
-      assistantListCalls += 1;
-      return assistantListEffect;
-    }),
-  }),
-});
-mock.module(
-  "@/features/account/backend/auth/customer-agent-connections.service",
-  () => ({ CustomerAgentConnections: Assistants })
-);
-const areReferralsEnabled = mock(() => Promise.resolve(true));
-mock.module("@/features/referrals/referral-feature-flag.server", () => ({
-  areReferralsEnabled,
-  ReferralFeatureFlagRequest: Layer.unwrap(
-    Effect.promise(areReferralsEnabled).pipe(
-      Effect.map(ReferralFeatureFlagService.fromDecision)
-    )
-  ),
-}));
-const runtimeRuns: { operation: string; boundary: string }[] = [];
-mock.module("@/shared/backend/workspace-effect", () => ({
-  runWorkspaceEffect:
-    (operation: string, options: { readonly boundary: string }) =>
-    (effect: Effect.Effect<unknown, unknown, never>) => {
-      runtimeRuns.push({ operation, boundary: options.boundary });
-      return Effect.runPromise(effect);
-    },
-}));
 
-describe("loadCustomerAccountPage", () => {
+/** Section layers a test replaces, such as one whose build fails. */
+let sectionLayerOverrides: Partial<AccountPageSectionLayers["Service"]> = {};
+
+const sectionLayers = (): AccountPageSectionLayers["Service"] => ({
+  resolver: Layer.mock(CustomerAccountResolver, {
+    resolveLink: Effect.suspend(() => {
+      resolverCalls += 1;
+      return resolveEffect.pipe(
+        Effect.ensuring(Effect.sync(() => events.push("resolved")))
+      );
+    }) as never,
+  }),
+  profile: Layer.mock(CustomerProfileService, {
+    load: () => {
+      profileLoadCalls += 1;
+      return profileLoadEffect as never;
+    },
+  }),
+  history: Layer.mock(CustomerReservationHistoryService, {
+    load: (account) => {
+      historyLoadCalls += 1;
+      historyLoadAccounts.push(account);
+      return historyEffect as never;
+    },
+  }),
+  avatar: Layer.mock(CustomerAvatarService, {
+    lookup: () => {
+      avatarLookupCalls += 1;
+      return avatarLookupEffect as never;
+    },
+  }),
+  referrals: ReferralServiceMock({
+    getAccountSummary: (input) => {
+      referralSummaryCalls.push(input);
+      events.push("summary");
+      return referralSummaryEffect as never;
+    },
+    acceptReferral: (input) => {
+      acceptReferralCalls.push(input);
+      events.push("accept");
+      return acceptReferralEffect as never;
+    },
+    findAvailableCode: (input) => {
+      availableReferralCodeCalls.push(input);
+      return availableReferralCodeEffect as never;
+    },
+    hasSettledReferral: (input) => {
+      settledReferralCalls.push(input);
+      events.push("settled");
+      return settledReferralEffect as never;
+    },
+  }),
+  ...sectionLayerOverrides,
+});
+
+const flagValues = {
+  account_avatars: avatarsFlag,
+  login_passkeys: passkeysFlag,
+} as const;
+
+const pageLayer = () =>
+  Layer.mergeAll(
+    Layer.mock(CustomerAuthentication, {
+      currentUser: Effect.suspend(() => currentUserEffect) as never,
+    }),
+    Layer.mock(CustomerPasskeys, {
+      list: Effect.suspend(() => {
+        passkeyListCalls += 1;
+        return passkeyListEffect;
+      }) as never,
+    }),
+    Layer.mock(CustomerAgentConnections, {
+      list: Effect.suspend(() => {
+        assistantListCalls += 1;
+        return assistantListEffect;
+      }) as never,
+    }),
+    ReviewAccountsMock({
+      isReviewAccount: () => reviewAccountEffect as never,
+    }),
+    Layer.mock(ReferralSignupIntentRepository, {
+      find: () =>
+        Effect.sync(() =>
+          storedSignupIntent
+            ? {
+                ...storedSignupIntent,
+                outcome: storedSignupIntent.outcome ?? null,
+                acknowledged: storedSignupIntent.acknowledged ?? false,
+              }
+            : undefined
+        ) as never,
+      settle: (_accountId, _promotionCodeId, outcome) =>
+        Effect.sync(() => {
+          if (!storedSignupIntent || (storedSignupIntent.outcome ?? null)) {
+            return false;
+          }
+          storedSignupIntent = { ...storedSignupIntent, outcome };
+          return true;
+        }),
+    }),
+    Layer.mock(RememberedReferralCode, {
+      current: Effect.sync(() => {
+        rememberedReferralCodeReads += 1;
+        return parseReferralCode(rememberedReferralCode);
+      }),
+    }),
+    AccountFeatureFlagService.Default.pipe(
+      Layer.provide(
+        WorkspaceFeatureFlagServiceMock({
+          isEnabled: (key) =>
+            Effect.tryPromise(() =>
+              key in flagValues
+                ? flagValues[key as keyof typeof flagValues]()
+                : Promise.reject(new Error(`unexpected flag ${key}`))
+            ) as never,
+        })
+      )
+    ),
+    Layer.unwrap(
+      Effect.promise(() => referralsFlag()).pipe(
+        Effect.map(ReferralFeatureFlagService.fromDecision)
+      )
+    ),
+    Layer.succeed(AccountPageSectionLayers, sectionLayers())
+  );
+
+describe("loadAccountPageState", () => {
   beforeEach(() => {
     currentUserEffect = Effect.succeed(activeSession);
     resolveEffect = resolverOutcome({ kind: "success", customerId: "60111" });
     resolverCalls = 0;
     profileLoadCalls = 0;
+    profileLoadEffect = linkedProfile;
     historyLoadCalls = 0;
     historyLoadAccounts = [];
     avatarLookupCalls = 0;
-    runtimeRuns.length = 0;
+    sectionLayerOverrides = {};
     avatarLookupEffect = Effect.succeed(null);
     reviewAccountEffect = Effect.succeed(false);
     referralSummaryEffect = Effect.succeed(referralSummary);
@@ -459,26 +342,27 @@ describe("loadCustomerAccountPage", () => {
     rememberedReferralCodeReads = 0;
     storedSignupIntent = undefined;
     events = [];
-    areAccountAvatarsEnabled.mockReset();
-    areAccountAvatarsEnabled.mockResolvedValue(true);
-    arePasskeysEnabled.mockReset();
-    arePasskeysEnabled.mockResolvedValue(false);
+    avatarsFlag.mockReset();
+    avatarsFlag.mockResolvedValue(true);
+    passkeysFlag.mockReset();
+    passkeysFlag.mockResolvedValue(false);
     passkeyListEffect = Effect.succeed([accountPasskey]);
     passkeyListCalls = 0;
     assistantListEffect = Effect.succeed([]);
     assistantListCalls = 0;
-    areReferralsEnabled.mockReset();
-    areReferralsEnabled.mockResolvedValue(true);
+    referralsFlag.mockReset();
+    referralsFlag.mockResolvedValue(true);
     historyEffect = Effect.succeed({
       kind: "available",
       groups: { current: [], past: [], unavailable: [] },
     });
   });
 
-  const loadPageState = async (remembered?: string) => {
+  const loadPageState = (remembered?: string) => {
     rememberedReferralCode = remembered;
-    const { loadCustomerAccountPage } = await import("./page-data.server");
-    return loadCustomerAccountPage();
+    return Effect.runPromise(
+      loadAccountPageState.pipe(Effect.provide(pageLayer()))
+    );
   };
 
   test("returns unauthenticated without customer data or downstream work when no session exists", async () => {
@@ -515,6 +399,7 @@ describe("loadCustomerAccountPage", () => {
 
     await expect(loadPageState("RFL12345")).resolves.toEqual({
       kind: "completion-required",
+      deletion: "offered",
       assistants: [],
       referralsEnabled: true,
       email: customerEmail,
@@ -540,6 +425,7 @@ describe("loadCustomerAccountPage", () => {
 
     await expect(loadPageState()).resolves.toEqual({
       kind: "completion-required",
+      deletion: "offered",
       assistants: [],
       referralsEnabled: true,
       email: customerEmail,
@@ -575,6 +461,7 @@ describe("loadCustomerAccountPage", () => {
     availableReferralCodeEffect = Effect.succeed(undefined);
     await expect(loadPageState("RFLGONE1")).resolves.toEqual({
       kind: "completion-required",
+      deletion: "offered",
       assistants: [],
       referralsEnabled: true,
       email: customerEmail,
@@ -583,6 +470,7 @@ describe("loadCustomerAccountPage", () => {
     availableReferralCodeEffect = Effect.fail(new Error("database down"));
     await expect(loadPageState("RFL12345")).resolves.toEqual({
       kind: "completion-required",
+      deletion: "offered",
       assistants: [],
       referralsEnabled: true,
       email: customerEmail,
@@ -648,7 +536,9 @@ describe("loadCustomerAccountPage", () => {
       promotionCodeId: "@test/promotion-code-id",
       referrerDotyposCustomerId: "70001",
     };
-    acceptReferralEffect = Effect.fail({ reason: "pending_payment" });
+    acceptReferralEffect = Effect.fail(
+      new ReferralError({ reason: "pending_payment" })
+    );
 
     await expect(loadPageState()).resolves.toMatchObject({
       kind: "linked",
@@ -679,7 +569,9 @@ describe("loadCustomerAccountPage", () => {
       promotionCodeId: "@test/promotion-code-id",
       referrerDotyposCustomerId: "70001",
     };
-    acceptReferralEffect = Effect.fail({ reason: "ineligible" });
+    acceptReferralEffect = Effect.fail(
+      new ReferralError({ reason: "ineligible" })
+    );
 
     await expect(loadPageState()).resolves.toMatchObject({
       kind: "linked",
@@ -701,20 +593,12 @@ describe("loadCustomerAccountPage", () => {
       promotionCodeId: "@test/promotion-code-id",
       referrerDotyposCustomerId: "70001",
     };
-    Object.assign(Profile, {
-      Live: Layer.succeed(Profile, {
-        load: () => Effect.fail(new Error("provider down")),
-      }),
+    profileLoadEffect = Effect.fail(new Error("provider down"));
+    await expect(loadPageState()).resolves.toMatchObject({
+      kind: "authenticated-unavailable",
     });
-    try {
-      await expect(loadPageState()).resolves.toMatchObject({
-        kind: "authenticated-unavailable",
-      });
-      expect(acceptReferralCalls).toEqual([]);
-      expect(storedSignupIntent).toBeDefined();
-    } finally {
-      Object.assign(Profile, { Live: ProfileLayer });
-    }
+    expect(acceptReferralCalls).toEqual([]);
+    expect(storedSignupIntent).toBeDefined();
   });
 
   test("records nothing when an auto-linked sign-in has no remembered code", async () => {
@@ -754,8 +638,8 @@ describe("loadCustomerAccountPage", () => {
         "self_referral",
         "ineligible",
         "already_attributed",
-      ]) {
-        acceptReferralEffect = Effect.fail({ reason });
+      ] as const) {
+        acceptReferralEffect = Effect.fail(new ReferralError({ reason }));
         await expect(loadPageState("RFLSHARE")).resolves.toMatchObject({
           kind: "linked",
           profile: { firstName: "Ada" },
@@ -840,6 +724,7 @@ describe("loadCustomerAccountPage", () => {
     });
     await expect(loadPageState()).resolves.toEqual({
       kind: "support-required",
+      deletion: "offered",
       assistants: [],
       email: customerEmail,
     });
@@ -851,6 +736,7 @@ describe("loadCustomerAccountPage", () => {
     });
     await expect(loadPageState()).resolves.toEqual({
       kind: "support-required",
+      deletion: "offered",
       assistants: [],
       email: customerEmail,
     });
@@ -862,6 +748,7 @@ describe("loadCustomerAccountPage", () => {
     });
     await expect(loadPageState()).resolves.toEqual({
       kind: "support-required",
+      deletion: "offered",
       assistants: [],
       email: customerEmail,
     });
@@ -872,6 +759,7 @@ describe("loadCustomerAccountPage", () => {
     });
     await expect(loadPageState()).resolves.toEqual({
       kind: "support-required",
+      deletion: "offered",
       assistants: [],
       email: customerEmail,
     });
@@ -895,6 +783,7 @@ describe("loadCustomerAccountPage", () => {
       });
       await expect(loadPageState()).resolves.toEqual({
         kind: "support-required",
+        deletion: "offered",
         assistants: [],
         email: customerEmail,
         history: {
@@ -920,6 +809,7 @@ describe("loadCustomerAccountPage", () => {
 
     await expect(loadPageState()).resolves.toEqual({
       kind: "support-required",
+      deletion: "offered",
       assistants: [],
       email: customerEmail,
       history: { kind: "unavailable", reason: "provider-unavailable" },
@@ -942,6 +832,7 @@ describe("loadCustomerAccountPage", () => {
     });
     await expect(loadPageState()).resolves.toEqual({
       kind: "support-required",
+      deletion: "offered",
       assistants: [],
       email: customerEmail,
     });
@@ -953,6 +844,7 @@ describe("loadCustomerAccountPage", () => {
     });
     await expect(loadPageState()).resolves.toEqual({
       kind: "support-required",
+      deletion: "offered",
       assistants: [],
       email: customerEmail,
     });
@@ -967,7 +859,7 @@ describe("loadCustomerAccountPage", () => {
       kind: "authenticated-unavailable",
       assistants: [],
       email: customerEmail,
-      deletionUnavailable: true,
+      deletion: "withheld",
     });
 
     for (const [linkReason, kind] of [
@@ -981,7 +873,7 @@ describe("loadCustomerAccountPage", () => {
       });
       await expect(loadPageState()).resolves.toMatchObject({
         kind,
-        deletionUnavailable: true,
+        deletion: "withheld",
       });
     }
   });
@@ -989,9 +881,10 @@ describe("loadCustomerAccountPage", () => {
   test("keeps deletion for a linked account or a pending deletion when the review marker can't be read", async () => {
     reviewAccountEffect = Effect.fail(new Error("database unavailable"));
 
-    const linked = await loadPageState();
-    expect(linked.kind).toBe("linked");
-    expect(linked).not.toHaveProperty("deletionUnavailable");
+    await expect(loadPageState()).resolves.toMatchObject({
+      kind: "linked",
+      deletion: "offered",
+    });
 
     currentUserEffect = Effect.succeed({
       ...activeSession,
@@ -1000,6 +893,7 @@ describe("loadCustomerAccountPage", () => {
     await expect(loadPageState()).resolves.toEqual({
       kind: "deletion-pending",
       email: customerEmail,
+      deletion: "pending",
     });
   });
 
@@ -1012,12 +906,14 @@ describe("loadCustomerAccountPage", () => {
     await expect(loadPageState()).resolves.toEqual({
       kind: "deletion-pending",
       email: customerEmail,
+      deletion: "pending",
     });
   });
 
-  test("renders the linked account with profile and grouped history, in one page-boundary run", async () => {
+  test("renders the linked account with profile and grouped history", async () => {
     await expect(loadPageState()).resolves.toEqual({
       kind: "linked",
+      deletion: "offered",
       assistants: [],
       referralsEnabled: true,
       email: customerEmail,
@@ -1036,9 +932,6 @@ describe("loadCustomerAccountPage", () => {
     });
     expect(referralSummaryCalls).toEqual([
       { customerAccountId: accountId, dotyposCustomerId: "60111" },
-    ]);
-    expect(runtimeRuns).toEqual([
-      { operation: "account.page", boundary: "page" },
     ]);
   });
 
@@ -1077,10 +970,11 @@ describe("loadCustomerAccountPage", () => {
   });
 
   test("keeps profile and history available while hiding avatars and skipping lookup when disabled", async () => {
-    areAccountAvatarsEnabled.mockResolvedValue(false);
+    avatarsFlag.mockResolvedValue(false);
 
     await expect(loadPageState()).resolves.toEqual({
       kind: "linked",
+      deletion: "offered",
       assistants: [],
       referralsEnabled: true,
       email: customerEmail,
@@ -1103,7 +997,7 @@ describe("loadCustomerAccountPage", () => {
   });
 
   test("fails closed without avatar lookup when avatar capability evaluation is unavailable", async () => {
-    areAccountAvatarsEnabled.mockRejectedValue(new Error("flag unavailable"));
+    avatarsFlag.mockRejectedValue(new Error("flag unavailable"));
 
     await expect(loadPageState()).resolves.toMatchObject({
       kind: "linked",
@@ -1118,7 +1012,7 @@ describe("loadCustomerAccountPage", () => {
     await expect(loadPageState()).resolves.not.toHaveProperty("passkeys");
     expect(passkeyListCalls).toBe(0);
 
-    arePasskeysEnabled.mockResolvedValue(true);
+    passkeysFlag.mockResolvedValue(true);
     await expect(loadPageState()).resolves.toMatchObject({
       kind: "linked",
       passkeys: { accountId, passkeys: [accountPasskey] },
@@ -1127,7 +1021,7 @@ describe("loadCustomerAccountPage", () => {
   });
 
   test("keeps the linked page with an unavailable passkey list", async () => {
-    arePasskeysEnabled.mockResolvedValue(true);
+    passkeysFlag.mockResolvedValue(true);
     passkeyListEffect = Effect.fail(new Error("passkeys down"));
 
     await expect(loadPageState()).resolves.toMatchObject({
@@ -1138,26 +1032,23 @@ describe("loadCustomerAccountPage", () => {
   });
 
   test("fails closed without listing passkeys when the flag is unavailable", async () => {
-    arePasskeysEnabled.mockRejectedValue(new Error("flag unavailable"));
+    passkeysFlag.mockRejectedValue(new Error("flag unavailable"));
 
     await expect(loadPageState()).resolves.not.toHaveProperty("passkeys");
     expect(passkeyListCalls).toBe(0);
   });
 
   test("lists passkeys from the session in every signed-in state without a usable profile", async () => {
-    arePasskeysEnabled.mockResolvedValue(true);
+    passkeysFlag.mockResolvedValue(true);
     const passkeys = { accountId, passkeys: [accountPasskey] };
-    const failingProfileLayer = Layer.succeed(Profile, {
-      load: () => Effect.fail(new Error("profile gone")),
-    });
-    Object.assign(Profile, { Live: failingProfileLayer });
+    profileLoadEffect = Effect.fail(new Error("profile gone"));
     await expect(loadPageState()).resolves.toEqual({
       kind: "authenticated-unavailable",
+      deletion: "offered",
       assistants: [],
       email: customerEmail,
       passkeys,
     });
-    Object.assign(Profile, { Live: ProfileLayer });
 
     resolveEffect = resolverOutcome({
       kind: "failure",
@@ -1176,6 +1067,7 @@ describe("loadCustomerAccountPage", () => {
     });
     await expect(loadPageState()).resolves.toEqual({
       kind: "support-required",
+      deletion: "offered",
       assistants: [],
       email: customerEmail,
       passkeys,
@@ -1188,6 +1080,7 @@ describe("loadCustomerAccountPage", () => {
     const resolutionsBeforeDeletion = resolverCalls;
     await expect(loadPageState()).resolves.toEqual({
       kind: "deletion-pending",
+      deletion: "pending",
       email: customerEmail,
       passkeys,
     });
@@ -1211,16 +1104,13 @@ describe("loadCustomerAccountPage", () => {
       assistants: [assistant],
     });
 
-    const failingProfileLayer = Layer.succeed(Profile, {
-      load: () => Effect.fail(new Error("profile gone")),
-    });
-    Object.assign(Profile, { Live: failingProfileLayer });
+    profileLoadEffect = Effect.fail(new Error("profile gone"));
     await expect(loadPageState()).resolves.toEqual({
       kind: "authenticated-unavailable",
+      deletion: "offered",
       email: customerEmail,
       assistants: [assistant],
     });
-    Object.assign(Profile, { Live: ProfileLayer });
 
     resolveEffect = resolverOutcome({
       kind: "failure",
@@ -1239,6 +1129,7 @@ describe("loadCustomerAccountPage", () => {
     });
     await expect(loadPageState()).resolves.toEqual({
       kind: "support-required",
+      deletion: "offered",
       email: customerEmail,
       assistants: [assistant],
     });
@@ -1253,6 +1144,7 @@ describe("loadCustomerAccountPage", () => {
     await expect(loadPageState()).resolves.toEqual({
       kind: "deletion-pending",
       email: customerEmail,
+      deletion: "pending",
     });
     expect(assistantListCalls).toBe(4);
   });
@@ -1268,7 +1160,7 @@ describe("loadCustomerAccountPage", () => {
   });
 
   test("lists no passkeys once resolution finds no session", async () => {
-    arePasskeysEnabled.mockResolvedValue(true);
+    passkeysFlag.mockResolvedValue(true);
     resolveEffect = resolverOutcome({
       kind: "failure",
       reason: "unauthenticated",
@@ -1282,18 +1174,14 @@ describe("loadCustomerAccountPage", () => {
   });
 
   test("renders the authenticated unavailable state when the profile read fails after a successful link", async () => {
-    const failingProfileLayer = Layer.succeed(Profile, {
-      load: () => Effect.fail(new Error("profile gone")),
-    });
-    Object.assign(Profile, { Live: failingProfileLayer });
+    profileLoadEffect = Effect.fail(new Error("profile gone"));
 
     await expect(loadPageState()).resolves.toEqual({
       kind: "authenticated-unavailable",
+      deletion: "offered",
       assistants: [],
       email: customerEmail,
     });
-
-    Object.assign(Profile, { Live: ProfileLayer });
   });
 
   describe("while the referral program is withheld", () => {
@@ -1306,7 +1194,7 @@ describe("loadCustomerAccountPage", () => {
     };
 
     test("offers no completion referral field or prefill", async () => {
-      areReferralsEnabled.mockResolvedValue(false);
+      referralsFlag.mockResolvedValue(false);
       resolveEffect = resolverOutcome({
         kind: "failure",
         reason: "link-required",
@@ -1315,6 +1203,7 @@ describe("loadCustomerAccountPage", () => {
 
       await expect(loadPageState("RFL12345")).resolves.toEqual({
         kind: "completion-required",
+        deletion: "offered",
         assistants: [],
         referralsEnabled: false,
         email: customerEmail,
@@ -1323,7 +1212,7 @@ describe("loadCustomerAccountPage", () => {
     });
 
     test("skips the auto-link acceptance, signup retry, settlement check, and summary", async () => {
-      areReferralsEnabled.mockResolvedValue(false);
+      referralsFlag.mockResolvedValue(false);
       resolveEffect = resolverOutcome({
         kind: "success",
         customerId: "60111",
@@ -1341,6 +1230,7 @@ describe("loadCustomerAccountPage", () => {
 
       expect(state).toEqual({
         kind: "linked",
+        deletion: "offered",
         assistants: [],
         email: customerEmail,
         profile: {
@@ -1377,7 +1267,212 @@ describe("loadCustomerAccountPage", () => {
       });
       // The page gate and every referral service of this load share one
       // decision, so none of them can see the program differently.
-      expect(areReferralsEnabled).toHaveBeenCalledTimes(1);
+      expect(referralsFlag).toHaveBeenCalledTimes(1);
+    });
+  });
+  describe("when a section's capabilities can't be built", () => {
+    /** A section layer whose construction fails, as on broken configuration. */
+    const unbuildable = () =>
+      Layer.effectDiscard(
+        Effect.fail(new Error("configuration broken"))
+      ) as never;
+
+    const loadWithWarnings = async (remembered?: string) => {
+      const lines: string[] = [];
+      const capture = (...args: unknown[]) => {
+        lines.push(
+          args
+            .map((arg) => (Predicate.isString(arg) ? arg : JSON.stringify(arg)))
+            .join(" ")
+        );
+      };
+      const spies = [
+        spyOn(console, "log").mockImplementation(capture),
+        spyOn(console, "warn").mockImplementation(capture),
+        spyOn(console, "error").mockImplementation(capture),
+      ];
+      try {
+        return { state: await loadPageState(remembered), output: lines };
+      } finally {
+        for (const spy of spies) spy.mockRestore();
+      }
+    };
+
+    const warnings = (output: readonly string[]) =>
+      output.filter((line) => line.includes("WARN")).join("\n");
+
+    test("degrades only the avatar when its media capability can't be built", async () => {
+      sectionLayerOverrides = { avatar: unbuildable() };
+
+      const { state, output } = await loadWithWarnings();
+
+      expect(state).toEqual({
+        kind: "linked",
+        deletion: "offered",
+        assistants: [],
+        referralsEnabled: true,
+        email: customerEmail,
+        profile: {
+          firstName: "Ada",
+          lastName: "Lovelace",
+          phone: null,
+          billing: null,
+        },
+        avatar: { kind: "available", avatar: null },
+        history: {
+          kind: "available",
+          groups: { current: [], past: [], unavailable: [] },
+        },
+        referrals: accountReferrals,
+      });
+      expect(warnings(output)).toContain("account.avatar.unavailable");
+      expect(output.join("\n")).not.toContain("configuration broken");
+    });
+
+    test("never builds the capability of a section the page skips", async () => {
+      sectionLayerOverrides = { avatar: unbuildable() };
+      avatarsFlag.mockResolvedValue(false);
+
+      const { state, output } = await loadWithWarnings();
+
+      expect(state).toMatchObject({
+        kind: "linked",
+        avatar: { kind: "hidden" },
+      });
+      expect(warnings(output)).not.toContain("account.avatar.unavailable");
+    });
+
+    test("degrades only the history when its capability can't be built", async () => {
+      sectionLayerOverrides = { history: unbuildable() };
+
+      const { state, output } = await loadWithWarnings();
+
+      expect(state).toMatchObject({
+        kind: "linked",
+        avatar: { kind: "available", avatar: null },
+        history: { kind: "unavailable", reason: "provider-unavailable" },
+        referrals: accountReferrals,
+      });
+      expect(warnings(output)).toContain(
+        "account.reservation-history.unavailable"
+      );
+      expect(output.join("\n")).not.toContain("configuration broken");
+    });
+
+    test("degrades a review account's history alone when its capability can't be built", async () => {
+      reviewAccountEffect = Effect.succeed(true);
+      sectionLayerOverrides = { history: unbuildable() };
+
+      await expect(loadPageState()).resolves.toEqual({
+        kind: "review-account",
+        deletion: "withheld",
+        assistants: [],
+        email: customerEmail,
+        history: { kind: "unavailable", reason: "provider-unavailable" },
+      });
+    });
+
+    test("keeps the session's sections when the profile capability can't be built", async () => {
+      passkeysFlag.mockResolvedValue(true);
+      sectionLayerOverrides = { profile: unbuildable() };
+
+      const { state, output } = await loadWithWarnings();
+
+      expect(state).toEqual({
+        kind: "authenticated-unavailable",
+        deletion: "offered",
+        assistants: [],
+        email: customerEmail,
+        passkeys: { accountId, passkeys: [accountPasskey] },
+      });
+      expect(output.join("\n")).toContain("Account profile load failed");
+    });
+
+    test("keeps the session's sections when the resolver can't be built", async () => {
+      sectionLayerOverrides = { resolver: unbuildable() };
+
+      const { state, output } = await loadWithWarnings("RFL12345");
+
+      expect(state).toEqual({
+        kind: "authenticated-unavailable",
+        deletion: "offered",
+        assistants: [],
+        email: customerEmail,
+      });
+      const logged = output.join("\n");
+      expect(logged).toContain("Account resolution failed");
+      expect(logged).toContain("account-link.lock");
+      expect(logged).not.toContain("configuration broken");
+      expect(profileLoadCalls).toBe(0);
+    });
+
+    test("keeps the linked page without referral state when the referral capability can't be built", async () => {
+      resolveEffect = resolverOutcome({
+        kind: "success",
+        customerId: "60111",
+        autoLinked: true,
+      });
+      storedSignupIntent = {
+        code: "RFLPENDING",
+        promotionCodeId: "@test/promotion-code-id",
+        referrerDotyposCustomerId: "70001",
+      };
+      sectionLayerOverrides = { referrals: unbuildable() };
+
+      const { state, output } = await loadWithWarnings("RFL12345");
+
+      expect(state).toEqual({
+        kind: "linked",
+        deletion: "offered",
+        assistants: [],
+        referralsEnabled: true,
+        email: customerEmail,
+        profile: {
+          firstName: "Ada",
+          lastName: "Lovelace",
+          phone: null,
+          billing: null,
+        },
+        avatar: { kind: "available", avatar: null },
+        history: {
+          kind: "available",
+          groups: { current: [], past: [], unavailable: [] },
+        },
+      });
+      const logged = warnings(output);
+      for (const code of [
+        "account.auto-link.referral.unavailable",
+        "account.signup-referral.unavailable",
+        "account.remembered-referral.unavailable",
+        "account.referrals.unavailable",
+      ]) {
+        expect(logged).toContain(code);
+      }
+      expect(output.join("\n")).not.toContain("configuration broken");
+      expect(acceptReferralCalls).toEqual([]);
+      expect(storedSignupIntent).toMatchObject({ code: "RFLPENDING" });
+      expect(storedSignupIntent).not.toHaveProperty("outcome");
+    });
+
+    test("offers profile completion without a prefill when the referral capability can't be built", async () => {
+      resolveEffect = resolverOutcome({
+        kind: "failure",
+        reason: "link-required",
+        linkReason: "not-found",
+      });
+      sectionLayerOverrides = { referrals: unbuildable() };
+
+      const { state, output } = await loadWithWarnings("RFL12345");
+
+      expect(state).toEqual({
+        kind: "completion-required",
+        deletion: "offered",
+        assistants: [],
+        email: customerEmail,
+        referralsEnabled: true,
+      });
+      expect(warnings(output)).toContain("account.referral-code.unavailable");
+      expect(availableReferralCodeCalls).toEqual([]);
     });
   });
 });

@@ -206,6 +206,13 @@ export type CustomerAvatarPresentation =
       } | null;
     };
 
+/**
+ * Whether the account page offers deletion: `pending` once it is requested
+ * and retryable, `withheld` for a review account or while that can't be
+ * ruled out.
+ */
+export type AccountDeletion = "offered" | "pending" | "withheld";
+
 const parseInstant = Option.liftThrowable((value: string) =>
   Temporal.Instant.from(value)
 );

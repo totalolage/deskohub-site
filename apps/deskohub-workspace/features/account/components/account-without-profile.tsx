@@ -6,6 +6,7 @@ import { CustomerAgentConnectionsSection } from "@/features/account/components/c
 import { DeleteAccountCard } from "@/features/account/components/delete-account-card";
 import { SignInSecuritySection } from "@/features/account/components/passkeys/sign-in-security-section";
 import { useAccountPasskeys } from "@/features/account/components/passkeys/use-account-passkeys";
+import type { AccountDeletion } from "@/features/account/contracts";
 import type { CustomerAgentConnection } from "@/features/account/customer-agent-connections";
 import type { AccountPasskeySettings } from "@/features/account/passkeys";
 import type { Locale } from "@/features/i18n";
@@ -13,13 +14,12 @@ import type { Locale } from "@/features/i18n";
 type AccountWithoutProfileProps = {
   readonly email: string;
   readonly locale: Locale;
-  /** True when the durable deletion marker is set and deletion is retryable. */
-  readonly deletionPending?: boolean;
   /**
-   * False for a shared review account, which must keep working for later
-   * review rounds, and while that can't be ruled out.
+   * `pending` once the durable deletion marker is set, so deletion is
+   * retryable; `withheld` for a shared review account, which must keep
+   * working for later review rounds, and while that can't be ruled out.
    */
-  readonly deletable: boolean;
+  readonly deletion: AccountDeletion;
   /** The account's passkeys; absent while `login_passkeys` is off. */
   readonly passkeys?: AccountPasskeySettings;
   /**
@@ -48,8 +48,7 @@ type AccountWithoutProfileProps = {
 export function AccountWithoutProfile({
   assistants,
   children,
-  deletable,
-  deletionPending = false,
+  deletion,
   email,
   locale,
   passkeys,
@@ -58,7 +57,7 @@ export function AccountWithoutProfile({
 }: AccountWithoutProfileProps) {
   const { activeSection, setReservationCount } = useAccountLayout();
   const accountPasskeys = useAccountPasskeys(passkeys);
-  const signInSecurity = accountPasskeys && !deletionPending;
+  const signInSecurity = accountPasskeys && deletion !== "pending";
   const securityActive = signInSecurity && activeSection === "security";
   const assistantsActive =
     assistants !== undefined && activeSection === "assistants";
@@ -76,9 +75,9 @@ export function AccountWithoutProfile({
             <div hidden={activeSection !== "reservations"}>{reservations}</div>
           )}
           {children}
-          {deletable && (
+          {deletion !== "withheld" && (
             <DeleteAccountCard
-              deletionPending={deletionPending}
+              deletionPending={deletion === "pending"}
               email={email}
               locale={locale}
               passkeys={accountPasskeys}

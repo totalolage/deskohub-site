@@ -186,6 +186,7 @@ const en = { locale: "en-US" } as const;
 
 const linkedState = {
   kind: "linked",
+  deletion: "offered",
   email: adaAddress,
   profile: {
     firstName: "Ada",
@@ -267,6 +268,7 @@ describe("AccountPage states", () => {
   test("asks for profile completion with the read-only verified email", async () => {
     const view = await renderState({
       kind: "completion-required",
+      deletion: "offered",
       referralsEnabled: true,
       email: adaAddress,
     });
@@ -319,6 +321,7 @@ describe("AccountPage states", () => {
   test("shows the reservation an account booked for someone else beside profile completion", async () => {
     const view = await renderState({
       kind: "completion-required",
+      deletion: "offered",
       referralsEnabled: true,
       email: adaAddress,
       history: authoredHistory,
@@ -340,6 +343,7 @@ describe("AccountPage states", () => {
   test("shows the reservation an account booked for someone else beside the support notice", async () => {
     const view = await renderState({
       kind: "support-required",
+      deletion: "offered",
       email: adaAddress,
       history: authoredHistory,
     });
@@ -361,6 +365,7 @@ describe("AccountPage states", () => {
   test("shows a review account's sandbox reservations beside its card, without profile completion or PIN links", async () => {
     const view = await renderState({
       kind: "review-account",
+      deletion: "withheld",
       email: adaAddress,
       history: {
         kind: "available",
@@ -405,6 +410,7 @@ describe("AccountPage states", () => {
   test("offers a review account no account deletion", async () => {
     const view = await renderState({
       kind: "review-account",
+      deletion: "withheld",
       email: adaAddress,
       history: {
         kind: "available",
@@ -421,8 +427,8 @@ describe("AccountPage states", () => {
   test("offers no account deletion while deletion eligibility is unknown", async () => {
     const view = await renderState({
       kind: "authenticated-unavailable",
+      deletion: "withheld",
       email: adaAddress,
-      deletionUnavailable: true,
     });
 
     expect(
@@ -477,6 +483,7 @@ describe("AccountPage states", () => {
     function ProfileCompletionRefreshJourney() {
       const [state, setState] = useState<CustomerAccountPageState>({
         kind: "completion-required",
+        deletion: "offered",
         referralsEnabled: true,
         email: adaAddress,
         referralCode,
@@ -543,6 +550,7 @@ describe("AccountPage states", () => {
     function PendingCompletionJourney() {
       const [state, setState] = useState<CustomerAccountPageState>({
         kind: "completion-required",
+        deletion: "offered",
         referralsEnabled: true,
         email: adaAddress,
       });
@@ -737,6 +745,7 @@ describe("AccountPage states", () => {
   test("offers no completion referral field while the program is withheld", async () => {
     const view = await renderState({
       kind: "completion-required",
+      deletion: "offered",
       referralsEnabled: false,
       email: adaAddress,
     });
@@ -756,6 +765,7 @@ describe("AccountPage states", () => {
   test("renders the support state with the contact destination and no profile data", async () => {
     const view = await renderState({
       kind: "support-required",
+      deletion: "offered",
       email: adaAddress,
     });
 
@@ -784,6 +794,7 @@ describe("AccountPage states", () => {
   test("renders the pending deletion state with retry and sign out", async () => {
     const view = await renderState({
       kind: "deletion-pending",
+      deletion: "pending",
       email: adaAddress,
     });
 
@@ -822,6 +833,7 @@ describe("AccountPage states", () => {
   test("renders the authenticated unavailable state with account controls", async () => {
     const view = await renderState({
       kind: "authenticated-unavailable",
+      deletion: "offered",
       email: adaAddress,
     });
 
@@ -840,6 +852,7 @@ describe("AccountPage states", () => {
   test("manages passkeys under Sign-in & security while the profile is unavailable", async () => {
     const view = await renderState({
       kind: "authenticated-unavailable",
+      deletion: "offered",
       email: adaAddress,
       passkeys: {
         accountId: "account-1",
@@ -890,6 +903,7 @@ describe("AccountPage states", () => {
     const view = await renderState(
       {
         kind: "completion-required",
+        deletion: "offered",
         email: adaAddress,
         referralsEnabled: false,
         assistants: [
@@ -926,6 +940,7 @@ describe("AccountPage states", () => {
   test("shows no connected assistants while the profile is unavailable", async () => {
     const view = await renderState({
       kind: "authenticated-unavailable",
+      deletion: "offered",
       email: adaAddress,
       assistants: [],
     });
@@ -981,6 +996,7 @@ describe("AccountPage states", () => {
     try {
       const view = await renderState({
         kind: "authenticated-unavailable",
+        deletion: "offered",
         email: adaAddress,
         passkeys: { accountId: "account-1", passkeys: [] },
       });
@@ -1001,6 +1017,7 @@ describe("AccountPage states", () => {
     await withEmailSignInOnCapableBrowser();
     const view = await renderState({
       kind: "deletion-pending",
+      deletion: "pending",
       email: adaAddress,
       passkeys: { accountId: "account-1", passkeys: [] },
     });
