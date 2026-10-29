@@ -56,7 +56,7 @@ const run = async <A, E>(
     readonly referrals?: Partial<IReferralService>;
   } = {}
 ) => {
-  const cookie: { value?: string } = { value: options.cookie };
+  const cookie = { value: options.cookie };
   const settledChecks: DotyposCustomerId[] = [];
   const sessionReads = { count: 0 };
   const exit = await Effect.runPromiseExit(

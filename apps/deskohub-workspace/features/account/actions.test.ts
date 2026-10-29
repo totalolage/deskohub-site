@@ -6,6 +6,13 @@ import { AresLookupFailure } from "@deskohub/ares";
 import { Context, Effect, Layer } from "effect";
 import { m } from "@/features/i18n";
 import { ReferralError } from "@/features/referrals/contracts";
+import { ReferralService as Referrals } from "@/features/referrals/referral.service";
+import { ReferralFeatureFlagService as ReferralFeatureFlag } from "@/features/referrals/referral-feature-flag.service";
+import {
+  type InMemoryReferralCookie,
+  RememberedReferral,
+} from "@/features/referrals/remembered-referral.service";
+import { CustomerAccountContactService } from "./backend/customer-account-contact.service";
 import { CustomerAccountAccessError } from "./customer-account";
 
 const customerEmail = testEmailAddress("ada");
@@ -22,8 +29,9 @@ mock.module("next/headers", () => ({
   headers: async () => requestHeaders,
   cookies: async () => ({
     get: (name: string) =>
-      name === "deskohub-referral-code" && rememberedReferralCode !== undefined
-        ? { value: rememberedReferralCode }
+      name === "deskohub-referral-code" &&
+      rememberedReferralCookie.value !== undefined
+        ? { value: rememberedReferralCookie.value }
         : undefined,
     getAll: () => [],
     set: (name: string, value: string) => {
@@ -51,26 +59,12 @@ mock.module("@/features/account/server/account-feature-flag.server", () => ({
 
 let referralsEnabled = true;
 const areReferralsEnabled = mock(() => Promise.resolve(referralsEnabled));
-const ReferralFeatureFlag = Context.Service<
-  ReferralFeatureFlag,
-  { readonly isEnabled: Effect.Effect<boolean> }
->()("@test/ActionsReferralFeatureFlag");
-const decideReferrals = (enabled: boolean) =>
-  Layer.succeed(ReferralFeatureFlag, { isEnabled: Effect.succeed(enabled) });
-Object.assign(ReferralFeatureFlag, {
-  Live: Layer.succeed(ReferralFeatureFlag, {
-    isEnabled: Effect.sync(() => referralsEnabled),
-  }),
-  fromDecision: decideReferrals,
-});
+const decideReferrals = ReferralFeatureFlag.fromDecision;
 mock.module("@/features/referrals/referral-feature-flag.server", () => ({
   areReferralsEnabled,
   ReferralFeatureFlagRequest: Layer.unwrap(
     Effect.promise(areReferralsEnabled).pipe(Effect.map(decideReferrals))
   ),
-}));
-mock.module("@/features/referrals/referral-feature-flag.service", () => ({
-  ReferralFeatureFlagService: ReferralFeatureFlag,
 }));
 
 let deleteUser: (args: { body: object; headers: Headers }) => Promise<unknown>;
@@ -104,9 +98,15 @@ Object.assign(Authentication, {
     })
   ),
 });
+const realAuthenticationModule = await import(
+  "@/features/account/backend/customer-authentication.service"
+);
 mock.module(
   "@/features/account/backend/customer-authentication.service",
-  () => ({ CustomerAuthentication: Authentication })
+  () => ({
+    ...realAuthenticationModule,
+    CustomerAuthentication: Authentication,
+  })
 );
 
 type ProfileInput = {
@@ -260,11 +260,6 @@ mock.module("@/features/account/backend/customer-profile.service", () => ({
   CustomerProfileService: Profile,
 }));
 
-type ReferralIdentity = {
-  readonly code: unknown;
-  readonly customerAccountId: string;
-  readonly dotyposCustomerId: string;
-};
 const referralCalls: { op: string; args: unknown }[] = [];
 let availableReferralCode: Effect.Effect<string | undefined, ReferralError>;
 let referralAcceptance: Effect.Effect<
@@ -272,20 +267,6 @@ let referralAcceptance: Effect.Effect<
   ReferralError
 >;
 let settledReferral: Effect.Effect<boolean, ReferralError>;
-const Referrals = Context.Service<
-  Referrals,
-  {
-    readonly findAvailableCode: (input: {
-      readonly code: unknown;
-    }) => Effect.Effect<string | undefined, ReferralError>;
-    readonly acceptReferral: (
-      input: ReferralIdentity
-    ) => Effect.Effect<{ readonly kind: "accepted" }, ReferralError>;
-    readonly hasSettledReferral: (input: {
-      readonly dotyposCustomerId: string;
-    }) => Effect.Effect<boolean, ReferralError>;
-  }
->()("@test/ActionsReferrals");
 Object.assign(Referrals, {
   Live: Layer.succeed(Referrals, {
     findAvailableCode: (input) => {
@@ -304,7 +285,20 @@ Object.assign(Referrals, {
 });
 mock.module("@/features/referrals", () => ({ ReferralService: Referrals }));
 
-let rememberedReferralCode: string | undefined;
+// Completion supplies its resolved customer, so settlement never reads a session.
+CustomerAccountContactService.Live = Layer.mock(
+  CustomerAccountContactService,
+  {}
+);
+const rememberedReferralCookie: InMemoryReferralCookie = {};
+let rememberedReferralWritable = true;
+RememberedReferral.Cookies = Layer.unwrap(
+  Effect.sync(() =>
+    RememberedReferral.inMemory(rememberedReferralCookie, {
+      writable: rememberedReferralWritable,
+    })
+  )
+);
 
 type PreferenceSave = {
   readonly accountId: "@test/account-id";
@@ -379,7 +373,8 @@ describe("account actions", () => {
     availableReferralCode = Effect.succeed("RFL12345");
     referralAcceptance = Effect.succeed({ kind: "accepted" });
     settledReferral = Effect.succeed(false);
-    rememberedReferralCode = undefined;
+    rememberedReferralCookie.value = undefined;
+    rememberedReferralWritable = true;
     revalidatePath.mockClear();
     referralsEnabled = true;
     areReferralsEnabled.mockReset();
@@ -537,7 +532,7 @@ describe("account actions", () => {
 
   test("records a typed referral code instead of the remembered one", async () => {
     resolveAsNewCustomerUntilCreated();
-    rememberedReferralCode = "RFLCOOKIE";
+    rememberedReferralCookie.value = "RFLCOOKIE";
     const { completeCustomerProfile } = await importActions();
 
     await completeCustomerProfile({
@@ -554,7 +549,7 @@ describe("account actions", () => {
 
   test("forgets the remembered code once completion leaves the customer's referral settled", async () => {
     resolveAsNewCustomerUntilCreated();
-    rememberedReferralCode = "RFL12345";
+    rememberedReferralCookie.value = "RFL12345";
     settledReferral = Effect.succeed(true);
     const { completeCustomerProfile } = await importActions();
 
@@ -571,15 +566,12 @@ describe("account actions", () => {
       op: "hasSettledReferral",
       args: { dotyposCustomerId: "60222" },
     });
-    expect(cookieWrites).toContainEqual({
-      name: "deskohub-referral-code",
-      value: "",
-    });
+    expect(rememberedReferralCookie.value).toBeUndefined();
   });
 
   test("decides the referral program once per action, so a later flag outage cannot skip its referral work", async () => {
     resolveAsNewCustomerUntilCreated();
-    rememberedReferralCode = "RFL12345";
+    rememberedReferralCookie.value = "RFL12345";
     settledReferral = Effect.succeed(true);
     // The first evaluation succeeds; any later one would fail closed.
     areReferralsEnabled
@@ -598,15 +590,12 @@ describe("account actions", () => {
       data: { status: "completed", referral: { status: "applied" } },
     });
     // The remembered-code reader used the same decision as the completion.
-    expect(cookieWrites).toContainEqual({
-      name: "deskohub-referral-code",
-      value: "",
-    });
+    expect(rememberedReferralCookie.value).toBeUndefined();
   });
 
   test("keeps the remembered code while the customer's referral is open or unknown", async () => {
     resolveAsNewCustomerUntilCreated();
-    rememberedReferralCode = "RFL12345";
+    rememberedReferralCookie.value = "RFL12345";
     referralAcceptance = Effect.fail(
       new ReferralError({ reason: "pending_payment" })
     );
@@ -628,10 +617,19 @@ describe("account actions", () => {
     expect(
       referralCalls.filter(({ op }) => op === "hasSettledReferral")
     ).toHaveLength(2);
-    expect(cookieWrites).not.toContainEqual({
-      name: "deskohub-referral-code",
-      value: "",
-    });
+    expect(rememberedReferralCookie.value).toBe("RFL12345");
+  });
+
+  test("completes the profile when the settled code cannot be forgotten", async () => {
+    rememberedReferralCookie.value = "RFL12345";
+    rememberedReferralWritable = false;
+    settledReferral = Effect.succeed(true);
+    const { completeCustomerProfile } = await importActions();
+
+    const result = await completeCustomerProfile({ firstName: "Ada" });
+
+    expect(result).toEqual({ data: { status: "completed" } });
+    expect(rememberedReferralCookie.value).toBe("RFL12345");
   });
 
   test("never checks whether the referral is settled without a remembered code", async () => {
@@ -648,10 +646,7 @@ describe("account actions", () => {
       "findAvailableCode",
       "acceptReferral",
     ]);
-    expect(cookieWrites).not.toContainEqual({
-      name: "deskohub-referral-code",
-      value: "",
-    });
+    expect(rememberedReferralCookie.value).toBeUndefined();
   });
 
   test("ignores a referral code when completion finds an already linked customer", async () => {
@@ -748,7 +743,7 @@ describe("account actions", () => {
     referralsEnabled = false;
     resolveAsNewCustomerUntilCreated();
     availableReferralCode = Effect.succeed(undefined);
-    rememberedReferralCode = "RFL12345";
+    rememberedReferralCookie.value = "RFL12345";
     settledReferral = Effect.succeed(true);
     const { completeCustomerProfile } = await importActions();
 
@@ -772,10 +767,7 @@ describe("account actions", () => {
     ]);
     expect(storedIntent).toBeUndefined();
     expect(referralCalls).toEqual([]);
-    expect(cookieWrites).not.toContainEqual({
-      name: "deskohub-referral-code",
-      value: "",
-    });
+    expect(rememberedReferralCookie.value).toBe("RFL12345");
   });
 
   test("acknowledges the settled signup referral notice", async () => {
