@@ -68,6 +68,7 @@ const answerStored = () =>
   fetchSpy.mockImplementation(async () => Response.json(storedImage));
 
 const { CampaignBodyEditor } = await import("./campaign-body-editor");
+const { campaignImageUploadLimits } = await import("./campaign-image-upload");
 const defaults = { authorize, pictureSize, downscale };
 
 beforeEach(answerStored);
@@ -380,6 +381,59 @@ test("says the image can't be read when Cloudinary refuses it, and inserts nothi
   );
   expect(changes.slice(before)).toEqual([]);
   expect(insertButton(view)).toHaveProperty("disabled", false);
+});
+
+/** A 1×1 GIF of two frames, padded after its trailer to `bytes`. */
+const animatedGif = (bytes: number) => {
+  const frame = [0x2c, 0, 0, 0, 0, 1, 0, 1, 0, 0, 2, 2, 0x4c, 0x01, 0];
+  const gif = new Uint8Array([
+    ...[0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 1, 0, 1, 0, 0, 0, 0],
+    ...frame,
+    ...frame,
+    0x3b,
+  ]);
+  return new File([gif, new Uint8Array(bytes - gif.length)], "loop.gif", {
+    type: "image/gif",
+  });
+};
+
+test("refuses an animation above the account's limits rather than flatten it", async () => {
+  const { maxBytes, maxAnimationPixels } = campaignImageUploadLimits;
+  let shrunk = false;
+  downscale = () => {
+    shrunk = true;
+    return Effect.succeed(shrunkImage);
+  };
+  const { view, changes } = await renderEditor();
+  const before = changes.length;
+
+  chooseImage(view, animatedGif(maxBytes + 1));
+
+  await waitFor(() =>
+    expect(view.getByRole("status").textContent).toBe(
+      m.emailCampaignsImageUploadAnimationTooLarge(
+        {
+          maxMegabytes: maxBytes / (1024 * 1024),
+          maxMegapixels: maxAnimationPixels / 1_000_000,
+        },
+        { locale }
+      )
+    )
+  );
+  expect(shrunk).toBe(false);
+  expect(fetchSpy).not.toHaveBeenCalled();
+  expect(changes.slice(before)).toEqual([]);
+  expect(insertButton(view)).toHaveProperty("disabled", false);
+});
+
+test("uploads an animation within the account's limits as it is", async () => {
+  const { view } = await renderEditor();
+
+  chooseImage(view, animatedGif(2048));
+
+  await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+  const posted = postedFile();
+  expect(posted instanceof Blob && posted.size).toBe(2048);
 });
 
 test("uploads nothing when the upload isn't authorized", async () => {

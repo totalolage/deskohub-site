@@ -7,6 +7,7 @@ import {
 } from "@/shared/browser/image-downscaling";
 import { type ImageSize, readImageSize } from "@/shared/browser/image-size";
 import { reportWorkspaceBrowserFailure } from "@/shared/browser/workspace-browser-logs";
+import { imageFrameCount } from "@/shared/utils/image-animation";
 import type { CampaignImageUploadAuthorization } from "../../backend/campaign-image.service";
 import {
   campaignImageMaxWidth,
@@ -16,32 +17,53 @@ import { authorizeCampaignImageUpload } from "./actions";
 
 /**
  * The largest image the Deskohub Cloudinary account takes, the `media_limits`
- * of its Free plan. The editor shrinks a larger one before it uploads, so the
- * admin never has to.
+ * of its Free plan; an animation's frames together have at most
+ * `maxAnimationPixels`. The editor shrinks a larger still picture before it
+ * uploads, so the admin never has to.
  */
 export const campaignImageUploadLimits = {
   maxBytes: 10 * 1024 * 1024,
   maxPixels: 25_000_000,
+  maxAnimationPixels: 50_000_000,
 } as const;
 
 /**
- * Whether the editor must shrink a file before Cloudinary takes it. A picture
- * the browser can't read may still be one Cloudinary reads, such as HEIC, so
- * only its bytes count.
+ * What the editor does with a file before Cloudinary takes it: uploads it as
+ * it is, shrinks it, or refuses it. Shrinking keeps only an animation's first
+ * frame, so an animation above the limits is refused instead. A picture the
+ * browser can't read may still be one Cloudinary reads, such as HEIC, so only
+ * its bytes count.
  */
-export const needsShrinkingBeforeUpload = (
-  bytes: number,
-  size: Option.Option<ImageSize>
-): boolean =>
-  bytes > campaignImageUploadLimits.maxBytes ||
-  Option.exists(
-    size,
-    ({ width, height }) => width * height > campaignImageUploadLimits.maxPixels
-  );
+export const campaignImagePreparation = ({
+  bytes,
+  size,
+  frames,
+}: {
+  readonly bytes: number;
+  readonly size: Option.Option<ImageSize>;
+  readonly frames: number;
+}): "upload" | "shrink" | "refuse" => {
+  const { maxBytes, maxPixels, maxAnimationPixels } = campaignImageUploadLimits;
+  const pixels = Option.match(size, {
+    onNone: () => 0,
+    onSome: ({ width, height }) => width * height,
+  });
+  const fits =
+    bytes <= maxBytes &&
+    pixels <= maxPixels &&
+    (frames === 1 || pixels * frames <= maxAnimationPixels);
+  if (fits) return "upload";
+  return frames > 1 ? "refuse" : "shrink";
+};
 
 /** Cloudinary refused the file: it isn't a picture it can store. */
 class CampaignImageRejectedError extends Data.TaggedError(
   "CampaignImageRejectedError"
+) {}
+
+/** The file is an animation above the account's limits. */
+class CampaignImageTooLargeError extends Data.TaggedError(
+  "CampaignImageTooLargeError"
 ) {}
 
 /** The upload didn't complete, or its answer isn't the image authorized. */
@@ -160,36 +182,58 @@ const shrinkCampaignImage = ({
   onStage("shrinking").pipe(
     Effect.andThen(
       downscaleImage(file, {
-        ...campaignImageUploadLimits,
+        maxBytes: campaignImageUploadLimits.maxBytes,
+        maxPixels: campaignImageUploadLimits.maxPixels,
         maxWidth: campaignImageMaxWidth,
       })
     ),
     Effect.tap(() => onStage("uploading"))
   );
 
+const readFrameCount = (file: Blob) =>
+  Effect.promise(() => file.arrayBuffer()).pipe(
+    Effect.map((buffer) => imageFrameCount(new Uint8Array(buffer)))
+  );
+
 /**
  * The picture to upload: the file as chosen, or shrunk first in the browser
- * when it's above the account's limits.
+ * when it's a still picture above the account's limits. An animation above
+ * them is refused.
  */
 const prepareCampaignImage = (input: {
   readonly file: File;
   readonly onStage: CampaignImageUploadProgress;
-}): Effect.Effect<Blob, ImageDecodeError> =>
-  shrinkCampaignImage(input).pipe(
-    Effect.when(
-      readImageSize(input.file).pipe(
-        Effect.map((size) => needsShrinkingBeforeUpload(input.file.size, size))
-      )
+}): Effect.Effect<Blob, ImageDecodeError | CampaignImageTooLargeError> =>
+  Effect.all({
+    size: readImageSize(input.file),
+    frames: readFrameCount(input.file),
+  }).pipe(
+    Effect.map(({ size, frames }) =>
+      campaignImagePreparation({ bytes: input.file.size, size, frames })
     ),
-    Effect.map(Option.getOrElse((): Blob => input.file))
+    Effect.flatMap(
+      (
+        preparation
+      ): Effect.Effect<Blob, ImageDecodeError | CampaignImageTooLargeError> => {
+        switch (preparation) {
+          case "upload":
+            return Effect.succeed<Blob>(input.file);
+          case "shrink":
+            return shrinkCampaignImage(input);
+          case "refuse":
+            return Effect.fail(new CampaignImageTooLargeError());
+        }
+      }
+    )
   );
 
 /**
  * Uploads a body image straight to Cloudinary, which shrinks it to the
- * stored width, turns it upright and strips its metadata. A file above the
- * account's limits is first shrunk in the browser. Succeeds with the stored
- * image, or with the admin message why there's none: only a file neither the
- * browser nor Cloudinary can read is the admin's to change.
+ * stored width, turns it upright and strips its metadata. A still picture
+ * above the account's limits is first shrunk in the browser. Succeeds with
+ * the stored image, or with the admin message why there's none: only an
+ * animation above the limits, or a file neither the browser nor Cloudinary
+ * can read, is the admin's to change.
  */
 export const uploadCampaignImage = (
   file: File,
@@ -203,6 +247,7 @@ export const uploadCampaignImage = (
     Effect.map(Result.succeed),
     Effect.catchTags({
       ImageDecodeError: () => unreadable(locale),
+      CampaignImageTooLargeError: () => animationTooLarge(locale),
       CampaignImageRejectedError: () => unreadable(locale),
       CampaignImageAuthorizationError: ({ message }) =>
         Effect.succeed(Result.fail(message)),
@@ -217,6 +262,21 @@ const unreadable = (locale: Locale) =>
   Effect.succeed(
     Result.fail(m.emailCampaignsImageUploadUnreadable({}, { locale }))
   );
+
+const animationTooLarge = (locale: Locale) => {
+  const { maxBytes, maxAnimationPixels } = campaignImageUploadLimits;
+  return Effect.succeed(
+    Result.fail(
+      m.emailCampaignsImageUploadAnimationTooLarge(
+        {
+          maxMegabytes: maxBytes / (1024 * 1024),
+          maxMegapixels: maxAnimationPixels / 1_000_000,
+        },
+        { locale }
+      )
+    )
+  );
+};
 
 const uploadFailed = (locale: Locale, failure: CampaignImageUploadError) =>
   reportWorkspaceBrowserFailure(uploadFailureCode, failure).pipe(

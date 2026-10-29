@@ -999,6 +999,7 @@
   "emailCampaignsImageAlignLeft": "Align image left",
   "emailCampaignsImageAlignRight": "Align image right",
   "emailCampaignsImageShrinking": "Shrinking the image to fit…",
+  "emailCampaignsImageUploadAnimationTooLarge": "An animated image can be at most {maxMegabytes} MB and {maxMegapixels} megapixels across all its frames. Shorten or shrink the animation.",
   "emailCampaignsImageUploadFailed": "The image could not be uploaded. Try again.",
   "emailCampaignsImageUploadInsert": "Insert image",
   "emailCampaignsImageUploadUnreadable": "The image could not be read. Try a different file.",

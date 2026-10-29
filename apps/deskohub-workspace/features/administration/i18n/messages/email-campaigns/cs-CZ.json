@@ -996,6 +996,7 @@
   "emailCampaignsImageAlignLeft": "Zarovnat obrázek vlevo",
   "emailCampaignsImageAlignRight": "Zarovnat obrázek vpravo",
   "emailCampaignsImageShrinking": "Zmenšování obrázku…",
+  "emailCampaignsImageUploadAnimationTooLarge": "Animovaný obrázek může mít nejvýše {maxMegabytes} MB a {maxMegapixels} megapixelů ve všech snímcích dohromady. Animaci zkraťte nebo zmenšete.",
   "emailCampaignsImageUploadFailed": "Obrázek se nepodařilo nahrát. Zkuste to znovu.",
   "emailCampaignsImageUploadInsert": "Vložit obrázek",
   "emailCampaignsImageUploadUnreadable": "Obrázek se nepodařilo načíst. Zkuste jiný soubor.",

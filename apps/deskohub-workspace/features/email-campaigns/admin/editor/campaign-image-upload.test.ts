@@ -7,8 +7,8 @@ mock.module("@/features/email-campaigns/admin/editor/actions", () => ({
 }));
 
 const {
+  campaignImagePreparation,
   campaignImageUploadLimits,
-  needsShrinkingBeforeUpload,
   sendCampaignImage,
 } = await import("./campaign-image-upload");
 
@@ -49,39 +49,89 @@ const failureTag = (exit: Exit.Exit<unknown, { readonly _tag: string }>) =>
       )
     : [];
 
-describe("needsShrinkingBeforeUpload", () => {
-  const { maxBytes, maxPixels } = campaignImageUploadLimits;
+describe("campaignImagePreparation", () => {
+  const { maxBytes, maxPixels, maxAnimationPixels } = campaignImageUploadLimits;
+  const sized = (width: number, height: number) =>
+    Option.some({ width, height });
 
   test("leaves an image within the account's limits to Cloudinary", () => {
     expect(
-      needsShrinkingBeforeUpload(
-        maxBytes,
-        Option.some({ width: 5000, height: maxPixels / 5000 })
-      )
-    ).toBe(false);
+      campaignImagePreparation({
+        bytes: maxBytes,
+        size: sized(5000, maxPixels / 5000),
+        frames: 1,
+      })
+    ).toBe("upload");
   });
 
-  test("shrinks a file above the byte limit, even one the browser can't read", () => {
+  test("shrinks a still file above the byte limit, even one the browser can't read", () => {
     expect(
-      needsShrinkingBeforeUpload(
-        maxBytes + 1,
-        Option.some({ width: 800, height: 600 })
-      )
-    ).toBe(true);
-    expect(needsShrinkingBeforeUpload(maxBytes + 1, Option.none())).toBe(true);
+      campaignImagePreparation({
+        bytes: maxBytes + 1,
+        size: sized(800, 600),
+        frames: 1,
+      })
+    ).toBe("shrink");
+    expect(
+      campaignImagePreparation({
+        bytes: maxBytes + 1,
+        size: Option.none(),
+        frames: 1,
+      })
+    ).toBe("shrink");
   });
 
-  test("shrinks a picture above the pixel limit", () => {
+  test("shrinks a still picture above the pixel limit", () => {
     expect(
-      needsShrinkingBeforeUpload(
-        1024,
-        Option.some({ width: 5001, height: maxPixels / 5000 })
-      )
-    ).toBe(true);
+      campaignImagePreparation({
+        bytes: 1024,
+        size: sized(5001, maxPixels / 5000),
+        frames: 1,
+      })
+    ).toBe("shrink");
   });
 
   test("leaves a small picture the browser can't read to Cloudinary", () => {
-    expect(needsShrinkingBeforeUpload(1024, Option.none())).toBe(false);
+    expect(
+      campaignImagePreparation({ bytes: 1024, size: Option.none(), frames: 1 })
+    ).toBe("upload");
+  });
+
+  test("leaves an animation within the limits to Cloudinary", () => {
+    expect(
+      campaignImagePreparation({
+        bytes: maxBytes,
+        size: sized(1000, 1000),
+        frames: maxAnimationPixels / 1_000_000,
+      })
+    ).toBe("upload");
+  });
+
+  test("refuses an animation above the byte limit instead of shrinking it", () => {
+    expect(
+      campaignImagePreparation({
+        bytes: maxBytes + 1,
+        size: sized(400, 300),
+        frames: 2,
+      })
+    ).toBe("refuse");
+    expect(
+      campaignImagePreparation({
+        bytes: maxBytes + 1,
+        size: Option.none(),
+        frames: 2,
+      })
+    ).toBe("refuse");
+  });
+
+  test("refuses an animation whose frames together exceed the pixel limit", () => {
+    expect(
+      campaignImagePreparation({
+        bytes: 1024,
+        size: sized(1000, 1000),
+        frames: maxAnimationPixels / 1_000_000 + 1,
+      })
+    ).toBe("refuse");
   });
 });
 
