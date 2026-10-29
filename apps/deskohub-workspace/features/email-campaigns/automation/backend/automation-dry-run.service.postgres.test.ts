@@ -1347,6 +1347,119 @@ describe.skipIf(!testDatabase)(
       ).toEqual(localBefore);
     });
 
+    test("a Workspace-cancelled reservation skips the live re-check, which compares at stored precision, and a cancellation trigger is never withdrawn", async () => {
+      const [moved, movedCancelled, sameMoment, cancellation] = [
+        "recheck-moved",
+        "recheck-moved-cancelled",
+        "recheck-same-moment",
+        "recheck-cancellation",
+      ].map(customerId) as [
+        DotyposCustomerId,
+        DotyposCustomerId,
+        DotyposCustomerId,
+        DotyposCustomerId,
+      ];
+      const finishedAt = ago({ hours: 24 * 9 });
+      // Dotypos already reports each visit as it stands now.
+      const extended = {
+        startsAt: finishedAt.subtract({ hours: 2 }),
+        endsAt: finishedAt.add({ hours: 1 }),
+      };
+      const cancelledAt = ago({ minutes: 31 });
+      await seedReservations([
+        { label: "recheck-moved", customer: moved, ...extended },
+        {
+          label: "recheck-moved-cancelled",
+          customer: movedCancelled,
+          ...extended,
+          workspaceCancelledAt: finishedAt.add({ hours: 12 }),
+        },
+        {
+          // Later than the event only below the microseconds it's stored at.
+          label: "recheck-same-moment",
+          customer: sameMoment,
+          startsAt: finishedAt.subtract({ hours: 2 }),
+          endsAt: finishedAt.add({ nanoseconds: 500 }),
+        },
+        {
+          label: "recheck-cancellation",
+          customer: cancellation,
+          startsAt: ago({ hours: 24 * 3 }),
+          endsAt: ago({ hours: 24 * 3 - 2 }),
+          workspaceCancelledAt: cancelledAt,
+        },
+      ]);
+      const finishedEvent = (
+        reservation: string,
+        customer: DotyposCustomerId
+      ) => ({
+        kind: "reservation-finished" as const,
+        reservation,
+        customer,
+        occurredAt: finishedAt,
+      });
+      const [movedEvent, movedCancelledEvent, sameMomentEvent] =
+        await seedEvents([
+          finishedEvent("recheck-moved", moved),
+          finishedEvent("recheck-moved-cancelled", movedCancelled),
+          finishedEvent("recheck-same-moment", sameMoment),
+        ]);
+      const [cancellationEvent] = await seedEvents([
+        {
+          kind: "reservation-cancelled",
+          reservation: "recheck-cancellation",
+          customer: cancellation,
+          // The newest cancellation, so the 1,000-event cap keeps it.
+          occurredAt: cancelledAt.add({ minutes: 1 }),
+        },
+      ]);
+      const finishedCampaign = await seedAutomation({
+        flow: decodeFlow({
+          trigger: { _tag: "ReservationFinished" },
+          steps: [waitHours("day", 24), send],
+        }),
+      });
+      const cancelledCampaign = await seedAutomation({
+        flow: decodeFlow({
+          trigger: { _tag: "ReservationCancelled" },
+          steps: [send],
+        }),
+      });
+
+      const finished = await start(finishedCampaign);
+      const cancelled = await start(cancelledCampaign);
+      // Neither audience nor flow reads Dotypos, so only the re-check costs
+      // requests: one per 50 of a chunk's reservations, none for cancellations.
+      const finishedUnits = await unitsOf(finished.previewId);
+      expect(finishedUnits.length).toBeGreaterThan(0);
+      expect(finishedUnits.filter((unit) => unit.requestCost === 0)).toEqual(
+        []
+      );
+      expect(
+        (await unitsOf(cancelled.previewId)).filter(
+          (unit) => unit.requestCost !== 0
+        )
+      ).toEqual([]);
+      await processAll(finished.previewId);
+      await processAll(cancelled.previewId);
+
+      const byEvent = new Map(
+        [
+          ...(await rowsOf(finished.previewId)),
+          ...(await rowsOf(cancelled.previewId)),
+        ].map((row) => [row.customerEventId, row])
+      );
+      // The visit moved past the event, so the sweep's later event stands for it.
+      expect(byEvent.has(movedEvent!)).toBe(false);
+      // Cancelled in Workspace before the send: the pre-submit check withdraws it.
+      expect(byEvent.get(movedCancelledEvent!)).toMatchObject({
+        outcome: "withdrawn",
+        stepId: "send",
+      });
+      expect(byEvent.get(sameMomentEvent!)?.outcome).toBe("would-send");
+      expect(byEvent.get(cancellationEvent!)?.outcome).toBe("would-send");
+    });
+
     test("a saved audience edited after planning still evaluates", async () => {
       const mia = customerId("mia");
       await seedReservations([

@@ -97,6 +97,15 @@ Admin email campaigns live in `apps/deskohub-workspace/features/email-campaigns/
   - Recorded transition times stay actual.
 - Engine Postgres tests drive this with `scenario.tick` (plan, then drain) or `runUntil({ onTicks: true })` (the cron's cadence). An event must occur at or before the tick a test plans it in, or the test plans on the next tick. `planUntilQueued` holds units of one kind back so that a test can act between entry and the next step. Use `sameInstant` only for work that a later planner run picks up.
 
+## Automation trigger re-check
+
+- Intake, the dry run's replay, and the deliver unit's pre-submit check judge a reservation trigger by its live Dotypos visit through one pure verdict, `triggeringVisitVerdict` (`automation/automation-trigger-verification.ts`): `current`; `withdrawn` when Dotypos cancelled the visit or no longer returns it (D28); or `moved` when a started trigger's visit now starts after `asOf`, or a finished one's ends after it. A booked trigger needs only an active visit. `readsTriggeringVisit` says which kinds are re-checked and `withdrawnByCancellation` which ones a Workspace cancellation withdraws; a cancellation trigger is the cancellation itself, so it is never withdrawn. Both match every trigger kind, so a new kind is decided there, not in each caller.
+- Each path picks its own `asOf` and names the verdict in its own terms:
+  - Intake compares with `now`, when it re-reads the visit. `moved` supersedes the event without a receipt, because the sweep records a new event at the visit's new time.
+  - Replay compares with the event's stored `occurredAt`, since it replays intake from today's visits without knowing when intake would have run. `moved` hides the event, `withdrawn` withdraws it before entry. So an event whose visit was extended and has since ended still enters live, if otherwise eligible, but is hidden in the replay, which replays the sweep's later event instead. Replay passes the visit's instants and `occurredAt` through `toStoredInstant`. It skips the re-check for a reservation Workspace cancelled and leaves it to the replayed pre-submit check, which knows when the cancellation fell.
+  - The pre-submit check compares with the send instant. `moved` defers the send, `withdrawn` withdraws the run.
+- Request costs count a trigger's reservation only when `readsTriggeringVisit` holds for its kind: intake planning, the dry run's replay chunks, and send planning's deliver units.
+
 ## Automation dry run
 
 - Dry-run times are engine ticks (`automation/automation-ticks.ts`): `simulateRun` enters a run on the first tick at or after its trigger, checks a wait on the tick it enters it, and otherwise completes it on the first tick at or after its due time, with the engine's rule (`evaluateStep`). Replay holds off an event whose intake tick is at or before the open run's end tick.

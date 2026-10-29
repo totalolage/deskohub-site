@@ -12,6 +12,7 @@ import {
   deliverProfile,
   makeDeliverEngine,
   seedDeliverAutomation,
+  seedDeliverReservations,
   seedSendReadyRuns,
 } from "./deliver.test-utils";
 
@@ -50,7 +51,15 @@ describe.skipIf(!database)(
       )
     );
 
-    afterAll(() => deleteAutomatedCampaigns(db, campaignIds));
+    const reservationPrefixes: string[] = [];
+
+    afterAll(async () => {
+      await deleteAutomatedCampaigns(db, campaignIds);
+      await pool.query(
+        "delete from workspace_reservations where id like any($1)",
+        [reservationPrefixes.map((prefix) => `${prefix}-%`)]
+      );
+    });
 
     const seedAutomation = async () => {
       const seeded = await seedDeliverAutomation(db, {
@@ -151,6 +160,54 @@ describe.skipIf(!database)(
       expect(
         (await unitsOf(seeded.campaignId)).map((unit) => unit.status)
       ).toEqual(["done", "done", "done"]);
+    });
+
+    test("a deliver unit's cost counts the reservations of the triggers that read their visit", async () => {
+      const prefix = `plan-${runKey}-cost`;
+      reservationPrefixes.push(prefix);
+      const kinds = [
+        ...Array.from({ length: 20 }, () => "reservation-booked" as const),
+        ...Array.from({ length: 20 }, () => "reservation-started" as const),
+        ...Array.from({ length: 15 }, () => "reservation-finished" as const),
+        ...Array.from({ length: 51 }, () => "reservation-cancelled" as const),
+      ];
+      const customers = customerIds("cost", kinds.length);
+      const { ids } = await seedDeliverReservations(
+        db,
+        prefix,
+        customers.map((customer, index) => ({
+          label: String(index),
+          customer,
+          startsAt: startedAt.subtract({ hours: 3 }),
+          endsAt: startedAt.subtract({ hours: 1 }),
+        }))
+      );
+      const reading = await seedAutomation();
+      const cancellations = await seedAutomation();
+      const runs = kinds.map((triggerKind, index) => ({
+        customer: customers[index]!,
+        triggerKind,
+        reservationId: ids.get(String(index)),
+      }));
+      await seedSendReadyRuns(db, {
+        ...reading,
+        runs: runs.slice(0, 55),
+        at: startedAt,
+      });
+      await seedSendReadyRuns(db, {
+        ...cancellations,
+        runs: runs.slice(55),
+        at: startedAt,
+      });
+
+      await plan(startedAt);
+
+      // Two pages of 55 reservations and two of 55 profiles.
+      expect((await unitsOf(reading.campaignId))[0]?.request_cost).toBe(4);
+      // A cancellation trigger reads no visit: two profile pages only.
+      expect((await unitsOf(cancellations.campaignId))[0]?.request_cost).toBe(
+        2
+      );
     });
 
     test("overlapping planners give each run to one unit", async () => {
