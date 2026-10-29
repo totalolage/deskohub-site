@@ -12,6 +12,7 @@ import {
   prepareCheckoutPaymentAttempt,
   submitPaymentAndWaitForHostedPage,
 } from "../checkout/payment";
+import type { ReservationFormPreparation } from "../checkout/reservation-form-preparation";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import { WorkspaceE2EHostedPaymentPermitService } from "../coordination/hosted-payment-permit.service";
 import type { WorkspaceE2EProviderVerificationPermitService } from "../coordination/provider-verification-permit.service";
@@ -31,7 +32,7 @@ import {
   waitForCancelledDotyposReservations,
 } from "../integrations/dotypos";
 import type { Runner } from "../runtime";
-import { assert, log } from "../runtime";
+import { assert, browserSessionFor, log } from "../runtime";
 import type { CheckoutData, CheckoutFlowState } from "../types";
 import { isExpectedCheckoutStatusUrl, makeUrl, setSearchParams } from "../urls";
 import { assertFulfilledStatusPage } from "./checkout";
@@ -64,7 +65,7 @@ export const executeLatePaymentRecovery = ({
   scenario,
   session,
   state,
-  submitReservationScript,
+  preparation,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly data: CheckoutData;
@@ -74,7 +75,7 @@ export const executeLatePaymentRecovery = ({
   readonly scenario: LatePaymentRecoveryScenario;
   readonly session: string;
   readonly state: CheckoutFlowState;
-  readonly submitReservationScript: string;
+  readonly preparation: ReservationFormPreparation;
 }): Effect.Effect<
   void,
   WorkspaceE2EError,
@@ -89,15 +90,17 @@ export const executeLatePaymentRecovery = ({
     state.startedAt = new Date();
 
     const orderId = yield* runStep({
-      execute: prepareCheckoutPaymentAttempt({
-        config,
-        data,
-        onOrderId: (startedOrderId) => {
-          state.orderId = startedOrderId;
-        },
-        run,
-        session,
-        submitReservationScript,
+      execute: Effect.gen(function* () {
+        const browser = yield* browserSessionFor(run, session);
+        return yield* prepareCheckoutPaymentAttempt({
+          config,
+          data,
+          onOrderId: (startedOrderId) => {
+            state.orderId = startedOrderId;
+          },
+          preparation,
+          session: browser,
+        });
       }),
       id: "prepare-late-payment-checkout",
       timeoutMs: config.timeouts.checkoutStart,

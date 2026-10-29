@@ -3,17 +3,12 @@ import type { CanonicalPromotionCode } from "@/features/discounts/persistence-co
 import { waitForPageTextContent, waitForReactFormSubmit } from "../browser";
 import type { E2EBrowserSession } from "../browser-session";
 import type { WorkspaceE2EConfig } from "../config";
-import { addRedaction, browserSessionFor, type Runner } from "../runtime";
+import { addRedaction } from "../runtime";
 
-/**
- * The checkout's discount-code box, driven through the browser session behind
- * `run`'s `session` id. Callers still on argv commands pass the id; the
- * session is reached inside their step.
- */
+/** The checkout's discount-code box in the session's active page. */
 type DiscountCodeBox = {
   readonly config: WorkspaceE2EConfig;
-  readonly run: Runner;
-  readonly session: string;
+  readonly session: E2EBrowserSession;
 };
 
 export const applyDiscountCode = ({
@@ -24,13 +19,11 @@ export const applyDiscountCode = ({
   readonly appliedMessage: string;
   readonly code: string;
 }) =>
-  Effect.flatMap(browserSessionFor(box.run, box.session), (session) =>
-    submitDiscountCodeIn(session, code, box.config).pipe(
-      Effect.andThen(
-        waitForPageTextContent(session, appliedMessage, {
-          timeoutMs: box.config.timeouts.uiTransition,
-        })
-      )
+  submitDiscountCodeIn(box.session, code, box.config).pipe(
+    Effect.andThen(
+      waitForPageTextContent(box.session, appliedMessage, {
+        timeoutMs: box.config.timeouts.uiTransition,
+      })
     )
   );
 
@@ -38,14 +31,12 @@ export const applyUnavailableDiscountCode = ({
   code,
   ...box
 }: DiscountCodeBox & { readonly code: string }) =>
-  Effect.flatMap(browserSessionFor(box.run, box.session), (session) =>
-    submitDiscountCodeIn(session, code, box.config).pipe(
-      Effect.andThen(
-        waitForPageTextContent(
-          session,
-          "That discount, voucher, or referral code isn’t available. Check it and try again, or continue with the current price.",
-          { timeoutMs: box.config.timeouts.uiTransition }
-        )
+  submitDiscountCodeIn(box.session, code, box.config).pipe(
+    Effect.andThen(
+      waitForPageTextContent(
+        box.session,
+        "That discount, voucher, or referral code isn’t available. Check it and try again, or continue with the current price.",
+        { timeoutMs: box.config.timeouts.uiTransition }
       )
     )
   );
@@ -54,9 +45,7 @@ export const submitDiscountCode = ({
   code,
   ...box
 }: DiscountCodeBox & { readonly code: string }) =>
-  Effect.flatMap(browserSessionFor(box.run, box.session), (session) =>
-    submitDiscountCodeIn(session, code, box.config)
-  );
+  submitDiscountCodeIn(box.session, code, box.config);
 
 const submitDiscountCodeIn = Effect.fnUntraced(function* (
   session: E2EBrowserSession,
@@ -93,8 +82,8 @@ export const assertRequestedOnlyDiscountCode = ({
   code,
   ...box
 }: DiscountCodeBox & { readonly code: CanonicalPromotionCode }) =>
-  Effect.flatMap(browserSessionFor(box.run, box.session), (session) =>
-    session.use("wait for requested-only discount code input", (page) =>
+  box.session
+    .use("wait for requested-only discount code input", (page) =>
       page.waitForFunction(
         (requested) => {
           const form = document.querySelector("#checkout-discount-code-form");
@@ -107,4 +96,4 @@ export const assertRequestedOnlyDiscountCode = ({
         { timeout: box.config.timeouts.uiTransition }
       )
     )
-  ).pipe(Effect.asVoid);
+    .pipe(Effect.asVoid);

@@ -36,7 +36,6 @@ import {
   waitForPageUrl,
   waitForReactHandler,
 } from "../browser";
-import { getSubmitCoworkReservationScript } from "../browser-scripts";
 import type { E2EBrowserSession } from "../browser-session";
 import {
   makeCoworkCheckoutData,
@@ -49,6 +48,7 @@ import {
   prepareReservationSelection,
   waitForReservationPayPage,
 } from "../checkout/payment";
+import { toReservationStep } from "../checkout/reservation-form-preparation";
 import {
   type DatasourceConfig,
   getConfig,
@@ -272,7 +272,7 @@ const executeSignedOutVerification = Effect.fn("SignedOutVerification.execute")(
     const { data } = state;
     const { locale } = data;
     const recipient = data.email;
-    const reservationScript = getSubmitCoworkReservationScript(data);
+    const reservationScript = toReservationStep(data);
     // Each step reaches the session itself, so a browser that fails to open
     // fails the step that needed it.
     const browser = browserSessionFor(run, session);
@@ -280,19 +280,18 @@ const executeSignedOutVerification = Effect.fn("SignedOutVerification.execute")(
 
     yield* runStep({
       execute: Effect.gen(function* () {
-        yield* openPage(yield* browser, config, data.checkoutUrl, {
+        const browserSession = yield* browserSessionFor(run, session);
+        yield* openPage(browserSession, config, data.checkoutUrl, {
           timeoutMs: config.timeouts.browserNavigation,
         });
         yield* prepareReservationSelection({
-          prepareScript: reservationScript,
-          run,
-          session,
+          preparation: reservationScript,
+          session: browserSession,
           timeoutMs: config.timeouts.checkoutStart,
           timeouts: config.timeouts,
         });
         yield* continueToReservationContactStep({
-          run,
-          session,
+          session: browserSession,
           timeouts: config.timeouts,
         });
       }),
@@ -308,12 +307,14 @@ const executeSignedOutVerification = Effect.fn("SignedOutVerification.execute")(
     });
     // The same script fills the contact step's inputs from the planned contact.
     yield* runStep({
-      execute: prepareReservationSelection({
-        prepareScript: reservationScript,
-        run,
-        session,
-        timeoutMs: config.timeouts.uiTransition,
-        timeouts: config.timeouts,
+      execute: Effect.gen(function* () {
+        const browserSession = yield* browserSessionFor(run, session);
+        yield* prepareReservationSelection({
+          preparation: reservationScript,
+          session: browserSession,
+          timeoutMs: config.timeouts.uiTransition,
+          timeouts: config.timeouts,
+        });
       }),
       id: "fill-signed-out-contact",
       timeoutMs: config.timeouts.uiTransition,
@@ -444,13 +445,15 @@ const executeSignedOutVerification = Effect.fn("SignedOutVerification.execute")(
       });
 
       const orderId = yield* runStep({
-        execute: waitForReservationPayPage({
-          onOrderId: (startedOrderId) => {
-            state.orderId = startedOrderId;
-          },
-          run,
-          session,
-          timeouts: config.timeouts,
+        execute: Effect.gen(function* () {
+          const browser = yield* browserSessionFor(run, session);
+          return yield* waitForReservationPayPage({
+            onOrderId: (startedOrderId) => {
+              state.orderId = startedOrderId;
+            },
+            session: browser,
+            timeouts: config.timeouts,
+          });
         }),
         id: "continue-to-pay-page-after-verification",
         timeoutMs: config.timeouts.checkoutStart,

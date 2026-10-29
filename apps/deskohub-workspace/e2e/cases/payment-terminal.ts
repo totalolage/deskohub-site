@@ -17,6 +17,7 @@ import {
   prepareCheckoutPaymentAttempt,
   submitPaymentAndWaitForHostedPage,
 } from "../checkout/payment";
+import type { ReservationFormPreparation } from "../checkout/reservation-form-preparation";
 import type { WorkspaceE2EConfig } from "../config";
 import { WorkspaceE2EHostedPaymentPermitService } from "../coordination/hosted-payment-permit.service";
 import { tryWorkspaceE2ESync, type WorkspaceE2EError } from "../errors";
@@ -28,7 +29,7 @@ import {
 } from "../integrations/database";
 import type { E2EDatabase } from "../integrations/database.service";
 import type { Runner } from "../runtime";
-import { assert, log, parseUrl } from "../runtime";
+import { assert, browserSessionFor, log, parseUrl } from "../runtime";
 import type { WorkspaceE2ETimeouts } from "../timeouts";
 import type {
   CheckoutData,
@@ -67,7 +68,7 @@ export const assertPaymentTerminalPath = ({
   scenario,
   session,
   state,
-  submitReservationScript,
+  preparation,
 }: {
   config: WorkspaceE2EConfig;
   data: CheckoutData;
@@ -77,7 +78,7 @@ export const assertPaymentTerminalPath = ({
   scenario: PaymentTerminalScenario;
   session: string;
   state: CheckoutFlowState;
-  submitReservationScript: string;
+  preparation: ReservationFormPreparation;
 }): Effect.Effect<
   void,
   WorkspaceE2EError,
@@ -86,15 +87,17 @@ export const assertPaymentTerminalPath = ({
   Effect.gen(function* () {
     state.startedAt = new Date();
     const orderId = yield* runStep({
-      execute: prepareCheckoutPaymentAttempt({
-        config,
-        data,
-        onOrderId: (startedOrderId) => {
-          state.orderId = startedOrderId;
-        },
-        run,
-        session,
-        submitReservationScript,
+      execute: Effect.gen(function* () {
+        const browser = yield* browserSessionFor(run, session);
+        return yield* prepareCheckoutPaymentAttempt({
+          config,
+          data,
+          onOrderId: (startedOrderId) => {
+            state.orderId = startedOrderId;
+          },
+          preparation,
+          session: browser,
+        });
       }),
       id: "prepare-checkout-pay-page",
       timeoutMs: config.timeouts.checkoutStart,

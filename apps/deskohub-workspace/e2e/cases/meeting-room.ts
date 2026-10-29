@@ -24,16 +24,16 @@ import { formatMoney } from "@/shared/money/money";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
 import { normalizeBrowserText, waitForPageText } from "../browser";
 import {
-  getPrepareMeetingRoomAdvertisedPriceScript,
-  getSubmitMeetingRoomReservationScript,
-} from "../browser-scripts";
-import {
   loadMeetingRoomAvailability,
   type MeetingRoomCheckoutSlot,
   makeMeetingRoomCheckoutData,
   reuseMeetingRoomCheckoutContact,
   selectAvailableMeetingRoomSlots,
 } from "../checkout/data";
+import {
+  toReservationSelectionPreparation,
+  toReservationStep,
+} from "../checkout/reservation-form-preparation";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import {
   toWorkspaceE2EError,
@@ -198,8 +198,8 @@ export const makeMeetingRoomE2ECases = ({
               id: "meeting-room-paid-one-hour",
               // Picks the start from the listed free start times; the other
               // hourly cases type it into the time input.
-              submitReservationScript: (data) =>
-                getSubmitMeetingRoomReservationScript(data, {
+              toReservationPreparation: (data) =>
+                toReservationStep(data, {
                   startTimeEntry: "listed",
                 }),
             },
@@ -244,8 +244,7 @@ export const makeMeetingRoomE2ECases = ({
             runStep,
             session,
             state: zeroTotalState,
-            submitReservationScript:
-              getSubmitMeetingRoomReservationScript(zeroTotalData),
+            preparation: toReservationStep(zeroTotalData),
           }).pipe(
             Effect.mapError((cause) =>
               toWorkspaceE2EError(
@@ -274,15 +273,14 @@ export const makeMeetingRoomE2ECases = ({
               id: "assert-held-meeting-room-slot-availability",
               timeoutMs: config.timeouts.datasource,
             }),
-            prepareReservationScript:
-              getPrepareMeetingRoomAdvertisedPriceScript,
+            toSelectionPreparation: toReservationSelectionPreparation,
             replacementData: editedReplacementData,
             reservationPath: "/en-US/reservation/meeting-room",
             run,
             runStep,
             session,
             state: replacementState,
-            submitReservationScript: getSubmitMeetingRoomReservationScript,
+            toReservationPreparation: toReservationStep,
           }).pipe(
             Effect.mapError((cause) =>
               toWorkspaceE2EError(
@@ -306,8 +304,7 @@ export const makeMeetingRoomE2ECases = ({
             scenario: cancelledScenario,
             session,
             state: cancelledState,
-            submitReservationScript:
-              getSubmitMeetingRoomReservationScript(cancelledData),
+            preparation: toReservationStep(cancelledData),
           }).pipe(
             Effect.mapError((cause) =>
               toWorkspaceE2EError(
@@ -328,7 +325,7 @@ export const makeMeetingRoomE2ECases = ({
             datasourceConfig,
             flow: {
               id: "meeting-room-paid-whole-day",
-              submitReservationScript: getSubmitMeetingRoomReservationScript,
+              toReservationPreparation: toReservationStep,
             },
             payPageSteps: () => [
               {

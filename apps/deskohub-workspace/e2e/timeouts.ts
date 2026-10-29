@@ -58,6 +58,8 @@ export const workspaceE2ETimeouts = {
   calendarSaleAdvertisement: 2 * MINUTE,
   calendarSaleAdvertisementAttempt: 10 * SECOND,
   checkoutCase: 6 * MINUTE,
+  // The pay page's consent and enabled pay button showing up, each.
+  checkoutPayControl: 60 * SECOND,
   checkoutStart: 2 * MINUTE,
   // The original 30-second finalizer budget plus one full Dotypos request:
   // reservation cleanup cancels each reservation with a single unretried

@@ -623,15 +623,12 @@ const startAgentReservation = ({
             "The agent's Pay link has already expired"
           );
         });
-        yield* openPage(
-          yield* browserSessionFor(run, session),
-          config,
-          started.pay_url,
-          { timeoutMs: config.timeouts.browserNavigation }
-        );
+        const browser = yield* browserSessionFor(run, session);
+        yield* openPage(browser, config, started.pay_url, {
+          timeoutMs: config.timeouts.browserNavigation,
+        });
         const orderId = yield* waitForReservationPayPage({
-          run,
-          session,
+          session: browser,
           timeouts: config.timeouts,
         });
         yield* tryWorkspaceE2ESync("match agent pay page order", () =>
