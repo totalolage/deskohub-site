@@ -2,9 +2,9 @@ import "server-only";
 
 import { type Context, Effect, Layer } from "effect";
 import { AccountFeatureFlagService } from "@/features/account/backend/account-feature-flag.service";
-import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
 import { CustomerAgentConnections } from "@/features/account/backend/auth/customer-agent-connections.service";
 import { CustomerPasskeys } from "@/features/account/backend/auth/customer-passkeys.service";
+import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
 import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { CustomerAvatarService } from "@/features/account/backend/customer-avatar.service";

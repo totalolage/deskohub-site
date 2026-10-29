@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { Effect, Layer, Predicate } from "effect";
 import { RedirectType, redirect } from "next/navigation";
 import { env } from "@/env";
+import { CustomerAccountContactService } from "@/features/account";
 import {
   buildCheckoutPayPathFromToken,
   CheckoutReferralService,
@@ -13,7 +14,6 @@ import { CheckoutPricingService } from "@/features/checkout/backend/checkout/che
 import { addCheckoutReferralAppliedMarker } from "@/features/checkout/checkout-referral-notice";
 import type { DiscountCodeRejection } from "@/features/checkout/discount-code-rejection";
 import { defaultLocale, isLocale, type Locale } from "@/features/i18n";
-import { CustomerAccountContactService } from "@/features/account";
 import { ReferralService } from "@/features/referrals";
 import { ReferralFeatureFlagRequest } from "@/features/referrals/referral-feature-flag.server";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";

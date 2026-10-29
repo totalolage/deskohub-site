@@ -9,6 +9,7 @@ import { getRequestCookies } from "@/shared/backend/utils/request-cookies";
 import { getRequestHeaders } from "@/shared/backend/utils/request-headers";
 import { catchRecoverableCause } from "@/shared/backend/workspace-effect";
 import type { ReferralCode } from "./client";
+import { ReferralService } from "./referral.service";
 import {
   clearReferralCodeCookie,
   parseSharedReferralCode,
@@ -16,7 +17,6 @@ import {
   setReferralCodeCookie,
 } from "./referral-code-cookie";
 import { ReferralFeatureFlagService } from "./referral-feature-flag.service";
-import { ReferralService } from "./referral.service";
 
 /**
  * Whose referral the remembered code serves. Booking for someone else never
@@ -194,52 +194,49 @@ function makeRememberedReferral(jar: ReferralCodeJar) {
 
     return {
       code: read.pipe(keepOnFailure(undefined)),
-      forBooking: Effect.fn("RememberedReferral.forBooking")(
-        function* (booking: BookingFor) {
-          const code = yield* read;
-          if (code === undefined) return none;
-          if (booking.for === "account") {
-            const evaluation = yield* referrals
-              .evaluateCheckoutReferral({
-                code,
-                dotyposCustomerId: booking.customerId,
-              })
-              .pipe(
-                Effect.catch((error) =>
-                  Effect.logInfo("Checkout referral code was not carried", {
-                    reason: error.reason,
-                  }).pipe(Effect.as(undefined))
-                )
-              );
-            if (evaluation === undefined) return none;
-            return (
-              evaluation.kind === "eligible"
-                ? {
-                    kind: "carried",
-                    referralCode: canonicalPromotionCodeSchema.make(
-                      evaluation.code
-                    ),
-                  }
-                : { kind: "carried" }
-            ) satisfies RememberedReferralForBooking;
-          }
-          const availableCode = yield* referrals
-            .findAvailableCode({ code })
+      forBooking: Effect.fn("RememberedReferral.forBooking")(function* (
+        booking: BookingFor
+      ) {
+        const code = yield* read;
+        if (code === undefined) return none;
+        if (booking.for === "account") {
+          const evaluation = yield* referrals
+            .evaluateCheckoutReferral({
+              code,
+              dotyposCustomerId: booking.customerId,
+            })
             .pipe(
               Effect.catch((error) =>
-                Effect.logInfo("Checkout referral code prefill was skipped", {
+                Effect.logInfo("Checkout referral code was not carried", {
                   reason: error.reason,
                 }).pipe(Effect.as(undefined))
               )
             );
-          if (availableCode === undefined) return none;
-          return {
-            kind: "prefill",
-            code: canonicalPromotionCodeSchema.make(availableCode),
-          } satisfies RememberedReferralForBooking;
-        },
-        keepOnFailure(none)
-      ),
+          if (evaluation === undefined) return none;
+          return (
+            evaluation.kind === "eligible"
+              ? {
+                  kind: "carried",
+                  referralCode: canonicalPromotionCodeSchema.make(
+                    evaluation.code
+                  ),
+                }
+              : { kind: "carried" }
+          ) satisfies RememberedReferralForBooking;
+        }
+        const availableCode = yield* referrals.findAvailableCode({ code }).pipe(
+          Effect.catch((error) =>
+            Effect.logInfo("Checkout referral code prefill was skipped", {
+              reason: error.reason,
+            }).pipe(Effect.as(undefined))
+          )
+        );
+        if (availableCode === undefined) return none;
+        return {
+          kind: "prefill",
+          code: canonicalPromotionCodeSchema.make(availableCode),
+        } satisfies RememberedReferralForBooking;
+      }, keepOnFailure(none)),
       remember: Effect.fn("RememberedReferral.remember")(function* (
         code: CanonicalPromotionCode
       ) {
@@ -253,12 +250,11 @@ function makeRememberedReferral(jar: ReferralCodeJar) {
         },
         keepOnFailure(undefined)
       ),
-      isSettled: Effect.fn("RememberedReferral.isSettled")(
-        function* (booker: Booker) {
-          return yield* isRememberedCodeSettled(booker);
-        },
-        keepOnFailure(false)
-      ),
+      isSettled: Effect.fn("RememberedReferral.isSettled")(function* (
+        booker: Booker
+      ) {
+        return yield* isRememberedCodeSettled(booker);
+      }, keepOnFailure(false)),
     } satisfies IRememberedReferral;
   });
 }
@@ -273,7 +269,9 @@ const none: RememberedReferralForBooking = { kind: "none" };
 const keepOnFailure = <B>(fallback: B) =>
   catchRecoverableCause(() =>
     Effect.logWarning("Remembered referral code unavailable").pipe(
-      Effect.annotateLogs({ code: "referrals.remembered-referral.unavailable" }),
+      Effect.annotateLogs({
+        code: "referrals.remembered-referral.unavailable",
+      }),
       Effect.as(fallback)
     )
   );
