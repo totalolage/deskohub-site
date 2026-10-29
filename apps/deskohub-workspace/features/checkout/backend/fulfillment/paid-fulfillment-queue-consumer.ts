@@ -5,7 +5,7 @@ import {
   FulfillmentLedger,
   type PaidFulfillmentProgress,
 } from "./fulfillment-ledger.repository";
-import { WorkspacePaidFulfillmentService } from "./paid-fulfillment.service";
+import { ReservationFulfillment } from "./reservation-fulfillment.service";
 
 type PaidFulfillmentQueueProgress = Data.TaggedEnum<{
   /** No delivery of this message can change the order any more. */
@@ -120,10 +120,8 @@ class PaidFulfillmentSettledFailureError extends Data.TaggedError(
 export const processPaidFulfillmentMessage = Effect.fn(
   "paidFulfillmentQueue.processMessage"
 )(function* ({ orderId }: { readonly orderId: WorkspaceReservationId }) {
-  const fulfillment = yield* WorkspacePaidFulfillmentService;
-  const run = yield* fulfillment
-    .fulfillPaidOrder({ orderId })
-    .pipe(Effect.result);
+  const fulfillment = yield* ReservationFulfillment;
+  const run = yield* fulfillment.run(orderId).pipe(Effect.result);
   const failure = Result.isFailure(run) ? run.failure : undefined;
 
   // An invoice failure leaves the order fulfilled; only a redelivery retries

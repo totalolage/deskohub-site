@@ -2,7 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
-import { WorkspacePaidFulfillmentService } from "@/features/checkout/backend/fulfillment/paid-fulfillment.service";
+import { ReservationFulfillment } from "@/features/checkout/backend/fulfillment/reservation-fulfillment.service";
 import {
   WorkspaceReservationDetailsError,
   WorkspaceReservationService,
@@ -98,8 +98,8 @@ const runMutation = (
               Layer.mock(WorkspaceReservationService, {
                 getAccessTarget: mock(() => target),
               }),
-              Layer.mock(WorkspacePaidFulfillmentService, {
-                fulfillPaidOrder,
+              Layer.mock(ReservationFulfillment, {
+                run: fulfillPaidOrder,
               })
             )
           )
@@ -120,9 +120,7 @@ describe("ReservationAccessAdministration", () => {
       reservedFrom: reservation.reservedFrom,
       reservedUntil: reservation.reservedUntil,
     });
-    expect(harness.fulfillPaidOrder).toHaveBeenCalledWith({
-      orderId: reservationId,
-    });
+    expect(harness.fulfillPaidOrder).toHaveBeenCalledWith(reservationId);
     expect(harness.confirmProviderCredentialRemoved).not.toHaveBeenCalled();
   });
 
@@ -206,9 +204,7 @@ describe("ReservationAccessAdministration", () => {
     );
 
     expect((await harness.result).state).toBe("issued");
-    expect(harness.fulfillPaidOrder).toHaveBeenCalledWith({
-      orderId: reservationId,
-    });
+    expect(harness.fulfillPaidOrder).toHaveBeenCalledWith(reservationId);
   });
 
   test("classifies failures before issuance as safe to retry", async () => {

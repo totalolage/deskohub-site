@@ -7,11 +7,11 @@ import type {
 } from "@deskohub/nexi";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Layer } from "effect";
-import {
-  type IWorkspacePaidFulfillmentService,
-  WorkspacePaidFulfillmentService,
-} from "../fulfillment/paid-fulfillment.service";
 import { PaidFulfillmentQueueError } from "../fulfillment/paid-fulfillment-queue.service";
+import {
+  type IReservationFulfillment,
+  ReservationFulfillment,
+} from "../fulfillment/reservation-fulfillment.service";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
 import {
   type IPaymentLifecycleRepository,
@@ -32,9 +32,9 @@ const paymentLifecycleLayer = (
   });
 
 const paidFulfillmentLayer = (
-  fulfillPaidOrder: IWorkspacePaidFulfillmentService["fulfillPaidOrder"] = () =>
+  fulfillPaidOrder: IReservationFulfillment["run"] = () =>
     Effect.die("not used")
-) => Layer.mock(WorkspacePaidFulfillmentService, { fulfillPaidOrder });
+) => Layer.mock(ReservationFulfillment, { run: fulfillPaidOrder });
 
 const paidNotStartedReservation = {
   id: "reservation-id",
@@ -235,9 +235,7 @@ describe("ProviderPaymentFinalizationService", () => {
     );
 
     expect(result).toBe("paid");
-    expect(fulfillPaidOrder).toHaveBeenCalledWith({
-      orderId: "reservation-id",
-    });
+    expect(fulfillPaidOrder).toHaveBeenCalledWith("reservation-id");
   });
 
   test("does not retry fulfillment after a paid reservation has failed fulfillment", async () => {

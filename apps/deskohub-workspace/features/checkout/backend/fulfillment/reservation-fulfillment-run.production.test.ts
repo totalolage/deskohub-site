@@ -29,13 +29,15 @@ mock.module("@/env", () => ({
 const { WorkspaceCheckoutAccessCodeService } = await import(
   "@/features/checkout/backend/reservation/access-code.service"
 );
-const { WorkspacePaidFulfillmentService } = await import(
-  "./paid-fulfillment.service"
+const { ReservationFulfillment } = await import(
+  "./reservation-fulfillment.service"
 );
-const {
-  createCustomerEmailRecoveryIdempotencyKey,
-  WorkspaceReservationEmailService,
-} = await import("./workspace-reservation-email.service");
+const { createCustomerEmailRecoveryIdempotencyKey } = await import(
+  "./customer-email-idempotency-key"
+);
+const { WorkspaceReservationEmailService } = await import(
+  "./workspace-reservation-email.service"
+);
 const { WorkspaceReservationRepository } = await import(
   "@/features/reservation/backend/workspace-reservation.repository"
 );
@@ -63,7 +65,7 @@ const { PostHogEventService } = await import(
   "@/shared/backend/analytics/posthog-event.service"
 );
 
-describe("WorkspacePaidFulfillmentService production email acceptance", () => {
+describe("ReservationFulfillment.run production email acceptance", () => {
   test("records the accepted delivery id and leaves fulfillment awaiting the webhook", async () => {
     const order = {
       id: "reservation-id",
@@ -107,13 +109,11 @@ describe("WorkspacePaidFulfillmentService production email acceptance", () => {
     );
 
     const result = await Effect.gen(function* () {
-      const service = yield* WorkspacePaidFulfillmentService;
-      return yield* service
-        .fulfillPaidOrder({ orderId: "reservation-id" })
-        .pipe(Effect.result);
+      const service = yield* ReservationFulfillment;
+      return yield* service.run("reservation-id").pipe(Effect.result);
     }).pipe(
       Effect.provide(
-        WorkspacePaidFulfillmentService.Default.pipe(
+        ReservationFulfillment.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               noReservationAuthors,
@@ -225,13 +225,11 @@ describe("WorkspacePaidFulfillmentService production email acceptance", () => {
     const processInvoice = mock(() => Effect.void);
 
     const result = await Effect.gen(function* () {
-      const service = yield* WorkspacePaidFulfillmentService;
-      return yield* service
-        .fulfillPaidOrder({ orderId: "reservation-id" })
-        .pipe(Effect.result);
+      const service = yield* ReservationFulfillment;
+      return yield* service.run("reservation-id").pipe(Effect.result);
     }).pipe(
       Effect.provide(
-        WorkspacePaidFulfillmentService.Default.pipe(
+        ReservationFulfillment.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               noReservationAuthors,
@@ -352,12 +350,10 @@ describe("WorkspacePaidFulfillmentService production email acceptance", () => {
     const result = await Effect.runPromise(
       Effect.provide(
         Effect.gen(function* () {
-          const service = yield* WorkspacePaidFulfillmentService;
-          return yield* service
-            .fulfillPaidOrder({ orderId: "reservation-id" })
-            .pipe(Effect.result);
+          const service = yield* ReservationFulfillment;
+          return yield* service.run("reservation-id").pipe(Effect.result);
         }),
-        WorkspacePaidFulfillmentService.Default.pipe(
+        ReservationFulfillment.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               noReservationAuthors,
@@ -511,16 +507,16 @@ describe("WorkspacePaidFulfillmentService production email acceptance", () => {
     const runs = await Effect.runPromise(
       Effect.provide(
         Effect.gen(function* () {
-          const service = yield* WorkspacePaidFulfillmentService;
+          const service = yield* ReservationFulfillment;
           const first = yield* service
-            .fulfillPaidOrder({ orderId: "reservation-id" })
+            .run("reservation-id")
             .pipe(Effect.result);
           const second = yield* service
-            .fulfillPaidOrder({ orderId: "reservation-id" })
+            .run("reservation-id")
             .pipe(Effect.result);
           return { first, second };
         }),
-        WorkspacePaidFulfillmentService.Default.pipe(
+        ReservationFulfillment.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               noReservationAuthors,
@@ -647,12 +643,10 @@ describe("WorkspacePaidFulfillmentService production email acceptance", () => {
     const result = await Effect.runPromise(
       Effect.provide(
         Effect.gen(function* () {
-          const service = yield* WorkspacePaidFulfillmentService;
-          return yield* service
-            .fulfillPaidOrder({ orderId: "reservation-id" })
-            .pipe(Effect.result);
+          const service = yield* ReservationFulfillment;
+          return yield* service.run("reservation-id").pipe(Effect.result);
         }),
-        WorkspacePaidFulfillmentService.Default.pipe(
+        ReservationFulfillment.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               noReservationAuthors,
@@ -759,12 +753,10 @@ describe("WorkspacePaidFulfillmentService production email acceptance", () => {
     const result = await Effect.runPromise(
       Effect.provide(
         Effect.gen(function* () {
-          const service = yield* WorkspacePaidFulfillmentService;
-          return yield* service
-            .fulfillPaidOrder({ orderId: "reservation-id" })
-            .pipe(Effect.result);
+          const service = yield* ReservationFulfillment;
+          return yield* service.run("reservation-id").pipe(Effect.result);
         }),
-        WorkspacePaidFulfillmentService.Default.pipe(
+        ReservationFulfillment.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               noReservationAuthors,
