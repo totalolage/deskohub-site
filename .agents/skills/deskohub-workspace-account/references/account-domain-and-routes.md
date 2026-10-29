@@ -3,12 +3,12 @@
 ## Customer resolution
 
 - `CustomerAccountResolver` is the replaceable identity-to-customer capability
-  for authenticated route composition and provider-independent tests.
-  `resolveCurrentCustomerAccount` is its Live-wired page convenience. Both
-  return only `CustomerAccountId` and `DotyposCustomerId`; the convenience
-  adds `autoLinked`, true only when this resolution claimed the link to an
-  existing exact-email customer, which the account page uses to record a
-  remembered referral. Keep other callers on `resolve`.
+  for authenticated route composition and provider-independent tests. Both
+  `resolve` and `resolveLink` return only `CustomerAccountId` and
+  `DotyposCustomerId`; `resolveLink` adds `autoLinked`, true only when this
+  resolution claimed the link to an existing exact-email customer, which the
+  account page uses to record a remembered referral. Keep other callers on
+  `resolve`.
 - Require the authoritative current session and a verified email, then resolve
   in this order:
   1. An existing durable link wins.
@@ -122,6 +122,21 @@ glossary defines the customer account, reservation author, and tombstone.
   posts included, its pathname (`withRequestPathname`), which
   `getRequestPathname` reads; a render without one is not found. The page's
   own check still covers client navigations, which skip the shared layout.
+- `loadAccountPageState` (`features/account/page-data.server.ts`) declares
+  every capability it reads in its requirements (`AccountPageCapabilities`),
+  and `loadCustomerAccountPage` provides them once at the page's single
+  runtime edge through `accountPageCapabilities`
+  (`features/account/account-page-capabilities.server.ts`). That composition
+  replaces a capability whose layer fails to build (Dotypos or Cloudinary
+  configuration, or a server module it loads) with an interface-checked
+  stand-in whose operations replay the failure as a defect; a step that can
+  finish without using its capability starts with `replayBuildFailure(tag)`,
+  so it still fails first, as when it provided that layer. A section that may
+  fail degrades through `degradable(code, fallback)`, which recovers from any
+  cause except interruption and Next.js control flow, so a failed build or a
+  dying read degrades that section alone and a skipped section is unaffected.
+  Account flags fail closed the same way. Test the loader through
+  `accountPageCapabilities` with Layer fakes, never module mocks.
 - Keep the account page in that layout, never in a page. The navigation
   switches sections with `history.replaceState`, which leaves Next's router
   tree on the path the page loaded at; a Server Action that revalidates, or
