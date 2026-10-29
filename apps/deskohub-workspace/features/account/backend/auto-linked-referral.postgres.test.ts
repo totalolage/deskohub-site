@@ -173,7 +173,7 @@ const signIn = (input: {
               databaseLayer,
               lockLayer,
               linksLayer,
-              Layer.succeed(CustomerAccountResolver, {
+              Layer.mock(CustomerAccountResolver, {
                 resolve: resolveCustomerAccount(dependencies),
               }),
               Layer.mock(DotyposService, {

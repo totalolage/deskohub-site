@@ -176,7 +176,7 @@ const makeReferralService = async (input?: {
               databaseLayer,
               lockLayer,
               accountLinksLayer,
-              Layer.succeed(CustomerAccountResolver, {
+              Layer.mock(CustomerAccountResolver, {
                 resolve: input?.identity
                   ? Effect.succeed(input.identity)
                   : Effect.die("Identity is not used by quote lookup"),
