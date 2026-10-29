@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
+import { testEmailAddress } from "@deskohub/test-email";
 import { type Browser, type BrowserContext, chromium } from "@playwright/test";
 import { Effect } from "effect";
 import { m } from "@/features/i18n";
@@ -19,6 +20,8 @@ import {
 } from "../services/telemetry.mock";
 import { workspaceE2ETimeouts } from "../timeouts";
 import { makeWorkspaceE2EAccountLaneBrowser } from "./lane-browser";
+
+const laneEmail = testEmailAddress("lane-browser");
 
 // The account cases drive these steps on the lane's page and the assistant's,
 // so each runs through the real argv runner's sessions, as in the lane.
@@ -157,7 +160,7 @@ test.skipIf(!chromiumAvailable)(
       Effect.gen(function* () {
         yield* laneBrowser.open(`${origin}/en-US/auth/sign-in`);
         yield* laneBrowser.waitForSignInForm;
-        yield* laneBrowser.submitSignInEmail("lane@example.test");
+        yield* laneBrowser.submitSignInEmail(laneEmail);
         const accepted = yield* laneBrowser.waitForText(
           "accepted sign-in",
           (text) => text.includes("Accepted"),
@@ -180,9 +183,9 @@ test.skipIf(!chromiumAvailable)(
 
     expect(result.annotations).toEqual([]);
     expect(result.value).toEqual({
-      accepted: "Accepted lane@example.test",
+      accepted: `Accepted ${laneEmail}`,
       landed: "/en-US/auth/sign-in",
-      text: "Accepted lane@example.test",
+      text: `Accepted ${laneEmail}`,
       url: `${origin}/en-US/auth/sign-in`,
     });
   }
@@ -272,7 +275,7 @@ const failingSteps: ReadonlyArray<
     (laneBrowser) =>
       Effect.andThen(
         laneBrowser.open(`${origin}/en-US/account`),
-        laneBrowser.submitSignInEmail("lane@example.test")
+        laneBrowser.submitSignInEmail(laneEmail)
       ),
   ],
   [
@@ -281,7 +284,7 @@ const failingSteps: ReadonlyArray<
     (laneBrowser) =>
       Effect.gen(function* () {
         yield* laneBrowser.open(`${origin}/en-US/auth/sign-in?hydrate=0`);
-        yield* laneBrowser.submitSignInEmail("lane@example.test");
+        yield* laneBrowser.submitSignInEmail(laneEmail);
         yield* laneBrowser.waitForSignInCodeInput;
       }),
   ],
