@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { watchPageDiagnostics } from "../page-diagnostics";
 import { enablePreviewAccess } from "../preview-access";
 import { waitForReactClickHandler } from "../react-handlers";
 import { workspaceE2ETimeouts } from "../timeouts";
@@ -31,19 +32,29 @@ async function watchPolyfill(page: Page) {
 /**
  * Opens the cowork form and picks a day from its calendar, which runs the
  * form's Temporal date logic in the browser. Fails on any Temporal error the
- * page throws.
+ * page throws. If the form never hydrates, the failure names the page's
+ * errors, how its polyfill and app script requests ended, and whether
+ * Temporal and the Next.js runtime are there.
  */
 async function pickCoworkDate(page: Page) {
-  const temporalErrors: string[] = [];
-  page.on("pageerror", (error) => {
-    if (String(error).includes("Temporal")) temporalErrors.push(String(error));
+  const diagnostics = watchPageDiagnostics(page, {
+    "Temporal polyfill": (url) => url.pathname === polyfillPathname,
+    "App scripts": (url, resourceType) =>
+      resourceType === "script" && url.pathname.startsWith("/_next/static/"),
   });
 
   await page.goto(coworkPath);
   const calendarButton = page.getByRole("button", {
     name: "Reservation date: choose from the calendar",
   });
-  await waitForReactClickHandler(page, calendarButton);
+  try {
+    await waitForReactClickHandler(page, calendarButton);
+  } catch (error) {
+    throw new Error(
+      `The cowork form never hydrated: ${error instanceof Error ? error.message : String(error)}\n${await diagnostics.describe(["Temporal"])}`,
+      { cause: error }
+    );
+  }
   await calendarButton.click();
   const calendar = page.getByRole("dialog", { name: "Reservation date" });
   await expect(calendar).toBeVisible();
@@ -53,7 +64,9 @@ async function pickCoworkDate(page: Page) {
     page.getByRole("combobox", { name: "Reservation date" })
   ).toHaveValue(/\d/);
 
-  expect(temporalErrors).toEqual([]);
+  expect(
+    diagnostics.pageErrors().filter((error) => error.includes("Temporal"))
+  ).toEqual([]);
 }
 
 /** Whether the page's Temporal is the polyfill rather than the browser's own. */

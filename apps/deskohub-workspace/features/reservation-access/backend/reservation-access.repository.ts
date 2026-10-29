@@ -5,7 +5,7 @@ import type {
 } from "@deskohub/igloohome";
 import { AlgoPinSchema } from "@deskohub/igloohome";
 import { NodeCrypto } from "@effect/platform-node";
-import { and, eq, inArray, lte, ne, or } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, lt, lte, or } from "drizzle-orm";
 import { Context, Crypto, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { reservationAccessGrants } from "@/db/schema";
@@ -16,6 +16,7 @@ import {
   type ReservationAccessGrantId,
   reservationAccessGrantIdSchema,
 } from "../reservation-access";
+import { getReservationAccessSchedule } from "./igloohome-access-window";
 
 const reservationAccessGrantSelection = {
   id: reservationAccessGrants.id,
@@ -157,6 +158,14 @@ export class ReservationAccessRepository extends Context.Service<
                   })
               )
             );
+            const hours = getReservationAccessSchedule({
+              reservedFrom: input.scheduledAccessStartsAt,
+              reservedUntil: input.accessEndsAt,
+            });
+            const schedule = {
+              startsAt: hours.startsAt.toInstant(),
+              endsAt: hours.endsAt.toInstant(),
+            };
             yield* db
               .insert(reservationAccessGrants)
               .values({
@@ -190,20 +199,26 @@ export class ReservationAccessRepository extends Context.Service<
                 // Reset an issued grant only for a moved schedule. A request
                 // that raced a concurrent issuance for the same target must
                 // reuse the stored PIN rather than wipe it and provision a
-                // second credential.
+                // second credential. Stored bounds are the same target when
+                // they round to the requested whole hours.
                 setWhere: or(
                   inArray(reservationAccessGrants.state, ["pending", "failed"]),
                   and(
                     eq(reservationAccessGrants.state, "issued"),
                     or(
-                      ne(
+                      lt(
                         reservationAccessGrants.scheduledAccessStartsAt,
-                        input.scheduledAccessStartsAt
+                        schedule.startsAt
                       ),
-                      ne(
+                      gte(
+                        reservationAccessGrants.scheduledAccessStartsAt,
+                        schedule.startsAt.add({ hours: 1 })
+                      ),
+                      lte(
                         reservationAccessGrants.accessEndsAt,
-                        input.accessEndsAt
-                      )
+                        schedule.endsAt.subtract({ hours: 1 })
+                      ),
+                      gt(reservationAccessGrants.accessEndsAt, schedule.endsAt)
                     )
                   )
                 ),

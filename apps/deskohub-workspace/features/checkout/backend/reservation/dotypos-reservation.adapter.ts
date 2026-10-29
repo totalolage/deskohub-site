@@ -15,6 +15,7 @@ import {
   getWorkspaceOfficeProductTitle,
 } from "@/features/checkout/product-catalog.i18n";
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
+import { getMeetingRoomSetupStart } from "@/features/reservation/meeting-room-early-setup";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { getReservationDate } from "@/features/reservation/reservation-interval";
 import type { ReservationIntervalValidationError } from "@/features/reservation/reservation-interval-domain";
@@ -143,6 +144,14 @@ export const formatWorkspaceReservationNote = (
             meetingRoomReservation.duration,
             checkoutDetails.locale
           )}`,
+          meetingRoomReservation.earlySetup === true
+            ? `Setup from: ${getMeetingRoomSetupStart(
+                Temporal.Instant.from(meetingRoomReservation.startsAt)
+              )
+                .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+                .toPlainTime()
+                .toString({ smallestUnit: "minute" })}`
+            : null,
         ],
       }),
       office: (officeReservation) => ({

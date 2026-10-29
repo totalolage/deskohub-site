@@ -379,6 +379,34 @@ describe("WorkspaceReservationService", () => {
     });
   });
 
+  test("reports the booked time of an early-setup meeting room, and its door code covers the setup", async () => {
+    const workspaceReservation = makeWorkspaceReservation({
+      reservationDetails: { kind: "meeting-room", earlySetup: true },
+    });
+    // Dotypos holds the room from the setup start, 15 minutes early.
+    const dotyposReservation = makeDotyposReservation({
+      startDate: "2026-06-20T06:45:00.000Z",
+      endDate: "2026-06-20T11:00:00.000Z",
+    });
+
+    const details = await Effect.runPromise(
+      detailsEffect({
+        seatingMapEnabled: false,
+        workspaceReservation,
+        dotyposReservation,
+      })
+    );
+    const access = await Effect.runPromise(
+      accessTargetEffect({ workspaceReservation, dotyposReservation })
+    );
+
+    expect(details.reservedFrom.toString()).toBe("2026-06-20T07:00:00Z");
+    expect(details.reservedUntil.toString()).toBe("2026-06-20T11:00:00Z");
+    expect(details.setupFrom?.toString()).toBe("2026-06-20T06:45:00Z");
+    expect(access.reservedFrom.toString()).toBe("2026-06-20T06:45:00Z");
+    expect(access.reservedUntil.toString()).toBe("2026-06-20T11:00:00Z");
+  });
+
   test("rejects access recovery unless both local and provider reservations are eligible", async () => {
     for (const effect of [
       accessTargetEffect({

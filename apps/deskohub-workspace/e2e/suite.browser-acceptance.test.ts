@@ -13,7 +13,7 @@ import {
 import { Cause, Effect, Exit, Fiber, Layer, Scope } from "effect";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import { runBrowserCommand } from "./browser";
-import { sanitizeHarArtifact } from "./browser-session";
+import { sanitizeHarArtifact } from "./artifact-sanitization";
 import type { DatasourceConfig } from "./config";
 import { WorkspaceE2EHostedPaymentPermitServiceMock } from "./coordination/hosted-payment-permit.service.mock";
 import { WorkspaceE2EProviderVerificationPermitServiceMock } from "./coordination/provider-verification-permit.service.mock";

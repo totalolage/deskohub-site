@@ -534,7 +534,10 @@ const implementation = Effect.gen(function* () {
         ? getWorkspaceTableMap(dotyposReservation, tables)
         : undefined;
 
-      const booked = decodeBookedReservation(dotyposReservation);
+      const booked = decodeBookedReservation(
+        dotyposReservation,
+        reservation.reservationDetails
+      );
       const timing = yield* getDotyposReservationTiming({
         reservationId: reservation.id,
         reservation: booked,
@@ -663,10 +666,14 @@ const implementation = Effect.gen(function* () {
       readonly dotyposReservationId: DotyposReservationId;
     }) =>
       Effect.succeed(input).pipe(
-        Effect.bind("booked", ({ dotyposReservationId }) =>
+        Effect.bind("booked", ({ dotyposReservationId, reservation }) =>
           records
             .get(dotyposReservationId)
-            .pipe(Effect.map(decodeBookedReservation))
+            .pipe(
+              Effect.map((record) =>
+                decodeBookedReservation(record, reservation.reservationDetails)
+              )
+            )
         ),
         Effect.bind("timing", ({ reservation, booked }) =>
           getDotyposReservationTiming({
