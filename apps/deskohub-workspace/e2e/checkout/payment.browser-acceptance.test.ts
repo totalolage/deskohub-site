@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { type Browser, chromium, type Page } from "@playwright/test";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
+import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import { readActiveBrowserTabId } from "../browser";
 import {
@@ -39,7 +40,9 @@ const requireBrowser = () => {
   return browser;
 };
 
-const orderId = "019f7082-1bec-7ab4-8fcd-2f0fdfd9dd71";
+const orderId = Schema.decodeUnknownSync(workspaceReservationIdSchema)(
+  "019f7082-1bec-7ab4-8fcd-2f0fdfd9dd71"
+);
 const redactedOrderId = "39a8d46a-8636-42d1-bc7a-b15a2945c720";
 const diagnosticSecret = "synthetic-diagnostic-secret-739182";
 const syntheticIdSecret = "reservation-submit";
@@ -60,7 +63,11 @@ type ScenarioState = {
 
 const states = new Map<string, ScenarioState>();
 const resetScenario = (scenario: string) => {
-  const state = { busyPriceStarts: 0, paymentHandlers: [], submissions: [] };
+  const state: ScenarioState = {
+    busyPriceStarts: 0,
+    paymentHandlers: [],
+    submissions: [],
+  };
   states.set(scenario, state);
   return state;
 };
@@ -433,8 +440,8 @@ test.skipIf(!chromiumAvailable)(
     });
 
     expectSucceeded(result);
-    expect(result.value).not.toBe(redactedOrderId);
-    expect(result.value).toBe(redact(redactedOrderId));
+    expect(String(result.value)).not.toBe(redactedOrderId);
+    expect(String(result.value)).toBe(redact(redactedOrderId));
     expect(receivedOrderIds).toEqual([redact(redactedOrderId)]);
   }
 );

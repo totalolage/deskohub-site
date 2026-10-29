@@ -1004,7 +1004,7 @@ describe("detached reservation preparation in Chromium", () => {
       await currentPage.setContent(html);
       await expect(
         currentPage.evaluate(prepareReservationForm, {
-          preparation: withWaits(preparedReservationForm, 3_000),
+          preparation: withWaits(preparedReservationForm, 1_500, 4_000),
           detachInto: "detachedPreparation",
         })
       ).resolves.toBe(true);
