@@ -20,6 +20,8 @@ import {
   ReservationRecords,
   type ReservationRecordsError,
 } from "@/features/reservation/backend/reservation-records";
+import { StoredReservationDetails } from "@/features/reservation/backend/stored-reservation-details.server";
+import type { StoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
 import { ReviewAccounts, ReviewSandbox } from "@/features/review-accounts";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import type {
@@ -62,7 +64,8 @@ type ReservationRow = {
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly authorAccountId: CustomerAccountId;
   readonly dotyposReservationId: DotyposReservationId | null;
-  readonly reservationDetails: (typeof workspaceReservations.$inferSelect)["reservationDetails"];
+  /** Undefined when the stored document is malformed. */
+  readonly reservationDetails: StoredWorkspaceReservationDetails | undefined;
   readonly reservationState: (typeof workspaceReservations.$inferSelect)["reservationState"];
   readonly fulfillmentState: (typeof workspaceReservations.$inferSelect)["fulfillmentState"];
 };
@@ -355,7 +358,19 @@ export class CustomerReservationHistoryService extends Context.Service<
               eq(workspaceReservations.authorAccountId, account.accountId)
             )
           )
-          .orderBy(desc(workspaceReservations.createdAt));
+          .orderBy(desc(workspaceReservations.createdAt))
+          .pipe(
+            Effect.map((rows) =>
+              rows.map(
+                (row): ReservationRow => ({
+                  ...row,
+                  reservationDetails: Option.getOrUndefined(
+                    StoredReservationDetails.project(row.reservationDetails)
+                  ),
+                })
+              )
+            )
+          );
 
       const listRecorded = (rows: readonly ReservationRow[]) =>
         records.listByIds(

@@ -59,7 +59,7 @@ import {
   type PaymentRefundState,
   paymentAttempts,
   reservationAccessGrants,
-  type WorkspaceReservation,
+  type WorkspaceReservationRow,
   webhookEvents,
   workspaceReservations,
 } from "@/db/schema";
@@ -88,6 +88,10 @@ import {
 import { marketingConsentState } from "@/features/legal/backend/marketing-consent-ledger";
 import type { MarketingConsentStatus } from "@/features/legal/marketing-consent-status";
 import { loadEarlySetupDetails } from "@/features/reservation/backend/early-setup-details";
+import {
+  StoredReservationDetails,
+  type WorkspaceReservationDetailsMalformedError,
+} from "@/features/reservation/backend/stored-reservation-details.server";
 import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
@@ -274,7 +278,7 @@ export type AdministrationReservationSummary = {
   readonly product: AdministrationReservationProduct;
   /** The English product name the administration API shows. */
   readonly typeLabel: string;
-  readonly purpose: WorkspaceReservation["reservationPurpose"];
+  readonly purpose: WorkspaceReservationRow["reservationPurpose"];
   readonly status: ReturnType<typeof getAdministrationReservationStatus>;
   readonly statusNote: string | null;
   readonly statusNoteCode: AdministrationReservationStatusNote | null;
@@ -554,7 +558,7 @@ export type AdministrationOverview = AdministrationReservationOverview & {
 };
 
 type AdministrationOverviewRow = Pick<
-  WorkspaceReservation,
+  WorkspaceReservationRow,
   "failureCode" | "fulfillmentState" | "paymentState" | "reservationState"
 > & {
   readonly id: DotyposReservationId | null;
@@ -580,7 +584,7 @@ export type AdministrationOverviewSource = {
 };
 
 type SafeReservationRow = Pick<
-  WorkspaceReservation,
+  WorkspaceReservationRow,
   | "id"
   | "dotyposCustomerId"
   | "dotyposReservationId"
@@ -771,7 +775,9 @@ const isWorkspaceCoworkProductTier = Schema.is(
 );
 
 const getFavoriteReservationProduct = (
-  row: { readonly kind: string; readonly tier: string | null } | undefined
+  row:
+    | { readonly kind: string | null; readonly tier: string | null }
+    | undefined
 ): AdministrationReservationProduct | null => {
   if (row?.kind === "meeting-room" || row?.kind === "office") {
     return { kind: row.kind };
@@ -1068,9 +1074,9 @@ const reservationStatusSort = sql<string>`case
 end`;
 
 const reservationTypeSort = sql<string>`case
-  when ${workspaceReservations.reservationDetails}->>'kind' = 'meeting-room'
+  when ${StoredReservationDetails.kind} = 'meeting-room'
     then 'Meeting Room'
-  else 'Cowork ' || initcap(${workspaceReservations.reservationDetails}->>'entryTier')
+  else 'Cowork ' || initcap(${StoredReservationDetails.property("cowork", "tier")})
 end`;
 
 const getReservationOrderBy = (input: {
@@ -1411,7 +1417,7 @@ export class AdministrationService extends Context.Service<
         readonly dateFilterUnavailable: boolean;
         readonly dateSortUnavailable: boolean;
       },
-      EffectDrizzleQueryError
+      EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
     >;
     /**
      * Every reservation the list filters match, in list order, for a file
@@ -1422,19 +1428,21 @@ export class AdministrationService extends Context.Service<
       input: AdministrationReservationExportInput
     ) => Effect.Effect<
       readonly AdministrationReservationSummary[],
-      EffectDrizzleQueryError | AdministrationListSourceUnavailableError
+      | EffectDrizzleQueryError
+      | WorkspaceReservationDetailsMalformedError
+      | AdministrationListSourceUnavailableError
     >;
     readonly loadReservation: (
       id: WorkspaceReservationId
     ) => Effect.Effect<
       AdministrationReservationDetail | null,
-      EffectDrizzleQueryError
+      EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
     >;
     readonly loadReservationProduct: (
       id: WorkspaceReservationId
     ) => Effect.Effect<
       AdministrationReservationProduct | null,
-      EffectDrizzleQueryError
+      EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
     >;
     readonly findReservationId: (
       identifier: string
@@ -1443,13 +1451,17 @@ export class AdministrationService extends Context.Service<
       input: AdministrationBookingListInput
     ) => Effect.Effect<
       AdministrationBookingPage,
-      EffectDrizzleQueryError | DotyposReadFailure
+      | EffectDrizzleQueryError
+      | WorkspaceReservationDetailsMalformedError
+      | DotyposReadFailure
     >;
     readonly loadBooking: (
       id: DotyposReservationId
     ) => Effect.Effect<
       AdministrationBookingDetail | null,
-      EffectDrizzleQueryError | DotyposReadFailure
+      | EffectDrizzleQueryError
+      | WorkspaceReservationDetailsMalformedError
+      | DotyposReadFailure
     >;
     readonly loadBookingBreadcrumb: (
       id: DotyposReservationId
@@ -1483,15 +1495,21 @@ export class AdministrationService extends Context.Service<
     readonly loadCustomerReservations: (input: {
       readonly customerId: DotyposCustomerId;
       readonly page?: number;
-    }) => Effect.Effect<AdministrationReservationPage, EffectDrizzleQueryError>;
+    }) => Effect.Effect<
+      AdministrationReservationPage,
+      EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
+    >;
     readonly loadCustomerActivity: (
       customerId: DotyposCustomerId
-    ) => Effect.Effect<AdministrationCustomerActivity, EffectDrizzleQueryError>;
+    ) => Effect.Effect<
+      AdministrationCustomerActivity,
+      EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
+    >;
     readonly loadCustomerReservationActivity: (
       customerId: DotyposCustomerId
     ) => Effect.Effect<
       AdministrationCustomerReservationActivity,
-      EffectDrizzleQueryError
+      EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
     >;
     readonly loadReservationActivity: () => Effect.Effect<
       AdministrationReservationActivity,
@@ -2040,7 +2058,7 @@ export class AdministrationService extends Context.Service<
           conditions.push(reservationStatusCondition(input.status));
         if (input.type) {
           conditions.push(
-            sql`${workspaceReservations.reservationDetails}->>'kind' = ${input.type}`
+            sql`${StoredReservationDetails.kind} = ${input.type}`
           );
         }
         if (dateRange) {
@@ -2108,7 +2126,8 @@ export class AdministrationService extends Context.Service<
               : yield* db
                   .select(safeReservationSelection)
                   .from(workspaceReservations)
-                  .where(equalsAny(workspaceReservations.id, pageIds));
+                  .where(equalsAny(workspaceReservations.id, pageIds))
+                  .pipe(Effect.flatMap(StoredReservationDetails.decodeRows));
           const rowById = new Map(pageRows.map((row) => [row.id, row]));
           return pageIds.flatMap((id) => {
             const row = rowById.get(id);
@@ -2125,10 +2144,10 @@ export class AdministrationService extends Context.Service<
               sort: sort === "date" ? "created" : sort,
             })
           );
-        const selected: readonly SafeReservationRow[] = yield* page
+        const selected = yield* page
           ? rows.limit(page.pageSize).offset(page.offset)
           : rows;
-        return selected;
+        return yield* StoredReservationDetails.decodeRows(selected);
       });
 
       const listReservations = Effect.fn(
@@ -2197,7 +2216,8 @@ export class AdministrationService extends Context.Service<
           })
           .from(workspaceReservations)
           .where(eq(workspaceReservations.id, id))
-          .limit(1);
+          .limit(1)
+          .pipe(Effect.flatMap(StoredReservationDetails.decodeRows));
         if (!reservationRow) return null;
         const { authorAccountId, ...row } = reservationRow;
 
@@ -2290,7 +2310,8 @@ export class AdministrationService extends Context.Service<
                 )
               )
               .orderBy(desc(workspaceReservations.updatedAt))
-              .limit(4),
+              .limit(4)
+              .pipe(Effect.flatMap(StoredReservationDetails.decodeRows)),
           },
           { concurrency: 9 }
         );
@@ -2321,7 +2342,8 @@ export class AdministrationService extends Context.Service<
                 )
               )
               .orderBy(desc(workspaceReservations.updatedAt))
-              .limit(4);
+              .limit(4)
+              .pipe(Effect.flatMap(StoredReservationDetails.decodeRows));
           }
         }
 
@@ -2711,6 +2733,7 @@ export class AdministrationService extends Context.Service<
                           bookingIds
                         )
                       )
+                      .pipe(Effect.flatMap(StoredReservationDetails.decodeRows))
                   : Effect.succeed([] as readonly SafeReservationRow[]),
               tables: loadBookingTables(),
             },
@@ -2763,11 +2786,13 @@ export class AdministrationService extends Context.Service<
       )(function* (id: WorkspaceReservationId) {
         const [row] = yield* db
           .select({
+            id: workspaceReservations.id,
             reservationDetails: workspaceReservations.reservationDetails,
           })
           .from(workspaceReservations)
           .where(eq(workspaceReservations.id, id))
-          .limit(1);
+          .limit(1)
+          .pipe(Effect.flatMap(StoredReservationDetails.decodeRows));
         return row
           ? getAdministrationReservationProduct(row.reservationDetails)
           : null;
@@ -2797,7 +2822,8 @@ export class AdministrationService extends Context.Service<
                 .select(safeReservationSelection)
                 .from(workspaceReservations)
                 .where(eq(workspaceReservations.dotyposReservationId, id))
-                .limit(1),
+                .limit(1)
+                .pipe(Effect.flatMap(StoredReservationDetails.decodeRows)),
               tables: loadBookingTables(),
             },
             { concurrency: 3 }
@@ -3034,7 +3060,8 @@ export class AdministrationService extends Context.Service<
           .where(where)
           .orderBy(desc(workspaceReservations.updatedAt))
           .limit(customerReservationPageSize)
-          .offset(pagination.offset);
+          .offset(pagination.offset)
+          .pipe(Effect.flatMap(StoredReservationDetails.decodeRows));
         return {
           items: yield* enrichRows(rows),
           page: pagination.page,
@@ -3054,7 +3081,8 @@ export class AdministrationService extends Context.Service<
                 .from(workspaceReservations)
                 .where(eq(workspaceReservations.dotyposCustomerId, customerId))
                 .orderBy(desc(workspaceReservations.updatedAt))
-                .limit(customerActivityReservationLimit + 1),
+                .limit(customerActivityReservationLimit + 1)
+                .pipe(Effect.flatMap(StoredReservationDetails.decodeRows)),
               attemptRowsWithSentinel: db
                 .select({
                   attempt: safePaymentAttemptSelection,
@@ -3074,7 +3102,19 @@ export class AdministrationService extends Context.Service<
                 )
                 .where(eq(workspaceReservations.dotyposCustomerId, customerId))
                 .orderBy(desc(paymentAttempts.createdAt))
-                .limit(customerActivityTransactionLimit + 1),
+                .limit(customerActivityTransactionLimit + 1)
+                .pipe(
+                  Effect.flatMap((rows) =>
+                    Effect.forEach(rows, ({ attempt, reservation }) =>
+                      StoredReservationDetails.decodeRow(reservation).pipe(
+                        Effect.map((decoded) => ({
+                          attempt,
+                          reservation: decoded,
+                        }))
+                      )
+                    )
+                  )
+                ),
               marketingConsentRows: db
                 .select({
                   documentHash: customerMarketingConsents.documentHash,
@@ -3119,12 +3159,10 @@ export class AdministrationService extends Context.Service<
         }
 
         const rows = recentRows.slice(0, customerActivityReservationLimit);
-        const productKind = sql<string>`
-          ${workspaceReservations.reservationDetails}->>'kind'
-        `;
-        const productTier = sql<string | null>`
-          ${workspaceReservations.reservationDetails}->>'entryTier'
-        `;
+        const productKind = StoredReservationDetails.kind;
+        const productTier = sql<
+          string | null
+        >`${StoredReservationDetails.property("cowork", "tier")}`;
         const productCount = count();
         const {
           applicationRows,
@@ -3302,7 +3340,9 @@ export class AdministrationService extends Context.Service<
             ? []
             : yield* db
                 .select({
-                  id: workspaceReservations.dotyposReservationId,
+                  id: workspaceReservations.id,
+                  dotyposReservationId:
+                    workspaceReservations.dotyposReservationId,
                   reservationDetails: workspaceReservations.reservationDetails,
                   fulfillmentState: workspaceReservations.fulfillmentState,
                   paymentState: workspaceReservations.paymentState,
@@ -3317,10 +3357,11 @@ export class AdministrationService extends Context.Service<
                       reservationIds
                     )
                   )
-                );
+                )
+                .pipe(Effect.flatMap(StoredReservationDetails.decodeRows));
         const linkedReservations = new Map(
-          linkedRows.flatMap(({ id, ...row }) =>
-            id ? ([[id, row]] as const) : []
+          linkedRows.flatMap(({ dotyposReservationId, ...row }) =>
+            dotyposReservationId ? ([[dotyposReservationId, row]] as const) : []
           )
         );
         const activityByDate = new Map<

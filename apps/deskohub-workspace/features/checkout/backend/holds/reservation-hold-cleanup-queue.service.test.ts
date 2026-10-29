@@ -3,7 +3,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Layer, Logger } from "effect";
-import type { WorkspaceReservation } from "@/db/schema";
+import type { WorkspaceReservationRow } from "@/db/schema";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "./reservation-hold-cleanup.service";
 
@@ -12,8 +12,8 @@ const expiresAt = Temporal.Instant.from("2026-06-01T10:10:00.000Z");
 const dueNow = Temporal.Instant.from("2026-06-01T10:10:00.000Z");
 
 const makeReservation = (
-  overrides: Partial<WorkspaceReservation> = {}
-): WorkspaceReservation =>
+  overrides: Partial<WorkspaceReservationRow> = {}
+): WorkspaceReservationRow =>
   ({
     id: "order-id",
     checkoutSessionKey: "session-key",
@@ -42,7 +42,7 @@ const makeReservation = (
     createdAt: Temporal.Instant.from("2026-06-01T09:55:00.000Z"),
     updatedAt: Temporal.Instant.from("2026-06-01T09:55:00.000Z"),
     ...overrides,
-  }) as WorkspaceReservation;
+  }) as WorkspaceReservationRow;
 
 const runProcessMessage = async (
   message: Parameters<

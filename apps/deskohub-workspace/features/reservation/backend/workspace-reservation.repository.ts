@@ -4,14 +4,14 @@ import type {
 } from "@deskohub/dotypos";
 import { and, asc, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Data, Effect, Layer, Schema } from "effect";
+import { Context, Data, Effect, Layer } from "effect";
 import type { SqlError } from "effect/unstable/sql";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { retryDatabaseRead } from "@/db/retry-database-read";
 import {
   paymentAttempts,
   reservationAccessGrants,
-  type WorkspaceReservation as WorkspaceReservationRow,
+  type WorkspaceReservationRow,
   workspaceReservations,
 } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
@@ -27,15 +27,18 @@ import type {
 import type { DiscountClaimError } from "@/features/discounts/errors";
 import type { AgentSelectionKey } from "@/features/reservation/backend/booking-agent";
 import { withCoworkProductFields } from "@/features/reservation/cowork-reservation-product";
-import {
-  type StoredWorkspaceReservationDetails,
-  storedWorkspaceReservationDetailsSchema,
-  type WorkspaceReservationId,
+import type {
+  StoredWorkspaceReservationDetails,
+  WorkspaceReservationId,
 } from "@/features/reservation/persistence-contracts";
 import type { ReservationPurpose } from "@/features/reservation/reservation-billing";
 import { reservationAccessProvisioningStaleAfterMilliseconds } from "@/features/reservation-access";
 import { recordCustomerEvent } from "@/shared/backend/customer-events/customer-event-outbox";
 import { supersedableReservationPaymentStates } from "./reservation-supersession";
+import {
+  StoredReservationDetails,
+  type WorkspaceReservationDetailsMalformedError,
+} from "./stored-reservation-details.server";
 
 const withReservationKindFields = (reservation: WorkspaceReservationRow) => {
   const reservationWithCoworkFields = withCoworkProductFields(reservation);
@@ -52,14 +55,6 @@ export class WorkspaceReservationStateError extends Data.TaggedError(
   readonly operation: string;
   readonly reservationId: WorkspaceReservationId;
   readonly message: string;
-}> {}
-
-export class WorkspaceReservationDetailsMalformedError extends Data.TaggedError(
-  "WorkspaceReservationDetailsMalformedError"
-)<{
-  readonly reservationId: WorkspaceReservationId;
-  readonly message: string;
-  readonly cause: unknown;
 }> {}
 
 export interface CreateWorkspaceReservationInput {
@@ -1231,30 +1226,7 @@ export const decodeOptionalWorkspaceReservation = (
 ) =>
   reservation ? decodeWorkspaceReservation(reservation) : Effect.succeed(null);
 
-const decodeWorkspaceReservation = Effect.fn(
-  "WorkspaceReservation.decodeStoredDetails"
-)((reservation: WorkspaceReservationRow) =>
-  Schema.decodeUnknownEffect(storedReservationDetailsDecoder, {
-    errors: "all",
-    onExcessProperty: "error",
-  })(reservation.reservationDetails).pipe(
-    Effect.map((reservationDetails) =>
-      withReservationKindFields({
-        ...reservation,
-        reservationDetails,
-      })
-    ),
-    Effect.mapError(
-      (cause) =>
-        new WorkspaceReservationDetailsMalformedError({
-          reservationId: reservation.id,
-          message: "Stored workspace reservation details are malformed.",
-          cause,
-        })
-    )
-  )
-);
-
-const storedReservationDetailsDecoder: Schema.Decoder<
-  WorkspaceReservationRow["reservationDetails"]
-> = storedWorkspaceReservationDetailsSchema;
+const decodeWorkspaceReservation = (reservation: WorkspaceReservationRow) =>
+  StoredReservationDetails.decodeRow(reservation).pipe(
+    Effect.map(withReservationKindFields)
+  );

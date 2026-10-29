@@ -18,35 +18,8 @@ import {
   sql,
 } from "drizzle-orm";
 import { Match } from "effect";
-import { workspaceReservations } from "@/db/schema";
-import type { WorkspaceReservationKind } from "@/features/reservation/reservation-kind";
-import type { ReservationProductPropertyIds } from "@/features/reservation/reservation-product-descriptor";
-
-const details = workspaceReservations.reservationDetails;
-
-/**
- * Where each catalog property lives in a reservation snapshot. A snapshot
- * that lacks the field (a reservation the backfill couldn't resolve) yields
- * null, which no property condition matches.
- */
-const propertyValues: {
-  readonly [Family in WorkspaceReservationKind]: {
-    readonly [Property in ReservationProductPropertyIds[Family]]: SQL;
-  };
-} = {
-  cowork: {
-    tier: sql`${details}->>'entryTier'`,
-    coffee: sql`(${details}->>'coffee')::boolean`,
-    monitor: sql`${details}->>'monitorOption'`,
-  },
-  "meeting-room": {
-    offer: sql`(${details}->'duration'->>'unit') || ':' || (${details}->'duration'->>'amount')`,
-  },
-  office: {
-    seats: sql`(${details}->>'seats')::int`,
-    days: sql`(${details}->>'dayCount')::int`,
-  },
-};
+import { StoredReservationDetails } from "@/features/reservation/backend/stored-reservation-details.server";
+import { isReservationProductPropertyId } from "@/features/reservation/reservation-product-descriptor";
 
 const propertyCondition = (
   value: SQL,
@@ -75,21 +48,22 @@ const propertyCondition = (
 
 /**
  * Selects reservations of the product family whose snapshot meets every
- * property condition. An unknown property matches nothing; audience filters
- * are validated against the catalog before they're stored.
+ * property condition. A snapshot without a readable value matches no property
+ * condition, and an unknown property matches nothing; audience filters are
+ * validated against the catalog before they're stored.
  */
 export const reservationProductCondition = ({
   family,
   properties,
-}: ReservationProductFilterType): SQL => {
-  const values: Readonly<Record<string, SQL>> = propertyValues[family];
-  return and(
-    sql`${details}->>'kind' = ${family}`,
-    ...properties.map((condition) => {
-      const value = Object.hasOwn(values, condition.property)
-        ? values[condition.property]
-        : undefined;
-      return value ? propertyCondition(value, condition) : sql`false`;
-    })
+}: ReservationProductFilterType): SQL =>
+  and(
+    sql`${StoredReservationDetails.kind} = ${family}`,
+    ...properties.map((condition) =>
+      isReservationProductPropertyId(family, condition.property)
+        ? propertyCondition(
+            StoredReservationDetails.property(family, condition.property),
+            condition
+          )
+        : sql`false`
+    )
   )!;
-};

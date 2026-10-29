@@ -35,9 +35,9 @@ import {
   getOpenSpaceTableNames,
   getReservationTableName,
 } from "@/features/reservation/backend/reservation-table";
+import type { WorkspaceReservationDetailsMalformedError } from "@/features/reservation/backend/stored-reservation-details.server";
 import {
   type WorkspaceReservation,
-  type WorkspaceReservationDetailsMalformedError,
   WorkspaceReservationRepository,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import { getDotyposReservationTiming } from "@/features/reservation/backend/workspace-reservation.service";

@@ -1,7 +1,7 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect } from "effect";
-import type { WorkspaceReservation } from "@/db/schema";
+import type { WorkspaceReservationRow } from "@/db/schema";
 import { makeAccountingDocumentSnapshot } from "@/features/accounting/accounting-document-snapshot";
 import type { PreparedCustomerQuote } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import { buildCoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
@@ -64,7 +64,7 @@ const makeInvitationCandidate = (referral: {
  */
 export const admitPendingNexiPayment = (
   repository: IPaymentLifecycleRepository,
-  reservation: WorkspaceReservation,
+  reservation: WorkspaceReservationRow,
   referral?: {
     readonly referrerDotyposCustomerId: DotyposCustomerId;
     readonly promotionCodeId: string;
