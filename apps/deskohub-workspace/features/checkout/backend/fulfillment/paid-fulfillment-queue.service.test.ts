@@ -3,10 +3,6 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { decodeStandardSchema } from "@deskohub/standard-schema";
 import { Effect, Layer, Result } from "effect";
-import {
-  type PaidFulfillmentProgress,
-  WorkspaceReservationRepository,
-} from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import {
   makeMemoryQueue,
@@ -14,6 +10,10 @@ import {
 } from "@/shared/backend/queue/memory-queue.test-utils";
 import { QueueRedelivery } from "@/shared/backend/queue/queue-consumer";
 import type { QueuePublisher } from "@/shared/backend/queue/queue-publisher";
+import {
+  FulfillmentLedger,
+  type PaidFulfillmentProgress,
+} from "./fulfillment-ledger.repository";
 import {
   WorkspacePaidFulfillmentError,
   WorkspacePaidFulfillmentService,
@@ -57,7 +57,7 @@ const processMessage = (input: {
         Layer.mock(WorkspacePaidFulfillmentService, {
           fulfillPaidOrder: input.fulfillPaidOrder,
         }),
-        Layer.mock(WorkspaceReservationRepository, {
+        Layer.mock(FulfillmentLedger, {
           findPaidFulfillmentProgress: mock(() =>
             Effect.succeed(
               input.progressAfter === null
@@ -366,7 +366,7 @@ describe("paid fulfillment queue", () => {
       Effect.provide(
         Layer.mergeAll(
           Layer.mock(WorkspacePaidFulfillmentService, { fulfillPaidOrder }),
-          Layer.mock(WorkspaceReservationRepository, {
+          Layer.mock(FulfillmentLedger, {
             selectStalledPaidFulfillments,
           })
         )

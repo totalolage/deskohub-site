@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
+import { FulfillmentLedger } from "./fulfillment-ledger.repository";
 import { WorkspacePaidFulfillmentService } from "./paid-fulfillment.service";
 
 /** Leaves recent orders to their queue message and the webhook. */
@@ -18,10 +18,10 @@ export const reconcileStalledPaidFulfillments = Effect.fn(
     readonly now: Temporal.Instant;
     readonly limit: number;
   }) {
-    const reservations = yield* WorkspaceReservationRepository;
+    const ledger = yield* FulfillmentLedger;
     const fulfillment = yield* WorkspacePaidFulfillmentService;
 
-    const orderIds = yield* reservations.selectStalledPaidFulfillments({
+    const orderIds = yield* ledger.selectStalledPaidFulfillments({
       updatedBefore: input.now.subtract(stalledAfter),
       limit: input.limit,
     });

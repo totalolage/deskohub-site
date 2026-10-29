@@ -25,6 +25,7 @@ import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.se
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 import { captureReservationCompleted } from "../analytics/posthog-lifecycle-events";
+import { FulfillmentLedger } from "./fulfillment-ledger.repository";
 import { WorkspaceCheckoutNetworkDetailsService } from "./network-details.service";
 import {
   createCustomerEmailInitialIdempotencyKey,
@@ -75,6 +76,7 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
     this,
     Effect.gen(function* () {
       const reservations = yield* WorkspaceReservationRepository;
+      const ledger = yield* FulfillmentLedger;
       const dotypos = yield* DotyposService;
       const reservationEmails = yield* WorkspaceReservationEmailService;
       const emailLocale = yield* CustomerEmailLocaleService;
@@ -151,7 +153,7 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
           yield* Effect.logInfo("Paid fulfillment failure handling started");
 
           yield* Effect.logInfo("Paid fulfillment failure marker started");
-          yield* reservations
+          yield* ledger
             .markFulfillmentFailed({
               id: input.orderId,
               failureCode: input.failureCode,
@@ -275,7 +277,7 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
               );
             }
 
-            const claimed = yield* reservations
+            const claimed = yield* ledger
               .claimPaidFulfillment({
                 id: reservation.id,
                 staleProcessingBefore,
@@ -457,7 +459,7 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
                 ? Effect.succeed(claimed.activeCustomerEmailDeliveryLocale)
                 : resolveCustomerEmailLocale(reservationForDelivery).pipe(
                     Effect.flatMap((locale) =>
-                      reservations.retainActiveCustomerEmailDeliveryLocale({
+                      ledger.retainActiveCustomerEmailDeliveryLocale({
                         id: claimed.id,
                         locale,
                         expectedActiveCustomerEmailDeliveryId:
@@ -522,7 +524,7 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
               customerEmailDeliveryId
             );
             if (env.VERCEL_ENV !== "production" || acceptedByConsole) {
-              yield* reservations.markFulfilled({
+              yield* ledger.markFulfilled({
                 id: claimed.id,
                 fulfilledAt: Temporal.Now.instant(),
                 customerEmailDeliveryId,
@@ -538,7 +540,7 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
             yield* Effect.logInfo(
               "Paid fulfillment recorded accepted customer email delivery"
             );
-            yield* reservations
+            yield* ledger
               .markAwaitingCustomerEmailDelivery({
                 id: claimed.id,
                 customerEmailDeliveryId,
@@ -603,6 +605,7 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
     Layer.provide(WorkspaceReservationService.Default),
     Layer.provide(WorkspaceCheckoutAccessCodeService.Live),
     Layer.provide(WorkspaceReservationRepository.Default),
+    Layer.provide(FulfillmentLedger.Default),
     Layer.provide(ReservationAuthorDirectory.Default),
     Layer.provide(WorkspaceDatabase.Default),
     Layer.provide(WorkspaceDotyposLayer),
