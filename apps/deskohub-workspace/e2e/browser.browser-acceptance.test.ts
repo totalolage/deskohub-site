@@ -12,6 +12,7 @@ import {
   assertPageCheck,
   evalBrowserScript,
   openPage,
+  readPageText,
   readPageUrl,
   runBrowserCommand,
   scrollBrowserElementIntoView,
@@ -943,6 +944,61 @@ test.skipIf(!chromiumAvailable)(
     expect(observed.failure?.message).toEndWith(
       "\nBrowser diagnostics unavailable"
     );
+    expect(isWorkspaceE2ETimeout(observed.failure)).toBe(false);
+  },
+  60_000
+);
+
+test.skipIf(!chromiumAvailable)(
+  "reads the page text redacted and fails a read that overruns its bound",
+  async () => {
+    if (!browser) throw new Error("Chromium is not running");
+    const opened = browser;
+    const secret = `page-text-secret-${randomUUID()}`;
+    addRedaction(secret, true);
+    const observed = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const session = yield* E2EBrowserSession.open({
+            browser: opened,
+            id: `browser-text-${randomUUID()}`,
+          });
+          yield* session.use("show the page", async (page) => {
+            await page.goto(helperServer.url.href);
+            await page.setContent(`<p>Visible ${secret}</p>`);
+          });
+          const text = yield* readPageText(session);
+          yield* session.use("hang the page", (page) =>
+            // The page's main thread never returns, so no evaluation does.
+            page.evaluate(() => {
+              setTimeout(() => {
+                for (;;) {
+                  // spin
+                }
+              }, 0);
+            })
+          );
+          const reading = yield* Effect.forkDetach(
+            readPageText(session).pipe(Effect.flip)
+          );
+          // Real time lets the evaluation reach the hung page.
+          yield* Effect.promise(() => Bun.sleep(500));
+          yield* TestClock.adjust("29 seconds");
+          yield* Effect.promise(() => Bun.sleep(200));
+          const readingBeforeBound = reading.pollUnsafe() === undefined;
+          yield* TestClock.adjust("2 seconds");
+          const failure = yield* Effect.raceFirst(
+            Fiber.join(reading),
+            Effect.promise(() => Bun.sleep(5000)).pipe(Effect.as(undefined))
+          );
+          return { failure, readingBeforeBound, text };
+        })
+      ).pipe(Effect.provide(TestClock.layer()))
+    );
+
+    expect(observed.text).toBe("Visible [redacted]");
+    expect(observed.readingBeforeBound).toBe(true);
+    expect(observed.failure?.operation).toBe("read browser text");
     expect(isWorkspaceE2ETimeout(observed.failure)).toBe(false);
   },
   60_000
