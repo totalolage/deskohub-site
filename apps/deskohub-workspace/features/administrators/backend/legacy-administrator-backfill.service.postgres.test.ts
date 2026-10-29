@@ -8,8 +8,9 @@ import {
   type AdministrationLegacyUsernameType,
 } from "@deskohub/workspace-admin-api";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
-import { Data, Effect, Layer, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
+import type { RootDatabaseClient } from "@/db/database-client";
 import {
   cliSessions,
   invoiceEmailDeliveries,
@@ -31,7 +32,10 @@ import {
   expectQueryLogsToOmit,
 } from "@/shared/testing/workspace-database-query-log.test-utils";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  withHeldTransaction,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type { AdministratorAccountActor } from "../account-role";
 import { AccountRoleGrants } from "./account-role-grants.service";
 import { LegacyAdministratorBackfill } from "./legacy-administrator-backfill.service";
@@ -44,9 +48,9 @@ const testKey: AccountingSnapshotKey = {
   secret: "synthetic legacy administrator backfill secret",
 };
 
-const makeLayer = () => {
+const makeLayer = (database: Layer.Layer<WorkspaceDatabase>) => {
   const storage = Layer.merge(
-    testDatabase!.layer,
+    database,
     Layer.succeed(
       AccountingSnapshotKeyService,
       AccountingSnapshotKeyService.of({
@@ -68,34 +72,35 @@ const makeLayer = () => {
   return LegacyAdministratorBackfill.Default.pipe(
     Layer.provideMerge(
       Layer.mergeAll(
-        testDatabase!.layer,
+        database,
         invoiceRepository,
-        AccountRoleGrants.Default.pipe(Layer.provide(testDatabase!.layer))
+        AccountRoleGrants.Default.pipe(Layer.provide(database))
       )
     )
   );
 };
 
-class RolledBack<A> extends Data.TaggedError("RolledBack")<{
-  readonly result: A;
-}> {}
-
 /**
- * Runs a scenario in a transaction that is rolled back afterwards. It first
- * hides the manual invoices other suites leave in the shared database, whose
- * synthetic documents can't be decrypted.
+ * Runs a scenario in a transaction the test holds on its own connection and
+ * rolls back afterwards. It first hides the manual invoices other suites
+ * leave in the shared database, whose synthetic documents can't be
+ * decrypted. The services' transactions are savepoints inside it, and each
+ * checks its own locks, as it does in production.
  */
-const runIsolated = <A, E>(
-  scenario: Effect.Effect<
+const runIsolated = async <A, E>(
+  scenario: (
+    held: RootDatabaseClient
+  ) => Effect.Effect<
     A,
     E,
     LegacyAdministratorBackfill | InvoiceRepository | WorkspaceDatabase
   >
-) =>
-  Effect.gen(function* () {
-    const { db } = yield* WorkspaceDatabase;
-    return yield* db
-      .transaction(() =>
+) => {
+  const connection = await testDatabase!.pool.connect();
+  try {
+    await connection.query("begin");
+    return await Effect.runPromise(
+      withHeldTransaction(connection, (db) =>
         Effect.gen(function* () {
           yield* db.execute(
             sql`alter table ${invoices} disable trigger invoices_immutable`
@@ -118,17 +123,24 @@ const runIsolated = <A, E>(
           yield* db.execute(
             sql`alter table ${invoices} enable trigger invoices_immutable`
           );
-          const result = yield* scenario;
-          return yield* new RolledBack({ result });
-        })
+          return yield* scenario(db);
+        }).pipe(
+          Effect.provide(
+            makeLayer(
+              Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.make(db))
+            )
+          )
+        )
       )
-      .pipe(
-        Effect.catchTag("RolledBack", ({ result }) => Effect.succeed(result))
-      );
-  }).pipe(Effect.provide(makeLayer()), Effect.runPromise);
+    );
+  } finally {
+    await connection.query("rollback").catch(() => {});
+    connection.release();
+  }
+};
 
-const insertAccount = (local: string) =>
-  workspaceFixtures(testDatabase!.db)
+const insertAccount = (held: RootDatabaseClient, local: string) =>
+  workspaceFixtures(held)
     .account(local)
     .pipe(
       Effect.orDie,
@@ -231,11 +243,11 @@ describe.skipIf(!testDatabase)(
     });
 
     test("keeps the backfilled email out of the query log while linking every record kind", async () => {
-      const outcome = await runIsolated(
+      const outcome = await runIsolated((held) =>
         Effect.gen(function* () {
           const { db } = yield* WorkspaceDatabase;
           const legacyUsername = uniqueUsername();
-          const target = yield* insertAccount("legacy-logged");
+          const target = yield* insertAccount(held, "legacy-logged");
           const session = yield* insertCliSession({
             approvedBy: legacyUsername,
           });
@@ -284,13 +296,13 @@ describe.skipIf(!testDatabase)(
     });
 
     test("reports, then links, a legacy username's records to the account", async () => {
-      const outcome = await runIsolated(
+      const outcome = await runIsolated((held) =>
         Effect.gen(function* () {
           const { db } = yield* WorkspaceDatabase;
           const legacyUsername = uniqueUsername();
           const otherUsername = uniqueUsername();
-          const target = yield* insertAccount("legacy-target");
-          const other = yield* insertAccount("legacy-other");
+          const target = yield* insertAccount(held, "legacy-target");
+          const other = yield* insertAccount(held, "legacy-other");
 
           const sessions = [
             yield* insertCliSession({ approvedBy: legacyUsername }),
@@ -516,12 +528,12 @@ describe.skipIf(!testDatabase)(
     });
 
     test("counts records of a deleted account as linked elsewhere", async () => {
-      const outcome = await runIsolated(
+      const outcome = await runIsolated((held) =>
         Effect.gen(function* () {
           const { db } = yield* WorkspaceDatabase;
           const legacyUsername = uniqueUsername();
-          const former = yield* insertAccount("legacy-former");
-          const target = yield* insertAccount("legacy-successor");
+          const former = yield* insertAccount(held, "legacy-former");
+          const target = yield* insertAccount(held, "legacy-successor");
           yield* insertCliSession({ approvedBy: legacyUsername });
           yield* backfill({
             legacyUsername,
@@ -561,7 +573,7 @@ describe.skipIf(!testDatabase)(
     });
 
     test("fails without writing when no active account uses the email", async () => {
-      const error = await runIsolated(
+      const error = await runIsolated(() =>
         backfill({
           legacyUsername: uniqueUsername(),
           email: testEmailAddress("legacy-administrator-unknown"),

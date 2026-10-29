@@ -5,11 +5,12 @@ language js(typescript, jsx)
 // `yield* WorkspaceDatabase` (db/database.service.ts). It wraps the Drizzle
 // client's own `transaction`, provides `WorkspaceTransaction` and runs the
 // effect one step at a time. This rejects:
-// - in app/, features/ and shared/ source (tests, test-utils, e2e/ and
-//   scripts/ own other clients and are exempt), every member access
-//   `.transaction` or `.withTransaction`, called or not, whatever the
-//   receiver, and
-//   destructuring `transaction` from anything but `yield* WorkspaceDatabase`;
+// - in app/, features/ and shared/, tests and test-utils included (db/ is
+//   the database layer; e2e/ and scripts/ own other clients), every member
+//   access `.transaction` or `.withTransaction`, called or not, whatever
+//   the receiver, and
+//   destructuring `transaction` from anything but `yield* WorkspaceDatabase`.
+//   A test about the raw client suppresses it with a reason;
 // - anywhere in the app, tests included, building or providing
 //   `WorkspaceTransaction`, and building `WorkspaceDatabase` with `of` or a
 //   literal: use `WorkspaceDatabase.make(db)`. Test files are not
@@ -30,8 +31,7 @@ file($name, $body) where {
         not $declarator <: r"(?s)^\{[^}]*\}\s*=\s*yield\s*\*\s*WorkspaceDatabase\s*$"
       }
     } as $span where {
-      $filename <: r".*apps/deskohub-workspace/(?:app|features|shared)/.*",
-      not $filename <: r".*\.(?:test|test-utils)\.(?:ts|tsx)$"
+      $filename <: r".*apps/deskohub-workspace/(?:app|features|shared)/.*"
     },
     or {
       `WorkspaceTransaction.of($...)`,

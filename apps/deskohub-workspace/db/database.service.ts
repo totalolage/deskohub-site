@@ -4,7 +4,12 @@ import type { DatabaseClient, RootDatabaseClient } from "./database-client";
 import type { DatabaseQueryError } from "./sql-constraint";
 import { openLockLedger } from "./workspace-lock-ledger";
 
-export type WorkspaceDatabaseClient = DatabaseClient;
+/**
+ * The client the service and its transactions hand out. It has no
+ * `transaction`: `WorkspaceDatabase.transaction` is the only way in, and
+ * `make` keeps the full client to open it.
+ */
+export type WorkspaceDatabaseClient = Omit<DatabaseClient, "transaction">;
 
 interface IWorkspaceDatabase {
   /** Inside `transaction`, every statement on `db` joins the open transaction. */

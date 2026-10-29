@@ -2598,34 +2598,36 @@ describe.skipIf(!testDatabase)(
       );
       discountIds.push(storedDiscountId);
       await Effect.runPromise(
-        testDatabase.db.transaction((tx) =>
-          Effect.gen(function* () {
-            yield* tx.insert(discounts).values({
-              id: storedDiscountId,
-              labels: { "cs-CZ": "Tarifní sleva", "en-US": "Tier discount" },
-              percentageBasisPoints: 1000,
-            });
-            yield* tx.insert(discountProductTargets).values(
-              products.map((productTarget) => ({
+        Effect.flatMap(WorkspaceDatabase, ({ db, transaction }) =>
+          transaction(
+            Effect.gen(function* () {
+              yield* db.insert(discounts).values({
+                id: storedDiscountId,
+                labels: { "cs-CZ": "Tarifní sleva", "en-US": "Tier discount" },
+                percentageBasisPoints: 1000,
+              });
+              yield* db.insert(discountProductTargets).values(
+                products.map((productTarget) => ({
+                  discountId: storedDiscountId,
+                  productTarget,
+                }))
+              );
+              yield* db.insert(promotionCodes).values({
+                id: promotionCodeId,
+                kind: "discount",
+                code,
+                enabled: true,
+              });
+              yield* db.insert(discountCodes).values({
+                id: codeId,
+                code,
+                enabled: true,
+                promotionCodeId,
                 discountId: storedDiscountId,
-                productTarget,
-              }))
-            );
-            yield* tx.insert(promotionCodes).values({
-              id: promotionCodeId,
-              kind: "discount",
-              code,
-              enabled: true,
-            });
-            yield* tx.insert(discountCodes).values({
-              id: codeId,
-              code,
-              enabled: true,
-              promotionCodeId,
-              discountId: storedDiscountId,
-            });
-          })
-        )
+              });
+            })
+          )
+        ).pipe(Effect.provide(testDatabase.layer))
       );
       return { codeId, storedDiscountId };
     };
