@@ -99,7 +99,8 @@ interface SharedRead<A> {
 
 // `next/cache` declares one overload per profile, which no union of
 // profiles matches; its implementation takes any of them.
-const setLifetime = cacheLife as (lifetime: SharedSnapshotLifetime) => void;
+const setLifetime = (lifetime: SharedSnapshotLifetime) =>
+  (cacheLife as (lifetime: SharedSnapshotLifetime) => void)(lifetime);
 
 /** A `"use cache"` snapshot loader rejected instead of returning its value. */
 export class SharedSnapshotLoadFailure extends Data.TaggedError(
