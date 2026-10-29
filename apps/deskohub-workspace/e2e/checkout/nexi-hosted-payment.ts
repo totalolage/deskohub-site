@@ -1,18 +1,12 @@
+import type { Page } from "@playwright/test";
 import { Effect, Exit } from "effect";
 import {
-  clickBrowserElement,
-  focusBrowserElement,
-  pressBrowserKey,
-  readBrowserNetworkLog,
-  readBrowserTabs,
-  readBrowserUrl,
-  readInteractiveSnapshot,
-  requireMainFrame,
-  runBrowserCommand,
-  summarizeHostedPaymentSnapshot,
-  switchToBrowserTab,
-  switchToMainFrame,
+  locateSnapshotRef,
+  readNetworkLog,
+  readPageSnapshot,
+  readPageUrl,
 } from "../browser";
+import type { E2EBrowserSession } from "../browser-session";
 import {
   type NexiHostedPaymentStep,
   toNexiHostedPaymentDiagnosticCode,
@@ -22,7 +16,7 @@ import {
   workspaceE2ETimeoutError,
 } from "../errors";
 import { pollUntil } from "../polling";
-import type { Runner } from "../runtime";
+import { redact, redactDiagnosticText } from "../redaction";
 import { addRedaction, log } from "../runtime";
 import {
   type WorkspaceE2ETimeouts,
@@ -56,17 +50,18 @@ const continueAbsentAfterMs = 15_000;
 
 export type HostedPaymentPage = {
   // The checkout pay page that started this hosted payment.
+  readonly checkoutPage: Page;
   readonly checkoutPageUrl: string;
-  readonly checkoutTabId: string;
-  readonly hostedPaymentTabId: string;
+  // The page showing Nexi: a page of its own, or the checkout page when Nexi
+  // opened in the same tab.
+  readonly page: Page;
   readonly url: string;
 };
 
 type NexiHostedPaymentSession = {
   // Card-data rejections already in the session log before this payment.
   readonly cardDataRejectionBaseline: number;
-  readonly run: Runner;
-  readonly session: string;
+  readonly session: E2EBrowserSession;
 };
 
 // How the driver answers the 3-D Secure stub. A failed authentication ends on
@@ -83,7 +78,6 @@ export const completeNexiHostedPayment = ({
   data,
   hostedPaymentPage,
   onPaymentAuthorizationRequested,
-  run,
   session,
   timeouts,
 }: {
@@ -93,8 +87,7 @@ export const completeNexiHostedPayment = ({
   // Called just before the Pay activation, which is the only step that asks
   // Nexi to authorize the payment.
   onPaymentAuthorizationRequested?: () => void;
-  run: Runner;
-  session: string;
+  session: E2EBrowserSession;
   timeouts: WorkspaceE2ETimeouts;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
@@ -102,12 +95,10 @@ export const completeNexiHostedPayment = ({
     addRedaction(nexiSandboxTestCard.cvv, true);
     addRedaction(nexiSandboxTestCard.expiry, true);
 
-    yield* requireMainFrame(run, session);
     const page: NexiHostedPaymentSession = {
       cardDataRejectionBaseline: countNexiCardDataRejections(
-        parseNexiBuildResponses(yield* readBrowserNetworkLog(run, session))
+        parseNexiBuildResponses(yield* readNetworkLog(session))
       ),
-      run,
       session,
     };
     const required = { required: true, timeoutMs: timeouts.providerTransition };
@@ -173,27 +164,30 @@ export const completeNexiHostedPayment = ({
     if (hostedPaymentPage) {
       yield* waitForReturnedPaymentTabToClose({
         hostedPaymentPage,
-        run,
         session,
         timeoutMs: timeouts.providerTransition,
       });
     }
   });
 
+// An unreadable page reads as no URL and an empty snapshot, which the model
+// classifies; the observation itself never fails.
 const observeNexiHostedPage = (
   page: NexiHostedPaymentSession
-): Effect.Effect<ObservedNexiHostedPage, WorkspaceE2EError> =>
+): Effect.Effect<ObservedNexiHostedPage> =>
   Effect.gen(function* () {
     // Every hosted-page decision reads the main document: its AI snapshot
     // already includes the hosted-field iframes with frame-scoped refs. Only
-    // the scoped field fill enters an iframe, and it always restores main.
-    const url = yield* readBrowserUrl(page.run, page.session);
+    // the field fill reaches into an iframe, through a frame locator.
+    const url = yield* readPageUrl(page.session);
     const isReturnUrl = isCheckoutStatusUrl(url);
     const snapshot = isReturnUrl
       ? ""
-      : yield* readInteractiveSnapshot(page.run, page.session, true);
+      : yield* readPageSnapshot(page.session).pipe(
+          Effect.orElseSucceed(() => "")
+        );
     const responses = parseNexiBuildResponses(
-      yield* readBrowserNetworkLog(page.run, page.session)
+      yield* readNetworkLog(page.session)
     );
     const observation: NexiHostedPageObservation = {
       cardDataRejections: Math.max(
@@ -256,14 +250,8 @@ const pollNexiHostedPage = <A>(
       error.diagnosticCode
         ? Effect.fail(error)
         : Effect.gen(function* () {
-            const observed =
-              latest ??
-              (yield* observeNexiHostedPage(page).pipe(
-                Effect.orElseSucceed(() => undefined)
-              ));
-            return yield* observed
-              ? nexiHostedPaymentError(step, label, observed, error)
-              : error;
+            const observed = latest ?? (yield* observeNexiHostedPage(page));
+            return yield* nexiHostedPaymentError(step, label, observed, error);
           })
     )
   );
@@ -355,96 +343,77 @@ const fillNexiCardField = (
     return yield* nexiHostedPaymentError("card_entry", label, observed, cause);
   });
 
-// Fills one field inside its hosted-field iframe, then requires the session to
-// be back in the main frame: every later decision reads the main document, so
-// a failed restore must not surface later as a missing-field timeout. An
-// interrupted or failed fill still attempts the restore, best effort.
+// Fills the field, then types it when the fill did not stick, up to
+// `cardFieldFillAttemptCount` times. A failed action counts as not filled.
 const fillCardFieldTarget = (
-  page: NexiHostedPaymentSession,
+  { session }: NexiHostedPaymentSession,
   target: NexiCardFieldTarget,
   value: string
-): Effect.Effect<boolean, WorkspaceE2EError> => {
-  if (!target.frameRef) return fillAndVerifyCardField(page, target, value);
-  const restoreBestEffort = switchToMainFrame(page.run, page.session).pipe(
-    Effect.ignore
-  );
-  return Effect.gen(function* () {
-    const exit = yield* Effect.exit(
-      fillAndVerifyCardField(page, target, value).pipe(
-        Effect.onInterrupt(() => restoreBestEffort)
-      )
-    );
-    if (Exit.isFailure(exit)) {
-      yield* restoreBestEffort;
-      return yield* exit;
-    }
-    yield* requireMainFrame(page.run, page.session);
-    return exit.value;
-  });
-};
-
-const fillAndVerifyCardField = (
-  page: NexiHostedPaymentSession,
-  target: NexiCardFieldTarget,
-  value: string
-): Effect.Effect<boolean, WorkspaceE2EError> =>
+): Effect.Effect<boolean> =>
   Effect.gen(function* () {
-    // Inside the field's iframe the hosted field is its only input.
-    const selector = target.frameRef ? "input" : target.ref;
-    if (target.frameRef) {
-      const switched = yield* runCardFieldCommand(
-        page,
-        "switch hosted payment frame",
-        ["frame", target.frameRef],
-        30_000
-      );
-      if (switched.exitCode !== 0) return false;
-    }
+    if (
+      target.frameRef &&
+      !(yield* succeeds(
+        session.use("wait for hosted payment frame", (page) =>
+          hostedFieldFrame(page, target.frameRef ?? "")
+            .locator(":root")
+            .waitFor({ state: "attached", timeout: 30_000 })
+        )
+      ))
+    )
+      return false;
 
     for (let attempt = 1; attempt <= cardFieldFillAttemptCount; attempt += 1) {
-      const fill = yield* runCardFieldCommand(
-        page,
-        "fill hosted payment field",
-        ["fill", selector, value],
-        60_000
+      const filled = yield* succeeds(
+        session.use("fill hosted payment field", (page) =>
+          cardFieldInput(page, target).fill(value, { timeout: 60_000 })
+        )
       );
-      if (fill.exitCode !== 0) continue;
-      if (yield* cardFieldHasValue(page, selector)) return true;
+      if (!filled) continue;
+      if (yield* cardFieldHasValue(session, target)) return true;
 
-      const type = yield* runCardFieldCommand(
-        page,
-        "type hosted payment field",
-        ["type", selector, value],
-        60_000
+      const typed = yield* succeeds(
+        session.use("type hosted payment field", (page) =>
+          cardFieldInput(page, target).pressSequentially(value, {
+            delay: 50,
+            timeout: 60_000,
+          })
+        )
       );
-      if (type.exitCode !== 0) continue;
-      if (yield* cardFieldHasValue(page, selector)) return true;
+      if (!typed) continue;
+      if (yield* cardFieldHasValue(session, target)) return true;
     }
     return false;
   });
 
-const runCardFieldCommand = (
-  { run, session }: NexiHostedPaymentSession,
-  operation: string,
-  args: string[],
-  timeoutMs: number
-) =>
-  runBrowserCommand(operation, run, session, args, {
-    allowFailure: true,
-    logCommand: false,
-    logOutput: false,
-    timeoutMs,
-  });
-
-const cardFieldHasValue = (page: NexiHostedPaymentSession, selector: string) =>
-  runCardFieldCommand(
-    page,
-    "verify hosted payment field",
-    ["get", "value", selector],
-    30_000
-  ).pipe(
-    Effect.map((result) => result.exitCode === 0 && !!result.stdout.trim())
+const succeeds = <A, E>(effect: Effect.Effect<A, E>) =>
+  effect.pipe(
+    Effect.as(true),
+    Effect.orElseSucceed(() => false)
   );
+
+const hostedFieldFrame = (page: Page, frameRef: string) =>
+  locateSnapshotRef(page, frameRef).filter({ visible: true }).contentFrame();
+
+// Inside its hosted-field iframe the field is the frame's only input.
+const cardFieldInput = (page: Page, target: NexiCardFieldTarget) =>
+  (target.frameRef
+    ? hostedFieldFrame(page, target.frameRef).locator("input")
+    : locateSnapshotRef(page, target.ref)
+  ).filter({ visible: true });
+
+const cardFieldHasValue = (
+  session: E2EBrowserSession,
+  target: NexiCardFieldTarget
+) =>
+  session
+    .use("verify hosted payment field", (page) =>
+      cardFieldInput(page, target).inputValue({ timeout: 30_000 })
+    )
+    .pipe(
+      Effect.map((value) => !!redact(value).trim()),
+      Effect.orElseSucceed(() => false)
+    );
 
 type ControlActivationOptions = {
   readonly acceptsProviderErrorPage?: boolean;
@@ -501,27 +470,30 @@ const activateNexiControl = (
     }
 
     options.onActivate?.();
+    const { session } = page;
+    const target = (active: Page) =>
+      locateSnapshotRef(active, found.ref).filter({ visible: true });
     const activation = yield* Effect.exit(
       options.activation === "pointer"
-        ? clickBrowserElement(page.run, page.session, found.ref, {
-            timeoutMs: 30_000,
-          })
-        : Effect.gen(function* () {
-            yield* focusBrowserElement(page.run, page.session, found.ref, {
-              timeoutMs: 30_000,
-            });
-            yield* pressBrowserKey(page.run, page.session, "Enter", {
-              timeoutMs: 30_000,
-            });
-          })
+        ? session.use("click browser element", (active) =>
+            target(active).click({ timeout: 30_000 })
+          )
+        : Effect.andThen(
+            session.use("focus browser element", (active) =>
+              target(active).focus({ timeout: 30_000 })
+            ),
+            // As the argv `press` command, the key press has no timeout of
+            // its own; the step bounds it.
+            session.use("press browser key", (active) =>
+              active.keyboard.press("Enter")
+            )
+          )
     );
     if (Exit.isFailure(activation)) {
       // The activation can navigate away from Nexi while its command still
       // rejects. Never activate again; accept only an observed return.
-      const observed = yield* observeNexiHostedPage(page).pipe(
-        Effect.orElseSucceed(() => undefined)
-      );
-      if (options.skipWhenReturned && observed?.state.kind === "returned") {
+      const observed = yield* observeNexiHostedPage(page);
+      if (options.skipWhenReturned && observed.state.kind === "returned") {
         log(
           `${label} activation reported an error after returning to checkout status`
         );
@@ -546,38 +518,47 @@ const activateNexiControl = (
     });
   });
 
+// Nexi's own page closes itself once it has returned to the checkout status
+// page; the checkout page is driven again after that.
 const waitForReturnedPaymentTabToClose = ({
-  hostedPaymentPage,
-  run,
+  hostedPaymentPage: { checkoutPage, page },
   session,
   timeoutMs,
 }: {
   readonly hostedPaymentPage: HostedPaymentPage;
-  readonly run: Runner;
-  readonly session: string;
+  readonly session: E2EBrowserSession;
   readonly timeoutMs: number;
 }) =>
-  hostedPaymentPage.hostedPaymentTabId === hostedPaymentPage.checkoutTabId
+  page === checkoutPage
     ? Effect.void
     : Effect.gen(function* () {
         yield* pollUntil(
-          readBrowserTabs(run, session).pipe(
-            Effect.map((tabs) =>
-              tabs.length === 1 &&
-              tabs[0]?.tabId === hostedPaymentPage.checkoutTabId
-                ? tabs[0]
-                : undefined
-            )
-          ),
+          session.use("read browser tabs", async (active) => {
+            const pages = active.context().pages();
+            return pages.length === 1 && pages[0] === checkoutPage
+              ? true
+              : undefined;
+          }),
           {
             intervalMs: workspaceE2EPollIntervalMs.browser,
             label: "returned payment tab to close",
             timeoutMs,
           }
         );
-        yield* switchToBrowserTab(
-          run,
-          session,
-          hostedPaymentPage.checkoutTabId
-        );
+        yield* session.activate(checkoutPage);
       });
+
+const summarizeHostedPaymentSnapshot = (snapshot: string) => {
+  const lines = snapshot
+    .split("\n")
+    .filter((line) =>
+      /\b(?:button|frame|heading|iframe|input|textbox|link)\b/i.test(line)
+    )
+    .slice(0, 80)
+    .map(redactDiagnosticText)
+    .join("\n");
+
+  return lines
+    ? `Nexi HPP snapshot summary:\n${lines}`
+    : "Nexi HPP snapshot summary unavailable";
+};
