@@ -1,10 +1,10 @@
 import { Data, Effect, Match, Predicate, Result } from "effect";
-import {
-  type PaidFulfillmentProgress,
-  WorkspaceReservationRepository,
-} from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { QueueRedelivery } from "@/shared/backend/queue/queue-consumer";
+import {
+  FulfillmentLedger,
+  type PaidFulfillmentProgress,
+} from "./fulfillment-ledger.repository";
 import { WorkspacePaidFulfillmentService } from "./paid-fulfillment.service";
 
 type PaidFulfillmentQueueProgress = Data.TaggedEnum<{
@@ -128,7 +128,7 @@ export const processPaidFulfillmentMessage = Effect.fn(
 
   // An invoice failure leaves the order fulfilled; only a redelivery retries
   // the invoice.
-  const reservations = yield* WorkspaceReservationRepository;
+  const ledger = yield* FulfillmentLedger;
   const progress =
     Predicate.isTagged(failure, "WorkspacePaidFulfillmentError") &&
     failure.failureCode === "invoice_processing_failed"
@@ -136,7 +136,7 @@ export const processPaidFulfillmentMessage = Effect.fn(
           reason: "invoice_processing_failed",
         })
       : describePaidFulfillmentProgress(
-          yield* reservations.findPaidFulfillmentProgress(orderId)
+          yield* ledger.findPaidFulfillmentProgress(orderId)
         );
 
   return yield* Match.value(progress).pipe(

@@ -5,8 +5,8 @@ import { EmailDeliveryIdSchema } from "@deskohub/email";
 import { Effect, Layer } from "effect";
 import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice.service";
 import type { ICampaignDeliveryStatusService } from "@/features/email-campaigns/backend/campaign-delivery-status.service";
-import type { IWorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { CapturePostHogEventInput } from "@/shared/backend/analytics/posthog-event.service";
+import type { IFulfillmentLedger } from "./fulfillment-ledger.repository";
 import type { ResendWebhookRuntimeConfigObj } from "./resend-webhook.config";
 
 let verifiedPayload: unknown;
@@ -145,7 +145,7 @@ const validRawWebhookRequest: RawWebhookRequest = {
 };
 
 interface ProcessWebhookInput {
-  readonly reservations: Partial<WorkspaceReservationRepositoryType>;
+  readonly reservations: Partial<IFulfillmentLedger>;
   readonly config?: ResendWebhookRuntimeConfigObj;
   readonly request?: RawWebhookRequest;
   readonly posthogCapture?: PostHogCapture;
@@ -187,9 +187,7 @@ const processWebhookEffect = async (input: ProcessWebhookInput) => {
   const { ResendWebhookRuntimeConfig } = await import(
     "./resend-webhook.config"
   );
-  const { WorkspaceReservationRepository } = await import(
-    "@/features/reservation/backend/workspace-reservation.repository"
-  );
+  const { FulfillmentLedger } = await import("./fulfillment-ledger.repository");
   const { PostHogEventService } = await import(
     "@/shared/backend/analytics/posthog-event.service"
   );
@@ -213,7 +211,7 @@ const processWebhookEffect = async (input: ProcessWebhookInput) => {
       ResendWebhookService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
-            Layer.mock(WorkspaceReservationRepository, input.reservations),
+            Layer.mock(FulfillmentLedger, input.reservations),
             Layer.mock(PostHogEventService, {
               capture: input.posthogCapture ?? (() => Effect.void),
             }),

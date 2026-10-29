@@ -7,8 +7,8 @@ import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer } from "effect";
 import { env, getAccountingDocumentSnapshotSecret } from "@/env";
 import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice.service";
-import type { IWorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { IWorkspaceReservationService } from "@/features/reservation/backend/workspace-reservation.service";
+import type { IFulfillmentLedger } from "./fulfillment-ledger.repository";
 import type { IWorkspaceReservationEmailService } from "./workspace-reservation-email.service";
 
 const testEmailAddressForCustomer = testEmailAddress("customer");
@@ -39,10 +39,11 @@ const {
 const { WorkspaceReservationRepository } = await import(
   "@/features/reservation/backend/workspace-reservation.repository"
 );
+const {
+  FulfillmentLedger,
+  WorkspaceReservationDeliveryGenerationSupersededError,
+} = await import("./fulfillment-ledger.repository");
 const { WorkspaceReservationStateError } = await import(
-  "@/features/reservation/backend/workspace-reservation.repository"
-);
-const { WorkspaceReservationDeliveryGenerationSupersededError } = await import(
   "@/features/reservation/backend/workspace-reservation.repository"
 );
 const { workspaceReservationIdSchema } = await import(
@@ -118,6 +119,8 @@ describe("WorkspacePaidFulfillmentService production email acceptance", () => {
               noReservationAuthors,
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
+              }),
+              Layer.mock(FulfillmentLedger, {
                 retainActiveCustomerEmailDeliveryLocale: mock(
                   (input: { readonly locale: "en-US" | "cs-CZ" }) =>
                     Effect.succeed(input.locale)
@@ -234,6 +237,8 @@ describe("WorkspacePaidFulfillmentService production email acceptance", () => {
               noReservationAuthors,
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
+              }),
+              Layer.mock(FulfillmentLedger, {
                 retainActiveCustomerEmailDeliveryLocale: mock(
                   (input: { readonly locale: "en-US" | "cs-CZ" }) =>
                     Effect.succeed(input.locale)
@@ -358,6 +363,8 @@ describe("WorkspacePaidFulfillmentService production email acceptance", () => {
               noReservationAuthors,
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
+              }),
+              Layer.mock(FulfillmentLedger, {
                 retainActiveCustomerEmailDeliveryLocale: mock(
                   (input: { readonly locale: "en-US" | "cs-CZ" }) =>
                     Effect.succeed(input.locale)
@@ -465,12 +472,12 @@ describe("WorkspacePaidFulfillmentService production email acceptance", () => {
       return Effect.succeed({ kind: "account", locale } as never);
     });
     const retainInputs: Parameters<
-      IWorkspaceReservationRepository["retainActiveCustomerEmailDeliveryLocale"]
+      IFulfillmentLedger["retainActiveCustomerEmailDeliveryLocale"]
     >[0][] = [];
     const retainActiveCustomerEmailDeliveryLocale = mock(
       (
         input: Parameters<
-          IWorkspaceReservationRepository["retainActiveCustomerEmailDeliveryLocale"]
+          IFulfillmentLedger["retainActiveCustomerEmailDeliveryLocale"]
         >[0]
       ) => {
         retainInputs.push(input);
@@ -519,6 +526,8 @@ describe("WorkspacePaidFulfillmentService production email acceptance", () => {
               noReservationAuthors,
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
+              }),
+              Layer.mock(FulfillmentLedger, {
                 claimPaidFulfillment,
                 retainActiveCustomerEmailDeliveryLocale,
                 markAwaitingCustomerEmailDelivery,
@@ -649,6 +658,8 @@ describe("WorkspacePaidFulfillmentService production email acceptance", () => {
               noReservationAuthors,
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
+              }),
+              Layer.mock(FulfillmentLedger, {
                 retainActiveCustomerEmailDeliveryLocale: mock(
                   (input: { readonly locale: "en-US" | "cs-CZ" }) =>
                     Effect.succeed(input.locale)
@@ -759,6 +770,8 @@ describe("WorkspacePaidFulfillmentService production email acceptance", () => {
               noReservationAuthors,
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
+              }),
+              Layer.mock(FulfillmentLedger, {
                 retainActiveCustomerEmailDeliveryLocale: mock(
                   (input: { readonly locale: "en-US" | "cs-CZ" }) =>
                     Effect.succeed(input.locale)

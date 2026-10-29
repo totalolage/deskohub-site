@@ -1,10 +1,9 @@
 import { Effect, Layer } from "effect";
-import { WorkspaceDatabase } from "@/db/database.service";
 import {
   reconcileStalledPaidFulfillments,
   WorkspacePaidFulfillmentService,
 } from "@/features/checkout/backend/fulfillment";
-import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
+import { FulfillmentLedger } from "@/features/checkout/backend/fulfillment/fulfillment-ledger.repository";
 import { defineWorkspaceCron } from "@/shared/backend/service-route";
 
 export const maxDuration = 300;
@@ -13,9 +12,7 @@ const cronBatchLimit = 25;
 
 const ReconciliationLive = Layer.mergeAll(
   WorkspacePaidFulfillmentService.Live,
-  WorkspaceReservationRepository.Default.pipe(
-    Layer.provide(WorkspaceDatabase.Default)
-  )
+  FulfillmentLedger.Live
 );
 
 /**

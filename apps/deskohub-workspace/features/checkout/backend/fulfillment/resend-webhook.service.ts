@@ -13,10 +13,7 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice.service";
 import { CampaignDeliveryStatusService } from "@/features/email-campaigns/backend/campaign-delivery-status.service";
 import { campaignEmailCategory } from "@/features/email-campaigns/campaign-email-message";
-import {
-  type WorkspaceReservation,
-  WorkspaceReservationRepository,
-} from "@/features/reservation/backend/workspace-reservation.repository";
+import type { WorkspaceReservation } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
@@ -29,11 +26,14 @@ import {
   temporalInstantToIsoString,
 } from "@/shared/utils/temporal";
 import { captureReservationFulfilled } from "../analytics/posthog-lifecycle-events";
+import {
+  FulfillmentLedger,
+  fulfillmentEmailFailureCode,
+} from "./fulfillment-ledger.repository";
 import { ResendWebhookRuntimeConfig } from "./resend-webhook.config";
 
 const workspaceFulfillmentSource = "workspace-paid-fulfillment";
 const customerAccessCategory = "workspace-paid-reservation-access";
-const fulfillmentEmailFailureCode = "fulfillment_email_failed";
 
 const ResendWebhookEventIdSchema = Schema.NonEmptyString.pipe(
   Schema.brand("ResendWebhookEventId")
@@ -183,7 +183,7 @@ export class ResendWebhookService extends Context.Service<
     Layer.provide(PostHogEventService.Live),
     Layer.provide(ReservationInvoiceService.Live),
     Layer.provide(CampaignDeliveryStatusService.Default),
-    Layer.provide(WorkspaceReservationRepository.Default),
+    Layer.provide(FulfillmentLedger.Default),
     Layer.provide(WorkspaceDatabase.Default)
   );
 }
@@ -209,7 +209,7 @@ function makeResendWebhookServiceLayer(service: typeof ResendWebhookService) {
   return Layer.effect(
     service,
     Effect.gen(function* () {
-      const reservations = yield* WorkspaceReservationRepository;
+      const ledger = yield* FulfillmentLedger;
       const config = yield* ResendWebhookRuntimeConfig;
       const posthogEvents = yield* PostHogEventService;
       const reservationInvoices = yield* ReservationInvoiceService;
@@ -354,7 +354,7 @@ function makeResendWebhookServiceLayer(service: typeof ResendWebhookService) {
             isCustomerAccessDelivery &&
             tags.get("deploymentEnvironment") === config.deploymentEnvironment;
 
-          const reservation = yield* reservations
+          const reservation = yield* ledger
             .findByActiveCustomerEmailDeliveryId(resendEmailId)
             .pipe(
               Effect.mapError(
@@ -449,7 +449,7 @@ function makeResendWebhookServiceLayer(service: typeof ResendWebhookService) {
             }
 
             const fulfilledAt = event.createdAt;
-            const fulfilledReservation = yield* reservations
+            const fulfilledReservation = yield* ledger
               .markCustomerEmailDeliveryFulfilled({
                 customerEmailDeliveryId: resendEmailId,
                 fulfilledAt,
@@ -495,7 +495,7 @@ function makeResendWebhookServiceLayer(service: typeof ResendWebhookService) {
             } satisfies ResendWebhookProcessingResult;
           }
 
-          const failedReservation = yield* reservations
+          const failedReservation = yield* ledger
             .markCustomerEmailDeliveryFailed({
               customerEmailDeliveryId: resendEmailId,
               failureCode: fulfillmentEmailFailureCode,
