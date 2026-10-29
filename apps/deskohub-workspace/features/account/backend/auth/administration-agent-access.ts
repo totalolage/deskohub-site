@@ -1,7 +1,7 @@
 import { and, arrayContains, eq, notExists, type SQL, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { Effect } from "effect";
-import { WorkspaceDatabase } from "@/db/database.service";
+import { WorkspaceDatabase, WorkspaceTransaction } from "@/db/database.service";
 import {
   authOauthAccessToken,
   authOauthConsent,
@@ -11,9 +11,6 @@ import { administrationAgentScope } from "../../agent-scopes";
 import type { CustomerAccountId } from "../../customer-account";
 
 const administration = [administrationAgentScope];
-
-type Database = WorkspaceDatabase["Service"]["db"];
-type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 /** The columns both OAuth token tables share. */
 type TokenColumns = {
@@ -44,20 +41,21 @@ const outlivesAdministrationConsent = (columns: TokenColumns) =>
  * Deletes the access and refresh tokens `matching` selects. A refresh
  * token's access tokens go with it (ON DELETE CASCADE).
  */
-const deleteTokens = (
-  tx: Transaction,
+const deleteTokens = Effect.fn("CustomerAgent.deleteTokens")(function* (
   matching: (columns: TokenColumns) => SQL | undefined
-) =>
-  Effect.all({
-    refreshTokens: tx
+) {
+  const { db } = yield* WorkspaceTransaction;
+  return yield* Effect.all({
+    refreshTokens: db
       .delete(authOauthRefreshToken)
       .where(matching(authOauthRefreshToken))
       .returning({ id: authOauthRefreshToken.id }),
-    accessTokens: tx
+    accessTokens: db
       .delete(authOauthAccessToken)
       .where(matching(authOauthAccessToken))
       .returning({ id: authOauthAccessToken.id }),
   });
+});
 
 /**
  * Takes the administration away from every AI agent of an account that
@@ -76,10 +74,10 @@ const deleteTokens = (
 export const revokeAdministrationAgentAccess = Effect.fn(
   "CustomerAgent.revokeAdministrationAccess"
 )(function* (accountId: CustomerAccountId) {
-  const { db } = yield* WorkspaceDatabase;
-  return yield* db.transaction((tx) =>
+  const { db, transaction } = yield* WorkspaceDatabase;
+  return yield* transaction(
     Effect.all({
-      consents: tx
+      consents: db
         .delete(authOauthConsent)
         .where(
           and(
@@ -88,7 +86,7 @@ export const revokeAdministrationAgentAccess = Effect.fn(
           )
         )
         .returning({ id: authOauthConsent.id }),
-      tokens: deleteTokens(tx, carriesAdministration(accountId)),
+      tokens: deleteTokens(carriesAdministration(accountId)),
     })
   );
 });
@@ -110,9 +108,9 @@ export const revokeUnconsentedAdministrationTokens = Effect.fn(
   readonly accountId: CustomerAccountId;
   readonly clientId: string;
 }) {
-  const { db } = yield* WorkspaceDatabase;
-  return yield* db.transaction((tx) =>
-    deleteTokens(tx, (columns) =>
+  const { transaction } = yield* WorkspaceDatabase;
+  return yield* transaction(
+    deleteTokens((columns) =>
       and(
         carriesAdministration(accountId)(columns),
         eq(columns.clientId, clientId),

@@ -33,6 +33,7 @@ import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace
 import {
   type AdministrationCustomerExportInput,
   type AdministrationCustomerListInput,
+  type AdministrationReservationExportInput,
   AdministrationService,
 } from "./administration.service";
 import { PaymentAdministrationServiceMock } from "./payment-administration.service.mock";
@@ -556,7 +557,8 @@ describe.skipIf(!testDatabase)(
         expect(listInputs).toEqual([
           {
             order: "startDateAscending",
-            startsAtOrAfter: "2026-09-30T22:00:00Z",
+            // Early setup holds a midnight booking from the date before.
+            startsAtOrAfter: "2026-09-30T21:45:00Z",
             startsBefore: "2026-10-31T23:00:00Z",
           },
         ]);
@@ -1265,6 +1267,95 @@ describe.skipIf(!testDatabase)(
         expect(
           exported.map(({ dotyposReservationId }) => dotyposReservationId)
         ).toEqual(expected);
+      });
+
+      test("orders an early-setup meeting room by its booked start", async () => {
+        const customerId = makeCustomerId("early-setup-order");
+        const reservations = [
+          // Dotypos holds the early-setup room from 23:45 for a midnight
+          // booking, ahead of the bookings starting before midnight.
+          {
+            label: "early-setup-order-setup",
+            details: { kind: "meeting-room", earlySetup: true },
+            heldFrom: "2026-10-09T21:45:00Z",
+          },
+          {
+            label: "early-setup-order-unflagged",
+            details: { kind: "meeting-room" },
+            heldFrom: "2026-10-09T21:50:00Z",
+          },
+          {
+            label: "early-setup-order-cowork",
+            details: openSpaceDetails,
+            heldFrom: "2026-10-09T21:55:00Z",
+          },
+        ] as const;
+        for (const { label, details } of reservations) {
+          const { id } = await Effect.runPromise(
+            workspaceFixtures(testDatabase.db).reservation({
+              stage: {
+                reservation: "confirmed",
+                payment: "paid",
+                fulfillment: "fulfilled",
+              },
+              customer: customerId,
+              details,
+              overrides: { dotyposReservationId: bookingId(label) },
+            })
+          );
+          reservationIds.push(id);
+        }
+        const bookings = reservations.map(({ label, heldFrom }) => ({
+          _branchId: "branch",
+          _cloudId: "cloud",
+          _customerId: customerId,
+          endDate: "2026-10-10T02:00:00Z",
+          id: bookingId(label),
+          seats: "1",
+          startDate: heldFrom,
+          status: "CONFIRMED" as const,
+        }));
+        const exportOrder = (
+          input: Pick<
+            AdministrationReservationExportInput,
+            "direction" | "from" | "to"
+          >
+        ) =>
+          run(
+            (administration) =>
+              administration.exportReservations({
+                ...input,
+                customerId,
+                sort: "date",
+              }),
+            {
+              listReservations: (options) =>
+                Effect.succeed(
+                  options?.order === "startDateDescending"
+                    ? bookings.toReversed()
+                    : bookings
+                ),
+            }
+          ).then((exported) =>
+            exported.map(({ dotyposReservationId }) => dotyposReservationId)
+          );
+        const bookedOrder = [
+          "early-setup-order-unflagged",
+          "early-setup-order-cowork",
+          "early-setup-order-setup",
+        ].map(bookingId);
+
+        expect(await exportOrder({ direction: "asc" })).toEqual(bookedOrder);
+        expect(await exportOrder({ direction: "desc" })).toEqual(
+          bookedOrder.toReversed()
+        );
+        expect(
+          await exportOrder({
+            direction: "asc",
+            from: "2026-10-09",
+            to: "2026-10-10",
+          })
+        ).toEqual(bookedOrder);
       });
     });
   }

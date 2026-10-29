@@ -1,10 +1,8 @@
 import { Effect } from "effect";
 import {
-  type ReservationSelectionSearchParams,
-  setReservationSelectionSearchParams,
-} from "@/features/reservation/reservation-checkout-query";
-import type { ReservationOrderData } from "@/features/reservation/reservation-order";
-import { getShareableReservationStartPath } from "@/features/reservation/routes";
+  getShareableSelectionPath,
+  type ReservationSelection,
+} from "@/features/reservation/selection-path";
 import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/workspace-url.config";
 
 /**
@@ -12,17 +10,9 @@ import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/works
  * locale prefix, for links customers receive outside the app. The selection
  * cannot carry contact details.
  */
-export const getShareableReservationUrl = (
-  kind: ReservationOrderData["kind"],
-  selection: ReservationSelectionSearchParams = {}
-) =>
+export const getShareableReservationUrl = (selection: ReservationSelection) =>
   getWorkspaceRuntimeCallbackOrigin.pipe(
-    Effect.map((origin) => {
-      const searchParams = new URLSearchParams();
-      setReservationSelectionSearchParams(searchParams, selection);
-      return new URL(
-        getShareableReservationStartPath(kind, searchParams),
-        origin
-      ).toString();
-    })
+    Effect.map((origin) =>
+      new URL(getShareableSelectionPath(selection), origin).toString()
+    )
   );

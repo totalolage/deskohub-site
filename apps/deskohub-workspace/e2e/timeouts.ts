@@ -76,6 +76,9 @@ export const workspaceE2ETimeouts = {
   // the new-locale document, so whatever the old page renders in between
   // stays on screen long enough to observe.
   localeSwitchHeldResponse: 3 * SECOND,
+  // Reading a failed page's state for its diagnostics. A wedged page then
+  // reports its state as unavailable instead of hiding the failure.
+  pageDiagnosticsRead: 5 * SECOND,
   paymentTerminalCase: 4 * MINUTE,
   providerTransition: 90 * SECOND,
   // Edits, reloads, and restoration checks on one reservation form, with no

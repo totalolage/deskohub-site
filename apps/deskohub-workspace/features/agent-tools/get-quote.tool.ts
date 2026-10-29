@@ -47,18 +47,15 @@ export const getQuoteTool = defineAgentTool({
 });
 
 const priceQuoteSelection = ({
-  input,
   selection,
 }: {
-  readonly input: GetQuoteInput;
   readonly selection: QuoteSelection;
 }) =>
   Effect.all(
     {
       advertised: buildAdvertisedPrice(selection.request),
       reservationUrl: getShareableReservationUrl(
-        input.family,
-        selection.reservationSearchParams
+        selection.reservationSelection
       ),
     },
     { concurrency: "inherit" }

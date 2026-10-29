@@ -3,8 +3,18 @@ import "@/shared/testing/workspace-test-env";
 import { afterAll, describe, expect, test } from "bun:test";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { GoogleCalendarServiceMock } from "@deskohub/google-calendar/backend/service.mock";
-import { AdministrationDiscountCodeCreateInput } from "@deskohub/workspace-admin-api";
-import { Effect, Layer, Schema } from "effect";
+import {
+  AdministrationCustomerDiscountCodeCreateInput,
+  AdministrationCustomerVoucherCreateInput,
+  AdministrationDiscountCodeCreateInput,
+  AdministrationDiscountCodeUpdateInput,
+  AdministrationDiscountDefinitionInput,
+  AdministrationDiscountUpdateInput,
+  AdministrationDotyposCustomerId,
+  AdministrationVoucherCreateInput,
+  AdministrationVoucherUpdateInput,
+} from "@deskohub/workspace-admin-api";
+import { Effect, Layer, Option, Schema } from "effect";
 import { storedDiscountIdSchema } from "@/features/discounts/persistence-contracts";
 import {
   CalendarResourceConfig,
@@ -21,6 +31,7 @@ describe.skipIf(!testDatabase)(
   () => {
     if (!testDatabase) return;
     const labels: string[] = [];
+    const codes: string[] = [];
 
     afterAll(async () => {
       const discountIds =
@@ -34,6 +45,10 @@ describe.skipIf(!testDatabase)(
         [labels]
       );
       await testDatabase.pool.query(
+        "delete from promotion_codes where code = any($1)",
+        [codes]
+      );
+      await testDatabase.pool.query(
         "delete from discounts where labels->>'en-US' = any($1)",
         [labels]
       );
@@ -42,7 +57,8 @@ describe.skipIf(!testDatabase)(
     const run = <A, E>(
       operation: (
         administration: typeof DiscountAdministration.Service
-      ) => Effect.Effect<A, E>
+      ) => Effect.Effect<A, E>,
+      dotypos = DotyposServiceMock({})
     ) =>
       Effect.runPromise(
         DiscountAdministration.pipe(
@@ -53,7 +69,7 @@ describe.skipIf(!testDatabase)(
                 Layer.mergeAll(
                   testDatabase.layer,
                   GoogleCalendarServiceMock({}),
-                  DotyposServiceMock({}),
+                  dotypos,
                   Layer.succeed(CalendarResourceConfig, {
                     salesCalendarId: salesCalendarIdSchema.make("sales"),
                     workspaceLimitationsCalendarId:
@@ -144,6 +160,193 @@ describe.skipIf(!testDatabase)(
         },
       });
       expect(await countDiscounts(label)).toBe(1);
+    });
+
+    test("runs every mutation on the Workspace transaction scope", async () => {
+      const suffix = uniqueSuffix();
+      const label = `Synthetic scope ${suffix}`;
+      const [code, customerCode, voucherCode, customerVoucherCode] = [
+        "CODE",
+        "CUSTOMER_CODE",
+        "VOUCHER",
+        "CUSTOMER_VOUCHER",
+      ].map((kind) => `SYNTHETIC_${kind}_${suffix}`) as [
+        string,
+        string,
+        string,
+        string,
+      ];
+      labels.push(label);
+      codes.push(code, customerCode, voucherCode, customerVoucherCode);
+      const [first, second] = ["first", "second"].map((name) =>
+        Schema.decodeUnknownSync(AdministrationDotyposCustomerId)(
+          `synthetic-${name}-${suffix}`
+        )
+      ) as [
+        typeof AdministrationDotyposCustomerId.Type,
+        typeof AdministrationDotyposCustomerId.Type,
+      ];
+      const dotypos = DotyposServiceMock({
+        getCustomer: (id) =>
+          Effect.succeed(Option.some({ id, deleted: false })),
+      });
+      const definition = (basisPoints: number) => ({
+        labels: { "cs-CZ": label, "en-US": label },
+        adjustment: { kind: "percentage", basisPoints },
+        products: [{ kind: "cowork" }],
+      });
+      const configuration = (value: string) => ({
+        code: value,
+        enabled: true,
+        validFrom: null,
+        validUntil: null,
+      });
+      const credit = (value: number) => ({
+        value,
+        exponent: 2,
+        currency: "CZK",
+      });
+      const audience = (detail: {
+        readonly customers: readonly { readonly customerId: string }[];
+      }) => detail.customers.map(({ customerId }) => customerId);
+
+      const outcome = await run(
+        Effect.fn(function* (administration) {
+          const discountId = yield* administration.createDiscount(
+            Schema.decodeUnknownSync(AdministrationDiscountDefinitionInput)(
+              definition(1000)
+            )
+          );
+          yield* administration.updateDiscount(
+            Schema.decodeUnknownSync(AdministrationDiscountUpdateInput)({
+              id: discountId,
+              ...definition(1500),
+            })
+          );
+          const { discounts } = yield* administration.loadCodesPage();
+          const updatedDiscount = discounts.find(({ id }) => id === discountId);
+          const codeId = yield* administration.createCode(
+            Schema.decodeUnknownSync(AdministrationDiscountCodeCreateInput)({
+              code: { ...configuration(code), maxUses: null },
+              discount: { kind: "existing", discountId },
+            })
+          );
+          const customerCodeId = yield* administration.createCustomerCode(
+            Schema.decodeUnknownSync(
+              AdministrationCustomerDiscountCodeCreateInput
+            )({
+              customerId: first,
+              code: { ...configuration(customerCode), maxUses: null },
+              discount: { kind: "existing", discountId },
+            })
+          );
+          yield* administration.updateCode(
+            Schema.decodeUnknownSync(AdministrationDiscountCodeUpdateInput)({
+              id: codeId,
+              discountId,
+              ...configuration(code),
+              maxUses: 3,
+            })
+          );
+          yield* administration.addCodeCustomer({
+            codeId: customerCodeId,
+            customerId: second,
+          });
+          yield* administration.removeCodeCustomer({
+            codeId: customerCodeId,
+            customerId: first,
+          });
+          const narrowedCode = yield* administration.loadCodeDetail({
+            codeId: customerCodeId,
+          });
+          yield* administration.makeCodeUnrestricted({
+            codeId: customerCodeId,
+          });
+          const unrestrictedCode = yield* administration.loadCodeDetail({
+            codeId: customerCodeId,
+          });
+          const updatedCode = yield* administration.loadCodeDetail({ codeId });
+          yield* administration.deleteCode({ id: codeId });
+          yield* administration.deleteCode({ id: customerCodeId });
+
+          const voucherId = yield* administration.createVoucher(
+            Schema.decodeUnknownSync(AdministrationVoucherCreateInput)({
+              ...configuration(voucherCode),
+              credit: credit(50_000),
+            })
+          );
+          const customerVoucherId = yield* administration.createCustomerVoucher(
+            Schema.decodeUnknownSync(AdministrationCustomerVoucherCreateInput)({
+              customerId: first,
+              ...configuration(customerVoucherCode),
+              credit: credit(20_000),
+            })
+          );
+          yield* administration.updateVoucher(
+            Schema.decodeUnknownSync(AdministrationVoucherUpdateInput)({
+              id: voucherId,
+              ...configuration(voucherCode),
+              credit: credit(60_000),
+            })
+          );
+          yield* administration.addVoucherCustomer({
+            voucherId: customerVoucherId,
+            customerId: second,
+          });
+          yield* administration.removeVoucherCustomer({
+            voucherId: customerVoucherId,
+            customerId: first,
+          });
+          const narrowedVoucher = yield* administration.loadVoucherDetail({
+            voucherId: customerVoucherId,
+          });
+          yield* administration.makeVoucherUnrestricted({
+            voucherId: customerVoucherId,
+          });
+          const unrestrictedVoucher = yield* administration.loadVoucherDetail({
+            voucherId: customerVoucherId,
+          });
+          const updatedVoucher = yield* administration.loadVoucherDetail({
+            voucherId,
+          });
+          yield* administration.deleteVoucher({ id: voucherId });
+          yield* administration.deleteVoucher({ id: customerVoucherId });
+          yield* administration.deleteDiscount({ id: discountId });
+
+          return {
+            narrowedCode: audience(narrowedCode),
+            unrestrictedCode: audience(unrestrictedCode),
+            updatedAdjustment: updatedDiscount?.adjustment,
+            updatedCodeMaxUses: updatedCode.code.maxUses,
+            narrowedVoucher: audience(narrowedVoucher),
+            unrestrictedVoucher: audience(unrestrictedVoucher),
+            updatedVoucherCredit: updatedVoucher.voucher.issuedCredit.value,
+          };
+        }),
+        dotypos
+      );
+
+      expect(outcome).toMatchObject({
+        _tag: "Success",
+        success: {
+          narrowedCode: [second],
+          unrestrictedCode: [],
+          updatedAdjustment: { kind: "percentage", basisPoints: 1500 },
+          updatedCodeMaxUses: 3,
+          narrowedVoucher: [second],
+          unrestrictedVoucher: [],
+          updatedVoucherCredit: 60_000,
+        },
+      });
+      expect(await countDiscounts(label)).toBe(0);
+      expect(
+        (
+          await testDatabase.pool.query(
+            "select 1 from promotion_codes where code = any($1)",
+            [codes]
+          )
+        ).rowCount
+      ).toBe(0);
     });
   }
 );

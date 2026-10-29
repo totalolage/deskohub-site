@@ -9,13 +9,11 @@ import { preloadPageAvailability } from "@/features/reservation/backend/workspac
 import { createReservationPage } from "@/features/reservation/components/create-reservation-page.server";
 import { getOfficeSeatAdvertisedPriceRequests } from "@/features/reservation/office-advertised-price";
 import {
+  getOfficeReservationDefaultValues,
   getOfficeReservationEndsOn,
   type NormalizedOfficeReservationOrder,
 } from "@/features/reservation/office-reservation";
-import {
-  getOfficeReservationDefaultValuesFromSearchParams,
-  getOfficeRestoredReservationValues,
-} from "@/features/reservation/office-reservation-checkout-query";
+import { officeSelectionLink } from "@/features/reservation/office-selection-link";
 import type { ReservationCheckoutContact } from "@/features/reservation/reservation-checkout-contact";
 import { getReservationCustomerQueryMode } from "@/features/reservation/reservation-checkout-query";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
@@ -69,14 +67,15 @@ export async function renderOfficeReservationContent({
 }) {
   const today = decodePlainDate(getCurrentWorkspaceDate().toString());
   const restoredInitialValues = initialReservation
-    ? getOfficeRestoredReservationValues(initialReservation, searchParams, {
-        seatCapacity,
-        today,
-      })
+    ? officeSelectionLink.restore(
+        getOfficeReservationDefaultValues(initialReservation),
+        searchParams,
+        { seatCapacity, today }
+      )
     : undefined;
   const restoredOrQueryValues =
     restoredInitialValues ??
-    getOfficeReservationDefaultValuesFromSearchParams(searchParams, {
+    officeSelectionLink.read(searchParams, {
       lastReservation: getCheckoutAccountLastReservation(checkoutAccount),
       seatCapacity,
       today,

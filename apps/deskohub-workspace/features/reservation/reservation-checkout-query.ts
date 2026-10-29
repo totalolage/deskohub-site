@@ -1,14 +1,11 @@
 import { decodeStandardSchema } from "@deskohub/standard-schema";
 import { Predicate, Record, Schema } from "effect";
-import type { Locale } from "@/features/i18n";
 import {
   reservationCustomerEmailSchema,
   reservationCustomerNameSchema,
   reservationCustomerPhoneSchema,
 } from "@/features/reservation/reservation-contact";
 import type { ReservationCustomerMode } from "@/features/reservation/reservation-existing-customer";
-import type { ReservationOrderData } from "@/features/reservation/reservation-order";
-import { getReservationStartPath } from "@/features/reservation/routes";
 import { getSearchParam, type SupportedSearchParams } from "@/shared/utils";
 
 const queryCustomerSchemas = {
@@ -42,15 +39,7 @@ type ReservationContactQueryParam =
   | keyof typeof queryCustomerSchemas
   | typeof reservationCustomerQueryParam;
 
-/**
- * Whether a URL names any of a reservation family's selection parameters.
- *
- * The Pay page links back to the reservation page with the signed
- * restoration token alone, so selection parameters beside that token are the
- * customer's edits after returning: they replace the restored selection,
- * while the restoration keeps the checkout, its hold replacement, the contact
- * details, and the discount intent.
- */
+/** Whether a URL names any of the given selection parameters. */
 export const hasReservationSelectionSearchParams = (
   searchParams: SupportedSearchParams,
   selectionParams: readonly string[]
@@ -71,17 +60,6 @@ export const setReservationSelectionSearchParams = (
     if (value === undefined) searchParams.delete(name);
     else searchParams.set(name, value);
   }
-};
-
-/** A reservation page path in the app that opens with the selection prefilled. */
-export const getReservationSelectionPath = (
-  locale: Locale,
-  kind: ReservationOrderData["kind"],
-  selection: ReservationSelectionSearchParams = {}
-) => {
-  const searchParams = new URLSearchParams();
-  setReservationSelectionSearchParams(searchParams, selection);
-  return getReservationStartPath(locale, kind, searchParams);
 };
 
 export const decodeReservationCheckoutCustomer = (

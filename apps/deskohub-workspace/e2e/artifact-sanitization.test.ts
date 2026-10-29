@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { sanitizeHarArtifact } from "./browser-session";
+import { sanitizeHarArtifact } from "./artifact-sanitization";
 import { addRedaction } from "./redaction";
 
 test("keeps a sanitized HAR valid JSON when a short value is redacted", () => {

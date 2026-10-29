@@ -2,7 +2,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import { Effect, type Schema } from "effect";
 import { m } from "@/features/i18n";
-import { getMeetingRoomReservationDefaultValuesFromSearchParams } from "@/features/reservation/meeting-room-reservation-checkout-query";
+import { meetingRoomSelectionLink } from "@/features/reservation/meeting-room-selection-link";
 import type { CheckAvailabilityResult } from "./check-availability.schema";
 
 const {
@@ -145,9 +145,9 @@ describe("check_availability", () => {
       reservation_url: `http://deskohub.test/reservation/meeting-room?startDateTime=${today}T00%3A00&duration=day%3A1`,
     });
     expect(
-      getMeetingRoomReservationDefaultValuesFromSearchParams(
+      meetingRoomSelectionLink.read(
         new URL(result.reservation_url).searchParams,
-        now
+        { now }
       )
     ).toMatchObject({ duration: "day:1", startDateTime: `${today}T00:00` });
   });

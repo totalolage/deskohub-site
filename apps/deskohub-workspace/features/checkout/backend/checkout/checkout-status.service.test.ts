@@ -670,7 +670,16 @@ describe("CheckoutStatusService", () => {
     expect(status.table?.name).not.toContain("Monitored sentinel");
   });
 
-  test("reconstructs meeting-room timing from Dotypos", async () => {
+  const getMeetingRoomStatus = async ({
+    reservationDetails,
+    startDate,
+  }: {
+    readonly reservationDetails: {
+      readonly kind: "meeting-room";
+      readonly earlySetup?: boolean;
+    };
+    readonly startDate: string;
+  }) => {
     const { CheckoutStatusService } = await import("./checkout-status.service");
     const { ProviderPaymentFinalizationService } = await import(
       "../payment/provider-payment-finalization.service"
@@ -686,7 +695,7 @@ describe("CheckoutStatusService", () => {
       findById: mock(() =>
         Effect.succeed(
           makeReservation({
-            reservationDetails: { kind: "meeting-room" },
+            reservationDetails,
             productTier: null,
             productCoffee: false,
             productMonitorOption: null,
@@ -710,7 +719,7 @@ describe("CheckoutStatusService", () => {
           id: "dotypos-reservation-id",
           _customerId: "customer-id",
           _tableId: "meeting-room-table",
-          startDate: "2026-06-20T07:00:00.000Z",
+          startDate,
           endDate: "2026-06-20T11:00:00.000Z",
           seats: "12",
           status: "CONFIRMED",
@@ -731,7 +740,7 @@ describe("CheckoutStatusService", () => {
       ),
     });
 
-    const status = await Effect.gen(function* () {
+    return await Effect.gen(function* () {
       const service = yield* CheckoutStatusService;
       return yield* service.getStatus({
         orderId: "reservation-provider-return",
@@ -757,6 +766,13 @@ describe("CheckoutStatusService", () => {
       ),
       Effect.runPromise
     );
+  };
+
+  test("reconstructs meeting-room timing from Dotypos", async () => {
+    const status = await getMeetingRoomStatus({
+      reservationDetails: { kind: "meeting-room" },
+      startDate: "2026-06-20T07:00:00.000Z",
+    });
 
     expect(status).toMatchObject({
       kind: "meeting-room",
@@ -777,6 +793,19 @@ describe("CheckoutStatusService", () => {
       "2026-06-20T11:00:00Z"
     );
     expect(JSON.stringify(status)).not.toContain("customer-access-code");
+  });
+
+  test("reports the booked time of an early-setup meeting room", async () => {
+    const status = await getMeetingRoomStatus({
+      reservationDetails: { kind: "meeting-room", earlySetup: true },
+      startDate: "2026-06-20T06:45:00.000Z",
+    });
+
+    expect(status.kind).toBe("meeting-room");
+    const summary = status.kind === "meeting-room" ? status.summary : undefined;
+    expect(summary?.reservedFrom.toString()).toBe("2026-06-20T07:00:00Z");
+    expect(summary?.reservedUntil.toString()).toBe("2026-06-20T11:00:00Z");
+    expect(summary?.earlySetup).toBe(true);
   });
 
   test.each([
@@ -1203,7 +1232,11 @@ describe("CheckoutStatusService", () => {
     // amount never reaches the page.
     expect(getReservationWithoutCustomer).toHaveBeenCalledTimes(1);
     expect(status).toMatchObject({
-      retrySearchParams: { entryTier: "reserved-desk", date: "2026-06-20" },
+      retrySelection: {
+        kind: "cowork",
+        entryTier: "reserved-desk",
+        date: "2026-06-20",
+      },
     });
   });
 
@@ -1394,10 +1427,11 @@ describe("CheckoutStatusService retry selection", () => {
 
       expect(result.status).toBe(status);
       expect(result).toMatchObject({
-        retrySearchParams: {
+        retrySelection: {
+          kind: "cowork",
           entryTier: "reserved-desk",
           date: "2099-06-12",
-          coffee: "true",
+          coffee: true,
           monitorOption: "2x27-qhd",
         },
       });
@@ -1428,7 +1462,8 @@ describe("CheckoutStatusService retry selection", () => {
     });
 
     expect(result).toMatchObject({
-      retrySearchParams: {
+      retrySelection: {
+        kind: "meeting-room",
         startDateTime: "2099-08-13T14:00",
         duration: "hour:4",
       },
@@ -1436,8 +1471,8 @@ describe("CheckoutStatusService retry selection", () => {
   });
 
   test.each([
-    ["readable", "3", "3"],
-    ["unreadable", "abc", "2"],
+    ["readable", "3", 3],
+    ["unreadable", "abc", 2],
   ] as const)(
     "rebuilds the booked office start date, day count, and seats with %s Dotypos seats",
     async (_readability, dotyposSeats, expectedSeats) => {
@@ -1461,9 +1496,10 @@ describe("CheckoutStatusService retry selection", () => {
       });
 
       expect(result).toMatchObject({
-        retrySearchParams: {
+        retrySelection: {
+          kind: "office",
           startsOn: "2099-06-20",
-          dayCount: "3",
+          dayCount: 3,
           seats: expectedSeats,
         },
       });
@@ -1479,7 +1515,7 @@ describe("CheckoutStatusService retry selection", () => {
     });
 
     expect(result.status).toBe("payment_failed");
-    expect(result).not.toHaveProperty("retrySearchParams");
+    expect(result).not.toHaveProperty("retrySelection");
   });
 
   test("renders a retry status without a selection when Dotypos doesn't answer in time", async () => {
@@ -1492,7 +1528,7 @@ describe("CheckoutStatusService retry selection", () => {
     });
 
     expect(result.status).toBe("cancelled");
-    expect(result).not.toHaveProperty("retrySearchParams");
+    expect(result).not.toHaveProperty("retrySelection");
   });
 
   test("offers no retry once a late payment for the expired checkout takes over", async () => {
@@ -1506,7 +1542,7 @@ describe("CheckoutStatusService retry selection", () => {
     });
 
     expect(result.status).toBe("late_payment_refund");
-    expect(result).not.toHaveProperty("retrySearchParams");
+    expect(result).not.toHaveProperty("retrySelection");
   });
 
   test("never reads the reservation for a payment that is still pending", async () => {
@@ -1516,7 +1552,7 @@ describe("CheckoutStatusService retry selection", () => {
       dotypos,
     });
 
-    expect(result).not.toHaveProperty("retrySearchParams");
+    expect(result).not.toHaveProperty("retrySelection");
     // Only the summary reconstruction reads it.
     expect(dotypos.getReservationWithoutCustomer).toHaveBeenCalledTimes(1);
   });

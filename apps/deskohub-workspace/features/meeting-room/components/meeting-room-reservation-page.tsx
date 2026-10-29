@@ -7,11 +7,11 @@ import { isRememberedMeetingRoomReservationAvailable } from "@/features/reservat
 import { preloadPageAvailability } from "@/features/reservation/backend/workspace-availability-loader";
 import { createReservationPage } from "@/features/reservation/components/create-reservation-page.server";
 import { getMeetingRoomDurationAdvertisedPriceRequests } from "@/features/reservation/meeting-room-advertised-price";
-import type { NormalizedMeetingRoomReservationOrder } from "@/features/reservation/meeting-room-reservation";
 import {
-  getMeetingRoomReservationDefaultValuesFromSearchParams,
-  getMeetingRoomRestoredReservationValues,
-} from "@/features/reservation/meeting-room-reservation-checkout-query";
+  getMeetingRoomReservationDefaultValues,
+  type NormalizedMeetingRoomReservationOrder,
+} from "@/features/reservation/meeting-room-reservation";
+import { meetingRoomSelectionLink } from "@/features/reservation/meeting-room-selection-link";
 import type { ReservationCheckoutContact } from "@/features/reservation/reservation-checkout-contact";
 import { getReservationCustomerQueryMode } from "@/features/reservation/reservation-checkout-query";
 import {
@@ -45,16 +45,12 @@ const getMeetingRoomQueryValues = async (
   searchParams: SearchParamsRecord,
   lastReservation: CustomerLastReservationForKind<"meeting-room"> | undefined
 ) => {
-  const queryValues =
-    getMeetingRoomReservationDefaultValuesFromSearchParams(searchParams);
+  const queryValues = meetingRoomSelectionLink.read(searchParams);
   if (!lastReservation) return queryValues;
 
-  const rememberedValues =
-    getMeetingRoomReservationDefaultValuesFromSearchParams(
-      searchParams,
-      undefined,
-      lastReservation
-    );
+  const rememberedValues = meetingRoomSelectionLink.read(searchParams, {
+    lastReservation,
+  });
   if (rememberedValues.duration === queryValues.duration) return queryValues;
 
   return (await isRememberedMeetingRoomReservationAvailable(rememberedValues))
@@ -82,7 +78,10 @@ export async function renderMeetingRoomReservationContent({
   readonly submittedCode?: CanonicalPromotionCode;
 }) {
   const restoredInitialValues = initialReservation
-    ? getMeetingRoomRestoredReservationValues(initialReservation, searchParams)
+    ? meetingRoomSelectionLink.restore(
+        getMeetingRoomReservationDefaultValues(initialReservation),
+        searchParams
+      )
     : undefined;
   // The presence of a signed reservation decides the restored path even when
   // it has ended: the fallback must not consume public query values.

@@ -2,9 +2,6 @@ import "@/shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
-import { getCoworkReservationSelectionSearchParams } from "./cowork-reservation-checkout-query";
-import { getMeetingRoomReservationSelectionSearchParams } from "./meeting-room-reservation-checkout-query";
-import { getOfficeReservationSelectionSearchParams } from "./office-reservation-checkout-query";
 import {
   getReservationCustomerQueryMode,
   setReservationSelectionSearchParams,
@@ -57,44 +54,13 @@ describe("getReservationCustomerQueryMode", () => {
   });
 });
 
-describe("reservation selection search parameters", () => {
-  const contactParams = ["name", "email", "phone", "customer"];
+describe("setReservationSelectionSearchParams", () => {
   const contact = {
     name: "Ada Lovelace",
     email: testEmailAddress("ada"),
     phone: "+420777777777",
     customer: "contact",
   };
-
-  test("never carry contact details or the customer mode", () => {
-    // Writers take the whole form values, contact included, in real use.
-    const selections = [
-      getCoworkReservationSelectionSearchParams({
-        entryTier: "reserved-desk",
-        date: "2099-06-10",
-        coffee: true,
-        monitorOption: "2x27-qhd",
-        ...contact,
-      }),
-      getMeetingRoomReservationSelectionSearchParams({
-        startDateTime: "2099-08-12T09:00",
-        duration: "hour:1",
-        ...contact,
-      }),
-      getOfficeReservationSelectionSearchParams({
-        startsOn: "2099-06-12",
-        dayCount: 2,
-        seats: 3,
-        ...contact,
-      }),
-    ];
-
-    for (const selection of selections) {
-      for (const param of contactParams) {
-        expect(Object.keys(selection)).not.toContain(param);
-      }
-    }
-  });
 
   test("leave the parameters outside the selection as they arrived", () => {
     const searchParams = new URLSearchParams({
