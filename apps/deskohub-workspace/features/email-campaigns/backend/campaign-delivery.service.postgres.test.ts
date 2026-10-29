@@ -9,11 +9,14 @@ import {
   DotyposUnavailable,
 } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
+import { decodeStandardSchema } from "@deskohub/standard-schema";
 import { resendSimulatorAddress, testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { customerMarketingConsents } from "@/db/schema";
+import { campaignEmailKind } from "../campaign-email-message";
 import type { CampaignId } from "../campaign-identifiers";
+import type { CampaignDeliveryEvent } from "./campaign-delivery-status.service";
 import {
   deleteAutomatedCampaigns,
   deleteCampaigns,
@@ -273,7 +276,7 @@ describe.skipIf(!testDatabase)(
       );
 
     const recordWebhook = (event: {
-      readonly type: string;
+      readonly type: Option.Option.Value<CampaignDeliveryEvent["type"]>;
       readonly providerMessageId: string;
       readonly sendId: string;
       readonly dotyposCustomerId: string;
@@ -282,12 +285,15 @@ describe.skipIf(!testDatabase)(
         Effect.gen(function* () {
           const statuses = yield* CampaignDeliveryStatusService;
           return yield* statuses.record({
-            type: event.type,
+            type: Option.some(event.type),
             providerMessageId: event.providerMessageId,
-            tags: new Map([
-              ["campaignSendId", event.sendId],
-              ["dotyposCustomerId", event.dotyposCustomerId],
-            ]),
+            // Decoded the way the webhook decodes the email's tags.
+            recipient: Option.fromUndefinedOr(
+              decodeStandardSchema(campaignEmailKind.metadata, {
+                campaignSendId: event.sendId,
+                dotyposCustomerId: event.dotyposCustomerId,
+              })
+            ),
             occurredAt: Temporal.Now.instant(),
           });
         }).pipe(

@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import type { EmailDeliveryId } from "@deskohub/email";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import { customerAccessCategory } from "./workspace-reservation-email.service";
+import { customerAccessEmailKind } from "./workspace-reservation-email.service";
 
-const customerAccessRecoveryKeyPrefix = `${customerAccessCategory}-recovery-`;
+const customerAccessRecoveryKeyPrefix = `${customerAccessEmailKind.category}-recovery-`;
 
 /**
  * The provider idempotency key of a customer confirmation generation. The
@@ -14,7 +14,7 @@ const customerAccessRecoveryKeyPrefix = `${customerAccessCategory}-recovery-`;
  */
 export const createCustomerEmailInitialIdempotencyKey = (
   reservationId: WorkspaceReservationId
-) => `${customerAccessCategory}-${reservationId}`;
+) => `${customerAccessEmailKind.category}-${reservationId}`;
 
 export const createCustomerEmailRecoveryIdempotencyKey = (
   priorCustomerEmailDeliveryId: EmailDeliveryId

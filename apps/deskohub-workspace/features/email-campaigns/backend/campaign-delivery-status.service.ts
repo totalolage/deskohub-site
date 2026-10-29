@@ -1,26 +1,26 @@
 import "server-only";
 
-import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Effect, Layer, Option, Schema } from "effect";
+import { Context, Effect, Layer, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { emailCampaignRecipients } from "@/db/schema";
-import { campaignSendIdSchema } from "../campaign-identifiers";
+import {
+  type DeliveryReportOutcome,
+  ignoredDeliveryReport,
+  processedDeliveryReport,
+} from "@/shared/backend/email/delivery-reports";
+import type { CampaignEmailRecipient } from "../campaign-email-message";
 import type { CampaignRecipientStatus } from "../campaign-states";
 
 /** A provider delivery event for one campaign email. */
-type CampaignDeliveryEvent = {
-  readonly type: string;
+export type CampaignDeliveryEvent = {
+  /** The status event; none for an event that changes no status. */
+  readonly type: Option.Option<keyof typeof statusTransitions>;
   readonly providerMessageId: string;
-  /** The `campaignSendId` and `dotyposCustomerId` tags of the email. */
-  readonly tags: ReadonlyMap<string, string>;
+  /** The recipient the email's tags name, when they name one. */
+  readonly recipient: Option.Option<CampaignEmailRecipient>;
   readonly occurredAt: Temporal.Instant;
-};
-
-type CampaignDeliveryEventResult = {
-  readonly status: "processed" | "ignored";
-  readonly reason?: string;
 };
 
 export interface ICampaignDeliveryStatusService {
@@ -36,7 +36,7 @@ export interface ICampaignDeliveryStatusService {
    */
   readonly record: (
     event: CampaignDeliveryEvent
-  ) => Effect.Effect<CampaignDeliveryEventResult, EffectDrizzleQueryError>;
+  ) => Effect.Effect<DeliveryReportOutcome, EffectDrizzleQueryError>;
 }
 
 /** Every status short of a provider-confirmed delivery. */
@@ -70,12 +70,6 @@ const statusTransitions = {
   }
 >;
 
-const isStatusEvent = (type: string): type is keyof typeof statusTransitions =>
-  Object.hasOwn(statusTransitions, type);
-
-const decodeSendId = Schema.decodeUnknownOption(campaignSendIdSchema);
-const decodeCustomerId = Schema.decodeUnknownOption(DotyposCustomerIdSchema);
-
 /** Per-recipient delivery status of campaign emails, from provider webhooks. */
 export class CampaignDeliveryStatusService extends Context.Service<
   CampaignDeliveryStatusService,
@@ -89,19 +83,18 @@ export class CampaignDeliveryStatusService extends Context.Service<
       return {
         record: Effect.fn("CampaignDeliveryStatusService.record")(
           function* (event) {
-            if (!isStatusEvent(event.type)) {
-              return { status: "ignored", reason: "non_status_event" } as const;
+            if (Option.isNone(event.type)) {
+              return ignoredDeliveryReport("non_status_event");
             }
-            const transition = statusTransitions[event.type];
-            const sendId = decodeSendId(event.tags.get("campaignSendId"));
-            const customerId = decodeCustomerId(
-              event.tags.get("dotyposCustomerId")
-            );
-            const byTags = Option.all([sendId, customerId]).pipe(
-              Option.map(([send, customer]) =>
+            const transition = statusTransitions[event.type.value];
+            const byTags = event.recipient.pipe(
+              Option.map((recipient) =>
                 and(
-                  eq(emailCampaignRecipients.sendId, send),
-                  eq(emailCampaignRecipients.dotyposCustomerId, customer),
+                  eq(emailCampaignRecipients.sendId, recipient.campaignSendId),
+                  eq(
+                    emailCampaignRecipients.dotyposCustomerId,
+                    recipient.dotyposCustomerId
+                  ),
                   or(
                     isNull(emailCampaignRecipients.providerMessageId),
                     eq(
@@ -135,11 +128,8 @@ export class CampaignDeliveryStatusService extends Context.Service<
               )
               .returning({ sendId: emailCampaignRecipients.sendId });
             return updated.length > 0
-              ? ({ status: "processed" } as const)
-              : ({
-                  status: "ignored",
-                  reason: "campaign_recipient_unchanged",
-                } as const);
+              ? processedDeliveryReport
+              : ignoredDeliveryReport("campaign_recipient_unchanged");
           }
         ),
       } satisfies ICampaignDeliveryStatusService;
