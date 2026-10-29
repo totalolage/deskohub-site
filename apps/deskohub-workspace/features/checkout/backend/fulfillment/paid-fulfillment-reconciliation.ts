@@ -1,6 +1,6 @@
 import { Effect } from "effect";
-import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
-import { WorkspacePaidFulfillmentService } from "./paid-fulfillment.service";
+import { FulfillmentLedger } from "./fulfillment-ledger.repository";
+import { ReservationFulfillment } from "./reservation-fulfillment.service";
 
 /** Leaves recent orders to their queue message and the webhook. */
 const stalledAfter = { minutes: 15 };
@@ -18,10 +18,10 @@ export const reconcileStalledPaidFulfillments = Effect.fn(
     readonly now: Temporal.Instant;
     readonly limit: number;
   }) {
-    const reservations = yield* WorkspaceReservationRepository;
-    const fulfillment = yield* WorkspacePaidFulfillmentService;
+    const ledger = yield* FulfillmentLedger;
+    const fulfillment = yield* ReservationFulfillment;
 
-    const orderIds = yield* reservations.selectStalledPaidFulfillments({
+    const orderIds = yield* ledger.selectStalledPaidFulfillments({
       updatedBefore: input.now.subtract(stalledAfter),
       limit: input.limit,
     });
@@ -33,7 +33,7 @@ export const reconcileStalledPaidFulfillments = Effect.fn(
     let failed = 0;
     for (const orderId of orderIds) {
       attempted += 1;
-      yield* fulfillment.fulfillPaidOrder({ orderId }).pipe(
+      yield* fulfillment.run(orderId).pipe(
         Effect.tapError((cause) => {
           failed += 1;
           return Effect.logError("Stalled paid fulfillment retry failed", {

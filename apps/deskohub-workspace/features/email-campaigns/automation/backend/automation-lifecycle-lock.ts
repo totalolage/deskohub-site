@@ -2,12 +2,12 @@ import "server-only";
 
 import { eq, sql } from "drizzle-orm";
 import { Effect } from "effect";
+import { WorkspaceTransaction } from "@/db/database.service";
 import { emailCampaignAutomations, emailCampaigns } from "@/db/schema";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
 import type { CampaignId } from "../../campaign-identifiers";
 import type { CampaignStatus } from "../../campaign-states";
 import type { AutomationVersionId } from "../automation-identifiers";
-import type { AutomationEngineTransaction } from "./automation-unit-handler";
 
 /*
  * The automation row is the lifecycle lock. Lock order, so no wait cycle
@@ -47,10 +47,12 @@ export type AutomationLifecycleState = {
  * the grant.
  */
 export const lockAutomationForEngine = (
-  tx: AutomationEngineTransaction,
   campaignId: CampaignId
-): Effect.Effect<AutomationLifecycleState, DatabaseQueryError> =>
-  lockAutomation(tx, { campaignId, strength: "share" });
+): Effect.Effect<
+  AutomationLifecycleState,
+  DatabaseQueryError,
+  WorkspaceTransaction
+> => lockAutomation({ campaignId, strength: "share" });
 
 /**
  * Takes the lifecycle lock exclusively, for activate, pause, resume and
@@ -59,10 +61,12 @@ export const lockAutomationForEngine = (
  * Nothing else of the automation runs while it's held.
  */
 export const lockAutomationForLifecycle = (
-  tx: AutomationEngineTransaction,
   campaignId: CampaignId
-): Effect.Effect<AutomationLifecycleState, DatabaseQueryError> =>
-  lockAutomation(tx, { campaignId, strength: "update" });
+): Effect.Effect<
+  AutomationLifecycleState,
+  DatabaseQueryError,
+  WorkspaceTransaction
+> => lockAutomation({ campaignId, strength: "update" });
 
 const missingAutomation: AutomationLifecycleState = {
   status: null,
@@ -72,46 +76,44 @@ const missingAutomation: AutomationLifecycleState = {
   nextFireAt: null,
 };
 
-const lockAutomation = (
-  tx: AutomationEngineTransaction,
-  input: {
-    readonly campaignId: CampaignId;
-    readonly strength: "share" | "update";
-  }
-) =>
-  tx
-    .select({ locked: sql<number>`1` })
-    .from(emailCampaignAutomations)
-    .where(eq(emailCampaignAutomations.campaignId, input.campaignId))
-    .for(input.strength)
-    .pipe(
-      Effect.flatMap(([locked]) =>
-        locked === undefined
-          ? Effect.succeed(missingAutomation)
-          : readLifecycle(tx, input.campaignId)
+const lockAutomation = (input: {
+  readonly campaignId: CampaignId;
+  readonly strength: "share" | "update";
+}) =>
+  Effect.flatMap(WorkspaceTransaction, ({ db }) =>
+    db
+      .select({ locked: sql<number>`1` })
+      .from(emailCampaignAutomations)
+      .where(eq(emailCampaignAutomations.campaignId, input.campaignId))
+      .for(input.strength)
+      .pipe(
+        Effect.flatMap(([locked]) =>
+          locked === undefined
+            ? Effect.succeed(missingAutomation)
+            : readLifecycle(input.campaignId)
+        )
       )
-    );
+  );
 
-const readLifecycle = (
-  tx: AutomationEngineTransaction,
-  campaignId: CampaignId
-) =>
-  tx
-    .select({
-      status: emailCampaigns.status,
-      activeVersionId: emailCampaignAutomations.activeVersionId,
-      acceptingSince: emailCampaignAutomations.acceptingSince,
-      resumedAt: emailCampaignAutomations.resumedAt,
-      nextFireAt: emailCampaignAutomations.nextFireAt,
-    })
-    .from(emailCampaignAutomations)
-    .innerJoin(
-      emailCampaigns,
-      eq(emailCampaigns.id, emailCampaignAutomations.campaignId)
-    )
-    .where(eq(emailCampaignAutomations.campaignId, campaignId))
-    .pipe(
-      Effect.map(
-        ([state]): AutomationLifecycleState => state ?? missingAutomation
+const readLifecycle = (campaignId: CampaignId) =>
+  Effect.flatMap(WorkspaceTransaction, ({ db }) =>
+    db
+      .select({
+        status: emailCampaigns.status,
+        activeVersionId: emailCampaignAutomations.activeVersionId,
+        acceptingSince: emailCampaignAutomations.acceptingSince,
+        resumedAt: emailCampaignAutomations.resumedAt,
+        nextFireAt: emailCampaignAutomations.nextFireAt,
+      })
+      .from(emailCampaignAutomations)
+      .innerJoin(
+        emailCampaigns,
+        eq(emailCampaigns.id, emailCampaignAutomations.campaignId)
       )
-    );
+      .where(eq(emailCampaignAutomations.campaignId, campaignId))
+      .pipe(
+        Effect.map(
+          ([state]): AutomationLifecycleState => state ?? missingAutomation
+        )
+      )
+  );

@@ -5,6 +5,11 @@ import { type EmailDeliveryId, EmailDeliveryIdSchema } from "@deskohub/email";
 import { inArray } from "drizzle-orm";
 import { Effect, Layer } from "effect";
 import { type FulfillmentState, workspaceReservations } from "@/db/schema";
+import {
+  type IWorkspaceReservationRepository,
+  WorkspaceReservationRepository,
+  WorkspaceReservationStateError,
+} from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import {
@@ -12,12 +17,11 @@ import {
   type WorkspacePostgresTestDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
+  FulfillmentLedger,
   fulfillmentEmailFailureCode,
-  type IWorkspaceReservationRepository,
+  type IFulfillmentLedger,
   WorkspaceReservationDeliveryGenerationSupersededError,
-  WorkspaceReservationRepository,
-  WorkspaceReservationStateError,
-} from "./workspace-reservation.repository";
+} from "./fulfillment-ledger.repository";
 
 const deliveryEventAt = (minute: number) =>
   Temporal.Instant.from(
@@ -30,10 +34,11 @@ const newEmailDeliveryId = () =>
 const postgresDatabase = await connectWorkspacePostgresTestDatabase();
 
 describe.skipIf(!postgresDatabase)(
-  "WorkspaceReservationRepository customer email delivery transitions on Postgres",
+  "FulfillmentLedger customer email delivery transitions on Postgres",
   () => {
     const postgres = postgresDatabase as WorkspacePostgresTestDatabase;
     let reservations: IWorkspaceReservationRepository;
+    let ledger: IFulfillmentLedger;
     const fixtureReservationIds: WorkspaceReservationId[] = [];
 
     const insertPaidReservationFixture = ({
@@ -62,14 +67,18 @@ describe.skipIf(!postgresDatabase)(
         );
 
     beforeAll(async () => {
-      reservations = await Effect.runPromise(
+      [reservations, ledger] = await Effect.runPromise(
         Effect.gen(function* () {
-          return yield* WorkspaceReservationRepository;
+          return [
+            yield* WorkspaceReservationRepository,
+            yield* FulfillmentLedger,
+          ] as const;
         }).pipe(
           Effect.provide(
-            WorkspaceReservationRepository.Default.pipe(
-              Layer.provide(postgres.layer)
-            )
+            Layer.mergeAll(
+              WorkspaceReservationRepository.Default,
+              FulfillmentLedger.Default
+            ).pipe(Layer.provide(postgres.layer))
           )
         )
       );
@@ -93,7 +102,7 @@ describe.skipIf(!postgresDatabase)(
       const customerEmailDeliveryId = newEmailDeliveryId();
 
       await Effect.runPromise(
-        reservations.markAwaitingCustomerEmailDelivery({
+        ledger.markAwaitingCustomerEmailDelivery({
           id,
           customerEmailDeliveryId,
           expectedActiveCustomerEmailDeliveryId: null,
@@ -115,7 +124,7 @@ describe.skipIf(!postgresDatabase)(
       // The claimed initial generation is recorded by a concurrent worker
       // before the stalled writer resolves its locale.
       await Effect.runPromise(
-        reservations.markAwaitingCustomerEmailDelivery({
+        ledger.markAwaitingCustomerEmailDelivery({
           id,
           customerEmailDeliveryId: recordedDeliveryId,
           expectedActiveCustomerEmailDeliveryId: null,
@@ -123,7 +132,7 @@ describe.skipIf(!postgresDatabase)(
       );
 
       const authoritativeLocale = await Effect.runPromise(
-        reservations.retainActiveCustomerEmailDeliveryLocale({
+        ledger.retainActiveCustomerEmailDeliveryLocale({
           id,
           locale: "cs-CZ",
           expectedActiveCustomerEmailDeliveryId: null,
@@ -152,7 +161,7 @@ describe.skipIf(!postgresDatabase)(
       // The slot is already seeded, so the conditional update cannot apply;
       // the fallback read must still be bound to the claimed generation.
       const authoritativeLocale = await Effect.runPromise(
-        reservations.retainActiveCustomerEmailDeliveryLocale({
+        ledger.retainActiveCustomerEmailDeliveryLocale({
           id,
           locale: "en-US",
           expectedActiveCustomerEmailDeliveryId: staleExpectedMarker,
@@ -174,7 +183,7 @@ describe.skipIf(!postgresDatabase)(
       const customerEmailDeliveryId = newEmailDeliveryId();
 
       await Effect.runPromise(
-        reservations.markAwaitingCustomerEmailDelivery({
+        ledger.markAwaitingCustomerEmailDelivery({
           id,
           customerEmailDeliveryId,
           expectedActiveCustomerEmailDeliveryId: null,
@@ -198,7 +207,7 @@ describe.skipIf(!postgresDatabase)(
       const customerEmailDeliveryId = newEmailDeliveryId();
 
       await Effect.runPromise(
-        reservations.markFulfilled({
+        ledger.markFulfilled({
           id,
           fulfilledAt: deliveryEventAt(1),
           customerEmailDeliveryId,
@@ -218,7 +227,7 @@ describe.skipIf(!postgresDatabase)(
       );
 
       const winnerLocale = await Effect.runPromise(
-        reservations.retainActiveCustomerEmailDeliveryLocale({
+        ledger.retainActiveCustomerEmailDeliveryLocale({
           id,
           locale: "cs-CZ",
           expectedActiveCustomerEmailDeliveryId: null,
@@ -227,7 +236,7 @@ describe.skipIf(!postgresDatabase)(
       // The second writer loses the null-slot race and must learn the
       // already-retained locale so its send matches the idempotency generation.
       const loserAuthoritativeLocale = await Effect.runPromise(
-        reservations.retainActiveCustomerEmailDeliveryLocale({
+        ledger.retainActiveCustomerEmailDeliveryLocale({
           id,
           locale: "en-US",
           expectedActiveCustomerEmailDeliveryId: null,
@@ -253,7 +262,7 @@ describe.skipIf(!postgresDatabase)(
 
       const error = await Effect.runPromise(
         Effect.flip(
-          reservations.markAwaitingCustomerEmailDelivery({
+          ledger.markAwaitingCustomerEmailDelivery({
             id,
             customerEmailDeliveryId: newEmailDeliveryId(),
             expectedActiveCustomerEmailDeliveryId: staleExpectedMarker,
@@ -278,7 +287,7 @@ describe.skipIf(!postgresDatabase)(
 
       const error = await Effect.runPromise(
         Effect.flip(
-          reservations.markAwaitingCustomerEmailDelivery({
+          ledger.markAwaitingCustomerEmailDelivery({
             id,
             customerEmailDeliveryId: newEmailDeliveryId(),
             expectedActiveCustomerEmailDeliveryId: null,
@@ -303,7 +312,7 @@ describe.skipIf(!postgresDatabase)(
       const fulfilledAt = deliveryEventAt(15);
 
       const updated = await Effect.runPromise(
-        reservations.markCustomerEmailDeliveryFulfilled({
+        ledger.markCustomerEmailDeliveryFulfilled({
           customerEmailDeliveryId,
           fulfilledAt,
         })
@@ -333,7 +342,7 @@ describe.skipIf(!postgresDatabase)(
       const failedAt = deliveryEventAt(15);
 
       const updated = await Effect.runPromise(
-        reservations.markCustomerEmailDeliveryFailed({
+        ledger.markCustomerEmailDeliveryFailed({
           customerEmailDeliveryId,
           failureCode: fulfillmentEmailFailureCode,
           failedAt,
@@ -360,14 +369,14 @@ describe.skipIf(!postgresDatabase)(
         })
       );
       await Effect.runPromise(
-        reservations.markCustomerEmailDeliveryFulfilled({
+        ledger.markCustomerEmailDeliveryFulfilled({
           customerEmailDeliveryId,
           fulfilledAt,
         })
       );
 
       const updated = await Effect.runPromise(
-        reservations.markCustomerEmailDeliveryFailed({
+        ledger.markCustomerEmailDeliveryFailed({
           customerEmailDeliveryId,
           failureCode: fulfillmentEmailFailureCode,
           failedAt: fulfilledAt,
@@ -391,14 +400,14 @@ describe.skipIf(!postgresDatabase)(
         })
       );
       await Effect.runPromise(
-        reservations.markCustomerEmailDeliveryFulfilled({
+        ledger.markCustomerEmailDeliveryFulfilled({
           customerEmailDeliveryId,
           fulfilledAt,
         })
       );
 
       const updated = await Effect.runPromise(
-        reservations.markCustomerEmailDeliveryFailed({
+        ledger.markCustomerEmailDeliveryFailed({
           customerEmailDeliveryId,
           failureCode: fulfillmentEmailFailureCode,
           failedAt,
@@ -421,7 +430,7 @@ describe.skipIf(!postgresDatabase)(
         })
       );
       await Effect.runPromise(
-        reservations.markCustomerEmailDeliveryFailed({
+        ledger.markCustomerEmailDeliveryFailed({
           customerEmailDeliveryId,
           failureCode: fulfillmentEmailFailureCode,
           failedAt,
@@ -429,7 +438,7 @@ describe.skipIf(!postgresDatabase)(
       );
 
       const equalTimeRepair = await Effect.runPromise(
-        reservations.markCustomerEmailDeliveryFulfilled({
+        ledger.markCustomerEmailDeliveryFulfilled({
           customerEmailDeliveryId,
           fulfilledAt: failedAt,
         })
@@ -437,7 +446,7 @@ describe.skipIf(!postgresDatabase)(
       expect(equalTimeRepair).toBeNull();
 
       const repaired = await Effect.runPromise(
-        reservations.markCustomerEmailDeliveryFulfilled({
+        ledger.markCustomerEmailDeliveryFulfilled({
           customerEmailDeliveryId,
           fulfilledAt: deliveryEventAt(20),
         })
@@ -459,7 +468,7 @@ describe.skipIf(!postgresDatabase)(
         })
       );
       await Effect.runPromise(
-        reservations.markCustomerEmailDeliveryFailed({
+        ledger.markCustomerEmailDeliveryFailed({
           customerEmailDeliveryId,
           failureCode: "fulfillment_dotypos_failed",
           failedAt: deliveryEventAt(15),
@@ -467,7 +476,7 @@ describe.skipIf(!postgresDatabase)(
       );
 
       const updated = await Effect.runPromise(
-        reservations.markCustomerEmailDeliveryFulfilled({
+        ledger.markCustomerEmailDeliveryFulfilled({
           customerEmailDeliveryId,
           fulfilledAt: deliveryEventAt(20),
         })

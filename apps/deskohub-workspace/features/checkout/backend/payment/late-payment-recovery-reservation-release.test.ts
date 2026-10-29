@@ -15,7 +15,7 @@ import {
 } from "@/features/reservation/backend/workspace-availability.service";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { StoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
-import { WorkspacePaidFulfillmentService } from "../fulfillment/paid-fulfillment.service";
+import { ReservationFulfillment } from "../fulfillment/reservation-fulfillment.service";
 import {
   LatePaymentRecoveryRepository,
   LatePaymentRecoveryStateError,
@@ -226,8 +226,8 @@ const makeRecoveryHarness = (options: {
         Layer.mock(WorkspaceTableAssignmentService, {
           assignTableId: spies.assignTableId as never,
         }),
-        Layer.mock(WorkspacePaidFulfillmentService, {
-          fulfillPaidOrder: spies.fulfillPaidOrder,
+        Layer.mock(ReservationFulfillment, {
+          run: spies.fulfillPaidOrder,
         })
       )
     )

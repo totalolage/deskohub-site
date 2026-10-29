@@ -3,6 +3,7 @@ import "server-only";
 import type { AutomationRunEventDetail } from "@deskohub/workspace-admin-api";
 import { sql } from "drizzle-orm";
 import { Effect } from "effect";
+import { WorkspaceTransaction } from "@/db/database.service";
 import { emailCampaignAutomationRunEvents } from "@/db/schema";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
 import type {
@@ -13,7 +14,6 @@ import type {
   AutomationRunEventKind,
   AutomationRunOutcome,
 } from "../automation-states";
-import type { AutomationEngineTransaction } from "./automation-unit-handler";
 
 /**
  * Kinds a run records while it is open. An ended run's entry, whose kind is
@@ -57,9 +57,8 @@ export type AutomationRunEndingEntry = TimelineEntryInput<AutomationRunOutcome>;
  * sequence. A run appears at most once per call.
  */
 export const appendAutomationRunProgress = (
-  tx: AutomationEngineTransaction,
   entries: readonly AutomationRunProgressEntry[]
-) => appendTimelineEntries(tx, entries);
+) => appendTimelineEntries(entries);
 
 /**
  * Appends ended runs' entries like `appendAutomationRunProgress`. Only
@@ -67,26 +66,26 @@ export const appendAutomationRunProgress = (
  * the runs (the `automation-state-writers` Grit rule).
  */
 export const appendAutomationRunEndings = (
-  tx: AutomationEngineTransaction,
   entries: readonly AutomationRunEndingEntry[]
-) => appendTimelineEntries(tx, entries);
+) => appendTimelineEntries(entries);
 
 const appendTimelineEntries = (
-  tx: AutomationEngineTransaction,
   entries: readonly TimelineEntryInput<AutomationRunEventKind>[]
-): Effect.Effect<void, DatabaseQueryError> =>
-  Effect.suspend(() =>
-    tx.insert(emailCampaignAutomationRunEvents).values(
-      entries.map((entry) => ({
-        runId: entry.runId,
-        sequence: nextSequence(entry.runId),
-        kind: entry.kind,
-        stepId: entry.stepId,
-        at: entry.at,
-        detail: entry.detail ?? {},
-      }))
-    )
-  ).pipe(Effect.when(Effect.succeed(entries.length > 0)), Effect.asVoid);
+): Effect.Effect<void, DatabaseQueryError, WorkspaceTransaction> =>
+  Effect.flatMap(WorkspaceTransaction, ({ db }) =>
+    Effect.suspend(() =>
+      db.insert(emailCampaignAutomationRunEvents).values(
+        entries.map((entry) => ({
+          runId: entry.runId,
+          sequence: nextSequence(entry.runId),
+          kind: entry.kind,
+          stepId: entry.stepId,
+          at: entry.at,
+          detail: entry.detail ?? {},
+        }))
+      )
+    ).pipe(Effect.when(Effect.succeed(entries.length > 0)), Effect.asVoid)
+  );
 
 const nextSequence = (runId: AutomationRunId) =>
   sql<number>`(select coalesce(max(${emailCampaignAutomationRunEvents.sequence}), 0) + 1 from ${emailCampaignAutomationRunEvents} where ${emailCampaignAutomationRunEvents.runId} = ${runId})`;

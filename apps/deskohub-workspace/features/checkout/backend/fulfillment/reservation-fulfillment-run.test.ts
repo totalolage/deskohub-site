@@ -10,8 +10,8 @@ import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer } from "effect";
 import { env, getAccountingDocumentSnapshotSecret } from "@/env";
 import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice.service";
-import type { IWorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { IWorkspaceReservationService } from "@/features/reservation/backend/workspace-reservation.service";
+import type { IFulfillmentLedger } from "./fulfillment-ledger.repository";
 import type { IWorkspaceReservationEmailService } from "./workspace-reservation-email.service";
 
 const testEmailAddressForCustomer = testEmailAddress("customer");
@@ -34,17 +34,18 @@ const { WorkspaceCheckoutAccessCodeService } = await import(
   "@/features/checkout/backend/reservation/access-code.service"
 );
 
-const {
-  PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS,
-  WorkspacePaidFulfillmentService,
-} = await import("./paid-fulfillment.service");
-const {
-  createCustomerEmailRecoveryIdempotencyKey,
-  WorkspaceReservationEmailService,
-} = await import("./workspace-reservation-email.service");
+const { PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS, ReservationFulfillment } =
+  await import("./reservation-fulfillment.service");
+const { createCustomerEmailRecoveryIdempotencyKey } = await import(
+  "./customer-email-idempotency-key"
+);
+const { WorkspaceReservationEmailService } = await import(
+  "./workspace-reservation-email.service"
+);
 const { WorkspaceReservationRepository } = await import(
   "@/features/reservation/backend/workspace-reservation.repository"
 );
+const { FulfillmentLedger } = await import("./fulfillment-ledger.repository");
 const { WorkspaceReservationService } = await import(
   "@/features/reservation/backend/workspace-reservation.service"
 );
@@ -61,7 +62,7 @@ const { PostHogEventService } = await import(
   "@/shared/backend/analytics/posthog-event.service"
 );
 
-describe("WorkspacePaidFulfillmentService", () => {
+describe("ReservationFulfillment.run", () => {
   test("retries stale processing paid orders and completes non-production fulfillment after send acceptance", async () => {
     const order = {
       id: "reservation-id",
@@ -120,22 +121,24 @@ describe("WorkspacePaidFulfillmentService", () => {
     const processInvoice = mock(() => Effect.void);
 
     await Effect.gen(function* () {
-      const service = yield* WorkspacePaidFulfillmentService;
-      yield* service.fulfillPaidOrder({ orderId: "reservation-id" });
+      const service = yield* ReservationFulfillment;
+      yield* service.run("reservation-id");
     }).pipe(
       Effect.provide(
-        WorkspacePaidFulfillmentService.Default.pipe(
+        ReservationFulfillment.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               noReservationAuthors,
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
+                markReservationConfirmed,
+              }),
+              Layer.mock(FulfillmentLedger, {
                 retainActiveCustomerEmailDeliveryLocale: mock(
                   (input: { readonly locale: "en-US" | "cs-CZ" }) =>
                     Effect.succeed(input.locale)
                 ),
                 claimPaidFulfillment,
-                markReservationConfirmed,
                 markFulfilled,
                 markFulfillmentFailed: mock(() => Effect.void),
               }),
@@ -255,22 +258,24 @@ describe("WorkspacePaidFulfillmentService", () => {
     const processInvoice = mock(() => Effect.void);
 
     await Effect.gen(function* () {
-      const service = yield* WorkspacePaidFulfillmentService;
-      yield* service.fulfillPaidOrder({ orderId: "reservation-id" });
+      const service = yield* ReservationFulfillment;
+      yield* service.run("reservation-id");
     }).pipe(
       Effect.provide(
-        WorkspacePaidFulfillmentService.Default.pipe(
+        ReservationFulfillment.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               noReservationAuthors,
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
+                markReservationConfirmed,
+              }),
+              Layer.mock(FulfillmentLedger, {
                 retainActiveCustomerEmailDeliveryLocale: mock(
                   (input: { readonly locale: "en-US" | "cs-CZ" }) =>
                     Effect.succeed(input.locale)
                 ),
                 claimPaidFulfillment,
-                markReservationConfirmed,
                 markFulfilled,
                 markFulfillmentFailed: mock(() => Effect.void),
               }),
@@ -367,11 +372,11 @@ describe("WorkspacePaidFulfillmentService", () => {
       const describeAuthors = mock(describe);
 
       await Effect.gen(function* () {
-        const service = yield* WorkspacePaidFulfillmentService;
-        yield* service.fulfillPaidOrder({ orderId: "reservation-id" });
+        const service = yield* ReservationFulfillment;
+        yield* service.run("reservation-id");
       }).pipe(
         Effect.provide(
-          WorkspacePaidFulfillmentService.Default.pipe(
+          ReservationFulfillment.Default.pipe(
             Layer.provide(
               Layer.mergeAll(
                 Layer.mock(ReservationAuthorDirectory, {
@@ -379,6 +384,8 @@ describe("WorkspacePaidFulfillmentService", () => {
                 }),
                 Layer.mock(WorkspaceReservationRepository, {
                   findById: mock(() => Effect.succeed(order as never)),
+                }),
+                Layer.mock(FulfillmentLedger, {
                   retainActiveCustomerEmailDeliveryLocale: mock(
                     (input: { readonly locale: "en-US" | "cs-CZ" }) =>
                       Effect.succeed(input.locale)
@@ -491,16 +498,19 @@ describe("WorkspacePaidFulfillmentService", () => {
     const processInvoice = mock(() => Effect.void);
 
     await Effect.gen(function* () {
-      const service = yield* WorkspacePaidFulfillmentService;
-      yield* service.fulfillPaidOrder({ orderId: "reservation-id" });
+      const service = yield* ReservationFulfillment;
+      yield* service.run("reservation-id");
     }).pipe(
       Effect.provide(
-        WorkspacePaidFulfillmentService.Default.pipe(
+        ReservationFulfillment.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               noReservationAuthors,
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
+                markReservationConfirmed,
+              }),
+              Layer.mock(FulfillmentLedger, {
                 retainActiveCustomerEmailDeliveryLocale: mock(
                   (input: { readonly locale: "en-US" | "cs-CZ" }) =>
                     Effect.succeed(input.locale)
@@ -508,7 +518,6 @@ describe("WorkspacePaidFulfillmentService", () => {
                 claimPaidFulfillment: mock(() =>
                   Effect.succeed(claimed as never)
                 ),
-                markReservationConfirmed,
                 markFulfilled,
                 markFulfillmentFailed: mock(() => Effect.void),
               }),
@@ -619,21 +628,23 @@ describe("WorkspacePaidFulfillmentService", () => {
     const runs = await Effect.runPromise(
       Effect.provide(
         Effect.gen(function* () {
-          const service = yield* WorkspacePaidFulfillmentService;
+          const service = yield* ReservationFulfillment;
           const first = yield* service
-            .fulfillPaidOrder({ orderId: "reservation-id" })
+            .run("reservation-id")
             .pipe(Effect.result);
           const second = yield* service
-            .fulfillPaidOrder({ orderId: "reservation-id" })
+            .run("reservation-id")
             .pipe(Effect.result);
           return { first, second };
         }),
-        WorkspacePaidFulfillmentService.Default.pipe(
+        ReservationFulfillment.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               noReservationAuthors,
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
+              }),
+              Layer.mock(FulfillmentLedger, {
                 retainActiveCustomerEmailDeliveryLocale: mock(
                   (input: { readonly locale: "en-US" | "cs-CZ" }) =>
                     Effect.succeed(input.locale)
@@ -733,18 +744,18 @@ describe("WorkspacePaidFulfillmentService", () => {
     const markFulfillmentFailed = mock(() => Effect.void);
 
     const result = await Effect.gen(function* () {
-      const service = yield* WorkspacePaidFulfillmentService;
-      return yield* service
-        .fulfillPaidOrder({ orderId: "reservation-id" })
-        .pipe(Effect.result);
+      const service = yield* ReservationFulfillment;
+      return yield* service.run("reservation-id").pipe(Effect.result);
     }).pipe(
       Effect.provide(
-        WorkspacePaidFulfillmentService.Default.pipe(
+        ReservationFulfillment.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               noReservationAuthors,
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
+              }),
+              Layer.mock(FulfillmentLedger, {
                 retainActiveCustomerEmailDeliveryLocale: mock(
                   (input: { readonly locale: "en-US" | "cs-CZ" }) =>
                     Effect.succeed(input.locale)
@@ -805,18 +816,18 @@ describe("WorkspacePaidFulfillmentService", () => {
     };
 
     const result = await Effect.gen(function* () {
-      const service = yield* WorkspacePaidFulfillmentService;
-      return yield* service
-        .fulfillPaidOrder({ orderId: "reservation-id" })
-        .pipe(Effect.result);
+      const service = yield* ReservationFulfillment;
+      return yield* service.run("reservation-id").pipe(Effect.result);
     }).pipe(
       Effect.provide(
-        WorkspacePaidFulfillmentService.Default.pipe(
+        ReservationFulfillment.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               noReservationAuthors,
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
+              }),
+              Layer.mock(FulfillmentLedger, {
                 retainActiveCustomerEmailDeliveryLocale: mock(
                   (input: { readonly locale: "en-US" | "cs-CZ" }) =>
                     Effect.succeed(input.locale)
@@ -875,27 +886,27 @@ describe("WorkspacePaidFulfillmentService", () => {
     const markFulfillmentFailed = mock(() => Effect.void);
 
     const result = await Effect.gen(function* () {
-      const service = yield* WorkspacePaidFulfillmentService;
-      return yield* service
-        .fulfillPaidOrder({ orderId: "reservation-id" })
-        .pipe(Effect.result);
+      const service = yield* ReservationFulfillment;
+      return yield* service.run("reservation-id").pipe(Effect.result);
     }).pipe(
       Effect.provide(
-        WorkspacePaidFulfillmentService.Default.pipe(
+        ReservationFulfillment.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               noReservationAuthors,
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
+                markReservationConfirmed: mock(() =>
+                  Effect.fail(connectionFailure)
+                ),
+              }),
+              Layer.mock(FulfillmentLedger, {
                 retainActiveCustomerEmailDeliveryLocale: mock(
                   (input: { readonly locale: "en-US" | "cs-CZ" }) =>
                     Effect.succeed(input.locale)
                 ),
                 claimPaidFulfillment: mock(() =>
                   Effect.succeed(claimed as never)
-                ),
-                markReservationConfirmed: mock(() =>
-                  Effect.fail(connectionFailure)
                 ),
                 markFulfilled: mock(() => Effect.void),
                 markFulfillmentFailed,
@@ -988,7 +999,7 @@ describe("WorkspacePaidFulfillmentService", () => {
     const retainActiveCustomerEmailDeliveryLocale = mock(
       (
         input: Parameters<
-          IWorkspaceReservationRepository["retainActiveCustomerEmailDeliveryLocale"]
+          IFulfillmentLedger["retainActiveCustomerEmailDeliveryLocale"]
         >[0]
       ) => {
         expect(input.locale).toBe("cs-CZ");
@@ -1012,15 +1023,17 @@ describe("WorkspacePaidFulfillmentService", () => {
     await Effect.runPromise(
       Effect.provide(
         Effect.gen(function* () {
-          const service = yield* WorkspacePaidFulfillmentService;
-          yield* service.fulfillPaidOrder({ orderId: "reservation-id" });
+          const service = yield* ReservationFulfillment;
+          yield* service.run("reservation-id");
         }),
-        WorkspacePaidFulfillmentService.Default.pipe(
+        ReservationFulfillment.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               noReservationAuthors,
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
+              }),
+              Layer.mock(FulfillmentLedger, {
                 claimPaidFulfillment: mock(() =>
                   Effect.succeed(claimed as never)
                 ),
@@ -1098,14 +1111,14 @@ describe("WorkspacePaidFulfillmentService", () => {
       tableName: "12",
     };
     const retainInputs: Parameters<
-      IWorkspaceReservationRepository["retainActiveCustomerEmailDeliveryLocale"]
+      IFulfillmentLedger["retainActiveCustomerEmailDeliveryLocale"]
     >[0][] = [];
     // Another writer recorded this generation's accepted send between the
     // claim and the retention, so the repository reports the slot as closed.
     const retainActiveCustomerEmailDeliveryLocale = mock(
       (
         input: Parameters<
-          IWorkspaceReservationRepository["retainActiveCustomerEmailDeliveryLocale"]
+          IFulfillmentLedger["retainActiveCustomerEmailDeliveryLocale"]
         >[0]
       ) => {
         retainInputs.push(input);
@@ -1120,17 +1133,17 @@ describe("WorkspacePaidFulfillmentService", () => {
     const result = await Effect.runPromise(
       Effect.provide(
         Effect.gen(function* () {
-          const service = yield* WorkspacePaidFulfillmentService;
-          return yield* service
-            .fulfillPaidOrder({ orderId: "reservation-id" })
-            .pipe(Effect.result);
+          const service = yield* ReservationFulfillment;
+          return yield* service.run("reservation-id").pipe(Effect.result);
         }),
-        WorkspacePaidFulfillmentService.Default.pipe(
+        ReservationFulfillment.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               noReservationAuthors,
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
+              }),
+              Layer.mock(FulfillmentLedger, {
                 claimPaidFulfillment: mock(() =>
                   Effect.succeed(claimed as never)
                 ),
@@ -1212,23 +1225,23 @@ describe("WorkspacePaidFulfillmentService", () => {
     const markFulfillmentFailed = mock(() => Effect.void);
 
     const result = await Effect.gen(function* () {
-      const service = yield* WorkspacePaidFulfillmentService;
-      return yield* service
-        .fulfillPaidOrder({ orderId: "reservation-id" })
-        .pipe(Effect.result);
+      const service = yield* ReservationFulfillment;
+      return yield* service.run("reservation-id").pipe(Effect.result);
     }).pipe(
       Effect.provide(
-        WorkspacePaidFulfillmentService.Default.pipe(
+        ReservationFulfillment.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               noReservationAuthors,
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
-                claimPaidFulfillment: mock(() =>
-                  Effect.succeed(claimed as never)
-                ),
                 markReservationConfirmed: mock(() =>
                   Effect.die("confirmed reservations are not reconfirmed")
+                ),
+              }),
+              Layer.mock(FulfillmentLedger, {
+                claimPaidFulfillment: mock(() =>
+                  Effect.succeed(claimed as never)
                 ),
                 markFulfilled: mock(() =>
                   Effect.die("failed fulfillment must not complete")
@@ -1307,22 +1320,22 @@ describe("WorkspacePaidFulfillmentService", () => {
     const markFulfillmentFailed = mock(() => Effect.void);
 
     const result = await Effect.gen(function* () {
-      const service = yield* WorkspacePaidFulfillmentService;
-      return yield* service
-        .fulfillPaidOrder({ orderId: "reservation-id" })
-        .pipe(Effect.result);
+      const service = yield* ReservationFulfillment;
+      return yield* service.run("reservation-id").pipe(Effect.result);
     }).pipe(
       Effect.provide(
-        WorkspacePaidFulfillmentService.Default.pipe(
+        ReservationFulfillment.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               noReservationAuthors,
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
+                markReservationConfirmed,
+              }),
+              Layer.mock(FulfillmentLedger, {
                 claimPaidFulfillment: mock(() =>
                   Effect.succeed(claimed as never)
                 ),
-                markReservationConfirmed,
                 markFulfilled: mock(() =>
                   Effect.die("a cancelled hold must not be fulfilled")
                 ),

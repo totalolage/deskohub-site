@@ -2,7 +2,7 @@ import { Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { AccountingDocumentSnapshotRepository } from "@/features/accounting/backend/accounting-document-snapshot.repository";
 import { AccountingSnapshotKeyService } from "@/features/accounting/backend/accounting-snapshot-key.service";
-import { WorkspacePaidFulfillmentService } from "@/features/checkout/backend/fulfillment";
+import { ReservationFulfillment } from "@/features/checkout/backend/fulfillment";
 import {
   LatePaymentRecoveryService,
   latePaymentRecoveryTopic,
@@ -38,7 +38,7 @@ const ConsumerLive = LatePaymentRecoveryService.Default.pipe(
       Layer.provide(WorkspaceDotyposLayer)
     )
   ),
-  Layer.provide(WorkspacePaidFulfillmentService.Live),
+  Layer.provide(ReservationFulfillment.Live),
   Layer.provide(WorkspaceDotyposLayer)
 );
 

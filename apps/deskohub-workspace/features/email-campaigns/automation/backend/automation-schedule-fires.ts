@@ -3,11 +3,12 @@ import "server-only";
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { and, eq, sql } from "drizzle-orm";
 import { Effect, Option, Schema } from "effect";
-import { postgresAdvisoryTransactionLockStatement } from "@/db/postgres-advisory-lock";
+import { WorkspaceTransaction } from "@/db/database.service";
 import {
   emailCampaignAutomations as automations,
   emailCampaignAutomationScheduleFires as fires,
 } from "@/db/schema";
+import { WorkspaceLocks } from "@/db/workspace-locks";
 import {
   instantFromIsoStringSchema,
   temporalInstantToIsoString,
@@ -23,10 +24,7 @@ import {
 import { AutomationEvaluationFacts } from "./automation-evaluation-facts.service";
 import { lockAutomationForEngine } from "./automation-lifecycle-lock";
 import { loadAutomationEntryVersions } from "./automation-run-entry";
-import type {
-  AutomationEngineTransaction,
-  PlannedAutomationUnit,
-} from "./automation-unit-handler";
+import type { PlannedAutomationUnit } from "./automation-unit-handler";
 import { planAutomationUnits } from "./automation-unit-planning";
 import { loadAutomationVersionActivations } from "./automation-version-activations";
 
@@ -52,16 +50,8 @@ export const scheduleDedupKey = (
  * sibling chunk that holds the lifecycle lock shared and waits for the fire
  * row. Lifecycle operations don't take it.
  */
-export const lockScheduleFireEntry = (
-  tx: AutomationEngineTransaction,
-  campaignId: CampaignId
-) =>
-  tx.execute(
-    postgresAdvisoryTransactionLockStatement([
-      "email-automation-fire-entry",
-      campaignId,
-    ])
-  );
+export const lockScheduleFireEntry = (campaignId: CampaignId) =>
+  WorkspaceLocks.automationFireEntry(campaignId);
 
 /** What `planNextFire` did. */
 export type ScheduleFirePlan = {
@@ -82,17 +72,15 @@ const noFires: ScheduleFirePlan = {
  * (D34). Call it under the fire-entry and lifecycle locks.
  */
 export const enterScheduleFire = Effect.fn("automationSchedules.enterFire")(
-  function* (
-    tx: AutomationEngineTransaction,
-    input: {
-      readonly campaignId: CampaignId;
-      readonly fireAt: Temporal.Instant;
-      readonly status: "entered" | "failed";
-      readonly versions: readonly AutomationVersionActivation[];
-      readonly at: Temporal.Instant;
-    }
-  ) {
-    yield* tx
+  function* (input: {
+    readonly campaignId: CampaignId;
+    readonly fireAt: Temporal.Instant;
+    readonly status: "entered" | "failed";
+    readonly versions: readonly AutomationVersionActivation[];
+    readonly at: Temporal.Instant;
+  }) {
+    const { db } = yield* WorkspaceTransaction;
+    yield* db
       .update(fires)
       .set({ status: input.status, settledAt: input.at })
       .where(
@@ -102,7 +90,7 @@ export const enterScheduleFire = Effect.fn("automationSchedules.enterFire")(
           eq(fires.status, "entering")
         )
       );
-    return yield* advanceNextFire(tx, input);
+    return yield* advanceNextFire(input);
   }
 );
 
@@ -110,28 +98,29 @@ export const enterScheduleFire = Effect.fn("automationSchedules.enterFire")(
  * Moves `next_fire_at` from `fireAt` to the next scheduled fire by
  * compare-and-set; None when there is none or another writer moved it.
  */
-const advanceNextFire = (
-  tx: AutomationEngineTransaction,
-  input: {
-    readonly campaignId: CampaignId;
-    readonly fireAt: Temporal.Instant;
-    readonly versions: readonly AutomationVersionActivation[];
-  }
-) =>
-  tx
-    .update(automations)
-    .set({
-      nextFireAt: Option.getOrNull(nextFireAfter(input.versions, input.fireAt)),
-      updatedAt: sql`now()`,
-    })
-    .where(
-      and(
-        eq(automations.campaignId, input.campaignId),
-        eq(automations.nextFireAt, input.fireAt)
+const advanceNextFire = (input: {
+  readonly campaignId: CampaignId;
+  readonly fireAt: Temporal.Instant;
+  readonly versions: readonly AutomationVersionActivation[];
+}) =>
+  Effect.flatMap(WorkspaceTransaction, ({ db }) =>
+    db
+      .update(automations)
+      .set({
+        nextFireAt: Option.getOrNull(
+          nextFireAfter(input.versions, input.fireAt)
+        ),
+        updatedAt: sql`now()`,
+      })
+      .where(
+        and(
+          eq(automations.campaignId, input.campaignId),
+          eq(automations.nextFireAt, input.fireAt)
+        )
       )
-    )
-    .returning({ nextFireAt: automations.nextFireAt })
-    .pipe(Effect.map(([row]) => Option.fromNullishOr(row?.nextFireAt)));
+      .returning({ nextFireAt: automations.nextFireAt })
+      .pipe(Effect.map(([row]) => Option.fromNullishOr(row?.nextFireAt)))
+  );
 
 /**
  * Creates the automation's due fires in the caller's transaction (§5.7):
@@ -143,20 +132,17 @@ const advanceNextFire = (
  * `fire_at ≥ accepting_since` under the lifecycle lock.
  */
 export const planNextFire = Effect.fn("automationSchedules.planNextFire")(
-  function* (
-    tx: AutomationEngineTransaction,
-    campaignId: CampaignId,
-    at: Temporal.Instant
-  ) {
+  function* (campaignId: CampaignId, at: Temporal.Instant) {
+    const { db } = yield* WorkspaceTransaction;
     const facts = yield* AutomationEvaluationFacts;
-    yield* lockScheduleFireEntry(tx, campaignId);
-    const state = yield* lockAutomationForEngine(tx, campaignId);
+    yield* lockScheduleFireEntry(campaignId);
+    const state = yield* lockAutomationForEngine(campaignId);
     if (state.status !== "active" || state.acceptingSince === null) {
       return noFires;
     }
     const acceptingSince = state.acceptingSince;
-    const versions = yield* loadAutomationVersionActivations(tx, campaignId);
-    const [entering] = yield* tx
+    const versions = yield* loadAutomationVersionActivations(campaignId);
+    const [entering] = yield* db
       .select({ fireAt: fires.fireAt })
       .from(fires)
       .where(
@@ -177,12 +163,12 @@ export const planNextFire = Effect.fn("automationSchedules.planNextFire")(
       const F = fireAt.value;
       const inForce = versionInForce(versions, F);
       if (Option.isNone(inForce)) break;
-      const version = (yield* loadAutomationEntryVersions(tx, [
+      const version = (yield* loadAutomationEntryVersions([
         inForce.value.id,
       ])).get(inForce.value.id);
       if (version === undefined) break;
 
-      const pool = yield* listCampaignCandidateIds(tx, version.purpose);
+      const pool = yield* listCampaignCandidateIds(db, version.purpose);
       const { reads } = yield* facts
         .plan({
           filters: {
@@ -193,7 +179,7 @@ export const planNextFire = Effect.fn("automationSchedules.planNextFire")(
         })
         .pipe(Effect.orDie);
       const chunks = yield* facts.pack({ reads, customers: pool });
-      const inserted = yield* tx
+      const inserted = yield* db
         .insert(fires)
         .values({
           campaignId,
@@ -218,7 +204,6 @@ export const planNextFire = Effect.fn("automationSchedules.planNextFire")(
       }
       if (chunks.length > 0) {
         const planned = yield* planAutomationUnits(
-          tx,
           chunks.map(
             (chunk, index): PlannedAutomationUnit => ({
               kind: "fire-chunk",
@@ -245,7 +230,7 @@ export const planNextFire = Effect.fn("automationSchedules.planNextFire")(
         firesCreated: plan.firesCreated + 1,
         firesEntered: plan.firesEntered + 1,
       };
-      const next = yield* advanceNextFire(tx, {
+      const next = yield* advanceNextFire({
         campaignId,
         fireAt: F,
         versions,

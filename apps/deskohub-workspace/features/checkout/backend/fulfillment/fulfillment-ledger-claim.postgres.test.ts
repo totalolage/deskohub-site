@@ -5,6 +5,10 @@ import { type EmailDeliveryId, EmailDeliveryIdSchema } from "@deskohub/email";
 import { inArray } from "drizzle-orm";
 import { Effect, Layer } from "effect";
 import { type FulfillmentState, workspaceReservations } from "@/db/schema";
+import {
+  type IWorkspaceReservationRepository,
+  WorkspaceReservationRepository,
+} from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import {
@@ -12,10 +16,10 @@ import {
   type WorkspacePostgresTestDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
+  FulfillmentLedger,
   fulfillmentEmailFailureCode,
-  type IWorkspaceReservationRepository,
-  WorkspaceReservationRepository,
-} from "./workspace-reservation.repository";
+  type IFulfillmentLedger,
+} from "./fulfillment-ledger.repository";
 
 const paidAt = Temporal.Instant.from("2026-01-01T12:00:00.000Z");
 
@@ -25,10 +29,11 @@ const newEmailDeliveryId = () =>
 const postgresDatabase = await connectWorkspacePostgresTestDatabase();
 
 describe.skipIf(!postgresDatabase)(
-  "WorkspaceReservationRepository paid fulfillment claim on Postgres",
+  "FulfillmentLedger paid fulfillment claim on Postgres",
   () => {
     const postgres = postgresDatabase as WorkspacePostgresTestDatabase;
     let reservations: IWorkspaceReservationRepository;
+    let ledger: IFulfillmentLedger;
     const fixtureReservationIds: WorkspaceReservationId[] = [];
 
     const insertPaidReservationFixture = ({
@@ -61,14 +66,18 @@ describe.skipIf(!postgresDatabase)(
         );
 
     beforeAll(async () => {
-      reservations = await Effect.runPromise(
+      [reservations, ledger] = await Effect.runPromise(
         Effect.gen(function* () {
-          return yield* WorkspaceReservationRepository;
+          return [
+            yield* WorkspaceReservationRepository,
+            yield* FulfillmentLedger,
+          ] as const;
         }).pipe(
           Effect.provide(
-            WorkspaceReservationRepository.Default.pipe(
-              Layer.provide(postgres.layer)
-            )
+            Layer.mergeAll(
+              WorkspaceReservationRepository.Default,
+              FulfillmentLedger.Default
+            ).pipe(Layer.provide(postgres.layer))
           )
         )
       );
@@ -95,7 +104,7 @@ describe.skipIf(!postgresDatabase)(
       );
 
       const claimed = await Effect.runPromise(
-        reservations.claimPaidFulfillment({
+        ledger.claimPaidFulfillment({
           id,
           staleProcessingBefore: Temporal.Now.instant(),
         })

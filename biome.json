@@ -67,7 +67,9 @@
     "./lint/prefer-effect-value.grit",
     "./lint/workspace-database-clients.grit",
     "./lint/workspace-transaction-concurrency.grit",
-    "./lint/workspace-transaction-entry.grit"
+    "./lint/workspace-transaction-entry.grit",
+    "./lint/workspace-lock-statements.grit",
+    "./lint/workspace-transaction-executors.grit"
   ],
   "linter": {
     "rules": {

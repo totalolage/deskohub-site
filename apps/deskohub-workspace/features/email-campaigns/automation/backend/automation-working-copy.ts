@@ -3,6 +3,7 @@ import "server-only";
 import type { AutomationFlowType as AutomationFlow } from "@deskohub/workspace-admin-api";
 import { eq } from "drizzle-orm";
 import { Effect, Option, Schema } from "effect";
+import { WorkspaceTransaction } from "@/db/database.service";
 import {
   type CampaignAudienceRow,
   type CampaignRow,
@@ -23,7 +24,6 @@ import {
   validateAutomationFlow,
 } from "../automation-flow";
 import { AutomationFlowInvalid } from "../errors";
-import type { AutomationEngineTransaction } from "./automation-unit-handler";
 
 export type AutomationRow = typeof emailCampaignAutomations.$inferSelect;
 
@@ -56,17 +56,17 @@ export type AutomationWorkingCopy = {
  * fails `AutomationFlowInvalid`, so the admin can save it again.
  */
 export const loadAutomationWorkingCopy = (
-  tx: AutomationEngineTransaction,
   campaignId: CampaignId
 ): Effect.Effect<
   AutomationWorkingCopy,
   | CampaignNotFound
   | CampaignDeliveryMismatch
   | AutomationFlowInvalid
-  | DatabaseQueryError
+  | DatabaseQueryError,
+  WorkspaceTransaction
 > =>
   Effect.Do.pipe(
-    Effect.bind("row", () => selectWorkingCopy(tx, campaignId)),
+    Effect.bind("row", () => selectWorkingCopy(campaignId)),
     Effect.bind("flow", ({ row }) => decodeStoredFlow(row.automation.flow)),
     Effect.let("audience", ({ row }) => Option.fromNullishOr(row.audience)),
     Effect.map(
@@ -76,38 +76,41 @@ export const loadAutomationWorkingCopy = (
         flow,
         audience,
         draftHash: Option.zipWith(flow, audience, (flow, { filter }) =>
-          hashAutomationDraft({ ...row.campaign, flow, audienceFilter: filter })
+          hashAutomationDraft({
+            ...row.campaign,
+            flow,
+            audienceFilter: filter,
+          })
         ),
       })
     ),
     Effect.withSpan("automationWorkingCopy.load")
   );
 
-const selectWorkingCopy = (
-  tx: AutomationEngineTransaction,
-  campaignId: CampaignId
-) =>
-  tx
-    .select({
-      campaign: emailCampaigns,
-      automation: emailCampaignAutomations,
-      audience: {
-        id: emailCampaignAudiences.id,
-        filter: emailCampaignAudiences.filter,
-        archivedAt: emailCampaignAudiences.archivedAt,
-      },
-    })
-    .from(emailCampaigns)
-    .leftJoin(
-      emailCampaignAutomations,
-      eq(emailCampaignAutomations.campaignId, emailCampaigns.id)
-    )
-    .leftJoin(
-      emailCampaignAudiences,
-      eq(emailCampaignAudiences.id, emailCampaigns.audienceId)
-    )
-    .where(eq(emailCampaigns.id, campaignId))
-    .pipe(Effect.flatMap(([row]) => automatedWorkingCopyRow(campaignId, row)));
+const selectWorkingCopy = (campaignId: CampaignId) =>
+  Effect.flatMap(WorkspaceTransaction, ({ db }) =>
+    db
+      .select({
+        campaign: emailCampaigns,
+        automation: emailCampaignAutomations,
+        audience: {
+          id: emailCampaignAudiences.id,
+          filter: emailCampaignAudiences.filter,
+          archivedAt: emailCampaignAudiences.archivedAt,
+        },
+      })
+      .from(emailCampaigns)
+      .leftJoin(
+        emailCampaignAutomations,
+        eq(emailCampaignAutomations.campaignId, emailCampaigns.id)
+      )
+      .leftJoin(
+        emailCampaignAudiences,
+        eq(emailCampaignAudiences.id, emailCampaigns.audienceId)
+      )
+      .where(eq(emailCampaigns.id, campaignId))
+      .pipe(Effect.flatMap(([row]) => automatedWorkingCopyRow(campaignId, row)))
+  );
 
 type WorkingCopyRow = {
   readonly campaign: CampaignRow;

@@ -7,7 +7,11 @@ import { EmailDeliveryIdSchema } from "@deskohub/email";
 import { testEmailAddress } from "@deskohub/test-email";
 import { inArray, sql } from "drizzle-orm";
 import { Effect } from "effect";
-import type { WorkspaceDatabaseClient } from "@/db/database.service";
+import {
+  WorkspaceDatabase,
+  type WorkspaceDatabaseClient,
+} from "@/db/database.service";
+import type { RootDatabaseClient } from "@/db/database-client";
 import {
   type FulfillmentState,
   type PaymentState,
@@ -57,7 +61,7 @@ export type FixtureAccountOptions = {
 };
 
 /** A customer account without a login, such as a reservation's author. */
-export type FixtureCustomerAccountOptions = {
+type FixtureCustomerAccountOptions = {
   /** The account id; a fresh one by default. */
   readonly id?: CustomerAccountId;
   /** The Dotypos customer the account is linked to. */
@@ -224,46 +228,41 @@ const databaseDefault = sql`default`;
 /** Rows per insert statement, well inside Postgres's bind-parameter limit. */
 const reservationsPerStatement = 1000;
 
-/**
- * Builds Workspace records at valid lifecycle stages in a test database:
- * synthetic logins and reservations whose columns satisfy the schema's
- * pairings of state, timestamps, and provider ids.
- */
-export const workspaceFixtures = (db: WorkspaceDatabaseClient) => {
-  const insertCustomerAccount = (
-    executor: WorkspaceDatabaseClient,
-    {
-      id = customerAccountIdSchema.make(crypto.randomUUID()),
-      linkedCustomer,
-      review = false,
-      legacy = false,
-      createdAt,
-      deletedAt,
-    }: FixtureCustomerAccountOptions
-  ) =>
-    executor
-      .insert(customerAccounts)
-      .values({
-        id,
-        dotyposCustomerId: linkedCustomer ?? null,
-        review,
-        legacy,
-        deletedAt: deletedAt ?? null,
-        createdAt: createdAt ?? databaseDefault,
-      })
-      .pipe(Effect.as(id));
+const insertCustomerAccount = (
+  db: WorkspaceDatabaseClient,
+  {
+    id = customerAccountIdSchema.make(crypto.randomUUID()),
+    linkedCustomer,
+    review = false,
+    legacy = false,
+    createdAt,
+    deletedAt,
+  }: FixtureCustomerAccountOptions
+) =>
+  db
+    .insert(customerAccounts)
+    .values({
+      id,
+      dotyposCustomerId: linkedCustomer ?? null,
+      review,
+      legacy,
+      deletedAt: deletedAt ?? null,
+      createdAt: createdAt ?? databaseDefault,
+    })
+    .pipe(Effect.as(id));
 
-  const insertRoleGrant = (
-    executor: WorkspaceDatabaseClient,
-    accountId: CustomerAccountId,
-    role: AccountRole,
-    grantedBy?: CustomerAccountId
-  ) =>
-    executor
-      .insert(accountRoleGrants)
-      .values({ accountId, role, grantedByAccountId: grantedBy ?? null })
-      .pipe(Effect.asVoid);
+const insertRoleGrant = (
+  db: WorkspaceDatabaseClient,
+  accountId: CustomerAccountId,
+  role: AccountRole,
+  grantedBy?: CustomerAccountId
+) =>
+  db
+    .insert(accountRoleGrants)
+    .values({ accountId, role, grantedByAccountId: grantedBy ?? null })
+    .pipe(Effect.asVoid);
 
+const rowFixtures = (db: WorkspaceDatabaseClient) => {
   const insertReservations = (inputs: readonly ReservationFixtureInput[]) =>
     Effect.forEach(
       Array.from(
@@ -282,56 +281,6 @@ export const workspaceFixtures = (db: WorkspaceDatabaseClient) => {
     ).pipe(Effect.map((chunks) => chunks.flat()));
 
   return {
-    /**
-     * Inserts a customer account and its login, verified and not awaiting
-     * deletion unless the options say otherwise, with its role grants. The
-     * email is marked sensitive in query logs.
-     */
-    account: (
-      label: string,
-      {
-        id = customerAccountIdSchema.make(crypto.randomUUID()),
-        email = testEmailAddress(`${label}-${id}`),
-        name = "",
-        verified = true,
-        deletionRequested = false,
-        review = false,
-        legacy = false,
-        linkedCustomer,
-        roles = [],
-        locale,
-        createdAt,
-        loginCreatedAt = createdAt,
-      }: FixtureAccountOptions = {}
-    ) =>
-      db
-        .transaction(
-          Effect.fn(function* (tx) {
-            yield* insertCustomerAccount(tx, {
-              id,
-              linkedCustomer,
-              review,
-              legacy,
-              createdAt,
-            });
-            yield* tx.insert(authUser).values({
-              id,
-              name,
-              email: email,
-              emailVerified: verified,
-              deletionRequestedAt: deletionRequested ? new Date() : null,
-              locale: locale ?? null,
-              createdAt: loginCreatedAt
-                ? new Date(loginCreatedAt.epochMilliseconds)
-                : databaseDefault,
-            });
-            yield* Effect.forEach(roles, (role) =>
-              insertRoleGrant(tx, id, role)
-            );
-          })
-        )
-        .pipe(Effect.as<FixtureAccount>({ accountId: id, email })),
-
     /**
      * Grants a role to an account that already has a login, as an
      * administrator does; `grantedBy` names that administrator.
@@ -378,3 +327,86 @@ export const workspaceFixtures = (db: WorkspaceDatabaseClient) => {
     reservations: insertReservations,
   };
 };
+
+/**
+ * Inserts a customer account and its login, verified and not awaiting
+ * deletion unless the options say otherwise, with its role grants. The
+ * email is marked sensitive in query logs. The rows go in one Workspace
+ * transaction on `db`, a savepoint when `db` already holds one, so a failure
+ * leaves none of them and the caller's transaction usable.
+ */
+const accountFixture =
+  (db: RootDatabaseClient) =>
+  (
+    label: string,
+    {
+      id = customerAccountIdSchema.make(crypto.randomUUID()),
+      email = testEmailAddress(`${label}-${id}`),
+      name = "",
+      verified = true,
+      deletionRequested = false,
+      review = false,
+      legacy = false,
+      linkedCustomer,
+      roles = [],
+      locale,
+      createdAt,
+      loginCreatedAt = createdAt,
+    }: FixtureAccountOptions = {}
+  ) =>
+    Effect.flatMap(WorkspaceDatabase, ({ transaction }) =>
+      transaction(
+        Effect.gen(function* () {
+          yield* insertCustomerAccount(db, {
+            id,
+            linkedCustomer,
+            review,
+            legacy,
+            createdAt,
+          });
+          yield* db.insert(authUser).values({
+            id,
+            name,
+            email: email,
+            emailVerified: verified,
+            deletionRequestedAt: deletionRequested ? new Date() : null,
+            locale: locale ?? null,
+            createdAt: loginCreatedAt
+              ? new Date(loginCreatedAt.epochMilliseconds)
+              : databaseDefault,
+          });
+          yield* Effect.forEach(roles, (role) => insertRoleGrant(db, id, role));
+        })
+      )
+    ).pipe(
+      Effect.provideService(WorkspaceDatabase, WorkspaceDatabase.make(db)),
+      Effect.as<FixtureAccount>({ accountId: id, email })
+    );
+
+type WorkspaceRowFixtures = ReturnType<typeof rowFixtures>;
+
+type WorkspaceFixtures = WorkspaceRowFixtures & {
+  readonly account: ReturnType<typeof accountFixture>;
+};
+
+/**
+ * Builds Workspace records at valid lifecycle stages in a test database:
+ * synthetic logins and reservations whose columns satisfy the schema's
+ * pairings of state, timestamps, and provider ids. Logins (`account`) need
+ * a client over its own connection, such as a test database's or a held
+ * transaction's; a transaction's client gets the other fixtures.
+ */
+export function workspaceFixtures(db: RootDatabaseClient): WorkspaceFixtures;
+export function workspaceFixtures(
+  db: WorkspaceDatabaseClient
+): WorkspaceRowFixtures;
+export function workspaceFixtures(
+  db: WorkspaceDatabaseClient
+): WorkspaceFixtures {
+  return {
+    ...rowFixtures(db),
+    // Only the first overload exposes `account`, so `db` is a root client
+    // wherever a type-checked caller reaches it.
+    account: accountFixture(db as RootDatabaseClient),
+  };
+}

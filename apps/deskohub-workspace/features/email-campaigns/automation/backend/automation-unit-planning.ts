@@ -1,5 +1,6 @@
 import { and, eq, inArray, lte, sql } from "drizzle-orm";
 import { Effect, Option, Schema } from "effect";
+import { WorkspaceTransaction } from "@/db/database.service";
 import {
   customerEvents,
   emailCampaignAutomationRuns as runs,
@@ -7,10 +8,7 @@ import {
 } from "@/db/schema";
 import type { AutomationWorkUnitId } from "../automation-identifiers";
 import { automationWorkUnitPriorities } from "../automation-work-units";
-import type {
-  AutomationEngineTransaction,
-  PlannedAutomationUnit,
-} from "./automation-unit-handler";
+import type { PlannedAutomationUnit } from "./automation-unit-handler";
 
 /**
  * How long a unit that failed n times waits before it is replanned: 1, 2,
@@ -37,13 +35,13 @@ type ReplannedAutomationUnit = {
  * so overlapping planners never wait on each other in a cycle.
  */
 export const planAutomationUnits = Effect.fn("automationUnits.plan")(function* (
-  tx: AutomationEngineTransaction,
   planned: ReadonlyArray<PlannedAutomationUnit>,
   at: Temporal.Instant
 ) {
+  const { db } = yield* WorkspaceTransaction;
   if (planned.length === 0) return { planned: 0, replanned: [], written: [] };
 
-  const written = yield* tx
+  const written = yield* db
     .insert(units)
     .values(
       planned
@@ -118,12 +116,12 @@ const ownedSubjectsSchema = Schema.Struct({
 export const releaseAutomationUnitSubjects = Effect.fn(
   "automationUnits.releaseSubjects"
 )(function* (
-  tx: AutomationEngineTransaction,
   settling: ReadonlyArray<{
     readonly id: AutomationWorkUnitId;
     readonly subject: unknown;
   }>
 ) {
+  const { db } = yield* WorkspaceTransaction;
   const owned = settling.flatMap((unit) =>
     Option.match(
       Schema.decodeUnknownOption(ownedSubjectsSchema)(unit.subject),
@@ -140,7 +138,7 @@ export const releaseAutomationUnitSubjects = Effect.fn(
     .toSorted((left, right) => left.runId.localeCompare(right.runId));
 
   if (runOwners.length > 0) {
-    const locked = yield* tx
+    const locked = yield* db
       .select({ id: runs.id, workUnitId: runs.workUnitId })
       .from(runs)
       .where(
@@ -157,7 +155,7 @@ export const releaseAutomationUnitSubjects = Effect.fn(
       )
     );
     if (released.length > 0) {
-      yield* tx
+      yield* db
         .update(runs)
         .set({ workUnitId: null })
         .where(
@@ -171,7 +169,7 @@ export const releaseAutomationUnitSubjects = Effect.fn(
   yield* Effect.forEach(
     owned.filter(({ eventIds = [] }) => eventIds.length > 0),
     ({ unitId, eventIds = [] }) =>
-      tx
+      db
         .update(customerEvents)
         .set({ automationUnitId: null })
         .where(

@@ -110,7 +110,8 @@ const realCapture: WorkspaceAuthConfig["captureAccountLocalePreference"] = (
  * which an adapter wrapping the Postgres one needs before every login insert.
  */
 export const realCreateCustomerAccount: WorkspaceAuthConfig["createCustomerAccount"] =
-  (accountId) => ensureCustomerAccount(testDatabase!.db, accountId);
+  (accountId) =>
+    ensureCustomerAccount(accountId).pipe(Effect.provide(testDatabase!.layer));
 
 /** The real administrator grant read on the migrated disposable database. */
 const realHasAdministratorGrant: WorkspaceAuthConfig["hasAdministratorGrant"] =

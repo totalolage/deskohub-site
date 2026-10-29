@@ -2,6 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { afterAll, describe, expect, test } from "bun:test";
 import { Effect } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
 import {
   deleteAutomatedCampaigns,
   seedAutomatedCampaign,
@@ -73,12 +74,16 @@ describe.skipIf(!testDatabase)(
 
     const engineLock = (campaignId: CampaignId) =>
       Effect.runPromise(
-        db.transaction((tx) => lockAutomationForEngine(tx, campaignId))
+        Effect.flatMap(WorkspaceDatabase, ({ transaction }) =>
+          transaction(lockAutomationForEngine(campaignId))
+        ).pipe(Effect.provide(testDatabase.layer))
       );
 
     const lifecycleLock = (campaignId: CampaignId) =>
       Effect.runPromise(
-        db.transaction((tx) => lockAutomationForLifecycle(tx, campaignId))
+        Effect.flatMap(WorkspaceDatabase, ({ transaction }) =>
+          transaction(lockAutomationForLifecycle(campaignId))
+        ).pipe(Effect.provide(testDatabase.layer))
       );
 
     test("reads the lifecycle the engine rechecks", async () => {
