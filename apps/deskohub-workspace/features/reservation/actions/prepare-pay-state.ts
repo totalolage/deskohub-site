@@ -70,8 +70,8 @@ import {
   canonicalPromotionCodeSchema,
 } from "@/features/discounts/contracts";
 import { type Locale, m } from "@/features/i18n";
-import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
 import { CustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository";
+import { getLegalDocumentVersion } from "@/features/legal/document-version";
 import { ensureOfficeReservationsEnabled } from "@/features/office/backend/office-reservation-feature-flag.service";
 import { ReferralService } from "@/features/referrals";
 import type { ReferralCode } from "@/features/referrals/client";
@@ -1423,11 +1423,13 @@ const prepareSubmission = Effect.fn("prepareWorkspacePayState.submission")(
           reservation.billing ?? defaultReservationBillingSelection;
         if (input.marketingConsent === true) {
           yield* Effect.gen(function* () {
-            const documents = yield* getLegalAcceptanceSnapshot(input.locale);
             const consents = yield* CustomerMarketingConsentRepository;
             yield* consents.grantInitial({
               dotyposCustomerId,
-              documentHash: documents.marketingCommunications.hash,
+              documentHash: getLegalDocumentVersion(
+                input.locale,
+                "marketing-communications"
+              ),
               locale: input.locale,
               grantedAt: Temporal.Now.instant(),
               source: Option.isSome(bookingAgent)

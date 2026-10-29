@@ -7,7 +7,6 @@ import {
   CustomerAccountResolver,
 } from "@/features/account";
 import { type Locale, locales } from "@/features/i18n";
-import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
 import type {
   MarketingPreferencesMutationFailureReason,
   MarketingPreferencesRejection,
@@ -35,6 +34,7 @@ import {
   matchesMarketingManagementContext,
   resolveMarketingPreferencesAuthority,
 } from "./backend/marketing-preferences-authority";
+import { getLegalDocumentVersion } from "./document-version";
 
 const marketingPreferencesContextSchema = Schema.NonEmptyString;
 
@@ -84,10 +84,6 @@ const saveMarketingPreferences = Effect.fn(function* (
     );
   }
 
-  const documents = yield* getLegalAcceptanceSnapshot(input.locale).pipe(
-    Effect.mapError(() => mutationError("unavailable"))
-  );
-
   // The rendered context is only a concurrency fence. Re-read the current
   // authority immediately before writing and use its customer identity, not
   // anything supplied by the browser.
@@ -106,7 +102,10 @@ const saveMarketingPreferences = Effect.fn(function* (
   const consents = yield* CustomerMarketingConsentRepository;
   const consentInput = {
     dotyposCustomerId: currentAuthority.customerId,
-    documentHash: documents.marketingCommunications.hash,
+    documentHash: getLegalDocumentVersion(
+      input.locale,
+      "marketing-communications"
+    ),
     locale: input.locale,
     grantedAt: Temporal.Now.instant(),
   };
