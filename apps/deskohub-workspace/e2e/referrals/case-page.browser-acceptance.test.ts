@@ -254,8 +254,8 @@ const failedCapture = {
   annotations: [
     {
       caseId: captureCaseId,
-      failureKind: "error",
-      outcome: "failed",
+      failureKind: "error" as const,
+      outcome: "failed" as const,
       stepId: captureStepId,
     },
   ],
