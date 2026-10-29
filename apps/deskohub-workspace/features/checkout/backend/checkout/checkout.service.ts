@@ -762,20 +762,18 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
           }).pipe(Effect.provideService(PostHogEventService, posthogEvents));
         }
 
-        yield* paidFulfillment
-          .run(input.workspaceReservationId)
-          .pipe(
-            Effect.catch((cause) =>
-              Effect.logError(
-                "Internal payment completed but paid fulfillment failed",
-                {
-                  orderId: input.workspaceReservationId,
-                  paymentAttemptId: transition.attempt.id,
-                  cause,
-                }
-              )
+        yield* paidFulfillment.run(input.workspaceReservationId).pipe(
+          Effect.catch((cause) =>
+            Effect.logError(
+              "Internal payment completed but paid fulfillment failed",
+              {
+                orderId: input.workspaceReservationId,
+                paymentAttemptId: transition.attempt.id,
+                cause,
+              }
             )
-          );
+          )
+        );
 
         return getCheckoutRedirectResult({
           redirectUrl: getReservationStatusPath({
@@ -794,16 +792,14 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
         readonly orderId: WorkspaceReservationId;
         readonly locale: Locale;
       }) {
-        yield* paidFulfillment
-          .run(input.orderId)
-          .pipe(
-            Effect.catch((cause) =>
-              Effect.logError("Paid checkout fulfillment retry failed", {
-                orderId: input.orderId,
-                cause,
-              })
-            )
-          );
+        yield* paidFulfillment.run(input.orderId).pipe(
+          Effect.catch((cause) =>
+            Effect.logError("Paid checkout fulfillment retry failed", {
+              orderId: input.orderId,
+              cause,
+            })
+          )
+        );
 
         return getCheckoutRedirectResult({
           redirectUrl: getReservationStatusPath({

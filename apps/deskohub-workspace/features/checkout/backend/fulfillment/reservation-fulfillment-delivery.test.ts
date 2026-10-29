@@ -47,14 +47,14 @@ const awaitingDeliveryReservation = {
   paymentState: "paid",
   fulfillmentState: "awaiting_delivery",
   fulfillmentFailureCode: null,
-} as never;
+};
 
 const fulfilledReservation = {
   ...awaitingDeliveryReservation,
   dotyposReservationId: "dotypos-reservation-id",
   dotyposCustomerId: "dotypos-customer-id",
   fulfillmentState: "fulfilled",
-} as never;
+};
 
 const deliveryReport = (
   overrides: Partial<ReservationAccessDeliveryReport> = {}
@@ -115,15 +115,17 @@ const untouchedDelivery = () => ({
 
 describe("ReservationFulfillment.recordDelivery", () => {
   test("completes an awaiting delivery, emits reservation fulfilled and issues the invoice", async () => {
-    const capture = mock(() => Effect.void);
+    const capture = mock((_input: CapturePostHogEventInput) => Effect.void);
     const processInvoice = mock(() => Effect.void);
-    const markFulfilled = mock(() => Effect.succeed(fulfilledReservation));
+    const markFulfilled = mock(() =>
+      Effect.succeed(fulfilledReservation as never)
+    );
     const markDeliveryFailed = mock(() =>
       Effect.die("should not fail fulfillment")
     );
     const ledger = {
       findByActiveCustomerEmailDeliveryId: mock(() =>
-        Effect.succeed(awaitingDeliveryReservation)
+        Effect.succeed(awaitingDeliveryReservation as never)
       ),
       markCustomerEmailDeliveryFulfilled: markFulfilled,
       markCustomerEmailDeliveryFailed: markDeliveryFailed,
@@ -163,7 +165,7 @@ describe("ReservationFulfillment.recordDelivery", () => {
   test("retries the invoice for an already fulfilled reservation", async () => {
     const invoiceFailure = new Error("synthetic invoice failure");
     const processInvoice = mock(() => Effect.fail(invoiceFailure as never));
-    const capture = mock(() => Effect.void);
+    const capture = mock((_input: CapturePostHogEventInput) => Effect.void);
     const markFulfilled = mock(() => Effect.die("should not re-fulfill"));
 
     const error = await Effect.runPromise(
@@ -171,7 +173,7 @@ describe("ReservationFulfillment.recordDelivery", () => {
         recordDelivery({
           ledger: {
             findByActiveCustomerEmailDeliveryId: mock(() =>
-              Effect.succeed(fulfilledReservation)
+              Effect.succeed(fulfilledReservation as never)
             ),
             markCustomerEmailDeliveryFulfilled: markFulfilled,
           },
@@ -200,7 +202,7 @@ describe("ReservationFulfillment.recordDelivery", () => {
       recordDelivery({
         ledger: {
           findByActiveCustomerEmailDeliveryId: mock(() =>
-            Effect.succeed(fulfilledReservation)
+            Effect.succeed(fulfilledReservation as never)
           ),
           ...untouchedDelivery(),
         },
@@ -212,7 +214,9 @@ describe("ReservationFulfillment.recordDelivery", () => {
   });
 
   test("repairs a failed delivery only for the fulfillment email failure code", async () => {
-    const markFulfilled = mock(() => Effect.succeed(fulfilledReservation));
+    const markFulfilled = mock(() =>
+      Effect.succeed(fulfilledReservation as never)
+    );
 
     const outcome = await Effect.runPromise(
       recordDelivery({
@@ -297,7 +301,7 @@ describe("ReservationFulfillment.recordDelivery", () => {
   });
 
   test("ignores a failure report the ledger finds older than the fulfillment", async () => {
-    const capture = mock(() => Effect.void);
+    const capture = mock((_input: CapturePostHogEventInput) => Effect.void);
     const markDeliveryFailed = mock(() => Effect.succeed(null));
 
     const outcome = await Effect.runPromise(
@@ -327,7 +331,7 @@ describe("ReservationFulfillment.recordDelivery", () => {
   });
 
   test("cannot clear a newer delivery failure with a delayed success report", async () => {
-    const capture = mock(() => Effect.void);
+    const capture = mock((_input: CapturePostHogEventInput) => Effect.void);
     const processInvoice = mock(() => Effect.void);
     const markFulfilled = mock(() => Effect.succeed(null));
 
@@ -368,14 +372,14 @@ describe("ReservationFulfillment.recordDelivery", () => {
 
   test("records a failed delivery with the email failure code at the report time", async () => {
     const markDeliveryFailed = mock(() =>
-      Effect.succeed(awaitingDeliveryReservation)
+      Effect.succeed(awaitingDeliveryReservation as never)
     );
 
     const outcome = await Effect.runPromise(
       recordDelivery({
         ledger: {
           findByActiveCustomerEmailDeliveryId: mock(() =>
-            Effect.succeed(awaitingDeliveryReservation)
+            Effect.succeed(awaitingDeliveryReservation as never)
           ),
           markCustomerEmailDeliveryFailed: markDeliveryFailed,
         },
@@ -392,7 +396,9 @@ describe("ReservationFulfillment.recordDelivery", () => {
   });
 
   test("asks for a retry when this deployment's access email is reported before its delivery is attached", async () => {
-    const markFulfilled = mock(() => Effect.succeed(fulfilledReservation));
+    const markFulfilled = mock(() =>
+      Effect.succeed(fulfilledReservation as never)
+    );
     const markDeliveryFailed = mock(() =>
       Effect.die("should not update delivery")
     );
@@ -419,7 +425,7 @@ describe("ReservationFulfillment.recordDelivery", () => {
         ledger: {
           ...ledger,
           findByActiveCustomerEmailDeliveryId: mock(() =>
-            Effect.succeed(awaitingDeliveryReservation)
+            Effect.succeed(awaitingDeliveryReservation as never)
           ),
         },
         report: deliveryReport(),
@@ -485,12 +491,12 @@ describe("ReservationFulfillment.recordDelivery", () => {
       { reservationId, deployment: "missing" as const },
       "deployment_environment_missing",
     ],
-  ])(
+  ] as const)(
     "ignores an active delivery reported for %s",
     async (_, accessEmail, ignored) => {
       const ledger = {
         findByActiveCustomerEmailDeliveryId: mock(() =>
-          Effect.succeed(awaitingDeliveryReservation)
+          Effect.succeed(awaitingDeliveryReservation as never)
         ),
         ...untouchedDelivery(),
       };
@@ -542,7 +548,7 @@ describe("ReservationFulfillment.recordDelivery", () => {
           recordDelivery({
             ledger: {
               findByActiveCustomerEmailDeliveryId: mock(() =>
-                Effect.succeed(awaitingDeliveryReservation)
+                Effect.succeed(awaitingDeliveryReservation as never)
               ),
               [transition]: mock(() => Effect.fail(updateFailure as never)),
             },

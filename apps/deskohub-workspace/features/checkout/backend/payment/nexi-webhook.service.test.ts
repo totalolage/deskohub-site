@@ -92,7 +92,7 @@ type NexiWebhookTestServices = {
   readonly paymentLifecycle: IPaymentLifecycleRepository;
   readonly reservations: WorkspaceReservationRepositoryType;
   readonly nexi: NexiServiceType;
-  readonly fulfillment: IReservationFulfillment;
+  readonly fulfillment: Pick<IReservationFulfillment, "run">;
   readonly posthog?: {
     readonly capture: (input: CapturePostHogEventInput) => Effect.Effect<void>;
   };
@@ -234,7 +234,7 @@ describe("NexiWebhookService", () => {
         },
         fulfillment: {
           run: fulfillPaidOrder,
-        } satisfies IReservationFulfillment,
+        } satisfies Pick<IReservationFulfillment, "run">,
         posthog: { capture },
       })
     );
@@ -619,7 +619,7 @@ describe("NexiWebhookService", () => {
                 })
               )
             ),
-          } satisfies IReservationFulfillment,
+          } satisfies Pick<IReservationFulfillment, "run">,
         })
       )
     );

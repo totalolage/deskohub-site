@@ -36,8 +36,8 @@ import {
   capturePaymentCompleted,
   capturePaymentFailed,
 } from "../analytics/posthog-lifecycle-events";
-import { ReservationFulfillment } from "../fulfillment/reservation-fulfillment.service";
 import { PaidFulfillmentQueueService } from "../fulfillment/paid-fulfillment-queue.service";
+import { ReservationFulfillment } from "../fulfillment/reservation-fulfillment.service";
 import {
   isNexiPaymentAttempt,
   type NexiPaymentAttempt,
@@ -242,9 +242,7 @@ function makeProviderPaymentFinalizationServiceLayer(
               "Paid order fulfillment could not be enqueued; fulfilling inline",
               { ...input, cause }
             ).pipe(
-              Effect.andThen(
-                fulfillment.run(input.orderId)
-              ),
+              Effect.andThen(fulfillment.run(input.orderId)),
               Effect.tapError((cause) =>
                 Effect.logFatal(
                   "Paid order fulfillment failed during finalization",

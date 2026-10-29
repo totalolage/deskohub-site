@@ -1,5 +1,8 @@
 import { DotyposService } from "@deskohub/dotypos";
-import { type EmailDeliveryId, isConsoleEmailDeliveryId } from "@deskohub/email";
+import {
+  type EmailDeliveryId,
+  isConsoleEmailDeliveryId,
+} from "@deskohub/email";
 import { EmailServiceTag } from "@deskohub/email/backend/service";
 import { Context, Data, Effect, Layer, Match, Predicate } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
@@ -90,7 +93,7 @@ export interface ReservationAccessDeliveryReport {
   };
 }
 
-export type ReservationDeliveryIgnoredReason =
+type ReservationDeliveryIgnoredReason =
   | "unknown_email_delivery"
   | "unrelated_email"
   | "reservation_mismatch"
@@ -144,7 +147,10 @@ export interface IReservationFulfillment {
    */
   readonly recordDelivery: (
     report: ReservationAccessDeliveryReport
-  ) => Effect.Effect<ReservationDeliveryOutcome, ReservationDeliveryReportError>;
+  ) => Effect.Effect<
+    ReservationDeliveryOutcome,
+    ReservationDeliveryReportError
+  >;
 }
 
 /**

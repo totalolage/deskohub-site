@@ -195,9 +195,10 @@ const withTag = (
   ...payload,
   data: {
     ...payload.data,
-    tags: payload.data.tags.flatMap((tag) =>
-      tag.name !== name ? [tag] : value === undefined ? [] : [{ name, value }]
-    ),
+    tags: payload.data.tags.flatMap((tag) => {
+      if (tag.name !== name) return [tag];
+      return value === undefined ? [] : [{ name, value }];
+    }),
   },
 });
 

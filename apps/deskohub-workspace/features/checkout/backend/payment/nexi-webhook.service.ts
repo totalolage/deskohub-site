@@ -621,28 +621,25 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
               }
               yield* Effect.logInfo("Nexi webhook payment attempt marked paid");
 
-              yield* fulfillment
-                .run(reservation.id)
-                .pipe(
-                  Effect.mapError(
-                    (cause) =>
-                      new NexiWebhookProcessingError({
-                        errorCode: "nexi_webhook_fulfillment_failed",
-                        eventId,
-                        orderId: providerOrderId,
-                        message:
-                          "Paid workspace reservation fulfillment failed.",
-                        cause,
-                      })
-                  ),
-                  Effect.catch((error) =>
-                    failAfterMarkingEvent(
-                      webhookEvents,
-                      { type: "eventId", eventId },
-                      error
-                    )
+              yield* fulfillment.run(reservation.id).pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new NexiWebhookProcessingError({
+                      errorCode: "nexi_webhook_fulfillment_failed",
+                      eventId,
+                      orderId: providerOrderId,
+                      message: "Paid workspace reservation fulfillment failed.",
+                      cause,
+                    })
+                ),
+                Effect.catch((error) =>
+                  failAfterMarkingEvent(
+                    webhookEvents,
+                    { type: "eventId", eventId },
+                    error
                   )
-                );
+                )
+              );
               yield* Effect.logInfo("Nexi webhook paid order fulfilled");
             } else if (verification.status === "failure") {
               const terminalState = classifyNexiFailureStatus(providerStatus);

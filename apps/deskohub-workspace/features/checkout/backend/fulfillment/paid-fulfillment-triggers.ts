@@ -21,5 +21,4 @@ export const consumePaidFulfillmentMessage = (message: {
 export const runStalledPaidFulfillmentReconciliation = (input: {
   readonly now: Temporal.Instant;
   readonly limit: number;
-}) =>
-  reconcileStalledPaidFulfillments(input).pipe(Effect.provide(TriggerLive));
+}) => reconcileStalledPaidFulfillments(input).pipe(Effect.provide(TriggerLive));

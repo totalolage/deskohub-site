@@ -22,12 +22,12 @@ import {
   TemporalInstantSchema,
   temporalInstantToIsoString,
 } from "@/shared/utils/temporal";
+import { ResendWebhookRuntimeConfig } from "./resend-webhook.config";
 import {
   type ReservationAccessDeliveryReport,
-  ReservationFulfillment,
   type ReservationDeliveryReportError,
+  ReservationFulfillment,
 } from "./reservation-fulfillment.service";
-import { ResendWebhookRuntimeConfig } from "./resend-webhook.config";
 import { customerAccessCategory } from "./workspace-reservation-email.service";
 
 const workspaceFulfillmentSource = "workspace-paid-fulfillment";
@@ -200,6 +200,18 @@ const isDeliverySuccessEvent = (event: ResendWebhookEvent) =>
 const isReservationDeliveryEvent = (event: ResendWebhookEvent) =>
   isDeliveryFailureEvent(event) || isDeliverySuccessEvent(event);
 
+// An equal tag wins over a missing one, so an untagged email still counts as
+// this deployment's when the deployment itself has no environment name.
+const classifyDeployment = (
+  tagged: string | undefined,
+  current: string
+): NonNullable<
+  ReservationAccessDeliveryReport["accessEmail"]
+>["deployment"] => {
+  if (tagged === current) return "current";
+  return tagged === undefined ? "missing" : "other";
+};
+
 /** Keeps the webhook's error code and message for each unapplied report. */
 const describeUnappliedReport = (
   report: ReservationAccessDeliveryReport,
@@ -350,29 +362,25 @@ function makeResendWebhookServiceLayer(service: typeof ResendWebhookService) {
             ...(isCustomerAccessDelivery && {
               accessEmail: {
                 reservationId: workspaceReservationId,
-                deployment:
-                  deploymentEnvironment === config.deploymentEnvironment
-                    ? "current"
-                    : deploymentEnvironment === undefined
-                      ? "missing"
-                      : "other",
+                deployment: classifyDeployment(
+                  deploymentEnvironment,
+                  config.deploymentEnvironment
+                ),
               },
             }),
           };
 
-          const outcome = yield* fulfillment
-            .recordDelivery(report)
-            .pipe(
-              Effect.mapError(
-                (error) =>
-                  new ResendWebhookProcessingError({
-                    ...describeUnappliedReport(report, error.reason),
-                    eventId: input.eventId,
-                    workspaceReservationId: error.workspaceReservationId,
-                    cause: error.cause,
-                  })
-              )
-            );
+          const outcome = yield* fulfillment.recordDelivery(report).pipe(
+            Effect.mapError(
+              (error) =>
+                new ResendWebhookProcessingError({
+                  ...describeUnappliedReport(report, error.reason),
+                  eventId: input.eventId,
+                  workspaceReservationId: error.workspaceReservationId,
+                  cause: error.cause,
+                })
+            )
+          );
 
           return outcome === "applied"
             ? ({ status: "processed" } satisfies ResendWebhookProcessingResult)
