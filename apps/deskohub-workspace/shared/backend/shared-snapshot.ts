@@ -1,6 +1,6 @@
 import "server-only";
 
-import { Data, Effect, Exit } from "effect";
+import { Data, Effect } from "effect";
 import { type CacheLifeProfiles, cacheLife, cacheTag } from "next/cache";
 import {
   runWorkspaceEffect,
@@ -100,21 +100,6 @@ interface SharedRead<A> {
 // `next/cache` declares one overload per profile, which no union of
 // profiles matches; its implementation takes any of them.
 const setLifetime = cacheLife as (lifetime: SharedSnapshotLifetime) => void;
-
-/**
- * Applies a `"use cache"` snapshot's lifetime and tags once it loads, and
- * marks any failed load uncacheable so the failure is never shared.
- */
-export function cachedOnSuccess(applyLifetime: () => void) {
-  return <A, E, R>(load: Effect.Effect<A, E, R>) =>
-    load.pipe(
-      Effect.onExit((exit) =>
-        Effect.sync(() =>
-          Exit.isSuccess(exit) ? applyLifetime() : cacheLife({ expire: 0 })
-        )
-      )
-    );
-}
 
 /** A `"use cache"` snapshot loader rejected instead of returning its value. */
 export class SharedSnapshotLoadFailure extends Data.TaggedError(

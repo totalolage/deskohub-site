@@ -3,13 +3,11 @@ import "server-only";
 import { DotyposService, type DotyposTable } from "@deskohub/dotypos";
 import type { GoogleCalendarEventQuery } from "@deskohub/google-calendar";
 import { Effect, Layer } from "effect";
-import { cacheLife, cacheTag } from "next/cache";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import {
-  cachedOnSuccess,
   fromSharedSnapshot,
+  readSharedSnapshot,
 } from "@/shared/backend/shared-snapshot";
-import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { availabilityTags } from "@/shared/utils/cache-tags";
 import { AdvisoryAvailabilityInventory } from "./availability-inventory";
 import {
@@ -50,15 +48,17 @@ export const SharedAvailabilityInventoryLive = Layer.succeed(
 export async function loadSharedTables(): Promise<readonly DotyposTable[]> {
   "use cache: remote";
 
-  return await Effect.flatMap(DotyposService, (dotypos) =>
-    dotypos.getTables()
-  ).pipe(
-    Effect.provide(WorkspaceDotyposLayer),
-    cachedOnSuccess(() => {
-      cacheLife("availabilityTables");
-      cacheTag(availabilityTags.tables);
-    }),
-    runWorkspaceEffect("reservation.availability.tables.load")
+  return await readSharedSnapshot(
+    "reservation.availability.tables.load",
+    Effect.flatMap(DotyposService, (dotypos) => dotypos.getTables()).pipe(
+      Effect.provide(WorkspaceDotyposLayer)
+    ),
+    {
+      complete: {
+        lifetime: "availabilityTables",
+        tags: [availabilityTags.tables],
+      },
+    }
   );
 }
 
@@ -72,19 +72,23 @@ export async function loadSharedActiveReservations(interval: {
 }): Promise<readonly ReservationRecord[]> {
   "use cache: remote";
 
-  return await Effect.flatMap(DotyposService, (dotypos) =>
-    dotypos.listActiveReservationsOverlapping({
-      startDate: new Date(interval.startsAt),
-      endDate: new Date(interval.endsAt),
-    })
-  ).pipe(
-    Effect.map((reservations) => reservations.map(toReservationRecord)),
-    Effect.provide(WorkspaceDotyposLayer),
-    cachedOnSuccess(() => {
-      cacheLife("availabilityReservations");
-      cacheTag(availabilityTags.reservations);
-    }),
-    runWorkspaceEffect("reservation.availability.reservations.load")
+  return await readSharedSnapshot(
+    "reservation.availability.reservations.load",
+    Effect.flatMap(DotyposService, (dotypos) =>
+      dotypos.listActiveReservationsOverlapping({
+        startDate: new Date(interval.startsAt),
+        endDate: new Date(interval.endsAt),
+      })
+    ).pipe(
+      Effect.map((reservations) => reservations.map(toReservationRecord)),
+      Effect.provide(WorkspaceDotyposLayer)
+    ),
+    {
+      complete: {
+        lifetime: "availabilityReservations",
+        tags: [availabilityTags.reservations],
+      },
+    }
   );
 }
 
@@ -93,16 +97,17 @@ export async function loadSharedLimitations(
 ): Promise<readonly WorkspaceCalendarLimitation[]> {
   "use cache: remote";
 
-  return await Effect.flatMap(
-    GoogleCalendarWorkspaceLimitationsService,
-    (calendar) => calendar.listLimitations(query)
-  ).pipe(
-    Effect.provide(GoogleCalendarWorkspaceLimitationsService.Live),
-    cachedOnSuccess(() => {
-      cacheLife("availabilityCalendar");
-      cacheTag(availabilityTags.calendar);
-    }),
-    runWorkspaceEffect("reservation.availability.limitations.load")
+  return await readSharedSnapshot(
+    "reservation.availability.limitations.load",
+    Effect.flatMap(GoogleCalendarWorkspaceLimitationsService, (calendar) =>
+      calendar.listLimitations(query)
+    ).pipe(Effect.provide(GoogleCalendarWorkspaceLimitationsService.Live)),
+    {
+      complete: {
+        lifetime: "availabilityCalendar",
+        tags: [availabilityTags.calendar],
+      },
+    }
   );
 }
 
