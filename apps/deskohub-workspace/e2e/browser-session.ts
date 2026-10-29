@@ -13,6 +13,10 @@ import type {
 } from "@playwright/test";
 import { Cause, Deferred, Effect, Exit, FiberSet, type Scope } from "effect";
 import {
+  sanitizeArtifactText,
+  sanitizeHarArtifact,
+} from "./artifact-sanitization";
+import {
   formatNexiBuildFailureLine,
   isNexiBuildApiUrl,
   listNexiBuildFailureCodes,
@@ -26,7 +30,7 @@ import {
 } from "./errors";
 import { withinWorkspaceE2EDeadline } from "./polling";
 import { primePreviewAccess } from "./preview-access";
-import { redact, redactJsonValue } from "./redaction";
+import { redact } from "./redaction";
 import { workspaceE2ETimeouts } from "./timeouts";
 
 /** What the session captured from every page of its context, redacted. */
@@ -693,111 +697,3 @@ export const writeArtifactText = (
       );
     },
   });
-
-/**
- * Redacts registered secrets, query values, the bypass header, and long
- * token-like runs from text bound for a failure artifact.
- */
-const sanitizeArtifactText = (text: string) =>
-  sanitizeArtifactUrlText(redact(text))
-    .replace(/([?&][^=&#\s]+)=[^&\s",}]+/g, "$1=[redacted]")
-    .replace(/((?:%3F|%26)[^=%&\s]+)(?:%3D|=)[^%&\s",}]+/gi, "$1%3D[redacted]")
-    .replace(/(x-vercel-protection-bypass[=":\s]+)[^&\s",}]+/gi, "$1[redacted]")
-    .replace(/[A-Za-z0-9_-]{96,}/g, "[token]");
-
-const sanitizeArtifactUrlText = (text: string) =>
-  text.replace(/https?:\/\/[^\s"'<>]+/g, (value) => {
-    try {
-      const url = new URL(value);
-      for (const key of url.searchParams.keys())
-        url.searchParams.set(key, "[redacted]");
-      return url.toString();
-    } catch {
-      return value;
-    }
-  });
-
-// Sanitizes string values only, so short redacted values (such as test card
-// fragments) cannot rewrite timings and sizes into invalid JSON.
-export const sanitizeHarArtifact = (text: string) => {
-  try {
-    const har = JSON.parse(text) as Record<string, unknown>;
-    const log = asRecord(har.log);
-    const entries = Array.isArray(log?.entries) ? log.entries : [];
-
-    for (const entry of entries) {
-      const record = asRecord(entry);
-      if (!record) continue;
-      const request = asRecord(record.request);
-      const requestUrl = typeof request?.url === "string" ? request.url : "";
-      sanitizeHarRequest(request);
-      sanitizeHarResponse(asRecord(record.response), requestUrl);
-    }
-
-    return JSON.stringify(redactJsonValue(har, sanitizeArtifactText), null, 2);
-  } catch {
-    return sanitizeArtifactText(text);
-  }
-};
-
-const sanitizeHarRequest = (request: Record<string, unknown> | undefined) => {
-  if (!request) return;
-  if (typeof request.url === "string")
-    request.url = sanitizeHarUrl(request.url);
-  request.headers = sanitizeHarNamedValues(request.headers);
-  request.cookies = [];
-  request.queryString = sanitizeHarNamedValues(request.queryString);
-
-  const postData = asRecord(request.postData);
-  if (!postData) return;
-  postData.params = [];
-  if (typeof postData.text === "string") postData.text = "[redacted]";
-};
-
-const sanitizeHarResponse = (
-  response: Record<string, unknown> | undefined,
-  requestUrl: string
-) => {
-  if (!response) return;
-  response.headers = sanitizeHarNamedValues(response.headers);
-  response.cookies = [];
-
-  const content = asRecord(response.content);
-  if (!content || typeof content.text !== "string") return;
-  const summary =
-    typeof response.status === "number" &&
-    response.status >= 400 &&
-    isNexiBuildUrl(requestUrl)
-      ? summarizeNexiBuildFailureBody(content.text)
-      : undefined;
-  content.text = summary ? JSON.stringify(summary) : "[redacted]";
-};
-
-const isNexiBuildUrl = (value: string) => {
-  const url = URL.parse(value);
-  return url ? isNexiBuildApiUrl(url) : false;
-};
-
-const sanitizeHarNamedValues = (value: unknown) =>
-  Array.isArray(value)
-    ? value.map((item) => {
-        const record = asRecord(item);
-        return record ? { ...record, value: "[redacted]" } : item;
-      })
-    : value;
-
-const sanitizeHarUrl = (value: string) => {
-  try {
-    const url = new URL(value);
-    for (const key of url.searchParams.keys())
-      url.searchParams.set(key, "[redacted]");
-    return sanitizeArtifactText(url.toString());
-  } catch {
-    return sanitizeArtifactText(value);
-  }
-};
-
-const asRecord = (value: unknown) =>
-  value && typeof value === "object"
-    ? (value as Record<string, unknown>)
-    : undefined;
