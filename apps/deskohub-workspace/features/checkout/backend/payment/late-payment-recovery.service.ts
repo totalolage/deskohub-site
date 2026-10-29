@@ -26,7 +26,7 @@ import {
   plainDateStringSchema,
   temporalInstantToDate,
 } from "@/shared/utils/temporal";
-import { WorkspacePaidFulfillmentService } from "../fulfillment/paid-fulfillment.service";
+import { ReservationFulfillment } from "../fulfillment/reservation-fulfillment.service";
 import {
   isReusableHold,
   LatePaymentRecoveryRepository,
@@ -219,7 +219,7 @@ export class LatePaymentRecoveryService extends Context.Service<
       const availability = yield* WorkspaceAvailabilityService;
       const dotypos = yield* DotyposService;
       const tableAssignments = yield* WorkspaceTableAssignmentService;
-      const fulfillment = yield* WorkspacePaidFulfillmentService;
+      const fulfillment = yield* ReservationFulfillment;
 
       const settleRefund = (input: {
         readonly paymentAttemptId: PaymentAttemptId;
@@ -499,7 +499,7 @@ export class LatePaymentRecoveryService extends Context.Service<
         if (settled?.state === "refund_required") {
           return "refund_required" as const;
         }
-        yield* fulfillment.fulfillPaidOrder({ orderId: reservation.id });
+        yield* fulfillment.run(reservation.id);
         return "recovered" as const;
       });
 
@@ -510,9 +510,7 @@ export class LatePaymentRecoveryService extends Context.Service<
           );
           if (!current) return "ignored" as const;
           if (current.state === "recovered") {
-            yield* fulfillment.fulfillPaidOrder({
-              orderId: current.workspaceReservationId,
-            });
+            yield* fulfillment.run(current.workspaceReservationId);
             return "recovered" as const;
           }
           if (
@@ -617,9 +615,7 @@ export class LatePaymentRecoveryService extends Context.Service<
                   })
                 );
               if (reuse === "reused") {
-                yield* fulfillment.fulfillPaidOrder({
-                  orderId: reservation.id,
-                });
+                yield* fulfillment.run(reservation.id);
                 return "recovered" as const;
               }
               if (reuse === "discount_unavailable") {

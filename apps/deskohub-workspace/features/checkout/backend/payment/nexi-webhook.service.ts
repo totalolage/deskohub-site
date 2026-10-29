@@ -21,7 +21,7 @@ import {
   capturePaymentCompleted,
   capturePaymentFailed,
 } from "../analytics/posthog-lifecycle-events";
-import { WorkspacePaidFulfillmentService } from "../fulfillment/paid-fulfillment.service";
+import { ReservationFulfillment } from "../fulfillment/reservation-fulfillment.service";
 import { LatePaymentRecoveryRepository } from "../repositories/late-payment-recovery.repository";
 import {
   isNexiPaymentAttempt,
@@ -93,7 +93,7 @@ export class NexiWebhookService extends Context.Service<
       )
     ),
     Layer.provide(WorkspaceDatabase.Default),
-    Layer.provide(WorkspacePaidFulfillmentService.Live)
+    Layer.provide(ReservationFulfillment.Live)
   );
 }
 
@@ -157,7 +157,7 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
       const paymentLifecycle = yield* PaymentLifecycleRepository;
       const reservations = yield* WorkspaceReservationRepository;
       const nexi = yield* NexiService;
-      const fulfillment = yield* WorkspacePaidFulfillmentService;
+      const fulfillment = yield* ReservationFulfillment;
       const posthogEvents = yield* PostHogEventService;
       const latePaymentRecoveries = yield* LatePaymentRecoveryRepository;
       const latePaymentRecoveryQueue = yield* LatePaymentRecoveryQueueService;
@@ -622,7 +622,7 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
               yield* Effect.logInfo("Nexi webhook payment attempt marked paid");
 
               yield* fulfillment
-                .fulfillPaidOrder({ orderId: reservation.id })
+                .run(reservation.id)
                 .pipe(
                   Effect.mapError(
                     (cause) =>

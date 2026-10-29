@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { FulfillmentLedger } from "./fulfillment-ledger.repository";
-import { WorkspacePaidFulfillmentService } from "./paid-fulfillment.service";
+import { ReservationFulfillment } from "./reservation-fulfillment.service";
 
 /** Leaves recent orders to their queue message and the webhook. */
 const stalledAfter = { minutes: 15 };
@@ -19,7 +19,7 @@ export const reconcileStalledPaidFulfillments = Effect.fn(
     readonly limit: number;
   }) {
     const ledger = yield* FulfillmentLedger;
-    const fulfillment = yield* WorkspacePaidFulfillmentService;
+    const fulfillment = yield* ReservationFulfillment;
 
     const orderIds = yield* ledger.selectStalledPaidFulfillments({
       updatedBefore: input.now.subtract(stalledAfter),
@@ -33,7 +33,7 @@ export const reconcileStalledPaidFulfillments = Effect.fn(
     let failed = 0;
     for (const orderId of orderIds) {
       attempted += 1;
-      yield* fulfillment.fulfillPaidOrder({ orderId }).pipe(
+      yield* fulfillment.run(orderId).pipe(
         Effect.tapError((cause) => {
           failed += 1;
           return Effect.logError("Stalled paid fulfillment retry failed", {

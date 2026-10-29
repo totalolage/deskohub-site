@@ -36,7 +36,7 @@ import {
   capturePaymentCompleted,
   capturePaymentFailed,
 } from "../analytics/posthog-lifecycle-events";
-import { WorkspacePaidFulfillmentService } from "../fulfillment/paid-fulfillment.service";
+import { ReservationFulfillment } from "../fulfillment/reservation-fulfillment.service";
 import { PaidFulfillmentQueueService } from "../fulfillment/paid-fulfillment-queue.service";
 import {
   isNexiPaymentAttempt,
@@ -97,7 +97,7 @@ export class ProviderPaymentFinalizationService extends Context.Service<
     Layer.provide(PostHogEventService.Live),
     Layer.provide(WorkspaceReservationRepository.Default),
     Layer.provide(WorkspaceDatabase.Default),
-    Layer.provide(WorkspacePaidFulfillmentService.Live),
+    Layer.provide(ReservationFulfillment.Live),
     Layer.provide(PaidFulfillmentQueueService.Live),
     Layer.provide(WorkspaceNexiLayer)
   );
@@ -114,7 +114,7 @@ function makeProviderPaymentFinalizationServiceLayer(
       const paymentLifecycle = yield* PaymentLifecycleRepository;
       const nexi = yield* NexiService;
       const paidFulfillmentQueue = yield* PaidFulfillmentQueueService;
-      const fulfillment = yield* WorkspacePaidFulfillmentService;
+      const fulfillment = yield* ReservationFulfillment;
       const posthogEvents = yield* PostHogEventService;
 
       /**
@@ -243,7 +243,7 @@ function makeProviderPaymentFinalizationServiceLayer(
               { ...input, cause }
             ).pipe(
               Effect.andThen(
-                fulfillment.fulfillPaidOrder({ orderId: input.orderId })
+                fulfillment.run(input.orderId)
               ),
               Effect.tapError((cause) =>
                 Effect.logFatal(

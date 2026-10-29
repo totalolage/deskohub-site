@@ -67,7 +67,7 @@ import {
   capturePaymentFailed,
   capturePaymentStarted,
 } from "../analytics/posthog-lifecycle-events";
-import { WorkspacePaidFulfillmentService } from "../fulfillment/paid-fulfillment.service";
+import { ReservationFulfillment } from "../fulfillment/reservation-fulfillment.service";
 import { NexiAmountFromWorkspaceMoney } from "../payment/nexi-amount.codec";
 import { getNexiCurrencyOverride } from "../payment/nexi-currency";
 import { getNexiHostedPaymentCustomer } from "../payment/nexi-customer-info";
@@ -239,7 +239,7 @@ export class CheckoutService extends Context.Service<
 
   static Live = this.Default.pipe(
     Layer.provide(OptionalAccountActivityGuard.Live),
-    Layer.provide(WorkspacePaidFulfillmentService.Live),
+    Layer.provide(ReservationFulfillment.Live),
     Layer.provide(PayableReservationService.Default),
     Layer.provide(LegalEvidenceEventRepository.Default),
     Layer.provide(PostHogEventService.Live),
@@ -517,7 +517,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
       const paymentAttempts = yield* PaymentAttemptRepository;
       const paymentLifecycle = yield* PaymentLifecycleRepository;
       const legalEvidenceEvents = yield* LegalEvidenceEventRepository;
-      const paidFulfillment = yield* WorkspacePaidFulfillmentService;
+      const paidFulfillment = yield* ReservationFulfillment;
       const posthogEvents = yield* PostHogEventService;
       const pricing = yield* CheckoutPricingService;
       const payableReservations = yield* PayableReservationService;
@@ -763,7 +763,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
         }
 
         yield* paidFulfillment
-          .fulfillPaidOrder({ orderId: input.workspaceReservationId })
+          .run(input.workspaceReservationId)
           .pipe(
             Effect.catch((cause) =>
               Effect.logError(
@@ -795,7 +795,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
         readonly locale: Locale;
       }) {
         yield* paidFulfillment
-          .fulfillPaidOrder({ orderId: input.orderId })
+          .run(input.orderId)
           .pipe(
             Effect.catch((cause) =>
               Effect.logError("Paid checkout fulfillment retry failed", {

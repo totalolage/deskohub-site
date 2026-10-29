@@ -14,8 +14,8 @@ import { workspaceReservationIdSchema } from "@/features/reservation/persistence
 import { ReviewSandboxMock } from "@/features/review-accounts/backend/review-sandbox.service.mock";
 import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
 import { makeWorkspaceNexiLayer } from "@/shared/backend/config/nexi.config";
-import { WorkspacePaidFulfillmentService } from "../fulfillment/paid-fulfillment.service";
 import { PaidFulfillmentQueueService } from "../fulfillment/paid-fulfillment-queue.service";
+import { ReservationFulfillment } from "../fulfillment/reservation-fulfillment.service";
 import { LatePaymentRecoveryQueueService } from "../payment/late-payment-recovery-queue.service";
 import { LatePaymentVerificationService } from "../payment/late-payment-verification.service";
 import { getNexiCurrencyOverride } from "../payment/nexi-currency";
@@ -141,7 +141,7 @@ const loadStatusPageOnTestClock = (options: {
               ...(options.markPaid && { markPaid: options.markPaid }),
             }),
             Layer.mock(PaidFulfillmentQueueService, {}),
-            Layer.mock(WorkspacePaidFulfillmentService, {}),
+            Layer.mock(ReservationFulfillment, {}),
             Layer.mock(PostHogEventService, {}),
             Layer.mock(WorkspaceReservationRepository, {
               findById: () =>

@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { getCustomerDisplayName } from "@deskohub/dotypos";
 import type { Customer } from "@deskohub/dotypos/generated";
 import type { EmailDeliveryId } from "@deskohub/email";
@@ -75,6 +74,7 @@ export interface IWorkspaceReservationEmailService {
   readonly sendPaidReservationEmails: (input: {
     readonly reservation: WorkspaceReservationDetails;
     readonly customerEmailLocale: Locale;
+    /** The confirmation generation's provider key, chosen by fulfillment. */
     readonly customerEmailIdempotencyKey?: string;
     /**
      * The reservation's author, or null when it has none. An active author
@@ -87,8 +87,8 @@ export interface IWorkspaceReservationEmailService {
   }) => Effect.Effect<void, EmailSendError>;
 }
 
-const customerAccessCategory = "workspace-paid-reservation-access";
-const customerAccessRecoveryKeyPrefix = `${customerAccessCategory}-recovery-`;
+// The customer confirmation's category tag; its idempotency keys derive from it.
+export const customerAccessCategory = "workspace-paid-reservation-access";
 const authorConfirmationCategory = "workspace-reservation-author-confirmation";
 const workspaceNetworkQrContentId = "workspace-wifi-qr";
 // The hosted map route serves the same image with long-lived caching, so every
@@ -97,17 +97,6 @@ const workspaceLocationMapUrl = getWorkspaceCanonicalUrl(
   workspaceLocationMapImagePath
 );
 const internalNotificationLocale: Locale = "cs-CZ";
-
-export const createCustomerEmailInitialIdempotencyKey = (
-  reservationId: WorkspaceReservationId
-) => `${customerAccessCategory}-${reservationId}`;
-
-export const createCustomerEmailRecoveryIdempotencyKey = (
-  priorCustomerEmailDeliveryId: EmailDeliveryId
-) =>
-  `${customerAccessRecoveryKeyPrefix}${createHash("sha256")
-    .update(priorCustomerEmailDeliveryId)
-    .digest("hex")}`;
 
 // The author confirmation is sent once per reservation; fulfillment retries
 // and customer delivery recovery reuse this key, so the provider collapses
