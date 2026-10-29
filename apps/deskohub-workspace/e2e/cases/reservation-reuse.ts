@@ -18,6 +18,7 @@ import {
   isPrefilledReservation,
   toPrefilledReservation,
 } from "../checkout/prefilled-reservation";
+import type { ReservationFormPreparation } from "../checkout/reservation-form-preparation";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
 import { tryWorkspaceE2ESync } from "../errors";
@@ -34,45 +35,42 @@ export const assertReservationReplacement = ({
   data,
   datasourceConfig,
   initialHoldStep,
-  prepareReservationScript,
+  toSelectionPreparation,
   replacementData,
   reservationPath,
   run,
   runStep,
   session,
   state,
-  submitReservationScript,
+  toReservationPreparation,
 }: {
   config: WorkspaceE2EConfig;
   data: CheckoutData;
   datasourceConfig: DatasourceConfig;
   initialHoldStep?: (row: CheckoutRow) => WorkspaceE2EStep<void>;
-  prepareReservationScript: (data: CheckoutData) => string;
+  toSelectionPreparation: (data: CheckoutData) => ReservationFormPreparation;
   replacementData: CheckoutData;
   reservationPath: string;
   run: Runner;
   runStep: WorkspaceE2EStepRunner;
   session: string;
   state: CheckoutFlowState;
-  submitReservationScript: (data: CheckoutData) => string;
+  toReservationPreparation: (data: CheckoutData) => ReservationFormPreparation;
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     state.startedAt = new Date();
     const firstOrderId = yield* runStep({
       execute: Effect.gen(function* () {
-        yield* openPage(
-          yield* browserSessionFor(run, session),
-          config,
-          data.checkoutUrl,
-          { timeoutMs: config.timeouts.browserNavigation }
-        );
+        const browser = yield* browserSessionFor(run, session);
+        yield* openPage(browser, config, data.checkoutUrl, {
+          timeoutMs: config.timeouts.browserNavigation,
+        });
         return yield* submitReservationForPayPage({
           onOrderId: (orderId) => {
             state.orderId = orderId;
           },
-          run,
-          session,
-          submitReservationScript: submitReservationScript(data),
+          preparation: toReservationPreparation(data),
+          session: browser,
           timeouts: config.timeouts,
         });
       }),
@@ -110,11 +108,9 @@ export const assertReservationReplacement = ({
         yield* editAndReloadRestoredReservation({
           browser,
           config,
-          prepareReservationScript: prepareReservationScript(replacementData),
+          preparation: toSelectionPreparation(replacementData),
           replacementData,
           reservationPath,
-          run,
-          session,
         });
       }),
       id: "edit-and-reload-prefilled-reservation",
@@ -122,13 +118,13 @@ export const assertReservationReplacement = ({
     });
     const secondOrderId = yield* runStep({
       execute: Effect.gen(function* () {
+        const browser = yield* browserSessionFor(run, session);
         return yield* submitReservationForPayPage({
           onOrderId: (orderId) => {
             state.orderId = orderId;
           },
-          run,
-          session,
-          submitReservationScript: submitReservationScript(replacementData),
+          preparation: toReservationPreparation(replacementData),
+          session: browser,
           timeouts: config.timeouts,
         });
       }),
@@ -244,26 +240,21 @@ const returnToPrefilledReservation = ({
 const editAndReloadRestoredReservation = ({
   browser,
   config,
-  prepareReservationScript,
+  preparation,
   replacementData,
   reservationPath,
-  run,
-  session,
 }: {
   browser: E2EBrowserSession;
   config: WorkspaceE2EConfig;
-  prepareReservationScript: string;
+  preparation: ReservationFormPreparation;
   replacementData: CheckoutData;
   reservationPath: string;
-  run: Runner;
-  session: string;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const restoredUrl = yield* readPageUrl(browser);
     yield* prepareReservationSelection({
-      prepareScript: prepareReservationScript,
-      run,
-      session,
+      preparation,
+      session: browser,
       timeoutMs: config.timeouts.checkoutStart,
       timeouts: config.timeouts,
     });

@@ -117,7 +117,7 @@ const makeScenario = (options?: {
   return {
     accountResolveCalls,
     layers: Layer.mergeAll(
-      Layer.succeed(CustomerAccountResolver, accountResolver),
+      Layer.mock(CustomerAccountResolver, accountResolver),
       Layer.succeed(MarketingManagementService, management),
       Layer.succeed(MarketingConsentLedger, ledger)
     ),

@@ -5,11 +5,10 @@ import { cookies, headers } from "next/headers";
 import type { ReferralCode } from "./client";
 import {
   clearReferralCodeCookie,
-  parseSharedReferralCode,
-  referralCodeCookieName,
   setReferralCodeCookie,
 } from "./referral-code-cookie";
 import { ReferralFeatureFlagService } from "./referral-feature-flag.service";
+import { RememberedReferralCode } from "./remembered-referral-code.service";
 
 /**
  * The referral code this browser remembers from a shared link, if any. While
@@ -21,11 +20,10 @@ export const readRememberedReferralCode = ReferralFeatureFlagService.pipe(
   Effect.flatMap((featureFlag) => featureFlag.isEnabled),
   Effect.flatMap((released) =>
     released
-      ? Effect.tryPromise(() => cookies()).pipe(
-          Effect.map((jar) =>
-            parseSharedReferralCode(jar.get(referralCodeCookieName)?.value)
-          )
-        )
+      ? Effect.flatMap(
+          RememberedReferralCode,
+          (remembered) => remembered.current
+        ).pipe(Effect.provide(RememberedReferralCode.Live))
       : Effect.undefined
   )
 );

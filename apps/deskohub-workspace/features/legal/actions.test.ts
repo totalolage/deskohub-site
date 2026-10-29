@@ -196,7 +196,7 @@ const originalCustomerAccountResolverLive = CustomerAccountResolver.Live;
 const originalMarketingManagementDefault = MarketingManagementService.Default;
 const originalMarketingConsentLedgerDefault = MarketingConsentLedger.Default;
 
-CustomerAccountResolver.Live = Layer.succeed(
+CustomerAccountResolver.Live = Layer.mock(
   CustomerAccountResolver,
   accountResolver
 );

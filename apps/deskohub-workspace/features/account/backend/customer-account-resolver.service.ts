@@ -236,6 +236,14 @@ interface ICustomerAccountResolver {
     LinkedCustomerAccount,
     CustomerAccountAccessError
   >;
+  /**
+   * Resolution that also reports whether this visit auto-linked the account,
+   * which only the account page acts on.
+   */
+  readonly resolveLink: Effect.Effect<
+    CustomerAccountLinkResolution,
+    CustomerAccountAccessError
+  >;
 }
 
 export class CustomerAccountResolver extends Context.Service<
@@ -248,6 +256,7 @@ export class CustomerAccountResolver extends Context.Service<
       resolutionDependencies,
       (dependencies): ICustomerAccountResolver => ({
         resolve: resolveCustomerAccount(dependencies),
+        resolveLink: resolveCustomerAccountLink(dependencies),
       })
     )
   );
@@ -265,15 +274,3 @@ export class CustomerAccountResolver extends Context.Service<
 
   static Live = this.withAuthentication(CustomerAuthentication.Default);
 }
-
-/**
- * Live-wired resolution of the current account for the account page, the one
- * place that also needs to know whether this visit auto-linked the account.
- */
-export const resolveCurrentCustomerAccount: Effect.Effect<
-  CustomerAccountLinkResolution,
-  CustomerAccountAccessError
-> = Effect.flatMap(resolutionDependencies, resolveCustomerAccountLink).pipe(
-  Effect.provide(resolutionDependenciesWith(CustomerAuthentication.Default)),
-  Effect.mapError(mapCustomerAccountFailure("account-link.lock"))
-);

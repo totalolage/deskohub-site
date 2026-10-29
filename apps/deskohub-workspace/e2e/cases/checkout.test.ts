@@ -6,6 +6,7 @@ import { testEmailAddress } from "@deskohub/test-email";
 import { Cause, Effect, Exit, Layer, Option } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import type { WorkspaceE2EStepRunner } from "../case-runner";
+import { preparedReservationForm } from "../checkout/reservation-form-preparation";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import { makeWorkspaceE2EHostedPaymentPermitRecorder } from "../coordination/hosted-payment-permit.service.mock";
 import {
@@ -165,7 +166,7 @@ const runCheckoutFlowSteps = async (
       datasourceConfig: {} as DatasourceConfig,
       flow: {
         id: "checkout-capacity-contract",
-        submitReservationScript: () => "unused",
+        toReservationPreparation: () => preparedReservationForm,
       },
       payPageSteps: () => [
         {

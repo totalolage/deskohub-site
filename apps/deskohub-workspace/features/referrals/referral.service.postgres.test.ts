@@ -147,7 +147,7 @@ const makeReferralLayer = (
         databaseLayer,
         lockLayer,
         accountLinksLayer,
-        Layer.succeed(CustomerAccountResolver, {
+        Layer.mock(CustomerAccountResolver, {
           resolve: Effect.succeed(identity),
         }),
         Layer.mock(DotyposService, {

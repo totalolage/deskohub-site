@@ -548,8 +548,7 @@ const profileCompletionCheckout: ReferralCaseExecutor = (
   checkoutStates
 ) =>
   Effect.gen(function* () {
-    const { browserSession, config, identities, run, runStep, session } =
-      context;
+    const { browserSession, config, identities, runStep } = context;
     const { account, otherReferrer, referrer } = yield* runStep({
       execute: Effect.gen(function* () {
         const referrer = yield* identities.seedReferrer("rpc-referrer");
@@ -633,9 +632,7 @@ const profileCompletionCheckout: ReferralCaseExecutor = (
       contact: linked,
       data: state.data,
       datasourceConfig: context.datasourceConfig,
-      run,
       runStep,
-      session,
       state,
       stepPrefix: "completion-referral",
     });
@@ -670,8 +667,6 @@ const profileCompletionCheckout: ReferralCaseExecutor = (
         locale,
         message: m.checkoutReferralCodeAlreadyAttributed({}, { locale }),
         orderId: state.orderId!,
-        run,
-        session,
       }),
       id: "reject-another-referrer-code",
       timeoutMs: config.timeouts.uiTransition,
@@ -706,9 +701,7 @@ const profileCompletionCheckout: ReferralCaseExecutor = (
       currentPayUrl: payUrl,
       locale,
       orderId: state.orderId!,
-      run,
       runStep,
-      session,
       stepId: "reenter-recorded-referral-code",
     });
     yield* expectDiscounts(
@@ -720,8 +713,7 @@ const profileCompletionCheckout: ReferralCaseExecutor = (
 
 const checkoutCodeEntry: ReferralCaseExecutor = (context, checkoutStates) =>
   Effect.gen(function* () {
-    const { browserSession, config, identities, run, runStep, session } =
-      context;
+    const { browserSession, config, identities, runStep } = context;
     const { customer, linkReferrer, referrer } = yield* runStep({
       execute: Effect.gen(function* () {
         const referrer = yield* identities.seedReferrer("rce-referrer");
@@ -743,10 +735,8 @@ const checkoutCodeEntry: ReferralCaseExecutor = (context, checkoutStates) =>
       contact: customer,
       data: state.data,
       datasourceConfig: context.datasourceConfig,
-      run,
       runStep,
       referralCode: linkReferrer.code,
-      session,
       state,
       stepPrefix: "code-entry",
     });
@@ -769,8 +759,6 @@ const checkoutCodeEntry: ReferralCaseExecutor = (context, checkoutStates) =>
         locale,
         message: m.checkoutDiscountCodeUnavailable({}, { locale }),
         orderId: state.orderId!,
-        run,
-        session,
       }),
       id: "reject-own-referral-code",
       timeoutMs: config.timeouts.uiTransition,
@@ -784,9 +772,7 @@ const checkoutCodeEntry: ReferralCaseExecutor = (context, checkoutStates) =>
       currentPayUrl: payUrl,
       locale,
       orderId: state.orderId!,
-      run,
       runStep,
-      session,
       stepId: "apply-typed-referrer-code",
     });
     yield* expectDiscounts(
@@ -820,9 +806,7 @@ const checkoutCodeEntry: ReferralCaseExecutor = (context, checkoutStates) =>
       currentPayUrl: payUrl,
       locale,
       orderId: state.orderId!,
-      run,
       runStep,
-      session,
       stepId: "apply-ordinary-code-after-referral",
     });
     yield* runStep({
@@ -849,8 +833,7 @@ const checkoutCodeEntry: ReferralCaseExecutor = (context, checkoutStates) =>
 
 const shareLinkCheckout: ReferralCaseExecutor = (context, checkoutStates) =>
   Effect.gen(function* () {
-    const { browserSession, config, identities, run, runStep, session } =
-      context;
+    const { browserSession, config, identities, runStep } = context;
     const { customer, referrer } = yield* runStep({
       execute: Effect.gen(function* () {
         const referrer = yield* identities.seedReferrer("rsl-referrer");
@@ -883,9 +866,7 @@ const shareLinkCheckout: ReferralCaseExecutor = (context, checkoutStates) =>
       data: state.data,
       datasourceConfig: context.datasourceConfig,
       referralCode: referrer.code,
-      run,
       runStep,
-      session,
       state,
       stepPrefix: "share-link",
     });
@@ -952,9 +933,7 @@ const shareLinkCheckout: ReferralCaseExecutor = (context, checkoutStates) =>
       currentPayUrl: payUrl,
       locale,
       orderId: state.orderId!,
-      run,
       runStep,
-      session,
       stepId: "apply-voucher-after-referral",
     });
     yield* runStep({

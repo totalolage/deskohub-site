@@ -43,6 +43,8 @@ A `"use cache"` function runs its load with `readSharedSnapshot(operation, load,
 
 Outside `"use cache"`, when a run must serve a fallback or react to any failure, use `runWorkspaceEffectOrElse(operation, { failureCode, orElse })`. The runtime builds its Layer before entering the Effect, so `Effect.catchCause` or `Effect.onExit` inside the program can't see a runtime-build failure, and a Promise `.catch` after `runWorkspaceEffect` is the wrong tool for recovery: it also catches interruption and Next.js control flow. `readSharedSnapshot`'s own `.catch` only expires the entry and rethrows. Make `failureCode` stable and low-cardinality. The function's JSDoc defines how `orElse`, interruption, and Next.js control flow interact.
 
+Inside a program, recover a non-blocking step from any failure, defects included, with `catchRecoverableCause` (`workspace-effect.ts`). It lets interruption and Next.js control flow propagate, which a bare `Effect.catchCause` would swallow; `isRecoverableCause` is the same test for a hand-written handler.
+
 ## E2E runs
 
 E2E code that runs an Effect outside a case or fixture runtime uses the edge in `apps/deskohub-workspace/e2e/`. Don't add another `Effect.run*` call for it.
