@@ -118,7 +118,7 @@ export const startPayPage = ({
   readonly runStep: Parameters<WorkspaceE2ECase["execute"]>[0]["runStep"];
   readonly state: CheckoutFlowState;
   readonly stepPrefix: string;
-  /** The browser session `session` names for `run`. */
+  /** The browser session obtained inside the case step. */
   readonly browserSession: E2EBrowserSession;
 }) =>
   runStep({
@@ -185,7 +185,7 @@ export const applyCodeAndReadFreshPayUrl = ({
   readonly orderId: WorkspaceReservationId;
   readonly runStep: Parameters<WorkspaceE2ECase["execute"]>[0]["runStep"];
   readonly stepId: string;
-  /** The browser session `session` names for `run`. */
+  /** The browser session obtained inside the case step. */
   readonly browserSession: E2EBrowserSession;
 }) =>
   runStep({
@@ -254,7 +254,7 @@ export const rejectReferralCode = ({
   readonly locale: CheckoutData["locale"];
   readonly message: string;
   readonly orderId: WorkspaceReservationId;
-  /** The browser session `session` names for `run`. */
+  /** The browser session obtained inside the case step. */
   readonly browserSession: E2EBrowserSession;
 }) =>
   Effect.gen(function* () {
