@@ -5,7 +5,7 @@ import { and, desc, eq, ne, notExists, or } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer, Option, Schema } from "effect";
 import type { SqlError } from "effect/unstable/sql";
-import { WorkspaceDatabase } from "@/db/database.service";
+import { WorkspaceDatabase, WorkspaceTransaction } from "@/db/database.service";
 import {
   type CampaignRow,
   emailCampaignAudiences,
@@ -412,16 +412,18 @@ export class CampaignService extends Context.Service<
 
       /** The campaign's content, locked until the transaction ends. */
       const lockContent = (campaignId: CampaignId) =>
-        db
-          .select({ content: emailCampaigns.content })
-          .from(emailCampaigns)
-          .where(eq(emailCampaigns.id, campaignId))
-          .for("update")
-          .pipe(
-            Effect.map((rows) =>
-              Option.map(Option.fromNullishOr(rows[0]), (row) => row.content)
+        Effect.flatMap(WorkspaceTransaction, ({ db }) =>
+          db
+            .select({ content: emailCampaigns.content })
+            .from(emailCampaigns)
+            .where(eq(emailCampaigns.id, campaignId))
+            .for("update")
+            .pipe(
+              Effect.map((rows) =>
+                Option.map(Option.fromNullishOr(rows[0]), (row) => row.content)
+              )
             )
-          );
+        );
 
       /** Inserts a Draft, and an automated one's automation row with no flow. */
       const insertDraft = Effect.fn("CampaignService.insertDraft")(function* (
