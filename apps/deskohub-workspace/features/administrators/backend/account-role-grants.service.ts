@@ -2,7 +2,7 @@ import { and, asc, eq, notExists, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { alias } from "drizzle-orm/pg-core";
 import { Context, Effect, Layer } from "effect";
-import { WorkspaceDatabase } from "@/db/database.service";
+import { WorkspaceDatabase, WorkspaceTransaction } from "@/db/database.service";
 import { accountRoleGrants, customerAccounts } from "@/db/schema";
 import { authUser } from "@/db/schema/auth";
 import type { CustomerAccountId } from "@/features/account/customer-account";
@@ -53,7 +53,7 @@ interface IAccountRoleGrants {
    */
   readonly lockHeld: (
     input: AccountRoleGrantKey
-  ) => Effect.Effect<boolean, EffectDrizzleQueryError>;
+  ) => Effect.Effect<boolean, EffectDrizzleQueryError, WorkspaceTransaction>;
   /** Every account holding `role`, oldest grant first. */
   readonly list: (
     role: AccountRole
@@ -113,6 +113,7 @@ export class AccountRoleGrants extends Context.Service<
           return grant !== undefined;
         }),
         lockHeld: Effect.fn("AccountRoleGrants.lockHeld")(function* (key) {
+          const { db } = yield* WorkspaceTransaction;
           const [grant] = yield* db
             .select({ accountId: accountRoleGrants.accountId })
             .from(accountRoleGrants)

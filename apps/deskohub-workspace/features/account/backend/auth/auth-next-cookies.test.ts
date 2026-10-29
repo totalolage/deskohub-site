@@ -86,7 +86,9 @@ const makeTestAuth = (sentMagicLinks: { url: string }[] = []) => {
     verifyHuman: () => Effect.void,
     beforeDeleteUser: () => Effect.void,
     createCustomerAccount: (accountId) =>
-      ensureCustomerAccount(testDatabase!.db, accountId),
+      ensureCustomerAccount(accountId).pipe(
+        Effect.provide(testDatabase!.layer)
+      ),
     captureAccountLocalePreference: captureLocalePreference,
     reviewAccountCredentials: [],
     isReviewAccount: () => Effect.succeed(false),

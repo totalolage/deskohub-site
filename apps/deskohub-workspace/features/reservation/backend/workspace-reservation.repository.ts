@@ -950,7 +950,7 @@ export class WorkspaceReservationRepository extends Context.Service<
               // Only a booked reservation's cancellation is a customer event;
               // an unconfirmed one was never booked.
               if (cancelled?.reservationConfirmedAt) {
-                yield* recordCustomerEvent(db, {
+                yield* recordCustomerEvent({
                   kind: "reservation-cancelled",
                   occurredAt: input.cancelledAt,
                   dotyposCustomerId: cancelled.dotyposCustomerId,
@@ -1154,7 +1154,7 @@ export class WorkspaceReservationRepository extends Context.Service<
               );
               const [confirmed] = updated;
               if (confirmed) {
-                yield* recordCustomerEvent(db, {
+                yield* recordCustomerEvent({
                   kind: "reservation-booked",
                   occurredAt: input.confirmedAt,
                   dotyposCustomerId: confirmed.dotyposCustomerId,
