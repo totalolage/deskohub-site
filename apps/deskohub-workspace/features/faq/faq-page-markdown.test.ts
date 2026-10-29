@@ -58,8 +58,8 @@ mock.module("@/shared/backend/config/dotypos.config", () => ({
   }),
 }));
 mock.module("@/shared/backend/workspace-effect", () => ({
-  runWorkspaceEffect:
-    (_operation: string, _options?: { readonly boundary?: string }) =>
+  runWorkspaceEffectOrElse:
+    (_operation: string) =>
     <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>
       Effect.runPromise(effect),
 }));
@@ -93,8 +93,7 @@ describe.each(locales)("faqPageMarkdown in %s", (locale) => {
   test("shows every topic with its questions and answers, the busyness from last month's reservations", async () => {
     const markdown = await renderMarkdown(locale);
     const groups = getFaqGroups(locale, {
-      averageReservationsPerDay: 0.6,
-      coworkSeatCapacity: 4,
+      occupancy: { averageReservationsPerDay: 0.6, coworkSeatCapacity: 4 },
       officesOffered: false,
     });
 

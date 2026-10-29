@@ -43,7 +43,17 @@ const listReservations = mock(
       : Effect.succeed([...reservations]);
   }
 );
-const cacheLife = mock(() => undefined);
+const cacheLife = mock(
+  (
+    _lifetime:
+      | string
+      | {
+          readonly stale?: number;
+          readonly revalidate?: number;
+          readonly expire?: number;
+        }
+  ) => undefined
+);
 
 mock.module("next/cache", () => ({ cacheLife }));
 mock.module("@/shared/backend/config/dotypos.config", () => ({
@@ -53,10 +63,17 @@ mock.module("@/shared/backend/config/dotypos.config", () => ({
   }),
 }));
 mock.module("@/shared/backend/workspace-effect", () => ({
-  runWorkspaceEffect:
-    (_operation: string, _options?: { readonly boundary?: string }) =>
-    <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>
-      Effect.runPromise(effect),
+  runWorkspaceEffectOrElse:
+    <B>(
+      _operation: string,
+      { orElse }: { readonly orElse: (cause: unknown) => B }
+    ) =>
+    <A, E>(effect: Effect.Effect<A, E, never>): Promise<A | B> =>
+      Effect.runPromise(
+        effect.pipe(
+          Effect.catchCause((cause) => Effect.sync(() => orElse(cause)))
+        )
+      ),
 }));
 
 const { loadFaqOccupancyStats } = await import("./faq-occupancy.server");
@@ -100,6 +117,7 @@ beforeEach(() => {
   requestedBounds = undefined;
   getTables.mockClear();
   listReservations.mockClear();
+  cacheLife.mockClear();
 });
 
 afterEach(() => setSystemTime());
@@ -115,7 +133,7 @@ describe("loadFaqOccupancyStats", () => {
 
     const marchStats = await loadFaqOccupancyStats();
 
-    expect(marchStats.averageReservationsPerDay).toBe(0.5);
+    expect(marchStats?.averageReservationsPerDay).toBe(0.5);
     expect(requestedBounds).toEqual({
       startsAtOrAfter: "2026-02-28T23:00:00Z",
       startsBefore: "2026-03-31T22:00:00Z",
@@ -128,20 +146,34 @@ describe("loadFaqOccupancyStats", () => {
 
     const aprilStats = await loadFaqOccupancyStats();
 
-    expect(aprilStats.averageReservationsPerDay).toBe(0.6);
+    expect(aprilStats?.averageReservationsPerDay).toBe(0.6);
     expect(requestedBounds).toEqual({
       startsAtOrAfter: "2026-03-31T22:00:00Z",
       startsBefore: "2026-04-30T22:00:00Z",
     });
   });
 
-  test("preserves a Dotypos failure instead of returning zero aggregates", async () => {
+  test("shares the stats for their full lifetime", async () => {
+    tables = [makeTable()];
+
+    await loadFaqOccupancyStats();
+
+    expect(cacheLife.mock.calls).toEqual([
+      [{ stale: 30, revalidate: 300, expire: 600 }],
+    ]);
+  });
+
+  test("reports unknown stats on a Dotypos failure instead of zero aggregates, shared briefly", async () => {
     providerFailure = new DotyposRejected({
       operation: "listReservations",
       reason: "invalid-response",
       message: "Synthetic Dotypos provider failure",
     });
 
-    await expect(loadFaqOccupancyStats()).rejects.toBe(providerFailure);
+    await expect(loadFaqOccupancyStats()).resolves.toBeUndefined();
+    expect(cacheLife.mock.calls).toEqual([
+      [{ stale: 30, revalidate: 300, expire: 600 }],
+      [{ stale: 30, revalidate: 60, expire: 300 }],
+    ]);
   });
 });
