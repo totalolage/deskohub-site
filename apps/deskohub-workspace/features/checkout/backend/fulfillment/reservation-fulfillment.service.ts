@@ -281,7 +281,7 @@ export class ReservationFulfillment extends Context.Service<
       // An invoice failure after a delivery report leaves the delivery
       // recorded; the provider's retry of the report retries the invoice.
       const processDeliveredReservationInvoice = Effect.fn(
-        "reservationFulfillment.processDeliveredReservationInvoice"
+        "resendWebhook.processReservationInvoice"
       )(function* (
         reservation: Pick<WorkspaceReservation, "activePaymentAttemptId" | "id">
       ) {
