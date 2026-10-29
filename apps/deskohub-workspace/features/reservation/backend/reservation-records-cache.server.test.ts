@@ -12,6 +12,7 @@ import {
 } from "@deskohub/dotypos";
 import type { Reservation as DotyposReservation } from "@deskohub/dotypos/generated";
 import { Effect, Layer } from "effect";
+import { recordNextCache } from "@/shared/testing/next-cache-recorder.test-utils";
 import { reservationRecordTags } from "@/shared/utils/cache-tags";
 import { ReservationRecords } from "./reservation-records";
 
@@ -46,23 +47,14 @@ const getReservationWithoutCustomer = mock((_id: DotyposReservationId) =>
 const listReservations = mock((_options: ReservationListOptions) =>
   Effect.succeed([reservation])
 );
-const cacheLife = mock(
-  (_profile: string | { readonly expire: number }) => undefined
-);
-const cacheTag = mock((_tag: string) => undefined);
+const nextCache = recordNextCache();
 
-mock.module("next/cache", () => ({ cacheLife, cacheTag }));
+mock.module("next/cache", () => nextCache.module);
 mock.module("@/shared/backend/config/dotypos.config", () => ({
   WorkspaceDotyposLayer: Layer.succeed(DotyposService, {
     getReservationWithoutCustomer,
     listReservations,
   } as never),
-}));
-mock.module("@/shared/backend/workspace-effect", () => ({
-  runWorkspaceEffect:
-    (_operation: string) =>
-    <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>
-      Effect.runPromise(effect),
 }));
 
 const {
@@ -73,23 +65,19 @@ const {
 
 beforeEach(() => {
   providerFailure = undefined;
-  for (const fn of [
-    getReservationWithoutCustomer,
-    listReservations,
-    cacheLife,
-    cacheTag,
-  ]) {
+  for (const fn of [getReservationWithoutCustomer, listReservations]) {
     fn.mockClear();
   }
+  nextCache.clear();
   listReservations.mockImplementation(() => Effect.succeed([reservation]));
 });
 
 const expectRecordsLifetime = (loads: number) => {
-  expect(cacheLife.mock.calls).toEqual(
-    Array.from({ length: loads }, () => ["reservationRecords"])
-  );
-  expect(cacheTag.mock.calls).toEqual(
-    Array.from({ length: loads }, () => [reservationRecordTags.records])
+  expect(nextCache.calls).toEqual(
+    Array.from({ length: loads }, () => [
+      { cacheLife: "reservationRecords" },
+      { cacheTag: [reservationRecordTags.records] },
+    ]).flat()
   );
 };
 
@@ -171,7 +159,6 @@ describe("shared reservation records", () => {
       loadSharedReservationRecord(reservationId)
     ).rejects.toBeDefined();
 
-    expect(cacheLife.mock.calls).toEqual([[{ expire: 0 }]]);
-    expect(cacheTag).not.toHaveBeenCalled();
+    expect(nextCache.calls).toEqual([{ cacheLife: { expire: 0 } }]);
   });
 });

@@ -42,7 +42,9 @@ export interface FaqGroup {
 }
 
 /** What the FAQ answers depend on beyond their copy. */
-export interface FaqFacts extends FaqOccupancyStats {
+export interface FaqFacts {
+  /** Last month's occupancy; unknown while Dotypos can't provide it. */
+  readonly occupancy: FaqOccupancyStats | undefined;
   /** Private offices can be booked, so the page doesn't say they can't. */
   readonly officesOffered: boolean;
 }
@@ -64,20 +66,37 @@ const paragraph = (
   answer: string
 ): FaqEntry => ({ value, question, answer, answerKind: "paragraph" });
 
-/** The FAQ page's topics, questions and answers in `locale`. */
+const busynessEntry = (
+  locale: Locale,
+  { averageReservationsPerDay, coworkSeatCapacity }: FaqOccupancyStats
+) =>
+  paragraph(
+    "busyness",
+    m.faqQuestionBusyness({}, { locale }),
+    m.faqAnswerBusyness(
+      {
+        average: new Intl.NumberFormat(locale, {
+          minimumFractionDigits: 1,
+          maximumFractionDigits: 1,
+        }).format(averageReservationsPerDay),
+        capacity: new Intl.NumberFormat(locale, {
+          maximumFractionDigits: 0,
+        }).format(coworkSeatCapacity),
+      },
+      { locale }
+    )
+  );
+
+/**
+ * The FAQ page's topics, questions and answers in `locale`. The busyness
+ * question is left out while last month's occupancy is unknown.
+ */
 export const getFaqGroups = (
   locale: Locale,
-  { averageReservationsPerDay, coworkSeatCapacity, officesOffered }: FaqFacts
+  { occupancy, officesOffered }: FaqFacts
 ): ReadonlyArray<FaqGroup> => {
   const { address } = workspaceSiteConstants.location;
   const until = workspaceSiteConstants.openingHours.openSpaceUsableUntil;
-  const average = new Intl.NumberFormat(locale, {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  }).format(averageReservationsPerDay);
-  const capacity = new Intl.NumberFormat(locale, {
-    maximumFractionDigits: 0,
-  }).format(coworkSeatCapacity);
   const dayPrice = (tier: "open-space" | "reserved-desk") =>
     formatMoney(getWorkspaceProductByTier(tier).price, locale);
 
@@ -137,11 +156,7 @@ export const getFaqGroups = (
           m.faqQuestionCalls({}, { locale }),
           m.faqAnswerCalls({}, { locale })
         ),
-        paragraph(
-          "busyness",
-          m.faqQuestionBusyness({}, { locale }),
-          m.faqAnswerBusyness({ average, capacity }, { locale })
-        ),
+        ...(occupancy ? [busynessEntry(locale, occupancy)] : []),
       ],
     },
     {
