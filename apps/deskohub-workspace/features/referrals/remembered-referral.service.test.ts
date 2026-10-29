@@ -2,10 +2,15 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import type { DotyposCustomerId } from "@deskohub/dotypos";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Exit, Layer } from "effect";
 import { redirect } from "next/navigation";
 import { CustomerAccountContactService } from "@/features/account";
-import type { CanonicalPromotionCode } from "@/features/discounts/contracts";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
+import { canonicalPromotionCodeSchema } from "@/features/discounts/contracts";
+import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
+import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
+import { parseReferralCode } from "./client";
 import { ReferralError } from "./contracts";
 import type { IReferralService } from "./referral.service";
 import { ReferralServiceMock } from "./referral.service.mock";
@@ -16,18 +21,24 @@ type CurrentAccount = Effect.Success<
   CustomerAccountContactService["Service"]["currentAccount"]
 >;
 
-const booker = "60111" as DotyposCustomerId;
-const friend = "60222" as DotyposCustomerId;
+const booker = dotyposCustomerIdSchema.make("60111");
+const friend = dotyposCustomerIdSchema.make("60222");
 const sharedCode = "RFL12345";
-const typedCode = "RFLTYPED1" as CanonicalPromotionCode;
+const sharedReferralCode = (() => {
+  const code = parseReferralCode(sharedCode);
+  if (code === undefined) throw new Error("Invalid test referral code");
+  return code;
+})();
+const typedCode = canonicalPromotionCodeSchema.make("RFLTYPED1");
+const accountId = customerAccountIdSchema.make("account-1");
+const email = reservationCustomerEmailSchema.make(testEmailAddress("booker"));
 
-const linkedAs = (dotyposCustomerId: DotyposCustomerId): CurrentAccount =>
-  ({
-    status: "linked",
-    accountId: "account-1",
-    dotyposCustomerId,
-    email: "booker@example.test",
-  }) as unknown as CurrentAccount;
+const linkedAs = (dotyposCustomerId: DotyposCustomerId): CurrentAccount => ({
+  status: "linked",
+  accountId,
+  dotyposCustomerId,
+  email,
+});
 
 /**
  * Runs `use` against the in-memory adapter: a browser sending `cookie`, the
@@ -112,7 +123,10 @@ describe("RememberedReferral.code", () => {
 describe("RememberedReferral.forBooking", () => {
   test("carries an eligible code into the account's own booking", async () => {
     const evaluateCheckoutReferral = mock(() =>
-      Effect.succeed({ kind: "eligible" as const, code: sharedCode as never })
+      Effect.succeed({
+        kind: "eligible" as const,
+        code: sharedReferralCode,
+      })
     );
     const result = await run(
       (remembered) =>
@@ -160,7 +174,7 @@ describe("RememberedReferral.forBooking", () => {
   });
 
   test("prefills a usable code for a booking made for someone else", async () => {
-    const findAvailableCode = mock(() => Effect.succeed(sharedCode as never));
+    const findAvailableCode = mock(() => Effect.succeed(sharedReferralCode));
     const result = await run(
       (remembered) => remembered.forBooking({ for: "someone-else" }),
       { cookie: sharedCode, referrals: { findAvailableCode } }
@@ -311,11 +325,7 @@ describe("RememberedReferral.forgetIfSettled", () => {
       (remembered) => remembered.forgetIfSettled({ kind: "order", paid: true }),
       {
         cookie: sharedCode,
-        account: {
-          status: "unlinked",
-          accountId: "account-1",
-          email: "booker@example.test",
-        } as unknown as CurrentAccount,
+        account: { status: "unlinked", accountId, email },
       }
     );
     expect(result.cookie).toBe(sharedCode);
