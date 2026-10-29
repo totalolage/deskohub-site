@@ -143,7 +143,7 @@ export interface IFulfillmentLedger {
  * Internal to the fulfillment module; its state machine is the Fulfillment
  * state in the checkout lifecycle reference.
  *
- * A claim retakes a `processing` run once it is older than
+ * A claim retakes a `processing` run whose `updatedAt` is at or before
  * `staleProcessingBefore`, never an `awaiting_delivery` one. `markFulfilled`
  * and `markFulfillmentFailed` fence on state alone, not on the claim, so a
  * stalled run that was reclaimed can still settle it. Change that only
