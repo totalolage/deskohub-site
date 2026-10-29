@@ -1,5 +1,5 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
-import type { Browser, Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { Effect } from "effect";
 import { getAccountSectionPath } from "@/features/account/routes";
 import { m } from "@/features/i18n";
@@ -23,14 +23,7 @@ import {
   captureAccountReview,
 } from "../account/review-screenshots";
 import { resolveWorkspaceE2ESessionSigningSecret } from "../account/seeded-session";
-import {
-  clickBrowserElement,
-  fillBrowserField,
-  openBrowserPage,
-  waitForBrowserCondition,
-  waitForBrowserReactFormSubmit,
-  waitForBrowserText,
-} from "../browser";
+import { openPage, waitForPageText } from "../browser";
 import type { E2EBrowserSession } from "../browser-session";
 import type { WorkspaceE2EStepRunner } from "../case-runner";
 import { assertDisplayedDiscounts } from "../cases/discounts";
@@ -51,6 +44,16 @@ import { assert, browserSessionFor, type Runner } from "../runtime";
 import { workspaceE2EPollIntervalMs } from "../timeouts";
 import type { CheckoutFlowState, WorkspaceE2ECase } from "../types";
 import {
+  completeReferralProfile,
+  openReferralAccount,
+  waitForLinkedAccount,
+  waitForProfileCompletionForm,
+} from "./account-page";
+import {
+  captureReferralCheckoutOnCasePage,
+  onReferralCasePage,
+} from "./case-page";
+import {
   applyCodeAndReadFreshPayUrl,
   assertOrdinaryCodeSlotAvailable,
   assertReferralConfirmationCleared,
@@ -64,9 +67,7 @@ import {
   referralVoucherAdjustment,
   rejectReferralCode,
   startPayPage,
-  type WorkspaceE2EReferralCheckoutCapture,
 } from "./checkout";
-import { captureReferralCheckoutReview } from "./checkout-review";
 import {
   makeWorkspaceE2EReferralIdentities,
   type WorkspaceE2EReferralAccount,
@@ -78,13 +79,6 @@ import {
   waitForRememberedReferralCode,
 } from "./referral-cookie";
 
-const completionTitle = "Complete your profile";
-const linkedEditSubmitLabel = "Save profile";
-const profileFirstNameSelector = "#account-profile-first-name";
-const profilePhoneSelector = "#account-profile-phone";
-const profileFormSelector = "#account-profile-form";
-const profileSubmitSelector = `${profileFormSelector} button[type=submit]`;
-const profileReferralCodeSelector = "#profile-referral-code";
 const ordinaryCodeAdjustment = {
   kind: "percentage",
   basisPoints: 1000,
@@ -98,8 +92,7 @@ type ReferralCaseContext = {
   readonly config: WorkspaceE2EConfig;
   readonly datasourceConfig: DatasourceConfig;
   readonly identities: WorkspaceE2EReferralIdentities;
-  /** The case's only page, for Playwright-native assertions and reviews. */
-  readonly page: () => Page;
+  /** The argv runner, for the checkout helpers still on argv commands. */
   readonly run: Runner;
   readonly runStep: WorkspaceE2EStepRunner;
   readonly screenshots: boolean;
@@ -112,12 +105,10 @@ type ReferralCaseContext = {
  * Auth session, so no case sends or verifies a magic link.
  */
 export const bindWorkspaceE2EReferralCase = ({
-  browser,
   environment,
   runId,
   testCase,
 }: {
-  readonly browser: Browser;
   readonly environment: WorkspaceE2EEnvironment;
   readonly runId: WorkspaceE2ERunId;
   readonly testCase: WorkspaceE2ECase;
@@ -127,12 +118,6 @@ export const bindWorkspaceE2EReferralCase = ({
   const datasourceConfig = getDatasourceConfig(environment);
   const secret = resolveWorkspaceE2ESessionSigningSecret(environment);
   const screenshots = environment.WORKSPACE_E2E_REVIEW_SCREENSHOTS === "true";
-  const page = () => {
-    const pages = browser.contexts().flatMap((context) => context.pages());
-    const only = pages.length === 1 ? pages[0] : undefined;
-    if (!only) throw new Error("referral case has no single owned page");
-    return only;
-  };
   const identities = makeWorkspaceE2EReferralIdentities({
     baseUrl: config.baseUrl,
     caseId,
@@ -173,7 +158,6 @@ export const bindWorkspaceE2EReferralCase = ({
             config,
             datasourceConfig,
             identities,
-            page,
             run,
             runStep,
             screenshots,
@@ -215,108 +199,9 @@ const pageStep = (
   operation: (page: Page) => Promise<void>
 ) =>
   context.runStep({
-    execute: Effect.tryPromise({
-      catch: (cause) =>
-        workspaceE2EError(`${id} failed`, { cause, operation: id }),
-      try: () => operation(context.page()),
-    }),
+    execute: onReferralCasePage(context.browserSession, id, operation),
     id,
     timeoutMs,
-  });
-
-const localized = (config: WorkspaceE2EConfig, suffix: string) =>
-  `${config.baseUrl}/en-US${suffix}`;
-
-const openAccount = (context: ReferralCaseContext, search: string) =>
-  openBrowserPage(
-    context.config,
-    context.run,
-    context.session,
-    localized(context.config, `/account${search}`),
-    { timeoutMs: context.config.timeouts.browserNavigation }
-  );
-
-const waitForCompletionForm = (
-  context: ReferralCaseContext,
-  prefilledCode: string
-) =>
-  waitForBrowserCondition(
-    context.run,
-    context.session,
-    "profile completion form with its referral field",
-    `(() => {
-      const input = document.querySelector(${JSON.stringify(profileReferralCodeSelector)});
-      return document.body?.innerText.includes(${JSON.stringify(completionTitle)}) === true &&
-        input instanceof HTMLInputElement &&
-        input.name === "referralCode" &&
-        input.value === ${JSON.stringify(prefilledCode)};
-    })()`,
-    { timeoutMs: context.config.timeouts.uiTransition }
-  );
-
-/** The linked account view: completion is behind the customer. */
-const waitForLinkedAccount = (context: ReferralCaseContext) =>
-  waitForBrowserCondition(
-    context.run,
-    context.session,
-    "linked account view",
-    `(() => {
-      const landmark = document.querySelector(${JSON.stringify(accountSectionLandmarks.reservations)});
-      return landmark !== null &&
-        !document.body?.innerText.includes(${JSON.stringify(completionTitle)});
-    })()`,
-    {
-      timeoutMs:
-        context.config.timeouts.browserAction +
-        context.config.timeouts.datasource,
-    }
-  );
-
-const completeProfile = (
-  context: ReferralCaseContext,
-  account: WorkspaceE2EReferralAccount
-) =>
-  Effect.gen(function* () {
-    // Fill only once React owns the form, or the native submit bypasses
-    // the completion action.
-    yield* waitForBrowserReactFormSubmit(
-      context.run,
-      context.session,
-      profileFormSelector,
-      [profileFirstNameSelector, profilePhoneSelector],
-      { timeoutMs: context.config.timeouts.browserAction }
-    );
-    yield* fillBrowserField(
-      context.run,
-      context.session,
-      profileFirstNameSelector,
-      account.name,
-      { timeoutMs: context.config.timeouts.browserAction }
-    );
-    yield* fillBrowserField(
-      context.run,
-      context.session,
-      profilePhoneSelector,
-      account.phone,
-      { timeoutMs: context.config.timeouts.browserAction }
-    );
-    yield* clickBrowserElement(
-      context.run,
-      context.session,
-      profileSubmitSelector,
-      { timeoutMs: context.config.timeouts.browserAction }
-    );
-    yield* waitForBrowserCondition(
-      context.run,
-      context.session,
-      "linked account edit form after profile completion",
-      `(() => {
-        const button = document.querySelector(${JSON.stringify(profileSubmitSelector)});
-        return button instanceof HTMLButtonElement &&
-          button.textContent?.trim() === ${JSON.stringify(linkedEditSubmitLabel)};
-      })()`,
-      { timeoutMs: context.config.timeouts.uiTransition }
-    );
   });
 
 const requireLinkedCustomer = (
@@ -394,19 +279,11 @@ const assertNothingRecordedBeforePayment = (invited: DotyposCustomerId) =>
     }
   });
 
-const checkoutCapture =
-  (context: ReferralCaseContext): WorkspaceE2EReferralCheckoutCapture =>
-  ({ expectedPayUrl, orderId, target }) =>
-    captureReferralCheckoutReview({
-      expectedPayUrl,
-      orderId,
-      page: context.page(),
-      review: {
-        baseUrl: context.config.baseUrl,
-        screenshots: context.screenshots,
-      },
-      target,
-    });
+const checkoutCapture = (context: ReferralCaseContext) =>
+  captureReferralCheckoutOnCasePage(context.browserSession, {
+    baseUrl: context.config.baseUrl,
+    screenshots: context.screenshots,
+  });
 
 const requireSingleState = (
   checkoutStates: readonly CheckoutFlowState[],
@@ -432,8 +309,7 @@ const expectDiscounts = (
     execute: assertDisplayedDiscounts({
       config: context.config,
       discounts,
-      run: context.run,
-      session: context.session,
+      session: context.browserSession,
     }),
     id,
     timeoutMs: context.config.timeouts.uiTransition,
@@ -462,10 +338,9 @@ const referrerScreen: ReferralCaseExecutor = (context) =>
     yield* runStep({
       // The runner's first open primes the preview's protection bypass for
       // the later Playwright-native navigations.
-      execute: openBrowserPage(
+      execute: openPage(
+        context.browserSession,
         config,
-        context.run,
-        context.session,
         `${config.baseUrl}${getAccountSectionPath("cs-CZ", "referrals")}`,
         { timeoutMs: config.timeouts.browserNavigation }
       ),
@@ -690,19 +565,26 @@ const profileCompletionCheckout: ReferralCaseExecutor = (
 
     const customerId = yield* runStep({
       execute: Effect.gen(function* () {
-        yield* openAccount(context, `?ref=${referrer.code}`);
+        yield* openReferralAccount(
+          browserSession,
+          config,
+          `?ref=${referrer.code}`
+        );
         yield* waitForRememberedReferralCode(
           referralCookieContext(context),
           referrer.code
         );
-        yield* waitForCompletionForm(context, referrer.code);
-        yield* completeProfile(context, account);
-        yield* waitForBrowserText({
+        yield* waitForProfileCompletionForm(
+          browserSession,
+          config,
+          referrer.code
+        );
+        yield* completeReferralProfile(browserSession, config, account);
+        yield* waitForPageText({
           description: "applied referral notice on the linked account",
           matches: (text) => text.includes(appliedNotice),
-          run: context.run,
-          session: context.session,
-          timeoutMs: context.config.timeouts.uiTransition,
+          session: browserSession,
+          timeoutMs: config.timeouts.uiTransition,
         });
         const customerId = yield* requireLinkedCustomer(context, account);
         yield* waitForReferrer(context, customerId, referrer.customerId);
@@ -746,6 +628,7 @@ const profileCompletionCheckout: ReferralCaseExecutor = (
     const state = requireSingleState(checkoutStates, linked);
     const locale = state.data.locale;
     let payUrl = yield* startPayPage({
+      browserSession,
       config,
       contact: linked,
       data: state.data,
@@ -816,6 +699,7 @@ const profileCompletionCheckout: ReferralCaseExecutor = (
     });
 
     yield* applyCodeAndReadFreshPayUrl({
+      browserSession,
       appliedMessage: referralAppliedMessage(locale),
       code: referrer.code,
       config,
@@ -854,6 +738,7 @@ const checkoutCodeEntry: ReferralCaseExecutor = (context, checkoutStates) =>
     const state = requireSingleState(checkoutStates, customer);
     const locale = state.data.locale;
     let payUrl = yield* startPayPage({
+      browserSession,
       config,
       contact: customer,
       data: state.data,
@@ -892,6 +777,7 @@ const checkoutCodeEntry: ReferralCaseExecutor = (context, checkoutStates) =>
     });
 
     payUrl = yield* applyCodeAndReadFreshPayUrl({
+      browserSession,
       appliedMessage: referralAppliedMessage(locale),
       code: referrer.code,
       config,
@@ -924,6 +810,7 @@ const checkoutCodeEntry: ReferralCaseExecutor = (context, checkoutStates) =>
     });
 
     payUrl = yield* applyCodeAndReadFreshPayUrl({
+      browserSession,
       appliedMessage: ordinaryCodeAppliedMessage(
         ordinaryCodeAdjustment,
         locale
@@ -990,6 +877,7 @@ const shareLinkCheckout: ReferralCaseExecutor = (context, checkoutStates) =>
     const state = requireSingleState(checkoutStates, customer);
     const locale = state.data.locale;
     let payUrl = yield* startPayPage({
+      browserSession,
       config,
       contact: customer,
       data: state.data,
@@ -1054,6 +942,7 @@ const shareLinkCheckout: ReferralCaseExecutor = (context, checkoutStates) =>
     });
 
     payUrl = yield* applyCodeAndReadFreshPayUrl({
+      browserSession,
       appliedMessage: ordinaryCodeAppliedMessage(
         referralVoucherAdjustment,
         locale
@@ -1104,7 +993,7 @@ const shareLinkCheckout: ReferralCaseExecutor = (context, checkoutStates) =>
 
 const autoLinkedSignIn: ReferralCaseExecutor = (context) =>
   Effect.gen(function* () {
-    const { config, identities, runStep, session } = context;
+    const { browserSession, config, identities, runStep } = context;
     const { otherReferrer, referrer } = yield* runStep({
       execute: Effect.gen(function* () {
         const referrer = yield* identities.seedReferrer("ral-referrer");
@@ -1134,8 +1023,8 @@ const autoLinkedSignIn: ReferralCaseExecutor = (context) =>
         yield* prepare(customerId);
         const account = yield* identities.seedUnlinkedAccount(label);
         yield* identities.signIn(account, context);
-        yield* openAccount(context, `?ref=${ref}`);
-        yield* waitForLinkedAccount(context);
+        yield* openReferralAccount(browserSession, config, `?ref=${ref}`);
+        yield* waitForLinkedAccount(browserSession, config);
         const linked = yield* requireLinkedCustomer(context, account);
         if (linked !== customerId) {
           return yield* workspaceE2EError(
@@ -1212,7 +1101,7 @@ const autoLinkedSignIn: ReferralCaseExecutor = (context) =>
 
 const profileCompletionUnusableLink: ReferralCaseExecutor = (context) =>
   Effect.gen(function* () {
-    const { config, identities, runStep, session } = context;
+    const { browserSession, config, identities, runStep } = context;
     const { account, referrer } = yield* runStep({
       execute: Effect.gen(function* () {
         const referrer = yield* identities.seedReferrer("rpu-referrer");
@@ -1226,19 +1115,27 @@ const profileCompletionUnusableLink: ReferralCaseExecutor = (context) =>
     const unusableCode = makeUnusableReferralCode();
     yield* runStep({
       execute: Effect.gen(function* () {
-        yield* openAccount(context, `?ref=${unusableCode}`);
+        yield* openReferralAccount(
+          browserSession,
+          config,
+          `?ref=${unusableCode}`
+        );
         yield* waitForRememberedReferralCode(
           referralCookieContext(context),
           unusableCode
         );
-        yield* waitForCompletionForm(context, "");
+        yield* waitForProfileCompletionForm(browserSession, config, "");
         // The first shared link wins: a later one changes nothing.
-        yield* openAccount(context, `?ref=${referrer.code}`);
+        yield* openReferralAccount(
+          browserSession,
+          config,
+          `?ref=${referrer.code}`
+        );
         yield* waitForRememberedReferralCode(
           referralCookieContext(context),
           unusableCode
         );
-        yield* waitForCompletionForm(context, "");
+        yield* waitForProfileCompletionForm(browserSession, config, "");
       }),
       id: "assert-first-share-link-remembered",
       timeoutMs:
@@ -1246,7 +1143,7 @@ const profileCompletionUnusableLink: ReferralCaseExecutor = (context) =>
     });
     yield* runStep({
       execute: Effect.gen(function* () {
-        yield* completeProfile(context, account);
+        yield* completeReferralProfile(browserSession, config, account);
         const customerId = yield* requireLinkedCustomer(context, account);
         yield* assertReferrer(
           customerId,
