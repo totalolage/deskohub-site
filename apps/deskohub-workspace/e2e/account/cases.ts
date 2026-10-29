@@ -600,7 +600,6 @@ export const makeWorkspaceE2EAccountCases = ({
           try: () => captureSignInHandoffReview(stage),
         });
 
-
   const passkeysOffered = () => lifecycleHandoff.passkeySignIn === "offered";
 
   const requirePasskeyCount = (
@@ -1945,7 +1944,6 @@ export const makeWorkspaceE2EAccountCases = ({
           { locale: "cs-CZ" }
         );
         const czechFaqTitle = m.faqPageTitle({}, { locale: "cs-CZ" });
-
 
         /**
          * Waits until the selected option, read from the open listbox, is

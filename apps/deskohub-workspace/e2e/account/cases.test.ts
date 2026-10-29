@@ -2228,7 +2228,9 @@ const makeScenario = (
         );
         browser.click(languageTriggerSelector);
         browser.click(
-          locale === "cs-CZ" ? languageOptionCsSelector : languageOptionEnSelector
+          locale === "cs-CZ"
+            ? languageOptionCsSelector
+            : languageOptionEnSelector
         );
       }),
     confirmAccountDeletion: Effect.sync(() => {

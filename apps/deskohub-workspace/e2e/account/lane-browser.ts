@@ -306,7 +306,9 @@ const isInputValidationBlocked = (selector: string) => {
 /** Whether the input is enabled and empty. */
 const isInputEnabledAndEmpty = (selector: string) => {
   const input = document.querySelector(selector);
-  return input instanceof HTMLInputElement && !input.disabled && input.value === "";
+  return (
+    input instanceof HTMLInputElement && !input.disabled && input.value === ""
+  );
 };
 
 /** Whether the login email input is read-only and holds the email. */
@@ -455,6 +457,7 @@ const hasElement = (selector: string) =>
 
 /** Writes the cookie through `document.cookie`. */
 const writeDocumentCookie = (cookie: string) => {
+  // biome-ignore lint/suspicious/noDocumentCookie: The case overwrites the cookie as page script would, outside the server's Set-Cookie.
   document.cookie = cookie;
 };
 
@@ -585,9 +588,7 @@ export const makeWorkspaceE2EAccountLaneBrowser = ({
   const click = (label: string, locate: (page: Page) => Locator) =>
     withLaneSession((laneSession) =>
       laneSession.use(label, (page) =>
-        locate(page)
-          .filter({ visible: true })
-          .click({ timeout: browserAction })
+        locate(page).filter({ visible: true }).click({ timeout: browserAction })
       )
     );
   const clickSelector = (selector: string) =>
@@ -673,20 +674,22 @@ export const makeWorkspaceE2EAccountLaneBrowser = ({
         uiTransition
       );
     }),
-    chooseLanguage: (locale) =>
-      Effect.gen(function* () {
-        yield* withLaneSession((laneSession) =>
-          waitForReactHandler(laneSession, scopedLanguageTrigger, "onPointerDown", {
-            timeoutMs: uiTransition,
-          })
-        );
-        yield* clickSelector(languageTriggerSelector);
-        yield* click("click browser element", (page) =>
-          page
-            .locator('[role="option"]')
-            .filter({ hasText: languageOptionLabels[locale] })
-        );
-      }),
+    chooseLanguage: Effect.fn("chooseLanguage")(function* (locale: Locale) {
+      yield* withLaneSession((laneSession) =>
+        waitForReactHandler(
+          laneSession,
+          scopedLanguageTrigger,
+          "onPointerDown",
+          { timeoutMs: uiTransition }
+        )
+      );
+      yield* clickSelector(languageTriggerSelector);
+      yield* click("click browser element", (page) =>
+        page
+          .locator('[role="option"]')
+          .filter({ hasText: languageOptionLabels[locale] })
+      );
+    }),
     confirmAccountDeletion: Effect.gen(function* () {
       yield* clickSelector(deleteTriggerSelector);
       yield* waitFor(

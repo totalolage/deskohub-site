@@ -408,7 +408,10 @@ const failingControls: ReadonlyArray<
     (laneBrowser) =>
       Effect.andThen(
         laneBrowser.open(`${origin}/en-US/auth/sign-in?busy=1`),
-        Effect.andThen(Effect.sleep("500 millis"), laneBrowser.readSignInEmailBlocked)
+        Effect.andThen(
+          Effect.sleep("500 millis"),
+          laneBrowser.readSignInEmailBlocked
+        )
       ),
   ],
   [
