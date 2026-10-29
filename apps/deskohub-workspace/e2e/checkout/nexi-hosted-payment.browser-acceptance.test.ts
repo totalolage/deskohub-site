@@ -65,7 +65,8 @@ const expectSuccess = (result: Result) => {
 const expectFailure = (
   result: Result,
   diagnosticCode?: string,
-  timeout = false
+  timeout = false,
+  failureSource: "operation" | "step" = "operation"
 ) => {
   expect(result.succeeded).toBe(false);
   expect(result.annotations).toEqual(
@@ -80,8 +81,9 @@ const expectFailure = (
       outcome: timeout ? "timed_out" : "failed",
     })
   );
-  if (result.failures.length)
-    expect(result.failures.map(({ timeout }) => timeout)).toEqual([timeout]);
+  expect(result.failures.map(({ timeout }) => timeout)).toEqual(
+    failureSource === "step" ? [] : [timeout]
+  );
 };
 const actions = ["continue", "pay", "challenge", "return"];
 
@@ -320,7 +322,7 @@ browserTest(
           Effect.sleep(1500)
         )
     );
-    expectFailure(result, undefined, true);
+    expectFailure(result, undefined, true, "step");
     expect(calls).toBe(1);
     expect(result.state.authorizationActions).toEqual([["continue"]]);
     expect(result.state.actions).toEqual(["continue", "pay"]);
