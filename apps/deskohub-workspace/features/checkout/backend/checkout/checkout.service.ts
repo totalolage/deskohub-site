@@ -67,7 +67,7 @@ import {
   capturePaymentFailed,
   capturePaymentStarted,
 } from "../analytics/posthog-lifecycle-events";
-import { WorkspacePaidFulfillmentService } from "../fulfillment/paid-fulfillment.service";
+import { ReservationFulfillment } from "../fulfillment/reservation-fulfillment.service";
 import { NexiAmountFromWorkspaceMoney } from "../payment/nexi-amount.codec";
 import { getNexiCurrencyOverride } from "../payment/nexi-currency";
 import { getNexiHostedPaymentCustomer } from "../payment/nexi-customer-info";
@@ -239,7 +239,7 @@ export class CheckoutService extends Context.Service<
 
   static Live = this.Default.pipe(
     Layer.provide(OptionalAccountActivityGuard.Live),
-    Layer.provide(WorkspacePaidFulfillmentService.Live),
+    Layer.provide(ReservationFulfillment.Live),
     Layer.provide(PayableReservationService.Default),
     Layer.provide(LegalEvidenceEventRepository.Default),
     Layer.provide(PostHogEventService.Live),
@@ -517,7 +517,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
       const paymentAttempts = yield* PaymentAttemptRepository;
       const paymentLifecycle = yield* PaymentLifecycleRepository;
       const legalEvidenceEvents = yield* LegalEvidenceEventRepository;
-      const paidFulfillment = yield* WorkspacePaidFulfillmentService;
+      const paidFulfillment = yield* ReservationFulfillment;
       const posthogEvents = yield* PostHogEventService;
       const pricing = yield* CheckoutPricingService;
       const payableReservations = yield* PayableReservationService;
@@ -762,20 +762,18 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
           }).pipe(Effect.provideService(PostHogEventService, posthogEvents));
         }
 
-        yield* paidFulfillment
-          .fulfillPaidOrder({ orderId: input.workspaceReservationId })
-          .pipe(
-            Effect.catch((cause) =>
-              Effect.logError(
-                "Internal payment completed but paid fulfillment failed",
-                {
-                  orderId: input.workspaceReservationId,
-                  paymentAttemptId: transition.attempt.id,
-                  cause,
-                }
-              )
+        yield* paidFulfillment.run(input.workspaceReservationId).pipe(
+          Effect.catch((cause) =>
+            Effect.logError(
+              "Internal payment completed but paid fulfillment failed",
+              {
+                orderId: input.workspaceReservationId,
+                paymentAttemptId: transition.attempt.id,
+                cause,
+              }
             )
-          );
+          )
+        );
 
         return getCheckoutRedirectResult({
           redirectUrl: getReservationStatusPath({
@@ -794,16 +792,14 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
         readonly orderId: WorkspaceReservationId;
         readonly locale: Locale;
       }) {
-        yield* paidFulfillment
-          .fulfillPaidOrder({ orderId: input.orderId })
-          .pipe(
-            Effect.catch((cause) =>
-              Effect.logError("Paid checkout fulfillment retry failed", {
-                orderId: input.orderId,
-                cause,
-              })
-            )
-          );
+        yield* paidFulfillment.run(input.orderId).pipe(
+          Effect.catch((cause) =>
+            Effect.logError("Paid checkout fulfillment retry failed", {
+              orderId: input.orderId,
+              cause,
+            })
+          )
+        );
 
         return getCheckoutRedirectResult({
           redirectUrl: getReservationStatusPath({

@@ -363,44 +363,6 @@ const getTextValueAfterLabel = (text: string, label: string) => {
   return labelIndex === -1 ? undefined : lines[labelIndex + 1];
 };
 
-describe("createCustomerEmailRecoveryIdempotencyKey", () => {
-  test("derives distinct stable keys for long prior delivery ids beyond the provider key limit", async () => {
-    const { createCustomerEmailRecoveryIdempotencyKey } = await import(
-      "./workspace-reservation-email.service"
-    );
-    const sharedLongPrefix = "resend-email-id".padEnd(213, "0");
-    const firstPriorDeliveryId = EmailDeliveryIdSchema.make(
-      `${sharedLongPrefix}first`
-    );
-    const secondPriorDeliveryId = EmailDeliveryIdSchema.make(
-      `${sharedLongPrefix}second`
-    );
-
-    const firstKey =
-      createCustomerEmailRecoveryIdempotencyKey(firstPriorDeliveryId);
-    const secondKey = createCustomerEmailRecoveryIdempotencyKey(
-      secondPriorDeliveryId
-    );
-
-    const legacyTruncationLength =
-      `workspace-paid-reservation-access-recovery-${firstPriorDeliveryId}`
-        .length;
-    expect(legacyTruncationLength).toBeGreaterThan(256);
-    expect(firstKey).toMatch(
-      /^workspace-paid-reservation-access-recovery-[0-9a-f]{64}$/
-    );
-    expect(firstKey.length).toBeLessThanOrEqual(256);
-    expect(secondKey.length).toBeLessThanOrEqual(256);
-    expect(firstKey).not.toBe(secondKey);
-    expect(firstKey).toBe(
-      createCustomerEmailRecoveryIdempotencyKey(firstPriorDeliveryId)
-    );
-    expect(secondKey).toBe(
-      createCustomerEmailRecoveryIdempotencyKey(secondPriorDeliveryId)
-    );
-  });
-});
-
 describe("Open Space customer reservation emails", () => {
   test("renders the eligible table names from loaded reservation details in HTML and text", async () => {
     const { details, names, providerReads } =
@@ -1184,10 +1146,12 @@ describe("sendPaidReservationEmails author confirmation", () => {
 
 describe("sendPaidReservationEmails idempotency", () => {
   test("passes the explicit initial customer key to the provider message only", async () => {
-    const {
-      createCustomerEmailInitialIdempotencyKey,
-      WorkspaceReservationEmailService,
-    } = await import("./workspace-reservation-email.service");
+    const { WorkspaceReservationEmailService } = await import(
+      "./workspace-reservation-email.service"
+    );
+    const { createCustomerEmailInitialIdempotencyKey } = await import(
+      "./customer-email-idempotency-key"
+    );
     const { EmailConfigTag, EmailServiceTag } = await import(
       "@deskohub/email/backend/service"
     );
@@ -1265,10 +1229,12 @@ describe("sendPaidReservationEmails idempotency", () => {
 
 describe("sendPaidReservationEmails idempotent retry stability", () => {
   test("sends byte-identical complete customer requests under one idempotency key while the clock advances", async () => {
-    const {
-      createCustomerEmailInitialIdempotencyKey,
-      WorkspaceReservationEmailService,
-    } = await import("./workspace-reservation-email.service");
+    const { WorkspaceReservationEmailService } = await import(
+      "./workspace-reservation-email.service"
+    );
+    const { createCustomerEmailInitialIdempotencyKey } = await import(
+      "./customer-email-idempotency-key"
+    );
     const { EmailConfigTag, EmailServiceTag } = await import(
       "@deskohub/email/backend/service"
     );
