@@ -20,7 +20,7 @@ import { formatAdministrationDateTime } from "./formatters";
 const customerSummary = (
   id: string,
   reservationCount: number,
-  marketingConsent: AdministrationCustomerSummary["marketingConsent"] = "never"
+  marketingConsent: AdministrationCustomerSummary["marketingConsent"] = "absent"
 ): AdministrationCustomerSummary => ({
   customer: null,
   customerId: id as AdministrationCustomerSummary["customerId"],
@@ -99,9 +99,9 @@ describe("AdministrationCustomerTable", () => {
       <RouteLocaleProvider locale="en-US">
         <AdministrationCustomerTable
           customers={[
-            customerSummary("granted", 1, "granted"),
+            customerSummary("active", 1, "active"),
             customerSummary("withdrawn", 1, "withdrawn"),
-            customerSummary("never", 1, "never"),
+            customerSummary("absent", 1, "absent"),
           ]}
         />
       </RouteLocaleProvider>
@@ -128,7 +128,7 @@ describe("AdministrationCustomerTable", () => {
           customers={[customerSummary("one", 1)]}
           query={customerListQuery.parse({
             from: "2026-10-01",
-            marketingConsent: "granted",
+            marketingConsent: "active",
             to: "2026-10-31",
           })}
         />
@@ -142,7 +142,7 @@ describe("AdministrationCustomerTable", () => {
     expect(Object.fromEntries(search)).toEqual({
       direction: "asc",
       from: "2026-10-01",
-      marketingConsent: "granted",
+      marketingConsent: "active",
       sort: "reservations",
       to: "2026-10-31",
     });

@@ -2,7 +2,6 @@ import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Deferred, Effect, Layer } from "effect";
-import type { CustomerMarketingConsent } from "@/db/schema/customer-marketing-consents";
 import {
   type CurrentLinkedAccount,
   CustomerAccountContactService,
@@ -13,7 +12,9 @@ import {
   customerAccountIdSchema,
   customerAccountUnavailable,
 } from "@/features/account/customer-account";
-import { CustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository";
+import type { IMarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
+import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
+import type { MarketingConsentStatus } from "@/features/legal/marketing-consent-status";
 import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import type { CustomerLastReservation } from "@/features/reservation/reservation-existing-customer";
 import { CustomerLastReservationService } from "./customer-last-reservation.service";
@@ -43,19 +44,8 @@ const lastReservation: CustomerLastReservation = {
   coffee: true,
 };
 
-const marketingConsent = (
-  withdrawnAt: Temporal.Instant | null
-): CustomerMarketingConsent =>
-  ({
-    dotyposCustomerId: account.dotyposCustomerId,
-    documentHash: "marketing-hash",
-    locale: "en-US",
-    grantedAt: Temporal.Instant.from("2026-01-01T00:00:00Z"),
-    withdrawnAt,
-  }) as CustomerMarketingConsent;
-
 const runLoad = (options: {
-  readonly getMarketingConsent?: CustomerMarketingConsentRepository["Service"]["get"];
+  readonly marketingConsentStatus?: IMarketingConsentLedger["status"];
   readonly linkedContact: CustomerAccountContactService["Service"]["linkedContact"];
   readonly load: CustomerLastReservationService["Service"]["load"];
 }) =>
@@ -67,8 +57,9 @@ const runLoad = (options: {
           linkedContact: options.linkedContact,
         }),
         Layer.mock(CustomerLastReservationService, { load: options.load }),
-        Layer.mock(CustomerMarketingConsentRepository, {
-          get: options.getMarketingConsent ?? (() => Effect.succeed(null)),
+        Layer.mock(MarketingConsentLedger, {
+          status:
+            options.marketingConsentStatus ?? (() => Effect.succeed("absent")),
         })
       )
     ),
@@ -131,33 +122,28 @@ describe("loadLinkedExistingCustomer", () => {
   });
 
   test("reports only a current, unwithdrawn marketing consent", async () => {
-    const loadConsent = (consent: CustomerMarketingConsent | null) => {
-      const getMarketingConsent = mock(() => Effect.succeed(consent));
+    const loadConsent = (status: MarketingConsentStatus) => {
+      const getMarketingConsentStatus = mock(() => Effect.succeed(status));
       return runLoad({
-        getMarketingConsent,
+        marketingConsentStatus: getMarketingConsentStatus,
         linkedContact: () => Effect.succeed(contact),
         load: () => Effect.succeed(null),
       }).then((outcome) => {
-        expect(getMarketingConsent).toHaveBeenCalledWith(
+        expect(getMarketingConsentStatus).toHaveBeenCalledWith(
           account.dotyposCustomerId
         );
         return outcome;
       });
     };
-
-    expect(await loadConsent(marketingConsent(null))).toMatchObject({
+    expect(await loadConsent("active")).toMatchObject({
       _tag: "Success",
       success: { hasMarketingConsent: true },
     });
-    expect(
-      await loadConsent(
-        marketingConsent(Temporal.Instant.from("2026-02-01T00:00:00Z"))
-      )
-    ).toMatchObject({
+    expect(await loadConsent("withdrawn")).toMatchObject({
       _tag: "Success",
       success: { hasMarketingConsent: false },
     });
-    expect(await loadConsent(null)).toMatchObject({
+    expect(await loadConsent("absent")).toMatchObject({
       _tag: "Success",
       success: { hasMarketingConsent: false },
     });
@@ -165,7 +151,7 @@ describe("loadLinkedExistingCustomer", () => {
 
   test("keeps asking for marketing consent when it cannot be read", async () => {
     const outcome = await runLoad({
-      getMarketingConsent: () =>
+      marketingConsentStatus: () =>
         Effect.fail(new Error("database unavailable") as never),
       linkedContact: () => Effect.succeed(contact),
       load: () => Effect.succeed(null),
@@ -188,7 +174,7 @@ describe("loadReservationCheckoutAccount", () => {
   const originalContactsLive = CustomerAccountContactService.Live;
   const originalResolverLive = CustomerAccountResolver.Live;
   const originalLastReservationsLive = CustomerLastReservationService.Live;
-  const originalMarketingConsentsLive = CustomerMarketingConsentRepository.Live;
+  const originalMarketingConsentsLive = MarketingConsentLedger.Live;
 
   CustomerAccountContactService.Live = Layer.mock(
     CustomerAccountContactService,
@@ -204,10 +190,9 @@ describe("loadReservationCheckoutAccount", () => {
     CustomerLastReservationService,
     { load: () => Effect.succeed(null) }
   );
-  CustomerMarketingConsentRepository.Live = Layer.mock(
-    CustomerMarketingConsentRepository,
-    { get: () => Effect.succeed(null) }
-  );
+  MarketingConsentLedger.Live = Layer.mock(MarketingConsentLedger, {
+    status: () => Effect.succeed("absent"),
+  });
 
   beforeEach(() => {
     currentAccount = Effect.succeed({ status: "linked", ...account });
@@ -224,7 +209,7 @@ describe("loadReservationCheckoutAccount", () => {
     CustomerAccountContactService.Live = originalContactsLive;
     CustomerAccountResolver.Live = originalResolverLive;
     CustomerLastReservationService.Live = originalLastReservationsLive;
-    CustomerMarketingConsentRepository.Live = originalMarketingConsentsLive;
+    MarketingConsentLedger.Live = originalMarketingConsentsLive;
   });
 
   test("reads a signed-out visitor without loading a profile", async () => {
