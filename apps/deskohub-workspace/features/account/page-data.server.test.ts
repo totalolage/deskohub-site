@@ -3,6 +3,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { Effect, Layer, Predicate } from "effect";
+import { redirect } from "next/navigation";
 import { AccountFeatureFlagService } from "@/features/account/backend/account-feature-flag.service";
 import { CustomerAgentConnections } from "@/features/account/backend/auth/customer-agent-connections.service";
 import { CustomerPasskeys } from "@/features/account/backend/auth/customer-passkeys.service";
@@ -33,9 +34,10 @@ import { ReferralSignupIntentRepository } from "@/features/referrals/signup-inte
 import { ReviewAccountsMock } from "@/features/review-accounts/backend/review-accounts.repository.mock";
 import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/workspace-url.config";
 import {
-  AccountPageSectionLayers,
-  loadAccountPageState,
-} from "./page-data.server";
+  type AccountPageLayers,
+  accountPageCapabilities,
+} from "./account-page-capabilities.server";
+import { loadAccountPageState } from "./page-data.server";
 
 const customerEmail = testEmailAddress("ada");
 
@@ -191,99 +193,99 @@ let assistantListEffect: Effect.Effect<
 >;
 let assistantListCalls = 0;
 
-/** Section layers a test replaces, such as one whose build fails. */
-let sectionLayerOverrides: Partial<AccountPageSectionLayers["Service"]> = {};
-
-const sectionLayers = (): AccountPageSectionLayers["Service"] => ({
-  resolver: Layer.mock(CustomerAccountResolver, {
-    resolveLink: Effect.suspend(() => {
-      resolverCalls += 1;
-      return resolveEffect.pipe(
-        Effect.ensuring(Effect.sync(() => events.push("resolved")))
-      );
-    }) as never,
-  }),
-  profile: Layer.mock(CustomerProfileService, {
-    load: () => {
-      profileLoadCalls += 1;
-      return profileLoadEffect as never;
-    },
-  }),
-  history: Layer.mock(CustomerReservationHistoryService, {
-    load: (account) => {
-      historyLoadCalls += 1;
-      historyLoadAccounts.push(account);
-      return historyEffect as never;
-    },
-  }),
-  avatar: Layer.mock(CustomerAvatarService, {
-    lookup: () => {
-      avatarLookupCalls += 1;
-      return avatarLookupEffect as never;
-    },
-  }),
-  referrals: ReferralServiceMock({
-    getAccountSummary: (input) => {
-      referralSummaryCalls.push(input);
-      events.push("summary");
-      return referralSummaryEffect as never;
-    },
-    acceptReferral: (input) => {
-      acceptReferralCalls.push(input);
-      events.push("accept");
-      return acceptReferralEffect as never;
-    },
-    findAvailableCode: (input) => {
-      availableReferralCodeCalls.push(input);
-      return availableReferralCodeEffect as never;
-    },
-    hasSettledReferral: (input) => {
-      settledReferralCalls.push(input);
-      events.push("settled");
-      return settledReferralEffect as never;
-    },
-  }),
-  assistants: Layer.mock(CustomerAgentConnections, {
-    list: Effect.suspend(() => {
-      assistantListCalls += 1;
-      return assistantListEffect;
-    }) as never,
-  }),
-  featureFlags: AccountFeatureFlagService.Default.pipe(
-    Layer.provide(
-      WorkspaceFeatureFlagServiceMock({
-        isEnabled: (key) =>
-          Effect.tryPromise(() =>
-            key in flagValues
-              ? flagValues[key as keyof typeof flagValues]()
-              : Promise.reject(new Error(`unexpected flag ${key}`))
-          ) as never,
-      })
-    )
-  ),
-  ...sectionLayerOverrides,
-});
+/** Layers a test replaces, such as one whose build fails. */
+let layerOverrides: Partial<AccountPageLayers> = {};
 
 const flagValues = {
   account_avatars: avatarsFlag,
   login_passkeys: passkeysFlag,
 } as const;
 
+/**
+ * The page's layers over the test's fakes, built through the page's own
+ * composition.
+ */
 const pageLayer = () =>
-  Layer.mergeAll(
-    Layer.mock(CustomerAuthentication, {
+  accountPageCapabilities({
+    authentication: Layer.mock(CustomerAuthentication, {
       currentUser: Effect.suspend(() => currentUserEffect) as never,
     }),
-    Layer.mock(CustomerPasskeys, {
+    resolver: Layer.mock(CustomerAccountResolver, {
+      resolveLink: Effect.suspend(() => {
+        resolverCalls += 1;
+        return resolveEffect.pipe(
+          Effect.ensuring(Effect.sync(() => events.push("resolved")))
+        );
+      }) as never,
+    }),
+    profile: Layer.mock(CustomerProfileService, {
+      load: () => {
+        profileLoadCalls += 1;
+        return profileLoadEffect as never;
+      },
+    }),
+    history: Layer.mock(CustomerReservationHistoryService, {
+      load: (account) => {
+        historyLoadCalls += 1;
+        historyLoadAccounts.push(account);
+        return historyEffect as never;
+      },
+    }),
+    avatar: Layer.mock(CustomerAvatarService, {
+      lookup: () => {
+        avatarLookupCalls += 1;
+        return avatarLookupEffect as never;
+      },
+    }),
+    referrals: ReferralServiceMock({
+      getAccountSummary: (input) => {
+        referralSummaryCalls.push(input);
+        events.push("summary");
+        return referralSummaryEffect as never;
+      },
+      acceptReferral: (input) => {
+        acceptReferralCalls.push(input);
+        events.push("accept");
+        return acceptReferralEffect as never;
+      },
+      findAvailableCode: (input) => {
+        availableReferralCodeCalls.push(input);
+        return availableReferralCodeEffect as never;
+      },
+      hasSettledReferral: (input) => {
+        settledReferralCalls.push(input);
+        events.push("settled");
+        return settledReferralEffect as never;
+      },
+    }),
+    assistants: Layer.mock(CustomerAgentConnections, {
+      list: Effect.suspend(() => {
+        assistantListCalls += 1;
+        return assistantListEffect;
+      }) as never,
+    }),
+    featureFlags: AccountFeatureFlagService.Default.pipe(
+      Layer.provide(
+        WorkspaceFeatureFlagServiceMock({
+          isEnabled: (key) =>
+            Effect.tryPromise(() =>
+              key in flagValues
+                ? flagValues[key as keyof typeof flagValues]()
+                : Promise.reject(new Error(`unexpected flag ${key}`))
+            ) as never,
+        })
+      )
+    ),
+    passkeys: Layer.mock(CustomerPasskeys, {
       list: Effect.suspend(() => {
         passkeyListCalls += 1;
         return passkeyListEffect;
       }) as never,
     }),
-    ReviewAccountsMock({
+    reviewAccounts: ReviewAccountsMock({
       isReviewAccount: () => reviewAccountEffect as never,
     }),
-    Layer.mock(ReferralSignupIntentRepository, {
+    signupIntents: Layer.mock(ReferralSignupIntentRepository, {
       find: () =>
         Effect.sync(() =>
           storedSignupIntent
@@ -303,19 +305,19 @@ const pageLayer = () =>
           return true;
         }),
     }),
-    Layer.mock(RememberedReferralCode, {
+    rememberedReferralCode: Layer.mock(RememberedReferralCode, {
       current: Effect.sync(() => {
         rememberedReferralCodeReads += 1;
         return parseReferralCode(rememberedReferralCode);
       }),
     }),
-    Layer.unwrap(
+    referralRelease: Layer.unwrap(
       Effect.promise(() => referralsFlag()).pipe(
         Effect.map(ReferralFeatureFlagService.fromDecision)
       )
     ),
-    Layer.succeed(AccountPageSectionLayers, sectionLayers())
-  );
+    ...layerOverrides,
+  });
 
 describe("loadAccountPageState", () => {
   beforeEach(() => {
@@ -327,7 +329,7 @@ describe("loadAccountPageState", () => {
     historyLoadCalls = 0;
     historyLoadAccounts = [];
     avatarLookupCalls = 0;
-    sectionLayerOverrides = {};
+    layerOverrides = {};
     avatarLookupEffect = Effect.succeed(null);
     reviewAccountEffect = Effect.succeed(false);
     referralSummaryEffect = Effect.succeed(referralSummary);
@@ -1308,7 +1310,7 @@ describe("loadAccountPageState", () => {
       output.filter((line) => line.includes("WARN")).join("\n");
 
     test("degrades only the avatar when its media capability can't be built", async () => {
-      sectionLayerOverrides = { avatar: unbuildable() };
+      layerOverrides = { avatar: unbuildable() };
 
       const { state, output } = await loadWithWarnings();
 
@@ -1336,7 +1338,7 @@ describe("loadAccountPageState", () => {
     });
 
     test("never builds the capability of a section the page skips", async () => {
-      sectionLayerOverrides = { avatar: unbuildable() };
+      layerOverrides = { avatar: unbuildable() };
       avatarsFlag.mockResolvedValue(false);
 
       const { state, output } = await loadWithWarnings();
@@ -1349,7 +1351,7 @@ describe("loadAccountPageState", () => {
     });
 
     test("degrades only the history when its capability can't be built", async () => {
-      sectionLayerOverrides = { history: unbuildable() };
+      layerOverrides = { history: unbuildable() };
 
       const { state, output } = await loadWithWarnings();
 
@@ -1367,7 +1369,7 @@ describe("loadAccountPageState", () => {
 
     test("degrades a review account's history alone when its capability can't be built", async () => {
       reviewAccountEffect = Effect.succeed(true);
-      sectionLayerOverrides = { history: unbuildable() };
+      layerOverrides = { history: unbuildable() };
 
       await expect(loadPageState()).resolves.toEqual({
         kind: "review-account",
@@ -1380,7 +1382,7 @@ describe("loadAccountPageState", () => {
 
     test("keeps the session's sections when the profile capability can't be built", async () => {
       passkeysFlag.mockResolvedValue(true);
-      sectionLayerOverrides = { profile: unbuildable() };
+      layerOverrides = { profile: unbuildable() };
 
       const { state, output } = await loadWithWarnings();
 
@@ -1395,7 +1397,7 @@ describe("loadAccountPageState", () => {
     });
 
     test("keeps the session's sections when the resolver can't be built", async () => {
-      sectionLayerOverrides = { resolver: unbuildable() };
+      layerOverrides = { resolver: unbuildable() };
 
       const { state, output } = await loadWithWarnings("RFL12345");
 
@@ -1423,7 +1425,7 @@ describe("loadAccountPageState", () => {
         promotionCodeId: "@test/promotion-code-id",
         referrerDotyposCustomerId: "70001",
       };
-      sectionLayerOverrides = { referrals: unbuildable() };
+      layerOverrides = { referrals: unbuildable() };
 
       const { state, output } = await loadWithWarnings("RFL12345");
 
@@ -1449,7 +1451,7 @@ describe("loadAccountPageState", () => {
       for (const code of [
         "account.auto-link.referral.unavailable",
         "account.signup-referral.unavailable",
-        "account.remembered-referral.unavailable",
+        "account.remembered-referral.unknown",
         "account.referrals.unavailable",
       ]) {
         expect(logged).toContain(code);
@@ -1466,7 +1468,7 @@ describe("loadAccountPageState", () => {
         reason: "link-required",
         linkReason: "not-found",
       });
-      sectionLayerOverrides = { referrals: unbuildable() };
+      layerOverrides = { referrals: unbuildable() };
 
       const { state, output } = await loadWithWarnings("RFL12345");
 
@@ -1482,7 +1484,7 @@ describe("loadAccountPageState", () => {
     });
     test("fails every account flag closed when the flag capability can't load", async () => {
       passkeysFlag.mockResolvedValue(true);
-      sectionLayerOverrides = { featureFlags: unloadable() };
+      layerOverrides = { featureFlags: unloadable() };
 
       await expect(loadPageState()).resolves.toMatchObject({
         kind: "linked",
@@ -1494,7 +1496,7 @@ describe("loadAccountPageState", () => {
 
     test("fails a flag closed when its evaluation dies", async () => {
       passkeysFlag.mockResolvedValue(true);
-      sectionLayerOverrides = {
+      layerOverrides = {
         featureFlags: Layer.mock(AccountFeatureFlagService, {
           isPasskeyEnabled: Effect.die(new Error("evaluation crashed")),
           isAvatarEnabled: Effect.die(new Error("evaluation crashed")),
@@ -1515,13 +1517,78 @@ describe("loadAccountPageState", () => {
         ...activeSession,
         deletionRequested: true,
       });
-      sectionLayerOverrides = { assistants: unloadable() };
+      layerOverrides = { assistants: unloadable() };
 
       await expect(loadPageState()).resolves.toEqual({
         kind: "deletion-pending",
         deletion: "pending",
         email: customerEmail,
       });
+    });
+    test("degrades only the sections whose capabilities die while building", async () => {
+      layerOverrides = { avatar: unloadable(), history: unloadable() };
+
+      const { state, output } = await loadWithWarnings();
+
+      expect(state).toMatchObject({
+        kind: "linked",
+        profile: { firstName: "Ada" },
+        avatar: { kind: "available", avatar: null },
+        history: { kind: "unavailable", reason: "provider-unavailable" },
+        referrals: accountReferrals,
+      });
+      const logged = warnings(output);
+      expect(logged).toContain("account.avatar.unavailable");
+      expect(logged).toContain("account.reservation-history.unavailable");
+      expect(output.join("\n")).not.toContain("module failed to load");
+    });
+
+    test("degrades a section whose read dies", async () => {
+      historyEffect = Effect.die(new Error("history crashed"));
+
+      const { state, output } = await loadWithWarnings();
+
+      expect(state).toMatchObject({
+        kind: "linked",
+        history: { kind: "unavailable", reason: "provider-unavailable" },
+      });
+      expect(warnings(output)).toContain(
+        "account.reservation-history.unavailable"
+      );
+      expect(output.join("\n")).not.toContain("history crashed");
+    });
+
+    test("keeps the session's sections when the profile capability dies while building", async () => {
+      layerOverrides = { profile: unloadable() };
+
+      await expect(loadPageState()).resolves.toEqual({
+        kind: "authenticated-unavailable",
+        deletion: "offered",
+        assistants: [],
+        email: customerEmail,
+      });
+    });
+    test("shows a settled signup outcome when the referral capability can't be built", async () => {
+      storedSignupIntent = {
+        code: "RFLPENDING",
+        promotionCodeId: "@test/promotion-code-id",
+        referrerDotyposCustomerId: "70001",
+        outcome: "applied",
+      };
+      layerOverrides = { referrals: unbuildable() };
+
+      // The stored outcome needs no referral service; only a retry would.
+      await expect(loadPageState()).resolves.toMatchObject({
+        kind: "linked",
+        signupReferral: { status: "applied" },
+      });
+      expect(acceptReferralCalls).toEqual([]);
+    });
+
+    test("lets Next.js control flow from a section reach Next.js", async () => {
+      historyEffect = Effect.sync(() => redirect("/target"));
+
+      await expect(loadPageState()).rejects.toThrow("NEXT_REDIRECT");
     });
   });
 });

@@ -98,8 +98,7 @@ export const runWorkspaceEffectOrElse =
       program.pipe(
         Effect.catchCause(
           (cause): Effect.Effect<B, E | WorkspaceFallbackRejection> =>
-            Cause.hasInterruptsOnly(cause) ||
-            findNextControlFlow(cause) !== undefined
+            !isRecoverableCause(cause)
               ? Effect.failCause(cause)
               : Effect.fromResult(answerOnce(Cause.squash(cause))).pipe(
                   Effect.tap(() =>
@@ -172,6 +171,33 @@ const isNextControlFlow = (cause: unknown) =>
  */
 export const findNextControlFlow = (cause: Cause.Cause<unknown>) =>
   causeFailures(cause).find(isNextControlFlow);
+
+/**
+ * Whether a fallback may answer `cause`: it is neither only interruption nor
+ * carries Next.js control flow, both of which must propagate unchanged.
+ */
+export const isRecoverableCause = (cause: Cause.Cause<unknown>) =>
+  !Cause.hasInterruptsOnly(cause) && findNextControlFlow(cause) === undefined;
+
+/**
+ * Answers every failure a fallback may answer, defects included, with
+ * `onFailure`. Interruption and Next.js control flow propagate, with any typed
+ * failure beside them as a defect, so the result never fails.
+ */
+export const catchRecoverableCause =
+  <B, R2>(
+    onFailure: (cause: Cause.Cause<unknown>) => Effect.Effect<B, never, R2>
+  ) =>
+  <A, E, R>(
+    self: Effect.Effect<A, E, R>
+  ): Effect.Effect<A | B, never, R | R2> =>
+    self.pipe(
+      Effect.catchCause((cause) =>
+        isRecoverableCause(cause)
+          ? onFailure(cause)
+          : Effect.orDie(Effect.failCause(cause))
+      )
+    );
 
 export const defineWorkspaceTask =
   <Args extends readonly unknown[], A, E>(

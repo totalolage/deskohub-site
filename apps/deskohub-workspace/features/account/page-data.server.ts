@@ -1,8 +1,13 @@
 import "server-only";
 
-import { Context, Effect, Layer, Result } from "effect";
+import { Cause, Effect, Result } from "effect";
 import type { LazyArg } from "effect/Function";
 import { cache } from "react";
+import {
+  type AccountPageCapabilities,
+  accountPageCapabilities,
+  liveAccountPageLayers,
+} from "@/features/account/account-page-capabilities.server";
 import { AccountFeatureFlagService } from "@/features/account/backend/account-feature-flag.service";
 import { CustomerAgentConnections } from "@/features/account/backend/auth/customer-agent-connections.service";
 import { CustomerPasskeys } from "@/features/account/backend/auth/customer-passkeys.service";
@@ -29,10 +34,10 @@ import type {
 } from "@/features/account/contracts";
 import {
   type CustomerAccountId,
+  customerAccountUnavailable,
   isCustomerAccountSupportRequired,
   isCustomerProfileMissing,
   type LinkedCustomerAccount,
-  mapCustomerAccountFailure,
 } from "@/features/account/customer-account";
 import type { CustomerAgentConnection } from "@/features/account/customer-agent-connections";
 import type { AccountPasskeySettings } from "@/features/account/passkeys";
@@ -43,13 +48,15 @@ import {
   type ReferralCode,
 } from "@/features/referrals/client";
 import type { ReferralAccountOverview } from "@/features/referrals/contracts";
-import { ReferralFeatureFlagRequest } from "@/features/referrals/referral-feature-flag.server";
 import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
 import { RememberedReferralCode } from "@/features/referrals/remembered-referral-code.service";
-import { ReferralSignupIntentRepository } from "@/features/referrals/signup-intent.repository";
 import { ReviewAccounts } from "@/features/review-accounts";
 import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/workspace-url.config";
-import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
+import {
+  catchRecoverableCause,
+  isRecoverableCause,
+  runWorkspaceEffect,
+} from "@/shared/backend/workspace-effect";
 
 /**
  * Sign-in methods and connected assistants need only the session, so every
@@ -137,54 +144,6 @@ type SignedInAccountContent =
     }
   | { readonly kind: "deletion-pending"; readonly email: string };
 
-interface IAccountPageSectionLayers {
-  readonly resolver: Layer.Layer<
-    CustomerAccountResolver,
-    Layer.Error<typeof CustomerAccountResolver.Live>
-  >;
-  readonly profile: Layer.Layer<
-    CustomerProfileService,
-    Layer.Error<typeof CustomerProfileService.Live>
-  >;
-  readonly history: Layer.Layer<
-    CustomerReservationHistoryService,
-    Layer.Error<typeof CustomerReservationHistoryService.Live>
-  >;
-  readonly avatar: Layer.Layer<
-    CustomerAvatarService,
-    Layer.Error<typeof CustomerAvatarService.Live>
-  >;
-  readonly referrals: Layer.Layer<
-    ReferralService,
-    Layer.Error<typeof ReferralService.Live>,
-    ReferralFeatureFlagService
-  >;
-  readonly assistants: Layer.Layer<CustomerAgentConnections>;
-  readonly featureFlags: Layer.Layer<AccountFeatureFlagService>;
-}
-
-/**
- * The capabilities whose construction can fail: on Dotypos or Cloudinary
- * configuration, or while loading their server modules. Each step builds its
- * section's layer inside its own recovery, so a failed build degrades that
- * section alone, like an outage of its provider, and a section the page
- * skips is never built.
- */
-export class AccountPageSectionLayers extends Context.Service<
-  AccountPageSectionLayers,
-  IAccountPageSectionLayers
->()("@deskohub-workspace/account/AccountPageSectionLayers") {
-  static Live = Layer.succeed(this, {
-    resolver: CustomerAccountResolver.Live,
-    profile: CustomerProfileService.Live,
-    history: CustomerReservationHistoryService.Live,
-    avatar: CustomerAvatarService.Live,
-    referrals: ReferralService.Live,
-    assistants: CustomerAgentConnections.Default,
-    featureFlags: AccountFeatureFlagService.Live,
-  });
-}
-
 /** The fixed, non-PII codes of the sections that degrade without blocking. */
 type AccountSectionFailureCode =
   | "account.assistants.unavailable"
@@ -193,23 +152,9 @@ type AccountSectionFailureCode =
   | "account.passkeys.unavailable"
   | "account.referral-code.unavailable"
   | "account.referrals.unavailable"
-  | "account.remembered-referral.unavailable"
   | "account.reservation-history.unavailable"
   | "account.review.unavailable"
   | "account.signup-referral.unavailable";
-
-/**
- * Everything the account page reads while it loads. The capabilities whose
- * construction can fail come through `AccountPageSectionLayers`.
- */
-type AccountPageCapabilities =
-  | CustomerAuthentication
-  | CustomerPasskeys
-  | ReviewAccounts
-  | ReferralSignupIntentRepository
-  | ReferralFeatureFlagService
-  | RememberedReferralCode
-  | AccountPageSectionLayers;
 
 /**
  * Loads the account page state from its capabilities. It never fails: an
@@ -271,26 +216,10 @@ export const loadAccountPageState: Effect.Effect<
 export const loadCustomerAccountPage = cache(
   (): Promise<CustomerAccountPageState> =>
     loadAccountPageState.pipe(
-      Effect.provide(accountPageCapabilities),
+      Effect.provide(accountPageCapabilities(liveAccountPageLayers)),
       runWorkspaceEffect("account.page", { boundary: "page" })
     )
 );
-
-/**
- * The page's capabilities as its edge provides them. Its type admits no
- * construction failure: a layer that can fail to build belongs in
- * `AccountPageSectionLayers`.
- */
-const accountPageCapabilities: Layer.Layer<AccountPageCapabilities> =
-  Layer.mergeAll(
-    CustomerAuthentication.Default,
-    CustomerPasskeys.Default,
-    ReviewAccounts.Live,
-    ReferralSignupIntentRepository.Live,
-    RememberedReferralCode.Live,
-    ReferralFeatureFlagRequest,
-    AccountPageSectionLayers.Live
-  );
 
 const unavailable = (): CustomerAccountPageState => ({ kind: "unavailable" });
 
@@ -319,38 +248,24 @@ const withOperation = (operation: string) =>
   Effect.annotateLogs({ boundary: "page", operation });
 
 /**
- * Runs a step with its section's capabilities, built for that step, so a
- * failed build is the step's own failure.
- */
-const withSectionLayer =
-  <ROut, E, RIn>(
-    select: (layers: IAccountPageSectionLayers) => Layer.Layer<ROut, E, RIn>
-  ) =>
-  <A, E1, R>(self: Effect.Effect<A, E1, R>) =>
-    Effect.flatMap(AccountPageSectionLayers, (layers) =>
-      Effect.provide(self, select(layers))
-    );
-
-/**
  * Reads an account release flag, which fails closed: a flag capability that
  * can't be built, or a defect while evaluating, counts as off.
  */
 const accountFlag = <E, R>(flag: Effect.Effect<boolean, E, R>) =>
-  flag.pipe(
-    withSectionLayer((layers) => layers.featureFlags),
-    Effect.catchCause(() => Effect.succeed(false))
-  );
+  flag.pipe(catchRecoverableCause(() => Effect.succeed(false)));
 
 /**
- * Degrades a non-blocking section to `fallback`, logging only its fixed
- * code; the provider or database cause is never attached.
+ * Degrades a non-blocking section to `fallback` on any failure, including a
+ * capability that couldn't be built, logging only its fixed code; the
+ * provider or database cause is never attached.
  */
 const degradable =
   <B>(code: AccountSectionFailureCode, fallback: LazyArg<B>) =>
   <A, E, R>(self: Effect.Effect<A, E, R>): Effect.Effect<A | B, never, R> =>
     self.pipe(
-      Effect.tapError(() => logDegradedAccountSection(code)),
-      Effect.orElseSucceed(fallback)
+      catchRecoverableCause(() =>
+        logDegradedAccountSection(code).pipe(Effect.map(fallback))
+      )
     );
 
 /**
@@ -394,7 +309,6 @@ const loadCustomerAgentConnections = Effect.flatMap(
   CustomerAgentConnections,
   (connections) => connections.list
 ).pipe(
-  withSectionLayer((layers) => layers.assistants),
   degradable("account.assistants.unavailable", () => null),
   withOperation("account.assistants")
 );
@@ -408,14 +322,14 @@ const loadLinkedAccount = Effect.fn(function* (
   const profile = yield* Effect.flatMap(CustomerProfileService, (service) =>
     service.load(account)
   ).pipe(
-    withSectionLayer((layers) => layers.profile),
-    Effect.tapError((error) =>
-      Effect.logError("Account profile load failed", { error })
+    catchRecoverableCause((cause) =>
+      Effect.logError("Account profile load failed", {
+        error: Cause.squash(cause),
+      }).pipe(Effect.as(undefined))
     ),
-    Effect.result,
     withOperation("account.profile.read")
   );
-  if (Result.isFailure(profile)) {
+  if (profile === undefined) {
     return {
       kind: "authenticated-unavailable",
       email: user.email,
@@ -428,7 +342,6 @@ const loadLinkedAccount = Effect.fn(function* (
   // that shows its outcome. A withheld program leaves the stored code as is.
   const signupReferral = referralsEnabled
     ? yield* recordSignupReferral(account).pipe(
-        withSectionLayer((layers) => layers.referrals),
         Effect.catchCause(() =>
           logDegradedAccountSection("account.signup-referral.unavailable").pipe(
             Effect.as(undefined)
@@ -442,8 +355,6 @@ const loadLinkedAccount = Effect.fn(function* (
   const rememberedReferralCodeUsed =
     referralsEnabled &&
     (yield* isRememberedReferralCodeUsed(rememberedReferralCode, account).pipe(
-      withSectionLayer((layers) => layers.referrals),
-      degradable("account.remembered-referral.unavailable", () => false),
       withOperation("account.remembered-referral")
     ));
 
@@ -461,7 +372,6 @@ const loadLinkedAccount = Effect.fn(function* (
       CustomerAvatarService,
       (service) => service.lookup(account.accountId)
     ).pipe(
-      withSectionLayer((layers) => layers.avatar),
       degradable("account.avatar.unavailable", () => null),
       withOperation("account.avatar")
     );
@@ -475,7 +385,7 @@ const loadLinkedAccount = Effect.fn(function* (
   return {
     kind: "linked",
     email: user.email,
-    profile: profile.success,
+    profile,
     avatar,
     history,
     referralsEnabled,
@@ -495,7 +405,6 @@ const loadReservationHistory = (account: ReservationHistoryAccount) =>
   Effect.flatMap(CustomerReservationHistoryService, (service) =>
     service.load(account)
   ).pipe(
-    withSectionLayer((layers) => layers.history),
     degradable(
       "account.reservation-history.unavailable",
       (): CustomerReservationHistory => ({
@@ -555,7 +464,6 @@ const loadReferralOverview = (account: LinkedCustomerAccount) =>
         )
       )
     ),
-    withSectionLayer((layers) => layers.referrals),
     degradable("account.referrals.unavailable", () => undefined),
     withOperation("account.referrals")
   );
@@ -568,7 +476,6 @@ const findAvailableReferralCode = (code: ReferralCode) =>
   Effect.flatMap(ReferralService, (service) =>
     service.findAvailableCode({ code })
   ).pipe(
-    withSectionLayer((layers) => layers.referrals),
     degradable("account.referral-code.unavailable", () => undefined),
     withOperation("account.referral-code")
   );
@@ -605,8 +512,12 @@ const loadSignedInAccount = Effect.fn(function* (
     CustomerAccountResolver,
     (resolver) => resolver.resolveLink
   ).pipe(
-    withSectionLayer((layers) => layers.resolver),
-    Effect.mapError(mapCustomerAccountFailure("account-link.lock")),
+    // A resolver that couldn't be built reads as the unavailable lock.
+    Effect.catchCause((cause) =>
+      Cause.hasFails(cause) || !isRecoverableCause(cause)
+        ? Effect.failCause(cause)
+        : Effect.fail(customerAccountUnavailable("account-link.lock"))
+    ),
     Effect.tapError((error) =>
       Effect.logError("Account resolution failed", { error })
     ),
@@ -620,7 +531,6 @@ const loadSignedInAccount = Effect.fn(function* (
         resolution.success,
         rememberedReferralCode
       ).pipe(
-        withSectionLayer((layers) => layers.referrals),
         Effect.catchCause(() =>
           logDegradedAccountSection("account.auto-link.referral.unavailable")
         ),

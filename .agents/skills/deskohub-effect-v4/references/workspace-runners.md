@@ -41,6 +41,8 @@ Define each Vercel Queue topic once with `defineQueueTopic({ topic, label, messa
 
 When a run must serve a fallback or react to any failure, such as a `"use cache"` function that calls `cacheLife({ expire: 0 })`, use `runWorkspaceEffectOrElse(operation, { failureCode, orElse })`. The runtime builds its Layer before entering the Effect, so `Effect.catchCause` or `Effect.onExit` inside the program can't see a runtime-build failure, and a Promise `.catch` after `runWorkspaceEffect` is the wrong tool. Make `failureCode` stable and low-cardinality. The function's JSDoc defines how `orElse`, interruption, and Next.js control flow interact.
 
+Inside a program, recover a non-blocking step from any failure, defects included, with `catchRecoverableCause` (`workspace-effect.ts`). It lets interruption and Next.js control flow propagate, which a bare `Effect.catchCause` would swallow; `isRecoverableCause` is the same test for a hand-written handler.
+
 ## E2E runs
 
 E2E code that runs an Effect outside a case or fixture runtime uses the edge in `apps/deskohub-workspace/e2e/`. Don't add another `Effect.run*` call for it.
