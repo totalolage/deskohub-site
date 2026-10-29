@@ -5,6 +5,8 @@ import { EmailServiceTag } from "@deskohub/email";
 import { Cause, Effect, Exit, Layer } from "effect";
 import { waitForPostgresLockWaiter } from "@/shared/testing/workspace-postgres-lock-waiters.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { campaignBodyToMarkdown } from "../body/campaign-body-markdown";
+import type { CampaignLocalizedContent } from "../body/campaign-content";
 import { markdownCampaignBody } from "../body/campaign-content-codec.test-utils";
 import {
   type CampaignAudienceId,
@@ -512,6 +514,136 @@ describe.skipIf(!testDatabase)("CampaignService on disposable Postgres", () => {
       await withCampaigns((campaigns) => campaigns.get(draft.id))
     );
     expect(stored.content).toEqual(cleared.content);
+  });
+
+  describe("images a campaign adds", () => {
+    // The test environment's Cloudinary account is `cloud`.
+    const uploaded =
+      "https://res.cloudinary.com/cloud/image/upload/v1/email-campaigns/preview/4f1c0b9e.jpg";
+    const fromProduction =
+      "https://res.cloudinary.com/cloud/image/upload/v2/email-campaigns/production/7d2a.jpg";
+    const legacy =
+      "https://res.cloudinary.com/cloud/image/upload/v1/campaigns/autumn.jpg";
+    const otherLegacy =
+      "https://res.cloudinary.com/cloud/image/upload/v1/campaigns/winter.jpg";
+
+    const imageMarkdown = (...sources: string[]) =>
+      sources.map((source) => `![Obrázek](${source})`).join("\n\n");
+
+    const czechWith = async (...sources: string[]) => ({
+      ...campaignContentFixture()["cs-CZ"]!,
+      body: await markdownCampaignBody(imageMarkdown(...sources)),
+    });
+
+    const draftInput = (content: CampaignLocalizedContent) => ({
+      title: "Opening hours",
+      purpose: "operational" as const,
+      templateKey: "workspace" as const,
+      content,
+      audienceId: null,
+    });
+
+    /** A draft whose body has `sources`, stored before the rule existed. */
+    const storedDraft = async (...sources: string[]) => {
+      const draft = await createDraft();
+      const content = { "cs-CZ": await czechWith(...sources) };
+      await pool.query(
+        "update email_campaigns set content = $1 where id = $2",
+        [JSON.stringify(content), draft.id]
+      );
+      return { id: draft.id, content };
+    };
+
+    const stored = async (campaignId: CampaignId) =>
+      succeeded(await withCampaigns((campaigns) => campaigns.get(campaignId)))
+        .content;
+
+    const notUploaded = (source: string) => ({
+      _tag: "CampaignImageNotUploaded",
+      locale: "cs-CZ",
+      source,
+    });
+
+    test("creates a draft with images uploaded in any environment", async () => {
+      const content = { "cs-CZ": await czechWith(uploaded, fromProduction) };
+      const created = succeeded(
+        await withCampaigns((campaigns) =>
+          campaigns.create(draftInput(content))
+        )
+      );
+      campaignIds.push(created.id);
+      expect(created.content).toEqual(content);
+    });
+
+    test("refuses to create a draft with an image from another folder", async () => {
+      const content = { "cs-CZ": await czechWith(uploaded, legacy) };
+      const created = await withCampaigns((campaigns) =>
+        campaigns.create(draftInput(content))
+      );
+      expect(failure(created)).toMatchObject(notUploaded(legacy));
+    });
+
+    test("refuses an imported Markdown body that adds an image from another folder", async () => {
+      const draft = await storedDraft(legacy);
+      const patched = await withCampaigns((campaigns) =>
+        campaigns.patch({
+          campaignId: draft.id,
+          content: {
+            "cs-CZ": { bodyMarkdown: imageMarkdown(legacy, otherLegacy) },
+          },
+        })
+      );
+      expect(failure(patched)).toMatchObject(notUploaded(otherLegacy));
+      expect(await stored(draft.id)).toEqual(draft.content);
+    });
+
+    test("refuses an editor document that adds an image from another folder", async () => {
+      const draft = await storedDraft();
+      const czech = await czechWith(otherLegacy);
+      const patched = await withCampaigns((campaigns) =>
+        campaigns.patch({
+          campaignId: draft.id,
+          content: { "cs-CZ": { bodyDocument: czech.body } },
+        })
+      );
+      expect(failure(patched)).toMatchObject(notUploaded(otherLegacy));
+
+      const updated = await withCampaigns((campaigns) =>
+        campaigns.update({
+          campaignId: draft.id,
+          content: { "cs-CZ": czech },
+        })
+      );
+      expect(failure(updated)).toMatchObject(notUploaded(otherLegacy));
+      expect(await stored(draft.id)).toEqual(draft.content);
+    });
+
+    test("round-trips a stored body whose images live in another folder", async () => {
+      const draft = await storedDraft(legacy);
+      const exported = campaignBodyToMarkdown(draft.content["cs-CZ"].body);
+
+      const imported = succeeded(
+        await withCampaigns((campaigns) =>
+          campaigns.patch({
+            campaignId: draft.id,
+            content: { "cs-CZ": { bodyMarkdown: exported } },
+          })
+        )
+      );
+      expect(imported.content).toEqual(draft.content);
+
+      // Kept images may move between locales; new ones must be uploaded.
+      const english = await czechWith(legacy, uploaded);
+      const extended = succeeded(
+        await withCampaigns((campaigns) =>
+          campaigns.update({
+            campaignId: draft.id,
+            content: { ...draft.content, "en-US": english },
+          })
+        )
+      );
+      expect(extended.content["en-US"]).toEqual(english);
+    });
   });
 
   test("patches other fields and reports a missing or read-only campaign", async () => {

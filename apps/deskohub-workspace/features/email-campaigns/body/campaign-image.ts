@@ -1,6 +1,9 @@
 import type { JSONContent, MarkdownToken } from "@tiptap/core";
 import Image from "@tiptap/extension-image";
-import type { CampaignBodyAttributeValue } from "./campaign-body-document";
+import type {
+  CampaignBodyAttributeValue,
+  CampaignBodyNode,
+} from "./campaign-body-document";
 
 /** The width of the template's body column, in CSS pixels. */
 export const campaignBodyColumnWidth = 534;
@@ -40,6 +43,16 @@ export const isCampaignImageWidth = (
   Number.isInteger(value) &&
   Number(value) > 0 &&
   Number(value) <= widestPicture;
+
+/** The source of every image in the body, in document order. */
+export const campaignBodyImageSources = (
+  node: CampaignBodyNode
+): ReadonlyArray<string> => [
+  ...(node.type === "image" && typeof node.attrs?.src === "string"
+    ? [node.attrs.src]
+    : []),
+  ...(node.content ?? []).flatMap(campaignBodyImageSources),
+];
 
 // Markdown spells a laid-out image with a Pandoc-style attribute list on its
 // own line: `![Alt](https://…){align=left width=240}`. A plain image line

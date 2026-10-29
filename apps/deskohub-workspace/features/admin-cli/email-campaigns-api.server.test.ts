@@ -49,6 +49,7 @@ import {
   CampaignAudienceNotFound,
   CampaignConfirmationRejected,
   CampaignFallbackContentMissing,
+  CampaignImageNotUploaded,
   CampaignLocaleContentMissing,
   CampaignNotFound,
   CampaignRecipientResolutionError,
@@ -371,6 +372,34 @@ describe("campaign admin API", () => {
       message:
         "The campaign has no en-US content yet, so it needs a subject and a body.",
     });
+  });
+
+  test("refuses an imported image from another folder with a code released dhw knows", async () => {
+    const source =
+      "https://res.cloudinary.com/cloud/image/upload/v1/campaigns/room.jpg";
+    const error = await callCampaignsApi(
+      (client) =>
+        client
+          .updateCampaign({
+            params: { campaignId },
+            payload: {
+              content: { "cs-CZ": { bodyMarkdown: `![Zasedačka](${source})` } },
+            },
+          })
+          .pipe(Effect.flip),
+      {
+        campaigns: {
+          patch: () =>
+            Effect.fail(
+              new CampaignImageNotUploaded({ locale: "cs-CZ", source })
+            ),
+        },
+      }
+    );
+
+    expect(error).toBeInstanceOf(CliInputInvalid);
+    expect(error).toMatchObject({ code: "content-invalid" });
+    expect(error.message).toContain(source);
   });
 
   test("passes the confirmation code to the send and explains a rejected code", async () => {

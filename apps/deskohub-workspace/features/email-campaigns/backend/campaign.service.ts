@@ -32,9 +32,13 @@ import {
 } from "../body/campaign-content";
 import {
   type CampaignContentChanges,
+  campaignContentImages,
   changeCampaignContent,
 } from "../body/campaign-content-codec";
-import { campaignImageCloudName } from "../body/campaign-image-account";
+import {
+  campaignImageCloudName,
+  isUploadedCampaignImage,
+} from "../body/campaign-image-account";
 import type { CampaignAudienceId, CampaignId } from "../campaign-identifiers";
 import {
   type CampaignDelivery,
@@ -49,6 +53,7 @@ import {
   type CampaignBodyMarkdownInvalid,
   CampaignContentInvalid,
   CampaignDeliveryMismatch,
+  CampaignImageNotUploaded,
   type CampaignLocaleContentMissing,
   CampaignNotFound,
   CampaignPublished,
@@ -79,7 +84,8 @@ type CampaignWriteError =
   | CampaignAudienceNotFound
   | CampaignAudienceArchived
   | AudienceFilterContextInvalid
-  | CampaignContentInvalid;
+  | CampaignContentInvalid
+  | CampaignImageNotUploaded;
 
 /** The automation row of an automated campaign, as a copy inherits it. */
 type AutomationWorkingCopy = Pick<
@@ -384,6 +390,44 @@ export class CampaignService extends Context.Service<
               Effect.mapError((cause) => new CampaignContentInvalid({ cause }))
             );
 
+      /**
+       * Holds the images content adds to the campaign editor's uploads. An
+       * image the campaign already has in any locale stays, wherever it's
+       * stored, so content saved before the rule round-trips unchanged.
+       */
+      const requireUploadedImages = (
+        content: CampaignLocalizedContent,
+        current: CampaignLocalizedContent
+      ) =>
+        campaignImageCloudName.pipe(
+          Effect.flatMap((imageCloudName) => {
+            const kept = new Set(
+              campaignContentImages(current).map(({ source }) => source)
+            );
+            const added = campaignContentImages(content).find(
+              ({ source }) =>
+                !kept.has(source) &&
+                !isUploadedCampaignImage(source, imageCloudName)
+            );
+            return added === undefined
+              ? Effect.void
+              : Effect.fail(new CampaignImageNotUploaded(added));
+          })
+        );
+
+      /** The campaign's content, locked until the transaction ends. */
+      const lockContent = (tx: Transaction, campaignId: CampaignId) =>
+        tx
+          .select({ content: emailCampaigns.content })
+          .from(emailCampaigns)
+          .where(eq(emailCampaigns.id, campaignId))
+          .for("update")
+          .pipe(
+            Effect.map((rows) =>
+              Option.map(Option.fromNullishOr(rows[0]), (row) => row.content)
+            )
+          );
+
       /** Inserts a Draft, and an automated one's automation row with no flow. */
       const insertDraft = Effect.fn("CampaignService.insertDraft")(function* (
         tx: Transaction,
@@ -429,10 +473,24 @@ export class CampaignService extends Context.Service<
       const update = Effect.fn("CampaignService.update")(function* (
         edit: CampaignEdit
       ) {
-        yield* validateContent(edit.content);
+        const { content } = edit;
+        yield* validateContent(content);
         return yield* db
           .transaction((tx) =>
             lockAutomation(tx, edit.campaignId, "update").pipe(
+              Effect.andThen(
+                content === undefined
+                  ? Effect.void
+                  : lockContent(tx, edit.campaignId).pipe(
+                      Effect.flatMap(
+                        Option.match({
+                          onNone: () => Effect.void,
+                          onSome: (current) =>
+                            requireUploadedImages(content, current),
+                        })
+                      )
+                    )
+              ),
               Effect.andThen(writeEdit(tx, edit))
             )
           )
@@ -453,19 +511,15 @@ export class CampaignService extends Context.Service<
         }
       ) {
         yield* lockAutomation(tx, edit.campaignId, "update");
-        const current = yield* tx
-          .select({ content: emailCampaigns.content })
-          .from(emailCampaigns)
-          .where(eq(emailCampaigns.id, edit.campaignId))
-          .for("update")
-          .pipe(Effect.map((rows) => Option.fromNullishOr(rows[0])));
+        const current = yield* lockContent(tx, edit.campaignId);
         if (Option.isNone(current)) return Option.none<Campaign>();
         const content = yield* changeCampaignContent({
           campaignId: edit.campaignId,
-          current: current.value.content,
+          current: current.value,
           changes,
         });
         yield* validateContent(content);
+        yield* requireUploadedImages(content, current.value);
         return yield* writeEdit(tx, { ...edit, content });
       });
 
@@ -482,6 +536,7 @@ export class CampaignService extends Context.Service<
           ...input
         }) {
           yield* validateContent(input.content);
+          yield* requireUploadedImages(input.content, {});
           return yield* db.transaction((tx) =>
             insertDraft(tx, { ...input, delivery })
           );

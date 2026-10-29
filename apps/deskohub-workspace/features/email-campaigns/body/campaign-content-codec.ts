@@ -28,6 +28,7 @@ import type {
   CampaignLocaleContent,
   CampaignLocalizedContent,
 } from "./campaign-content";
+import { campaignBodyImageSources } from "./campaign-image";
 import { campaignImageCloudName } from "./campaign-image-account";
 import { InvalidCampaignBody } from "./invalid-campaign-body";
 
@@ -45,6 +46,14 @@ export const campaignContentLocales = (
   content: CampaignLocalizedContent
 ): ReadonlyArray<Locale> =>
   contentLocaleEntries(content).map(([locale]) => locale);
+
+/** Every image in the content: its source and the locale whose body has it. */
+export const campaignContentImages = (
+  content: CampaignLocalizedContent
+): ReadonlyArray<{ readonly locale: Locale; readonly source: string }> =>
+  contentLocaleEntries(content).flatMap(([locale, { body }]) =>
+    campaignBodyImageSources(body.doc).map((source) => ({ locale, source }))
+  );
 
 /** A locale's body as the administration API gives it. */
 type CampaignBodyInput =

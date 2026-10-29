@@ -9,6 +9,7 @@ import { Context, Effect, Layer, Schema } from "effect";
 import { env } from "@/env";
 import { WorkspaceCloudinaryLayer } from "@/features/gallery/backend/cloudinary.service";
 import { campaignImageMaxWidth } from "../body/campaign-image";
+import { campaignImageFolder } from "../body/campaign-image-account";
 
 /**
  * What Cloudinary does to a body image before it stores it, keeping only the
@@ -52,7 +53,7 @@ export class CampaignImageService extends Context.Service<
     this,
     Effect.gen(function* () {
       const cloudinary = yield* CloudinaryService;
-      const folder = `email-campaigns/${env.VERCEL_ENV}`;
+      const folder = campaignImageFolder(env.VERCEL_ENV);
 
       const authorizeUpload = Effect.Do.pipe(
         // A UUID is never empty, so it is always a public ID.
