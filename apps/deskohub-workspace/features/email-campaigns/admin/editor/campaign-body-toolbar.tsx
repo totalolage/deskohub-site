@@ -46,8 +46,10 @@ import {
   TooltipTrigger,
 } from "@/shared/components/ui/tooltip";
 import { cn } from "@/shared/utils";
+import type { CampaignBodyAttributeValue } from "../../body/campaign-body-document";
 import {
   type CampaignImageAlignment,
+  campaignBodyColumnWidth,
   defaultCampaignImageAlignment,
   isCampaignImageAlignment,
   isCampaignImageWidth,
@@ -79,6 +81,8 @@ const selectToolbarState = ({ editor }: { editor: Editor | null }) =>
     ctaHref: String(editor.getAttributes("ctaButton").href ?? ""),
     image: editor.isActive("image"),
     imageAlign: selectedImageAlignment(editor),
+    imageWidth: editor.getAttributes("image").width,
+    imagePosition: editor.state.selection.from,
     canUndo: editor.can().undo(),
     canRedo: editor.can().redo(),
   };
@@ -200,12 +204,20 @@ export function CampaignBodyToolbar({
             locale={locale}
           />
           {state?.image && (
-            <ImageAlignmentControl
-              alignment={state.imageAlign}
-              disabled={disabled}
-              editor={editor}
-              locale={locale}
-            />
+            <>
+              <ImageAlignmentControl
+                alignment={state.imageAlign}
+                disabled={disabled}
+                editor={editor}
+                locale={locale}
+              />
+              <ImageWidthControl
+                editor={editor}
+                key={state.imagePosition}
+                locale={locale}
+                width={state.imageWidth}
+              />
+            </>
           )}
           <ToolbarButton
             disabled={disabled}
@@ -551,6 +563,76 @@ function ImageAlignmentControl({
       <Icon aria-hidden className="size-4" />
     </ToolbarToggle>
   ));
+}
+
+function ImageWidthControl({
+  editor,
+  locale,
+  width,
+}: {
+  readonly editor: Editor | null;
+  readonly locale: Locale;
+  readonly width: CampaignBodyAttributeValue | undefined;
+}) {
+  const id = useId();
+  const displayedWidth = Math.min(
+    isCampaignImageWidth(width) ? width : campaignBodyColumnWidth,
+    campaignBodyColumnWidth
+  );
+  const [previousWidth, setPreviousWidth] = useState(width);
+  const [draft, setDraft] = useState(String(displayedWidth));
+  if (previousWidth !== width) {
+    setPreviousWidth(width);
+    setDraft(String(displayedWidth));
+  }
+  const valid =
+    isCampaignImageWidth(Number(draft)) &&
+    Number(draft) <= campaignBodyColumnWidth;
+
+  return (
+    <div className="flex items-center gap-1.5 px-1">
+      <Label className="text-xs" htmlFor={id}>
+        {m.emailCampaignsImageWidth({}, { locale })}
+      </Label>
+      <Input
+        aria-invalid={!valid}
+        className="h-8 min-h-8 w-20 rounded-md px-2 py-1 text-sm"
+        disabled={!editor}
+        id={id}
+        max={campaignBodyColumnWidth}
+        min={1}
+        onBlur={() => setDraft(String(displayedWidth))}
+        onChange={(event) => {
+          const next = event.target.value;
+          setDraft(next);
+          const pixels = Number(next);
+          if (
+            isCampaignImageWidth(pixels) &&
+            pixels <= campaignBodyColumnWidth
+          ) {
+            editor?.commands.updateAttributes("image", {
+              width: pixels,
+              height: null,
+            });
+          }
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === "Escape") {
+            event.preventDefault();
+            setDraft(String(displayedWidth));
+            event.currentTarget.blur();
+          }
+        }}
+        step={1}
+        title={m.emailCampaignsImageWidthHint(
+          { maxWidth: campaignBodyColumnWidth },
+          { locale }
+        )}
+        type="number"
+        value={draft}
+      />
+    </div>
+  );
 }
 
 function ImageUploadControl({
