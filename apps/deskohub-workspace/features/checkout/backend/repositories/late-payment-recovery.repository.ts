@@ -406,7 +406,7 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                   input.reservationState === "confirmed" &&
                   updatedReservation.reservationConfirmedAt
                 ) {
-                  yield* recordCustomerEvent(db, {
+                  yield* recordCustomerEvent({
                     kind: "reservation-booked",
                     occurredAt: updatedReservation.reservationConfirmedAt,
                     dotyposCustomerId: updatedReservation.dotyposCustomerId,

@@ -5,6 +5,7 @@ import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { eq } from "drizzle-orm";
 import { Effect, Layer } from "effect";
 import { TestClock } from "effect/testing";
+import { WorkspaceDatabase } from "@/db/database.service";
 import { customerEvents, workspaceReservations } from "@/db/schema";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
@@ -145,12 +146,16 @@ describe.skipIf(!testDatabase)(
             .where(eq(workspaceReservations.id, id))
         );
         await Effect.runPromise(
-          recordCustomerEvent(testDatabase.db, {
-            kind: "reservation-booked",
-            occurredAt: confirmedAt,
-            dotyposCustomerId: reservation!.dotyposCustomerId,
-            workspaceReservationId: id,
-          })
+          Effect.flatMap(WorkspaceDatabase, ({ transaction }) =>
+            transaction(
+              recordCustomerEvent({
+                kind: "reservation-booked",
+                occurredAt: confirmedAt,
+                dotyposCustomerId: reservation!.dotyposCustomerId,
+                workspaceReservationId: id,
+              })
+            )
+          ).pipe(Effect.provide(testDatabase.layer))
         );
       };
 

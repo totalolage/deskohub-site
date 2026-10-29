@@ -2,6 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { AccountRoleGrants } from "./account-role-grants.service";
@@ -9,13 +10,15 @@ import { AccountRoleGrants } from "./account-role-grants.service";
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 
 const runGrants = <A, E>(
-  operation: (grants: AccountRoleGrants["Service"]) => Effect.Effect<A, E>
+  operation: (
+    grants: AccountRoleGrants["Service"]
+  ) => Effect.Effect<A, E, WorkspaceDatabase>
 ) =>
   Effect.runPromise(
     AccountRoleGrants.pipe(
       Effect.flatMap(operation),
       Effect.provide(
-        AccountRoleGrants.Default.pipe(Layer.provide(testDatabase!.layer))
+        AccountRoleGrants.Default.pipe(Layer.provideMerge(testDatabase!.layer))
       )
     )
   );
@@ -130,12 +133,16 @@ describe.skipIf(!testDatabase)(
       ).toBe(false);
       expect(
         await runGrants((grants) =>
-          grants.lockHeld({ accountId: reviewAccount, role })
+          Effect.flatMap(WorkspaceDatabase, ({ transaction }) =>
+            transaction(grants.lockHeld({ accountId: reviewAccount, role }))
+          )
         )
       ).toBe(false);
       expect(
         await runGrants((grants) =>
-          grants.lockHeld({ accountId: administrator, role })
+          Effect.flatMap(WorkspaceDatabase, ({ transaction }) =>
+            transaction(grants.lockHeld({ accountId: administrator, role }))
+          )
         )
       ).toBe(true);
       const listed = (await runGrants((grants) => grants.list(role))).map(

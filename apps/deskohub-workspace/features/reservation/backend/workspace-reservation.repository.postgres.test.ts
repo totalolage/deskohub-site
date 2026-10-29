@@ -10,6 +10,7 @@ import {
 import { NexiOrderIdSchema } from "@deskohub/nexi";
 import { eq } from "drizzle-orm";
 import { Effect } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
 import {
   customerEvents,
   paymentAttempts,
@@ -538,12 +539,16 @@ describe.skipIf(!testDatabase)(
           repository.markReservationConfirmed({ id, confirmedAt: at(4) })
         );
         await Effect.runPromise(
-          recordCustomerEvent(testDatabase.db, {
-            kind: "reservation-booked",
-            occurredAt: at(4),
-            dotyposCustomerId: customerId!,
-            workspaceReservationId: id,
-          })
+          Effect.flatMap(WorkspaceDatabase, ({ transaction }) =>
+            transaction(
+              recordCustomerEvent({
+                kind: "reservation-booked",
+                occurredAt: at(4),
+                dotyposCustomerId: customerId!,
+                workspaceReservationId: id,
+              })
+            )
+          ).pipe(Effect.provide(testDatabase.layer))
         );
 
         expect(retry).toBeInstanceOf(WorkspaceReservationStateError);
