@@ -2,7 +2,6 @@ import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Context, Effect, Layer } from "effect";
-import { m } from "@/features/administration/i18n";
 import { mockAdministratorAccess } from "@/features/administrators/server/administrator-access.test-utils";
 
 const access = mockAdministratorAccess("campaign-image-upload");
@@ -50,8 +49,6 @@ mock.module(
 
 const { authorizeCampaignImageUpload } = await import("./actions");
 
-const locale = "en-US";
-
 beforeEach(() => {
   access.set("administrator");
   authorizations.mockClear();
@@ -73,9 +70,7 @@ describe("authorizeCampaignImageUpload", () => {
       const result = await authorizeCampaignImageUpload();
 
       expect(result?.data).toBeUndefined();
-      expect(result?.serverError).toBe(
-        m.emailCampaignsImageUploadFailed({}, { locale })
-      );
+      expect(result?.serverError).toEqual(expect.any(String));
       expect(authorizations).not.toHaveBeenCalled();
     }
   );

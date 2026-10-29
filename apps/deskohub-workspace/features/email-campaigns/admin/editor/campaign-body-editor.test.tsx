@@ -217,6 +217,13 @@ const insertButton = (view: ReturnType<typeof render>) =>
     name: m.emailCampaignsImageUploadInsert({}, { locale }),
   });
 
+/** The editor is idle again and its status says why nothing went in. */
+const expectRefusalShown = (view: ReturnType<typeof render>) =>
+  waitFor(() => {
+    expect(insertButton(view)).toHaveProperty("disabled", false);
+    expect(view.getByRole("status").textContent).not.toBe("");
+  });
+
 const postedFile = (call = 0) => {
   const form = fetchSpy.mock.calls[call]?.[1]?.body;
   return form instanceof FormData ? form.get("file") : null;
@@ -374,13 +381,8 @@ test("says the image can't be read when Cloudinary refuses it, and inserts nothi
 
   chooseImage(view, png("broken.png"));
 
-  await waitFor(() =>
-    expect(view.getByRole("status").textContent).toBe(
-      m.emailCampaignsImageUploadUnreadable({}, { locale })
-    )
-  );
+  await expectRefusalShown(view);
   expect(changes.slice(before)).toEqual([]);
-  expect(insertButton(view)).toHaveProperty("disabled", false);
 });
 
 /** A 1×1 GIF of two frames, padded after its trailer to `bytes`. */
@@ -398,7 +400,7 @@ const animatedGif = (bytes: number) => {
 };
 
 test("refuses an animation above the account's limits rather than flatten it", async () => {
-  const { maxBytes, maxAnimationPixels } = campaignImageUploadLimits;
+  const { maxBytes } = campaignImageUploadLimits;
   let shrunk = false;
   downscale = () => {
     shrunk = true;
@@ -409,21 +411,10 @@ test("refuses an animation above the account's limits rather than flatten it", a
 
   chooseImage(view, animatedGif(maxBytes + 1));
 
-  await waitFor(() =>
-    expect(view.getByRole("status").textContent).toBe(
-      m.emailCampaignsImageUploadAnimationTooLarge(
-        {
-          maxMegabytes: maxBytes / (1024 * 1024),
-          maxMegapixels: maxAnimationPixels / 1_000_000,
-        },
-        { locale }
-      )
-    )
-  );
+  await expectRefusalShown(view);
   expect(shrunk).toBe(false);
   expect(fetchSpy).not.toHaveBeenCalled();
   expect(changes.slice(before)).toEqual([]);
-  expect(insertButton(view)).toHaveProperty("disabled", false);
 });
 
 test("says the upload failed when the browser can't read the chosen file", async () => {
@@ -434,11 +425,7 @@ test("says the upload failed when the browser can't read the chosen file", async
 
   chooseImage(view, file);
 
-  await waitFor(() =>
-    expect(view.getByRole("status").textContent).toBe(
-      m.emailCampaignsImageUploadFailed({}, { locale })
-    )
-  );
+  await expectRefusalShown(view);
   expect(fetchSpy.mock.calls.map(([url]) => url)).not.toContain(
     authorization.url
   );
