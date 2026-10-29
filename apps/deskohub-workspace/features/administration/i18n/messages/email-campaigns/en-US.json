@@ -998,6 +998,8 @@
   "emailCampaignsImageAlignCenter": "Center image",
   "emailCampaignsImageAlignLeft": "Align image left",
   "emailCampaignsImageAlignRight": "Align image right",
+  "emailCampaignsImageWidth": "Image width (px)",
+  "emailCampaignsImageWidthHint": "Enter a whole number from 1 to {maxWidth}. Images shrink to fit smaller screens.",
   "emailCampaignsImageShrinking": "Shrinking the image to fit…",
   "emailCampaignsImageUploadAnimationTooLarge": "An animated image can be at most {maxMegabytes} MB and {maxMegapixels} megapixels across all its frames. Shorten or shrink the animation.",
   "emailCampaignsImageUploadFailed": "The image could not be uploaded. Try again.",

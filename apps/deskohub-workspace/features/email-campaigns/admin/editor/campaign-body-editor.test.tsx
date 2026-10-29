@@ -7,13 +7,6 @@ import {
   spyOn,
   test,
 } from "bun:test";
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  waitFor,
-} from "@testing-library/react";
 import type { Editor } from "@tiptap/core";
 import { Effect, Option } from "effect";
 import { m } from "@/features/administration/i18n";
@@ -24,6 +17,10 @@ import {
 import type { CampaignBodyNode } from "../../body/campaign-body-document";
 
 registerWorkspaceComponentTestEnv();
+// React DOM detects the DOM when it loads, so load it after registration.
+const { act, cleanup, fireEvent, render, waitFor } = await import(
+  "@testing-library/react"
+);
 
 const authorization = {
   url: "https://api.cloudinary.test/v1_1/cloud/image/upload",
@@ -204,6 +201,98 @@ test("aligns the selected image and keeps its width", async () => {
     align: "right",
     width: 480,
   });
+});
+
+test("resizes the selected image, keeps input focus, and reopens the emitted document", async () => {
+  const { editor, view, changes } = await renderEditor(
+    bodyWithImage({ width: 480, height: 320, align: "right" })
+  );
+  const label = m.emailCampaignsImageWidth({}, { locale });
+  expect(view.queryByRole("spinbutton", { name: label })).toBeNull();
+  act(() => editor.commands.setNodeSelection(8));
+  const input = await view.findByRole("spinbutton", { name: label });
+  await act(async () => input.focus());
+  await act(async () => {
+    fireEvent.change(input, { target: { value: "180" } });
+  });
+  expect(document.activeElement).toBe(input);
+  const saved = structuredClone(changes.at(-1)!);
+  expect(saved.content?.[1]?.attrs).toMatchObject({
+    width: 180,
+    height: null,
+    align: "right",
+    src: cloudinaryImage,
+  });
+  view.unmount();
+  const reopened = await renderEditor(saved);
+  act(() => reopened.editor.commands.setNodeSelection(8));
+  expect(
+    await reopened.view.findByRole("spinbutton", { name: label })
+  ).toHaveProperty("value", "180");
+});
+
+test.each([undefined, 1068])(
+  "shows the effective width without rewriting stored %s on focus or blur",
+  async (width) => {
+    const { editor, view, changes } = await renderEditor(
+      bodyWithImage({ width })
+    );
+    act(() => editor.commands.setNodeSelection(8));
+    const input = await view.findByRole("spinbutton");
+    expect(input).toHaveProperty("value", "534");
+    await act(async () => {
+      fireEvent.focus(input);
+    });
+    await act(async () => {
+      fireEvent.blur(input);
+    });
+    expect(changes).toEqual([]);
+  }
+);
+
+test("rejects invalid widths, restores on blur and Escape, and tracks undo/redo", async () => {
+  const { editor, view, changes } = await renderEditor();
+  act(() => editor.commands.setNodeSelection(8));
+  const input = await view.findByRole("spinbutton");
+  for (const value of ["", "0", "535", "-12", "12.5"]) {
+    await act(async () => {
+      fireEvent.change(input, { target: { value } });
+    });
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(changes).toEqual([]);
+    await act(async () => {
+      fireEvent.blur(input);
+    });
+    expect(input).toHaveProperty("value", "480");
+  }
+  await act(async () => {
+    fireEvent.change(input, { target: { value: "180" } });
+  });
+  await act(async () => {
+    fireEvent.change(input, { target: { value: "" } });
+  });
+  await act(async () => {
+    fireEvent.keyDown(input, { key: "Escape" });
+  });
+  expect(input).toHaveProperty("value", "180");
+  act(() => editor.commands.undo());
+  expect(input).toHaveProperty("value", "480");
+  act(() => editor.commands.redo());
+  expect(input).toHaveProperty("value", "180");
+});
+
+test("drops an invalid width draft when selecting another image of the same size", async () => {
+  const body = bodyWithImage();
+  const { editor, view } = await renderEditor({
+    ...body,
+    content: [...body.content!, body.content![1]!],
+  });
+  act(() => editor.commands.setNodeSelection(8));
+  fireEvent.change(await view.findByRole("spinbutton"), {
+    target: { value: "" },
+  });
+  act(() => editor.commands.setNodeSelection(9));
+  expect(await view.findByRole("spinbutton")).toHaveProperty("value", "480");
 });
 
 const chooseImage = (view: ReturnType<typeof render>, file: File) => {
