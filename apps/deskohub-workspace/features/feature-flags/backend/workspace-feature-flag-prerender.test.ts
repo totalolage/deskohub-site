@@ -1,10 +1,15 @@
 import "@/shared/testing/workspace-test-env";
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { PostHogFeatureFlagOverrides } from "@deskohub/posthog/feature-flags";
 import type { PostHogFeatureFlagDefinition } from "@deskohub/posthog/feature-flags/management";
-import { Effect } from "effect";
+import { Data, Effect } from "effect";
 import type { PostHogFeatureFlagDefinitions } from "@/features/feature-flags/generated/contract";
+import { recordNextCache } from "@/shared/testing/next-cache-recorder.test-utils";
+
+class SyntheticDefinitionsError extends Data.TaggedError(
+  "SyntheticDefinitionsError"
+)<{ readonly message: string; readonly cause?: unknown }> {}
 
 const env = {
   POSTHOG_API_HOST: undefined as string | undefined,
@@ -17,11 +22,18 @@ const postHogRuntimeConfig = {
     | undefined,
 };
 let definitions: readonly PostHogFeatureFlagDefinition[] = [];
+let definitionsUnavailable = false;
 
 const loadPostHogFeatureFlagDefinitions = mock(() =>
-  Effect.succeed(definitions)
+  definitionsUnavailable
+    ? Effect.fail(
+        new SyntheticDefinitionsError({
+          message: "Synthetic definitions unavailable",
+        })
+      )
+    : Effect.succeed(definitions)
 );
-const cacheLife = mock(() => undefined);
+const nextCache = recordNextCache();
 const evaluateFlags = mock(() =>
   Effect.fail(new Error("Unexpected whole-snapshot evaluation"))
 );
@@ -39,13 +51,7 @@ mock.module("@/env", () => ({ env }));
 mock.module("@/shared/backend/config/posthog.config", () => ({
   postHogRuntimeConfig,
 }));
-mock.module("next/cache", () => ({ cacheLife }));
-mock.module("@/shared/backend/workspace-effect", () => ({
-  runWorkspaceEffect:
-    (_operation: string) =>
-    <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>
-      Effect.runPromise(effect),
-}));
+mock.module("next/cache", () => nextCache.module);
 mock.module("@/features/feature-flags/backend/node", () => ({
   nodeFeatureFlags: { evaluateFlags, isEnabled },
 }));
@@ -88,12 +94,13 @@ const expectNoRequestDependentEvaluation = () => {
 describe("WorkspaceFeatureFlagService prerender evaluation", () => {
   beforeEach(() => {
     definitions = [];
+    definitionsUnavailable = false;
     env.POSTHOG_API_HOST = undefined;
     env.POSTHOG_API_KEY = undefined;
     env.POSTHOG_PROJECT_ID = undefined;
     postHogRuntimeConfig.featureFlagOverrides = undefined;
     loadPostHogFeatureFlagDefinitions.mockClear();
-    cacheLife.mockClear();
+    nextCache.clear();
     evaluateFlags.mockClear();
     isEnabled.mockClear();
     getCurrentPostHogFeatureFlagSubject.mockClear();
@@ -110,7 +117,7 @@ describe("WorkspaceFeatureFlagService prerender evaluation", () => {
       await expect(readFlag()).resolves.toBe(enabled);
 
       expect(loadPostHogFeatureFlagDefinitions).toHaveBeenCalledTimes(1);
-      expect(cacheLife).toHaveBeenCalledWith("publicContent");
+      expect(nextCache.calls).toEqual([{ cacheLife: "publicContent" }]);
       expectNoRequestDependentEvaluation();
     }
   );
@@ -125,7 +132,7 @@ describe("WorkspaceFeatureFlagService prerender evaluation", () => {
     await expect(readFlag()).resolves.toBe(true);
 
     expect(loadPostHogFeatureFlagDefinitions).toHaveBeenCalledTimes(1);
-    expect(cacheLife).toHaveBeenCalledWith("publicContent");
+    expect(nextCache.calls).toEqual([{ cacheLife: "publicContent" }]);
     expectNoRequestDependentEvaluation();
   });
 
@@ -137,8 +144,27 @@ describe("WorkspaceFeatureFlagService prerender evaluation", () => {
       await expect(readFlag()).resolves.toBe(enabled);
 
       expect(loadPostHogFeatureFlagDefinitions).not.toHaveBeenCalled();
-      expect(cacheLife).toHaveBeenCalledWith("publicContent");
+      expect(nextCache.calls).toEqual([{ cacheLife: "publicContent" }]);
       expectNoRequestDependentEvaluation();
     }
   );
+
+  test("keeps the overrides, shared for the full lifetime, while the management definitions are unavailable", async () => {
+    definitionsUnavailable = true;
+    env.POSTHOG_API_HOST = "https://posthog.example";
+    env.POSTHOG_API_KEY = "synthetic-management-key";
+    env.POSTHOG_PROJECT_ID = "synthetic-project";
+    postHogRuntimeConfig.featureFlagOverrides = { discount_codes: true };
+    const warn = spyOn(console, "warn").mockImplementation(() => undefined);
+
+    try {
+      await expect(readFlag()).resolves.toBe(true);
+    } finally {
+      warn.mockRestore();
+    }
+
+    expect(loadPostHogFeatureFlagDefinitions).toHaveBeenCalledTimes(1);
+    expect(nextCache.calls).toEqual([{ cacheLife: "publicContent" }]);
+    expectNoRequestDependentEvaluation();
+  });
 });

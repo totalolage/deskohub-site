@@ -1,7 +1,6 @@
 import "server-only";
 
 import { Effect, Layer, Ref } from "effect";
-import { cacheLife } from "next/cache";
 import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import { loadPublicPriceList } from "@/features/checkout/backend/checkout/public-offerings";
 import {
@@ -19,8 +18,11 @@ import type { LandingPageSaleBannerContent } from "@/features/landing-page/compo
 import { getLandingPageSaleBanner } from "@/features/landing-page/landing-page-sale-banner.server";
 import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
 import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
-import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
-import { serializeMarkdown } from "@/shared/markdown/markdown";
+import { readSharedSnapshot } from "@/shared/backend/shared-snapshot";
+import {
+  type MarkdownBlocks,
+  serializeMarkdown,
+} from "@/shared/markdown/markdown";
 import { moneyWithValue } from "@/shared/money/money";
 import {
   type PublicPageMarkdownSources,
@@ -184,6 +186,34 @@ export const renderFromMarkdownSources = <A>(
   });
 
 /**
+ * Serializes a `"use cache"` Markdown render and shares it like other public
+ * content; a render whose sources had to fall back is not shared.
+ */
+export const readSharedMarkdown = async (
+  operation: string,
+  render: Effect.Effect<Sourced<MarkdownBlocks>>
+): Promise<string> => {
+  const { value } = await readSharedSnapshot(
+    operation,
+    render.pipe(
+      Effect.map(({ value: blocks, complete }) => ({
+        value: serializeMarkdown(blocks),
+        complete,
+      }))
+    ),
+    {
+      boundary: "route",
+      complete: { lifetime: "publicContent" },
+      incomplete: {
+        when: ({ complete }) => !complete,
+        lifetime: { expire: 0 },
+      },
+    }
+  );
+  return value;
+};
+
+/**
  * A public page's Markdown in `locale`. It reads no per-request data, so it
  * is shared like other public content; a render whose sources had to fall
  * back is not shared.
@@ -195,15 +225,10 @@ export async function renderPublicPageMarkdown(
 ): Promise<string> {
   "use cache";
 
-  const { value: blocks, complete } = await renderFromMarkdownSources(
-    locale,
-    releases,
-    (sources) => publicPageMarkdown[pathname].render(locale, sources)
-  ).pipe(
-    runWorkspaceEffect("publicPageMarkdown.render", { boundary: "route" })
+  return await readSharedMarkdown(
+    "publicPageMarkdown.render",
+    renderFromMarkdownSources(locale, releases, (sources) =>
+      publicPageMarkdown[pathname].render(locale, sources)
+    )
   );
-
-  if (complete) cacheLife("publicContent");
-  else cacheLife({ expire: 0 });
-  return serializeMarkdown(blocks);
 }

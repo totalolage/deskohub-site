@@ -11,14 +11,13 @@ import { storedDiscountIdSchema } from "@/features/discounts/persistence-contrac
 import { m } from "@/features/i18n";
 import { publicPages } from "@/features/public-pages/public-page-definitions";
 import { salesCalendarIdSchema } from "@/shared/backend/config/calendar-resource.config";
+import { recordNextCache } from "@/shared/testing/next-cache-recorder.test-utils";
 
 // Outside a Next.js render there is no cache; record what each render asks
 // of it instead.
-const nextCache = await import("next/cache");
-const cacheLife = mock(
-  (_profile: Parameters<typeof nextCache.cacheLife>[0]) => {}
-);
-mock.module("next/cache", () => ({ ...nextCache, cacheLife }));
+const nextCacheModule = await import("next/cache");
+const nextCache = recordNextCache();
+mock.module("next/cache", () => ({ ...nextCacheModule, ...nextCache.module }));
 
 // Inside `"use cache"`, Next.js fails the render on any request read, even
 // one the app catches. Record each read instead.
@@ -139,13 +138,13 @@ const releases = (discountReleaseGates = allGatesReleased) => ({
   discountReleaseGates,
 });
 
-const sharedRenders = () =>
-  cacheLife.mock.calls.map(([profile]) => profile === "publicContent");
+const shared = { cacheLife: "publicContent" } as const;
+const unshared = { cacheLife: { expire: 0 } } as const;
 
 beforeEach(() => {
   calendarAnswers = true;
   inventoryReads = 0;
-  cacheLife.mockClear();
+  nextCache.clear();
   headers.mockClear();
 });
 
@@ -164,7 +163,7 @@ describe("renderPublicPageMarkdown", () => {
 
     expect(headers).not.toHaveBeenCalled();
     expect(saleMarkdown).not.toBe(catalogMarkdown);
-    expect(sharedRenders()).toEqual([true, true]);
+    expect(nextCache.calls).toEqual([shared, shared]);
   });
 
   test("does not share reservation prices while Calendar sales are unavailable, and shares them once they load", async () => {
@@ -188,11 +187,7 @@ describe("renderPublicPageMarkdown", () => {
 
     expect(failedMarkdown).toBe(catalogMarkdown);
     expect(recoveredMarkdown).not.toBe(catalogMarkdown);
-    expect(cacheLife.mock.calls.map(([profile]) => profile)).toEqual([
-      { expire: 0 },
-      "publicContent",
-      "publicContent",
-    ]);
+    expect(nextCache.calls).toEqual([unshared, shared, shared]);
     expect(headers).not.toHaveBeenCalled();
   });
 
@@ -223,7 +218,7 @@ describe("renderPublicPageMarkdown", () => {
       expect(saleMarkdown).toContain(m.landingSaleBannerStatus({}, { locale }));
       expect(failedMarkdown).not.toContain(saleText);
       expect(withheldMarkdown).toBe(failedMarkdown);
-      expect(sharedRenders()).toEqual([false, true, true]);
+      expect(nextCache.calls).toEqual([unshared, shared, shared]);
       expect(headers).not.toHaveBeenCalled();
     }
   );
@@ -253,7 +248,7 @@ describe("renderPublicPageMarkdown", () => {
       expect(saleMarkdown).toContain(office?.name ?? "");
       expect(saleMarkdown).not.toBe(catalogMarkdown);
       expect(inventoryReads).toBe(0);
-      expect(sharedRenders()).toEqual([true, true]);
+      expect(nextCache.calls).toEqual([shared, shared]);
       expect(headers).not.toHaveBeenCalled();
     }
   );
@@ -263,7 +258,7 @@ describe("renderPublicPageMarkdown", () => {
 
     await renderPublicPageMarkdown("en-US", "/contact", releases());
 
-    expect(sharedRenders()).toEqual([true]);
+    expect(nextCache.calls).toEqual([shared]);
   });
 });
 
@@ -275,7 +270,7 @@ describe("renderLlmsTxt", () => {
     const recovered = await renderLlmsTxt(releases(), "on");
 
     expect(recovered).not.toBe(failed);
-    expect(sharedRenders()).toEqual([false, true]);
+    expect(nextCache.calls).toEqual([unshared, shared]);
     expect(headers).not.toHaveBeenCalled();
   });
 });

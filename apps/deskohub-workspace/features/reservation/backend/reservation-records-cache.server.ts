@@ -5,13 +5,11 @@ import type {
   DotyposReservationId,
 } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
-import { cacheLife, cacheTag } from "next/cache";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import {
-  cachedOnSuccess,
   fromSharedSnapshot,
+  readSharedSnapshot,
 } from "@/shared/backend/shared-snapshot";
-import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { reservationRecordTags } from "@/shared/utils/cache-tags";
 import type { ReservationRecord } from "./reservation-record";
 import {
@@ -101,15 +99,19 @@ const readThroughProvider = <A>(
     records: ReservationRecordReads
   ) => Effect.Effect<A, ReservationRecordsError>
 ) =>
-  Effect.flatMap(ReservationRecords, read).pipe(
-    Effect.provide(
-      ReservationRecords.Provider.pipe(Layer.provide(WorkspaceDotyposLayer))
+  readSharedSnapshot(
+    operation,
+    Effect.flatMap(ReservationRecords, read).pipe(
+      Effect.provide(
+        ReservationRecords.Provider.pipe(Layer.provide(WorkspaceDotyposLayer))
+      )
     ),
-    cachedOnSuccess(() => {
-      cacheLife("reservationRecords");
-      cacheTag(reservationRecordTags.records);
-    }),
-    runWorkspaceEffect(operation)
+    {
+      complete: {
+        lifetime: "reservationRecords",
+        tags: [reservationRecordTags.records],
+      },
+    }
   );
 
 function fromRecordsSnapshot<A>(operation: string, load: () => Promise<A>) {

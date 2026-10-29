@@ -24,9 +24,8 @@ afterAll(async () => {
 test("FAQ focus indicator has at least 3:1 contrast against its navy offset", async () => {
   const view = render(
     <FaqPage
-      averageReservationsPerDay={1.2}
-      coworkSeatCapacity={28}
       locale="en-US"
+      occupancy={{ averageReservationsPerDay: 1.2, coworkSeatCapacity: 28 }}
       officesOffered={false}
     />
   );
@@ -76,9 +75,8 @@ test("FAQ focus indicator has at least 3:1 contrast against its navy offset", as
 test("localizes Czech copy and formats the average with one decimal", () => {
   const view = render(
     <FaqPage
-      averageReservationsPerDay={1}
-      coworkSeatCapacity={28}
       locale="cs-CZ"
+      occupancy={{ averageReservationsPerDay: 1, coworkSeatCapacity: 28 }}
       officesOffered={false}
     />
   );
@@ -110,9 +108,8 @@ test("localizes Czech copy and formats the average with one decimal", () => {
 test("puts each topic's questions under its heading and links answers in the visitor's locale", () => {
   const view = render(
     <FaqPage
-      averageReservationsPerDay={1}
-      coworkSeatCapacity={28}
       locale="cs-CZ"
+      occupancy={{ averageReservationsPerDay: 1, coworkSeatCapacity: 28 }}
       officesOffered={false}
     />
   );

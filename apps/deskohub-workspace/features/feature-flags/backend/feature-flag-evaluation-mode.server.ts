@@ -1,12 +1,15 @@
 import "server-only";
 
 import type { PostHogFeatureFlagOverrides } from "@deskohub/posthog/feature-flags";
-import { loadPostHogFeatureFlagDefinitions } from "@deskohub/posthog/feature-flags/management";
+import {
+  loadPostHogFeatureFlagDefinitions,
+  type PostHogFeatureFlagDefinition,
+} from "@deskohub/posthog/feature-flags/management";
 import { Effect } from "effect";
 import { cacheLife } from "next/cache";
 import { env } from "@/env";
 import { postHogRuntimeConfig } from "@/shared/backend/config/posthog.config";
-import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
+import { readSharedSnapshot } from "@/shared/backend/shared-snapshot";
 import {
   type PostHogFeatureFlagDefinitions,
   type PostHogFeatureFlagKey,
@@ -32,27 +35,54 @@ export async function getGlobalWorkspaceFeatureFlagValue(
   return (await classifyWorkspaceFeatureFlags())[key];
 }
 
+interface ClassifiedDefinitions {
+  readonly definitions: ReadonlyArray<PostHogFeatureFlagDefinition>;
+  /** False when PostHog couldn't answer with the management definitions. */
+  readonly complete: boolean;
+}
+
 async function classifyWorkspaceFeatureFlags(): Promise<GlobalWorkspaceFeatureFlagValues> {
   "use cache";
-  cacheLife("publicContent");
 
   const overrides = postHogRuntimeConfig.featureFlagOverrides ?? {};
   const apiKey = env.POSTHOG_API_KEY;
   const host = env.POSTHOG_API_HOST;
   const projectId = env.POSTHOG_PROJECT_ID;
-  if (!(apiKey && host && projectId)) return overrides;
+  if (!(apiKey && host && projectId)) {
+    cacheLife("publicContent");
+    return overrides;
+  }
 
-  const definitions = await loadPostHogFeatureFlagDefinitions({
-    apiKey,
-    host: new URL(host),
-    projectId,
-  }).pipe(
-    Effect.catch((error) =>
-      Effect.logWarning(error.message, { cause: error.cause }).pipe(
-        Effect.as([])
+  const { definitions } = await readSharedSnapshot(
+    "feature-flags.classify",
+    Effect.suspend(() =>
+      loadPostHogFeatureFlagDefinitions({
+        apiKey,
+        host: new URL(host),
+        projectId,
+      })
+    ).pipe(
+      Effect.map(
+        (definitions): ClassifiedDefinitions => ({
+          definitions,
+          complete: true,
+        })
+      ),
+      // Without the definitions only the overrides are constant.
+      Effect.catch((error) =>
+        Effect.logWarning(error.message, { cause: error.cause }).pipe(
+          Effect.as<ClassifiedDefinitions>({ definitions: [], complete: false })
+        )
       )
     ),
-    runWorkspaceEffect("feature-flags.classify")
+    {
+      complete: { lifetime: "publicContent" },
+      // Shared as long as a complete classification.
+      incomplete: {
+        when: ({ complete }) => !complete,
+        lifetime: "publicContent",
+      },
+    }
   );
 
   const values: Partial<Record<PostHogFeatureFlagKey, boolean>> = {};
