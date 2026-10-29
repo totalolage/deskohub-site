@@ -13,11 +13,6 @@ import {
   waitForPageUrl,
   waitForReactHandler,
 } from "../browser";
-import {
-  getPrepareCoworkAdvertisedPriceScript,
-  getPrepareMeetingRoomAdvertisedPriceScript,
-  getPrepareOfficeAdvertisedPriceScript,
-} from "../browser-scripts";
 import type { E2EBrowserSession } from "../browser-session";
 import type { WorkspaceE2EStepRunner } from "../case-runner";
 import {
@@ -36,6 +31,7 @@ import {
   isPrefilledReservation,
   toPrefilledReservation,
 } from "../checkout/prefilled-reservation";
+import { toReservationSelectionPreparation } from "../checkout/reservation-form-preparation";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import {
   toWorkspaceE2EError,
@@ -282,12 +278,14 @@ const assertCoworkUrlState = (
       timeoutMs: config.timeouts.browserNavigation,
     });
     yield* runStep({
-      execute: prepareReservationSelection({
-        prepareScript: getPrepareCoworkAdvertisedPriceScript(openSpaceData),
-        run,
-        session,
-        timeoutMs: config.timeouts.uiTransition,
-        timeouts: config.timeouts,
+      execute: Effect.gen(function* () {
+        const browser = yield* browserSessionFor(run, session);
+        yield* prepareReservationSelection({
+          preparation: toReservationSelectionPreparation(openSpaceData),
+          session: browser,
+          timeoutMs: config.timeouts.uiTransition,
+          timeouts: config.timeouts,
+        });
       }),
       id: "select-open-space-date",
       timeoutMs: config.timeouts.uiTransition,
@@ -295,10 +293,12 @@ const assertCoworkUrlState = (
     // The contact step keeps the selection URL; typing there and returning
     // must not write the contact into it.
     yield* runStep({
-      execute: continueToReservationContactStep({
-        run,
-        session,
-        timeouts: config.timeouts,
+      execute: Effect.gen(function* () {
+        const browser = yield* browserSessionFor(run, session);
+        yield* continueToReservationContactStep({
+          session: browser,
+          timeouts: config.timeouts,
+        });
       }),
       id: "continue-to-cowork-contact",
       timeoutMs: config.timeouts.browserAction,
@@ -348,12 +348,14 @@ const assertCoworkUrlState = (
     });
 
     yield* runStep({
-      execute: prepareReservationSelection({
-        prepareScript: getPrepareCoworkAdvertisedPriceScript(reservedDeskData),
-        run,
-        session,
-        timeoutMs: config.timeouts.uiTransition,
-        timeouts: config.timeouts,
+      execute: Effect.gen(function* () {
+        const browser = yield* browserSessionFor(run, session);
+        yield* prepareReservationSelection({
+          preparation: toReservationSelectionPreparation(reservedDeskData),
+          session: browser,
+          timeoutMs: config.timeouts.uiTransition,
+          timeouts: config.timeouts,
+        });
       }),
       id: "select-reserved-desk-date-and-monitor",
       timeoutMs: config.timeouts.uiTransition,
@@ -406,12 +408,14 @@ const assertMeetingRoomUrlState = (
     // Selects the start date, duration, and start time, then types the
     // contact, and waits for the selection's availability and price.
     yield* runStep({
-      execute: prepareReservationSelection({
-        prepareScript: getPrepareMeetingRoomAdvertisedPriceScript(data),
-        run,
-        session,
-        timeoutMs: config.timeouts.uiTransition,
-        timeouts: config.timeouts,
+      execute: Effect.gen(function* () {
+        const browser = yield* browserSessionFor(run, session);
+        yield* prepareReservationSelection({
+          preparation: toReservationSelectionPreparation(data),
+          session: browser,
+          timeoutMs: config.timeouts.uiTransition,
+          timeouts: config.timeouts,
+        });
       }),
       id: "select-meeting-room-start-and-duration",
       timeoutMs: config.timeouts.uiTransition,
@@ -456,12 +460,14 @@ const assertOfficeUrlState = (
     // Selects the start date, day count, and seats, then types the contact,
     // and waits for the selection's availability and price.
     yield* runStep({
-      execute: prepareReservationSelection({
-        prepareScript: getPrepareOfficeAdvertisedPriceScript(data),
-        run,
-        session,
-        timeoutMs: config.timeouts.uiTransition,
-        timeouts: config.timeouts,
+      execute: Effect.gen(function* () {
+        const browser = yield* browserSessionFor(run, session);
+        yield* prepareReservationSelection({
+          preparation: toReservationSelectionPreparation(data),
+          session: browser,
+          timeoutMs: config.timeouts.uiTransition,
+          timeouts: config.timeouts,
+        });
       }),
       id: "select-office-start-days-and-seats",
       timeoutMs: config.timeouts.uiTransition,
@@ -563,12 +569,14 @@ const assertOfficeStartsOnLink = (
       timeoutMs: config.timeouts.browserNavigation,
     });
     yield* runStep({
-      execute: prepareReservationSelection({
-        prepareScript: getPrepareOfficeAdvertisedPriceScript(data),
-        run,
-        session,
-        timeoutMs: config.timeouts.uiTransition,
-        timeouts: config.timeouts,
+      execute: Effect.gen(function* () {
+        const browser = yield* browserSessionFor(run, session);
+        yield* prepareReservationSelection({
+          preparation: toReservationSelectionPreparation(data),
+          session: browser,
+          timeoutMs: config.timeouts.uiTransition,
+          timeouts: config.timeouts,
+        });
       }),
       id: "select-linked-office-selection-through-form",
       timeoutMs: config.timeouts.uiTransition,

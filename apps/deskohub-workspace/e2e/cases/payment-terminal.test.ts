@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { Effect, Exit } from "effect";
 import type { WorkspaceE2EStepRunner } from "../case-runner";
+import { preparedReservationForm } from "../checkout/reservation-form-preparation";
 import type { WorkspaceE2EConfig } from "../config";
 import { makeWorkspaceE2EHostedPaymentPermitRecorder } from "../coordination/hosted-payment-permit.service.mock";
 import { workspaceE2EError } from "../errors";
@@ -64,7 +65,7 @@ const runUntilStatusPage = async (scenario: PaymentTerminalScenario) => {
       scenario,
       session: "payment-terminal-capacity",
       state,
-      submitReservationScript: "unused",
+      preparation: preparedReservationForm,
     }).pipe(Effect.provide(hostedPaymentPermit.layer)) as Effect.Effect<
       void,
       typeof stop

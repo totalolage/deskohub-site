@@ -1,9 +1,5 @@
 import { Effect } from "effect";
-import {
-  browserDiagnosticsScript,
-  browserTextScript,
-  inPageCall,
-} from "./browser-scripts";
+import { browserTextScript, inPageCall } from "./browser-scripts";
 import { type E2EBrowserSession, isPlaywrightTimeout } from "./browser-session";
 import type { WorkspaceE2EConfig } from "./config";
 import {
@@ -461,35 +457,6 @@ export const summarizeHostedPaymentSnapshot = (snapshot: string) => {
     : "Nexi HPP snapshot summary unavailable";
 };
 
-const findSnapshotRef = (
-  snapshot: string,
-  labels: readonly string[],
-  role?: string
-) => {
-  for (const line of snapshot.split("\n")) {
-    if (!hasSnapshotRole(line, role)) continue;
-    const ref = getSnapshotRef(line);
-    if (!ref) continue;
-
-    const name = line
-      .match(/"([^"]+)"/)?.[1]
-      ?.trim()
-      .toLowerCase();
-    if (name && labels.some((label) => name === label.toLowerCase()))
-      return ref;
-  }
-
-  for (const line of snapshot.split("\n")) {
-    if (!hasSnapshotRole(line, role)) continue;
-    const ref = getSnapshotRef(line);
-    if (!ref) continue;
-
-    const lowerLine = line.toLowerCase();
-    if (labels.some((label) => lowerLine.includes(label.toLowerCase())))
-      return ref;
-  }
-};
-
 const hasSnapshotRole = (line: string, role: string | undefined) =>
   role === undefined ||
   line.match(/^\s*-\s+(\S+)/)?.[1]?.toLowerCase() === role.toLowerCase();
@@ -528,82 +495,6 @@ export const findEnabledSnapshotRef = (
 const hasDisabledSnapshotState = (line: string) =>
   /\[[^\]]*\bdisabled\b[^\]]*\]/i.test(line);
 
-export const requireSnapshotRef = ({
-  description,
-  labels,
-  role,
-  run,
-  session,
-  timeoutMs = 60_000,
-}: {
-  description: string;
-  labels: readonly string[];
-  role?: string;
-  run: Runner;
-  session: string;
-  timeoutMs?: number;
-}): Effect.Effect<string, WorkspaceE2EError> =>
-  pollUntil(
-    readInteractiveSnapshot(run, session).pipe(
-      Effect.map((snapshot) => findSnapshotRef(snapshot, labels, role))
-    ),
-    {
-      intervalMs: workspaceE2EPollIntervalMs.browser,
-      label: description,
-      timeoutMs,
-    }
-  ).pipe(
-    Effect.catch((error) =>
-      readInteractiveSnapshot(run, session, true).pipe(
-        Effect.flatMap((snapshot) =>
-          Effect.fail(
-            toWorkspaceE2EError(
-              description,
-              new Error(`${error.message}\n${snapshot}`)
-            )
-          )
-        )
-      )
-    )
-  );
-
-export const requireEnabledSnapshotRef = ({
-  description,
-  labels,
-  run,
-  session,
-  timeoutMs = 60_000,
-}: {
-  description: string;
-  labels: readonly string[];
-  run: Runner;
-  session: string;
-  timeoutMs?: number;
-}): Effect.Effect<string, WorkspaceE2EError> =>
-  pollUntil(
-    readInteractiveSnapshot(run, session).pipe(
-      Effect.map((snapshot) => findEnabledSnapshotRef(snapshot, labels))
-    ),
-    {
-      intervalMs: workspaceE2EPollIntervalMs.browser,
-      label: description,
-      timeoutMs,
-    }
-  ).pipe(
-    Effect.catch((error) =>
-      readInteractiveSnapshot(run, session, true).pipe(
-        Effect.flatMap((snapshot) =>
-          Effect.fail(
-            toWorkspaceE2EError(
-              description,
-              new Error(`${error.message}\n${snapshot}`)
-            )
-          )
-        )
-      )
-    )
-  );
-
 export const getSnapshotRef = (line: string) =>
   line.match(/\bref=((?:f\d+)?e\d+)\b/)?.[1]?.replace(/^/, "@") ??
   line.match(/@(?:f\d+)?e\d+/)?.[0];
@@ -641,7 +532,7 @@ const readBrowserDiagnostics = (
     ["eval", "--stdin"],
     {
       allowFailure: true,
-      input: browserDiagnosticsScript,
+      input: inPageCall(summarizeCheckoutPage, undefined),
       logOutput: false,
     }
   ).pipe(
@@ -1195,6 +1086,47 @@ const isReactFormSubmitReady = ({
 };
 
 /**
+ * The checkout page summary diagnostics report: URL without its secret
+ * parameters, title, alerts, body text, and the reservation action's state.
+ * Runs in the browser.
+ */
+export const summarizeCheckoutPage = () => {
+  const cleanUrl = (value: string) => {
+    try {
+      const url = new URL(value);
+      for (const key of [
+        "payState",
+        "contact",
+        "checkoutToken",
+        "accessToken",
+        "_vercel_share",
+        "x-vercel-protection-bypass",
+      ]) {
+        if (url.searchParams.has(key)) url.searchParams.set(key, "[redacted]");
+      }
+      return url.toString();
+    } catch {
+      return "[unavailable]";
+    }
+  };
+  const submit = document.querySelector(
+    "#reservation-continue, #reservation-submit"
+  );
+  const alerts = [...document.querySelectorAll('[role="alert"]')]
+    .map((element) => element.textContent?.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  return {
+    alerts,
+    body: (document.body?.innerText ?? "").replace(/\s+/g, " ").slice(0, 1200),
+    submitDisabled:
+      submit instanceof HTMLButtonElement ? submit.disabled : null,
+    submitText: submit?.textContent?.replace(/\s+/g, " ").trim() ?? null,
+    title: document.title,
+    url: cleanUrl(location.href),
+  };
+};
+
+/**
  * The checkout page summary for a failure artifact: URL, title, alerts, and
  * the reservation action's state. It has no deadline of its own; the caller
  * bounds it.
@@ -1204,7 +1136,7 @@ export const readBrowserPageDiagnostics = (
 ): Effect.Effect<string> =>
   session
     .use("read browser diagnostics", (page) =>
-      page.evaluate(browserDiagnosticsScript)
+      page.evaluate(summarizeCheckoutPage)
     )
     .pipe(
       Effect.map((summary) =>
