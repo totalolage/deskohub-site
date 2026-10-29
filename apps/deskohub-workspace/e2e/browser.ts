@@ -276,24 +276,6 @@ export const evalBrowserScript = (
     ...options,
   });
 
-export const fillBrowserField = (
-  run: Runner,
-  session: string,
-  selector: string,
-  value: string,
-  options: { readonly timeoutMs?: number } = {}
-): Effect.Effect<void, WorkspaceE2EError> =>
-  runBrowserCommand(
-    "fill browser field",
-    run,
-    session,
-    ["fill", selector, value],
-    {
-      logOutput: false,
-      timeoutMs: options.timeoutMs ?? 60_000,
-    }
-  ).pipe(Effect.asVoid);
-
 export const clickBrowserElement = (
   run: Runner,
   session: string,
@@ -810,7 +792,7 @@ export const waitForPageText = ({
  * secrets redacted, as the argv `snapshot -i` output was. Each Playwright
  * wait is bounded by that command's 60 s.
  */
-export const readPageSnapshot = (
+const readPageSnapshot = (
   session: E2EBrowserSession
 ): Effect.Effect<string, WorkspaceE2EError> =>
   session
