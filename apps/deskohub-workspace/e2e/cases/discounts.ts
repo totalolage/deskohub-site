@@ -1447,6 +1447,7 @@ export const assertDisplayedDiscounts = ({
       | "focus-trigger"
       | "detail" = "react-handler";
     let detailIndex = 0;
+    let currentDetail: DiscountDetail | undefined;
     return Effect.gen(function* () {
       yield* waitForReactHandler(session, discountDetailsTrigger, "onFocus", {
         timeoutMs,
@@ -1467,11 +1468,12 @@ export const assertDisplayedDiscounts = ({
       for (const discount of discounts) {
         stage = "detail";
         detailIndex += 1;
+        currentDetail = toDiscountDetail(discount);
         yield* waitForPageCondition(
           session,
           `${discount.label} discount detail`,
           isDiscountDetailShown,
-          toDiscountDetail(discount),
+          currentDetail,
           { timeoutMs }
         );
       }
@@ -1481,6 +1483,28 @@ export const assertDisplayedDiscounts = ({
         Effect.sync(() =>
           log(
             `DISCOUNT_WAIT stage=${stage} detail_index=${detailIndex} detail_count=${discounts.length}`
+          )
+        ).pipe(
+          Effect.andThen(() =>
+            currentDetail
+              ? session
+                  .evaluate(
+                    "observe failed discount detail",
+                    observeDiscountDetail,
+                    currentDetail,
+                    { timeoutMs: config.timeouts.browserAction }
+                  )
+                  .pipe(
+                    Effect.tap((observation) =>
+                      Effect.sync(() =>
+                        log(
+                          `DISCOUNT_DETAIL triggers=${observation.triggers} visible_triggers=${observation.visibleTriggers} first_visible=${observation.firstVisible} first_linked=${observation.firstLinked} first_label=${observation.firstLabel} first_adjustment=${observation.firstAdjustment} visible_linked=${observation.visibleLinked} visible_label=${observation.visibleLabel} visible_adjustment=${observation.visibleAdjustment} body_label=${observation.bodyLabel}`
+                        )
+                      )
+                    ),
+                    Effect.ignore
+                  )
+              : Effect.void
           )
         )
       )
@@ -1528,6 +1552,46 @@ export const isDiscountDetailShown = ({
   return (
     content.toLocaleLowerCase().includes(label) && content.includes(adjustment)
   );
+};
+
+/** Runs in the browser; returns only counts and expected-content booleans. */
+const observeDiscountDetail = ({
+  adjustment,
+  label,
+  trigger,
+}: DiscountDetail) => {
+  const triggers = [...document.querySelectorAll(trigger)];
+  const visibleTriggers = triggers.filter(
+    (element) =>
+      element.getClientRects().length > 0 &&
+      getComputedStyle(element).visibility === "visible"
+  );
+  const describe = (element: Element | undefined) => {
+    const id = element?.getAttribute("aria-describedby");
+    const description = id ? document.getElementById(id) : null;
+    const text = description?.textContent ?? "";
+    return {
+      linked: Boolean(description),
+      label: text.toLocaleLowerCase().includes(label),
+      adjustment: text.includes(adjustment),
+    };
+  };
+  const first = describe(triggers[0]);
+  const visible = describe(visibleTriggers[0]);
+  return {
+    triggers: triggers.length,
+    visibleTriggers: visibleTriggers.length,
+    firstVisible: Boolean(triggers[0] && visibleTriggers.includes(triggers[0])),
+    firstLinked: first.linked,
+    firstLabel: first.label,
+    firstAdjustment: first.adjustment,
+    visibleLinked: visible.linked,
+    visibleLabel: visible.label,
+    visibleAdjustment: visible.adjustment,
+    bodyLabel: (document.body.textContent ?? "")
+      .toLocaleLowerCase()
+      .includes(label),
+  };
 };
 
 /**

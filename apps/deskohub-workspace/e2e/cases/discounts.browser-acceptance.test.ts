@@ -12,6 +12,7 @@ import {
 } from "../case-runner.browser.test-utils";
 import { makeCoworkCheckoutData } from "../checkout/data";
 import type { WorkspaceE2EConfig } from "../config";
+import { workspaceE2EError } from "../errors";
 import type { ExpectedDiscountApplication } from "../integrations/database";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
@@ -175,7 +176,7 @@ for (const [caller, input] of Object.entries(browserInputs)) {
       expect(result.succeeded).toBe(true);
       expect(result.annotations).toEqual([]);
       expect(
-        result.logs.filter((line) => line.startsWith("DISCOUNT_WAIT"))
+        result.logs.filter((line) => line.startsWith("DISCOUNT_"))
       ).toEqual([]);
     },
     60_000
@@ -253,6 +254,84 @@ test.skipIf(!chromiumAvailable)(
       line.startsWith("STEP TIMEOUT")
     );
     expect(terminalIndex).toBeGreaterThan(result.logs.indexOf(diagnostic));
+  },
+  60_000
+);
+
+test.skipIf(!chromiumAvailable)(
+  "observes the rendered discount condition after an outer deadline",
+  async () => {
+    for (const { html, observation } of [
+      {
+        html: discountDetails({ detail: "Synthetic referral 15%" }),
+        observation:
+          "triggers=1 visible_triggers=1 first_visible=true first_linked=true first_label=false first_adjustment=false visible_linked=true visible_label=false visible_adjustment=false body_label=false",
+      },
+      {
+        html: `<button data-checkout-discount-details hidden>Old summary</button>${discountDetails()}`,
+        observation:
+          "triggers=2 visible_triggers=1 first_visible=false first_linked=false first_label=false first_adjustment=false visible_linked=true visible_label=true visible_adjustment=true body_label=true",
+      },
+    ]) {
+      const result = await assertCalendarDiscountOn(
+        html,
+        browserInputs.session,
+        {
+          stepTimeoutMs: 1000,
+        }
+      );
+      expect(result.succeeded).toBe(false);
+      expect(result.annotations).toEqual(failedStepAnnotation("timeout"));
+      expect(
+        result.logs.filter((line) => line.startsWith("DISCOUNT_DETAIL"))
+      ).toEqual([`DISCOUNT_DETAIL ${observation}\n`]);
+      expect(result.logs.join("")).not.toContain("Synthetic referral");
+    }
+  },
+  60_000
+);
+
+test.skipIf(!chromiumAvailable)(
+  "preserves the original timeout when the discount observation fails",
+  async () => {
+    if (!browser) throw new Error("Chromium is not running");
+    const output = spyOn(process.stdout, "write").mockImplementation(
+      () => true
+    );
+    try {
+      const result = await runBrowserStep({
+        browser,
+        drive: ({ session }) =>
+          assertDisplayedDiscounts({
+            config,
+            discounts: [calendarDiscountExpectation],
+            session: {
+              ...session,
+              evaluate: (label, evaluate, argument, options) =>
+                label === "observe failed discount detail"
+                  ? Effect.fail(
+                      workspaceE2EError("synthetic observation failure")
+                    )
+                  : session.evaluate(label, evaluate, argument, options),
+            },
+            timeoutMs: 2000,
+          }),
+        prepare: (session) =>
+          session.use("show a missing discount", (payPage) =>
+            payPage.setContent(discountDetails({ detail: "No discounts" }))
+          ),
+        stepTimeoutMs: 1000,
+      });
+      expect(result.succeeded).toBe(false);
+      expect(result.annotations).toEqual(failedStepAnnotation("timeout"));
+      const lines = output.mock.calls.map(([chunk]) => String(chunk));
+      expect(lines.filter((line) => line.startsWith("DISCOUNT_"))).toEqual([
+        "DISCOUNT_WAIT stage=detail detail_index=1 detail_count=1\n",
+      ]);
+      expect(lines.join("")).not.toContain("synthetic observation failure");
+    } finally {
+      output.mockRestore();
+    }
   },
   60_000
 );
