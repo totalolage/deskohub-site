@@ -7,7 +7,7 @@ import {
 } from "@deskohub/cloudinary/server";
 import { Context, Effect, Layer, Schema } from "effect";
 import { env } from "@/env";
-import { WorkspaceCloudinaryLayer } from "@/features/gallery/backend/cloudinary.service";
+import { WorkspaceCloudinaryLayer } from "@/shared/backend/cloudinary";
 import { campaignImageMaxWidth } from "../body/campaign-image";
 import { campaignImageFolder } from "../body/campaign-image-account";
 

@@ -1,4 +1,4 @@
-import { getCloudinaryImages } from "@/features/gallery/backend/get-cloudinary-images.server";
+import { loadVenuePhotos } from "@/features/gallery/backend/load-venue-photos.server";
 import { type Locale, m } from "@/features/i18n";
 import { Container } from "@/shared/components/container";
 import { cn } from "@/shared/utils";
@@ -12,13 +12,8 @@ export async function LandingPagePhotoCarouselSection({
   locale: Locale;
 }) {
   const ariaLabel = m.landingCarouselAriaLabel({}, { locale });
-  const images = await getCloudinaryImages({
-    tags: ["landing-carousel"],
-    maxResults: 20,
-  }).catch(() => undefined);
-  // getCloudinaryImages serves no photos when Cloudinary fails; hide the
-  // section rather than render an empty carousel.
-  if (!images || images.length === 0) return null;
+  const images = await loadVenuePhotos("landing-carousel", locale);
+  if (images.length === 0) return null;
 
   return (
     <section

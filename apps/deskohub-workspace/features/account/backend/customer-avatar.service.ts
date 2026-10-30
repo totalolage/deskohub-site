@@ -6,12 +6,10 @@ import {
   CloudinaryPublicIdSchema,
 } from "@deskohub/cloudinary";
 import { buildVersionedDeliveryUrl } from "@deskohub/cloudinary/delivery";
-import {
-  CloudinaryService,
-  makeCloudinaryRuntimeConfigLayer,
-} from "@deskohub/cloudinary/server";
+import { CloudinaryService } from "@deskohub/cloudinary/server";
 import { Context, Data, Effect, Layer, Option, Schema } from "effect";
 import { env } from "@/env";
+import { WorkspaceCloudinaryLayer } from "@/shared/backend/cloudinary";
 import {
   CustomerAccountAccessError,
   type CustomerAccountId,
@@ -107,18 +105,6 @@ export class CustomerAvatarSettings extends Context.Service<
     }),
   }));
 }
-
-const WorkspaceCloudinaryLayer = CloudinaryService.Live.pipe(
-  Layer.provide(
-    makeCloudinaryRuntimeConfigLayer({
-      cloudName: env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
-      apiKey: env.CLOUDINARY_API_KEY,
-      apiSecret: env.CLOUDINARY_API_SECRET,
-      defaultPageSize: 60,
-      serviceName: "workspace",
-    })
-  )
-);
 
 class GuardedSectionError<E> extends Data.TaggedError("GuardedSectionError")<{
   readonly error: E;

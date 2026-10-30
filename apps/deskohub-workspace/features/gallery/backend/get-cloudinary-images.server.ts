@@ -1,6 +1,7 @@
 import "server-only";
 
 import {
+  type CloudinaryAsset,
   normalizeExpression,
   type SearchOptions,
   type UnnormalizedLogicalExpression,
@@ -8,13 +9,10 @@ import {
 import { getGalleryImages } from "@deskohub/cloudinary/server";
 import { Effect } from "effect";
 import { cacheLife } from "next/cache";
+import { WorkspaceCloudinaryLayer } from "@/shared/backend/cloudinary";
 import { readSharedSnapshot } from "@/shared/backend/shared-snapshot";
 import { cloudinaryTags } from "@/shared/utils/cache-tags";
 import type { CloudinaryTag } from "../types/cloudinary-tag";
-import {
-  type CloudinaryAsset,
-  WorkspaceCloudinaryLayer,
-} from "./cloudinary.service";
 
 /**
  * Gallery lists come from Cloudinary's CDN tag lists, which Cloudinary

@@ -70,6 +70,7 @@ import { executeCheckoutFlow } from "./checkout";
 import {
   assertDisplayedDiscounts,
   calendarDiscountExpectation,
+  waitForAdvertisedCalendarSale,
 } from "./discounts";
 
 export const referralSomeoneElsePaymentCaseId =
@@ -380,6 +381,12 @@ const executeReferralSomeoneElsePayment = Effect.fn(
   ];
 
   yield* executeCheckoutFlow({
+    beforeReservationSubmit: waitForAdvertisedCalendarSale({
+      config,
+      data,
+      run,
+      session,
+    }),
     config,
     data,
     datasourceConfig,

@@ -1,6 +1,6 @@
 import "@/shared/polyfills/temporal";
 
-import { afterAll, beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, spyOn, test } from "bun:test";
 import { type Browser, chromium, type Page } from "@playwright/test";
 import { Effect } from "effect";
 import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
@@ -12,6 +12,9 @@ import {
 } from "../case-runner.browser.test-utils";
 import { makeCoworkCheckoutData } from "../checkout/data";
 import type { WorkspaceE2EConfig } from "../config";
+import { workspaceE2EError } from "../errors";
+import { assertE2ECalendarSaleCoverage } from "../integrations/calendar-sale-coverage";
+import type { ExpectedDiscountApplication } from "../integrations/database";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
   assertDisplayedDiscounts,
@@ -135,21 +138,35 @@ const browserInputs = {
 
 const assertCalendarDiscountOn = (
   html: string,
-  input: (typeof browserInputs)[keyof typeof browserInputs]
+  input: (typeof browserInputs)[keyof typeof browserInputs],
+  {
+    discounts = [calendarDiscountExpectation],
+    stepTimeoutMs,
+  }: {
+    readonly discounts?: readonly ExpectedDiscountApplication[];
+    readonly stepTimeoutMs?: number;
+  } = {}
 ) => {
   if (!browser) throw new Error("Chromium is not running");
+  const output = spyOn(process.stdout, "write").mockImplementation(() => true);
   return runBrowserStep({
     browser,
     drive: (driver) =>
       assertDisplayedDiscounts({
         config,
-        discounts: [calendarDiscountExpectation],
+        discounts,
         timeoutMs: 2000,
         ...input(driver),
       }),
     prepare: (session) =>
       session.use("show the pay page", (payPage) => payPage.setContent(html)),
-  });
+    stepTimeoutMs,
+  })
+    .then((result) => ({
+      ...result,
+      logs: output.mock.calls.map(([chunk]) => String(chunk)),
+    }))
+    .finally(() => output.mockRestore());
 };
 
 for (const [caller, input] of Object.entries(browserInputs)) {
@@ -159,6 +176,9 @@ for (const [caller, input] of Object.entries(browserInputs)) {
       const result = await assertCalendarDiscountOn(discountDetails(), input);
       expect(result.succeeded).toBe(true);
       expect(result.annotations).toEqual([]);
+      expect(
+        result.logs.filter((line) => line.startsWith("DISCOUNT_"))
+      ).toEqual([]);
     },
     60_000
   );
@@ -167,30 +187,215 @@ for (const [caller, input] of Object.entries(browserInputs)) {
   test.skipIf(!chromiumAvailable)(
     `times out a discount the tooltip never shows and a trigger never hydrated (${caller})`,
     async () => {
-      for (const html of [
-        discountDetails({ detail: "No discounts" }),
-        discountDetails({ handlers: [] }),
+      for (const { html, stage, detailIndex } of [
+        {
+          html: discountDetails({ detail: "No discounts" }),
+          stage: "detail",
+          detailIndex: 1,
+        },
+        {
+          html: discountDetails({
+            detail: `${calendarDiscountExpectation.label} wrong adjustment`,
+          }),
+          stage: "detail",
+          detailIndex: 1,
+        },
+        {
+          html: discountDetails({ handlers: [] }),
+          stage: "react-handler",
+          detailIndex: 0,
+        },
         // A hidden trigger scrolls but never takes focus.
-        discountDetails({ hidden: true }),
+        {
+          html: discountDetails({ hidden: true }),
+          stage: "blur-trigger",
+          detailIndex: 0,
+        },
       ]) {
         const result = await assertCalendarDiscountOn(html, input);
         expect(result.annotations).toEqual(failedStepAnnotation("timeout"));
         expect(result.failures.map(({ timeout }) => timeout)).toEqual([true]);
+        expect(
+          result.logs.filter((line) => line.startsWith("DISCOUNT_WAIT"))
+        ).toEqual([
+          `DISCOUNT_WAIT stage=${stage} detail_index=${detailIndex} detail_count=1\n`,
+        ]);
       }
     },
     90_000
   );
 }
 
+test.skipIf(!chromiumAvailable)(
+  "logs the pending detail before an outer step deadline interrupts the assertion",
+  async () => {
+    const result = await assertCalendarDiscountOn(
+      discountDetails(),
+      browserInputs.session,
+      {
+        discounts: [
+          calendarDiscountExpectation,
+          {
+            adjustment: { kind: "percentage", basisPoints: 1000 },
+            label: "Synthetic second discount",
+          },
+        ],
+        stepTimeoutMs: 1000,
+      }
+    );
+
+    expect(result.succeeded).toBe(false);
+    expect(result.annotations).toEqual(failedStepAnnotation("timeout"));
+    const diagnostic =
+      "DISCOUNT_WAIT stage=detail detail_index=2 detail_count=2\n";
+    expect(
+      result.logs.filter((line) => line.startsWith("DISCOUNT_WAIT"))
+    ).toEqual([diagnostic]);
+    const terminalIndex = result.logs.findIndex((line) =>
+      line.startsWith("STEP TIMEOUT")
+    );
+    expect(terminalIndex).toBeGreaterThan(result.logs.indexOf(diagnostic));
+  },
+  60_000
+);
+
+test.skipIf(!chromiumAvailable)(
+  "observes the rendered discount condition after an outer deadline",
+  async () => {
+    for (const { html, observation } of [
+      {
+        html: discountDetails({ detail: "Synthetic referral 15%" }),
+        observation:
+          "triggers=1 visible_triggers=1 first_visible=true first_linked=true first_label=false first_adjustment=false visible_linked=true visible_label=false visible_adjustment=false body_label=false",
+      },
+      {
+        html: `<button data-checkout-discount-details hidden>Old summary</button>${discountDetails()}`,
+        observation:
+          "triggers=2 visible_triggers=1 first_visible=false first_linked=false first_label=false first_adjustment=false visible_linked=true visible_label=true visible_adjustment=true body_label=true",
+      },
+    ]) {
+      const result = await assertCalendarDiscountOn(
+        html,
+        browserInputs.session,
+        {
+          stepTimeoutMs: 1000,
+        }
+      );
+      expect(result.succeeded).toBe(false);
+      expect(result.annotations).toEqual(failedStepAnnotation("timeout"));
+      expect(
+        result.logs.filter((line) => line.startsWith("DISCOUNT_DETAIL"))
+      ).toEqual([`DISCOUNT_DETAIL ${observation}\n`]);
+      expect(result.logs.join("")).not.toContain("Synthetic referral");
+    }
+  },
+  60_000
+);
+
+test.skipIf(!chromiumAvailable)(
+  "preserves the original timeout when the discount observation fails",
+  async () => {
+    if (!browser) throw new Error("Chromium is not running");
+    const output = spyOn(process.stdout, "write").mockImplementation(
+      () => true
+    );
+    try {
+      const result = await runBrowserStep({
+        browser,
+        drive: ({ session }) =>
+          assertDisplayedDiscounts({
+            config,
+            discounts: [calendarDiscountExpectation],
+            session: {
+              ...session,
+              evaluate: (label, evaluate, argument, options) =>
+                label === "observe failed discount detail"
+                  ? Effect.fail(
+                      workspaceE2EError("synthetic observation failure")
+                    )
+                  : session.evaluate(label, evaluate, argument, options),
+            },
+            timeoutMs: 2000,
+          }),
+        prepare: (session) =>
+          session.use("show a missing discount", (payPage) =>
+            payPage.setContent(discountDetails({ detail: "No discounts" }))
+          ),
+        stepTimeoutMs: 1000,
+      });
+      expect(result.succeeded).toBe(false);
+      expect(result.annotations).toEqual(failedStepAnnotation("timeout"));
+      const lines = output.mock.calls.map(([chunk]) => String(chunk));
+      expect(lines.filter((line) => line.startsWith("DISCOUNT_"))).toEqual([
+        "DISCOUNT_WAIT stage=detail detail_index=1 detail_count=1\n",
+      ]);
+      expect(lines.join("")).not.toContain("synthetic observation failure");
+    } finally {
+      output.mockRestore();
+    }
+  },
+  60_000
+);
+
+test.skipIf(!chromiumAvailable)(
+  "reopens dismissed discount details when the trigger is still focused",
+  async () => {
+    if (!browser) throw new Error("Chromium is not running");
+    const result = await runBrowserStep({
+      browser,
+      drive: ({ session }) =>
+        assertDisplayedDiscounts({
+          config,
+          discounts: [calendarDiscountExpectation],
+          session,
+          timeoutMs: 2000,
+        }),
+      prepare: (session) =>
+        session.use("dismiss the focused discount tooltip", async (payPage) => {
+          await payPage.setContent(discountDetails());
+          const trigger = payPage.locator("[data-checkout-discount-details]");
+          await trigger.evaluate((element) => {
+            element.addEventListener("focus", () =>
+              element.setAttribute("aria-describedby", "discount-tip")
+            );
+            element.addEventListener("keydown", (event) => {
+              if (event.key === "Escape") {
+                element.removeAttribute("aria-describedby");
+              }
+            });
+          });
+          await trigger.focus();
+          await payPage.keyboard.press("Escape");
+
+          expect(
+            await trigger.evaluate(
+              (element) => document.activeElement === element
+            )
+          ).toBe(true);
+          expect(
+            await payPage.evaluate(
+              isDiscountDetailShown,
+              toDiscountDetail(calendarDiscountExpectation)
+            )
+          ).toBe(false);
+        }),
+    });
+
+    expect(result.succeeded).toBe(true);
+    expect(result.annotations).toEqual([]);
+  },
+  60_000
+);
+
 // The reservation form behind the Calendar sale advertisement: the selection
 // is already made, and the sale shows from the `showFromLoad`th load on.
 let formLoads = 0;
 let showFromLoad = 1;
-let formHtml = (_load: number) => "";
+let formHtml = (_load: number, _request: Request) => "";
 const formServer = Bun.serve({
-  fetch: () => {
+  fetch: (request) => {
     formLoads += 1;
-    return new Response(formHtml(formLoads), {
+    return new Response(formHtml(formLoads, request), {
       headers: { "content-type": "text/html; charset=utf-8" },
     });
   },
@@ -259,3 +464,86 @@ test.skipIf(!chromiumAvailable)(
   },
   60_000
 );
+
+for (const { candidateDates, detail, covered } of [
+  { candidateDates: ["2026-12-30", "2026-12-31"], covered: true },
+  { candidateDates: ["2027-01-01", "2026-12-31"], covered: false },
+  {
+    candidateDates: ["2027-01-28", "2026-12-31", "2027-01-01"],
+    covered: false,
+  },
+  {
+    candidateDates: ["2026-12-31"],
+    detail: "E2E Calendar sale 10%",
+    covered: false,
+  },
+  { candidateDates: [], covered: false },
+]) {
+  test.skipIf(!chromiumAvailable)(
+    `checks Calendar fixture coverage before case construction (${candidateDates.join(",")} ${detail ?? "20%"})`,
+    async () => {
+      if (!browser) throw new Error("Chromium is not running");
+      const datesRead: string[] = [];
+      const methods: string[] = [];
+      let casesConstructed = false;
+      const contextCount = browser.contexts().length;
+      formHtml = (_load, request) => {
+        const date = new URL(request.url).searchParams.get("date") ?? "";
+        datesRead.push(date);
+        methods.push(request.method);
+        // The known fixture's all-day end is exclusive on January 1.
+        const details =
+          date < "2027-01-01"
+            ? discountDetails(detail ? { detail } : {})
+            : discountDetails({ detail: "No discounts" });
+        return `<!doctype html><body>
+          <input name="date" value="${date}" />
+          <button data-reservation-type-price="open-space" data-reservation-type-price-ready="true"></button>
+          <input id="reservation-entry-tier-open-space" type="radio" checked />
+          ${details}
+          <button id="reservation-continue">Continue</button>
+        </body>`;
+      };
+      const result = await Effect.runPromise(
+        assertE2ECalendarSaleCoverage({
+          browser,
+          candidateDates,
+          config: {
+            baseUrl: formServer.url.origin,
+            timeouts: {
+              ...workspaceE2ETimeouts,
+              browserAction: 2000,
+              calendarSaleAdvertisement: 2000,
+              calendarSaleAdvertisementAttempt: 500,
+            },
+          } as WorkspaceE2EConfig,
+        }).pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              casesConstructed = true;
+            })
+          ),
+          Effect.result
+        )
+      );
+      expect(casesConstructed).toBe(covered);
+      if (!covered) {
+        expect(result._tag).toBe("Failure");
+        if (result._tag === "Failure") {
+          expect(result.failure.message).toBe(
+            "Calendar sale fixture coverage failed: expected E2E Calendar sale at 20% on the furthest planned candidate service date"
+          );
+          expect(result.failure.operation).toBe(
+            "verify E2E Calendar sale coverage"
+          );
+        }
+      }
+      expect(datesRead).toEqual(
+        candidateDates.length ? [candidateDates.toSorted().at(-1)!] : []
+      );
+      expect(methods.every((method) => method === "GET")).toBe(true);
+      expect(browser.contexts().length).toBe(contextCount);
+    },
+    30_000
+  );
+}
