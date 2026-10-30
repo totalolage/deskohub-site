@@ -271,7 +271,9 @@ describe("ReservationAccessService", () => {
     );
     const ensure = mock(() => Effect.die("A reused PIN must not be reset"));
     const rescheduleIssued = rescheduleIssuedToBounds();
-    const loadIssuedCode = mock((_: ScheduledBounds) => Effect.succeed(accessCode));
+    const loadIssuedCode = mock((_: ScheduledBounds) =>
+      Effect.succeed(accessCode)
+    );
     const markUncertain = mock(() => Effect.void);
 
     const issued = await Effect.gen(function* () {

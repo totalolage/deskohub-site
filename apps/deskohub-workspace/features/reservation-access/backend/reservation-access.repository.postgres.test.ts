@@ -362,7 +362,11 @@ describe.skipIf(!testDatabase)(
       }
       expect(
         await run((repository) =>
-          repository.loadIssuedCode({ id: grant.id, reservationId, ...rescheduled })
+          repository.loadIssuedCode({
+            id: grant.id,
+            reservationId,
+            ...rescheduled,
+          })
         )
       ).toBe(accessCode);
     });

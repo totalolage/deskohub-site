@@ -85,9 +85,9 @@ import {
   type DiscountApplicationId,
   discountApplicationIdSchema,
 } from "@/features/discounts/persistence-contracts";
-import { decodeBookedReservation } from "@/features/reservation/backend/booked-reservation";
 import { marketingConsentState } from "@/features/legal/backend/marketing-consent-ledger";
 import type { MarketingConsentStatus } from "@/features/legal/marketing-consent-status";
+import { decodeBookedReservation } from "@/features/reservation/backend/booked-reservation";
 import { loadEarlySetupDetails } from "@/features/reservation/backend/early-setup-details";
 import {
   StoredReservationDetails,

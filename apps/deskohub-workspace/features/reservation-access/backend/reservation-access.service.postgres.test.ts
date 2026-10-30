@@ -148,16 +148,26 @@ describe.skipIf(!testDatabase)(
           expect(requestedHours).toHaveLength(1);
           const [requested] = requestedHours;
           if (!requested) return;
-          expect(grant.scheduledAccessStartsAt.equals(reservation.reservedFrom)).toBe(true);
-          expect(grant.accessStartsAt.equals(reservation.reservedFrom)).toBe(true);
-          expect(grant.accessEndsAt.equals(reservation.reservedUntil)).toBe(true);
+          expect(
+            grant.scheduledAccessStartsAt.equals(reservation.reservedFrom)
+          ).toBe(true);
+          expect(grant.accessStartsAt.equals(reservation.reservedFrom)).toBe(
+            true
+          );
+          expect(grant.accessEndsAt.equals(reservation.reservedUntil)).toBe(
+            true
+          );
           // The first claimant owns issuance; provider hours are adapter data,
           // independent of the exact reservation bounds both requests share.
-          expect(requested).toEqual(Option.getOrNull(getIgloohomeAccessWindow({
-            startsAt: reservation.reservedFrom,
-            endsAt: reservation.reservedUntil,
-            now: first,
-          })));
+          expect(requested).toEqual(
+            Option.getOrNull(
+              getIgloohomeAccessWindow({
+                startsAt: reservation.reservedFrom,
+                endsAt: reservation.reservedUntil,
+                now: first,
+              })
+            )
+          );
 
           const results = [firstResult, secondResult];
           const issued = results.filter(Result.isSuccess);

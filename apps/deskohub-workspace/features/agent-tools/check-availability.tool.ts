@@ -7,10 +7,10 @@ import { m } from "@/features/i18n";
 import { loadAdvisoryOfficeSeatCapacity } from "@/features/office/backend/office-advisory-seat-capacity";
 import { getShareableReservationUrl } from "@/features/reservation/backend/shareable-reservation-url";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
-import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
-import type { ReservationSelection } from "@/features/reservation/selection-path";
 import type { MeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
+import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import type { ReservationInterval } from "@/features/reservation/reservation-interval-domain";
+import type { ReservationSelection } from "@/features/reservation/selection-path";
 import {
   findMeetingRoomStartTime,
   getCoworkAvailabilityQueries,

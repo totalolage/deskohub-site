@@ -7,6 +7,7 @@ import { Context, Data, Effect, Layer, Match, Option, Schema } from "effect";
 import { env } from "@/env";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { WorkspaceIgloohomeLayer } from "@/shared/backend/config/igloohome.config";
+import { currentInstant } from "@/shared/utils/temporal";
 import type {
   IssuedReservationAccess,
   ReservationAccessGrant,
@@ -15,7 +16,6 @@ import {
   makeReservationAccessName,
   reservationAccessProvisioningStaleAfterMilliseconds,
 } from "../reservation-access";
-import { currentInstant } from "@/shared/utils/temporal";
 import {
   getIgloohomeAccessWindow,
   isSameIgloohomeAccessWindow,

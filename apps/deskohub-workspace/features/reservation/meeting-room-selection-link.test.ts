@@ -258,8 +258,20 @@ describe("customer last reservation defaults", () => {
 
 describe("meetingRoomSelectionLink.write", () => {
   test("keeps setup in the reservation link", () => {
-    const link = new URL(withMeetingRoomEarlySetup("https://workspace.example/reservation/meeting-room?startDateTime=2099-08-12T09%3A00&duration=hour%3A1"));
-    expect(meetingRoomSelectionLink.read(link.searchParams, { now: deterministicNow() })).toMatchObject({ startDateTime: "2099-08-12T09:00", duration: "hour:1", earlySetup: true });
+    const link = new URL(
+      withMeetingRoomEarlySetup(
+        "https://workspace.example/reservation/meeting-room?startDateTime=2099-08-12T09%3A00&duration=hour%3A1"
+      )
+    );
+    expect(
+      meetingRoomSelectionLink.read(link.searchParams, {
+        now: deterministicNow(),
+      })
+    ).toMatchObject({
+      startDateTime: "2099-08-12T09:00",
+      duration: "hour:1",
+      earlySetup: true,
+    });
   });
   test("names the selection in the declared order", () => {
     expect(
@@ -284,7 +296,11 @@ describe("meetingRoomSelectionLink.write", () => {
     });
     expect(
       meetingRoomSelectionLink.write({ duration: "day:1", startDateTime: "" })
-    ).toEqual({ startDateTime: undefined, duration: "day:1", earlySetup: undefined });
+    ).toEqual({
+      startDateTime: undefined,
+      duration: "day:1",
+      earlySetup: undefined,
+    });
   });
 
   test.each([
@@ -332,10 +348,8 @@ describe("meetingRoomSelectionLink.write", () => {
     );
 
     expect(
-      meetingRoomSelectionLink.read(
-        searchParams,
-        { now: deterministicNow() }
-      ).earlySetup
+      meetingRoomSelectionLink.read(searchParams, { now: deterministicNow() })
+        .earlySetup
     ).toBe(false);
   });
 
