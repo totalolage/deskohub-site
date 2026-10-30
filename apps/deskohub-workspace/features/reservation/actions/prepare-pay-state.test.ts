@@ -58,6 +58,8 @@ import {
   ReferralServiceMock,
   WithheldReferralService,
 } from "@/features/referrals/referral.service.mock";
+import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
+import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import type { IWorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import type { CreateWorkspaceReservationDraftInput } from "@/features/reservation/backend/workspace-reservation.repository";
 import { meetingRoomAdvertisedPriceReservationSchema } from "@/features/reservation/meeting-room-reservation";
@@ -80,14 +82,16 @@ mock.module("next/headers", () => ({
   headers: async () => new Headers({ referer: "https://deskohub.test/en-US" }),
 }));
 
-// The referral code this browser remembers from a shared link.
-let rememberedReferralCode: string | undefined;
-mock.module("@/features/referrals/remembered-referral-code.server", () => ({
-  readRememberedReferralCode: Effect.sync(() => rememberedReferralCode),
-  forgetRememberedReferralCode: async () => {
-    rememberedReferralCode = undefined;
-  },
-}));
+const inertRememberedReferral = () =>
+  RememberedReferral.inMemory({}).pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        ReferralFeatureFlagService.fromDecision(true),
+        WithheldReferralService,
+        Layer.mock(CustomerAccountContactService, {})
+      )
+    )
+  );
 
 // Format of the checkout lookup keys new rows store: the active key's
 // key-ID-prefixed digest.
@@ -540,21 +544,33 @@ const runReusableReservationScenario = async (input: {
     mock(() => Effect.die("a referral code must not be looked up"));
   const hasSettledReferral =
     input.hasSettledReferral ?? mock(() => Effect.succeed(false));
-  rememberedReferralCode = input.rememberedReferralCode;
+  const rememberedReferralCookie = { value: input.rememberedReferralCode };
+  const contacts = Layer.mock(CustomerAccountContactService, {
+    currentAccount: Effect.suspend(() => readAccount()),
+    linkedContact: linkedContact as never,
+    completeProfileUnderHeldLock: completeProfileUnderHeldLock as never,
+    currentLinkedAccount: Effect.suspend(() => readLinkedAccount()),
+  });
+  const referrals =
+    input.referralService ??
+    ReferralServiceMock({
+      evaluateCheckoutReferral: evaluateCheckoutReferral as never,
+      findAvailableCode: findAvailableCode as never,
+      hasSettledReferral: hasSettledReferral as never,
+    });
   const testLayer = Layer.mergeAll(
     accountAuthority.layer,
-    Layer.mock(CustomerAccountContactService, {
-      currentAccount: Effect.suspend(() => readAccount()),
-      linkedContact: linkedContact as never,
-      completeProfileUnderHeldLock: completeProfileUnderHeldLock as never,
-      currentLinkedAccount: Effect.suspend(() => readLinkedAccount()),
-    }),
-    input.referralService ??
-      ReferralServiceMock({
-        evaluateCheckoutReferral: evaluateCheckoutReferral as never,
-        findAvailableCode: findAvailableCode as never,
-        hasSettledReferral: hasSettledReferral as never,
-      }),
+    contacts,
+    referrals,
+    RememberedReferral.inMemory(rememberedReferralCookie).pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          ReferralFeatureFlagService.fromDecision(true),
+          referrals,
+          contacts
+        )
+      )
+    ),
     CheckoutPricingServiceMock({
       affirmCoworkAdvertisement: affirmAdvertisement,
       quoteForCustomer: quoteForCustomerResult as never,
@@ -674,7 +690,7 @@ const runReusableReservationScenario = async (input: {
     evaluateCheckoutReferral,
     findAvailableCode,
     hasSettledReferral,
-    rememberedReferralCodeAfter: rememberedReferralCode,
+    rememberedReferralCodeAfter: rememberedReferralCookie.value,
     checkContactEmailDomain,
   };
 };
@@ -796,6 +812,7 @@ const runMeetingRoomNewHoldScenario = async (
   );
   const testLayer = Layer.mergeAll(
     accountAuthority.layer,
+    inertRememberedReferral(),
     CheckoutPricingService.Default.pipe(
       Layer.provide(
         DiscountServiceMock({
@@ -995,6 +1012,7 @@ describe("prepareWorkspacePayState", () => {
       Effect.provide(
         Layer.mergeAll(
           accountAuthorityLayer,
+          inertRememberedReferral(),
           BotProtectionServiceMock({ verifyHuman }),
           CheckoutPricingServiceMock({}),
           OfficeReservationFeatureFlagService.Default.pipe(
@@ -1244,6 +1262,7 @@ describe("prepareWorkspacePayState", () => {
     const { layer: accountAuthorityLayer } = await accountAuthorityFixture();
     const testLayer = Layer.mergeAll(
       accountAuthorityLayer,
+      inertRememberedReferral(),
       CheckoutPricingServiceMock({
         affirmCoworkAdvertisement: affirmAdvertisement,
         quoteForCustomer: quoteForCustomerResult as never,
@@ -3930,6 +3949,7 @@ describe("prepareWorkspacePayState", () => {
       Effect.provide(
         Layer.mergeAll(
           accountAuthorityLayer,
+          inertRememberedReferral(),
           BotProtectionServiceMock({ verifyHuman: () => Effect.void }),
           CheckoutPricingServiceMock({})
         )
@@ -4036,6 +4056,7 @@ describe("prepareWorkspacePayState", () => {
         Effect.provide(
           Layer.mergeAll(
             accountAuthorityLayer,
+            inertRememberedReferral(),
             BotProtectionServiceMock({ verifyHuman }),
             CheckoutPricingServiceMock({})
           )

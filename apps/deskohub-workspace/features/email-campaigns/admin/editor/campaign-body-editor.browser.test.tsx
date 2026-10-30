@@ -61,7 +61,9 @@ afterAll(async () => {
 });
 
 const dimensions = (image: Locator) =>
-  image.evaluate((element) => {
+  image.evaluate(async (element: HTMLImageElement) => {
+    // Editing attributes can replace the image with one still loading.
+    await element.decode();
     const { width, height } = element.getBoundingClientRect();
     return { width, height };
   });
@@ -122,7 +124,6 @@ for (const { locale, initialWidth } of [
             cause,
           });
         }
-        await editorImage.evaluate((image: HTMLImageElement) => image.decode());
         expect(await dimensions(editorImage)).toEqual({
           width: 534,
           height: 267,
@@ -192,9 +193,6 @@ for (const { locale, initialWidth } of [
           .frameLocator('iframe[title="Email preview"]')
           .getByAltText("Synthetic image");
         await previewImage.waitFor();
-        await previewImage.evaluate((image: HTMLImageElement) =>
-          image.decode()
-        );
         expect(await dimensions(previewImage)).toEqual({
           width: 180,
           height: 90,
@@ -212,9 +210,6 @@ for (const { locale, initialWidth } of [
           }, wideEmail.html);
         await page.setViewportSize({ width: 390, height: 844 });
         await previewImage.waitFor();
-        await previewImage.evaluate((image: HTMLImageElement) =>
-          image.decode()
-        );
         for (const image of [editorImage, previewImage]) {
           const size = await dimensions(image);
           expect(size.width).toBeLessThan(390);

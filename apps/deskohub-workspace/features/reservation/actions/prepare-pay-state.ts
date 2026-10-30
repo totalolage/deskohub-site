@@ -39,7 +39,6 @@ import {
   payStateDefaultTtlMilliseconds,
   sealPayStateForUrl,
 } from "@/features/checkout/backend/checkout";
-import { isBookerReferralSettled } from "@/features/checkout/backend/checkout/booker-referral-settlement";
 import {
   deriveCheckoutAttemptKeys,
   deriveCheckoutSessionKeys,
@@ -65,19 +64,11 @@ import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summ
 import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-office";
 import { legalEvidenceMapSchema } from "@/features/checkout/legal-evidence";
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
-import {
-  type CanonicalPromotionCode,
-  canonicalPromotionCodeSchema,
-} from "@/features/discounts/contracts";
+import type { CanonicalPromotionCode } from "@/features/discounts/contracts";
 import { type Locale, m } from "@/features/i18n";
 import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import { ensureOfficeReservationsEnabled } from "@/features/office/backend/office-reservation-feature-flag.service";
-import { ReferralService } from "@/features/referrals";
-import type { ReferralCode } from "@/features/referrals/client";
-import {
-  forgetRememberedReferralCode,
-  readRememberedReferralCode,
-} from "@/features/referrals/remembered-referral-code.server";
+import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import {
   AgentBookingPaymentInProgressError,
   AgentBookingProfileRequiredError,
@@ -1078,95 +1069,6 @@ const resolveAccountCustomer = Effect.fn(
   };
 });
 
-/**
- * Carries the remembered referral code in an account booking's first Pay
- * state when the account can still take it, so the first quote already prices
- * the invitation. The attribution is recorded only when that order is paid, so
- * an abandoned checkout leaves nothing behind. Bookings for someone else and
- * every rejection continue checkout without it.
- */
-const evaluateAccountReferralCode = Effect.fn(
-  "preparePayState.evaluateAccountReferralCode"
-)(function* (
-  accountCustomerId: DotyposCustomerId | undefined,
-  code: ReferralCode | undefined
-) {
-  if (accountCustomerId === undefined || code === undefined) {
-    return undefined;
-  }
-
-  const referrals = yield* ReferralService;
-  return yield* referrals
-    .evaluateCheckoutReferral({ code, dotyposCustomerId: accountCustomerId })
-    .pipe(
-      Effect.map((evaluation) =>
-        evaluation === undefined
-          ? undefined
-          : {
-              referralCode:
-                evaluation.kind === "eligible"
-                  ? canonicalPromotionCodeSchema.make(evaluation.code)
-                  : undefined,
-            }
-      ),
-      Effect.catch((error) =>
-        Effect.logInfo("Checkout referral code was not carried", {
-          reason: error._tag === "ReferralError" ? error.reason : error._tag,
-        }).pipe(Effect.as(undefined))
-      )
-    );
-});
-
-/**
- * A booking that is not the signed-in account cannot accept a referral here,
- * so a usable remembered code becomes the Pay page code box's prefill instead.
- * The customer still applies it there. An unknown or unusable code is dropped
- * without a message.
- */
-const findReferralCodePrefill = Effect.fn(
-  "preparePayState.findReferralCodePrefill"
-)(function* (input: PreparePayStateInput, code: ReferralCode | undefined) {
-  if (input.customer === "account" || code === undefined) {
-    return undefined;
-  }
-
-  const referrals = yield* ReferralService;
-  const availableCode = yield* referrals.findAvailableCode({ code }).pipe(
-    Effect.catch((error) =>
-      Effect.logInfo("Checkout referral code prefill was skipped", {
-        reason: error.reason,
-      }).pipe(Effect.as(undefined))
-    )
-  );
-  return availableCode === undefined
-    ? undefined
-    : canonicalPromotionCodeSchema.make(availableCode);
-});
-
-/**
- * Forgets the remembered referral code once the booker's own referral is
- * settled. Booking for someone else checks the booker, never the friend. A
- * failed check keeps the code and never blocks checkout.
- */
-const forgetSettledReferralCode = Effect.fn(
-  "preparePayState.forgetSettledReferralCode"
-)(
-  function* (bookedCustomerId: DotyposCustomerId) {
-    const settled = yield* isBookerReferralSettled({
-      bookedCustomerId,
-      paid: false,
-    });
-    if (!settled) return;
-
-    yield* Effect.tryPromise(() => forgetRememberedReferralCode());
-  },
-  Effect.catch((cause) =>
-    Effect.logWarning("Remembered referral code could not be settled", {
-      cause,
-    })
-  )
-);
-
 class UndeliverableContactEmailError extends Data.TaggedError(
   "UndeliverableContactEmailError"
 )<Record<string, never>> {}
@@ -1294,17 +1196,7 @@ const prepareSubmission = Effect.fn("prepareWorkspacePayState.submission")(
   function* (input: PreparePayStateInput, inReviewSandbox: Ref.Ref<boolean>) {
     const bookingAgent = yield* Effect.serviceOption(BookingAgent);
     const accountActivity = yield* OptionalAccountActivityGuard;
-    const rememberedReferralCode = yield* readRememberedReferralCode.pipe(
-      Effect.catch((cause) =>
-        Effect.logWarning("Remembered referral code could not be read", {
-          cause,
-        }).pipe(Effect.as(undefined))
-      )
-    );
-    const referralCodePrefill = yield* findReferralCodePrefill(
-      input,
-      rememberedReferralCode
-    );
+    const rememberedReferral = yield* RememberedReferral;
     const bookedCustomer = yield* Ref.make<DotyposCustomerId | undefined>(
       undefined
     );
@@ -1347,10 +1239,23 @@ const prepareSubmission = Effect.fn("prepareWorkspacePayState.submission")(
           input,
           bookingAgent,
         });
-        const accountReferral = yield* evaluateAccountReferralCode(
-          accountCustomer?.dotyposCustomerId,
-          rememberedReferralCode
+        // An account booking carries the remembered referral into its first
+        // Pay state, so the first quote already prices the invitation; the
+        // attribution is recorded only when that order is paid. A booking for
+        // someone else gets a usable code as the code box prefill instead.
+        const referralForBooking = yield* rememberedReferral.forBooking(
+          accountCustomer
+            ? { for: "account", customerId: accountCustomer.dotyposCustomerId }
+            : { for: "someone-else" }
         );
+        const accountReferral =
+          referralForBooking.kind === "carried"
+            ? referralForBooking
+            : undefined;
+        const referralCodePrefill =
+          referralForBooking.kind === "prefill"
+            ? referralForBooking.code
+            : undefined;
         yield* Ref.set(carriesAccountReferral, accountReferral !== undefined);
 
         // Submission locks the price: calendar sales are evaluated at this
@@ -1831,10 +1736,15 @@ const prepareSubmission = Effect.fn("prepareWorkspacePayState.submission")(
       })
     );
 
-    // Checked after the account lock is released, like the evaluation.
+    // Checked after the account lock is released. Booking for someone else
+    // checks the booker, never the friend.
     const settlingCustomer = yield* Ref.get(bookedCustomer);
-    if (rememberedReferralCode !== undefined && settlingCustomer) {
-      yield* forgetSettledReferralCode(settlingCustomer);
+    if (settlingCustomer) {
+      yield* rememberedReferral.forgetIfSettled({
+        kind: "order",
+        paid: false,
+        bookedCustomerId: settlingCustomer,
+      });
     }
 
     if (
@@ -1867,11 +1777,16 @@ const preparePayStateAction = defineWorkspaceAction(
         )
       ),
       Effect.provide(
-        Layer.mergeAll(
-          payStatePreparationServices,
-          OptionalAccountActivityGuard.Live,
-          CustomerAccountContactService.Live
-        ).pipe(Layer.provide(WorkspaceDatabase.Default))
+        RememberedReferral.Cookies.pipe(
+          Layer.provideMerge(
+            Layer.mergeAll(
+              payStatePreparationServices,
+              OptionalAccountActivityGuard.Live,
+              CustomerAccountContactService.Live
+            )
+          ),
+          Layer.provide(WorkspaceDatabase.Default)
+        )
       )
     )
 );

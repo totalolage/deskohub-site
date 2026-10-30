@@ -8,6 +8,7 @@ import { type Duration, Effect, Layer, Schema } from "effect";
 import type { WorkspaceE2EConfig } from "@/e2e/config";
 import { isFreshOwnedPayStateUrl } from "@/e2e/referrals/checkout";
 import { isOwnedReferralCheckoutReviewUrl } from "@/e2e/referrals/checkout-review";
+import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
 import { buildFreshCheckoutPayPath } from "@/features/checkout/backend/checkout/checkout-pay-url";
 import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import { CheckoutPricingServiceMock } from "@/features/checkout/backend/checkout/checkout-pricing.service.mock";
@@ -31,6 +32,8 @@ import {
 } from "@/features/discounts/contracts";
 import type { ReferralService as ReferralServiceTag } from "@/features/referrals";
 import { WithheldReferralService } from "@/features/referrals/referral.service.mock";
+import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
+import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { getSlowestSuccessfulCalendarLoad } from "@/shared/backend/config/google-calendar.config.test-utils";
 import {
@@ -42,12 +45,6 @@ import { withInstantSleeps } from "@/shared/testing/workspace-test-clock.test-ut
 import { instantStringSchema } from "@/shared/utils/temporal";
 
 mock.module("server-only", () => ({}));
-
-// The browser remembers a different shared code than the one typed below.
-mock.module("@/features/referrals/remembered-referral-code.server", () => ({
-  readRememberedReferralCode: Effect.succeed("RFLREMEMBERED"),
-  forgetRememberedReferralCode: async () => undefined,
-}));
 
 const payStateBookedAt = instantStringSchema.make("2026-06-01T09:58:00.000Z");
 
@@ -98,6 +95,8 @@ type SubmissionInput = {
   /** How long each live payable-reservation guard takes. */
   readonly requireCurrentDuration?: Duration.Input;
   readonly verifyHuman?: ReturnType<typeof mock>;
+  readonly rememberedReferralCode?: string;
+  readonly rememberedReferralWritable?: boolean;
   /** Replaces the pricing stub, for example with real pricing. */
   readonly pricing?: Layer.Layer<CheckoutPricingService>;
 };
@@ -166,6 +165,13 @@ const prepareSubmission = async (input?: SubmissionInput) => {
         freshPayUrl: "/en-US/checkout/pay?payState=fresh",
       })
     );
+  const rememberedReferralCookie = {
+    value: input?.rememberedReferralCode,
+  };
+  const referralService = Layer.succeed(ReferralService, {
+    lookupCodeKind,
+  } as never);
+  const contacts = Layer.mock(CustomerAccountContactService, {});
   const payStateToken =
     input?.payStateToken ??
     (await makePayStateToken({
@@ -181,9 +187,19 @@ const prepareSubmission = async (input?: SubmissionInput) => {
         BotProtectionServiceMock({ verifyHuman }),
         input?.pricing ?? CheckoutPricingServiceMock({ applyDiscountCode }),
         Layer.succeed(PayableReservationService, { requireCurrent }),
-        input?.referralService ??
-          Layer.succeed(ReferralService, { lookupCodeKind } as never),
-        Layer.succeed(CheckoutReferralService, { acceptCode } as never)
+        input?.referralService ?? referralService,
+        Layer.succeed(CheckoutReferralService, { acceptCode } as never),
+        RememberedReferral.inMemory(rememberedReferralCookie, {
+          writable: input?.rememberedReferralWritable,
+        }).pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              ReferralFeatureFlagService.fromDecision(true),
+              input?.referralService ?? referralService,
+              contacts
+            )
+          )
+        )
       )
     )
   );
@@ -196,6 +212,7 @@ const prepareSubmission = async (input?: SubmissionInput) => {
     requireCurrent,
     payStateToken,
     verifyHuman,
+    rememberedReferralCookie,
   };
 };
 
@@ -219,6 +236,93 @@ const runSubmissionWithinDeadline = async (
 };
 
 describe("applyDiscountCodeToPayState", () => {
+  test.each(["accepted", "already_accepted"] as const)(
+    "remembers a typed referral code once it is %s, replacing the stored one",
+    async (status) => {
+      const scenario = await runSubmission({
+        submittedCode: " rfl12345 ",
+        codeKind: "referral",
+        rememberedReferralCode: "RFLSHARED",
+        acceptCode: mock(() =>
+          Effect.succeed({ status, freshPayUrl: "/fresh" })
+        ),
+      });
+
+      expect(scenario.result.status).toBe(status);
+      expect(scenario.rememberedReferralCookie.value).toBe("RFL12345");
+    }
+  );
+
+  test.each(["already_attributed", "ineligible", "unavailable"] as const)(
+    "keeps the stored code when a typed referral is %s",
+    async (status) => {
+      const scenario = await runSubmission({
+        submittedCode: "RFL12345",
+        codeKind: "referral",
+        rememberedReferralCode: "RFLSHARED",
+        acceptCode: mock(() => Effect.succeed({ status })),
+      });
+
+      expect(scenario.result.status).toBe(status);
+      expect(scenario.rememberedReferralCookie.value).toBe("RFLSHARED");
+    }
+  );
+
+  test.each(["applied", "pricing_changed"] as const)(
+    "keeps the stored code when a typed code is not accepted as a referral: %s",
+    async (status) => {
+      const changedKeys = {
+        sectionKeys: ["order", "total"],
+        itemKeys: ["product:cowork:basic", "total:final"],
+      };
+      const scenario = await runSubmission({
+        submittedCode: "SAVE20",
+        codeKind: "other",
+        rememberedReferralCode: "RFLSHARED",
+        applyDiscountCode: mock(() =>
+          Effect.succeed(
+            status === "applied"
+              ? {
+                  kind: "cowork" as const,
+                  reservation,
+                  status,
+                  submittedCodeDiscountId,
+                  quote,
+                }
+              : {
+                  kind: "cowork" as const,
+                  reservation,
+                  status,
+                  quote,
+                  changedKeys,
+                }
+          )
+        ),
+      });
+
+      expect(scenario.result.status).toBe(status);
+      expect(scenario.rememberedReferralCookie.value).toBe("RFLSHARED");
+    }
+  );
+
+  test("returns an accepted referral when the cookie write fails", async () => {
+    const scenario = await runSubmission({
+      submittedCode: "RFL12345",
+      codeKind: "referral",
+      rememberedReferralCode: "RFLSHARED",
+      rememberedReferralWritable: false,
+      acceptCode: mock(() =>
+        Effect.succeed({ status: "accepted" as const, freshPayUrl: "/fresh" })
+      ),
+    });
+
+    expect(scenario.result).toEqual({
+      status: "accepted",
+      freshPayUrl: "/fresh",
+    });
+    expect(scenario.rememberedReferralCookie.value).toBe("RFLSHARED");
+  });
+
   test("routes a referral through explicit acceptance and leaves the ordinary code slot free", async () => {
     const acceptCode = mock((input: { readonly payStateToken: string }) =>
       Effect.gen(function* () {
