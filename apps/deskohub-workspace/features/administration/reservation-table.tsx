@@ -16,6 +16,7 @@ import {
 import { EmptyState } from "./empty-state";
 import {
   formatAdministrationDateTime,
+  formatAdministrationEarlySetup,
   formatAdministrationReservationDate,
 } from "./formatters";
 import { m } from "./i18n";
@@ -198,6 +199,10 @@ export function ReservationTable({
                           { locale }
                         )}
                     </p>
+                    <ReservationEarlySetup
+                      locale={locale}
+                      reservation={reservation}
+                    />
                   </div>
                   <ReservationStatus
                     alignRight
@@ -262,7 +267,21 @@ function ReservationDate({
       <p className="mt-1 text-xs text-navy-blue/65">
         {getAdministrationReservationProductTitle(reservation.product, locale)}
       </p>
+      <ReservationEarlySetup locale={locale} reservation={reservation} />
     </>
+  );
+}
+
+function ReservationEarlySetup({
+  locale,
+  reservation,
+}: {
+  readonly locale: Locale;
+  readonly reservation: AdministrationReservationSummary;
+}) {
+  const earlySetup = formatAdministrationEarlySetup(reservation, locale);
+  return (
+    earlySetup && <p className="mt-1 text-xs text-navy-blue/65">{earlySetup}</p>
   );
 }
 

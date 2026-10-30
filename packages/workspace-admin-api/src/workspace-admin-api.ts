@@ -1146,6 +1146,10 @@ export const AdministrationReservationSummary = Schema.Struct({
   liveDetailsAvailable: Schema.Boolean,
   startsAt: Schema.NullOr(Schema.String),
   endsAt: Schema.NullOr(Schema.String),
+  /** When a meeting room booked with early setup is held from, before `startsAt`. */
+  setupStartsAt: Schema.NullOr(Schema.String).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed(null))
+  ),
   date: Schema.NullOr(Schema.String),
   type: AdministrationReservationFamily,
   typeLabel: Schema.String,

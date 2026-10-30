@@ -722,7 +722,7 @@ describe("AdministrationService", () => {
     expect(customerCalls[0]).toHaveLength(24);
   });
 
-  test("shows an early-setup meeting room's booked time", async () => {
+  test("shows an early-setup meeting room's booked time and setup start", async () => {
     const instant = Temporal.Instant.from("2026-08-01T08:00:00Z");
     const reservationRow = (
       id: string,
@@ -812,23 +812,28 @@ describe("AdministrationService", () => {
       Effect.runPromise
     );
 
-    const times = result.items.map(({ date, endsAt, id, startsAt }) => ({
-      date,
-      endsAt,
-      id,
-      startsAt,
-    }));
+    const times = result.items.map(
+      ({ date, endsAt, id, setupStartsAt, startsAt }) => ({
+        date,
+        endsAt,
+        id,
+        setupStartsAt,
+        startsAt,
+      })
+    );
     expect(times).toEqual([
       {
         date: "2026-08-10",
         endsAt: "2026-08-10T11:00:00.000+02:00",
         id: "workspace-early-setup",
+        setupStartsAt: "2026-08-10T07:45:00.000Z",
         startsAt: "2026-08-10T08:00:00.000Z",
       },
       {
         date: "2026-08-10",
         endsAt: "2026-08-10T11:00:00.000+02:00",
         id: "workspace-on-time",
+        setupStartsAt: null,
         startsAt: "2026-08-10T10:00:00.000+02:00",
       },
     ]);

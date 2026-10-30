@@ -124,7 +124,7 @@ describe("GET /[locale]/admin/reservations/export", () => {
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
     expect(byteOrderMark).toEqual([0xef, 0xbb, 0xbf]);
     expect(records[0]).toBe(
-      "Reservation ID,Dotypos booking ID,Start,End,Status,Attention,Dotypos customer ID,Customer,Email,Phone,Product,Created,Payment status,Payment amount,Payment currency"
+      "Reservation ID,Dotypos booking ID,Start,End,Early setup from,Status,Attention,Dotypos customer ID,Customer,Email,Phone,Product,Created,Payment status,Payment amount,Payment currency"
     );
     expect(records[1]).toBe(
       [
@@ -132,6 +132,7 @@ describe("GET /[locale]/admin/reservations/export", () => {
         "dotypos-booking-1",
         "2026-08-20 10:00",
         "2026-08-20 12:00",
+        "",
         "Complete",
         "",
         "dotypos-customer-1",
@@ -154,7 +155,7 @@ describe("GET /[locale]/admin/reservations/export", () => {
     const { records } = await readCsv(await requestExport("", "cs-CZ"));
 
     expect(records[0]).toBe(
-      "ID rezervace,ID rezervace v Dotyposu,Začátek,Konec,Stav,Upozornění,ID zákazníka v Dotyposu,Zákazník,E-mail,Telefon,Produkt,Vytvořeno,Stav platby,Částka platby,Měna platby"
+      "ID rezervace,ID rezervace v Dotyposu,Začátek,Konec,Příprava od,Stav,Upozornění,ID zákazníka v Dotyposu,Zákazník,E-mail,Telefon,Produkt,Vytvořeno,Stav platby,Částka platby,Měna platby"
     );
     expect(records[1]).not.toContain(",Complete,");
   });

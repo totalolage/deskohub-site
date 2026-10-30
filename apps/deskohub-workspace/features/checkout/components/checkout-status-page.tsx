@@ -12,15 +12,11 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import type {
-  CheckoutStatusKind,
-  CheckoutStatusViewModel,
-} from "@/features/checkout/backend/checkout";
+import type { CheckoutStatusViewModel } from "@/features/checkout/backend/checkout";
 import {
-  shouldOfferNewReservation,
-  shouldOfferReservationRetry,
-  shouldPromiseReservationDetailsEmail,
-} from "@/features/checkout/checkout-status-policy";
+  type CheckoutStatusKind,
+  checkoutStatusTraits,
+} from "@/features/checkout/checkout-status-kind";
 import type { CheckoutStatusSummaryPresentation } from "@/features/checkout/checkout-status-summary-presentation";
 import { getCoworkCheckoutStatusSummary } from "@/features/cowork/components/cowork-checkout-status-summary";
 import { type Locale, m } from "@/features/i18n";
@@ -247,7 +243,9 @@ const getSupportContactMessage = (
   status: CheckoutStatusViewModel,
   locale: Locale,
   summaryPresentation: CheckoutStatusSummaryPresentation | undefined,
-  topic: NonNullable<ReturnType<typeof getSupportTopic>>
+  topic: NonNullable<
+    (typeof checkoutStatusTraits)[CheckoutStatusKind]["supportTopic"]
+  >
 ) => {
   // Without reconstructed details the order reference alone identifies it.
   const reservationDetails = [
@@ -346,28 +344,12 @@ const getReserveAgainLabel = (
     : m.checkoutStatusReserveAgain({}, { locale });
 };
 
-/** An undelivered confirmation shares the failed-delivery support request. */
-const getSupportTopic = (status: CheckoutStatusKind) => {
-  switch (status) {
-    case "fulfillment_failed":
-    case "paid_fulfillment_delayed":
-    case "paid_delivery_delayed":
-      return "fulfillment_failed" as const;
-    case "late_payment_review":
-      return "late_payment_review" as const;
-    case "payment_pending_delayed":
-      return "payment_pending" as const;
-    default:
-      return undefined;
-  }
-};
-
 const getSupportContactHref = (
   status: CheckoutStatusViewModel,
   locale: Locale,
   summaryPresentation: CheckoutStatusSummaryPresentation | undefined
 ) => {
-  const topic = getSupportTopic(status.status);
+  const topic = checkoutStatusTraits[status.status].supportTopic;
   if (!topic || status.status === "not_found") return undefined;
 
   const url = new URL(`/${locale}/contact`, "https://deskohub.local");
@@ -397,7 +379,8 @@ export function CheckoutStatusPage({
     locale,
     summaryPresentation
   );
-  const offersRetry = shouldOfferReservationRetry(status.status);
+  const offersRetry =
+    checkoutStatusTraits[status.status].offersReservationRetry;
   const repeatReservationSearchParams =
     getRepeatReservationSearchParams(status);
   const reserveAgainPath = getReserveAgainPath(status, locale, {
@@ -405,7 +388,8 @@ export function CheckoutStatusPage({
     repeatSearchParams: repeatReservationSearchParams,
   });
   const showSupportButton = !!supportContactHref;
-  const offersNewReservation = shouldOfferNewReservation(status.status);
+  const offersNewReservation =
+    checkoutStatusTraits[status.status].offersNewReservation;
   const reviewSandbox = status.status !== "not_found" && status.reviewSandbox;
   const reservationAccessHref =
     status.status === "fulfilled" && !reviewSandbox
@@ -515,7 +499,7 @@ export function CheckoutStatusPage({
           </dl>
 
           {summaryRows.length === 0 &&
-            shouldPromiseReservationDetailsEmail(status.status) && (
+            checkoutStatusTraits[status.status].promisesEmail && (
               <p className="mt-4 rounded-2xl border border-burned-orange/16 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-burned-orange-ink">
                 {m.checkoutStatusMissingSummary({}, { locale })}
               </p>

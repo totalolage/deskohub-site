@@ -319,6 +319,7 @@ const createReservationDetails = (
           reservationTitle: m.reservationTierMeetingRoomTitle({}, { locale }),
           dateLabel: m.reservationEmailDateLabel({}, { locale }),
           timeLabel: m.reservationEmailTimeLabel({}, { locale }),
+          setupLabel: m.reservationEmailSetupLabel({}, { locale }),
           wholeDay: m.reservationMeetingRoomDurationWholeDay({}, { locale }),
         }),
       office: () => [

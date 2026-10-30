@@ -2,8 +2,10 @@ import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import { formatCurrencyAmount } from "@deskohub/i18n/currency";
 import { Cause, Match, Option } from "effect";
 import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
+import { useId, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { type Locale, m } from "@/features/i18n";
+import { withMeetingRoomEarlySetup } from "@/features/reservation/meeting-room-early-setup-link";
 import { Button } from "@/shared/components/ui/button";
 import { ChoiceCard } from "@/shared/components/ui/choice-card";
 import {
@@ -56,7 +58,11 @@ type BookingFormProps = {
   readonly onSelectionChange: () => void;
   /** Called with the tool arguments when the selection is valid. */
   readonly onCheck: (selection: BookingSelection) => void;
-  readonly onReserve: (selection: BookingSelection) => void;
+  /** Called with the quoted selection and the customer's early-setup choice. */
+  readonly onReserve: (
+    selection: BookingSelection,
+    earlySetup: boolean
+  ) => void;
   readonly onOpenLink: (url: string) => void;
 };
 
@@ -163,6 +169,20 @@ export function BookingForm({
   const reserved = AsyncResult.isSuccess(reservation)
     ? reservation.value
     : undefined;
+  const [earlySetupChosen, setEarlySetupChosen] = useState(false);
+  const earlySetupAvailable =
+    checked?.availability.meeting_room?.early_setup_available === true;
+  // As on the site, a completed check whose setup time is taken drops the
+  // choice; running, failed or cleared checks keep it.
+  if (
+    earlySetupChosen &&
+    checked !== undefined &&
+    !AsyncResult.isWaiting(check) &&
+    !earlySetupAvailable
+  ) {
+    setEarlySetupChosen(false);
+  }
+  const earlySetup = earlySetupAvailable && earlySetupChosen;
   const link = (url: string, label: string) => (
     <SiteLink
       label={label}
@@ -404,6 +424,22 @@ export function BookingForm({
 
       {checked?.quote && checked.selection && (
         <div className="space-y-4">
+          {start.mode === "reserve" &&
+            checked.selection.family === "meeting-room" && (
+              <EarlySetupChoice
+                available={earlySetupAvailable}
+                checked={earlySetup}
+                // A running check replaces this one, and the held booking
+                // keeps the choice it was made with.
+                disabled={
+                  AsyncResult.isWaiting(check) ||
+                  reserved !== undefined ||
+                  AsyncResult.isWaiting(reservation)
+                }
+                locale={locale}
+                onCheckedChange={setEarlySetupChosen}
+              />
+            )}
           {reserved
             ? link(
                 reserved.pay_url,
@@ -412,8 +448,11 @@ export function BookingForm({
             : start.mode === "reserve" && (
                 <Button
                   onClick={() =>
-                    checked.selection && onReserve(checked.selection)
+                    checked.selection &&
+                    onReserve(checked.selection, earlySetup)
                   }
+                  // A running check replaces the selection and its choices.
+                  disabled={AsyncResult.isWaiting(check)}
                   pending={AsyncResult.isWaiting(reservation)}
                   type="button"
                 >
@@ -430,7 +469,10 @@ export function BookingForm({
                 </p>
               )}
               {link(
-                checked.quote.reservation_url,
+                // The quote's link predates the setup choice, so carry it.
+                earlySetup
+                  ? withMeetingRoomEarlySetup(checked.quote.reservation_url)
+                  : checked.quote.reservation_url,
                 m.bookingWidgetOpenReservationPage({}, { locale })
               )}
             </div>
@@ -494,6 +536,49 @@ function CheckSummary({
         </>
       )}
     </>
+  );
+}
+
+/**
+ * The free option to arrive 15 minutes before a meeting room's start, as on
+ * the reservation page. It turns on only when the room is free for the setup
+ * time too, and otherwise says why.
+ */
+function EarlySetupChoice({
+  available,
+  checked,
+  disabled,
+  locale,
+  onCheckedChange,
+}: {
+  readonly available: boolean;
+  readonly checked: boolean;
+  readonly disabled: boolean;
+  readonly locale: Locale;
+  readonly onCheckedChange: (checked: boolean) => void;
+}) {
+  const reasonId = useId();
+
+  return (
+    <div className="space-y-1">
+      <ChoiceCard align="center" tone="neutral">
+        <input
+          aria-describedby={available ? undefined : reasonId}
+          checked={checked}
+          disabled={disabled || !available}
+          onChange={(event) => onCheckedChange(event.target.checked)}
+          type="checkbox"
+        />
+        <span className="text-sm font-medium">
+          {m.reservationMeetingRoomEarlySetupLabel({}, { locale })}
+        </span>
+      </ChoiceCard>
+      {!available && (
+        <p className="text-sm text-muted" id={reasonId}>
+          {m.reservationMeetingRoomEarlySetupUnavailable({}, { locale })}
+        </p>
+      )}
+    </div>
   );
 }
 

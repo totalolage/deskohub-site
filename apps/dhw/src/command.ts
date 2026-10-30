@@ -253,6 +253,9 @@ const reservationsGetCommand = Command.make(
             reservation.status.label,
           ].join("\t")
         );
+        if (reservation.setupStartsAt) {
+          yield* Console.log(formatReservationEarlySetup(reservation));
+        }
         if (detail.author) {
           yield* Console.log(formatReservationAuthor(detail.author));
         }
@@ -2834,6 +2837,13 @@ const formatReservationRow = (
     reservation.customer?.displayName ?? reservation.customerId,
     reservation.status.label,
   ].join("\t");
+
+const formatReservationEarlySetup = (
+  reservation: AdministrationReservationSummaryType
+) =>
+  `Early setup: from ${reservation.setupStartsAt}, booked ${
+    reservation.startsAt ?? "unknown"
+  } to ${reservation.endsAt ?? "unknown"}`;
 
 const formatReservationAuthor = (author: AdministrationReservationAuthorType) =>
   `Booked by: ${

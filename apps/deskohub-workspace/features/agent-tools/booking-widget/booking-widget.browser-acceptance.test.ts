@@ -1,4 +1,11 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -21,6 +28,7 @@ import {
   availabilityResult,
   bookingOfferings,
   bookingToday,
+  meetingRoomAvailabilityResult,
   quoteResult,
   reservationResult,
   showBookingResult,
@@ -29,6 +37,10 @@ import { buildBookingWidget } from "./build-booking-widget";
 
 // Set to a directory to keep a screenshot of each state the suite reaches.
 const screenshotDirectory = process.env.BOOKING_WIDGET_SCREENSHOT_DIRECTORY;
+
+// A case drives several checks through the frame, which takes seconds even on
+// an idle machine, and a timed-out case takes the browser down with it.
+setDefaultTimeout(90_000);
 
 const chromiumAvailable = await playwrightChromiumAvailable();
 let browser: Browser | undefined;
@@ -156,10 +168,24 @@ const openBookingView = async ({
   readonly waitForForm?: boolean;
 }) => {
   if (!browser) throw new Error("The browser has not been launched.");
-  const page = await browser.newPage({
+  const pageOptions = {
     viewport: { width: 560, height: 900 },
     timezoneId: "Europe/Prague",
-  });
+  };
+  // Bun kills child processes when a case times out, the browser included,
+  // so the next case starts another rather than failing with it. Other
+  // failures stay this case's own.
+  const page = await browser
+    .newPage(pageOptions)
+    .catch(async (error: Error) => {
+      if (
+        !/has been closed|Failed to create browser context/.test(error.message)
+      ) {
+        throw error;
+      }
+      browser = await chromium.launch({ headless: true });
+      return browser.newPage(pageOptions);
+    });
   const calls: ToolCall[] = [];
   const linkOpened = Promise.withResolvers<string>();
   await page.exposeFunction(
@@ -621,6 +647,83 @@ describe.skipIf(!chromiumAvailable)("booking view", () => {
       await page.close();
     }
   });
+
+  for (const locale of ["en-US", "cs-CZ"] as const) {
+    test(`meeting room in ${locale}: offers early setup only while the setup time is free and keeps the choice for another free start`, async () => {
+      const { page, view, calls, linkOpened } = await openBookingView({
+        mode: "reserve",
+        locale,
+        answers: {
+          // The room is booked just before 11:00, so only that start's setup
+          // time is taken.
+          check_availability: ({ start_time, locale }) =>
+            toolResult(
+              meetingRoomAvailabilityResult({
+                startTime: String(start_time),
+                earlySetupAvailable: start_time !== "11:00",
+                locale: toLocale(locale),
+              })
+            ),
+        },
+      });
+      const earlySetup = view.getByRole("checkbox", {
+        name: m.reservationMeetingRoomEarlySetupLabel({}, { locale }),
+      });
+      const startTime = view.getByLabel(
+        m.bookingWidgetStartTimeLabel({}, { locale })
+      );
+      try {
+        await view
+          .getByText(m.bookingWidgetFamilyMeetingRoom({}, { locale }), {
+            exact: true,
+          })
+          .click();
+        await startTime.fill("11:00");
+        await checkAvailability(view, locale);
+        await expect(earlySetup.isDisabled()).resolves.toBe(true);
+        await expect(earlySetup.isChecked()).resolves.toBe(false);
+        await capture(page, `early-setup-taken-${locale}`);
+
+        await startTime.fill("09:00");
+        await checkAvailability(view, locale);
+        await expect(earlySetup.isEnabled()).resolves.toBe(true);
+        await expect(earlySetup.isChecked()).resolves.toBe(false);
+        await capture(page, `early-setup-free-${locale}`);
+        await earlySetup.check();
+        await capture(page, `early-setup-chosen-${locale}`);
+
+        await startTime.fill("10:00");
+        await checkAvailability(view, locale);
+        await expect(earlySetup.isChecked()).resolves.toBe(true);
+
+        await view
+          .getByRole("button", { name: m.bookingWidgetReserve({}, { locale }) })
+          .click();
+        const payLink = view.getByRole("link", {
+          name: m.bookingWidgetOpenPaymentPage({}, { locale }),
+        });
+        await payLink.waitFor();
+        expect(calls.at(-1)).toEqual({
+          name: "start_reservation",
+          args: {
+            family: "meeting-room",
+            date: bookingToday,
+            start_time: "10:00",
+            duration: "hour:1",
+            early_setup: true,
+            locale,
+          },
+        });
+        await expect(earlySetup.isChecked()).resolves.toBe(true);
+        await expect(earlySetup.isDisabled()).resolves.toBe(true);
+        await capture(page, `early-setup-held-${locale}`);
+        await payLink.click();
+        await expect(linkOpened).resolves.toBe(reservationResult().pay_url);
+      } finally {
+        await page.close();
+      }
+    });
+  }
 
   test("words a startup failure in the view's language", async () => {
     const { page, view } = await openBookingView({

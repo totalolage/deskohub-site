@@ -13,6 +13,7 @@ import {
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
 import { type Locale, m } from "@/features/i18n";
+import { formatMeetingRoomSetupStart } from "@/features/reservation/meeting-room-reservation-display-time";
 import { formatReservationDisplayDateRange } from "@/features/reservation/reservation-date";
 import {
   reservationAccessPath,
@@ -134,6 +135,26 @@ const formatReservationPeriod = (
   }).formatRange(start, end);
 };
 
+/** The setup start of a meeting room booked with early setup. */
+const formatReservationSetupStart = (
+  reservation: CustomerReservationSummary,
+  locale: Locale
+) =>
+  reservation.setupStartsAt && reservation.startsAt
+    ? m.accountReservationSetupFrom(
+        {
+          time: formatMeetingRoomSetupStart(
+            {
+              setupStart: Temporal.Instant.from(reservation.setupStartsAt),
+              bookedStart: Temporal.Instant.from(reservation.startsAt),
+            },
+            locale
+          ),
+        },
+        { locale }
+      )
+    : null;
+
 const formatReservationDateTile = (startsAt: string | null, locale: Locale) => {
   if (!startsAt) return null;
   const date = new Date(startsAt);
@@ -244,6 +265,7 @@ function FeaturedReservationItem({
   readonly reservation: CustomerReservationSummary;
 }) {
   const period = formatReservationPeriod(reservation, locale);
+  const setupStart = formatReservationSetupStart(reservation, locale);
   const title = getReservationTitle(reservation, locale);
 
   return (
@@ -319,6 +341,9 @@ function FeaturedReservationItem({
               <p className="mt-3 text-sm text-[#64748b]">
                 {m.accountFeatureUnavailable({}, { locale })}
               </p>
+            )}
+            {setupStart && (
+              <p className="mt-1 pl-6 text-sm text-[#64748b]">{setupStart}</p>
             )}
           </div>
 
@@ -419,6 +444,7 @@ function CompactReservationItem({
 }) {
   const dateTile = formatReservationDateTile(reservation.startsAt, locale);
   const period = formatReservationPeriod(reservation, locale);
+  const setupStart = formatReservationSetupStart(reservation, locale);
 
   return (
     <li className="min-w-0">
@@ -471,6 +497,7 @@ function CompactReservationItem({
                   {m.accountFeatureUnavailable({}, { locale })}
                 </span>
               )}
+              {setupStart && <span>{setupStart}</span>}
               <span className="inline-flex items-center gap-1.5">
                 <Users aria-hidden="true" className="size-4 shrink-0" />
                 <span>
@@ -590,6 +617,10 @@ function PastReservationTable({
                   <span className="break-words">
                     {formatReservationPeriod(reservation, locale) ??
                       m.accountFeatureUnavailable({}, { locale })}
+                    <PastReservationSetupStart
+                      locale={locale}
+                      reservation={reservation}
+                    />
                   </span>
                 </div>
               </td>
@@ -654,6 +685,21 @@ function PastReservationTable({
         </tbody>
       </table>
     </CardContent>
+  );
+}
+
+function PastReservationSetupStart({
+  locale,
+  reservation,
+}: {
+  readonly locale: Locale;
+  readonly reservation: CustomerReservationSummary;
+}) {
+  const setupStart = formatReservationSetupStart(reservation, locale);
+  return (
+    setupStart && (
+      <span className="mt-1 block text-xs text-[#64748b]">{setupStart}</span>
+    )
   );
 }
 

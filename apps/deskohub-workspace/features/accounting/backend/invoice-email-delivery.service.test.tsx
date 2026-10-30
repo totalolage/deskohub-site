@@ -561,8 +561,7 @@ const makeHarness = (options: {
           sentResult(`email-${options.sentMessages.length}`)
         );
       }),
-    sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
-    verify: Effect.succeed(true),
+    sendBatch: () => Effect.die("Invoice delivery tests do not send batches."),
   };
 
   return {

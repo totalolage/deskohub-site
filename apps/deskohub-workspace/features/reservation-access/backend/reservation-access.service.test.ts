@@ -70,6 +70,40 @@ describe("reservation access interval", () => {
     expect(interval.providerEndsAt).toBe("2026-07-01T16:00:00+02:00");
   });
 
+  test("records the exact early-setup interval and its rounded provider window", () => {
+    const interval = Effect.runSync(
+      getReservationAccessInterval({
+        reservationId,
+        reservedFrom: Temporal.Instant.from("2099-07-01T07:45:00Z"),
+        reservedUntil: Temporal.Instant.from("2099-07-01T09:00:00Z"),
+        now: Temporal.Instant.from("2099-07-01T07:20:00Z"),
+      })
+    );
+
+    expect(interval.scheduledStartsAt.toString()).toBe("2099-07-01T07:45:00Z");
+    expect(interval.startsAt.toString()).toBe("2099-07-01T07:45:00Z");
+    expect(interval.endsAt.toString()).toBe("2099-07-01T09:00:00Z");
+    expect(interval.providerStartsAt).toBe("2099-07-01T09:00:00+02:00");
+    expect(interval.providerEndsAt).toBe("2099-07-01T11:00:00+02:00");
+  });
+
+  test("keeps the exact early-setup interval when issued after setup begins", () => {
+    const interval = Effect.runSync(
+      getReservationAccessInterval({
+        reservationId,
+        reservedFrom: Temporal.Instant.from("2099-07-01T07:45:00Z"),
+        reservedUntil: Temporal.Instant.from("2099-07-01T09:00:00Z"),
+        now: Temporal.Instant.from("2099-07-01T08:20:00Z"),
+      })
+    );
+
+    expect(interval.scheduledStartsAt.toString()).toBe("2099-07-01T07:45:00Z");
+    expect(interval.startsAt.toString()).toBe("2099-07-01T07:45:00Z");
+    expect(interval.endsAt.toString()).toBe("2099-07-01T09:00:00Z");
+    expect(interval.providerStartsAt).toBe("2099-07-01T10:00:00+02:00");
+    expect(interval.providerEndsAt).toBe("2099-07-01T11:00:00+02:00");
+  });
+
   test("accepts 672 hours and rejects 673 hours", () => {
     const startsAt = Temporal.Instant.from("2026-01-01T00:00:00Z");
     const accepted = Effect.runSync(
@@ -182,6 +216,7 @@ describe("ReservationAccessService", () => {
       Effect.die("Igloohome must not be called")
     );
     const ensure = mock(() => Effect.succeed(pastGrant));
+    const rescheduleIssued = mock(() => Effect.succeed(pastGrant));
 
     const issued = await Effect.gen(function* () {
       const service = yield* ReservationAccessService;
@@ -194,6 +229,7 @@ describe("ReservationAccessService", () => {
               Layer.mock(ReservationAccessRepository, {
                 findByReservationId: mock(() => Effect.succeed(pastGrant)),
                 ensure,
+                rescheduleIssued,
                 loadIssuedCode: mock(() => Effect.succeed(accessCode)),
               }),
               Layer.mock(IgloohomeService, { issueHourlyAlgoPin })
@@ -206,24 +242,35 @@ describe("ReservationAccessService", () => {
 
     expect(issued.accessCode).toBe(accessCode);
     expect(ensure).not.toHaveBeenCalled();
+    expect(rescheduleIssued).not.toHaveBeenCalled();
     expect(issueHourlyAlgoPin).not.toHaveBeenCalled();
   });
 
-  test("reuses an issued credential when reservation times retain the same rounded access target", async () => {
-    const scheduledReservation = {
-      reservationId,
-      reservedFrom: Temporal.Instant.from("2099-07-01T08:15:00Z"),
-      reservedUntil: Temporal.Instant.from("2099-07-01T16:15:00Z"),
-    };
+  type RescheduleIssuedInput = Parameters<
+    (typeof ReservationAccessRepository.Service)["rescheduleIssued"]
+  >[0];
+  const rescheduleIssuedToBounds = () =>
+    mock((input: RescheduleIssuedInput) =>
+      Effect.succeed({ ...grant, ...input.to })
+    );
+
+  test("records the moved span when reservation times retain the same rounded access target", async () => {
     const scheduledGrant = {
       ...grant,
-      scheduledAccessStartsAt: Temporal.Instant.from("2099-07-01T08:00:00Z"),
-      accessStartsAt: Temporal.Instant.from("2099-07-01T08:00:00Z"),
-      accessEndsAt: Temporal.Instant.from("2099-07-01T17:00:00Z"),
+      scheduledAccessStartsAt: Temporal.Instant.from("2099-07-01T08:15:00Z"),
+      accessStartsAt: Temporal.Instant.from("2099-07-01T08:15:00Z"),
+      accessEndsAt: Temporal.Instant.from("2099-07-01T16:15:00Z"),
+    };
+    const movedReservation = {
+      reservationId,
+      reservedFrom: Temporal.Instant.from("2099-07-01T08:45:00Z"),
+      reservedUntil: Temporal.Instant.from("2099-07-01T16:45:00Z"),
     };
     const issueHourlyAlgoPin = mock(() =>
       Effect.die("Igloohome must not be called")
     );
+    const ensure = mock(() => Effect.die("A reused PIN must not be reset"));
+    const rescheduleIssued = rescheduleIssuedToBounds();
     const loadIssuedCode = mock((_: ScheduledBounds) =>
       Effect.succeed(accessCode)
     );
@@ -231,11 +278,7 @@ describe("ReservationAccessService", () => {
 
     const issued = await Effect.gen(function* () {
       const service = yield* ReservationAccessService;
-      return yield* service.issueForReservation({
-        ...scheduledReservation,
-        reservedFrom: Temporal.Instant.from("2099-07-01T08:45:00Z"),
-        reservedUntil: Temporal.Instant.from("2099-07-01T16:45:00Z"),
-      });
+      return yield* service.issueForReservation(movedReservation);
     }).pipe(
       Effect.provide(
         ReservationAccessService.Default.pipe(
@@ -243,6 +286,8 @@ describe("ReservationAccessService", () => {
             Layer.mergeAll(
               Layer.mock(ReservationAccessRepository, {
                 findByReservationId: mock(() => Effect.succeed(scheduledGrant)),
+                ensure,
+                rescheduleIssued,
                 loadIssuedCode,
                 markUncertain,
               }),
@@ -255,46 +300,72 @@ describe("ReservationAccessService", () => {
     );
 
     expect(issued.accessCode).toBe(accessCode);
+    expect(issued.accessStartsAt.equals(movedReservation.reservedFrom)).toBe(
+      true
+    );
+    expect(issued.accessEndsAt.equals(movedReservation.reservedUntil)).toBe(
+      true
+    );
+    expect(rescheduleIssued).toHaveBeenCalledTimes(1);
+    const [rescheduled] = rescheduleIssued.mock.calls[0] ?? [];
+    expect(
+      rescheduled?.from.scheduledAccessStartsAt.equals(
+        scheduledGrant.scheduledAccessStartsAt
+      )
+    ).toBe(true);
+    expect(
+      rescheduled?.to.scheduledAccessStartsAt.equals(
+        movedReservation.reservedFrom
+      )
+    ).toBe(true);
+    expect(
+      rescheduled?.to.accessStartsAt.equals(movedReservation.reservedFrom)
+    ).toBe(true);
+    expect(
+      rescheduled?.to.accessEndsAt.equals(movedReservation.reservedUntil)
+    ).toBe(true);
     expect(loadIssuedCode).toHaveBeenCalledTimes(1);
-    // The load matches the bounds the request read, so it never discloses a
-    // PIN issued for other hours.
     expect(formatBounds(loadIssuedCode.mock.calls[0]?.[0])).toEqual({
-      scheduledAccessStartsAt: "2099-07-01T08:00:00Z",
-      accessStartsAt: "2099-07-01T08:00:00Z",
-      accessEndsAt: "2099-07-01T17:00:00Z",
+      scheduledAccessStartsAt: movedReservation.reservedFrom.toString(),
+      accessStartsAt: movedReservation.reservedFrom.toString(),
+      accessEndsAt: movedReservation.reservedUntil.toString(),
     });
+    expect(ensure).not.toHaveBeenCalled();
     expect(markUncertain).not.toHaveBeenCalled();
     expect(issueHourlyAlgoPin).not.toHaveBeenCalled();
   });
 
-  test("reuses an issued credential that records its exact span rather than whole hours", async () => {
-    const exactReservation = {
-      reservationId,
-      reservedFrom: Temporal.Instant.from("2099-07-01T08:45:00Z"),
-      reservedUntil: Temporal.Instant.from("2099-07-01T10:30:00Z"),
-    };
-    const exactGrant = {
+  test("shows an earlier early-setup start without reissuing the PIN", async () => {
+    // Setup moved from 9:45 to 9:30 Prague time, within the same lock hour.
+    const earlySetupGrant = {
       ...grant,
-      scheduledAccessStartsAt: exactReservation.reservedFrom,
-      accessStartsAt: exactReservation.reservedFrom,
-      accessEndsAt: exactReservation.reservedUntil,
+      scheduledAccessStartsAt: Temporal.Instant.from("2099-07-01T07:45:00Z"),
+      accessStartsAt: Temporal.Instant.from("2099-07-01T07:45:00Z"),
+      accessEndsAt: Temporal.Instant.from("2099-07-01T09:00:00Z"),
+    };
+    const earlierSetup = {
+      reservationId,
+      reservedFrom: Temporal.Instant.from("2099-07-01T07:30:00Z"),
+      reservedUntil: Temporal.Instant.from("2099-07-01T09:00:00Z"),
     };
     const issueHourlyAlgoPin = mock(() =>
       Effect.die("Igloohome must not be called")
     );
-    const ensure = mock(() => Effect.die("The grant must not be reset"));
+    const rescheduleIssued = rescheduleIssuedToBounds();
 
     const issued = await Effect.gen(function* () {
       const service = yield* ReservationAccessService;
-      return yield* service.issueForReservation(exactReservation);
+      return yield* service.issueForReservation(earlierSetup);
     }).pipe(
       Effect.provide(
         ReservationAccessService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ReservationAccessRepository, {
-                findByReservationId: mock(() => Effect.succeed(exactGrant)),
-                ensure,
+                findByReservationId: mock(() =>
+                  Effect.succeed(earlySetupGrant)
+                ),
+                rescheduleIssued,
                 loadIssuedCode: mock(() => Effect.succeed(accessCode)),
               }),
               Layer.mock(IgloohomeService, { issueHourlyAlgoPin })
@@ -305,13 +376,184 @@ describe("ReservationAccessService", () => {
       Effect.runPromise
     );
 
-    expect(issued).toEqual({
-      grantId,
-      accessCode,
-      accessStartsAt: exactReservation.reservedFrom,
-      accessEndsAt: exactReservation.reservedUntil,
-    });
-    expect(ensure).not.toHaveBeenCalled();
+    expect(issued.accessCode).toBe(accessCode);
+    expect(issued.accessStartsAt.equals(earlierSetup.reservedFrom)).toBe(true);
+    expect(rescheduleIssued).toHaveBeenCalledTimes(1);
+    expect(issueHourlyAlgoPin).not.toHaveBeenCalled();
+  });
+
+  test("takes the exact span when reusing legacy rounded bounds for an early-setup reservation", async () => {
+    const earlySetupReservation = {
+      reservationId,
+      reservedFrom: Temporal.Instant.from("2099-07-01T07:45:00Z"),
+      reservedUntil: Temporal.Instant.from("2099-07-01T09:00:00Z"),
+    };
+    const legacyGrant = {
+      ...grant,
+      scheduledAccessStartsAt: Temporal.Instant.from("2099-07-01T07:00:00Z"),
+      accessStartsAt: Temporal.Instant.from("2099-07-01T07:00:00Z"),
+      accessEndsAt: Temporal.Instant.from("2099-07-01T09:00:00Z"),
+    };
+    const rescheduleIssued = rescheduleIssuedToBounds();
+    const loadIssuedCode = mock(() => Effect.succeed(accessCode));
+    const issueHourlyAlgoPin = mock(() =>
+      Effect.die("Igloohome must not be called")
+    );
+
+    const issued = await Effect.gen(function* () {
+      const service = yield* ReservationAccessService;
+      return yield* service.issueForReservation(earlySetupReservation);
+    }).pipe(
+      Effect.provide(
+        ReservationAccessService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(ReservationAccessRepository, {
+                findByReservationId: mock(() => Effect.succeed(legacyGrant)),
+                rescheduleIssued,
+                loadIssuedCode,
+              }),
+              Layer.mock(IgloohomeService, { issueHourlyAlgoPin })
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(issued.accessCode).toBe(accessCode);
+    expect(
+      issued.accessStartsAt.equals(earlySetupReservation.reservedFrom)
+    ).toBe(true);
+    expect(rescheduleIssued).toHaveBeenCalledTimes(1);
+    expect(loadIssuedCode).toHaveBeenCalledTimes(1);
+    expect(issueHourlyAlgoPin).not.toHaveBeenCalled();
+  });
+
+  test("withholds a reused PIN when its grant changed concurrently", async () => {
+    const scheduledGrant = {
+      ...grant,
+      scheduledAccessStartsAt: Temporal.Instant.from("2099-07-01T08:15:00Z"),
+      accessStartsAt: Temporal.Instant.from("2099-07-01T08:15:00Z"),
+    };
+    const loadIssuedCode = mock(() => Effect.succeed(accessCode));
+    const issueHourlyAlgoPin = mock(() =>
+      Effect.die("Igloohome must not be called")
+    );
+
+    const result = await Effect.gen(function* () {
+      const service = yield* ReservationAccessService;
+      return yield* service.issueForReservation(reservation);
+    }).pipe(
+      Effect.provide(
+        ReservationAccessService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(ReservationAccessRepository, {
+                findByReservationId: mock(() => Effect.succeed(scheduledGrant)),
+                rescheduleIssued: mock(() => Effect.succeed(null)),
+                loadIssuedCode,
+              }),
+              Layer.mock(IgloohomeService, { issueHourlyAlgoPin })
+            )
+          )
+        )
+      ),
+      Effect.result,
+      Effect.runPromise
+    );
+
+    expect(Result.isFailure(result)).toBe(true);
+    expect(loadIssuedCode).not.toHaveBeenCalled();
+    expect(issueHourlyAlgoPin).not.toHaveBeenCalled();
+  });
+
+  const issueAfterConcurrentIssuance = (
+    concurrentGrant: typeof grant,
+    request = reservation
+  ) => {
+    const loadIssuedCode = mock(() => Effect.succeed(accessCode));
+    const rescheduleIssued = rescheduleIssuedToBounds();
+    const issueHourlyAlgoPin = mock(() =>
+      Effect.die("Igloohome must not be called")
+    );
+    const result = Effect.gen(function* () {
+      const service = yield* ReservationAccessService;
+      return yield* service.issueForReservation(request);
+    }).pipe(
+      Effect.provide(
+        ReservationAccessService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(ReservationAccessRepository, {
+                findByReservationId: mock(() => Effect.succeed(null)),
+                ensure: mock(() => Effect.succeed(concurrentGrant)),
+                rescheduleIssued,
+                loadIssuedCode,
+              }),
+              Layer.mock(IgloohomeService, { issueHourlyAlgoPin })
+            )
+          )
+        )
+      ),
+      Effect.result,
+      Effect.runPromise
+    );
+    return { result, loadIssuedCode, rescheduleIssued, issueHourlyAlgoPin };
+  };
+
+  test("reuses a PIN a concurrent request issued for the same hours", async () => {
+    const { result, rescheduleIssued, issueHourlyAlgoPin } =
+      issueAfterConcurrentIssuance(grant);
+
+    const issued = await result;
+    expect(Result.isSuccess(issued)).toBe(true);
+    expect(rescheduleIssued).not.toHaveBeenCalled();
+    expect(issueHourlyAlgoPin).not.toHaveBeenCalled();
+  });
+
+  test("records the exact span on a whole-hour PIN an earlier release issued concurrently", async () => {
+    const earlySetupReservation = {
+      reservationId,
+      reservedFrom: Temporal.Instant.from("2099-07-01T07:45:00Z"),
+      reservedUntil: Temporal.Instant.from("2099-07-01T09:00:00Z"),
+    };
+    const { result, rescheduleIssued, issueHourlyAlgoPin } =
+      issueAfterConcurrentIssuance(
+        {
+          ...grant,
+          scheduledAccessStartsAt: Temporal.Instant.from(
+            "2099-07-01T07:00:00Z"
+          ),
+          accessStartsAt: Temporal.Instant.from("2099-07-01T07:00:00Z"),
+          accessEndsAt: Temporal.Instant.from("2099-07-01T09:00:00Z"),
+        },
+        earlySetupReservation
+      );
+
+    const issued = Result.getOrThrow(await result);
+    expect(issued.accessCode).toBe(accessCode);
+    expect(
+      issued.accessStartsAt.equals(earlySetupReservation.reservedFrom)
+    ).toBe(true);
+    expect(
+      issued.accessEndsAt.equals(earlySetupReservation.reservedUntil)
+    ).toBe(true);
+    expect(rescheduleIssued).toHaveBeenCalledTimes(1);
+    expect(issueHourlyAlgoPin).not.toHaveBeenCalled();
+  });
+
+  test("withholds a PIN a concurrent request issued for other hours", async () => {
+    const { result, loadIssuedCode, issueHourlyAlgoPin } =
+      issueAfterConcurrentIssuance({
+        ...grant,
+        scheduledAccessStartsAt: reservation.reservedFrom.add({ hours: 4 }),
+        accessStartsAt: reservation.reservedFrom.add({ hours: 4 }),
+        accessEndsAt: reservation.reservedUntil.add({ hours: 4 }),
+      });
+
+    expect(Result.isFailure(await result)).toBe(true);
+    expect(loadIssuedCode).not.toHaveBeenCalled();
     expect(issueHourlyAlgoPin).not.toHaveBeenCalled();
   });
 
@@ -341,6 +583,7 @@ describe("ReservationAccessService", () => {
               Layer.mock(ReservationAccessRepository, {
                 findByReservationId: mock(() => Effect.succeed(null)),
                 ensure: mock(() => Effect.succeed(exactGrant)),
+                rescheduleIssued: rescheduleIssuedToBounds(),
                 loadIssuedCode,
                 claim,
               }),
@@ -355,13 +598,13 @@ describe("ReservationAccessService", () => {
     expect(issued).toEqual({
       grantId,
       accessCode,
-      accessStartsAt: exactGrant.accessStartsAt,
-      accessEndsAt: exactGrant.accessEndsAt,
+      accessStartsAt: reservation.reservedFrom,
+      accessEndsAt: reservation.reservedUntil,
     });
     expect(formatBounds(loadIssuedCode.mock.calls[0]?.[0])).toEqual({
-      scheduledAccessStartsAt: "2099-07-01T08:45:00Z",
-      accessStartsAt: "2099-07-01T08:45:00Z",
-      accessEndsAt: "2099-07-01T15:30:00Z",
+      scheduledAccessStartsAt: reservation.reservedFrom.toString(),
+      accessStartsAt: reservation.reservedFrom.toString(),
+      accessEndsAt: reservation.reservedUntil.toString(),
     });
     expect(claim).not.toHaveBeenCalled();
     expect(issueHourlyAlgoPin).not.toHaveBeenCalled();
@@ -459,6 +702,7 @@ describe("ReservationAccessService", () => {
       expect.objectContaining({
         reservationId,
         accessEndsAt: movedReservation.reservedUntil,
+        replacingIssued: grant,
       })
     );
     expect(issueHourlyAlgoPin).toHaveBeenCalledWith({
@@ -484,6 +728,76 @@ describe("ReservationAccessService", () => {
         pinId: replacementPinId,
       })
     );
+    expect(markUncertain).not.toHaveBeenCalled();
+  });
+
+  test("reissues a legacy grant when early setup moves it to different rounded hours", async () => {
+    const movedReservation = {
+      reservationId,
+      reservedFrom: Temporal.Instant.from("2099-07-01T08:45:00Z"),
+      reservedUntil: Temporal.Instant.from("2099-07-01T10:00:00Z"),
+    };
+    const legacyGrant = {
+      ...grant,
+      scheduledAccessStartsAt: Temporal.Instant.from("2099-07-01T07:00:00Z"),
+      accessStartsAt: Temporal.Instant.from("2099-07-01T07:00:00Z"),
+      accessEndsAt: Temporal.Instant.from("2099-07-01T09:00:00Z"),
+    };
+    const replacementGrant = {
+      ...legacyGrant,
+      state: "pending" as const,
+      scheduledAccessStartsAt: movedReservation.reservedFrom,
+      accessStartsAt: movedReservation.reservedFrom,
+      accessEndsAt: movedReservation.reservedUntil,
+    };
+    const ensure = mock(() => Effect.succeed(replacementGrant));
+    const claim = mock(() => Effect.succeed(true));
+    const markIssued = mock(() => Effect.void);
+    const markUncertain = mock(() => Effect.void);
+    const issueHourlyAlgoPin = mock(() =>
+      Effect.succeed({ pin: replacementAccessCode, pinId: replacementPinId })
+    );
+
+    const issued = await Effect.gen(function* () {
+      const service = yield* ReservationAccessService;
+      return yield* service.issueForReservation(movedReservation);
+    }).pipe(
+      Effect.provide(
+        ReservationAccessService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(ReservationAccessRepository, {
+                findByReservationId: mock(() => Effect.succeed(legacyGrant)),
+                ensure,
+                claim,
+                markIssued,
+                markUncertain,
+              }),
+              Layer.mock(IgloohomeService, { issueHourlyAlgoPin })
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(issued.accessCode).toBe(replacementAccessCode);
+    expect(ensure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reservationId,
+        scheduledAccessStartsAt: movedReservation.reservedFrom,
+        accessStartsAt: movedReservation.reservedFrom,
+        accessEndsAt: movedReservation.reservedUntil,
+      })
+    );
+    expect(issueHourlyAlgoPin).toHaveBeenCalledWith(
+      expect.objectContaining({
+        startsAt: "2099-07-01T10:00:00+02:00",
+        endsAt: "2099-07-01T12:00:00+02:00",
+      })
+    );
+    expect(claim).toHaveBeenCalledTimes(1);
+    expect(markIssued).toHaveBeenCalledTimes(1);
     expect(markUncertain).not.toHaveBeenCalled();
   });
 

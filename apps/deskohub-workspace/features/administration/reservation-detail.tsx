@@ -148,6 +148,18 @@ async function ReservationDetailContent({
                         : unavailable
                     }
                   />
+                  {reservation.setupStartsAt && (
+                    <AdministrationFact
+                      label={m.administrationReservationDetailEarlySetup(
+                        {},
+                        { locale }
+                      )}
+                      value={formatAdministrationDateTime(
+                        reservation.setupStartsAt,
+                        locale
+                      )}
+                    />
+                  )}
                   <AdministrationFact
                     label={m.administrationReservationDetailEnds(
                       {},

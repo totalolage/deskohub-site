@@ -231,6 +231,53 @@ describe("start_reservation", () => {
     expect(otherSelection).not.toBe(first);
   });
 
+  test("books a meeting room with early setup at the same price under its own selection", async () => {
+    const meetingRoom = {
+      family: "meeting-room",
+      date: workspaceDateFromToday(2),
+      start_time: "14:00",
+      duration: "hour:1",
+    };
+
+    const plain = await start(meetingRoom);
+    const declined = await start({ ...meetingRoom, early_setup: false });
+    const early = await start({ ...meetingRoom, early_setup: true });
+
+    expect(submissions).toHaveLength(3);
+    const [plainSubmission, declinedSubmission, earlySubmission] =
+      submissions as [
+        (typeof submissions)[number],
+        (typeof submissions)[number],
+        (typeof submissions)[number],
+      ];
+    expect(plainSubmission.input.reservation).not.toHaveProperty("earlySetup");
+    expect(declinedSubmission.input.reservation).not.toHaveProperty(
+      "earlySetup"
+    );
+    expect(declinedSubmission.selectionKey).toBe(plainSubmission.selectionKey);
+    // The booked time stays; only the flag is added.
+    expect(earlySubmission.input.reservation).toEqual({
+      ...plainSubmission.input.reservation,
+      earlySetup: true,
+    });
+    expect(earlySubmission.selectionKey).not.toBe(plainSubmission.selectionKey);
+    const totals = [plain, declined, early].map((result) =>
+      result._tag === "Success" ? result.success.total : undefined
+    );
+    expect(totals[0]).toBeDefined();
+    expect(totals).toEqual([totals[0], totals[0], totals[0]]);
+  });
+
+  test("refuses early setup for a family without setup time", async () => {
+    const result = await start({ ...cowork(), early_setup: true });
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { details: { code: "invalid_input", field: "early_setup" } },
+    });
+    expect(submissions).toHaveLength(0);
+  });
+
   test("records marketing consent only when the customer asked for it", async () => {
     await start(cowork());
     await start({ ...cowork(), marketing_consent: false });

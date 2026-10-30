@@ -1849,6 +1849,16 @@
                                 }
                               ]
                             },
+                            "setupStartsAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "date": {
                               "anyOf": [
                                 {
@@ -2594,6 +2604,16 @@
                             ]
                           },
                           "endsAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "setupStartsAt": {
                             "anyOf": [
                               {
                                 "type": "string"
@@ -4184,6 +4204,16 @@
                                 }
                               ]
                             },
+                            "setupStartsAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "date": {
                               "anyOf": [
                                 {
@@ -4619,6 +4649,16 @@
                               ]
                             },
                             "endsAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "setupStartsAt": {
                               "anyOf": [
                                 {
                                   "type": "string"
@@ -10235,6 +10275,16 @@
                                     }
                                   ]
                                 },
+                                "setupStartsAt": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
                                 "date": {
                                   "anyOf": [
                                     {
@@ -11607,6 +11657,16 @@
                               ]
                             },
                             "endsAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "setupStartsAt": {
                               "anyOf": [
                                 {
                                   "type": "string"

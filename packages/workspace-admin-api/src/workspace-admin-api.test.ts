@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Context, Effect, Layer, Option, Schema } from "effect";
+import { Context, Effect, Layer, Option, Schema, Struct } from "effect";
 import { HttpRouter, HttpServer } from "effect/unstable/http";
 import {
   HttpApi,
@@ -906,6 +906,56 @@ describe("overview contract", () => {
       newCustomers: { ...unreported, customers: [] },
       refundAttention: unreported,
     });
+  });
+});
+
+describe("reservation summary contract", () => {
+  // `AdministrationReservationSummary` as released dhw binaries decode it,
+  // before the early-setup start.
+  const ReleasedAdministrationReservationSummary =
+    AdministrationReservationSummary.mapFields(Struct.omit(["setupStartsAt"]));
+  const summary = {
+    id: "reservation-id",
+    customerId: "customer-id",
+    customer: null,
+    liveDetailsAvailable: true,
+    startsAt: "2026-08-10T08:00:00Z",
+    endsAt: "2026-08-10T09:00:00Z",
+    date: "2026-08-10",
+    type: "meeting-room",
+    typeLabel: "Meeting Room",
+    purpose: null,
+    status: { group: "complete", label: "Complete" },
+    statusNote: null,
+    createdAt: "2026-08-01T12:00:00Z",
+    latestPayment: null,
+    updatedAt: "2026-08-01T12:00:00Z",
+  } as const;
+
+  test("keeps an early-setup summary readable by released dhw", () => {
+    const response = Schema.encodeSync(AdministrationReservationSummary)(
+      Schema.decodeUnknownSync(AdministrationReservationSummary)({
+        ...summary,
+        setupStartsAt: "2026-08-10T07:45:00Z",
+      })
+    );
+
+    expect(
+      Schema.decodeUnknownSync(ReleasedAdministrationReservationSummary)(
+        response
+      )
+    ).toEqual(
+      Schema.decodeUnknownSync(ReleasedAdministrationReservationSummary)(
+        summary
+      )
+    );
+  });
+
+  test("reads an older server's summary as having no early setup", () => {
+    expect(
+      Schema.decodeUnknownSync(AdministrationReservationSummary)(summary)
+        .setupStartsAt
+    ).toBeNull();
   });
 });
 

@@ -3,7 +3,6 @@ import {
   type EmailDeliveryId,
   isConsoleEmailDeliveryId,
 } from "@deskohub/email";
-import { EmailServiceTag } from "@deskohub/email/backend/service";
 import { Context, Data, Effect, Layer, Match, Predicate } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { env } from "@/env";
@@ -26,7 +25,7 @@ import { WorkspaceReservationService } from "@/features/reservation/backend/work
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
-import { EmailConfigLayer } from "@/shared/backend/config/email.config";
+import { WorkspaceEmailLayer } from "@/shared/backend/config/email.config";
 import {
   captureReservationCompleted,
   captureReservationFulfilled,
@@ -872,10 +871,7 @@ export class ReservationFulfillment extends Context.Service<
         WorkspaceReservationEmailService.Default,
         Layer.provideMerge(
           Layer.provideMerge(
-            Layer.provideMerge(
-              EmailServiceTag.RecipientRouted,
-              EmailConfigLayer
-            ),
+            WorkspaceEmailLayer,
             WorkspaceCheckoutNetworkDetailsService.Default
           ),
           CustomerEmailLocaleService.Live

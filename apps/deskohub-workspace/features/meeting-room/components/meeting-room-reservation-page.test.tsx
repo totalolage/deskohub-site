@@ -231,6 +231,7 @@ test("prefills the fresh form from checkout query defaults", async () => {
     expect(form.props.initialValues).toEqual({
       startDateTime: "2099-08-12T09:00",
       duration: "hour:1",
+      earlySetup: false,
       name: "Ada Lovelace",
       email: adaEmail,
       phone: "+420777777777",
