@@ -33,6 +33,7 @@ Run a check every paid case could repeat, such as post-fulfillment support or re
 
 ## Hydration and interaction
 
+- App Router prefetch also needs hydration: `window.next.router` is exposed before Next initializes its action queue. `prefetchRoute` waits for the public header link's React click handler before prefetching; keep prefetch errors visible.
 - Wait for the specific React handler the component uses before you interact (`e2e/react-handlers.ts`). React props alone don't prove Radix or another composed primitive has installed its handler. Never use network idle as readiness; analytics keeps it open.
 - Use Playwright locators and native fill, keyboard, and click, so handlers receive trusted events. Select the control by accessibility role, not a wrapping label. Prefer a stable app-owned ID or form-scoped selector for critical activation.
 - Never replace native form submission or link navigation with an evaluated DOM click. An evaluated click can navigate while leaving the driver blocked on the destroyed execution context.
