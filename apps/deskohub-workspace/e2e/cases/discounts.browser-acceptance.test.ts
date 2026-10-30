@@ -1,6 +1,6 @@
 import "@/shared/polyfills/temporal";
 
-import { afterAll, beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, spyOn, test } from "bun:test";
 import { type Browser, chromium, type Page } from "@playwright/test";
 import { Effect } from "effect";
 import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
@@ -12,6 +12,7 @@ import {
 } from "../case-runner.browser.test-utils";
 import { makeCoworkCheckoutData } from "../checkout/data";
 import type { WorkspaceE2EConfig } from "../config";
+import type { ExpectedDiscountApplication } from "../integrations/database";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
   assertDisplayedDiscounts,
@@ -135,21 +136,35 @@ const browserInputs = {
 
 const assertCalendarDiscountOn = (
   html: string,
-  input: (typeof browserInputs)[keyof typeof browserInputs]
+  input: (typeof browserInputs)[keyof typeof browserInputs],
+  {
+    discounts = [calendarDiscountExpectation],
+    stepTimeoutMs,
+  }: {
+    readonly discounts?: readonly ExpectedDiscountApplication[];
+    readonly stepTimeoutMs?: number;
+  } = {}
 ) => {
   if (!browser) throw new Error("Chromium is not running");
+  const output = spyOn(process.stdout, "write").mockImplementation(() => true);
   return runBrowserStep({
     browser,
     drive: (driver) =>
       assertDisplayedDiscounts({
         config,
-        discounts: [calendarDiscountExpectation],
+        discounts,
         timeoutMs: 2000,
         ...input(driver),
       }),
     prepare: (session) =>
       session.use("show the pay page", (payPage) => payPage.setContent(html)),
-  });
+    stepTimeoutMs,
+  })
+    .then((result) => ({
+      ...result,
+      logs: output.mock.calls.map(([chunk]) => String(chunk)),
+    }))
+    .finally(() => output.mockRestore());
 };
 
 for (const [caller, input] of Object.entries(browserInputs)) {
@@ -159,6 +174,9 @@ for (const [caller, input] of Object.entries(browserInputs)) {
       const result = await assertCalendarDiscountOn(discountDetails(), input);
       expect(result.succeeded).toBe(true);
       expect(result.annotations).toEqual([]);
+      expect(
+        result.logs.filter((line) => line.startsWith("DISCOUNT_WAIT"))
+      ).toEqual([]);
     },
     60_000
   );
@@ -167,20 +185,77 @@ for (const [caller, input] of Object.entries(browserInputs)) {
   test.skipIf(!chromiumAvailable)(
     `times out a discount the tooltip never shows and a trigger never hydrated (${caller})`,
     async () => {
-      for (const html of [
-        discountDetails({ detail: "No discounts" }),
-        discountDetails({ handlers: [] }),
+      for (const { html, stage, detailIndex } of [
+        {
+          html: discountDetails({ detail: "No discounts" }),
+          stage: "detail",
+          detailIndex: 1,
+        },
+        {
+          html: discountDetails({
+            detail: `${calendarDiscountExpectation.label} wrong adjustment`,
+          }),
+          stage: "detail",
+          detailIndex: 1,
+        },
+        {
+          html: discountDetails({ handlers: [] }),
+          stage: "react-handler",
+          detailIndex: 0,
+        },
         // A hidden trigger scrolls but never takes focus.
-        discountDetails({ hidden: true }),
+        {
+          html: discountDetails({ hidden: true }),
+          stage: "blur-trigger",
+          detailIndex: 0,
+        },
       ]) {
         const result = await assertCalendarDiscountOn(html, input);
         expect(result.annotations).toEqual(failedStepAnnotation("timeout"));
         expect(result.failures.map(({ timeout }) => timeout)).toEqual([true]);
+        expect(
+          result.logs.filter((line) => line.startsWith("DISCOUNT_WAIT"))
+        ).toEqual([
+          `DISCOUNT_WAIT stage=${stage} detail_index=${detailIndex} detail_count=1\n`,
+        ]);
       }
     },
     90_000
   );
 }
+
+test.skipIf(!chromiumAvailable)(
+  "logs the pending detail before an outer step deadline interrupts the assertion",
+  async () => {
+    const result = await assertCalendarDiscountOn(
+      discountDetails(),
+      browserInputs.session,
+      {
+        discounts: [
+          calendarDiscountExpectation,
+          {
+            adjustment: { kind: "percentage", basisPoints: 1000 },
+            label: "Synthetic second discount",
+          },
+        ],
+        stepTimeoutMs: 1000,
+      }
+    );
+
+    expect(result.succeeded).toBe(false);
+    expect(result.annotations).toEqual(failedStepAnnotation("timeout"));
+    const diagnostic =
+      "DISCOUNT_WAIT stage=detail detail_index=2 detail_count=2\n";
+    expect(
+      result.logs.filter((line) => line.startsWith("DISCOUNT_WAIT"))
+    ).toEqual([diagnostic]);
+    const terminalIndex = result.logs.findIndex((line) =>
+      line.startsWith("STEP TIMEOUT")
+    );
+    expect(terminalIndex).toBeGreaterThan(result.logs.indexOf(diagnostic));
+  },
+  60_000
+);
 
 test.skipIf(!chromiumAvailable)(
   "reopens dismissed discount details when the trigger is still focused",
