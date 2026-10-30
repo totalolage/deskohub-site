@@ -7,12 +7,10 @@ import {
 import {
   activateHydratedElement,
   openPage,
-  readActiveBrowserTabId,
-  readBrowserUrl,
+  readActivePage,
   readPageUrl,
   summarizeCheckoutPage,
-  switchToBrowserTab,
-  waitForBrowserUrl,
+  waitForPageUrl,
   waitForReactHydration,
 } from "../browser";
 import type { E2EBrowserSession } from "../browser-session";
@@ -26,14 +24,7 @@ import {
 } from "../errors";
 import { pollUntil } from "../polling";
 import { redact } from "../redaction";
-import type { Runner } from "../runtime";
-import {
-  addRedaction,
-  assert,
-  browserSessionFor,
-  log,
-  parseUrl,
-} from "../runtime";
+import { addRedaction, assert, log, parseUrl } from "../runtime";
 import {
   type WorkspaceE2ETimeouts,
   workspaceE2EPollIntervalMs,
@@ -542,17 +533,24 @@ const formatReservationStartDiagnostics = (
   );
 };
 
+/**
+ * Submits the pay page and waits until Nexi's hosted payment page shows.
+ * When the payment opened Nexi in its own page, it also waits for the
+ * checkout page to reach the status page and leaves Nexi's page active.
+ *
+ * The Nexi URL is read from the active page, which becomes the popup only
+ * once Playwright has reported it, so no page event can land after the
+ * switch back to the checkout page.
+ */
 export const submitPaymentAndWaitForHostedPage = ({
-  run,
   session,
   timeouts,
 }: {
-  run: Runner;
-  session: string;
+  session: E2EBrowserSession;
   timeouts: WorkspaceE2ETimeouts;
-}) =>
+}): Effect.Effect<HostedPaymentPage, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const checkoutPageUrl = yield* readBrowserUrl(run, session);
+    const checkoutPageUrl = yield* readPageUrl(session);
     if (!checkoutPageUrl) {
       return yield* failWorkspaceE2E("checkout pay page URL is unavailable", {
         operation: "read checkout pay page URL",
@@ -562,38 +560,30 @@ export const submitPaymentAndWaitForHostedPage = ({
     addRedaction(
       parseUrl(checkoutPageUrl)?.searchParams.get("payState") ?? undefined
     );
-    // The hosted payment steps still switch tabs by argv tab id (stage 5c),
-    // so the checkout tab's id is read here, before the payment is submitted.
-    const checkoutTabId = yield* readActiveBrowserTabId(run, session);
-    yield* submitCheckoutPayment(
-      yield* browserSessionFor(run, session),
-      timeouts
-    );
+    const checkoutPage = yield* submitCheckoutPayment(session, timeouts);
 
-    const hostedPaymentUrl = yield* waitForBrowserUrl({
+    const hostedPaymentUrl = yield* waitForPageUrl({
       description: "Nexi hosted payment page",
       matches: (url) =>
         url.includes("nexigroup.com") || url.includes("/hpp/nexi/"),
-      run,
       session,
       timeoutMs: timeouts.providerTransition,
     });
-    const hostedPaymentTabId = yield* readActiveBrowserTabId(run, session);
-    if (hostedPaymentTabId !== checkoutTabId) {
-      yield* switchToBrowserTab(run, session, checkoutTabId);
-      yield* waitForBrowserUrl({
+    const hostedPage = yield* readActivePage(session);
+    if (hostedPage !== checkoutPage) {
+      yield* session.activate(checkoutPage);
+      yield* waitForPageUrl({
         description: "checkout status page in original tab",
         matches: isCheckoutStatusUrl,
-        run,
         session,
         timeoutMs: timeouts.providerTransition,
       });
-      yield* switchToBrowserTab(run, session, hostedPaymentTabId);
+      yield* session.activate(hostedPage);
     }
     return {
+      checkoutPage,
       checkoutPageUrl,
-      checkoutTabId,
-      hostedPaymentTabId,
+      page: hostedPage,
       url: hostedPaymentUrl,
     } satisfies HostedPaymentPage;
   });
@@ -608,13 +598,7 @@ export const submitCheckoutPayment = (
   timeouts: WorkspaceE2ETimeouts
 ): Effect.Effect<Page, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const checkoutPage = yield* session.use(
-      "read active browser tab",
-      async (page) => {
-        if (page.isClosed()) throw new Error("no active browser tab");
-        return page;
-      }
-    );
+    const checkoutPage = yield* readActivePage(session);
     yield* giveCheckoutPayConsent(session, timeouts);
     yield* activateCheckoutPayButton(session, timeouts);
     return checkoutPage;
