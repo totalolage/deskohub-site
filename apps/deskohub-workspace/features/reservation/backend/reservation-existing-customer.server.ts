@@ -11,8 +11,7 @@ import {
   isCustomerAccountSupportRequired,
   isCustomerProfileMissing,
 } from "@/features/account/customer-account";
-import { CustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository";
-import { getMarketingPreferenceStatus } from "@/features/legal/marketing-preferences";
+import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import type { CoworkReservationInput } from "@/features/reservation/cowork-reservation";
 import type { MeetingRoomReservationInput } from "@/features/reservation/meeting-room-reservation";
 import { getMeetingRoomReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
@@ -54,7 +53,7 @@ export const loadReservationCheckoutAccount = cache(
           CustomerAccountContactService.Live,
           CustomerAccountResolver.Live,
           CustomerLastReservationService.Live,
-          CustomerMarketingConsentRepository.Live,
+          MarketingConsentLedger.Live,
           ReviewAccounts.Live
         )
       ),
@@ -178,7 +177,7 @@ export const loadLinkedExistingCustomer = Effect.fn(
   const contacts = yield* CustomerAccountContactService;
 
   const lastReservations = yield* CustomerLastReservationService;
-  const marketingConsents = yield* CustomerMarketingConsentRepository;
+  const marketingConsents = yield* MarketingConsentLedger;
   const [contact, lastReservation, hasMarketingConsent] = yield* Effect.all(
     [
       contacts.linkedContact(account),
@@ -194,10 +193,8 @@ export const loadLinkedExistingCustomer = Effect.fn(
       ),
       // An unreadable consent keeps offering the optional checkbox, which
       // never overrides a stored consent or withdrawal.
-      marketingConsents.get(account.dotyposCustomerId).pipe(
-        Effect.map(
-          (consent) => getMarketingPreferenceStatus(consent) === "active"
-        ),
+      marketingConsents.status(account.dotyposCustomerId).pipe(
+        Effect.map((status) => status === "active"),
         Effect.tapError((error) =>
           Effect.logWarning("Customer marketing consent load failed", {
             error,

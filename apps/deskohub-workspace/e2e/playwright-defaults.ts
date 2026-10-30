@@ -40,9 +40,14 @@ export const workspaceE2EPlaywrightDefaults = {
       },
 } satisfies PlaywrightTestConfig;
 
+// Traces are sanitized before any other reporter reads their paths.
 export const workspaceE2EPlaywrightReporter = (
   title: string
 ): PlaywrightTestConfig["reporter"] => [
+  [
+    "./e2e/playwright-trace-reporter.ts",
+    { origins: remoteBaseUrl ? [new URL(baseUrl).origin] : [] },
+  ],
   ["line"],
   [
     "./e2e/playwright-github-summary.ts",

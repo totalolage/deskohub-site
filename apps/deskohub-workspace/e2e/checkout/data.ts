@@ -34,7 +34,6 @@ import {
   workspaceE2EConcurrentRunTarget,
   workspaceE2EFullDateAllocation,
 } from "../allocation";
-import { getSubmitCoworkReservationScript } from "../browser-scripts";
 import type { WorkspaceE2EConfig } from "../config";
 import {
   toWorkspaceE2EError,
@@ -48,6 +47,7 @@ import {
 } from "../office";
 import { assert, log } from "../runtime";
 import type { CheckoutData, CheckoutFlow } from "../types";
+import { toReservationStep } from "./reservation-form-preparation";
 
 export type MeetingRoomCheckoutSlot = {
   readonly date: string;
@@ -101,7 +101,7 @@ export const checkoutFlows: readonly CheckoutFlow[] = [
     id: "cowork-basic",
     makeData: (config, _datasourceConfig, date) =>
       Effect.succeed(makeCoworkCheckoutData(config.baseUrl, date)),
-    submitReservationScript: getSubmitCoworkReservationScript,
+    toReservationPreparation: toReservationStep,
   },
 ];
 

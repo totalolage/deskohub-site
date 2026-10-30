@@ -25,6 +25,7 @@ import { NodeCrypto, NodeHttpServer } from "@effect/platform-node";
 import { Effect, Layer, Option } from "effect";
 import { HttpRouter } from "effect/unstable/http";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
+import { WorkspaceDatabase } from "@/db/database.service";
 import { cliSessions } from "@/db/schema";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import { mockAdministratorAccess } from "@/features/administrators/server/administrator-access.test-utils";
@@ -701,8 +702,8 @@ const handleCliRequest = await (async () => {
   const { CliClientCompatibilityLive } = await import(
     "@/features/admin-cli/cli-client-version"
   );
-  const { CliMutationIdempotency } = await import(
-    "@/features/admin-cli/cli-mutation-idempotency.service"
+  const { AdministrationRequestLedger } = await import(
+    "@/features/admin-cli/administration-request-ledger.service"
   );
   const { UnrecordedAdministrationActions, UnusedCliSessionAuthentication } =
     await import("@/features/admin-cli/cli-api.test-utils");
@@ -730,7 +731,9 @@ const handleCliRequest = await (async () => {
           CliClientCompatibilityLive,
           UnrecordedAdministrationActions,
           CampaignOperations.Live,
-          CliMutationIdempotency.Default.pipe(Layer.provide(testDatabase.layer))
+          AdministrationRequestLedger.Default.pipe(
+            Layer.provide(testDatabase.layer)
+          )
         )
       ),
       Layer.provide(NodeHttpServer.layerHttpServices)
@@ -869,10 +872,17 @@ describe.skipIf(!testDatabase)("campaign operation adapters", () => {
         })
       ),
       Effect.andThen(
-        testDatabase.db.transaction((tx) => loadAutomationWorkingCopy(tx, id))
+        Effect.flatMap(WorkspaceDatabase, ({ transaction }) =>
+          transaction(loadAutomationWorkingCopy(id))
+        )
       ),
       Effect.map((copy) => Option.getOrThrow(copy.draftHash)),
-      Effect.provide(AutomationLifecycle.Live),
+      Effect.provide(
+        Layer.mergeAll(
+          AutomationLifecycle.Live.pipe(Layer.provide(testDatabase.layer)),
+          testDatabase.layer
+        )
+      ),
       Effect.runPromise
     );
   };

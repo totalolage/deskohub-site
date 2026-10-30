@@ -3,50 +3,101 @@ import type { ReservationVisit } from "@/features/reservation/backend/reservatio
 import type { AutomationTriggerKind } from "./automation-states";
 
 /**
- * What the pre-submit check makes of a run's trigger (§5.9): `send`,
- * `withdraw` because its reservation was cancelled or is gone (D28), or
- * `defer` because Dotypos moved its visit so the trigger hasn't happened
- * yet.
+ * What a trigger's reservation visit says of it at `asOf` (§5.6, §5.9):
+ * `current`, `withdrawn` because Dotypos cancelled the visit or no longer
+ * returns it (D28), or `moved` because Dotypos moved the visit so the
+ * trigger falls after `asOf`. Intake, replay and the pre-submit check each
+ * pick their own `asOf` and name the verdict in their own terms.
  */
-export type AutomationTriggerVerdict = "send" | "withdraw" | "defer";
+export type TriggeringVisitVerdict = "current" | "withdrawn" | "moved";
 
-/** Whether a run triggered by `kind` reads its reservation's visit before sending. */
-export const verifiesTriggeringVisit = (kind: AutomationTriggerKind) =>
-  kind === "reservation-booked" ||
-  kind === "reservation-started" ||
-  kind === "reservation-finished";
+/** Whether a trigger of `kind` is re-checked against its reservation's live visit (D35). */
+export const readsTriggeringVisit = (kind: AutomationTriggerKind): boolean =>
+  Match.value(kind).pipe(
+    Match.when(
+      Match.is(
+        "reservation-booked",
+        "reservation-started",
+        "reservation-finished"
+      ),
+      () => true
+    ),
+    Match.when(
+      Match.is("reservation-cancelled", "schedule", "account-created"),
+      () => false
+    ),
+    Match.exhaustive
+  );
 
 /**
- * Whether a run's trigger still holds at `at`, from its reservation's live
- * visit. A booked, started or finished trigger is withdrawn when the visit
- * is cancelled or gone; a started or finished one is deferred while the
- * visit's start or end lies after `at`, as when the visit was extended. A
- * cancelled trigger is the cancellation itself, and schedule and account
- * triggers have no reservation, so they always send.
+ * Whether Workspace cancelling the triggering reservation withdraws a
+ * trigger of `kind` (D28). A cancellation trigger is the cancellation
+ * itself, and schedule and account triggers have no reservation.
  */
-export const stillHolds = (input: {
+export const withdrawnByCancellation = (kind: AutomationTriggerKind): boolean =>
+  Match.value(kind).pipe(
+    Match.when(
+      Match.is(
+        "reservation-booked",
+        "reservation-started",
+        "reservation-finished"
+      ),
+      () => true
+    ),
+    Match.when(
+      Match.is("reservation-cancelled", "schedule", "account-created"),
+      () => false
+    ),
+    Match.exhaustive
+  );
+
+/**
+ * When the visit reaches a trigger of `kind`: none for a booked trigger,
+ * which needs only an active visit, and for kinds that read no visit.
+ */
+const triggeringMoment = (
+  kind: AutomationTriggerKind,
+  visit: ReservationVisit
+): Option.Option<Temporal.Instant> =>
+  Match.value(kind).pipe(
+    Match.when("reservation-started", () => Option.some(visit.startsAt)),
+    Match.when("reservation-finished", () => Option.some(visit.endsAt)),
+    Match.when(
+      Match.is(
+        "reservation-booked",
+        "reservation-cancelled",
+        "schedule",
+        "account-created"
+      ),
+      () => Option.none()
+    ),
+    Match.exhaustive
+  );
+
+/**
+ * The trigger's verdict from its reservation's live visit. A booked,
+ * started or finished trigger is withdrawn when the visit is cancelled or
+ * gone; a started or finished one has moved while the visit's start or end
+ * lies after `asOf`, the instant itself included as reached. Other kinds
+ * read no visit and are always current.
+ */
+export const triggeringVisitVerdict = (input: {
   readonly kind: AutomationTriggerKind;
   readonly visit: Option.Option<ReservationVisit>;
-  readonly at: Temporal.Instant;
-}): AutomationTriggerVerdict => {
-  if (!verifiesTriggeringVisit(input.kind)) return "send";
+  readonly asOf: Temporal.Instant;
+}): TriggeringVisitVerdict => {
+  if (!readsTriggeringVisit(input.kind)) return "current";
   return Option.match(
     Option.filter(input.visit, (visit) => visit.status === "active"),
     {
-      onNone: () => "withdraw",
+      onNone: () => "withdrawn",
       onSome: (visit) =>
-        Match.value(input.kind).pipe(
-          Match.when("reservation-started", () => visit.startsAt),
-          Match.when("reservation-finished", () => visit.endsAt),
-          Match.option,
-          Option.filter(
-            (reached) => Temporal.Instant.compare(reached, input.at) > 0
-          ),
-          Option.match({
-            onNone: () => "send" as const,
-            onSome: () => "defer" as const,
-          })
-        ),
+        Option.exists(
+          triggeringMoment(input.kind, visit),
+          (reached) => Temporal.Instant.compare(reached, input.asOf) > 0
+        )
+          ? "moved"
+          : "current",
     }
   );
 };

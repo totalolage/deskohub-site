@@ -8,14 +8,13 @@ import { calendarSaleDiscountServiceLayer } from "@/features/discounts/calendar-
 import type { DiscountReleaseGates } from "@/features/discounts/discount-release-gate.service";
 import type { PostHogFeatureFlagKey } from "@/features/feature-flags/generated/contract";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
+import { recordNextCache } from "@/shared/testing/next-cache-recorder.test-utils";
 
 // Outside a Next.js render there is no cache; record what each load asks of
 // it instead.
-const nextCache = await import("next/cache");
-const cacheLife = mock(
-  (_profile: Parameters<typeof nextCache.cacheLife>[0]) => {}
-);
-mock.module("next/cache", () => ({ ...nextCache, cacheLife }));
+const nextCacheModule = await import("next/cache");
+const nextCache = recordNextCache();
+mock.module("next/cache", () => ({ ...nextCacheModule, ...nextCache.module }));
 
 // Inside `"use cache"`, Next.js fails the render on any request read, even
 // one the app catches. Record each read instead.
@@ -41,12 +40,19 @@ mock.module(
 // synthetic 20% Calendar sale on every product while the Calendar answers.
 const pricedUnder: DiscountReleaseGates[] = [];
 let calendarDown = false;
+let pricingDefect: Error | undefined;
 const pricing = await import(
   "@/features/checkout/backend/checkout/checkout-pricing.service"
 );
 class TestCheckoutPricingService extends pricing.CheckoutPricingService {
   static override withDiscountReleaseGates = (gates: DiscountReleaseGates) => {
     pricedUnder.push(gates);
+    if (pricingDefect) {
+      return Layer.effect(
+        pricing.CheckoutPricingService,
+        Effect.die(pricingDefect)
+      );
+    }
     return pricing.CheckoutPricingService.Default.pipe(
       Layer.provide(
         calendarSaleDiscountServiceLayer({
@@ -86,14 +92,15 @@ const kinds = (offerings: ReadonlyArray<{ readonly kind: string }>) =>
 const discounted = (offerings: ReadonlyArray<PublicPriceListOffering>) =>
   offerings.filter(({ advertisedPrice }) => advertisedPrice?.discount.value);
 
-/** The life the loader gave its own entry, after any nested cache's. */
-const entryLife = () => cacheLife.mock.calls.at(-1)?.[0];
+/** What the loader set for its own entry, after any nested cache's. */
+const entryCalls = () => nextCache.calls.slice(-1);
 
 beforeEach(() => {
   constantFlags = {};
   calendarDown = false;
+  pricingDefect = undefined;
   pricedUnder.length = 0;
-  cacheLife.mockClear();
+  nextCache.clear();
   headers.mockClear();
 });
 
@@ -115,7 +122,7 @@ describe("loadSharedPriceList", () => {
       { calendarSales: true, customerDiscounts: false, discountCodes: false },
     ]);
     expect(variesByVisitor).toBe(false);
-    expect(entryLife()).toBe("minutes");
+    expect(entryCalls()).toEqual([{ cacheLife: "minutes" }]);
     expect(headers).not.toHaveBeenCalled();
   });
 
@@ -138,10 +145,12 @@ describe("loadSharedPriceList", () => {
     // The page streams a fresh list over the fallback one.
     expect(failed.variesByVisitor).toBe(true);
     // Revalidated on the next request, yet still in the App Shell.
-    expect(entryLife()).toEqual({ stale: 300, revalidate: 1, expire: 300 });
+    expect(entryCalls()).toEqual([
+      { cacheLife: { stale: 300, revalidate: 1, expire: 300 } },
+    ]);
 
     calendarDown = false;
-    cacheLife.mockClear();
+    nextCache.clear();
 
     const recovered = await loadSharedPriceList("en-US");
 
@@ -150,7 +159,24 @@ describe("loadSharedPriceList", () => {
     );
     expect(recovered.complete).toBe(true);
     expect(recovered.variesByVisitor).toBe(false);
-    expect(entryLife()).toBe("minutes");
+    expect(entryCalls()).toEqual([{ cacheLife: "minutes" }]);
+  });
+
+  test("shares the catalog prices as an incomplete list when the load fails", async () => {
+    constantFlags = { office_page: true, calendar_sales: true };
+    pricingDefect = new Error("synthetic pricing defect");
+
+    const fallback = await loadSharedPriceList("en-US");
+
+    expect(kinds(fallback.offerings)).toEqual(
+      new Set(["cowork", "meeting-room"])
+    );
+    expect(discounted(fallback.offerings)).toEqual([]);
+    expect(fallback.complete).toBe(false);
+    expect(fallback.variesByVisitor).toBe(true);
+    expect(entryCalls()).toEqual([
+      { cacheLife: { stale: 300, revalidate: 1, expire: 300 } },
+    ]);
   });
 
   test("keeps a gate decided per visitor closed without reading the request", async () => {

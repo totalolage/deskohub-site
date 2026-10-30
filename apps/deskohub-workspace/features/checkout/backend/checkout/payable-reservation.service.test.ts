@@ -4,7 +4,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { ConfigProvider, Effect, Layer } from "effect";
-import type { WorkspaceReservation } from "@/db/schema";
+import type { WorkspaceReservationRow } from "@/db/schema";
 import {
   type CheckoutSessionKey,
   checkoutSessionIdSchema,
@@ -34,7 +34,7 @@ const checkoutSessionKey: CheckoutSessionKey = findKeyIdPrefixedLookupKey(
   "original"
 );
 
-const reservation = (overrides: Partial<WorkspaceReservation> = {}) =>
+const reservation = (overrides: Partial<WorkspaceReservationRow> = {}) =>
   ({
     id: "reservation-id",
     checkoutSessionKey,
@@ -45,11 +45,11 @@ const reservation = (overrides: Partial<WorkspaceReservation> = {}) =>
     dotyposReservationId: "dotypos-reservation-id",
     reservationHoldExpiresAt: Temporal.Instant.from("2030-07-22T12:00:00Z"),
     ...overrides,
-  }) as WorkspaceReservation;
+  }) as WorkspaceReservationRow;
 
 const runRequireCurrent = (input: {
-  readonly candidate?: WorkspaceReservation | null;
-  readonly current?: WorkspaceReservation | null;
+  readonly candidate?: WorkspaceReservationRow | null;
+  readonly current?: WorkspaceReservationRow | null;
   readonly dotyposStatus?: "NEW" | "CANCELLED" | "CONFIRMED";
   readonly checkoutSessionId?: string;
 }) => {

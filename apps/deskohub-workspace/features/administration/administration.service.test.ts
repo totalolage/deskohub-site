@@ -1944,6 +1944,7 @@ describe("AdministrationService", () => {
         makeQuery([
           {
             id: "booking-one",
+            dotyposReservationId: "booking-one",
             fulfillmentState: "fulfilled",
             paymentState: "paid",
             reservationState: "confirmed",
@@ -1955,6 +1956,7 @@ describe("AdministrationService", () => {
           },
           {
             id: "booking-two",
+            dotyposReservationId: "booking-two",
             fulfillmentState: "fulfilled",
             paymentState: "paid",
             reservationState: "confirmed",
@@ -1966,6 +1968,7 @@ describe("AdministrationService", () => {
           },
           {
             id: "booking-profi",
+            dotyposReservationId: "booking-profi",
             fulfillmentState: "fulfilled",
             paymentState: "paid",
             reservationState: "confirmed",
@@ -1978,6 +1981,7 @@ describe("AdministrationService", () => {
           },
           {
             id: "booking-meeting-room",
+            dotyposReservationId: "booking-meeting-room",
             fulfillmentState: "fulfilled",
             paymentState: "paid",
             reservationState: "confirmed",
@@ -1985,6 +1989,7 @@ describe("AdministrationService", () => {
           },
           {
             id: "booking-office",
+            dotyposReservationId: "booking-office",
             fulfillmentState: "fulfilled",
             paymentState: "paid",
             reservationState: "confirmed",
@@ -1992,6 +1997,7 @@ describe("AdministrationService", () => {
           },
           {
             id: "booking-today",
+            dotyposReservationId: "booking-today",
             fulfillmentState: "fulfilled",
             paymentState: "paid",
             reservationState: "confirmed",
@@ -2034,36 +2040,43 @@ describe("AdministrationService", () => {
                       {
                         ...booking,
                         id: "booking-one",
+                        dotyposReservationId: "booking-one",
                         startDate: "2026-08-09T22:30:00Z",
                       },
                       {
                         ...booking,
                         id: "booking-two",
+                        dotyposReservationId: "booking-two",
                         startDate: "2026-08-10T18:00:00Z",
                       },
                       {
                         ...booking,
                         id: "booking-profi",
+                        dotyposReservationId: "booking-profi",
                         startDate: "2026-08-11T08:00:00Z",
                       },
                       {
                         ...booking,
                         id: "booking-meeting-room",
+                        dotyposReservationId: "booking-meeting-room",
                         startDate: "2026-08-10T12:00:00Z",
                       },
                       {
                         ...booking,
                         id: "booking-office",
+                        dotyposReservationId: "booking-office",
                         startDate: "2026-08-12T08:00:00Z",
                       },
                       {
                         ...booking,
                         id: "booking-not-linked",
+                        dotyposReservationId: "booking-not-linked",
                         startDate: "2026-08-13T08:00:00Z",
                       },
                       {
                         ...booking,
                         id: "booking-today",
+                        dotyposReservationId: "booking-today",
                         startDate: "2026-08-26T14:00:00Z",
                         endDate: "2026-08-26T15:00:00Z",
                       },
@@ -2462,6 +2475,7 @@ describe("AdministrationService", () => {
         makeQuery([
           {
             id: "booking-pending",
+            dotyposReservationId: "booking-pending",
             ...completedRow,
             fulfillmentState: "not_started",
             reservationDetails: {
@@ -2472,34 +2486,40 @@ describe("AdministrationService", () => {
           },
           {
             id: "booking-cancelled",
+            dotyposReservationId: "booking-cancelled",
             ...completedRow,
             reservationState: "cancelled",
             reservationDetails: { kind: "meeting-room" },
           },
           {
             id: "booking-cancelling",
+            dotyposReservationId: "booking-cancelling",
             ...completedRow,
             reservationState: "cancelling",
             reservationDetails: { kind: "meeting-room" },
           },
           {
             id: "booking-cancellation-failed",
+            dotyposReservationId: "booking-cancellation-failed",
             ...completedRow,
             reservationState: "cancellation_failed",
             reservationDetails: { kind: "meeting-room" },
           },
           {
             id: "booking-provider-cancelled",
+            dotyposReservationId: "booking-provider-cancelled",
             ...completedRow,
             reservationDetails: { kind: "office" },
           },
           {
             id: "booking-provider-new",
+            dotyposReservationId: "booking-provider-new",
             ...completedRow,
             reservationDetails: { kind: "office" },
           },
           {
             id: "booking-today",
+            dotyposReservationId: "booking-today",
             ...completedRow,
             reservationDetails: {
               kind: "cowork",
@@ -2509,6 +2529,7 @@ describe("AdministrationService", () => {
           },
           {
             id: "booking-mixed-cowork",
+            dotyposReservationId: "booking-mixed-cowork",
             ...completedRow,
             reservationDetails: {
               kind: "cowork",
@@ -2518,16 +2539,19 @@ describe("AdministrationService", () => {
           },
           {
             id: "booking-mixed-meeting-room",
+            dotyposReservationId: "booking-mixed-meeting-room",
             ...completedRow,
             reservationDetails: { kind: "meeting-room" },
           },
           {
             id: "booking-mixed-office",
+            dotyposReservationId: "booking-mixed-office",
             ...completedRow,
             reservationDetails: { kind: "office" },
           },
           {
             id: "booking-baseline",
+            dotyposReservationId: "booking-baseline",
             ...completedRow,
             reservationDetails: {
               kind: "cowork",
@@ -2537,21 +2561,25 @@ describe("AdministrationService", () => {
           },
           {
             id: "booking-setup-from-range-start",
+            dotyposReservationId: "booking-setup-from-range-start",
             ...completedRow,
             reservationDetails: { kind: "meeting-room", earlySetup: true },
           },
           {
             id: "booking-before-range",
+            dotyposReservationId: "booking-before-range",
             ...completedRow,
             reservationDetails: { kind: "meeting-room" },
           },
           {
             id: "booking-setup-midnight",
+            dotyposReservationId: "booking-setup-midnight",
             ...completedRow,
             reservationDetails: { kind: "meeting-room", earlySetup: true },
           },
           {
             id: "booking-unflagged-midnight",
+            dotyposReservationId: "booking-unflagged-midnight",
             ...completedRow,
             reservationDetails: { kind: "meeting-room" },
           },
@@ -2570,54 +2598,64 @@ describe("AdministrationService", () => {
       {
         ...booking,
         id: "booking-cancelled",
+        dotyposReservationId: "booking-cancelled",
         startDate: "2026-08-10T08:00:00Z",
       },
       {
         ...booking,
         id: "booking-cancelling",
+        dotyposReservationId: "booking-cancelling",
         startDate: "2026-08-10T09:00:00Z",
       },
       {
         ...booking,
         id: "booking-cancellation-failed",
+        dotyposReservationId: "booking-cancellation-failed",
         startDate: "2026-08-10T10:00:00Z",
       },
       {
         ...booking,
         id: "booking-provider-cancelled",
+        dotyposReservationId: "booking-provider-cancelled",
         startDate: "2026-08-11T08:00:00Z",
         status: "CANCELLED" as const,
       },
       {
         ...booking,
         id: "booking-provider-new",
+        dotyposReservationId: "booking-provider-new",
         startDate: "2026-08-11T09:00:00Z",
         status: "NEW" as const,
       },
       {
         ...booking,
         id: "booking-today",
+        dotyposReservationId: "booking-today",
         startDate: "2026-08-26T14:00:00Z",
         endDate: "2026-08-26T15:00:00Z",
       },
       {
         ...booking,
         id: "booking-mixed-cowork",
+        dotyposReservationId: "booking-mixed-cowork",
         startDate: "2026-08-12T08:00:00Z",
       },
       {
         ...booking,
         id: "booking-mixed-meeting-room",
+        dotyposReservationId: "booking-mixed-meeting-room",
         startDate: "2026-08-12T12:00:00Z",
       },
       {
         ...booking,
         id: "booking-mixed-office",
+        dotyposReservationId: "booking-mixed-office",
         startDate: "2026-08-12T16:00:00Z",
       },
       {
         ...booking,
         id: "booking-baseline",
+        dotyposReservationId: "booking-baseline",
         startDate: "2026-08-13T08:00:00Z",
       },
       // Prague is UTC+2 in August. Early setup holds these meeting rooms from
@@ -2625,21 +2663,25 @@ describe("AdministrationService", () => {
       {
         ...booking,
         id: "booking-setup-from-range-start",
+        dotyposReservationId: "booking-setup-from-range-start",
         startDate: "2025-08-26T21:45:00Z",
       },
       {
         ...booking,
         id: "booking-before-range",
+        dotyposReservationId: "booking-before-range",
         startDate: "2025-08-26T21:50:00Z",
       },
       {
         ...booking,
         id: "booking-setup-midnight",
+        dotyposReservationId: "booking-setup-midnight",
         startDate: "2026-08-13T21:45:00Z",
       },
       {
         ...booking,
         id: "booking-unflagged-midnight",
+        dotyposReservationId: "booking-unflagged-midnight",
         startDate: "2026-08-15T21:45:00Z",
       },
     ];

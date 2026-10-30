@@ -1,8 +1,7 @@
 import { Effect } from "effect";
-import { cacheLife } from "next/cache";
 import { generateSvgPngBuffer } from "osm";
 import faviconSvg from "@/public/favicon.svg" with { type: "text" };
-import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
+import { readSharedSnapshot } from "@/shared/backend/shared-snapshot";
 
 export async function GET() {
   const image = await getWorkspaceFavicon();
@@ -18,17 +17,19 @@ export async function GET() {
 
 async function getWorkspaceFavicon() {
   "use cache";
-  cacheLife("max");
 
-  return generateSvgPngBuffer(faviconSvg, {
-    canvas: {
-      width: 512,
-      height: 512,
-      padding: 24,
-      background: "#FFFFFF",
-    },
-  }).pipe(
-    Effect.map((image) => new Uint8Array(image)),
-    runWorkspaceEffect("workspaceFavicon.render")
+  // The image is rendered from a bundled SVG, so a failure is a defect to
+  // surface, never to share.
+  return await readSharedSnapshot(
+    "workspaceFavicon.render",
+    generateSvgPngBuffer(faviconSvg, {
+      canvas: {
+        width: 512,
+        height: 512,
+        padding: 24,
+        background: "#FFFFFF",
+      },
+    }).pipe(Effect.map((image) => new Uint8Array(image))),
+    { complete: { lifetime: "max" } }
   );
 }

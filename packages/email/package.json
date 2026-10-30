@@ -8,6 +8,7 @@
   },
   "exports": {
     ".": "./index.ts",
+    "./testing": "./backend/email-provider.test-utils.ts",
     "./backend/email-config": "./backend/email-config.ts",
     "./backend/email-routing": "./backend/email-routing.ts",
     "./backend/escaping": "./backend/escaping.ts",
@@ -18,7 +19,6 @@
     "./backend/recipient-domain.service": "./backend/recipient-domain.service.ts",
     "./backend/recipient-domain.service.mock": "./backend/recipient-domain.service.mock.ts",
     "./backend/service": "./backend/service.ts",
-    "./backend/standalone-email-service": "./backend/standalone-email-service.ts",
     "./backend/test-recipients": "./backend/test-recipients.ts",
     "./types/email.types": "./types/email.types.ts"
   },

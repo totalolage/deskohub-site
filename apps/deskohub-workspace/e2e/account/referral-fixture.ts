@@ -21,7 +21,10 @@ import { parseReferralCode } from "@/features/referrals/client";
 import { getReferralReferrerDiscountId } from "@/features/referrals/discount-identifiers";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
-import type { DatabaseClient } from "../../db/database-client";
+import type {
+  DatabaseClient,
+  RootDatabaseClient,
+} from "../../db/database-client";
 import type { WorkspaceE2EError } from "../errors";
 import { workspaceE2EError } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
@@ -115,8 +118,13 @@ const insertReferralCode = Effect.fn("seedWorkspaceE2EReferralCode")(function* (
  * code.
  */
 const insertReferralOwner = Effect.fn("seedWorkspaceE2EReferralOwner")(
-  function* (tx: DatabaseTransaction, owner: WorkspaceE2EReferralOwnerInput) {
-    yield* workspaceFixtures(tx).account("e2e-referral-owner", {
+  function* (
+    db: RootDatabaseClient,
+    tx: DatabaseTransaction,
+    owner: WorkspaceE2EReferralOwnerInput
+  ) {
+    // The login fixture needs the root client; its statements join `tx`.
+    yield* workspaceFixtures(db).account("e2e-referral-owner", {
       id: customerAccountIdSchema.make(owner.accountId),
       email: owner.email,
       name: owner.name,
@@ -313,7 +321,7 @@ export const seedWorkspaceE2EReferralOwner = (
     const { db } = yield* E2EDatabase;
     return yield* runDatabaseOperation(
       "seed synthetic referral owner",
-      db.transaction((tx) => insertReferralOwner(tx, input))
+      db.transaction((tx) => insertReferralOwner(db, tx, input))
     );
   }).pipe(
     Effect.mapError((cause) =>

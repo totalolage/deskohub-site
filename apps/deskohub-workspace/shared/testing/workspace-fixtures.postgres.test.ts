@@ -17,6 +17,7 @@ import {
 import { accountRoleGrants } from "@/db/schema/account-role-grants";
 import { authUser } from "@/db/schema/auth";
 import { customerAccounts } from "@/db/schema/customer-accounts";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
 import {
   fixtureReservationAuthorId,
   workspaceFixtures,
@@ -330,6 +331,30 @@ describe.skipIf(!testDatabase)("workspace fixtures", () => {
       grants: [],
       reservations: [],
     });
+  });
+
+  test("an account whose login fails leaves no customer account", async () => {
+    const taken = await Effect.runPromise(
+      fixtures().account("fixture-login-taken")
+    );
+    const id = customerAccountIdSchema.make(crypto.randomUUID());
+    const exit = await Effect.runPromise(
+      Effect.exit(
+        fixtures().account("fixture-login-duplicate", {
+          id,
+          email: taken.email,
+        })
+      )
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    const accounts = await Effect.runPromise(
+      database()
+        .select({ id: customerAccounts.id })
+        .from(customerAccounts)
+        .where(eq(customerAccounts.id, id))
+    );
+    expect(accounts).toEqual([]);
   });
 
   test("a fixture that fails inside a held transaction leaves the transaction usable", async () => {

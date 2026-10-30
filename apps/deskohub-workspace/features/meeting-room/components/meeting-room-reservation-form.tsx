@@ -2,7 +2,7 @@
 
 import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import { useEffect, useMemo } from "react";
-import { useForm, useWatch } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import {
   type AdvertisedPrice,
   getAdvertisedProductItem,
@@ -43,7 +43,10 @@ import {
 } from "@/features/reservation/components/reservation-type-input";
 import { useAdvertisedPrices } from "@/features/reservation/components/use-advertised-price";
 import { useReservationAvailability } from "@/features/reservation/components/use-reservation-availability";
-import { useReservationSelectionUrl } from "@/features/reservation/components/use-reservation-selection-url";
+import {
+  useReservationSelectionUrl,
+  useWatchedSelection,
+} from "@/features/reservation/components/use-reservation-selection-url";
 import { getMeetingRoomDurationAdvertisedPriceRequests } from "@/features/reservation/meeting-room-advertised-price";
 import {
   getMeetingRoomReservationDefaultValues,
@@ -55,10 +58,6 @@ import {
   type NormalizedMeetingRoomReservationOrder,
 } from "@/features/reservation/meeting-room-reservation";
 import {
-  getMeetingRoomReservationDefaultValuesFromSearchParams,
-  getMeetingRoomReservationSelectionSearchParams,
-} from "@/features/reservation/meeting-room-reservation-checkout-query";
-import {
   getMeetingRoomReservationDuration,
   getMeetingRoomReservationDurationKey,
   isMeetingRoomWholeDayReservationDuration,
@@ -68,6 +67,7 @@ import {
   getEarliestMeetingRoomStartDateTime,
   getMeetingRoomReservationInterval,
 } from "@/features/reservation/meeting-room-reservation-time";
+import { meetingRoomSelectionLink } from "@/features/reservation/meeting-room-selection-link";
 import type { ReservationCheckoutCustomerForm } from "@/features/reservation/reservation-existing-customer";
 import {
   getMeetingRoomSelectionAvailabilityQuery,
@@ -128,17 +128,13 @@ export function MeetingRoomReservationForm({
     mode: "onBlur",
     reValidateMode: "onChange",
   });
-  const [selectedStartDateTime, selectedDurationKey, earlySetup] = useWatch({
-    control: form.control,
-    name: ["startDateTime", "duration", "earlySetup"],
-  });
-  useReservationSelectionUrl(
-    getMeetingRoomReservationSelectionSearchParams({
-      startDateTime: selectedStartDateTime,
-      duration: selectedDurationKey,
-      earlySetup,
-    })
-  );
+  const selection = useWatchedSelection(meetingRoomSelectionLink, form.control);
+  const {
+    startDateTime: selectedStartDateTime,
+    duration: selectedDurationKey,
+    earlySetup,
+  } = selection;
+  useReservationSelectionUrl(meetingRoomSelectionLink, selection);
   const selectedDuration =
     getMeetingRoomReservationDuration(selectedDurationKey);
   const isWholeDaySelected =
@@ -285,14 +281,9 @@ export function MeetingRoomReservationForm({
         locale
       )}
       selection={{
-        kind: "meeting-room",
-        fromSearchParams: (searchParams) => {
-          const { startDateTime, duration } =
-            getMeetingRoomReservationDefaultValuesFromSearchParams(
-              searchParams
-            );
-          return { startDateTime, duration };
-        },
+        kind: meetingRoomSelectionLink.kind,
+        fromSearchParams: (searchParams) =>
+          meetingRoomSelectionLink.readSelection(searchParams),
       }}
     >
       <FormField

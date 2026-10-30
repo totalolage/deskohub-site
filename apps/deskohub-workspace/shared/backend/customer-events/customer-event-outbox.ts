@@ -1,7 +1,7 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect } from "effect";
-import type { WorkspaceDatabaseClient } from "@/db/database.service";
+import { WorkspaceTransaction } from "@/db/database.service";
 import { customerEvents } from "@/db/schema/customer-events";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
@@ -30,17 +30,17 @@ export type NewCustomerEvent = (
 };
 
 /**
- * Records the event through the caller's transaction executor, so it commits
- * or rolls back with the write it describes. The `customer_events` unique
- * indexes make a retried write, or one the capture reconciler already
- * recorded, a no-op.
+ * Records the event in the caller's transaction, so it commits or rolls back
+ * with the write it describes. The `customer_events` unique indexes make a
+ * retried write, or one the capture reconciler already recorded, a no-op.
  */
 export const recordCustomerEvent = (
-  executor: WorkspaceDatabaseClient,
   event: NewCustomerEvent
-): Effect.Effect<void, EffectDrizzleQueryError> =>
-  executor
-    .insert(customerEvents)
-    .values(event)
-    .onConflictDoNothing()
-    .pipe(Effect.asVoid);
+): Effect.Effect<void, EffectDrizzleQueryError, WorkspaceTransaction> =>
+  Effect.flatMap(WorkspaceTransaction, ({ db }) =>
+    db
+      .insert(customerEvents)
+      .values(event)
+      .onConflictDoNothing()
+      .pipe(Effect.asVoid)
+  );

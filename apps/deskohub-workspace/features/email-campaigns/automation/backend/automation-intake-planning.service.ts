@@ -31,7 +31,7 @@ import {
 import { lockAutomationForEngine } from "./automation-lifecycle-lock";
 import { loadAutomationEntryVersions } from "./automation-run-entry";
 import { AutomationRunTransitions } from "./automation-run-transitions";
-import type { AutomationEngineTransaction } from "./automation-unit-handler";
+
 import { planAutomationUnits } from "./automation-unit-planning";
 import { plannedIntakeUnit, revisitedReservations } from "./intake";
 
@@ -91,7 +91,7 @@ export class AutomationIntakePlanning extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const { db } = yield* WorkspaceDatabase;
+      const { db, transaction } = yield* WorkspaceDatabase;
       const facts = yield* AutomationEvaluationFacts;
 
       /**
@@ -119,10 +119,10 @@ export class AutomationIntakePlanning extends Context.Service<
               Effect.forEach(
                 Map.groupBy(withdrawn, ({ campaignId }) => campaignId),
                 ([campaignId, ofCampaign]) =>
-                  db.transaction((tx) =>
-                    lockAutomationForEngine(tx, campaignId).pipe(
+                  transaction(
+                    lockAutomationForEngine(campaignId).pipe(
                       Effect.andThen(
-                        AutomationRunTransitions.end(tx, {
+                        AutomationRunTransitions.end({
                           runIds: ofCampaign.map(
                             ({ runId }): AutomationRunId => runId
                           ),
@@ -141,12 +141,10 @@ export class AutomationIntakePlanning extends Context.Service<
 
       /** The Dotypos reads the entry gates of these versions need, together. */
       const gateReads = (
-        tx: AutomationEngineTransaction,
         matches: readonly IntakeMatch[],
         at: Temporal.Instant
       ) =>
         loadAutomationEntryVersions(
-          tx,
           matches.map(({ versionId }) => versionId)
         ).pipe(
           Effect.flatMap((versions) =>
@@ -251,10 +249,10 @@ export class AutomationIntakePlanning extends Context.Service<
        * are planned again under a new key.
        */
       const planEvents = (at: Temporal.Instant) =>
-        db.transaction((tx) =>
+        transaction(
           Effect.Do.pipe(
             Effect.bind("events", () =>
-              tx
+              db
                 .select(intakeEventColumns)
                 .from(customerEvents)
                 .where(
@@ -271,7 +269,7 @@ export class AutomationIntakePlanning extends Context.Service<
                     or(
                       ne(customerEvents.kind, "reservation-cancelled"),
                       notExists(
-                        tx
+                        db
                           .select({ id: runs.id })
                           .from(runs)
                           .where(withdrawableRuns)
@@ -283,9 +281,7 @@ export class AutomationIntakePlanning extends Context.Service<
                 .limit(intakeBatchSize)
                 .for("update", { skipLocked: true })
             ),
-            Effect.bind("matches", ({ events }) =>
-              matchIntakeEvents(tx, events)
-            ),
+            Effect.bind("matches", ({ events }) => matchIntakeEvents(events)),
             Effect.let("unmatched", ({ events, matches }) => {
               const matched = new Set(matches.map(({ event }) => event.id));
               return events
@@ -293,7 +289,7 @@ export class AutomationIntakePlanning extends Context.Service<
                 .map(({ id }) => id);
             }),
             Effect.tap(({ unmatched }) =>
-              tx
+              db
                 .update(customerEvents)
                 .set({ automationProcessedAt: at })
                 .where(inArray(customerEvents.id, unmatched))
@@ -302,7 +298,7 @@ export class AutomationIntakePlanning extends Context.Service<
             Effect.bind("units", ({ matches }) =>
               matches.length === 0
                 ? Effect.succeed([])
-                : gateReads(tx, matches, at).pipe(
+                : gateReads(matches, at).pipe(
                     Effect.flatMap((reads) => pack(matches, reads))
                   )
             ),
@@ -318,7 +314,6 @@ export class AutomationIntakePlanning extends Context.Service<
             ),
             Effect.bind("planned", ({ units }) =>
               planAutomationUnits(
-                tx,
                 units.map((unit) => plannedIntakeUnit(unit, at)),
                 at
               )
@@ -327,7 +322,7 @@ export class AutomationIntakePlanning extends Context.Service<
               Effect.forEach(
                 planned.written,
                 ({ unitId, key }) =>
-                  tx
+                  db
                     .update(customerEvents)
                     .set({ automationUnitId: unitId })
                     .where(

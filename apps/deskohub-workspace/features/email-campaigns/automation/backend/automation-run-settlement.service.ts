@@ -2,6 +2,7 @@ import "server-only";
 
 import { and, asc, eq } from "drizzle-orm";
 import { Array as Arr, Context, Effect, Layer, Match, Option } from "effect";
+import { WorkspaceTransaction } from "@/db/database.service";
 import {
   emailCampaignAutomationRuns,
   emailCampaignRecipients,
@@ -17,7 +18,6 @@ import {
   type AutomationRunEnding,
   AutomationRunTransitions,
 } from "./automation-run-transitions";
-import type { AutomationEngineTransaction } from "./automation-unit-handler";
 
 export interface IAutomationRunSettlement {
   /**
@@ -28,10 +28,10 @@ export interface IAutomationRunSettlement {
    * `failed / delivery-refused`. A run whose recipient is still `pending`
    * stays `sending` and is logged.
    */
-  readonly settle: (
-    tx: AutomationEngineTransaction,
-    send: { readonly sendId: CampaignSendId; readonly at: Temporal.Instant }
-  ) => Effect.Effect<void, DatabaseQueryError>;
+  readonly settle: (send: {
+    readonly sendId: CampaignSendId;
+    readonly at: Temporal.Instant;
+  }) => Effect.Effect<void, DatabaseQueryError, WorkspaceTransaction>;
 }
 
 /** Settles the automation runs behind a delivered automated send. */
@@ -40,15 +40,15 @@ export class AutomationRunSettlement extends Context.Service<
   IAutomationRunSettlement
 >()("@deskohub-workspace/email-campaigns/AutomationRunSettlement") {
   static Default = Layer.succeed(this, {
-    settle: Effect.fn("AutomationRunSettlement.settle")(function* (
-      tx: AutomationEngineTransaction,
-      send: { readonly sendId: CampaignSendId; readonly at: Temporal.Instant }
-    ) {
-      yield* sendingRuns(tx, send.sendId).pipe(
+    settle: Effect.fn("AutomationRunSettlement.settle")(function* (send: {
+      readonly sendId: CampaignSendId;
+      readonly at: Temporal.Instant;
+    }) {
+      yield* sendingRuns(send.sendId).pipe(
         Effect.map(settlementOf),
         Effect.tap(({ endings }) =>
           Effect.forEach(endings, ({ ending, runIds }) =>
-            AutomationRunTransitions.end(tx, {
+            AutomationRunTransitions.end({
               ...ending,
               runIds,
               expect: { status: "sending" },
@@ -76,31 +76,36 @@ type SendingRun = {
 };
 
 /** The send's `sending` runs with their recipients, in id order. */
-const sendingRuns = (tx: AutomationEngineTransaction, sendId: CampaignSendId) =>
-  tx
-    .select({
-      runId: emailCampaignAutomationRuns.id,
-      recipientStatus: emailCampaignRecipients.status,
-      skipReason: emailCampaignRecipients.skipReason,
-    })
-    .from(emailCampaignAutomationRuns)
-    .innerJoin(
-      emailCampaignRecipients,
-      and(
-        eq(emailCampaignRecipients.sendId, emailCampaignAutomationRuns.sendId),
-        eq(
-          emailCampaignRecipients.dotyposCustomerId,
-          emailCampaignAutomationRuns.dotyposCustomerId
+const sendingRuns = (sendId: CampaignSendId) =>
+  Effect.flatMap(WorkspaceTransaction, ({ db }) =>
+    db
+      .select({
+        runId: emailCampaignAutomationRuns.id,
+        recipientStatus: emailCampaignRecipients.status,
+        skipReason: emailCampaignRecipients.skipReason,
+      })
+      .from(emailCampaignAutomationRuns)
+      .innerJoin(
+        emailCampaignRecipients,
+        and(
+          eq(
+            emailCampaignRecipients.sendId,
+            emailCampaignAutomationRuns.sendId
+          ),
+          eq(
+            emailCampaignRecipients.dotyposCustomerId,
+            emailCampaignAutomationRuns.dotyposCustomerId
+          )
         )
       )
-    )
-    .where(
-      and(
-        eq(emailCampaignAutomationRuns.sendId, sendId),
-        eq(emailCampaignAutomationRuns.status, "sending")
+      .where(
+        and(
+          eq(emailCampaignAutomationRuns.sendId, sendId),
+          eq(emailCampaignAutomationRuns.status, "sending")
+        )
       )
-    )
-    .orderBy(asc(emailCampaignAutomationRuns.id));
+      .orderBy(asc(emailCampaignAutomationRuns.id))
+  );
 
 /**
  * Groups the runs by the ending their recipient settles them with, keeping

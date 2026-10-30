@@ -15,6 +15,7 @@ import {
   makeReservationAccessName,
   reservationAccessProvisioningStaleAfterMilliseconds,
 } from "../reservation-access";
+import { currentInstant } from "@/shared/utils/temporal";
 import {
   getIgloohomeAccessWindow,
   isSameIgloohomeAccessWindow,
@@ -55,7 +56,7 @@ export const getReservationAccessInterval = (input: {
   readonly now?: Temporal.Instant;
 }): Effect.Effect<ReservationAccessInterval, ReservationAccessIssuanceError> =>
   Effect.gen(function* () {
-    const now = input.now ?? Temporal.Now.instant();
+    const now = input.now ?? (yield* currentInstant);
 
     if (Temporal.Instant.compare(now, input.reservedUntil) >= 0) {
       return yield* new ReservationAccessIssuanceError({
@@ -196,6 +197,9 @@ export class ReservationAccessService extends Context.Service<
             .loadIssuedCode({
               id: grant.id,
               reservationId: input.reservationId,
+              scheduledAccessStartsAt: grant.scheduledAccessStartsAt,
+              accessStartsAt: grant.accessStartsAt,
+              accessEndsAt: grant.accessEndsAt,
             })
             .pipe(
               Effect.mapError(
@@ -384,6 +388,9 @@ export class ReservationAccessService extends Context.Service<
             .claim({
               id: grant.id,
               reservationId: input.reservationId,
+              scheduledAccessStartsAt: interval.scheduledStartsAt,
+              accessStartsAt: interval.startsAt,
+              accessEndsAt: interval.endsAt,
               accessName,
               startedAt: claimedAt,
             })

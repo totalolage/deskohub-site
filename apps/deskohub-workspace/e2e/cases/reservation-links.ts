@@ -15,22 +15,15 @@ import { currencyCZK } from "@/shared/money/currencies";
 import { formatMoney } from "@/shared/money/money";
 import { makeUnusableReferralCode } from "../account/referral-fixture";
 import {
-  activateHydratedBrowserElement,
-  captureBrowserScreenshot,
-  focusBrowserElement,
-  openBrowserPage,
-  readBrowserUrl,
-  scrollBrowserElementIntoView,
-  waitForBrowserCondition,
-  waitForBrowserReactHandler,
-  waitForBrowserTextContent,
-  waitForBrowserUrl,
+  activateHydratedElement,
+  openPage,
+  readPageUrl,
+  scrollIntoView,
+  waitForPageCondition,
+  waitForPageTextContent,
+  waitForPageUrl,
+  waitForReactHandler,
 } from "../browser";
-import {
-  getPrefilledReservationConditionScript,
-  getSubmitMeetingRoomReservationScript,
-  submitPreparedMeetingRoomReservationScript,
-} from "../browser-scripts";
 import type { WorkspaceE2EStepRunner } from "../case-runner";
 import {
   type MeetingRoomCheckoutSlot,
@@ -42,6 +35,14 @@ import {
   submitDiscountCode,
 } from "../checkout/discount-code";
 import { submitReservationForPayPage } from "../checkout/payment";
+import {
+  isPrefilledReservation,
+  toPrefilledReservation,
+} from "../checkout/prefilled-reservation";
+import {
+  preparedReservationForm,
+  toReservationStep,
+} from "../checkout/reservation-form-preparation";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import {
   toWorkspaceE2EError,
@@ -57,7 +58,13 @@ import type { E2EDatabase } from "../integrations/database.service";
 import { discountCodeFixtures } from "../integrations/discount-fixtures";
 import { readDotyposReservationStatus } from "../integrations/dotypos";
 import type { Runner } from "../runtime";
-import { addRedaction, assert, log, parseUrl } from "../runtime";
+import {
+  addRedaction,
+  assert,
+  browserSessionFor,
+  log,
+  parseUrl,
+} from "../runtime";
 import type {
   CheckoutData,
   CheckoutFlowState,
@@ -90,12 +97,16 @@ const captureLinkScreenshot = ({
   readonly run: Runner;
   readonly session: string;
 }) =>
-  captureBrowserScreenshot(
-    run,
-    session,
-    `${reservationLinkScreenshotDir}/${name}.png`,
-    { timeoutMs: config.timeouts.browserAction }
-  );
+  Effect.flatMap(browserSessionFor(run, session), (browser) =>
+    browser.use("capture browser screenshot", (page) =>
+      page.screenshot({
+        animations: "disabled",
+        fullPage: true,
+        path: `${reservationLinkScreenshotDir}/${name}.png`,
+        timeout: config.timeouts.browserAction,
+      })
+    )
+  ).pipe(Effect.asVoid);
 
 type LinkLocale = CheckoutData["locale"];
 
@@ -106,13 +117,11 @@ export const makeReservationLinkE2ECases = ({
   datasourceConfig,
   flowStates,
   preparation,
-  run,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly datasourceConfig: DatasourceConfig;
   readonly flowStates: CheckoutFlowState[];
   readonly preparation: MeetingRoomE2EPreparation;
-  readonly run: Runner;
 }): Effect.Effect<
   readonly WorkspaceE2ECase[],
   WorkspaceE2EError,
@@ -193,7 +202,7 @@ export const makeReservationLinkE2ECases = ({
     return [
       {
         checkoutStates: [enZeroTotalState, enReplacementState],
-        execute: ({ runStep, session }) =>
+        execute: ({ run, runStep, session }) =>
           runReservationLinkZeroTotalCase({
             config,
             data: enZeroTotalData,
@@ -219,7 +228,7 @@ export const makeReservationLinkE2ECases = ({
       },
       {
         checkoutStates: [csZeroTotalState],
-        execute: ({ runStep, session }) =>
+        execute: ({ run, runStep, session }) =>
           runReservationLinkZeroTotalCase({
             config,
             data: csZeroTotalData,
@@ -243,7 +252,7 @@ export const makeReservationLinkE2ECases = ({
       },
       {
         checkoutStates: [unknownCodeState],
-        execute: ({ runStep, session }) =>
+        execute: ({ run, runStep, session }) =>
           runReservationLinkUnknownCodeCase({
             config,
             data: unknownCodeData,
@@ -375,9 +384,14 @@ const runReservationLinkZeroTotalCase = ({
     });
     yield* runStep({
       execute: Effect.gen(function* () {
-        yield* openBrowserPage(config, run, session, payUrl, {
-          timeoutMs: config.timeouts.browserNavigation,
-        });
+        yield* openPage(
+          yield* browserSessionFor(run, session),
+          config,
+          payUrl,
+          {
+            timeoutMs: config.timeouts.browserNavigation,
+          }
+        );
         yield* assertAppliedZeroTotalPaySummary({
           config,
           data,
@@ -410,14 +424,13 @@ const runReservationLinkZeroTotalCase = ({
           run,
           session,
         });
+        const browser = yield* browserSessionFor(run, session);
         return yield* submitReservationForPayPage({
           onOrderId: (orderId) => {
             replacementState.orderId = orderId;
           },
-          run,
-          session,
-          submitReservationScript:
-            getSubmitMeetingRoomReservationScript(replacementData),
+          session: browser,
+          preparation: toReservationStep(replacementData),
           timeouts: config.timeouts,
         });
       }),
@@ -537,26 +550,27 @@ const runReservationLinkUnknownCodeCase = ({
     // The link's unusable referral code neither blocks the booking nor
     // replaces the requested discount code in the code box.
     yield* runStep({
-      execute: assertRequestedOnlyDiscountCode({
-        code: unknownLinkCode,
-        config,
-        run,
-        session,
+      execute: Effect.gen(function* () {
+        const browser = yield* browserSessionFor(run, session);
+        yield* assertRequestedOnlyDiscountCode({
+          code: unknownLinkCode,
+          config,
+          session: browser,
+        });
       }),
       id: "assert-unknown-code-requested-only",
       timeoutMs: config.timeouts.uiTransition,
     });
     yield* runStep({
       execute: Effect.gen(function* () {
+        const browser = yield* browserSessionFor(run, session);
         yield* submitDiscountCode({
           code: unknownLinkCode,
           config,
-          run,
-          session,
+          session: browser,
         });
-        yield* waitForBrowserTextContent(
-          run,
-          session,
+        yield* waitForPageTextContent(
+          browser,
           m.checkoutDiscountCodeUnavailable({}, { locale: data.locale }),
           { timeoutMs: config.timeouts.uiTransition }
         );
@@ -566,11 +580,11 @@ const runReservationLinkUnknownCodeCase = ({
     });
     yield* runStep({
       execute: Effect.gen(function* () {
+        const browser = yield* browserSessionFor(run, session);
         yield* assertRequestedOnlyDiscountCode({
           code: unknownLinkCode,
           config,
-          run,
-          session,
+          session: browser,
         });
         yield* captureLinkScreenshot({
           config,
@@ -584,15 +598,14 @@ const runReservationLinkUnknownCodeCase = ({
     });
     yield* runStep({
       execute: Effect.gen(function* () {
+        const browser = yield* browserSessionFor(run, session);
         yield* submitDiscountCode({
           code: zeroTotalCode,
           config,
-          run,
-          session,
+          session: browser,
         });
-        yield* waitForBrowserTextContent(
-          run,
-          session,
+        yield* waitForPageTextContent(
+          browser,
           appliedDiscountMessage(data.locale),
           { timeoutMs: config.timeouts.uiTransition }
         );
@@ -609,9 +622,12 @@ const runReservationLinkUnknownCodeCase = ({
     });
     yield* runStep({
       execute: Effect.gen(function* () {
-        yield* openBrowserPage(config, run, session, freshPayUrl, {
-          timeoutMs: config.timeouts.browserNavigation,
-        });
+        yield* openPage(
+          yield* browserSessionFor(run, session),
+          config,
+          freshPayUrl,
+          { timeoutMs: config.timeouts.browserNavigation }
+        );
         yield* assertAppliedZeroTotalPaySummary({ config, data, run, session });
         yield* captureLinkScreenshot({
           config,
@@ -650,26 +666,27 @@ const openLinkAndHoldReservation = ({
 }) =>
   runStep({
     execute: Effect.gen(function* () {
-      yield* openBrowserPage(config, run, session, data.checkoutUrl, {
+      const browser = yield* browserSessionFor(run, session);
+      yield* openPage(browser, config, data.checkoutUrl, {
         timeoutMs: config.timeouts.browserNavigation,
       });
       // Prove the signed link prefills the native form values before any
       // submission helper can mask a prefill regression.
-      yield* waitForBrowserCondition(
-        run,
-        session,
+      yield* waitForPageCondition(
+        browser,
         "reservation-link prefilled form values",
-        getPrefilledReservationConditionScript(data),
+        isPrefilledReservation,
+        toPrefilledReservation(data),
         { timeoutMs: config.timeouts.uiTransition }
       );
       if (assertSelectedDurationZeroPrice) {
         // The valid link code applies during the advertisement quote, so the
         // selected hour:1 option must already advertise the zero amount.
-        yield* waitForBrowserCondition(
-          run,
-          session,
+        yield* waitForPageCondition(
+          browser,
           "selected duration advertises the discounted zero amount",
-          getSelectedDurationZeroPriceCondition(data),
+          isSelectedDurationZeroPrice,
+          toSelectedDurationZeroPrice(data),
           { timeoutMs: config.timeouts.uiTransition }
         );
         // Valid zero-total cases only: capture the prefilled form after the
@@ -685,11 +702,10 @@ const openLinkAndHoldReservation = ({
         onOrderId: (orderId) => {
           state.orderId = orderId;
         },
-        run,
-        session,
+        session: browser,
         // Submit-only helper: the prefilled query already prepared the form,
         // so the script only waits for the hydrated submit control.
-        submitReservationScript: submitPreparedMeetingRoomReservationScript,
+        preparation: preparedReservationForm,
         timeouts: config.timeouts,
       });
     }),
@@ -705,7 +721,7 @@ const readSignedPayUrl = (
   publicOrderIdPolicy: SignedPayUrlOrderIdPolicy
 ): Effect.Effect<string, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const url = yield* readBrowserUrl(run, session);
+    const url = yield* readPageUrl(yield* browserSessionFor(run, session));
     return yield* tryWorkspaceE2ESync("assert signed pay URL", () => {
       return validateSignedPayUrl({
         locale,
@@ -828,96 +844,122 @@ const formatZeroTotalAdjustment = (locale: Locale) =>
 const zeroTotalMoneyText = (locale: Locale) =>
   formatMoney(currencyCZK(0), locale);
 
-export const getAppliedZeroTotalPaySummaryCondition = (
-  data: CheckoutData
-): string => {
-  const totalLabel = m.checkoutSummaryItemTotal({}, { locale: data.locale });
-  const zeroTotal = zeroTotalMoneyText(data.locale);
-  const appliedMessage = appliedDiscountMessage(data.locale);
+export const toAppliedZeroTotalPaySummary = (data: CheckoutData) => ({
+  appliedMessage: appliedDiscountMessage(data.locale),
+  totalLabel: m.checkoutSummaryItemTotal({}, { locale: data.locale }),
+  zeroTotal: zeroTotalMoneyText(data.locale),
+});
 
-  return `
-(() => {
-  const normalize = (value) => (value ?? '').replace(/\\s+/g, ' ').trim();
-  const totalLabel = ${JSON.stringify(totalLabel)};
-  const zeroTotal = ${JSON.stringify(zeroTotal)};
+// The in-page functions below run in the browser, so they must not close over
+// anything.
+
+/**
+ * Whether the pay summary shows exactly one zero total line and the applied
+ * discount message.
+ */
+export const isAppliedZeroTotalPaySummary = ({
+  appliedMessage,
+  totalLabel,
+  zeroTotal,
+}: ReturnType<typeof toAppliedZeroTotalPaySummary>) => {
+  const normalize = (value: string | null | undefined) =>
+    (value ?? "").replace(/\s+/g, " ").trim();
   // The total line renders a label span and an amount span as its only two
   // direct children, so a zero amount on any other summary line never matches.
-  const totalRows = [...document.querySelectorAll('div')].filter((div) => {
+  const totalRows = [...document.querySelectorAll("div")].filter((div) => {
     const spans = [...div.children];
     return (
       spans.length === 2 &&
-      spans.every((span) => span.tagName === 'SPAN') &&
-      normalize(spans[0].textContent) === normalize(totalLabel) &&
-      normalize(spans[1].textContent) === normalize(zeroTotal)
+      spans.every((span) => span.tagName === "SPAN") &&
+      normalize(spans[0]?.textContent) === normalize(totalLabel) &&
+      normalize(spans[1]?.textContent) === normalize(zeroTotal)
     );
   });
   if (totalRows.length !== 1) return false;
-  return normalize(document.body?.innerText ?? '').includes(normalize(${JSON.stringify(appliedMessage)}));
-})()
-`;
+  return normalize(document.body?.innerText).includes(
+    normalize(appliedMessage)
+  );
 };
 
-export const getDiscountListedOnceCondition = ({
+/** Lower-cases the expected literals as the tooltip text is compared. */
+export const toDiscountListedOnce = ({
   adjustmentText,
   label,
 }: {
   readonly adjustmentText: string;
   readonly label: string;
-}): string => `
-(() => {
-  const normalize = (value) => (value ?? '').replace(/\\s+/g, ' ').trim();
-  const trigger = document.querySelector('[data-checkout-discount-details]');
+}) => ({
+  adjustmentText: adjustmentText.toLocaleLowerCase(),
+  label: label.toLocaleLowerCase(),
+});
+
+/**
+ * Whether the discount details tooltip lists the discount with its
+ * adjustment exactly once.
+ */
+export const isDiscountListedOnce = (
+  expected: ReturnType<typeof toDiscountListedOnce>
+) => {
+  const normalize = (value: string | null | undefined) =>
+    (value ?? "").replace(/\s+/g, " ").trim();
+  const trigger = document.querySelector("[data-checkout-discount-details]");
   if (!trigger) return false;
-  const descriptionId = trigger.getAttribute('aria-describedby');
+  const descriptionId = trigger.getAttribute("aria-describedby");
   if (!descriptionId) return false;
   const content = document.getElementById(descriptionId);
   if (!content) return false;
-  const items = [...content.querySelectorAll('li')];
+  const items = [...content.querySelectorAll("li")];
   // Normalize the expected literals with the same function as the DOM text:
   // localized formatting such as the Czech percent keeps NBSP, so comparing
   // raw literals against normalized text silently never matches.
-  const label = normalize(${JSON.stringify(label.toLocaleLowerCase())});
-  const adjustment = normalize(${JSON.stringify(adjustmentText.toLocaleLowerCase())});
+  const label = normalize(expected.label);
+  const adjustment = normalize(expected.adjustmentText);
   const matches = items.filter((item) => {
     const text = normalize(item.textContent).toLocaleLowerCase();
     return text.includes(label) && text.includes(adjustment);
   });
   return matches.length === 1;
-})()
-`;
+};
 
-export const getSelectedDurationZeroPriceCondition = (
-  data: CheckoutData
-): string => {
+export const toSelectedDurationZeroPrice = (data: CheckoutData) => {
   assert(data.meetingRoom, "reservation-link checkout interval missing");
-  const durationKey = getMeetingRoomReservationDurationKey(
-    data.meetingRoom.duration
-  );
-  const discountedPriceText = m.checkoutSummaryDiscountedPrice(
-    { price: zeroTotalMoneyText(data.locale) },
-    { locale: data.locale }
-  );
-  const zeroTotal = zeroTotalMoneyText(data.locale);
+  return {
+    discountedPriceText: m.checkoutSummaryDiscountedPrice(
+      { price: zeroTotalMoneyText(data.locale) },
+      { locale: data.locale }
+    ),
+    durationKey: getMeetingRoomReservationDurationKey(
+      data.meetingRoom.duration
+    ),
+    zeroTotal: zeroTotalMoneyText(data.locale),
+  };
+};
 
-  return `
-(() => {
-  const normalize = (value) => (value ?? '').replace(/\\s+/g, ' ').trim();
-  const discountedText = ${JSON.stringify(discountedPriceText)};
-  const zeroTotal = ${JSON.stringify(zeroTotal)};
-  const option = document.querySelector('[data-reservation-type-option="${durationKey}"]');
+/**
+ * Whether the selected duration option advertises the discounted zero price
+ * both as its semantic discounted-price text and as its visible amount.
+ */
+export const isSelectedDurationZeroPrice = ({
+  discountedPriceText,
+  durationKey,
+  zeroTotal,
+}: ReturnType<typeof toSelectedDurationZeroPrice>) => {
+  const normalize = (value: string | null | undefined) =>
+    (value ?? "").replace(/\s+/g, " ").trim();
+  const option = document.querySelector(
+    `[data-reservation-type-option="${durationKey}"]`
+  );
   if (!(option instanceof HTMLElement)) return false;
   // Semantic discounted-price text plus the visible current amount must both
   // carry the exact zero; the struck-through original amount is a <del>, so a
   // positive original amount never matches.
-  const discounted = [...option.querySelectorAll('span')].filter(
-    (span) => normalize(span.textContent) === normalize(discountedText)
+  const discounted = [...option.querySelectorAll("span")].filter(
+    (span) => normalize(span.textContent) === normalize(discountedPriceText)
   );
   if (discounted.length !== 1) return false;
   return [...option.querySelectorAll('span[aria-hidden="true"]')].some(
     (span) => normalize(span.textContent) === normalize(zeroTotal)
   );
-})()
-`;
 };
 
 const assertAppliedZeroTotalPaySummary = ({
@@ -932,34 +974,34 @@ const assertAppliedZeroTotalPaySummary = ({
   readonly session: string;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    yield* waitForBrowserCondition(
-      run,
-      session,
+    const browser = yield* browserSessionFor(run, session);
+    yield* waitForPageCondition(
+      browser,
       "applied zero-total reservation-link pay summary",
-      getAppliedZeroTotalPaySummaryCondition(data),
+      isAppliedZeroTotalPaySummary,
+      toAppliedZeroTotalPaySummary(data),
       { timeoutMs: config.timeouts.uiTransition }
     );
     // Open the existing discount details tooltip and require the fixture
     // discount exactly once; automatic discounts may coexist.
     const triggerSelector = "[data-checkout-discount-details]";
-    yield* waitForBrowserReactHandler(
-      run,
-      session,
-      triggerSelector,
-      "onFocus",
-      { timeoutMs: config.timeouts.uiTransition }
+    yield* waitForReactHandler(browser, triggerSelector, "onFocus", {
+      timeoutMs: config.timeouts.uiTransition,
+    });
+    yield* scrollIntoView(browser, triggerSelector, {
+      timeoutMs: config.timeouts.browserAction,
+    });
+    yield* browser.use("focus browser element", (page) =>
+      page
+        .locator(triggerSelector)
+        .filter({ visible: true })
+        .focus({ timeout: config.timeouts.browserAction })
     );
-    yield* scrollBrowserElementIntoView(run, session, triggerSelector, {
-      timeoutMs: config.timeouts.browserAction,
-    });
-    yield* focusBrowserElement(run, session, triggerSelector, {
-      timeoutMs: config.timeouts.browserAction,
-    });
-    yield* waitForBrowserCondition(
-      run,
-      session,
+    yield* waitForPageCondition(
+      browser,
       "zero-total discount listed exactly once",
-      getDiscountListedOnceCondition({
+      isDiscountListedOnce,
+      toDiscountListedOnce({
         adjustmentText: formatZeroTotalAdjustment(data.locale),
         label: zeroTotalDiscountLabels[data.locale],
       }),
@@ -984,15 +1026,15 @@ const returnToReservationWithConflictingQuery = ({
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const reservationPath = `/${locale}/reservation/meeting-room`;
+    const browser = yield* browserSessionFor(run, session);
     // The Pay page links back to both reservation steps; the selection
     // step's link carries no `step`.
-    yield* activateHydratedBrowserElement(
-      run,
-      session,
+    yield* activateHydratedElement(
+      browser,
       `a[href^="${reservationPath}?payState="]:not([href*="step="])`,
       { timeoutMs: config.timeouts.browserAction }
     );
-    yield* waitForBrowserUrl({
+    yield* waitForPageUrl({
       description: "restored reservation page",
       matches: (value) => {
         const url = parseUrl(value);
@@ -1000,11 +1042,10 @@ const returnToReservationWithConflictingQuery = ({
           url?.pathname === reservationPath && url.searchParams.has("payState")
         );
       },
-      run,
-      session,
+      session: browser,
       timeoutMs: config.timeouts.uiTransition,
     });
-    const restoredHref = yield* readBrowserUrl(run, session);
+    const restoredHref = yield* readPageUrl(browser);
     const conflictingUrl = yield* tryWorkspaceE2ESync(
       "build conflicting public query URL",
       () => {
@@ -1032,21 +1073,21 @@ const returnToReservationWithConflictingQuery = ({
         return url.href;
       }
     );
-    yield* openBrowserPage(config, run, session, conflictingUrl, {
+    yield* openPage(browser, config, conflictingUrl, {
       timeoutMs: config.timeouts.browserNavigation,
     });
-    yield* waitForBrowserCondition(
-      run,
-      session,
+    yield* waitForPageCondition(
+      browser,
       "edited public selection with the signed contact details",
-      getPrefilledReservationConditionScript(replacementData),
+      isPrefilledReservation,
+      toPrefilledReservation(replacementData),
       { timeoutMs: config.timeouts.uiTransition }
     );
-    yield* waitForBrowserCondition(
-      run,
-      session,
+    yield* waitForPageCondition(
+      browser,
       "restored edit keeps the signed link code's zero price",
-      getSelectedDurationZeroPriceCondition(replacementData),
+      isSelectedDurationZeroPrice,
+      toSelectedDurationZeroPrice(replacementData),
       { timeoutMs: config.timeouts.uiTransition }
     );
   });

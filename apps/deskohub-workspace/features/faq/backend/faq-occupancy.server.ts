@@ -2,10 +2,9 @@ import "server-only";
 
 import { DotyposService } from "@deskohub/dotypos";
 import { Effect } from "effect";
-import { cacheLife } from "next/cache";
 import "@/shared/polyfills/temporal";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
-import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
+import { readSharedSnapshot } from "@/shared/backend/shared-snapshot";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { type FaqOccupancyStats, getFaqOccupancyStats } from "./faq-occupancy";
 
@@ -21,19 +20,44 @@ const loadFaqOccupancy = Effect.fn("FaqOccupancy.load")(function* () {
   return yield* getFaqOccupancyStats({ now, reservations, tables });
 });
 
-export async function loadFaqOccupancyStats(): Promise<FaqOccupancyStats> {
+/**
+ * The life of the stats a Dotypos outage left unknown: refreshed within a
+ * minute, with the expiry at the 5-minute prerender threshold so the FAQ
+ * page stays in the static shell.
+ */
+const unknownOccupancyLife = { stale: 30, revalidate: 60, expire: 300 };
+
+/**
+ * Last month's occupancy, or undefined when Dotypos or the Workspace runtime
+ * can't provide it: under Cache Components a throwing "use cache" function
+ * fails the prerender even when the caller catches it.
+ */
+export async function loadFaqOccupancyStats(): Promise<
+  FaqOccupancyStats | undefined
+> {
   "use cache";
-  cacheLife({ stale: 30, revalidate: 300, expire: 600 });
 
-  const stats = await loadFaqOccupancy().pipe(
-    Effect.provide(WorkspaceDotyposLayer),
-    runWorkspaceEffect("faq.occupancy.load", { boundary: "page" })
+  return await readSharedSnapshot(
+    "faq.occupancy.load",
+    loadFaqOccupancy().pipe(
+      Effect.map(
+        (stats): FaqOccupancyStats => ({
+          averageReservationsPerDay: stats.averageReservationsPerDay,
+          coworkSeatCapacity: stats.coworkSeatCapacity,
+        })
+      ),
+      Effect.provide(WorkspaceDotyposLayer)
+    ),
+    {
+      boundary: "page",
+      complete: { lifetime: { stale: 30, revalidate: 300, expire: 600 } },
+      failure: {
+        failureCode: "faq.occupancy.load_failed",
+        fallback: () => undefined,
+        lifetime: unknownOccupancyLife,
+      },
+    }
   );
-
-  return {
-    averageReservationsPerDay: stats.averageReservationsPerDay,
-    coworkSeatCapacity: stats.coworkSeatCapacity,
-  };
 }
 
 const getPreviousCompleteMonthBounds = (now: Temporal.Instant) => {

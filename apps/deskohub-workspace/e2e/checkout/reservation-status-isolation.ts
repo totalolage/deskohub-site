@@ -3,21 +3,24 @@ import { Effect } from "effect";
 import { m } from "@/features/i18n";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { reservationStatusPath } from "@/features/reservation/routes";
-import {
-  closeBrowserSession,
-  evalBrowserScript,
-  normalizeBrowserText,
-  openBrowserPage,
-  waitForBrowserCondition,
-  waitForBrowserText,
-} from "../browser";
+import { normalizeBrowserText, openPage, waitForPageText } from "../browser";
+import type { E2EBrowserSession } from "../browser-session";
 import type { WorkspaceE2EStep } from "../case-runner";
 import type { WorkspaceE2EConfig } from "../config";
-import { tryWorkspaceE2ESync, type WorkspaceE2EError } from "../errors";
+import {
+  tryWorkspaceE2ESync,
+  type WorkspaceE2EError,
+  withoutWorkspaceE2ETimeout,
+} from "../errors";
 import { readCheckoutRow } from "../integrations/database";
 import type { E2EDatabase } from "../integrations/database.service";
-import type { Runner } from "../runtime";
-import { addRedaction, assert, log } from "../runtime";
+import {
+  addRedaction,
+  assert,
+  browserSessionFor,
+  log,
+  type Runner,
+} from "../runtime";
 import type { CheckoutData, CheckoutRow } from "../types";
 import { withWorkspaceE2ELocalReservationFixture } from "./local-reservation-fixture";
 
@@ -40,56 +43,88 @@ const waitForReservationContactUrl = ({
   config,
   description,
   locale,
-  run,
   session,
   timeoutMs,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly description: string;
   readonly locale: CheckoutData["locale"];
-  readonly run: Runner;
-  readonly session: string;
+  readonly session: E2EBrowserSession;
   readonly timeoutMs: number;
-}) => {
-  const expectedOrigin = JSON.stringify(new URL(config.baseUrl).origin);
-  const expectedPath = JSON.stringify(`/${locale}/contact`);
-  return waitForBrowserCondition(
-    run,
-    session,
-    description,
-    `(() => location.origin === ${expectedOrigin} &&
-      location.pathname === ${expectedPath} &&
-      location.hash === "")()`,
-    { timeoutMs }
-  );
-};
+}) =>
+  session
+    .use(`wait for ${description}`, (page) =>
+      page.waitForFunction(
+        (expected) =>
+          location.origin === expected.origin &&
+          location.pathname === expected.pathname &&
+          location.hash === "",
+        {
+          origin: new URL(config.baseUrl).origin,
+          pathname: `/${locale}/contact`,
+        },
+        { timeout: timeoutMs }
+      )
+    )
+    .pipe(Effect.asVoid);
 
 const waitForExactReservationUrl = ({
   description,
-  run,
   session,
   statusUrl,
   timeoutMs,
 }: {
   readonly description: string;
-  readonly run: Runner;
-  readonly session: string;
+  readonly session: E2EBrowserSession;
   readonly statusUrl: string;
   readonly timeoutMs: number;
 }) =>
-  waitForBrowserCondition(
-    run,
-    session,
-    description,
-    `(() => {
-      const expected = new URL(${JSON.stringify(statusUrl)});
-      return location.origin === expected.origin &&
-        location.pathname === expected.pathname &&
-        location.search === expected.search &&
-        location.hash === expected.hash;
-    })()`,
-    { timeoutMs }
-  );
+  session
+    .use(`wait for ${description}`, (page) =>
+      page.waitForFunction(
+        (statusUrl) => {
+          const expected = new URL(statusUrl);
+          return (
+            location.origin === expected.origin &&
+            location.pathname === expected.pathname &&
+            location.search === expected.search &&
+            location.hash === expected.hash
+          );
+        },
+        statusUrl,
+        { timeout: timeoutMs }
+      )
+    )
+    .pipe(Effect.asVoid);
+
+/**
+ * Evaluates a self-contained check of the page and fails with `failure`
+ * unless it holds. An evaluation that overruns its bound fails rather than
+ * timing out, as the argv evaluation it replaces did.
+ */
+const assertPage = <Arg>({
+  arg,
+  check,
+  config,
+  failure,
+  label,
+  session,
+}: {
+  readonly arg: Arg;
+  readonly check: (arg: Arg) => boolean;
+  readonly config: WorkspaceE2EConfig;
+  readonly failure: string;
+  readonly label: string;
+  readonly session: E2EBrowserSession;
+}) =>
+  session
+    .evaluate(label, check, arg, { timeoutMs: config.timeouts.browserAction })
+    .pipe(
+      withoutWorkspaceE2ETimeout(label),
+      Effect.flatMap((holds) =>
+        tryWorkspaceE2ESync(label, () => assert(holds === true, failure))
+      )
+    );
 
 const assertPaidSupportReservationRow = ({
   customerId,
@@ -128,25 +163,22 @@ const assertAuthorizedPaidSupportStatus = Effect.fn(
 )(function* ({
   config,
   orderId,
-  run,
   session,
   statusUrl,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly orderId: WorkspaceReservationId;
-  readonly run: Runner;
-  readonly session: string;
+  readonly session: E2EBrowserSession;
   readonly statusUrl: string;
 }) {
-  yield* openBrowserPage(config, run, session, statusUrl);
+  yield* openPage(session, config, statusUrl);
   yield* waitForExactReservationUrl({
     description: "authorized reservation status URL",
-    run,
     session,
     statusUrl,
     timeoutMs: config.timeouts.browserNavigation,
   });
-  yield* waitForBrowserText({
+  yield* waitForPageText({
     description: "authorized paid support status",
     matches: (text) => {
       const normalized = normalizeBrowserText(text);
@@ -156,36 +188,31 @@ const assertAuthorizedPaidSupportStatus = Effect.fn(
         normalized.includes("Send support request")
       );
     },
-    run,
     session,
     timeoutMs: config.timeouts.uiTransition,
   });
-  const result = yield* evalBrowserScript(
-    "assert authorized paid support reservation status",
-    run,
+  yield* assertPage({
+    arg: orderId,
+    check: (orderId) => {
+      const body = document.body?.innerText ?? "";
+      const exactOrderId = [...document.querySelectorAll("dd")].some(
+        (element) => element.textContent?.trim() === orderId
+      );
+      return (
+        exactOrderId &&
+        body.includes("We couldn't deliver your confirmation.") &&
+        body.includes("Your payment went through") &&
+        document.querySelector("#checkout-status-support-contact") instanceof
+          HTMLAnchorElement &&
+        document.querySelector("#checkout-status-access") === null
+      );
+    },
+    config,
+    failure:
+      "paid reservation status did not expose authorized support details",
+    label: "assert authorized paid support reservation status",
     session,
-    `(() => {
-        const orderId = ${JSON.stringify(orderId)};
-        const body = document.body?.innerText ?? "";
-        const exactOrderId = [...document.querySelectorAll("dd")].some(
-          (element) => element.textContent?.trim() === orderId
-        );
-        return exactOrderId &&
-          body.includes("We couldn't deliver your confirmation.") &&
-          body.includes("Your payment went through") &&
-          document.querySelector("#checkout-status-support-contact") instanceof HTMLAnchorElement &&
-          document.querySelector("#checkout-status-access") === null;
-      })()`,
-    { logOutput: false, timeoutMs: config.timeouts.browserAction }
-  );
-  yield* tryWorkspaceE2ESync(
-    "assert authorized paid support reservation status",
-    () =>
-      assert(
-        result.stdout.trim() === "true",
-        "paid reservation status did not expose authorized support details"
-      )
-  );
+  });
 });
 
 const assertOtherReservationDenied = Effect.fn(
@@ -193,53 +220,41 @@ const assertOtherReservationDenied = Effect.fn(
 )(function* ({
   config,
   orderId,
-  run,
   session,
   statusUrl,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly orderId: WorkspaceReservationId;
-  readonly run: Runner;
-  readonly session: string;
+  readonly session: E2EBrowserSession;
   readonly statusUrl: string;
 }) {
-  yield* openBrowserPage(config, run, session, statusUrl);
+  yield* openPage(session, config, statusUrl);
   yield* waitForExactReservationUrl({
     description: "other reservation status URL",
-    run,
     session,
     statusUrl,
     timeoutMs: config.timeouts.browserNavigation,
   });
-  yield* waitForBrowserText({
+  yield* waitForPageText({
     description: "other reservation not-found status",
     matches: (text) => {
       const normalized = normalizeBrowserText(text);
       return normalized.includes("We could not find this order.");
     },
-    run,
     session,
     timeoutMs: config.timeouts.uiTransition,
   });
-  const result = yield* evalBrowserScript(
-    "assert other reservation remains private",
-    run,
+  yield* assertPage({
+    arg: orderId,
+    check: (orderId) =>
+      !(document.body?.innerText ?? "").includes(orderId) &&
+      document.querySelector("#checkout-status-access") === null &&
+      document.querySelector("#checkout-status-support-contact") === null,
+    config,
+    failure: "other reservation details were exposed to the booking session",
+    label: "assert other reservation remains private",
     session,
-    `(() => {
-        const orderId = ${JSON.stringify(orderId)};
-        const body = document.body?.innerText ?? "";
-        return !body.includes(orderId) &&
-          document.querySelector("#checkout-status-access") === null &&
-          document.querySelector("#checkout-status-support-contact") === null;
-      })()`,
-    { logOutput: false, timeoutMs: config.timeouts.browserAction }
-  );
-  yield* tryWorkspaceE2ESync("assert other reservation remains private", () =>
-    assert(
-      result.stdout.trim() === "true",
-      "other reservation details were exposed to the booking session"
-    )
-  );
+  });
 });
 
 /**
@@ -253,59 +268,79 @@ const assertSignedOutStatusSignIn = Effect.fn(
   config,
   locale,
   orderId,
-  run,
   session,
   statusUrl,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly locale: CheckoutData["locale"];
   readonly orderId: WorkspaceReservationId;
-  readonly run: Runner;
-  readonly session: string;
+  readonly session: E2EBrowserSession;
   readonly statusUrl: string;
 }) {
-  const expectedPath = JSON.stringify(`/${locale}/auth/sign-in`);
-  const expectedReturnTo = JSON.stringify(new URL(statusUrl).pathname);
-  const expectedOrigin = JSON.stringify(new URL(config.baseUrl).origin);
   const title = m.accountSignInReservationTitle({}, { locale });
-  yield* openBrowserPage(config, run, session, statusUrl);
-  yield* waitForBrowserCondition(
-    run,
-    session,
-    "signed-out reservation status sign-in URL",
-    `(() => {
-        const search = new URLSearchParams(location.search);
-        return location.origin === ${expectedOrigin} &&
-          location.pathname === ${expectedPath} &&
-          search.get("returnTo") === ${expectedReturnTo} &&
-          search.get("for") === "reservation";
-      })()`,
-    { timeoutMs: config.timeouts.browserNavigation }
+  yield* openPage(session, config, statusUrl);
+  yield* session.use(
+    "wait for signed-out reservation status sign-in URL",
+    (page) =>
+      page.waitForFunction(
+        (expected) => {
+          const search = new URLSearchParams(location.search);
+          return (
+            location.origin === expected.origin &&
+            location.pathname === expected.pathname &&
+            search.get("returnTo") === expected.returnTo &&
+            search.get("for") === "reservation"
+          );
+        },
+        {
+          origin: new URL(config.baseUrl).origin,
+          pathname: `/${locale}/auth/sign-in`,
+          returnTo: new URL(statusUrl).pathname,
+        },
+        { timeout: config.timeouts.browserNavigation }
+      )
   );
-  yield* waitForBrowserText({
+  yield* waitForPageText({
     description: "signed-out reservation status sign-in title",
     matches: (text) => normalizeBrowserText(text).includes(title),
-    run,
     session,
     timeoutMs: config.timeouts.uiTransition,
   });
-  const result = yield* evalBrowserScript(
-    "assert signed-out reservation status stays private",
-    run,
+  yield* assertPage({
+    arg: orderId,
+    check: (orderId) =>
+      !(document.body?.innerText ?? "").includes(orderId) &&
+      document.querySelector("#checkout-status-support-contact") === null,
+    config,
+    failure: "reservation status details were exposed to a signed-out visitor",
+    label: "assert signed-out reservation status stays private",
     session,
-    `(() => !(document.body?.innerText ?? "").includes(${JSON.stringify(orderId)}) &&
-        document.querySelector("#checkout-status-support-contact") === null)()`,
-    { logOutput: false, timeoutMs: config.timeouts.browserAction }
-  );
-  yield* tryWorkspaceE2ESync(
-    "assert signed-out reservation status stays private",
-    () =>
-      assert(
-        result.stdout.trim() === "true",
-        "reservation status details were exposed to a signed-out visitor"
-      )
-  );
+  });
 });
+
+/**
+ * The signed-out visitor's own browser, opened through the runner's id
+ * beside the booking session and closed when the check ends. Interrupting
+ * the check also stops waiting for the browser to open, and a close that
+ * fails or outlasts `browserSessionClose` is ignored, as the argv close was;
+ * the runner's Scope still closes a session that outlives either wait.
+ */
+const signedOutBrowser = (
+  config: WorkspaceE2EConfig,
+  run: Runner,
+  id: string
+) =>
+  Effect.acquireRelease(
+    browserSessionFor(run, id),
+    (session) =>
+      session
+        .close()
+        .pipe(
+          Effect.timeout(config.timeouts.browserSessionClose),
+          Effect.ignore
+        ),
+    { interruptible: true }
+  );
 
 /**
  * Checks who can read the paid order's status. Checkout runs signed in, so
@@ -318,7 +353,7 @@ export const assertReservationStatusIsolation = ({
   data,
   orderId,
   run,
-  session,
+  session: sessionId,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly customerId: DotyposCustomerId;
@@ -338,12 +373,11 @@ export const assertReservationStatusIsolation = ({
       orderId
     );
     addRedaction(targetStatusUrl);
-    const signedOutSession = `${session}-signed-out`;
+    const session = yield* browserSessionFor(run, sessionId);
     yield* waitForReservationContactUrl({
       config,
       description: "original reservation support contact URL",
       locale: data.locale,
-      run,
       session,
       timeoutMs: config.timeouts.browserNavigation,
     });
@@ -375,29 +409,28 @@ export const assertReservationStatusIsolation = ({
             );
           }
         );
-        yield* assertSignedOutStatusSignIn({
-          config,
-          locale: data.locale,
-          orderId,
-          run,
-          session: signedOutSession,
-          statusUrl: targetStatusUrl,
-        }).pipe(
-          Effect.ensuring(
-            closeBrowserSession(run, signedOutSession).pipe(Effect.ignore)
+        yield* Effect.scoped(
+          Effect.flatMap(
+            signedOutBrowser(config, run, `${sessionId}-signed-out`),
+            (signedOut) =>
+              assertSignedOutStatusSignIn({
+                config,
+                locale: data.locale,
+                orderId,
+                session: signedOut,
+                statusUrl: targetStatusUrl,
+              })
           )
         );
         yield* assertAuthorizedPaidSupportStatus({
           config,
           orderId,
-          run,
           session,
           statusUrl: targetStatusUrl,
         });
         yield* assertOtherReservationDenied({
           config,
           orderId: localFixture.reservationId,
-          run,
           session,
           statusUrl: otherStatusUrl,
         });
@@ -405,12 +438,11 @@ export const assertReservationStatusIsolation = ({
     }).pipe(
       Effect.ensuring(
         Effect.gen(function* () {
-          yield* openBrowserPage(config, run, session, restoreUrl);
+          yield* openPage(session, config, restoreUrl);
           yield* waitForReservationContactUrl({
             config,
             description: "original reservation support contact URL",
             locale: data.locale,
-            run,
             session,
             timeoutMs: config.timeouts.browserNavigation,
           });

@@ -29,9 +29,11 @@ import {
   discountAdvertisementQuoteCodec,
 } from "@/features/discounts";
 import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
-import { CustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository";
+import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
 import { WithheldReferralService } from "@/features/referrals/referral.service.mock";
+import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
+import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import {
   agentSelectionKeySchema,
   BookingAgent,
@@ -55,10 +57,7 @@ mock.module("next/headers", () => ({
   cookies: async () => ({ get: () => undefined }),
   headers: async () => new Headers({ referer: "https://deskohub.test/en-US" }),
 }));
-mock.module("@/features/referrals/remembered-referral-code.server", () => ({
-  readRememberedReferralCode: Effect.succeed(undefined),
-  forgetRememberedReferralCode: async () => {},
-}));
+const rememberedReferralCookie = {} satisfies { value?: string };
 
 // The sandbox writes its own table, so the suite owns a database whose
 // reservation ledger nothing else fills.
@@ -136,6 +135,11 @@ describe.skipIf(!database)(
     // Every dependency a recorded booking reaches dies, so reaching one fails
     // the test: Dotypos, availability, the reservation ledger, hold cleanup,
     // marketing consent, and the profile contact.
+    const contacts = Layer.mock(CustomerAccountContactService, {
+      currentAccount: Effect.fail(
+        new CustomerAccountAccessError({ reason: "unavailable" })
+      ),
+    });
     const services = Layer.mergeAll(
       guard.layer,
       Layer.mergeAll(ReviewAccounts.Default, ReviewSandbox.Default).pipe(
@@ -183,22 +187,27 @@ describe.skipIf(!database)(
       Layer.mock(ReservationHoldCleanupScheduleService, {
         enqueueCleanup: unreachable("Hold cleanup"),
       }),
-      Layer.mock(CustomerMarketingConsentRepository, {
-        grantInitial: unreachable("Marketing consent"),
+      Layer.mock(MarketingConsentLedger, {
+        record: unreachable("Marketing consent"),
       }),
       // The profile contact fails as unavailable, so an ordinary account's
       // booking ends in a captured failure.
-      Layer.mock(CustomerAccountContactService, {
-        currentAccount: Effect.fail(
-          new CustomerAccountAccessError({ reason: "unavailable" })
-        ),
-      }),
+      contacts,
       WorkspaceTableAssignmentServiceMock({
         assignTableId: unreachable("Table assignment"),
       }),
       EmailRecipientDomainServiceMock({ check: unreachable("Email check") }),
       Layer.mock(OfficeReservationFeatureFlagService, {}),
       WithheldReferralService,
+      RememberedReferral.inMemory(rememberedReferralCookie).pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            ReferralFeatureFlagService.fromDecision(false),
+            WithheldReferralService,
+            contacts
+          )
+        )
+      ),
       Layer.mock(PostHogEventService, { capture })
     );
 

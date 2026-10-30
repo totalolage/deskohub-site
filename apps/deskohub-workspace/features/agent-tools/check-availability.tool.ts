@@ -7,12 +7,9 @@ import { m } from "@/features/i18n";
 import { loadAdvisoryOfficeSeatCapacity } from "@/features/office/backend/office-advisory-seat-capacity";
 import { getShareableReservationUrl } from "@/features/reservation/backend/shareable-reservation-url";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
-import { getCoworkOfferSearchParams } from "@/features/reservation/cowork-reservation-checkout-query";
-import { getMeetingRoomReservationSelectionSearchParams } from "@/features/reservation/meeting-room-reservation-checkout-query";
-import type { MeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
-import { getOfficeReservationSelectionSearchParams } from "@/features/reservation/office-reservation-checkout-query";
-import type { ReservationSelectionSearchParams } from "@/features/reservation/reservation-checkout-query";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
+import type { ReservationSelection } from "@/features/reservation/selection-path";
+import type { MeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
 import type { ReservationInterval } from "@/features/reservation/reservation-interval-domain";
 import {
   findMeetingRoomStartTime,
@@ -66,7 +63,7 @@ type CheckAvailabilityInput = typeof inputSchema.Type;
 type AvailabilityResult = Omit<
   CheckAvailabilityResult,
   "checked_at" | "note" | "reservation_url"
-> & { readonly reservationSearchParams: ReservationSelectionSearchParams };
+> & { readonly reservationSelection: ReservationSelection };
 
 export const checkAvailabilityTool = defineAgentTool({
   name: "check_availability",
@@ -83,11 +80,8 @@ export const checkAvailabilityTool = defineAgentTool({
       Effect.let("locale", ({ input }) => getAgentToolLocale(input)),
       Effect.bind("now", () => currentInstant),
       Effect.bind("availability", checkSelectionAvailability),
-      Effect.bind("reservationUrl", ({ input, availability }) =>
-        getShareableReservationUrl(
-          input.family,
-          availability.reservationSearchParams
-        ).pipe(
+      Effect.bind("reservationUrl", ({ availability }) =>
+        getShareableReservationUrl(availability.reservationSelection).pipe(
           Effect.mapError(
             AgentToolError.unavailable("availability_unavailable")
           )
@@ -97,7 +91,7 @@ export const checkAvailabilityTool = defineAgentTool({
         ({
           locale,
           now,
-          availability: { reservationSearchParams: _, ...result },
+          availability: { reservationSelection: _, ...result },
           reservationUrl,
         }): CheckAvailabilityResult => ({
           ...result,
@@ -153,10 +147,11 @@ const checkCowork = Effect.fn("agentTools.checkCoworkAvailability")(
             family: "cowork" as const,
             available: days.every((day) => day.available),
             days,
-            reservationSearchParams: getCoworkOfferSearchParams({
+            reservationSelection: {
+              kind: "cowork",
               entryTier: input.tier ?? "open-space",
               date: input.date,
-            }),
+            },
           }) satisfies AvailabilityResult
       )
     )
@@ -268,11 +263,11 @@ const checkMeetingRoom = Effect.fn("agentTools.checkMeetingRoomAvailability")(
             }),
             early_setup_available: available && checks.earlySetupAvailable,
           },
-          reservationSearchParams:
-            getMeetingRoomReservationSelectionSearchParams({
-              duration: meetingRoom.durationKey,
-              startDateTime: meetingRoom.startDateTime,
-            }),
+          reservationSelection: {
+            kind: "meeting-room",
+            duration: meetingRoom.durationKey,
+            startDateTime: meetingRoom.startDateTime,
+          },
         } satisfies AvailabilityResult;
       })
     )
@@ -336,11 +331,12 @@ const checkOffice = Effect.fn("agentTools.checkOfficeAvailability")(
               days.every((day) => day.available),
             days,
             office: { seats, max_seats: office.maximumSeats },
-            reservationSearchParams: getOfficeReservationSelectionSearchParams({
+            reservationSelection: {
+              kind: "office",
               startsOn: range.startsOn,
               dayCount: range.dates.length,
               seats,
-            }),
+            },
           }) satisfies AvailabilityResult
       )
     )

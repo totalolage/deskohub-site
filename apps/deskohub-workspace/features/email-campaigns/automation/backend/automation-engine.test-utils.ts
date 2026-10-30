@@ -141,9 +141,9 @@ export const testUnitHandler = (
   return registerAutomationUnitHandler<TestSubject, void>({
     kind,
     subject: testSubjectSchema,
-    ...(expire !== undefined && { expire: (_tx, unit) => expire(unit) }),
+    ...(expire !== undefined && { expire: (unit) => expire(unit) }),
     fetch: (unit) => options.fetch?.(unit) ?? Effect.void,
-    commit: (_tx, unit) => Effect.succeed(options.followUps?.(unit) ?? []),
+    commit: (unit) => Effect.succeed(options.followUps?.(unit) ?? []),
   });
 };
 

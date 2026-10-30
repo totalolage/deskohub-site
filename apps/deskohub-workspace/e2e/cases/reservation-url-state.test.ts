@@ -7,7 +7,6 @@ import {
   isWorkspaceE2EOfficeCaseId,
   workspaceE2ENonPaymentCaseIds,
 } from "../playwright-checkout/case-catalog";
-import type { Runner } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
 import { meetingRoomE2EDurations } from "./meeting-room";
 import {
@@ -162,7 +161,6 @@ const makeCases = (withOffice: boolean) =>
             }
           : undefined,
       },
-      run: (async () => ({ exitCode: 0, stderr: "", stdout: "" })) as Runner,
     })
   );
 

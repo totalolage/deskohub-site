@@ -7,6 +7,7 @@ import {
   type AdministrationAssistantConnectionIdType,
   AdministrationAuthentication,
   type AdministrationChannel,
+  CliMutationRejected,
   CliSessionId,
   CurrentAdministrationCaller,
   WorkspaceAdminApi,
@@ -34,6 +35,7 @@ import {
   AdministrationActionLog,
 } from "./administration-action-log.service";
 import { AdministrationActionRecordLive } from "./administration-action-record.server";
+import { AdministrationRequestLedger } from "./administration-request-ledger.service";
 import {
   cliSessionAdministrator,
   UnusedCliSessionAuthentication,
@@ -41,7 +43,6 @@ import {
 import { CliAuthentication } from "./cli-authentication.service";
 import { CliAuthenticationAdmission } from "./cli-authentication-admission.service";
 import { CliClientCompatibilityLive } from "./cli-client-version";
-import { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
 import { makeWorkspaceAdminApiLayer } from "./workspace-admin-api.server";
 
 const sessionChannel: AdministrationChannel = {
@@ -123,7 +124,7 @@ const serve = ({
   readonly channel?: AdministrationChannel;
   readonly actionLog: Layer.Layer<AdministrationActionLog>;
   readonly authentication?: Partial<CliAuthentication["Service"]>;
-  readonly idempotency?: Partial<CliMutationIdempotency["Service"]>;
+  readonly idempotency?: Partial<AdministrationRequestLedger["Service"]>;
   readonly invoices?: Partial<InvoiceAdministrationService["Service"]>;
   readonly standalone?: Partial<StandaloneAccessCodeAdministration["Service"]>;
   readonly backfill?: Partial<ReservationProductDetailsBackfill["Service"]>;
@@ -141,8 +142,8 @@ const serve = ({
             ...({} as CliAuthentication["Service"]),
             ...authentication,
           }),
-          Layer.succeed(CliMutationIdempotency, {
-            ...({} as CliMutationIdempotency["Service"]),
+          Layer.succeed(AdministrationRequestLedger, {
+            ...({} as AdministrationRequestLedger["Service"]),
             ...idempotency,
           }),
           Layer.succeed(InvoiceAdministrationService, {
@@ -383,7 +384,12 @@ describe("administration action record", () => {
     const { events, layer } = makeActionLog();
     const handler = serve({
       actionLog: layer,
-      idempotency: { claim: () => Effect.succeed({ kind: "mismatch" }) },
+      idempotency: {
+        applyOnceWithEffects: () =>
+          Effect.fail(
+            new CliMutationRejected({ message: "This mutation was rejected." })
+          ),
+      },
     });
     const body = {
       requestId: "01980000-0000-7000-8000-0000000000b1",
@@ -464,8 +470,7 @@ describe("administration action record", () => {
       channel: assistantChannel,
       actionLog: layer,
       idempotency: {
-        claim: () => Effect.succeed({ kind: "claimed" }),
-        release: () => Effect.void,
+        applyOnceWithEffects: ({ apply }) => apply,
       },
       invoices: {
         create: (_input, issuer) =>

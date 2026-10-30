@@ -162,8 +162,7 @@ const sendPaidReservationEmail = async (
       sentMessages.push(message);
       return Effect.succeed(sentResult(`email-${sentMessages.length}`));
     }),
-    sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
-    verify: Effect.succeed(true),
+    sendBatch: () => Effect.die("Reservation email tests do not send batches."),
   };
   const emailConfig: EmailProviderConfig = {
     provider: "console",
@@ -362,44 +361,6 @@ const getTextValueAfterLabel = (text: string, label: string) => {
 
   return labelIndex === -1 ? undefined : lines[labelIndex + 1];
 };
-
-describe("createCustomerEmailRecoveryIdempotencyKey", () => {
-  test("derives distinct stable keys for long prior delivery ids beyond the provider key limit", async () => {
-    const { createCustomerEmailRecoveryIdempotencyKey } = await import(
-      "./workspace-reservation-email.service"
-    );
-    const sharedLongPrefix = "resend-email-id".padEnd(213, "0");
-    const firstPriorDeliveryId = EmailDeliveryIdSchema.make(
-      `${sharedLongPrefix}first`
-    );
-    const secondPriorDeliveryId = EmailDeliveryIdSchema.make(
-      `${sharedLongPrefix}second`
-    );
-
-    const firstKey =
-      createCustomerEmailRecoveryIdempotencyKey(firstPriorDeliveryId);
-    const secondKey = createCustomerEmailRecoveryIdempotencyKey(
-      secondPriorDeliveryId
-    );
-
-    const legacyTruncationLength =
-      `workspace-paid-reservation-access-recovery-${firstPriorDeliveryId}`
-        .length;
-    expect(legacyTruncationLength).toBeGreaterThan(256);
-    expect(firstKey).toMatch(
-      /^workspace-paid-reservation-access-recovery-[0-9a-f]{64}$/
-    );
-    expect(firstKey.length).toBeLessThanOrEqual(256);
-    expect(secondKey.length).toBeLessThanOrEqual(256);
-    expect(firstKey).not.toBe(secondKey);
-    expect(firstKey).toBe(
-      createCustomerEmailRecoveryIdempotencyKey(firstPriorDeliveryId)
-    );
-    expect(secondKey).toBe(
-      createCustomerEmailRecoveryIdempotencyKey(secondPriorDeliveryId)
-    );
-  });
-});
 
 describe("Open Space customer reservation emails", () => {
   test("renders the eligible table names from loaded reservation details in HTML and text", async () => {
@@ -606,8 +567,8 @@ describe("workspace reservation email details", () => {
         sentMessages.push(message);
         return Effect.succeed(sentResult(`email-${sentMessages.length}`));
       }),
-      sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
-      verify: Effect.succeed(true),
+      sendBatch: () =>
+        Effect.die("Reservation email tests do not send batches."),
     };
     const emailConfig: EmailProviderConfig = {
       provider: "console",
@@ -745,8 +706,8 @@ describe("sendPaidReservationEmails internal notification failure", () => {
     });
     const emailService: EmailService = {
       send,
-      sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
-      verify: Effect.succeed(true),
+      sendBatch: () =>
+        Effect.die("Reservation email tests do not send batches."),
     };
     const emailConfig: EmailProviderConfig = {
       provider: "console",
@@ -989,8 +950,8 @@ describe("sendPaidReservationEmails author confirmation", () => {
           ? Effect.fail(new EmailServiceError("Author send failed."))
           : Effect.succeed(sentResult(`email-${sentMessages.length}`));
       }),
-      sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
-      verify: Effect.succeed(true),
+      sendBatch: () =>
+        Effect.die("Reservation email tests do not send batches."),
     };
     const emailConfig: EmailProviderConfig = {
       provider: "console",
@@ -1210,10 +1171,12 @@ describe("sendPaidReservationEmails author confirmation", () => {
 
 describe("sendPaidReservationEmails idempotency", () => {
   test("passes the explicit initial customer key to the provider message only", async () => {
-    const {
-      createCustomerEmailInitialIdempotencyKey,
-      WorkspaceReservationEmailService,
-    } = await import("./workspace-reservation-email.service");
+    const { WorkspaceReservationEmailService } = await import(
+      "./workspace-reservation-email.service"
+    );
+    const { createCustomerEmailInitialIdempotencyKey } = await import(
+      "./customer-email-idempotency-key"
+    );
     const { EmailConfigTag, EmailServiceTag } = await import(
       "@deskohub/email/backend/service"
     );
@@ -1227,8 +1190,8 @@ describe("sendPaidReservationEmails idempotency", () => {
         sentMessages.push(message);
         return Effect.succeed(sentResult(`email-${sentMessages.length}`));
       }),
-      sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
-      verify: Effect.succeed(true),
+      sendBatch: () =>
+        Effect.die("Reservation email tests do not send batches."),
     };
     const emailConfig: EmailProviderConfig = {
       provider: "console",
@@ -1291,10 +1254,12 @@ describe("sendPaidReservationEmails idempotency", () => {
 
 describe("sendPaidReservationEmails idempotent retry stability", () => {
   test("sends byte-identical complete customer requests under one idempotency key while the clock advances", async () => {
-    const {
-      createCustomerEmailInitialIdempotencyKey,
-      WorkspaceReservationEmailService,
-    } = await import("./workspace-reservation-email.service");
+    const { WorkspaceReservationEmailService } = await import(
+      "./workspace-reservation-email.service"
+    );
+    const { createCustomerEmailInitialIdempotencyKey } = await import(
+      "./customer-email-idempotency-key"
+    );
     const { EmailConfigTag, EmailServiceTag } = await import(
       "@deskohub/email/backend/service"
     );
@@ -1312,8 +1277,8 @@ describe("sendPaidReservationEmails idempotent retry stability", () => {
         sentMessages.push(message);
         return Effect.succeed(sentResult(`email-${sentMessages.length}`));
       }),
-      sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
-      verify: Effect.succeed(true),
+      sendBatch: () =>
+        Effect.die("Reservation email tests do not send batches."),
     };
     const emailConfig: EmailProviderConfig = {
       provider: "console",
@@ -1427,8 +1392,8 @@ describe("sendPaidReservationEmails reservation access capability", () => {
         sentMessages.push(message);
         return Effect.succeed(sentResult("preference-email-1"));
       }),
-      sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
-      verify: Effect.succeed(true),
+      sendBatch: () =>
+        Effect.die("Reservation email tests do not send batches."),
     };
     const emailConfig: EmailProviderConfig = {
       provider: "console",
@@ -1551,8 +1516,8 @@ describe("sendPaidReservationEmails reservation access capability", () => {
           sentResult(`captured-email-${sentMessages.length}`)
         );
       }),
-      sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
-      verify: Effect.succeed(true),
+      sendBatch: () =>
+        Effect.die("Reservation email tests do not send batches."),
     };
     const emailConfig: EmailProviderConfig = {
       provider: "console",
@@ -1745,8 +1710,8 @@ describe("reservation customer email language", () => {
         sentMessages.push(message);
         return Effect.succeed(sentResult(`email-${sentMessages.length}`));
       }),
-      sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
-      verify: Effect.succeed(true),
+      sendBatch: () =>
+        Effect.die("Reservation email tests do not send batches."),
     };
     const emailConfig: EmailProviderConfig = {
       provider: "console",

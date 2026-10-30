@@ -3,6 +3,7 @@ import "server-only";
 import { Effect } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
+import { WorkspaceLockSections } from "@/db/workspace-locks";
 import { env } from "@/env";
 import { revokeUnconsentedAdministrationTokens } from "@/features/account/backend/auth/administration-agent-access";
 import {
@@ -86,16 +87,16 @@ export const auth = makeWorkspaceAuth({
     Effect.flatMap(BotProtectionService, (botProtection) =>
       botProtection.verifyHuman(input)
     ).pipe(Effect.provide(BotProtectionService.Default)),
-  withSignInEmailLock: (key, effect) =>
-    Effect.flatMap(WorkspaceDatabaseAdvisoryLock, (advisoryLock) =>
-      advisoryLock.withLock(key, effect)
-    ).pipe(Effect.provide(WorkspaceDatabaseAdvisoryLock.Default)),
+  withSignInEmailLock: (address, effect) =>
+    WorkspaceLockSections.signInEmail(address)(effect).pipe(
+      Effect.provide(WorkspaceDatabaseAdvisoryLock.Default)
+    ),
   sendMagicLink: workspaceSendMagicLink,
   beforeDeleteUser: workspaceBeforeDeleteUser,
   createCustomerAccount: (accountId) =>
-    Effect.flatMap(WorkspaceDatabase, ({ db }) =>
-      ensureCustomerAccount(db, accountId)
-    ).pipe(Effect.provide(WorkspaceDatabase.Default)),
+    ensureCustomerAccount(accountId).pipe(
+      Effect.provide(WorkspaceDatabase.Default)
+    ),
   hasAdministratorGrant: (accountId) =>
     Effect.flatMap(AccountRoleGrants, (grants) =>
       grants.has({ accountId, role: "administrator" })

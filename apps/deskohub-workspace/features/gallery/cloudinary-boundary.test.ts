@@ -10,6 +10,7 @@ const allowedServerImports = new Set([
   "app/api/webhooks/cloudinary/route.test.ts",
   "features/account/backend/customer-avatar.service.ts",
   "features/email-campaigns/backend/campaign-image.service.ts",
+  "features/email-campaigns/backend/campaign-image.service.test.ts",
   "features/gallery/backend/cloudinary.service.ts",
   "features/gallery/backend/get-cloudinary-images.server.ts",
 ]);

@@ -41,19 +41,18 @@ export const tombstoneOrphanedAccounts = Effect.fn(function* (
 });
 
 /**
- * Creates the account's durable record when it has none, through the caller's
- * transaction executor, so the record commits with the row that names the
- * account. A deleted account's tombstone stays a tombstone.
+ * Creates the account's durable record when it has none. It is idempotent and
+ * correct on its own, so it needs no transaction; inside one it joins it. A
+ * deleted account's tombstone stays a tombstone.
  */
-export const ensureCustomerAccount = (
-  executor: WorkspaceDatabaseClient,
-  accountId: CustomerAccountId
-) =>
-  executor
-    .insert(customerAccounts)
-    .values({ id: accountId })
-    .onConflictDoNothing()
-    .pipe(Effect.asVoid);
+export const ensureCustomerAccount = (accountId: CustomerAccountId) =>
+  Effect.flatMap(WorkspaceDatabase, ({ db }) =>
+    db
+      .insert(customerAccounts)
+      .values({ id: accountId })
+      .onConflictDoNothing()
+      .pipe(Effect.asVoid)
+  );
 
 interface ICustomerAccountRepository {
   /**

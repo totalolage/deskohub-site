@@ -6,22 +6,26 @@ import { formatReferralInvitationDiscount } from "@/features/referrals/client";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { reservationCustomerQueryParam } from "@/features/reservation/reservation-checkout-query";
 import { formatMoney, type Money } from "@/shared/money/money";
-import { openBrowserPage, readBrowserUrl } from "../browser";
-import { getSubmitCoworkReservationScript } from "../browser-scripts";
+import { openPage, readPageUrl } from "../browser";
 import type { E2EBrowserSession } from "../browser-session";
 import {
   applyDiscountCode,
   submitDiscountCode,
 } from "../checkout/discount-code";
 import { submitReservationForPayPage } from "../checkout/payment";
+import { toReservationStep } from "../checkout/reservation-form-preparation";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
-import { tryWorkspaceE2ESync, workspaceE2EError } from "../errors";
+import {
+  tryWorkspaceE2ESync,
+  type WorkspaceE2EError,
+  workspaceE2EError,
+} from "../errors";
 import {
   type ExpectedDiscountApplication,
   waitForCheckoutRow,
 } from "../integrations/database";
 import { pollUntil } from "../polling";
-import { addRedaction, assert, parseUrl, type Runner } from "../runtime";
+import { addRedaction, assert, parseUrl } from "../runtime";
 import { workspaceE2EPollIntervalMs } from "../timeouts";
 import type {
   CheckoutData,
@@ -71,7 +75,7 @@ export type WorkspaceE2EReferralCheckoutCapture = (input: {
   readonly expectedPayUrl: string;
   readonly orderId: WorkspaceReservationId;
   readonly target: WorkspaceE2EReferralCheckoutReviewTarget;
-}) => Promise<void>;
+}) => Effect.Effect<void, WorkspaceE2EError>;
 
 /** The voucher fixture redeemed after a share-link referral. */
 export const referralVoucherAdjustment = {
@@ -95,14 +99,13 @@ export const ordinaryCodeAppliedMessage = (
   );
 
 export const startPayPage = ({
+  browserSession,
   config,
   contact,
   data,
   datasourceConfig,
   referralCode,
-  run,
   runStep,
-  session,
   state,
   stepPrefix,
 }: {
@@ -112,11 +115,11 @@ export const startPayPage = ({
   readonly datasourceConfig: DatasourceConfig;
   /** Starts the reservation from a share link carrying this code. */
   readonly referralCode?: string;
-  readonly run: Runner;
   readonly runStep: Parameters<WorkspaceE2ECase["execute"]>[0]["runStep"];
-  readonly session: string;
   readonly state: CheckoutFlowState;
   readonly stepPrefix: string;
+  /** The browser session obtained inside the case step. */
+  readonly browserSession: E2EBrowserSession;
 }) =>
   runStep({
     execute: Effect.gen(function* () {
@@ -126,20 +129,19 @@ export const startPayPage = ({
         addRedaction(referralCode, true);
         checkoutUrl.searchParams.set("ref", referralCode);
       }
-      yield* openBrowserPage(config, run, session, checkoutUrl.toString(), {
+      yield* openPage(browserSession, config, checkoutUrl.toString(), {
         timeoutMs: config.timeouts.browserNavigation,
       });
       const orderId = yield* submitReservationForPayPage({
         onOrderId: (value) => {
           state.orderId = value;
         },
-        run,
-        session,
-        submitReservationScript: getSubmitCoworkReservationScript(data),
+        session: browserSession,
+        preparation: toReservationStep(data),
         timeouts: config.timeouts,
       });
       state.orderId = orderId;
-      const payUrl = yield* readBrowserUrl(run, session);
+      const payUrl = yield* readPageUrl(browserSession);
       if (!payUrl) {
         return yield* workspaceE2EError(
           "checkout did not reach its signed pay page",
@@ -166,14 +168,13 @@ export const startPayPage = ({
 
 export const applyCodeAndReadFreshPayUrl = ({
   appliedMessage,
+  browserSession,
   code,
   config,
   currentPayUrl,
   locale,
   orderId,
-  run,
   runStep,
-  session,
   stepId,
 }: {
   readonly appliedMessage: string;
@@ -182,10 +183,10 @@ export const applyCodeAndReadFreshPayUrl = ({
   readonly currentPayUrl: string;
   readonly locale: CheckoutData["locale"];
   readonly orderId: WorkspaceReservationId;
-  readonly run: Runner;
   readonly runStep: Parameters<WorkspaceE2ECase["execute"]>[0]["runStep"];
-  readonly session: string;
   readonly stepId: string;
+  /** The browser session obtained inside the case step. */
+  readonly browserSession: E2EBrowserSession;
 }) =>
   runStep({
     execute: Effect.gen(function* () {
@@ -193,16 +194,14 @@ export const applyCodeAndReadFreshPayUrl = ({
         appliedMessage,
         code,
         config,
-        run,
-        session,
+        session: browserSession,
       });
       return yield* waitForFreshPayStateUrl({
         config,
         locale,
         orderId,
         previousUrl: currentPayUrl,
-        run,
-        session,
+        session: browserSession,
       });
     }),
     id: stepId,
@@ -214,18 +213,16 @@ const waitForFreshPayStateUrl = ({
   locale,
   orderId,
   previousUrl,
-  run,
   session,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly locale: CheckoutData["locale"];
   readonly orderId: WorkspaceReservationId;
   readonly previousUrl: string;
-  readonly run: Runner;
-  readonly session: string;
+  readonly session: E2EBrowserSession;
 }) =>
   pollUntil(
-    readBrowserUrl(run, session).pipe(
+    readPageUrl(session).pipe(
       Effect.map((url) =>
         url &&
         isFreshOwnedPayStateUrl(url, previousUrl, config, locale, orderId)
@@ -249,8 +246,6 @@ export const rejectReferralCode = ({
   locale,
   message,
   orderId,
-  run,
-  session,
 }: {
   readonly code: string;
   readonly config: WorkspaceE2EConfig;
@@ -259,15 +254,13 @@ export const rejectReferralCode = ({
   readonly locale: CheckoutData["locale"];
   readonly message: string;
   readonly orderId: WorkspaceReservationId;
-  readonly run: Runner;
-  /** The browser session `session` names for `run`. */
+  /** The browser session obtained inside the case step. */
   readonly browserSession: E2EBrowserSession;
-  readonly session: string;
 }) =>
   Effect.gen(function* () {
-    yield* submitDiscountCode({ code, config, run, session });
+    yield* submitDiscountCode({ code, config, session: browserSession });
     const rejectedUrl = yield* pollUntil(
-      readBrowserUrl(run, session).pipe(
+      readPageUrl(browserSession).pipe(
         Effect.map((url) =>
           url &&
           isRejectedReferralCodeUrl({
@@ -817,13 +810,14 @@ export const captureReviewStep = ({
   readonly runStep: Parameters<WorkspaceE2ECase["execute"]>[0]["runStep"];
 }) =>
   runStep({
-    execute: Effect.tryPromise({
-      catch: () =>
+    // Any failure, a Playwright timeout included, fails the capture plainly.
+    execute: captureReview({ expectedPayUrl, orderId, target }).pipe(
+      Effect.mapError(() =>
         workspaceE2EError("referral checkout review capture failed", {
           operation: "capture account referral checkout review",
-        }),
-      try: () => captureReview({ expectedPayUrl, orderId, target }),
-    }),
+        })
+      )
+    ),
     id: `capture-${target.replaceAll("account-referral-", "")}`,
     timeoutMs: 30_000,
   });

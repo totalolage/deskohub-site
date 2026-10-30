@@ -24,11 +24,7 @@ import {
 import { getCoworkCheckoutSummary } from "@/features/checkout/checkout-summary-cowork";
 import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
 import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-office";
-import {
-  type LegalEvidenceMap,
-  legalEvidenceMapSchema,
-  paymentSubmitLegalEvidenceSource,
-} from "@/features/checkout/legal-evidence";
+import type { LegalEvidenceMap } from "@/features/checkout/legal-evidence";
 import {
   isWorkspaceCoworkCurrentProductTier,
   type WorkspaceCoworkProductTier,
@@ -38,11 +34,8 @@ import { getMeetingRoomCheckoutDetails } from "@/features/checkout/schemas/check
 import { getOfficeCheckoutDetails } from "@/features/checkout/schemas/checkout-details-office";
 import type { DiscountCommitment } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
-import {
-  type CheckoutLegalAcceptanceSnapshot,
-  getLegalAcceptanceSnapshot,
-} from "@/features/legal/acceptance-snapshot";
 import { isEarlyPerformanceRequestRequired } from "@/features/legal/early-performance";
+import { getPaymentSubmitLegalEvidence } from "@/features/legal/payment-submit-evidence";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { getCoworkReservationIntervalInput } from "@/features/reservation/cowork-reservation";
 import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
@@ -67,7 +60,7 @@ import {
   capturePaymentFailed,
   capturePaymentStarted,
 } from "../analytics/posthog-lifecycle-events";
-import { WorkspacePaidFulfillmentService } from "../fulfillment/paid-fulfillment.service";
+import { ReservationFulfillment } from "../fulfillment/reservation-fulfillment.service";
 import { NexiAmountFromWorkspaceMoney } from "../payment/nexi-amount.codec";
 import { getNexiCurrencyOverride } from "../payment/nexi-currency";
 import { getNexiHostedPaymentCustomer } from "../payment/nexi-customer-info";
@@ -99,12 +92,6 @@ import {
 import { getReservationStatusPath } from "./reservation-status-url";
 import { appendVercelPreviewProtectionBypass } from "./vercel-preview-protection-bypass";
 
-const decodeLegalEvidenceMap = Schema.decodeUnknownSync(
-  legalEvidenceMapSchema,
-  {
-    onExcessProperty: "error",
-  }
-);
 const decodeDotyposCustomerId = Schema.decodeUnknownEffect(
   dotyposCustomerIdSchema
 );
@@ -239,7 +226,7 @@ export class CheckoutService extends Context.Service<
 
   static Live = this.Default.pipe(
     Layer.provide(OptionalAccountActivityGuard.Live),
-    Layer.provide(WorkspacePaidFulfillmentService.Live),
+    Layer.provide(ReservationFulfillment.Live),
     Layer.provide(PayableReservationService.Default),
     Layer.provide(LegalEvidenceEventRepository.Default),
     Layer.provide(PostHogEventService.Live),
@@ -322,73 +309,6 @@ const getNotificationUrl: Effect.Effect<string, CheckoutError> = Effect.gen(
 ).pipe(Effect.catchTag("WorkspaceUrlConfigError", toCheckoutUrlError));
 
 const toNexiAmount = Schema.encodeEffect(NexiAmountFromWorkspaceMoney);
-
-const getCheckoutLegalAcceptanceSnapshot: (
-  locale: Locale
-) => Effect.Effect<CheckoutLegalAcceptanceSnapshot, CheckoutError> = Effect.fn(
-  "getCheckoutLegalAcceptanceSnapshot"
-)((locale) =>
-  getLegalAcceptanceSnapshot(locale).pipe(
-    Effect.mapError(
-      (cause) =>
-        new CheckoutError({
-          code: "checkout_failed",
-          message: "Legal acceptance snapshot could not be created.",
-          cause,
-        })
-    )
-  )
-);
-
-const toCheckoutLegalDocuments = (
-  documents: CheckoutLegalAcceptanceSnapshot
-) => ({
-  termsAndConditions: {
-    path: documents.termsAndConditions.path,
-    hash: documents.termsAndConditions.hash,
-    hashAlgorithm: documents.termsAndConditions.hashAlgorithm,
-  },
-  operatingRules: {
-    path: documents.operatingRules.path,
-    hash: documents.operatingRules.hash,
-    hashAlgorithm: documents.operatingRules.hashAlgorithm,
-  },
-});
-
-const getCheckoutLegalEvidence = (input: {
-  readonly acceptedAt: string;
-  readonly earlyPerformanceRequested: boolean;
-  readonly locale: Locale;
-  readonly legalDocuments: CheckoutLegalAcceptanceSnapshot;
-}): LegalEvidenceMap => {
-  const documents = toCheckoutLegalDocuments(input.legalDocuments);
-
-  return decodeLegalEvidenceMap({
-    [documents.termsAndConditions.hash]: {
-      documentKey: "termsAndConditions",
-      documentHash: documents.termsAndConditions.hash,
-      accepted: true,
-      acceptedAt: input.acceptedAt,
-      locale: input.locale,
-      source: paymentSubmitLegalEvidenceSource,
-      document: documents.termsAndConditions,
-      acknowledgements: input.earlyPerformanceRequested
-        ? {
-            earlyPerformanceConsent: true,
-          }
-        : undefined,
-    },
-    [documents.operatingRules.hash]: {
-      documentKey: "operatingRules",
-      documentHash: documents.operatingRules.hash,
-      accepted: true,
-      acceptedAt: input.acceptedAt,
-      locale: input.locale,
-      source: paymentSubmitLegalEvidenceSource,
-      document: documents.operatingRules,
-    },
-  });
-};
 
 const getCheckoutDetails = (
   prepared: PaymentPriceAffirmation,
@@ -517,7 +437,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
       const paymentAttempts = yield* PaymentAttemptRepository;
       const paymentLifecycle = yield* PaymentLifecycleRepository;
       const legalEvidenceEvents = yield* LegalEvidenceEventRepository;
-      const paidFulfillment = yield* WorkspacePaidFulfillmentService;
+      const paidFulfillment = yield* ReservationFulfillment;
       const posthogEvents = yield* PostHogEventService;
       const pricing = yield* CheckoutPricingService;
       const payableReservations = yield* PayableReservationService;
@@ -762,20 +682,18 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
           }).pipe(Effect.provideService(PostHogEventService, posthogEvents));
         }
 
-        yield* paidFulfillment
-          .fulfillPaidOrder({ orderId: input.workspaceReservationId })
-          .pipe(
-            Effect.catch((cause) =>
-              Effect.logError(
-                "Internal payment completed but paid fulfillment failed",
-                {
-                  orderId: input.workspaceReservationId,
-                  paymentAttemptId: transition.attempt.id,
-                  cause,
-                }
-              )
+        yield* paidFulfillment.run(input.workspaceReservationId).pipe(
+          Effect.catch((cause) =>
+            Effect.logError(
+              "Internal payment completed but paid fulfillment failed",
+              {
+                orderId: input.workspaceReservationId,
+                paymentAttemptId: transition.attempt.id,
+                cause,
+              }
             )
-          );
+          )
+        );
 
         return getCheckoutRedirectResult({
           redirectUrl: getReservationStatusPath({
@@ -794,16 +712,14 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
         readonly orderId: WorkspaceReservationId;
         readonly locale: Locale;
       }) {
-        yield* paidFulfillment
-          .fulfillPaidOrder({ orderId: input.orderId })
-          .pipe(
-            Effect.catch((cause) =>
-              Effect.logError("Paid checkout fulfillment retry failed", {
-                orderId: input.orderId,
-                cause,
-              })
-            )
-          );
+        yield* paidFulfillment.run(input.orderId).pipe(
+          Effect.catch((cause) =>
+            Effect.logError("Paid checkout fulfillment retry failed", {
+              orderId: input.orderId,
+              cause,
+            })
+          )
+        );
 
         return getCheckoutRedirectResult({
           redirectUrl: getReservationStatusPath({
@@ -1107,14 +1023,10 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                     locale,
                   });
 
-                  const acceptedAt = contractAt.toString();
-                  const legalDocuments =
-                    yield* getCheckoutLegalAcceptanceSnapshot(locale);
-                  const legalEvidence = getCheckoutLegalEvidence({
-                    acceptedAt,
-                    earlyPerformanceRequested: earlyPerformanceRequired,
+                  const legalEvidence = getPaymentSubmitLegalEvidence({
                     locale,
-                    legalDocuments,
+                    acceptedAt: contractAt.toString(),
+                    earlyPerformanceConsent: earlyPerformanceRequired,
                   });
                   const checkoutDetails = getCheckoutDetails(
                     prepared,

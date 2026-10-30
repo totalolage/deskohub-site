@@ -86,6 +86,35 @@ export const mergeTestTimings = (
   };
 };
 
+/**
+ * Explains how a run's recorded files differ from the checkout's test files,
+ * or returns undefined when they match. A pull request run tests the branch
+ * merged with its base, so a test file the base added or renamed after the
+ * branch diverged shows up as a mismatch.
+ */
+export const describeRecordingMismatch = (
+  testFiles: ReadonlyArray<string>,
+  timings: TestTimings
+): string | undefined => {
+  const checkoutFiles = new Set(testFiles);
+  const unrecorded = testFiles.filter((file) => !(file in timings.files));
+  const absent = Object.keys(timings.files).filter(
+    (file) => !checkoutFiles.has(file)
+  );
+  if (unrecorded.length === 0 && absent.length === 0) return undefined;
+  return [
+    ...(unrecorded.length > 0
+      ? [`No duration for ${unrecorded.length} local test file(s):`]
+      : []),
+    ...unrecorded,
+    ...(absent.length > 0
+      ? [`Durations for ${absent.length} file(s) this checkout lacks:`]
+      : []),
+    ...absent,
+    "Refresh from a run of the checked-out commit where every shard finished. Pull request runs test the branch merged with its base, so merge the base branch and push before that run.",
+  ].join("\n");
+};
+
 export const formatTestTimings = (timings: TestTimings): string =>
   `${JSON.stringify(timings, null, 2)}\n`;
 
@@ -168,12 +197,13 @@ const downloadShardTimings = async (
 const refreshTestTimings = async (runId: string) => {
   const shards = await downloadShardTimings(runId);
   const timings = mergeTestTimings(shards);
-  const missing = (await discoverTestFiles()).filter(
-    (file) => !(file in timings.files)
+  const mismatch = describeRecordingMismatch(
+    await discoverTestFiles(),
+    timings
   );
-  if (missing.length > 0) {
+  if (mismatch) {
     throw new Error(
-      `Run ${runId} recorded no duration for ${missing.length} local test file(s); refresh from a run of the checked-out commit where every shard finished:\n${missing.join("\n")}`
+      `Run ${runId} did not time this checkout's test files.\n${mismatch}`
     );
   }
   await writeFile(testTimingsPath, formatTestTimings(timings));

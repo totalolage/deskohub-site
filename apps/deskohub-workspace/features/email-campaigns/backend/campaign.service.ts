@@ -5,7 +5,7 @@ import { and, desc, eq, ne, notExists, or } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer, Option, Schema } from "effect";
 import type { SqlError } from "effect/unstable/sql";
-import { WorkspaceDatabase } from "@/db/database.service";
+import { WorkspaceDatabase, WorkspaceTransaction } from "@/db/database.service";
 import {
   type CampaignRow,
   emailCampaignAudiences,
@@ -32,9 +32,13 @@ import {
 } from "../body/campaign-content";
 import {
   type CampaignContentChanges,
+  campaignContentImages,
   changeCampaignContent,
 } from "../body/campaign-content-codec";
-import { campaignImageCloudName } from "../body/campaign-image-account";
+import {
+  campaignImageCloudName,
+  isUploadedCampaignImage,
+} from "../body/campaign-image-account";
 import type { CampaignAudienceId, CampaignId } from "../campaign-identifiers";
 import {
   type CampaignDelivery,
@@ -49,6 +53,7 @@ import {
   type CampaignBodyMarkdownInvalid,
   CampaignContentInvalid,
   CampaignDeliveryMismatch,
+  CampaignImageNotUploaded,
   type CampaignLocaleContentMissing,
   CampaignNotFound,
   CampaignPublished,
@@ -79,7 +84,8 @@ type CampaignWriteError =
   | CampaignAudienceNotFound
   | CampaignAudienceArchived
   | AudienceFilterContextInvalid
-  | CampaignContentInvalid;
+  | CampaignContentInvalid
+  | CampaignImageNotUploaded;
 
 /** The automation row of an automated campaign, as a copy inherits it. */
 type AutomationWorkingCopy = Pick<
@@ -198,7 +204,7 @@ export class CampaignService extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const { db } = yield* WorkspaceDatabase;
+      const { db, transaction } = yield* WorkspaceDatabase;
 
       const find = (campaignId: CampaignId) =>
         db
@@ -258,19 +264,16 @@ export class CampaignService extends Context.Service<
         }
       );
 
-      type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
-
       /**
        * Takes an automated campaign's lifecycle lock for the rest of the
        * transaction; a one-off campaign has no row to lock. Lifecycle
        * operations take it first too, so writes serialize with activation.
        */
       const lockAutomation = (
-        tx: Transaction,
         campaignId: CampaignId,
         strength: "update" | "share"
       ) =>
-        tx
+        db
           .select({ flow: emailCampaignAutomations.flow })
           .from(emailCampaignAutomations)
           .where(eq(emailCampaignAutomations.campaignId, campaignId))
@@ -282,8 +285,8 @@ export class CampaignService extends Context.Service<
        * audience can't be archived or deleted before the campaign that
        * references it commits.
        */
-      const lockAudience = (tx: Transaction, audienceId: CampaignAudienceId) =>
-        tx
+      const lockAudience = (audienceId: CampaignAudienceId) =>
+        db
           .select({
             archivedAt: emailCampaignAudiences.archivedAt,
             filter: emailCampaignAudiences.filter,
@@ -295,9 +298,9 @@ export class CampaignService extends Context.Service<
 
       const lockAssignableAudience = Effect.fn(
         "CampaignService.lockAssignableAudience"
-      )(function* (tx: Transaction, audienceId: CampaignAudienceId | null) {
+      )(function* (audienceId: CampaignAudienceId | null) {
         if (audienceId === null) return;
-        const audience = yield* lockAudience(tx, audienceId);
+        const audience = yield* lockAudience(audienceId);
         if (Option.isNone(audience)) {
           return yield* new CampaignAudienceNotFound({ audienceId });
         }
@@ -312,7 +315,6 @@ export class CampaignService extends Context.Service<
        * must pass the rules a save applies.
        */
       const insertCopy = Effect.fn("CampaignService.insertCopy")(function* (
-        tx: Transaction,
         source: Campaign,
         automation: Option.Option<AutomationWorkingCopy>
       ) {
@@ -325,13 +327,13 @@ export class CampaignService extends Context.Service<
         const audience =
           source.audienceId === null
             ? Option.none()
-            : yield* lockAudience(tx, source.audienceId);
+            : yield* lockAudience(source.audienceId);
         const assignable = Option.exists(
           audience,
           ({ archivedAt, filter }) =>
             archivedAt === null && isSavedAudienceFilter(filter)
         );
-        const [campaign] = yield* tx
+        const [campaign] = yield* db
           .insert(emailCampaigns)
           .values({
             title: `Copy of ${source.title}`,
@@ -344,7 +346,7 @@ export class CampaignService extends Context.Service<
           })
           .returning();
         if (source.delivery === "automated") {
-          yield* tx.insert(emailCampaignAutomations).values({
+          yield* db.insert(emailCampaignAutomations).values({
             campaignId: campaign!.id,
             flow: Option.getOrNull(flow),
           });
@@ -354,11 +356,10 @@ export class CampaignService extends Context.Service<
 
       /** Copies the source as it stands once its working copy is locked. */
       const copyCampaign = Effect.fn("CampaignService.copyCampaign")(function* (
-        tx: Transaction,
         campaignId: CampaignId
       ) {
-        const automation = yield* lockAutomation(tx, campaignId, "share");
-        const source = yield* tx
+        const automation = yield* lockAutomation(campaignId, "share");
+        const source = yield* db
           .select()
           .from(emailCampaigns)
           .where(eq(emailCampaigns.id, campaignId))
@@ -366,7 +367,7 @@ export class CampaignService extends Context.Service<
             Effect.map((rows) => Option.fromNullishOr(rows[0])),
             Effect.flatMap(requireFound(campaignId))
           );
-        return yield* insertCopy(tx, source, automation);
+        return yield* insertCopy(source, automation);
       });
 
       const validateContent = (
@@ -384,18 +385,57 @@ export class CampaignService extends Context.Service<
               Effect.mapError((cause) => new CampaignContentInvalid({ cause }))
             );
 
+      /**
+       * Holds the images content adds to the campaign editor's uploads. An
+       * image the campaign already has in any locale stays, wherever it's
+       * stored, so content saved before the rule round-trips unchanged.
+       */
+      const requireUploadedImages = (
+        content: CampaignLocalizedContent,
+        current: CampaignLocalizedContent
+      ) =>
+        campaignImageCloudName.pipe(
+          Effect.flatMap((imageCloudName) => {
+            const kept = new Set(
+              campaignContentImages(current).map(({ source }) => source)
+            );
+            const added = campaignContentImages(content).find(
+              ({ source }) =>
+                !kept.has(source) &&
+                !isUploadedCampaignImage(source, imageCloudName)
+            );
+            return added === undefined
+              ? Effect.void
+              : Effect.fail(new CampaignImageNotUploaded(added));
+          })
+        );
+
+      /** The campaign's content, locked until the transaction ends. */
+      const lockContent = (campaignId: CampaignId) =>
+        Effect.flatMap(WorkspaceTransaction, ({ db }) =>
+          db
+            .select({ content: emailCampaigns.content })
+            .from(emailCampaigns)
+            .where(eq(emailCampaigns.id, campaignId))
+            .for("update")
+            .pipe(
+              Effect.map((rows) =>
+                Option.map(Option.fromNullishOr(rows[0]), (row) => row.content)
+              )
+            )
+        );
+
       /** Inserts a Draft, and an automated one's automation row with no flow. */
       const insertDraft = Effect.fn("CampaignService.insertDraft")(function* (
-        tx: Transaction,
         input: CampaignDraftInput & { readonly delivery: CampaignDelivery }
       ) {
-        yield* lockAssignableAudience(tx, input.audienceId);
-        const [campaign] = yield* tx
+        yield* lockAssignableAudience(input.audienceId);
+        const [campaign] = yield* db
           .insert(emailCampaigns)
           .values({ ...input, status: "draft" })
           .returning();
         if (input.delivery === "automated") {
-          yield* tx
+          yield* db
             .insert(emailCampaignAutomations)
             .values({ campaignId: campaign!.id, flow: null });
         }
@@ -403,15 +443,15 @@ export class CampaignService extends Context.Service<
       });
 
       /** Writes an edit if the campaign is still editable once locked. */
-      const writeEdit = Effect.fn("CampaignService.writeEdit")(function* (
-        tx: Transaction,
-        { campaignId, ...changes }: CampaignEdit
-      ) {
+      const writeEdit = Effect.fn("CampaignService.writeEdit")(function* ({
+        campaignId,
+        ...changes
+      }: CampaignEdit) {
         if (changes.audienceId !== undefined) {
-          yield* lockAssignableAudience(tx, changes.audienceId);
+          yield* lockAssignableAudience(changes.audienceId);
         }
         const updatedAt = yield* currentInstant;
-        const [campaign] = yield* tx
+        const [campaign] = yield* db
           .update(emailCampaigns)
           .set({ ...changes, updatedAt })
           .where(and(eq(emailCampaigns.id, campaignId), editable))
@@ -429,45 +469,52 @@ export class CampaignService extends Context.Service<
       const update = Effect.fn("CampaignService.update")(function* (
         edit: CampaignEdit
       ) {
-        yield* validateContent(edit.content);
-        return yield* db
-          .transaction((tx) =>
-            lockAutomation(tx, edit.campaignId, "update").pipe(
-              Effect.andThen(writeEdit(tx, edit))
-            )
+        const { content } = edit;
+        yield* validateContent(content);
+        return yield* transaction(
+          lockAutomation(edit.campaignId, "update").pipe(
+            Effect.andThen(
+              content === undefined
+                ? Effect.void
+                : lockContent(edit.campaignId).pipe(
+                    Effect.flatMap(
+                      Option.match({
+                        onNone: () => Effect.void,
+                        onSome: (current) =>
+                          requireUploadedImages(content, current),
+                      })
+                    )
+                  )
+            ),
+            Effect.andThen(writeEdit(edit))
           )
-          .pipe(Effect.flatMap(requireEdited(edit.campaignId)));
+        ).pipe(Effect.flatMap(requireEdited(edit.campaignId)));
       });
 
       /**
        * Merges the content changes into the content as it stands once the
        * campaign is locked, so no concurrent edit is lost.
        */
-      const patchContent = Effect.fn("CampaignService.patchContent")(function* (
-        tx: Transaction,
-        {
+      const patchContent = Effect.fn("CampaignService.patchContent")(
+        function* ({
           content: changes,
           ...edit
         }: CampaignPatchInput & {
           readonly content: CampaignContentChanges;
+        }) {
+          yield* lockAutomation(edit.campaignId, "update");
+          const current = yield* lockContent(edit.campaignId);
+          if (Option.isNone(current)) return Option.none<Campaign>();
+          const content = yield* changeCampaignContent({
+            campaignId: edit.campaignId,
+            current: current.value,
+            changes,
+          });
+          yield* validateContent(content);
+          yield* requireUploadedImages(content, current.value);
+          return yield* writeEdit({ ...edit, content });
         }
-      ) {
-        yield* lockAutomation(tx, edit.campaignId, "update");
-        const current = yield* tx
-          .select({ content: emailCampaigns.content })
-          .from(emailCampaigns)
-          .where(eq(emailCampaigns.id, edit.campaignId))
-          .for("update")
-          .pipe(Effect.map((rows) => Option.fromNullishOr(rows[0])));
-        if (Option.isNone(current)) return Option.none<Campaign>();
-        const content = yield* changeCampaignContent({
-          campaignId: edit.campaignId,
-          current: current.value.content,
-          changes,
-        });
-        yield* validateContent(content);
-        return yield* writeEdit(tx, { ...edit, content });
-      });
+      );
 
       return {
         list: db
@@ -482,9 +529,8 @@ export class CampaignService extends Context.Service<
           ...input
         }) {
           yield* validateContent(input.content);
-          return yield* db.transaction((tx) =>
-            insertDraft(tx, { ...input, delivery })
-          );
+          yield* requireUploadedImages(input.content, {});
+          return yield* transaction(insertDraft({ ...input, delivery }));
         }),
         update,
         patch: Effect.fn("CampaignService.patch")(function* ({
@@ -492,22 +538,22 @@ export class CampaignService extends Context.Service<
           ...edit
         }) {
           if (content === undefined) return yield* update(edit);
-          return yield* db
-            .transaction((tx) => patchContent(tx, { ...edit, content }))
-            .pipe(Effect.flatMap(requireEdited(edit.campaignId)));
+          return yield* transaction(patchContent({ ...edit, content })).pipe(
+            Effect.flatMap(requireEdited(edit.campaignId))
+          );
         }),
         delete: Effect.fn("CampaignService.delete")(function* (campaignId) {
-          const deleted = yield* db.transaction((tx) =>
-            lockAutomation(tx, campaignId, "update").pipe(
+          const deleted = yield* transaction(
+            lockAutomation(campaignId, "update").pipe(
               Effect.andThen(
-                tx
+                db
                   .delete(emailCampaigns)
                   .where(
                     and(
                       eq(emailCampaigns.id, campaignId),
                       eq(emailCampaigns.status, "draft"),
                       notExists(
-                        tx
+                        db
                           .select({
                             id: emailCampaignAutomationVersions.id,
                           })
@@ -531,7 +577,7 @@ export class CampaignService extends Context.Service<
         }),
         duplicate: Effect.fn("CampaignService.duplicate")(
           function* (campaignId) {
-            return yield* db.transaction((tx) => copyCampaign(tx, campaignId));
+            return yield* transaction(copyCampaign(campaignId));
           }
         ),
       } satisfies ICampaignService;

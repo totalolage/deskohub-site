@@ -13,7 +13,7 @@ import {
 import { Cause, Effect, Exit, Fiber, Layer, Scope } from "effect";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import { runBrowserCommand } from "./browser";
-import { sanitizeHarArtifact } from "./browser-session";
+import { sanitizeHarArtifact } from "./artifact-sanitization";
 import type { DatasourceConfig } from "./config";
 import { WorkspaceE2EHostedPaymentPermitServiceMock } from "./coordination/hosted-payment-permit.service.mock";
 import { WorkspaceE2EProviderVerificationPermitServiceMock } from "./coordination/provider-verification-permit.service.mock";
@@ -119,9 +119,7 @@ const suiteLayer = (
 const runCase = async (input: {
   readonly browser?: Browser;
   readonly cleanup?: Layer.Layer<WorkspaceE2ECleanupService>;
-  readonly execute: (input: {
-    readonly run: Runner;
-  }) => WorkspaceE2ECase["execute"];
+  readonly execute: WorkspaceE2ECase["execute"];
   readonly id?: string;
   readonly timeouts?: WorkspaceE2ETimeouts;
 }) => {
@@ -139,7 +137,7 @@ const runCase = async (input: {
       sessionPrefix,
       testCase: {
         checkoutStates: [],
-        execute: input.execute({ run }),
+        execute: input.execute,
         id,
         timeoutMs: 20_000,
       },
@@ -225,20 +223,20 @@ test.skipIf(!chromiumAvailable)(
   "passes a case in its own session and closes it during finalization",
   async () => {
     let context: BrowserContext | undefined;
+    let caseRunner: Runner | undefined;
     let sessionId = "";
     const result = await runCase({
-      execute:
-        ({ run }) =>
-        ({ runStep, session }) =>
-          runStep({
-            execute: Effect.gen(function* () {
-              sessionId = session;
-              yield* openPage(run, session, `${origin()}/`);
-              context = yield* caseContext(run, session);
-            }),
-            id: "open-checkout",
-            timeoutMs: 10_000,
+      execute: ({ run, runStep, session }) =>
+        runStep({
+          execute: Effect.gen(function* () {
+            caseRunner = run;
+            sessionId = session;
+            yield* openPage(run, session, `${origin()}/`);
+            context = yield* caseContext(run, session);
           }),
+          id: "open-checkout",
+          timeoutMs: 10_000,
+        }),
     });
     const closedBeforeScope = !realBrowser()
       .contexts()
@@ -246,6 +244,8 @@ test.skipIf(!chromiumAvailable)(
     await result.closeScope();
 
     expect(Exit.isSuccess(result.exit)).toBe(true);
+    // The case drives the test's own runner, which the suite hands it.
+    expect(caseRunner).toBe(result.run);
     expect(sessionId).toBe(`${sessionPrefix}-${result.id}`);
     expect(closedBeforeScope).toBe(true);
     expect(annotation(result.observations)).toEqual([]);
@@ -265,30 +265,28 @@ test.skipIf(!chromiumAvailable)(
     let snapshotBeforeClose = false;
     const result = await runCase({
       id,
-      execute:
-        ({ run }) =>
-        ({ runStep, session }) =>
-          runStep({
-            execute: Effect.gen(function* () {
-              const context = yield* caseContext(run, session);
-              const [page] = context.pages();
-              if (!page) return yield* workspaceE2EError("no checkout page");
-              // Listening before the navigation, which starts the request.
-              const answered = page.waitForResponse((response) =>
-                response.url().includes("/api")
+      execute: ({ run, runStep, session }) =>
+        runStep({
+          execute: Effect.gen(function* () {
+            const context = yield* caseContext(run, session);
+            const [page] = context.pages();
+            if (!page) return yield* workspaceE2EError("no checkout page");
+            // Listening before the navigation, which starts the request.
+            const answered = page.waitForResponse((response) =>
+              response.url().includes("/api")
+            );
+            yield* openPage(run, session, `${origin()}/?token=${pageSecret}`);
+            yield* Effect.promise(() => answered);
+            context.once("close", () => {
+              snapshotBeforeClose = existsSync(
+                join(artifactRoot, id, "snapshot-interactive.txt")
               );
-              yield* openPage(run, session, `${origin()}/?token=${pageSecret}`);
-              yield* Effect.promise(() => answered);
-              context.once("close", () => {
-                snapshotBeforeClose = existsSync(
-                  join(artifactRoot, id, "snapshot-interactive.txt")
-                );
-              });
-              return yield* workspaceE2EError("synthetic checkout failure");
-            }),
-            id: "submit-checkout",
-            timeoutMs: 10_000,
+            });
+            return yield* workspaceE2EError("synthetic checkout failure");
           }),
+          id: "submit-checkout",
+          timeoutMs: 10_000,
+        }),
     });
     await result.closeScope();
 
@@ -390,23 +388,21 @@ test.skipIf(!chromiumAvailable)(
   "exports the settled responses the argv failure capture exported",
   async () => {
     const result = await runCase({
-      execute:
-        ({ run }) =>
-        ({ runStep, session }) =>
-          runStep({
-            execute: Effect.gen(function* () {
-              const context = yield* caseContext(run, session);
-              const [page] = context.pages();
-              if (!page) return yield* workspaceE2EError("no checkout page");
-              // Listening before the navigation, which starts the request.
-              const finished = apiRequestFinished(page);
-              yield* openPage(run, session, `${origin()}/`);
-              yield* Effect.promise(() => finished);
-              return yield* workspaceE2EError("synthetic checkout failure");
-            }),
-            id: "submit-checkout",
-            timeoutMs: 10_000,
+      execute: ({ run, runStep, session }) =>
+        runStep({
+          execute: Effect.gen(function* () {
+            const context = yield* caseContext(run, session);
+            const [page] = context.pages();
+            if (!page) return yield* workspaceE2EError("no checkout page");
+            // Listening before the navigation, which starts the request.
+            const finished = apiRequestFinished(page);
+            yield* openPage(run, session, `${origin()}/`);
+            yield* Effect.promise(() => finished);
+            return yield* workspaceE2EError("synthetic checkout failure");
           }),
+          id: "submit-checkout",
+          timeoutMs: 10_000,
+        }),
     });
     await result.closeScope();
     const har = await readFile(join(result.artifactDir, "network.har"), "utf8");
@@ -434,34 +430,30 @@ test.skipIf(!chromiumAvailable)(
   "annotates a step timeout with its step and a typed failure with its code",
   async () => {
     const timedOut = await runCase({
-      execute:
-        ({ run }) =>
-        ({ runStep, session }) =>
-          runStep({
-            execute: openPage(run, session, `${origin()}/`).pipe(
-              Effect.andThen(Effect.never)
-            ),
-            id: "wait-for-checkout",
-            timeoutMs: 1000,
-          }),
+      execute: ({ run, runStep, session }) =>
+        runStep({
+          execute: openPage(run, session, `${origin()}/`).pipe(
+            Effect.andThen(Effect.never)
+          ),
+          id: "wait-for-checkout",
+          timeoutMs: 1000,
+        }),
     });
     await timedOut.closeScope();
     const coded = await runCase({
-      execute:
-        ({ run }) =>
-        ({ runStep, session }) =>
-          runStep({
-            execute: openPage(run, session, `${origin()}/`).pipe(
-              Effect.andThen(
-                workspaceE2EError("synthetic provider session failure", {
-                  diagnosticCode:
-                    "provider_session_row_read_failed_after_redirect",
-                })
-              )
-            ),
-            id: "read-provider-session",
-            timeoutMs: 10_000,
-          }),
+      execute: ({ run, runStep, session }) =>
+        runStep({
+          execute: openPage(run, session, `${origin()}/`).pipe(
+            Effect.andThen(
+              workspaceE2EError("synthetic provider session failure", {
+                diagnosticCode:
+                  "provider_session_row_read_failed_after_redirect",
+              })
+            )
+          ),
+          id: "read-provider-session",
+          timeoutMs: 10_000,
+        }),
     });
     await coded.closeScope();
 
@@ -500,7 +492,7 @@ test.skipIf(!chromiumAvailable)(
     } as unknown as Browser;
     const result = await runCase({
       browser: slowOpening,
-      execute: () => () => Effect.void,
+      execute: () => Effect.void,
       timeouts: testTimeouts({ browserAction: 500 }),
     });
     await result.closeScope();
@@ -550,21 +542,19 @@ test.skipIf(!chromiumAvailable)(
     });
     const result = await runCase({
       cleanup,
-      execute:
-        ({ run }) =>
-        ({ runStep, session }) =>
-          runStep({
-            execute: Effect.gen(function* () {
-              yield* openPage(run, session, `${origin()}/`);
-              const context = yield* caseContext(run, session);
-              context.once("close", () => {
-                closedDuringCleanup = cleanupActive;
-                contextClosed.resolve();
-              });
-            }),
-            id: "open-checkout",
-            timeoutMs: 10_000,
+      execute: ({ run, runStep, session }) =>
+        runStep({
+          execute: Effect.gen(function* () {
+            yield* openPage(run, session, `${origin()}/`);
+            const context = yield* caseContext(run, session);
+            context.once("close", () => {
+              closedDuringCleanup = cleanupActive;
+              contextClosed.resolve();
+            });
           }),
+          id: "open-checkout",
+          timeoutMs: 10_000,
+        }),
     });
     await result.closeScope();
 
@@ -581,14 +571,12 @@ test.skipIf(!chromiumAvailable)(
     const startedAt = Date.now();
     const result = await runCase({
       browser: stalling.browser,
-      execute:
-        ({ run }) =>
-        ({ runStep, session }) =>
-          runStep({
-            execute: openPage(run, session, `${origin()}/`),
-            id: "open-checkout",
-            timeoutMs: 10_000,
-          }),
+      execute: ({ run, runStep, session }) =>
+        runStep({
+          execute: openPage(run, session, `${origin()}/`),
+          id: "open-checkout",
+          timeoutMs: 10_000,
+        }),
       timeouts: testTimeouts({ cleanupAction: 1000 }),
     }).finally(stalling.release);
     const elapsed = Date.now() - startedAt;
@@ -618,16 +606,14 @@ test.skipIf(!chromiumAvailable)(
     const stalling = stallingContextClose();
     const result = await runCase({
       browser: stalling.browser,
-      execute:
-        ({ run }) =>
-        ({ runStep, session }) =>
-          runStep({
-            execute: openPage(run, session, `${origin()}/`).pipe(
-              Effect.andThen(Effect.never)
-            ),
-            id: "wait-for-checkout",
-            timeoutMs: 1500,
-          }),
+      execute: ({ run, runStep, session }) =>
+        runStep({
+          execute: openPage(run, session, `${origin()}/`).pipe(
+            Effect.andThen(Effect.never)
+          ),
+          id: "wait-for-checkout",
+          timeoutMs: 1500,
+        }),
       timeouts: testTimeouts({ artifactCapture: 4000, cleanupAction: 1000 }),
     }).catch(async (error: unknown) => {
       await stalling.release();
@@ -664,19 +650,17 @@ test.skipIf(!chromiumAvailable)(
   async () => {
     const startedAt = Date.now();
     const result = await runCase({
-      execute:
-        ({ run }) =>
-        ({ runStep, session }) =>
-          runStep({
-            execute: Effect.gen(function* () {
-              yield* openPage(run, session, `${origin()}/busy`);
-              // The page's main thread is now stuck, so no page read returns.
-              yield* Effect.sleep("300 millis");
-              return yield* workspaceE2EError("synthetic checkout failure");
-            }),
-            id: "submit-checkout",
-            timeoutMs: 10_000,
+      execute: ({ run, runStep, session }) =>
+        runStep({
+          execute: Effect.gen(function* () {
+            yield* openPage(run, session, `${origin()}/busy`);
+            // The page's main thread is now stuck, so no page read returns.
+            yield* Effect.sleep("300 millis");
+            return yield* workspaceE2EError("synthetic checkout failure");
           }),
+          id: "submit-checkout",
+          timeoutMs: 10_000,
+        }),
       timeouts: testTimeouts({ artifactCapture: 1500 }),
     });
     const elapsed = Date.now() - startedAt;
@@ -704,14 +688,12 @@ test.skipIf(!chromiumAvailable)(
     await closed.close();
     const result = await runCase({
       browser: closed,
-      execute:
-        ({ run }) =>
-        ({ runStep, session }) =>
-          runStep({
-            execute: openPage(run, session, `${origin()}/`),
-            id: "open-checkout",
-            timeoutMs: 10_000,
-          }),
+      execute: ({ run, runStep, session }) =>
+        runStep({
+          execute: openPage(run, session, `${origin()}/`),
+          id: "open-checkout",
+          timeoutMs: 10_000,
+        }),
     });
     await result.closeScope();
 
@@ -738,7 +720,7 @@ test.skipIf(!chromiumAvailable)(
     } as unknown as Browser;
     const result = await runCase({
       browser: neverOpens,
-      execute: () => () => Effect.void,
+      execute: () => Effect.void,
       timeouts: testTimeouts({ browserAction: 500, cleanupAction: 500 }),
     });
     await result.closeScope();
@@ -775,18 +757,18 @@ test.skipIf(!chromiumAvailable)(
   async () => {
     const id = `case-${randomUUID()}`;
     const scope = Scope.makeUnsafe("parallel");
-    const run = makePlaywrightBrowserRunner(realBrowser(), { scope });
+    const runner = makePlaywrightBrowserRunner(realBrowser(), { scope });
     const observations: E2ETelemetryObservation[] = [];
     const opened = Promise.withResolvers<BrowserContext>();
     const fiber = Effect.runFork(
       runWorkspaceE2ECase({
         artifactRoot,
         datasourceConfig: testDatasourceConfig,
-        run,
+        run: runner,
         sessionPrefix,
         testCase: {
           checkoutStates: [],
-          execute: ({ runStep, session }) =>
+          execute: ({ run, runStep, session }) =>
             runStep({
               execute: Effect.gen(function* () {
                 yield* openPage(run, session, `${origin()}/`);

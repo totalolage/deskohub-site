@@ -19,6 +19,7 @@ import { makeAuthDatabase } from "@/db/auth-database-client";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { drizzleAuthTables } from "@/db/schema/auth";
+import { WorkspaceLockSections } from "@/db/workspace-locks";
 import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
 import { ReviewAccounts } from "@/features/review-accounts";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
@@ -109,7 +110,8 @@ const realCapture: WorkspaceAuthConfig["captureAccountLocalePreference"] = (
  * which an adapter wrapping the Postgres one needs before every login insert.
  */
 export const realCreateCustomerAccount: WorkspaceAuthConfig["createCustomerAccount"] =
-  (accountId) => ensureCustomerAccount(testDatabase!.db, accountId);
+  (accountId) =>
+    ensureCustomerAccount(accountId).pipe(Effect.provide(testDatabase!.layer));
 
 /** The real administrator grant read on the migrated disposable database. */
 const realHasAdministratorGrant: WorkspaceAuthConfig["hasAdministratorGrant"] =
@@ -147,12 +149,10 @@ const realReviewAccounts: Pick<
 
 /** The production advisory lock on the migrated disposable database. */
 const realSignInEmailLock: WorkspaceAuthConfig["withSignInEmailLock"] = (
-  key,
+  address,
   effect
 ) =>
-  Effect.flatMap(WorkspaceDatabaseAdvisoryLock, (advisoryLock) =>
-    advisoryLock.withLock(key, effect)
-  ).pipe(
+  WorkspaceLockSections.signInEmail(address)(effect).pipe(
     Effect.provide(WorkspaceDatabaseAdvisoryLock.makeLayer(testDatabase!.pool))
   );
 
@@ -187,7 +187,7 @@ export const makeTestAuth = (options: TestAuthOptions = {}) => {
   const withSignInEmailLock: WorkspaceAuthConfig["withSignInEmailLock"] =
     testDatabase && !options.database
       ? realSignInEmailLock
-      : (_key, effect) => effect;
+      : (_address, effect) => effect;
   return makeWorkspaceAuth({
     database: options.database ?? buildDatabaseAdapter(),
     secrets: options.secrets ?? [{ version: 1, value: SECRET_V1 }],

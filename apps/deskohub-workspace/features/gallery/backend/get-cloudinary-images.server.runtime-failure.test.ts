@@ -1,13 +1,12 @@
 import "@/shared/testing/workspace-test-env";
 
 import { afterEach, expect, mock, spyOn, test } from "bun:test";
-import { Effect, Layer, Predicate } from "effect";
+import { Effect, Layer } from "effect";
+import { recordNextCache } from "@/shared/testing/next-cache-recorder.test-utils";
+import { cloudinaryTags } from "@/shared/utils/cache-tags";
 
 const runtimeStartFailure = new Error("synthetic tracing exporter unavailable");
-const cacheLife = mock(
-  (_profile: string | { stale: number; revalidate: number; expire: number }) =>
-    undefined
-);
+const nextCache = recordNextCache();
 const originalFetch = globalThis.fetch;
 const fetchCalls = mock(async () => new Response("[]", { status: 200 }));
 
@@ -34,8 +33,7 @@ mock.module("cloudinary", () => ({
   },
 }));
 mock.module("next/cache", () => ({
-  cacheLife,
-  cacheTag: () => undefined,
+  ...nextCache.module,
   revalidateTag: () => undefined,
 }));
 mock.module("@/env", () => ({
@@ -60,13 +58,15 @@ test("serves no images with the failure cache profile when the Workspace runtime
 
     expect(images).toEqual([]);
     expect(fetchCalls).not.toHaveBeenCalled();
-    const [galleryProfile, failureProfile] = cacheLife.mock.calls.flatMap(
-      ([profile]) => (Predicate.isString(profile) ? [] : [profile])
-    );
-    expect(failureProfile?.revalidate).toBeLessThanOrEqual(60);
-    expect(failureProfile?.revalidate).toBeLessThan(
-      galleryProfile?.revalidate ?? 0
-    );
+    expect(nextCache.calls).toEqual([
+      { cacheLife: { stale: 30, revalidate: 60, expire: 300 } },
+      {
+        cacheTag: [
+          cloudinaryTags.all(),
+          cloudinaryTags.search([["gallery"]], 50),
+        ],
+      },
+    ]);
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls.flat().join(" ")).toContain(
       "gallery.images.load_failed"

@@ -1,5 +1,5 @@
 import type { Client } from "@modelcontextprotocol/client";
-import { type BrowserContext, expect, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { Effect, Schema } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { customerAgentTestClientMetadata } from "@/features/account/customer-agent-test-client";
@@ -13,7 +13,7 @@ import {
 import type { WorkspaceE2EAccountJournalOwner } from "../account/reconcile";
 import { resolveWorkspaceE2ESessionSigningSecret } from "../account/seeded-session";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
-import { openBrowserPage, waitForBrowserUrl } from "../browser";
+import { openPage, waitForPageUrl } from "../browser";
 import type { WorkspaceE2EStepRunner } from "../case-runner";
 import {
   makeCoworkCheckoutData,
@@ -48,6 +48,7 @@ import {
   tryWorkspaceE2EPromise,
   tryWorkspaceE2ESync,
   type WorkspaceE2EError,
+  withoutWorkspaceE2ETimeout,
   workspaceE2EError,
 } from "../errors";
 import type { E2EDatabase } from "../integrations/database.service";
@@ -55,7 +56,13 @@ import type { WorkspaceE2ECaseBinder } from "../playwright-checkout/fixtures";
 import { pollUntil } from "../polling";
 import { waitForReactClickHandler } from "../react-handlers";
 import { bindCheckoutContact } from "../referrals/checkout";
-import { addRedaction, assert, parseUrl, type Runner } from "../runtime";
+import {
+  addRedaction,
+  assert,
+  browserSessionFor,
+  parseUrl,
+  type Runner,
+} from "../runtime";
 import { workspaceE2EPollIntervalMs } from "../timeouts";
 import type { CheckoutFlowState, WorkspaceE2ECase } from "../types";
 import { executeCheckoutFlow } from "./checkout";
@@ -128,9 +135,7 @@ export const planAgentBookingCase = ({
  * the customer pays it in the browser.
  */
 export const bindAgentBookingCase: WorkspaceE2ECaseBinder = async ({
-  browser,
   environment,
-  run,
   runId,
   testCase,
 }) => {
@@ -146,7 +151,6 @@ export const bindAgentBookingCase: WorkspaceE2ECaseBinder = async ({
     datasourceConfig,
     displayName: () => "Workspace E2E Agent Booker",
     journalOwnerId: agentBookingCaseId,
-    run,
     runId,
     secret: resolveWorkspaceE2ESessionSigningSecret(environment),
   });
@@ -157,20 +161,12 @@ export const bindAgentBookingCase: WorkspaceE2ECaseBinder = async ({
       identities.describe(agentBookerLabel)
     ),
   };
-  const context = () => {
-    const [only] = browser.contexts();
-    if (!only || browser.contexts().length !== 1) {
-      throw new Error("agent booking case has no single owned context");
-    }
-    return only;
-  };
   return {
     ...testCase,
     checkoutStates: [boundState],
-    execute: ({ runStep, session }) =>
+    execute: ({ run, runStep, session }) =>
       executeAgentBooking({
         config,
-        context,
         datasourceConfig,
         identities,
         run,
@@ -189,8 +185,6 @@ export const bindAgentBookingCase: WorkspaceE2ECaseBinder = async ({
 
 type AgentBookingContext = {
   readonly config: WorkspaceE2EConfig;
-  /** The case session's browser context, for routing and native locators. */
-  readonly context: () => BrowserContext;
   readonly datasourceConfig: DatasourceConfig;
   readonly identities: WorkspaceE2ECaseIdentities<AgentBookerLabel>;
   readonly run: Runner;
@@ -209,12 +203,12 @@ const executeAgentBooking = Effect.fn("AgentBooking.execute")(function* (
     timeoutMs: config.timeouts.datasource,
   });
   yield* runStep({
-    execute: identities.signIn(booker, session),
+    execute: identities.signIn(booker, booking),
     id: "sign-in-agent-booker",
     timeoutMs: config.timeouts.datasource,
   });
   yield* runStep({
-    execute: answerAgentRedirectInBrowser(booking.context),
+    execute: answerAgentRedirectInBrowser(booking),
     id: "answer-agent-redirect-in-browser",
     timeoutMs: config.timeouts.browserAction,
   });
@@ -325,20 +319,20 @@ const executeAgentBooking = Effect.fn("AgentBooking.execute")(function* (
  * account and confirms it.
  */
 const disconnectAgentInAccount = Effect.fn("AgentBooking.disconnect")(
-  function* ({ config, context, run, session, state }: AgentBookingContext) {
+  function* (booking: AgentBookingContext) {
+    const { config, state } = booking;
     const { locale } = state.data;
-    yield* openBrowserPage(
+    yield* openPage(
+      yield* caseBrowser(booking),
       config,
-      run,
-      session,
       new URL(
         getAccountSectionPath(locale, "assistants"),
         config.baseUrl
       ).toString(),
       { timeoutMs: config.timeouts.browserNavigation }
     );
-    yield* tryWorkspaceE2EPromise("disconnect agent in account", async () => {
-      const page = singlePage(context());
+    yield* onCasePage(booking, "disconnect agent in account", async (page) => {
+      requireSinglePage(page);
       const disconnect = page.getByRole("button", {
         exact: true,
         name: m.accountAssistantDisconnectLabel(
@@ -370,9 +364,9 @@ const disconnectAgentInAccount = Effect.fn("AgentBooking.disconnect")(
  * answers it with an empty page, so the authorization response stays
  * readable in the address bar without leaving the runner.
  */
-const answerAgentRedirectInBrowser = (context: () => BrowserContext) =>
-  tryWorkspaceE2EPromise("answer agent redirect in browser", () =>
-    context().route(
+const answerAgentRedirectInBrowser = (booking: AgentBookingContext) =>
+  onCasePage(booking, "answer agent redirect in browser", (page) =>
+    page.context().route(
       (url) => isCustomerAgentCallbackUrl(url.toString()),
       (route) =>
         route.fulfill({
@@ -399,7 +393,7 @@ const consentScopeLabels = {
  */
 const answerAgentConsent = ({
   answer,
-  booking: { config, context, run, session },
+  booking,
   locale,
   server,
 }: {
@@ -409,19 +403,20 @@ const answerAgentConsent = ({
   readonly server: CustomerAgentAuthorizationServer;
 }) =>
   Effect.gen(function* () {
+    const { config } = booking;
     const request = yield* startCustomerAgentAuthorization({
       clientId: customerAgentTestClientMetadata.client_id,
       config,
       server,
     });
-    yield* openBrowserPage(config, run, session, request.authorizationUrl, {
+    const browser = yield* caseBrowser(booking);
+    yield* openPage(browser, config, request.authorizationUrl, {
       timeoutMs: config.timeouts.browserNavigation,
     });
-    const consentUrl = yield* waitForBrowserUrl({
+    const consentUrl = yield* waitForPageUrl({
       description: "customer agent consent page",
       matches: (url) => isCustomerAgentConsentUrl(url, config.baseUrl),
-      run,
-      session,
+      session: browser,
       timeoutMs: config.timeouts.uiTransition,
     });
     const localizedConsentUrl = localizeCustomerAgentConsentUrl(
@@ -429,12 +424,12 @@ const answerAgentConsent = ({
       locale
     );
     if (localizedConsentUrl !== consentUrl) {
-      yield* openBrowserPage(config, run, session, localizedConsentUrl, {
+      yield* openPage(browser, config, localizedConsentUrl, {
         timeoutMs: config.timeouts.browserNavigation,
       });
     }
-    yield* tryWorkspaceE2EPromise(`${answer} agent consent`, async () => {
-      const page = singlePage(context());
+    yield* onCasePage(booking, `${answer} agent consent`, async (page) => {
+      requireSinglePage(page);
       expect(new URL(page.url()).pathname).toBe(
         new URL(localizedConsentUrl).pathname
       );
@@ -465,7 +460,7 @@ const answerAgentConsent = ({
       await waitForReactClickHandler(page, button);
       await button.click({ timeout: config.timeouts.browserAction });
     });
-    const callbackUrl = yield* waitForBrowserUrl({
+    const callbackUrl = yield* waitForPageUrl({
       description: `agent redirect after ${answer}`,
       matches: (url) => {
         if (!isCustomerAgentCallbackUrl(url)) return false;
@@ -473,8 +468,7 @@ const answerAgentConsent = ({
         addRedaction(parseUrl(url)?.searchParams.get("code") ?? "", true);
         return true;
       },
-      run,
-      session,
+      session: browser,
       timeoutMs: config.timeouts.uiTransition,
     });
     const callback = yield* tryWorkspaceE2ESync(
@@ -484,12 +478,36 @@ const answerAgentConsent = ({
     return { callback, request };
   });
 
-const singlePage = (context: BrowserContext): Page => {
-  const [only] = context.pages();
-  if (!only || context.pages().length !== 1) {
+/** The case's browser session, reached inside the step that drives it. */
+const caseBrowser = ({ run, session }: AgentBookingContext) =>
+  browserSessionFor(run, session);
+
+/**
+ * Drives the case's active page natively, once its browser holds only the
+ * case's own context. A Playwright timeout fails the step rather than timing
+ * it out, as these steps did before the session.
+ */
+const onCasePage = <A>(
+  booking: AgentBookingContext,
+  label: string,
+  drive: (page: Page) => Promise<A>
+): Effect.Effect<A, WorkspaceE2EError> =>
+  Effect.flatMap(caseBrowser(booking), (browser) =>
+    browser
+      .use(label, async (page) => {
+        if (page.context().browser()?.contexts().length !== 1) {
+          throw new Error("agent booking case has no single owned context");
+        }
+        return drive(page);
+      })
+      .pipe(withoutWorkspaceE2ETimeout(label))
+  );
+
+/** The case drives one page; another page means the flow went astray. */
+const requireSinglePage = (page: Page) => {
+  if (page.context().pages().length !== 1) {
     throw new Error("agent booking session has no single page");
   }
-  return only;
 };
 
 const reserveBookingViewSchema = Schema.Struct({
@@ -605,12 +623,12 @@ const startAgentReservation = ({
             "The agent's Pay link has already expired"
           );
         });
-        yield* openBrowserPage(config, run, session, started.pay_url, {
+        const browser = yield* browserSessionFor(run, session);
+        yield* openPage(browser, config, started.pay_url, {
           timeoutMs: config.timeouts.browserNavigation,
         });
         const orderId = yield* waitForReservationPayPage({
-          run,
-          session,
+          session: browser,
           timeouts: config.timeouts,
         });
         yield* tryWorkspaceE2ESync("match agent pay page order", () =>

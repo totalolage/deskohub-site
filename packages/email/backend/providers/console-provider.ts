@@ -106,13 +106,6 @@ export const ConsoleEmailProvider: EmailProvider = {
       ConsoleEmailProvider.send(message)
     );
   }),
-
-  verify: Effect.gen(function* () {
-    yield* Effect.logInfo("Console Email Provider verification", {
-      status: "always valid in development",
-    });
-    return true;
-  }),
 };
 
 export const ConsoleEmailProviderLive = Layer.succeed(

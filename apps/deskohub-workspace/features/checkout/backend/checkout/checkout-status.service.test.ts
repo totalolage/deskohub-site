@@ -1247,7 +1247,11 @@ describe("CheckoutStatusService", () => {
     // amount never reaches the page.
     expect(getReservationWithoutCustomer).toHaveBeenCalledTimes(1);
     expect(status).toMatchObject({
-      retrySearchParams: { entryTier: "reserved-desk", date: "2026-06-20" },
+      retrySelection: {
+        kind: "cowork",
+        entryTier: "reserved-desk",
+        date: "2026-06-20",
+      },
     });
   });
 
@@ -1438,10 +1442,11 @@ describe("CheckoutStatusService retry selection", () => {
 
       expect(result.status).toBe(status);
       expect(result).toMatchObject({
-        retrySearchParams: {
+        retrySelection: {
+          kind: "cowork",
           entryTier: "reserved-desk",
           date: "2099-06-12",
-          coffee: "true",
+          coffee: true,
           monitorOption: "2x27-qhd",
         },
       });
@@ -1472,7 +1477,8 @@ describe("CheckoutStatusService retry selection", () => {
     });
 
     expect(result).toMatchObject({
-      retrySearchParams: {
+      retrySelection: {
+        kind: "meeting-room",
         startDateTime: "2099-08-13T14:00",
         duration: "hour:4",
       },
@@ -1480,8 +1486,8 @@ describe("CheckoutStatusService retry selection", () => {
   });
 
   test.each([
-    ["readable", "3", "3"],
-    ["unreadable", "abc", "2"],
+    ["readable", "3", 3],
+    ["unreadable", "abc", 2],
   ] as const)(
     "rebuilds the booked office start date, day count, and seats with %s Dotypos seats",
     async (_readability, dotyposSeats, expectedSeats) => {
@@ -1505,9 +1511,10 @@ describe("CheckoutStatusService retry selection", () => {
       });
 
       expect(result).toMatchObject({
-        retrySearchParams: {
+        retrySelection: {
+          kind: "office",
           startsOn: "2099-06-20",
-          dayCount: "3",
+          dayCount: 3,
           seats: expectedSeats,
         },
       });
@@ -1523,7 +1530,7 @@ describe("CheckoutStatusService retry selection", () => {
     });
 
     expect(result.status).toBe("payment_failed");
-    expect(result).not.toHaveProperty("retrySearchParams");
+    expect(result).not.toHaveProperty("retrySelection");
   });
 
   test("renders a retry status without a selection when Dotypos doesn't answer in time", async () => {
@@ -1536,7 +1543,7 @@ describe("CheckoutStatusService retry selection", () => {
     });
 
     expect(result.status).toBe("cancelled");
-    expect(result).not.toHaveProperty("retrySearchParams");
+    expect(result).not.toHaveProperty("retrySelection");
   });
 
   test("offers no retry once a late payment for the expired checkout takes over", async () => {
@@ -1550,7 +1557,7 @@ describe("CheckoutStatusService retry selection", () => {
     });
 
     expect(result.status).toBe("late_payment_refund");
-    expect(result).not.toHaveProperty("retrySearchParams");
+    expect(result).not.toHaveProperty("retrySelection");
   });
 
   test("never reads the reservation for a payment that is still pending", async () => {
@@ -1560,7 +1567,7 @@ describe("CheckoutStatusService retry selection", () => {
       dotypos,
     });
 
-    expect(result).not.toHaveProperty("retrySearchParams");
+    expect(result).not.toHaveProperty("retrySelection");
     // Only the summary reconstruction reads it.
     expect(dotypos.getReservationWithoutCustomer).toHaveBeenCalledTimes(1);
   });

@@ -15,11 +15,7 @@ import { makeWorkspaceE2EEnvironment } from "../e2e-env";
 import { seedDiscountE2EFixtures } from "../integrations/discount-fixtures";
 import { resolveE2EDotyposDiscountGroup } from "../integrations/dotypos";
 import { assertPreviewEndpointsReady } from "../preview-readiness";
-import {
-  addDatabaseUrlRedactions,
-  assertSafeDatabaseUrl,
-  type Runner,
-} from "../runtime";
+import { addDatabaseUrlRedactions, assertSafeDatabaseUrl } from "../runtime";
 import { E2ETelemetryService } from "../services/telemetry";
 import {
   isWorkspaceE2EOfficeCaseId,
@@ -61,11 +57,6 @@ test("prepare the workspace checkout run", async () => {
     workspaceE2EHostedPaymentPermitDirectory(runContext.runId)
   );
 
-  const run: Runner = async () => ({
-    exitCode: 0,
-    stderr: "",
-    stdout: "",
-  });
   const { actualCaseIds, preparation } = await withWorkspaceE2ERuntime(
     environment,
     runContext,
@@ -133,7 +124,6 @@ test("prepare the workspace checkout run", async () => {
             datasourceConfig,
             flowStates: [],
             preparation,
-            run,
           });
           return {
             actualCaseIds: cases.map(({ id }) => id).toSorted(),

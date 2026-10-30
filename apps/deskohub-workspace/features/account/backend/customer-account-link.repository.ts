@@ -4,13 +4,11 @@ import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer, Option } from "effect";
 import type { SqlError } from "effect/unstable/sql";
 import { WorkspaceDatabase } from "@/db/database.service";
-import {
-  type PostgresAdvisoryLockKey,
-  WorkspaceDatabaseAdvisoryLock,
-} from "@/db/postgres-advisory-lock";
+import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { customerAccounts } from "@/db/schema";
 import { authUser } from "@/db/schema/auth";
 import { findViolatedConstraint } from "@/db/sql-constraint";
+import { WorkspaceLockSections } from "@/db/workspace-locks";
 import {
   insertReferralSignupIntent,
   type ReferralSignupIntent,
@@ -43,10 +41,6 @@ export type CustomerAccountActivityState =
 export type CustomerAccountLinkError =
   | EffectDrizzleQueryError
   | SqlError.SqlError;
-
-export const customerAccountLockKey = (
-  accountId: CustomerAccountId
-): PostgresAdvisoryLockKey => ["customer-account", accountId];
 
 interface ICustomerAccountLinkRepository {
   readonly find: (
@@ -81,7 +75,7 @@ export class CustomerAccountLinkRepository extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const { db } = yield* WorkspaceDatabase;
+      const { db, transaction } = yield* WorkspaceDatabase;
       const advisoryLock = yield* WorkspaceDatabaseAdvisoryLock;
 
       const find = Effect.fn("CustomerAccountLinkRepository.find")(function* (
@@ -101,59 +95,53 @@ export class CustomerAccountLinkRepository extends Context.Service<
           customerId: DotyposCustomerId,
           signupReferral: ReferralSignupIntent | undefined
         ) {
-          const settled = yield* db
-            .transaction(
-              Effect.fn(function* (tx) {
-                // Only a live account without a customer takes one; the
-                // unique customer index rejects a customer another account
-                // holds, and a concurrent claim of the same account waits on
-                // the row and then finds it linked.
-                const [link] = yield* tx
-                  .update(customerAccounts)
-                  .set({ dotyposCustomerId: customerId })
-                  .where(
-                    and(
-                      eq(customerAccounts.id, accountId),
-                      isNull(customerAccounts.dotyposCustomerId),
-                      isNull(customerAccounts.deletedAt)
-                    )
+          const settled = yield* transaction(
+            Effect.gen(function* () {
+              // Only a live account without a customer takes one; the
+              // unique customer index rejects a customer another account
+              // holds, and a concurrent claim of the same account waits on
+              // the row and then finds it linked.
+              const [link] = yield* db
+                .update(customerAccounts)
+                .set({ dotyposCustomerId: customerId })
+                .where(
+                  and(
+                    eq(customerAccounts.id, accountId),
+                    isNull(customerAccounts.dotyposCustomerId),
+                    isNull(customerAccounts.deletedAt)
                   )
-                  .returning({
-                    createdAt: customerAccounts.createdAt,
-                    legacy: customerAccounts.legacy,
-                  });
-                if (!link) return undefined;
-                if (signupReferral) {
-                  yield* insertReferralSignupIntent(
-                    tx,
-                    accountId,
-                    signupReferral
-                  );
-                }
-                // The first link gives the account a mailable Dotypos
-                // customer, so the account counts as created at its creation
-                // instant. An existing customer's account was never created
-                // here (D37), so its first link records nothing.
-                if (!link.legacy) {
-                  yield* recordCustomerEvent(tx, {
-                    kind: "account-created",
-                    occurredAt: link.createdAt,
-                    dotyposCustomerId: customerId,
-                    customerAccountId: accountId,
-                  });
-                }
-                return {
-                  kind: "linked",
-                  customerId,
-                  created: true,
-                } as const;
-              })
+                )
+                .returning({
+                  createdAt: customerAccounts.createdAt,
+                  legacy: customerAccounts.legacy,
+                });
+              if (!link) return undefined;
+              if (signupReferral) {
+                yield* insertReferralSignupIntent(accountId, signupReferral);
+              }
+              // The first link gives the account a mailable Dotypos
+              // customer, so the account counts as created at its creation
+              // instant. An existing customer's account was never created
+              // here (D37), so its first link records nothing.
+              if (!link.legacy) {
+                yield* recordCustomerEvent({
+                  kind: "account-created",
+                  occurredAt: link.createdAt,
+                  dotyposCustomerId: customerId,
+                  customerAccountId: accountId,
+                });
+              }
+              return {
+                kind: "linked",
+                customerId,
+                created: true,
+              } as const;
+            })
+          ).pipe(
+            Effect.catchIf(isCustomerHeldElsewhere, () =>
+              Effect.succeed(undefined)
             )
-            .pipe(
-              Effect.catchIf(isCustomerHeldElsewhere, () =>
-                Effect.succeed(undefined)
-              )
-            );
+          );
           if (settled) return settled;
 
           const racedLink = yield* find(accountId);
@@ -203,7 +191,9 @@ export class CustomerAccountLinkRepository extends Context.Service<
 
       const withAccountLock: ICustomerAccountLinkRepository["withAccountLock"] =
         (accountId, effect) =>
-          advisoryLock.withLock(customerAccountLockKey(accountId), effect);
+          WorkspaceLockSections.customerAccount(accountId)(effect).pipe(
+            Effect.provideService(WorkspaceDatabaseAdvisoryLock, advisoryLock)
+          );
 
       return {
         claim,

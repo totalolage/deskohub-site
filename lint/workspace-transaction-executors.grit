@@ -1,0 +1,37 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// A writer that must commit with its caller states `WorkspaceTransaction` in its
+// Effect requirements; inside a transaction plain `db` already joins it. This
+// rejects the executor conventions that the requirement replaces:
+// - transaction-client type aliases derived from `transaction`'s callback
+//   parameter;
+// - names that say a function runs in a transaction (`*InTransaction`, `*Tx`):
+//   the requirement says it;
+// - bindings, parameters, fields and members named `tx` or `executor`, and
+//   `transaction` parameters typed as a database client or transaction.
+// A plain query that runs both inside and outside transactions may take the
+// joining client as `db`; it declares nothing.
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/.*\.(?:ts|tsx)$",
+  not $name <: r".*apps/deskohub-workspace/(?:e2e|scripts)/.*",
+  not $name <: r".*\.(?:test|test-utils)\.(?:ts|tsx)$",
+  $body <: r"(?s).*(?:\btx\b|executor|ransaction|Tx\b).*",
+  $body <: contains bubble or {
+    TsTypeAliasDeclaration() as $span where {
+      $span <: r"(?s).*Parameters<\s*Parameters<[^>]*transaction.*"
+    },
+    or { JsIdentifierBinding(), JsLiteralMemberName() } as $span where {
+      $span <: r"^['\"]?(?:tx|executor|[a-z][\w$]*(?:InTransaction|Tx))['\"]?$"
+    },
+    JsFormalParameter() as $span where {
+      $span <: r"(?s)^transaction\??\s*:\s*(?:(?:Pick|Omit|Readonly)<\s*)?[\w$.]*(?:Transaction|DatabaseClient)\b.*"
+    }
+  } where {
+    register_diagnostic(
+      span = $span,
+      message = "Don't pass a transaction executor: declare `WorkspaceTransaction` in the writer's requirements and query through `db`.",
+      severity = "error"
+    )
+  }
+}

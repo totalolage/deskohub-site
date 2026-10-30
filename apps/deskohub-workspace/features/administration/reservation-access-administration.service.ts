@@ -1,5 +1,5 @@
 import { Context, Data, Effect, Layer, Match } from "effect";
-import { WorkspacePaidFulfillmentService } from "@/features/checkout/backend/fulfillment/paid-fulfillment.service";
+import { ReservationFulfillment } from "@/features/checkout/backend/fulfillment/reservation-fulfillment.service";
 import {
   type WorkspaceReservationDetailsError,
   WorkspaceReservationService,
@@ -58,7 +58,7 @@ export class ReservationAccessAdministration extends Context.Service<
     this,
     Effect.gen(function* () {
       const access = yield* ReservationAccessService;
-      const fulfillment = yield* WorkspacePaidFulfillmentService;
+      const fulfillment = yield* ReservationFulfillment;
       const reservations = yield* WorkspaceReservationService;
 
       const recover = Effect.fn("ReservationAccessAdministration.recover")(
@@ -74,7 +74,7 @@ export class ReservationAccessAdministration extends Context.Service<
             })
             .pipe(Effect.asVoid, mapIssuanceFailure);
           yield* fulfillment
-            .fulfillPaidOrder({ orderId: reservationId })
+            .run(reservationId)
             .pipe(
               Effect.catch(() =>
                 Effect.logWarning(
@@ -165,7 +165,7 @@ export class ReservationAccessAdministration extends Context.Service<
   static Live = this.Default.pipe(
     Layer.provide(ReservationAccessService.Live),
     Layer.provide(WorkspaceReservationService.Live),
-    Layer.provide(WorkspacePaidFulfillmentService.Live)
+    Layer.provide(ReservationFulfillment.Live)
   );
 }
 

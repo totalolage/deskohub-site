@@ -7,6 +7,7 @@ import {
   type EmailMessage,
   type EmailProviderConfig,
 } from "../types/email.types";
+import { makeEmailProviderFake } from "./email-provider.test-utils";
 import { NetworkError } from "./network-error";
 import {
   EmailConfigTag,
@@ -14,8 +15,6 @@ import {
   EmailProviderTag,
   EmailServiceError,
   EmailServiceTag,
-  type EmailTemplateService,
-  EmailTemplateServiceTag,
 } from "./service";
 
 const config: EmailProviderConfig = {
@@ -31,32 +30,20 @@ const success = {
 };
 
 const makeProvider = (
-  send: EmailProvider["send"] = mock((_message: EmailMessage) =>
-    Effect.succeed(success)
-  ),
-  sendBatch: EmailProvider["sendBatch"] = (messages) =>
-    Effect.forEach(messages, send)
-): EmailProvider => ({
-  name: "fake",
-  send,
-  sendBatch,
-  verify: Effect.succeed(true),
-});
-
-const templateService: EmailTemplateService = {
-  render: mock(() =>
-    Effect.succeed({
-      subject: "Rendered subject",
-      html: "<p>Rendered</p>",
-      text: "Rendered",
-    })
-  ),
+  send?: EmailProvider["send"],
+  sendBatch?: EmailProvider["sendBatch"]
+): EmailProvider => {
+  const fake = makeEmailProviderFake();
+  return {
+    ...fake.provider,
+    send: send ?? fake.provider.send,
+    sendBatch: sendBatch ?? fake.provider.sendBatch,
+  };
 };
 
 const runWithEmail = <A, E>(
   effect: Effect.Effect<A, E, EmailServiceTag>,
-  provider: EmailProvider,
-  template: EmailTemplateService = templateService
+  provider: EmailProvider
 ) =>
   Effect.runPromise(
     effect.pipe(
@@ -65,7 +52,6 @@ const runWithEmail = <A, E>(
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(EmailProviderTag, provider),
-              Layer.succeed(EmailTemplateServiceTag, template),
               Layer.succeed(EmailConfigTag, config)
             )
           )
@@ -344,11 +330,10 @@ describe("EmailServiceTag layers", () => {
           subject: "Hello",
           text: "Hello",
         });
-        return { sent, verified: yield* email.verify };
+        return sent;
       })
     );
 
-    expect(result.sent.provider).toBe("console");
-    expect(result.verified).toBeFalse();
+    expect(result.provider).toBe("console");
   });
 });

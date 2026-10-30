@@ -30,7 +30,7 @@ Load [the checkout skill's pricing reference](../../deskohub-workspace-checkout/
 
 ## Caching
 
-- `loadCalendarDiscountSource` (`features/discounts/calendar-discount-source.server.ts`) shares only complete occurrence and definition snapshots across requests through `use cache: remote`, keyed by the booking's Prague date. Partial or failed loads get no cache lifetime.
+- `loadCalendarDiscountSource` (`features/discounts/calendar-discount-source.server.ts`) shares only complete occurrence and definition snapshots across requests through `use cache: remote`, keyed by the booking's Prague date, through `readSharedSnapshot`. Partial or failed loads expire at once (`expire: 0`), so the next request retries them.
 - Don't put a process-memory cache in front of the remote cache. It hides invalidation and can't share entries across Vercel instances.
 - Keep the source cache locale-independent. Run feature-flag evaluation, booking-time eligibility, locale and product filtering, label resolution, checkout revalidation, and advertised-price token sealing outside it.
 - Definition mutations call `refreshCalendarDiscountSourceAfterMutation` (`features/discounts/admin/calendar-discount-source-maintenance.server.ts`), which expires the cache tag and primes it best-effort. Calendar edits rely on time-based revalidation, because Workspace doesn't own that mutation.

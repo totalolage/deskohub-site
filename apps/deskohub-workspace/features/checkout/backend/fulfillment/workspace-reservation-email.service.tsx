@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { getCustomerDisplayName } from "@deskohub/dotypos";
 import type { Customer } from "@deskohub/dotypos/generated";
 import type { EmailDeliveryId } from "@deskohub/email";
@@ -13,7 +12,7 @@ import type {
   EmailMessage,
 } from "@deskohub/email/types/email.types";
 import { generateQrCodePngBuffer } from "@deskohub/qr-code";
-import { Context, Effect, Layer, Match } from "effect";
+import { Context, Effect, Layer, Match, Schema } from "effect";
 import { CustomerReservationEmail } from "@/emails/customer-reservation";
 import { ReservationAuthorEmail } from "@/emails/reservation-author";
 import { ReservationNotificationEmail } from "@/emails/reservation-notification";
@@ -39,12 +38,19 @@ import {
 import { getCustomerReservationTable } from "@/features/reservation/backend/reservation-table";
 import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
 import type { StoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
-import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import {
+  type WorkspaceReservationId,
+  workspaceReservationIdSchema,
+} from "@/features/reservation/persistence-contracts";
 import {
   formatReservationDisplayDate,
   formatReservationDisplayDateRange,
 } from "@/features/reservation/reservation-date";
 import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/workspace-url.config";
+import {
+  type EmailKind,
+  emailKindTags,
+} from "@/shared/backend/email/email-kind";
 import {
   type RenderedWorkspaceEmail,
   renderWorkspaceEmail,
@@ -75,6 +81,7 @@ export interface IWorkspaceReservationEmailService {
   readonly sendPaidReservationEmails: (input: {
     readonly reservation: WorkspaceReservationDetails;
     readonly customerEmailLocale: Locale;
+    /** The confirmation generation's provider key, chosen by fulfillment. */
     readonly customerEmailIdempotencyKey?: string;
     /**
      * The reservation's author, or null when it has none. An active author
@@ -87,8 +94,23 @@ export interface IWorkspaceReservationEmailService {
   }) => Effect.Effect<void, EmailSendError>;
 }
 
-const customerAccessCategory = "workspace-paid-reservation-access";
-const customerAccessRecoveryKeyPrefix = `${customerAccessCategory}-recovery-`;
+const paidFulfillmentSource = "workspace-paid-fulfillment" as const;
+
+const CustomerAccessEmailMetadata = Schema.Struct({
+  source: Schema.Literal(paidFulfillmentSource),
+  workspaceReservationId: workspaceReservationIdSchema,
+});
+
+/**
+ * The customer confirmation. Its delivery reports settle the reservation's
+ * fulfillment, and its idempotency keys derive from its category.
+ */
+export const customerAccessEmailKind: EmailKind<
+  typeof CustomerAccessEmailMetadata.Type
+> = {
+  category: "workspace-paid-reservation-access",
+  metadata: Schema.toStandardSchemaV1(CustomerAccessEmailMetadata),
+};
 const authorConfirmationCategory = "workspace-reservation-author-confirmation";
 const workspaceNetworkQrContentId = "workspace-wifi-qr";
 // The hosted map route serves the same image with long-lived caching, so every
@@ -97,17 +119,6 @@ const workspaceLocationMapUrl = getWorkspaceCanonicalUrl(
   workspaceLocationMapImagePath
 );
 const internalNotificationLocale: Locale = "cs-CZ";
-
-export const createCustomerEmailInitialIdempotencyKey = (
-  reservationId: WorkspaceReservationId
-) => `${customerAccessCategory}-${reservationId}`;
-
-export const createCustomerEmailRecoveryIdempotencyKey = (
-  priorCustomerEmailDeliveryId: EmailDeliveryId
-) =>
-  `${customerAccessRecoveryKeyPrefix}${createHash("sha256")
-    .update(priorCustomerEmailDeliveryId)
-    .digest("hex")}`;
 
 // The author confirmation is sent once per reservation; fulfillment retries
 // and customer delivery recovery reuse this key, so the provider collapses
@@ -728,7 +739,7 @@ export class WorkspaceReservationEmailService extends Context.Service<
           ),
           metadata: {
             deploymentEnvironment: env.VERCEL_ENV,
-            source: "workspace-paid-fulfillment",
+            source: paidFulfillmentSource,
             workspaceReservationId: input.reservation.id,
           },
         });
@@ -818,7 +829,7 @@ export class WorkspaceReservationEmailService extends Context.Service<
           );
           const metadata = {
             deploymentEnvironment: env.VERCEL_ENV,
-            source: "workspace-paid-fulfillment",
+            source: paidFulfillmentSource,
             workspaceReservationId: reservation.id,
             dotyposReservationId: reservation.dotyposReservationId,
             dotyposCustomerId: reservation.dotyposCustomerId,
@@ -874,11 +885,10 @@ export class WorkspaceReservationEmailService extends Context.Service<
             attachments: [networkQrAttachment].filter(
               (attachment): attachment is EmailAttachment => Boolean(attachment)
             ),
-            tags: [customerAccessCategory],
+            ...emailKindTags(customerAccessEmailKind, metadata),
             ...(input.customerEmailIdempotencyKey && {
               idempotencyKey: input.customerEmailIdempotencyKey,
             }),
-            metadata,
           };
 
           const customerSendResult = yield* emailService

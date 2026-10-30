@@ -12,7 +12,7 @@ import type {
 } from "@deskohub/workspace-admin-api";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { Data, Effect, Match, Option, Schema } from "effect";
-import { WorkspaceDatabase } from "@/db/database.service";
+import { WorkspaceDatabase, WorkspaceTransaction } from "@/db/database.service";
 import { toStoredInstant } from "@/db/instant";
 import {
   emailCampaignAutomationPreviews as previews,
@@ -56,6 +56,11 @@ import {
 } from "../automation-identifiers";
 import type { AutomationTriggerKind } from "../automation-states";
 import { automationTickAtOrAfter } from "../automation-ticks";
+import {
+  readsTriggeringVisit,
+  triggeringVisitVerdict,
+  withdrawnByCancellation,
+} from "../automation-trigger-verification";
 import { automationTriggerKind } from "../automation-triggers";
 import type { AutomationConditionAudienceMissing } from "../errors";
 import { AutomationConditionEvaluation } from "./automation-condition-evaluation.service";
@@ -73,7 +78,6 @@ import {
   selectReplayEvents,
 } from "./automation-previews";
 import {
-  type AutomationEngineTransaction,
   AutomationUnitFetchFailure,
   type AutomationUnitHandler,
   type ClaimedAutomationUnit,
@@ -151,7 +155,7 @@ class PreviewConditionUnavailable extends Data.TaggedError(
  * lifecycle lock; a changed working copy supersedes the dry run instead.
  */
 export const makePreviewUnitHandler = Effect.gen(function* () {
-  const { db } = yield* WorkspaceDatabase;
+  const { db, transaction } = yield* WorkspaceDatabase;
   const facts = yield* AutomationEvaluationFacts;
   const recipients = yield* CampaignRecipientService;
   const conditions = yield* AutomationConditionEvaluation;
@@ -165,29 +169,26 @@ export const makePreviewUnitHandler = Effect.gen(function* () {
 
   /** Reads the running dry run, its working copy and its events in one snapshot. */
   const loadJob = (subject: PreviewUnitSubject) =>
-    db
-      .transaction((tx) =>
-        selectPreview(tx, subject.previewId).pipe(
-          Effect.flatMap(
-            Option.match({
-              onNone: () =>
-                Effect.succeed<LoadedPreviewJob>(PreviewUnitFetch.Closed()),
-              onSome: (preview) =>
-                preview.status !== "running"
-                  ? Effect.succeed<LoadedPreviewJob>(PreviewUnitFetch.Closed())
-                  : loadCurrentJob(tx, preview, subject.customerIds),
-            })
-          )
+    transaction(
+      selectPreview(subject.previewId).pipe(
+        Effect.flatMap(
+          Option.match({
+            onNone: () =>
+              Effect.succeed<LoadedPreviewJob>(PreviewUnitFetch.Closed()),
+            onSome: (preview) =>
+              preview.status !== "running"
+                ? Effect.succeed<LoadedPreviewJob>(PreviewUnitFetch.Closed())
+                : loadCurrentJob(preview, subject.customerIds),
+          })
         )
       )
-      .pipe(Effect.mapError(databaseFailure));
+    ).pipe(Effect.mapError(databaseFailure));
 
   const loadCurrentJob = (
-    tx: AutomationEngineTransaction,
     preview: AutomationPreviewRow,
     customers: readonly DotyposCustomerId[]
   ) =>
-    workingCopyOf(tx, preview).pipe(
+    workingCopyOf(preview).pipe(
       Effect.flatMap(
         Option.match({
           onNone: () => Effect.succeed(PreviewUnitFetch.Changed()),
@@ -197,7 +198,7 @@ export const makePreviewUnitHandler = Effect.gen(function* () {
                 readonly ReplayEvent[],
                 DatabaseQueryError
               > => Effect.succeed([]),
-              onSome: (scope) => selectReplayEvents(tx, scope, customers),
+              onSome: (scope) => selectReplayEvents(scope, customers),
             }).pipe(
               Effect.map(
                 (events): LoadedPreviewJob => ({
@@ -481,7 +482,7 @@ export const makePreviewUnitHandler = Effect.gen(function* () {
         )
       ),
       Effect.bind("visits", () =>
-        rechecksVisit(kind) && reservationIds.length > 0
+        readsTriggeringVisit(kind) && reservationIds.length > 0
           ? withVisits((visits) => visits.ofReservations(reservationIds)).pipe(
               Effect.mapError(AutomationUnitFetchFailure.fromReservationVisits)
             )
@@ -737,23 +738,23 @@ export const makePreviewUnitHandler = Effect.gen(function* () {
             )
         )
       ),
-    commit: (tx, unit, fetched, at) =>
-      lockPreview(tx, unit.subject.previewId).pipe(
+    commit: (unit, fetched, at) =>
+      lockPreview(unit.subject.previewId).pipe(
         Effect.flatMap(
           Option.match({
             onNone: () => Effect.void,
             onSome: (preview) =>
               PreviewUnitFetch.$match(fetched, {
                 Closed: () => Effect.void,
-                Changed: () => supersede(tx, { preview, unitId: unit.id, at }),
+                Changed: () => supersede({ preview, unitId: unit.id, at }),
                 Evaluated: ({ rows }) =>
-                  workingCopyOf(tx, preview).pipe(
+                  workingCopyOf(preview).pipe(
                     Effect.flatMap(
                       Option.match({
                         onNone: () =>
-                          supersede(tx, { preview, unitId: unit.id, at }),
+                          supersede({ preview, unitId: unit.id, at }),
                         onSome: () =>
-                          recordPreviewUnit(tx, {
+                          recordPreviewUnit({
                             previewId: preview.id,
                             rows,
                             at,
@@ -771,37 +772,32 @@ export const makePreviewUnitHandler = Effect.gen(function* () {
   return registerAutomationUnitHandler(handler);
 });
 
-const selectPreview = (
-  tx: AutomationEngineTransaction,
-  previewId: AutomationPreviewId
-) =>
-  tx
-    .select()
-    .from(previews)
-    .where(eq(previews.id, previewId))
-    .pipe(Effect.map(([preview]) => Option.fromUndefinedOr(preview)));
+const selectPreview = (previewId: AutomationPreviewId) =>
+  Effect.flatMap(WorkspaceTransaction, ({ db }) =>
+    db
+      .select()
+      .from(previews)
+      .where(eq(previews.id, previewId))
+      .pipe(Effect.map(([preview]) => Option.fromUndefinedOr(preview)))
+  );
 
 /** The running dry run, locked against a concurrent supersede (§8). */
-const lockPreview = (
-  tx: AutomationEngineTransaction,
-  previewId: AutomationPreviewId
-) =>
-  tx
-    .select()
-    .from(previews)
-    .where(and(eq(previews.id, previewId), eq(previews.status, "running")))
-    .for("update")
-    .pipe(Effect.map(([preview]) => Option.fromUndefinedOr(preview)));
+const lockPreview = (previewId: AutomationPreviewId) =>
+  Effect.flatMap(WorkspaceTransaction, ({ db }) =>
+    db
+      .select()
+      .from(previews)
+      .where(and(eq(previews.id, previewId), eq(previews.status, "running")))
+      .for("update")
+      .pipe(Effect.map(([preview]) => Option.fromUndefinedOr(preview)))
+  );
 
-const supersede = (
-  tx: AutomationEngineTransaction,
-  input: {
-    readonly preview: AutomationPreviewRow;
-    readonly unitId: AutomationWorkUnitId;
-    readonly at: Temporal.Instant;
-  }
-) =>
-  closePreview(tx, {
+const supersede = (input: {
+  readonly preview: AutomationPreviewRow;
+  readonly unitId: AutomationWorkUnitId;
+  readonly at: Temporal.Instant;
+}) =>
+  closePreview({
     previewId: input.preview.id,
     status: "superseded",
     at: input.at,
@@ -814,13 +810,13 @@ const supersede = (
  * loads.
  */
 const workingCopyOf = (
-  tx: AutomationEngineTransaction,
   preview: AutomationPreviewRow
 ): Effect.Effect<
   Option.Option<Omit<PreviewJob, "preview" | "events">>,
-  DatabaseQueryError
+  DatabaseQueryError,
+  WorkspaceTransaction
 > =>
-  loadAutomationWorkingCopy(tx, preview.campaignId).pipe(
+  loadAutomationWorkingCopy(preview.campaignId).pipe(
     Effect.map((copy) =>
       Option.filter(
         Option.all({
@@ -863,19 +859,12 @@ export const conditionFilterOf = (
       });
 };
 
-/** Whether intake re-checks the triggering visit live for this kind (§5.6). */
-export const rechecksVisit = (kind: AutomationTriggerKind) =>
-  kind === "reservation-booked" ||
-  kind === "reservation-started" ||
-  kind === "reservation-finished";
-
 /**
- * Intake's live re-check of the triggering visit (§5.6): a visit Dotypos
- * no longer has or cancelled withdraws the event, and a started or
- * finished event whose live time is later than it is superseded and
- * hidden, because the sweep records the moved visit as a later event. A
- * reservation Workspace cancelled is left to the pre-submit check, which
- * knows when. None when the event stands.
+ * Intake's live re-check of the triggering visit (§5.6), as of the event
+ * and at stored precision: a withdrawn trigger withdraws the event, and a
+ * moved one is superseded and hidden, because the sweep records the moved
+ * visit as a later event. A reservation Workspace cancelled is left to the
+ * pre-submit check, which knows when. None when the event stands.
  */
 const recheck = (input: {
   readonly kind: AutomationTriggerKind;
@@ -887,38 +876,34 @@ const recheck = (input: {
   readonly cancellations: ReadonlyMap<WorkspaceReservationId, Temporal.Instant>;
 }): Option.Option<ReplayedEvent> => {
   const reservationId = input.event.workspaceReservationId;
-  if (
-    !rechecksVisit(input.kind) ||
-    reservationId === null ||
-    input.cancellations.has(reservationId)
-  ) {
+  if (reservationId === null || input.cancellations.has(reservationId)) {
     return Option.none();
   }
-  const visit = Option.flatten(
-    Option.fromUndefinedOr(input.visits.get(reservationId))
-  ).pipe(Option.filter(({ status }) => status === "active"));
-  if (Option.isNone(visit)) {
-    return Option.some({
-      _tag: "Withdrawn",
-      stepId: Option.none(),
-      at: Option.none(),
-    });
-  }
-  const liveAt = Match.value(input.kind).pipe(
-    Match.when("reservation-started", () => Option.some(visit.value.startsAt)),
-    Match.when("reservation-finished", () => Option.some(visit.value.endsAt)),
-    Match.orElse(() => Option.none<Temporal.Instant>())
+  const verdict = triggeringVisitVerdict({
+    kind: input.kind,
+    visit: Option.flatten(
+      Option.fromUndefinedOr(input.visits.get(reservationId))
+    ).pipe(
+      Option.map((visit) => ({
+        ...visit,
+        startsAt: toStoredInstant(visit.startsAt),
+        endsAt: toStoredInstant(visit.endsAt),
+      }))
+    ),
+    asOf: toStoredInstant(input.event.occurredAt),
+  });
+  return Match.value(verdict).pipe(
+    Match.when("current", () => Option.none<ReplayedEvent>()),
+    Match.when("withdrawn", () =>
+      Option.some<ReplayedEvent>({
+        _tag: "Withdrawn",
+        stepId: Option.none(),
+        at: Option.none(),
+      })
+    ),
+    Match.when("moved", () => Option.some<ReplayedEvent>({ _tag: "Hidden" })),
+    Match.exhaustive
   );
-  return Option.exists(
-    liveAt,
-    (at) =>
-      Temporal.Instant.compare(
-        toStoredInstant(at),
-        toStoredInstant(input.event.occurredAt)
-      ) > 0
-  )
-    ? Option.some({ _tag: "Hidden" })
-    : Option.none();
 };
 
 /**
@@ -935,7 +920,7 @@ const preSubmit = (input: {
 }): ReplayedEvent => {
   const cancelledAt = Option.fromNullishOr(
     input.event.workspaceReservationId === null ||
-      input.kind === "reservation-cancelled"
+      !withdrawnByCancellation(input.kind)
       ? undefined
       : input.cancellations.get(input.event.workspaceReservationId)
   ).pipe(Option.filter((at) => Temporal.Instant.compare(at, input.end.at) < 0));

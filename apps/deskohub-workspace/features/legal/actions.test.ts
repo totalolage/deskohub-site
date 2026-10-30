@@ -5,19 +5,14 @@ import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { Effect, Layer, Schema } from "effect";
-import type { CustomerMarketingConsent } from "@/db/schema/customer-marketing-consents";
 import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import {
   customerAccountIdSchema,
   type LinkedCustomerAccount,
 } from "@/features/account/customer-account";
-import type {
-  GrantCustomerMarketingConsentInput,
-  ICustomerMarketingConsentRepository,
-  WithdrawCustomerMarketingConsentInput,
-} from "@/features/legal/backend/customer-marketing-consent.repository";
-import { CustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository";
+import type { IMarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
+import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import type { IMarketingManagementService } from "@/features/legal/backend/marketing-management.service";
 import {
   MarketingManagementError,
@@ -137,17 +132,14 @@ type Scenario = {
   cookies: MarketingManagementCookies;
   readonly accountCustomerId: typeof customerId;
   readonly accountResolveCalls: { value: number };
-  readonly consent: CustomerMarketingConsent | null;
+  readonly record: ReturnType<typeof mock>;
   readonly exchange: ReturnType<typeof mock>;
-  readonly grant: ReturnType<typeof mock>;
   readonly resolve: ReturnType<typeof mock>;
   readonly revoke: ReturnType<typeof mock>;
-  readonly withdraw: ReturnType<typeof mock>;
 };
 
 const makeScenario = (options?: {
   readonly accountCustomerId?: typeof customerId;
-  readonly consent?: CustomerMarketingConsent | null;
   readonly sessionCustomerId?: typeof customerId;
   readonly sessionError?: "invalid_credential" | "unavailable";
 }): Scenario => {
@@ -163,23 +155,16 @@ const makeScenario = (options?: {
     Effect.succeed({ token: "new-session-token", expiresAt: sessionExpiry })
   );
   const revoke = mock((_rawCookie: string) => Effect.void);
-  const grant = mock(
-    (_input: GrantCustomerMarketingConsentInput) => Effect.void
-  );
-  const withdraw = mock(
-    (_input: WithdrawCustomerMarketingConsentInput) => Effect.void
-  );
+  const record = mock(() => Effect.void);
 
   return {
     accountCustomerId: options?.accountCustomerId ?? customerId,
     accountResolveCalls,
-    consent: options?.consent ?? null,
     cookies: { pending: undefined, session: undefined },
     exchange,
-    grant,
+    record,
     resolve,
     revoke,
-    withdraw,
   };
 };
 
@@ -201,19 +186,17 @@ const accountResolver = {
   }),
 };
 
-const repository: ICustomerMarketingConsentRepository = {
-  get: (_customerId) => Effect.succeed(currentScenario.consent),
-  grant: (input) => currentScenario.grant(input),
-  grantInitial: (_input) => Effect.void,
-  withdraw: (input) => currentScenario.withdraw(input),
+const ledger: IMarketingConsentLedger = {
+  record: (input) => currentScenario.record(input),
+  status: () => Effect.succeed("absent"),
+  withdrawActive: () => Effect.succeed(false),
 };
 
 const originalCustomerAccountResolverLive = CustomerAccountResolver.Live;
 const originalMarketingManagementDefault = MarketingManagementService.Default;
-const originalCustomerMarketingConsentDefault =
-  CustomerMarketingConsentRepository.Default;
+const originalMarketingConsentLedgerDefault = MarketingConsentLedger.Default;
 
-CustomerAccountResolver.Live = Layer.succeed(
+CustomerAccountResolver.Live = Layer.mock(
   CustomerAccountResolver,
   accountResolver
 );
@@ -221,10 +204,7 @@ MarketingManagementService.Default = Layer.succeed(
   MarketingManagementService,
   management
 );
-CustomerMarketingConsentRepository.Default = Layer.succeed(
-  CustomerMarketingConsentRepository,
-  repository
-);
+MarketingConsentLedger.Default = Layer.succeed(MarketingConsentLedger, ledger);
 
 const {
   clearMarketingManagementAction,
@@ -244,8 +224,7 @@ beforeEach(() => {
 afterAll(() => {
   CustomerAccountResolver.Live = originalCustomerAccountResolverLive;
   MarketingManagementService.Default = originalMarketingManagementDefault;
-  CustomerMarketingConsentRepository.Default =
-    originalCustomerMarketingConsentDefault;
+  MarketingConsentLedger.Default = originalMarketingConsentLedgerDefault;
 });
 
 describe("marketing preference actions", () => {
@@ -315,13 +294,14 @@ describe("marketing preference actions", () => {
       })
     ).resolves.toEqual({ data: { status: "saved" } });
 
-    expect(currentScenario.grant).toHaveBeenCalledTimes(1);
-    expect(currentScenario.grant.mock.calls[0]?.[0]).toMatchObject({
-      dotyposCustomerId: customerId,
+    expect(currentScenario.record).toHaveBeenCalledTimes(1);
+    expect(currentScenario.record.mock.calls[0]?.[0]).toMatchObject({
+      customerId,
       locale: "en-US",
-      source: "account",
+      choice: "grant",
+      mode: "explicit",
+      channel: "account",
     });
-    expect(currentScenario.withdraw).not.toHaveBeenCalled();
   });
 
   test("grants consent through a valid management session and records the email link as its source", async () => {
@@ -337,13 +317,14 @@ describe("marketing preference actions", () => {
       })
     ).resolves.toEqual({ data: { status: "saved" } });
 
-    expect(currentScenario.grant).toHaveBeenCalledTimes(1);
-    expect(currentScenario.grant.mock.calls[0]?.[0]).toMatchObject({
-      dotyposCustomerId: customerId,
+    expect(currentScenario.record).toHaveBeenCalledTimes(1);
+    expect(currentScenario.record.mock.calls[0]?.[0]).toMatchObject({
+      customerId,
       locale: "cs-CZ",
-      source: "link",
+      choice: "grant",
+      mode: "explicit",
+      channel: "link",
     });
-    expect(currentScenario.withdraw).not.toHaveBeenCalled();
     expect(currentScenario.accountResolveCalls.value).toBe(0);
   });
 
@@ -360,8 +341,12 @@ describe("marketing preference actions", () => {
       })
     ).resolves.toEqual({ data: { status: "saved" } });
 
-    expect(currentScenario.withdraw).toHaveBeenCalledTimes(1);
-    expect(currentScenario.grant).not.toHaveBeenCalled();
+    expect(currentScenario.record).toHaveBeenCalledTimes(1);
+    expect(currentScenario.record.mock.calls[0]?.[0]).toMatchObject({
+      customerId,
+      locale: "cs-CZ",
+      choice: "withdraw",
+    });
     expect(currentScenario.accountResolveCalls.value).toBe(0);
   });
 
@@ -379,8 +364,7 @@ describe("marketing preference actions", () => {
     ).resolves.toEqual({
       data: { status: "rejected", reason: "pending-confirmation-required" },
     });
-    expect(currentScenario.grant).not.toHaveBeenCalled();
-    expect(currentScenario.withdraw).not.toHaveBeenCalled();
+    expect(currentScenario.record).not.toHaveBeenCalled();
   });
 
   test("rejects a changed link context before writing consent", async () => {
@@ -404,7 +388,7 @@ describe("marketing preference actions", () => {
     ).resolves.toEqual({
       data: { status: "rejected", reason: "stale-context" },
     });
-    expect(currentScenario.grant).not.toHaveBeenCalled();
+    expect(currentScenario.record).not.toHaveBeenCalled();
   });
 
   test("revokes a valid link session before clearing both management cookies", async () => {

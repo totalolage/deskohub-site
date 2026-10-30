@@ -81,7 +81,11 @@ export const runWorkspaceE2ECase = ({
               ),
           })
         );
-        yield* testCase.execute({ runStep: step, session: browser.sessionId });
+        yield* testCase.execute({
+          run: browser.run,
+          runStep: step,
+          session: browser.sessionId,
+        });
       }),
       caseId: testCase.id,
       cleanup: finalizeCaseBrowser(

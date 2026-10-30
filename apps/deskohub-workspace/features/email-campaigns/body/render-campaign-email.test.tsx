@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
+import type { CampaignBodyNode } from "./campaign-body-document";
 import type { CampaignLocaleContent } from "./campaign-content";
 import {
   CampaignEmailFooter,
@@ -198,5 +199,82 @@ describe("renderCampaignEmail", () => {
 
     expect(email.html).toContain('lang="en-US"');
     expect(email.html).toContain("Unsubscribe or change your preferences");
+  });
+});
+
+describe("campaign body images", () => {
+  const renderImage = async (attrs: CampaignBodyNode["attrs"]) => {
+    const email = await render(CampaignEmailFooter.Operational(), "cs-CZ", {
+      ...content,
+      body: {
+        formatVersion: 1,
+        doc: {
+          type: "doc",
+          content: [
+            {
+              type: "image",
+              attrs: {
+                src: cloudinaryImage,
+                alt: "Zasedačka",
+                title: null,
+                ...attrs,
+              },
+            },
+          ],
+        },
+      },
+    });
+    const image = email.html.match(/<img[^>]*alt="Zasedačka"[^>]*>/)?.[0];
+    if (image === undefined) throw new Error("The image did not render");
+    const cell = email.html.match(
+      /<td([^>]*\balign="[^"]*"[^>]*)>\s*<img[^>]*alt="Zasedačka"[^>]*>/
+    )?.[1];
+    return { image, cell };
+  };
+
+  test.each([
+    ["left", undefined],
+    ["center", "margin-right:auto;margin-left:auto"],
+    ["right", "margin-left:auto;margin-right:0"],
+  ] as const)(
+    "aligns a %s image in its cell for every client",
+    async (align, margins) => {
+      const { image, cell } = await renderImage({ align, width: 240 });
+
+      expect(cell).toContain(`align="${align}"`);
+      expect(cell).toContain(`text-align:${align}`);
+      expect(image).toContain('width="240"');
+      expect(image).toMatch(/style="[^"]*display:block/);
+      expect(image).toMatch(/style="[^"]*max-width:100%/);
+      expect(image).not.toMatch(/style="[^"]*[;"]width:100%/);
+      if (margins === undefined)
+        expect(image).not.toMatch(/margin-(left|right):auto/);
+      else expect(image).toContain(margins);
+    }
+  );
+
+  test("caps a wide image at the body column", async () => {
+    const { image } = await renderImage({ align: "center", width: 1200 });
+
+    expect(image).toContain('width="534"');
+  });
+
+  test("centers an image whose alignment is missing or unknown", async () => {
+    for (const attrs of [{}, { align: null }, { align: "justify" }]) {
+      const { cell } = await renderImage({ ...attrs, width: 240 });
+
+      expect(cell).toContain('align="center"');
+    }
+  });
+
+  test("keeps an image without a width filling the column, whatever its alignment", async () => {
+    const legacy = await renderImage({});
+
+    expect(legacy.cell).toBeUndefined();
+    expect(legacy.image).toContain('width="534"');
+    expect(legacy.image).toMatch(/style="[^"]*;width:100%;max-width:100%/);
+    for (const align of ["left", "center", "right"]) {
+      expect(await renderImage({ align, width: null })).toEqual(legacy);
+    }
   });
 });

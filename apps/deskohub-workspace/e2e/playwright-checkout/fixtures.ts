@@ -47,7 +47,6 @@ export type WorkspaceE2ECaseBinder = (input: {
   /** The worker browser; the case's own session context is its only one. */
   readonly browser: import("@playwright/test").Browser;
   readonly environment: import("../e2e-env").WorkspaceE2EEnvironment;
-  readonly run: Runner;
   readonly runId: import("../run-identifiers").WorkspaceE2ERunId;
   readonly testCase: import("../types").WorkspaceE2ECase;
 }) => Promise<import("../types").WorkspaceE2ECase>;
@@ -83,7 +82,6 @@ export const registerWorkspaceE2ECases = (
               datasourceConfig,
               flowStates,
               preparation: runPlan.preparation,
-              run: browserRunner,
               traceConstruction: false,
             });
             const selected = cases.find((testCase) => testCase.id === caseId);
@@ -101,7 +99,6 @@ export const registerWorkspaceE2ECases = (
           ? await options.bindCase({
               browser,
               environment,
-              run: browserRunner,
               runId: runPlan.runContext.runId,
               testCase: planned,
             })

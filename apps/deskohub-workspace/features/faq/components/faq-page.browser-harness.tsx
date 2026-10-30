@@ -9,9 +9,8 @@ if (!mountPoint) {
 
 createRoot(mountPoint).render(
   <FaqPage
-    averageReservationsPerDay={2.36}
-    coworkSeatCapacity={17}
     locale="en-US"
+    occupancy={{ averageReservationsPerDay: 2.36, coworkSeatCapacity: 17 }}
     officesOffered={false}
   />
 );

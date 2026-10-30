@@ -11,7 +11,7 @@ import type { UpdateCustomerRequest } from "@deskohub/dotypos/generated";
 import { Context, Data, Effect, Layer, Option } from "effect";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { MissingDotyposId } from "@/shared/backend/missing-dotypos-id";
-import type { CustomerProfileInput } from "../contracts";
+import type { CustomerProfile, CustomerProfileInput } from "../contracts";
 
 /** A profile update or reactivation addressed a Dotypos customer that does not exist. */
 class DotyposCustomerMissing extends Data.TaggedError(
@@ -24,25 +24,6 @@ export type DotyposCustomerError =
   | DotyposConditionalWriteFailure
   | MissingDotyposId
   | DotyposCustomerMissing;
-
-export type CustomerProfileBilling = {
-  readonly kind: "personal" | "business";
-  readonly addressLine1: string | null;
-  readonly addressLine2: string | null;
-  readonly city: string | null;
-  readonly zip: string | null;
-  readonly country: string | null;
-  readonly companyName: string | null;
-  readonly companyId: string | null;
-  readonly vatId: string | null;
-};
-
-export type CustomerProfile = {
-  readonly firstName: string;
-  readonly lastName: string | null;
-  readonly phone: string | null;
-  readonly billing: CustomerProfileBilling | null;
-};
 
 /**
  * Closed classification of the exact-email Dotypos candidates for a verified

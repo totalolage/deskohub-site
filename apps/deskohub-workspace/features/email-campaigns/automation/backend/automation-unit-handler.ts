@@ -4,16 +4,12 @@ import {
   dotyposFailureCode,
 } from "@deskohub/dotypos";
 import { Data, Effect, Match, Option, Schema } from "effect";
-import type { WorkspaceDatabaseClient } from "@/db/database.service";
+import type { WorkspaceTransaction } from "@/db/database.service";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
 import type { ReservationVisitsUnavailable } from "@/features/reservation/backend/reservation-visits.service";
 import type { CampaignId, CampaignSendId } from "../../campaign-identifiers";
 import type { AutomationWorkUnitId } from "../automation-identifiers";
 import type { AutomationWorkUnitKind } from "../automation-work-units";
-
-export type AutomationEngineTransaction = Parameters<
-  Parameters<WorkspaceDatabaseClient["transaction"]>[0]
->[0];
 
 /** A claimed unit as its handler sees it. */
 export type ClaimedAutomationUnit<Subject> = {
@@ -48,9 +44,12 @@ type PersistedAutomationUnit = Omit<
  * slot hand-off, so the unit settles only with its send.
  */
 type AutomationUnitSettlement = (
-  tx: AutomationEngineTransaction,
   at: Temporal.Instant
-) => Effect.Effect<void, AutomationUnitDefect | DatabaseQueryError>;
+) => Effect.Effect<
+  void,
+  AutomationUnitDefect | DatabaseQueryError,
+  WorkspaceTransaction
+>;
 
 /**
  * Submits a persisted send outside any transaction. A failure returns the
@@ -147,7 +146,9 @@ export class AutomationUnitDefect extends Data.TaggedError(
  * transaction under the unit deadline, samples the instant, then runs
  * `commit` inside its single commit transaction before the claim CAS, so
  * domain rows lock before the unit row and the slot lock (§5.4). A commit
- * whose claim CAS fails rolls back with the handler's writes.
+ * whose claim CAS fails rolls back with the handler's writes. `expire`,
+ * `commit` and settlements require `WorkspaceTransaction`; `fetch` and
+ * `submit` run outside any transaction, which their types cannot prove.
  */
 export interface AutomationUnitHandler<Subject, Fetched> {
   readonly kind: AutomationWorkUnitKind;
@@ -163,12 +164,12 @@ export interface AutomationUnitHandler<Subject, Fetched> {
    * make a repeated call a no-op. Kinds without a limit omit it.
    */
   readonly expire?: (
-    tx: AutomationEngineTransaction,
     unit: ClaimedAutomationUnit<Subject>,
     at: Temporal.Instant
   ) => Effect.Effect<
     AutomationUnitExpiry,
-    AutomationUnitDefect | DatabaseQueryError
+    AutomationUnitDefect | DatabaseQueryError,
+    WorkspaceTransaction
   >;
   /** At most `requestCost` sequential requests; returns in-memory facts only. */
   readonly fetch: (
@@ -179,13 +180,13 @@ export interface AutomationUnitHandler<Subject, Fetched> {
   >;
   /** Writes the decisions and returns the follow-up units to plan. */
   readonly commit: (
-    tx: AutomationEngineTransaction,
     unit: ClaimedAutomationUnit<Subject>,
     fetched: Fetched,
     at: Temporal.Instant
   ) => Effect.Effect<
     ReadonlyArray<PlannedAutomationUnit>,
-    AutomationUnitDefect | AutomationUnitRecheckFailed | DatabaseQueryError
+    AutomationUnitDefect | AutomationUnitRecheckFailed | DatabaseQueryError,
+    WorkspaceTransaction
   >;
   /**
    * Submits the send a commit persisted by setting the unit's `send_id`
@@ -204,11 +205,11 @@ export interface AutomationUnitHandler<Subject, Fetched> {
 
 /** Commits a fetched unit at the instant sampled after its fetch. */
 type AutomationUnitCommit = (
-  tx: AutomationEngineTransaction,
   at: Temporal.Instant
 ) => Effect.Effect<
   ReadonlyArray<PlannedAutomationUnit>,
-  AutomationUnitDefect | AutomationUnitRecheckFailed | DatabaseQueryError
+  AutomationUnitDefect | AutomationUnitRecheckFailed | DatabaseQueryError,
+  WorkspaceTransaction
 >;
 
 /** A fetched unit: its commit, and the submit for a send that commit persists. */
@@ -221,12 +222,12 @@ export type FetchedAutomationUnit = {
 export interface RegisteredAutomationUnitHandler {
   readonly kind: AutomationWorkUnitKind;
   readonly expire?: (
-    tx: AutomationEngineTransaction,
     unit: ClaimedAutomationUnit<unknown>,
     at: Temporal.Instant
   ) => Effect.Effect<
     AutomationUnitExpiry,
-    AutomationUnitDefect | DatabaseQueryError
+    AutomationUnitDefect | DatabaseQueryError,
+    WorkspaceTransaction
   >;
   readonly fetch: (
     unit: ClaimedAutomationUnit<unknown>
@@ -254,8 +255,8 @@ export const registerAutomationUnitHandler = <Subject, Fetched>(
   return {
     kind: handler.kind,
     ...(expire !== undefined && {
-      expire: (tx, unit, at) =>
-        decode(unit).pipe(Effect.flatMap((decoded) => expire(tx, decoded, at))),
+      expire: (unit, at) =>
+        decode(unit).pipe(Effect.flatMap((decoded) => expire(decoded, at))),
     }),
     fetch: (unit) =>
       decode(unit).pipe(
@@ -263,7 +264,7 @@ export const registerAutomationUnitHandler = <Subject, Fetched>(
           handler.fetch(decoded).pipe(
             Effect.map(
               (fetched): FetchedAutomationUnit => ({
-                commit: (tx, at) => handler.commit(tx, decoded, fetched, at),
+                commit: (at) => handler.commit(decoded, fetched, at),
                 ...(submit !== undefined && {
                   submit: (persisted) =>
                     submit(persisted, Option.some(fetched)),

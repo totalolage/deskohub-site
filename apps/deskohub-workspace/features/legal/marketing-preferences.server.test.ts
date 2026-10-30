@@ -7,11 +7,8 @@ import { Effect, Layer, Logger, Schema } from "effect";
 import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
-import type {
-  CustomerMarketingConsent,
-  ICustomerMarketingConsentRepository,
-} from "@/features/legal/backend/customer-marketing-consent.repository";
-import { CustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository";
+import type { IMarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
+import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import {
   type IMarketingManagementService,
   MarketingManagementError,
@@ -25,6 +22,7 @@ import {
   getMarketingManagementDismissalContext,
   getPendingMarketingManagementContext,
 } from "@/features/legal/backend/marketing-preferences-authority";
+import type { MarketingConsentStatus } from "@/features/legal/marketing-consent-status";
 
 mock.module("server-only", () => ({}));
 
@@ -74,7 +72,7 @@ const pendingToken = "pending-token";
 const makeScenario = (options?: {
   readonly accountError?: boolean;
   readonly accountCustomerId?: typeof customerId;
-  readonly consent?: CustomerMarketingConsent | null;
+  readonly consent?: MarketingConsentStatus;
   readonly repositoryError?: boolean;
   readonly sessionCustomerId?: typeof customerId;
   readonly sessionError?: "invalid_credential" | "unavailable";
@@ -106,39 +104,28 @@ const makeScenario = (options?: {
     revoke: mock(() => Effect.die("not used in a read")),
   };
 
-  const repository: ICustomerMarketingConsentRepository = {
-    get: mock(() =>
+  const ledger: IMarketingConsentLedger = {
+    status: mock(() =>
       options?.repositoryError
-        ? Effect.fail(new Error("repository unavailable"))
-        : Effect.succeed(options?.consent ?? null)
+        ? Effect.fail(new Error("ledger unavailable") as never)
+        : Effect.succeed(options?.consent ?? "absent")
     ),
-    grant: mock(() => Effect.die("not used in a read")),
-    grantInitial: mock(() => Effect.die("not used in a read")),
-    withdraw: mock(() => Effect.die("not used in a read")),
+    record: mock(() => Effect.die("not used in a read")),
+    withdrawActive: mock(() => Effect.die("not used in a read")),
   };
 
   return {
     accountResolveCalls,
     layers: Layer.mergeAll(
-      Layer.succeed(CustomerAccountResolver, accountResolver),
+      Layer.mock(CustomerAccountResolver, accountResolver),
       Layer.succeed(MarketingManagementService, management),
-      Layer.succeed(CustomerMarketingConsentRepository, repository)
+      Layer.succeed(MarketingConsentLedger, ledger)
     ),
     management,
-    repository,
+    ledger,
     resolve,
   };
 };
-
-const consent = (
-  withdrawnAt: Temporal.Instant | null
-): CustomerMarketingConsent => ({
-  dotyposCustomerId: customerId,
-  documentHash: "synthetic-marketing-document-hash",
-  locale: "en-US",
-  grantedAt: Temporal.Instant.from("2030-01-01T00:00:00Z"),
-  withdrawnAt,
-});
 
 beforeEach(() => {
   cookieState = { pending: undefined, session: undefined };
@@ -174,12 +161,12 @@ describe("getMarketingPreferences", () => {
 
     expect(scenario.accountResolveCalls.value).toBe(0);
     expect(scenario.resolve).not.toHaveBeenCalled();
-    expect(scenario.repository.get).not.toHaveBeenCalled();
+    expect(scenario.ledger.status).not.toHaveBeenCalled();
   });
 
   test("uses a valid management session and returns the customer consent state", async () => {
     cookieState = { pending: undefined, session: sessionToken };
-    const scenario = makeScenario({ consent: consent(null) });
+    const scenario = makeScenario({ consent: "active" });
 
     await expect(
       Effect.runPromise(
@@ -198,7 +185,7 @@ describe("getMarketingPreferences", () => {
 
     expect(scenario.resolve).toHaveBeenCalledWith(sessionToken);
     expect(scenario.accountResolveCalls.value).toBe(0);
-    expect(scenario.repository.get).toHaveBeenCalledWith(customerId);
+    expect(scenario.ledger.status).toHaveBeenCalledWith(customerId);
   });
 
   test("turns an expired management session into invalid-link without account fallback", async () => {
@@ -219,12 +206,10 @@ describe("getMarketingPreferences", () => {
     });
 
     expect(scenario.accountResolveCalls.value).toBe(0);
-    expect(scenario.repository.get).not.toHaveBeenCalled();
+    expect(scenario.ledger.status).not.toHaveBeenCalled();
   });
 
-  test.each([
-    ["withdrawn", consent(Temporal.Instant.from("2030-01-02T00:00:00Z"))],
-  ] as const)(
+  test.each([["withdrawn", "withdrawn"]] as const)(
     "projects the account consent as %s",
     async (status, existingConsent) => {
       const scenario = makeScenario({ consent: existingConsent });
@@ -258,7 +243,7 @@ describe("getMarketingPreferences", () => {
       )
     ).resolves.toEqual({ status: "unavailable" });
 
-    expect(scenario.repository.get).not.toHaveBeenCalled();
+    expect(scenario.ledger.status).not.toHaveBeenCalled();
   });
 
   test("logs a fixed, cause-free warning when it fails closed", async () => {
@@ -277,6 +262,6 @@ describe("getMarketingPreferences", () => {
     ).resolves.toEqual({ status: "unavailable" });
 
     expect(records.some(({ level }) => level === "Warn")).toBe(true);
-    expect(JSON.stringify(records)).not.toContain("repository unavailable");
+    expect(JSON.stringify(records)).not.toContain("ledger unavailable");
   });
 });

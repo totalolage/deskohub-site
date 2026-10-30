@@ -26,6 +26,18 @@ export class CampaignContentInvalid extends Data.TaggedError(
   readonly cause: Schema.SchemaError;
 }> {}
 
+/**
+ * A campaign edit adds an image that wasn't uploaded through the campaign
+ * editor: it isn't in a campaign image folder of the Deskohub Cloudinary
+ * account, and the campaign doesn't have it yet.
+ */
+export class CampaignImageNotUploaded extends Data.TaggedError(
+  "CampaignImageNotUploaded"
+)<{
+  readonly locale: Locale;
+  readonly source: string;
+}> {}
+
 /** A locale's Markdown body in a campaign edit isn't valid campaign Markdown. */
 export class CampaignBodyMarkdownInvalid extends Data.TaggedError(
   "CampaignBodyMarkdownInvalid"

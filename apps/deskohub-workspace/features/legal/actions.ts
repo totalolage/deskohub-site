@@ -7,7 +7,6 @@ import {
   CustomerAccountResolver,
 } from "@/features/account";
 import { type Locale, locales } from "@/features/i18n";
-import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
 import type {
   MarketingPreferencesMutationFailureReason,
   MarketingPreferencesRejection,
@@ -18,7 +17,7 @@ import {
   marketingPreferencesLive,
 } from "@/features/legal/marketing-preferences-composition.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
-import { CustomerMarketingConsentRepository } from "./backend/customer-marketing-consent.repository";
+import { MarketingConsentLedger } from "./backend/marketing-consent-ledger";
 import {
   type MarketingManagementError,
   MarketingManagementService,
@@ -84,10 +83,6 @@ const saveMarketingPreferences = Effect.fn(function* (
     );
   }
 
-  const documents = yield* getLegalAcceptanceSnapshot(input.locale).pipe(
-    Effect.mapError(() => mutationError("unavailable"))
-  );
-
   // The rendered context is only a concurrency fence. Re-read the current
   // authority immediately before writing and use its customer identity, not
   // anything supplied by the browser.
@@ -103,23 +98,23 @@ const saveMarketingPreferences = Effect.fn(function* (
     return yield* mutationFailureError("stale-context");
   }
 
-  const consents = yield* CustomerMarketingConsentRepository;
-  const consentInput = {
-    dotyposCustomerId: currentAuthority.customerId,
-    documentHash: documents.marketingCommunications.hash,
+  const ledger = yield* MarketingConsentLedger;
+  const customer = {
+    customerId: currentAuthority.customerId,
     locale: input.locale,
-    grantedAt: Temporal.Now.instant(),
   };
-
-  if (input.granted) {
-    yield* consents
-      .grant({ ...consentInput, source: input.source })
-      .pipe(Effect.mapError(() => mutationError("unavailable")));
-  } else {
-    yield* consents
-      .withdraw(consentInput)
-      .pipe(Effect.mapError(() => mutationError("unavailable")));
-  }
+  yield* ledger
+    .record(
+      input.granted
+        ? {
+            ...customer,
+            choice: "grant",
+            mode: "explicit",
+            channel: input.source,
+          }
+        : { ...customer, choice: "withdraw" }
+    )
+    .pipe(Effect.mapError(() => mutationError("unavailable")));
 
   return { status: "saved" as const };
 });

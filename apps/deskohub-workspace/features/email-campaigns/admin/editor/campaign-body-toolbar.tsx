@@ -1,7 +1,11 @@
 "use client";
 
 import { type Editor, useEditorState } from "@tiptap/react";
+import { Effect, Option, Result } from "effect";
 import {
+  AlignHorizontalJustifyCenter,
+  AlignHorizontalJustifyEnd,
+  AlignHorizontalJustifyStart,
   Bold,
   ImagePlus,
   Italic,
@@ -14,10 +18,11 @@ import {
   Redo2,
   Undo2,
 } from "lucide-react";
-import { type ReactNode, useId, useRef, useState } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
+import { runWorkspaceBrowserEffectUntilAbort } from "@/shared/browser/workspace-browser-effect";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
@@ -41,8 +46,18 @@ import {
   TooltipTrigger,
 } from "@/shared/components/ui/tooltip";
 import { cn } from "@/shared/utils";
-import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
-import { uploadCampaignImage } from "./actions";
+import type { CampaignBodyAttributeValue } from "../../body/campaign-body-document";
+import {
+  type CampaignImageAlignment,
+  campaignBodyColumnWidth,
+  defaultCampaignImageAlignment,
+  isCampaignImageAlignment,
+  isCampaignImageWidth,
+} from "../../body/campaign-image";
+import {
+  type CampaignImageUploadStage,
+  uploadCampaignImage,
+} from "./campaign-image-upload";
 import { normalizeCampaignLinkHref } from "./campaign-link-href";
 import { CtaButtonDialog, type CtaButtonValues } from "./cta-button-dialog";
 
@@ -64,6 +79,10 @@ const selectToolbarState = ({ editor }: { editor: Editor | null }) =>
     ctaButton: editor.isActive("ctaButton"),
     ctaLabel: String(editor.getAttributes("ctaButton").label ?? ""),
     ctaHref: String(editor.getAttributes("ctaButton").href ?? ""),
+    image: editor.isActive("image"),
+    imageAlign: selectedImageAlignment(editor),
+    imageWidth: editor.getAttributes("image").width,
+    imagePosition: editor.state.selection.from,
     canUndo: editor.can().undo(),
     canRedo: editor.can().redo(),
   };
@@ -184,6 +203,22 @@ export function CampaignBodyToolbar({
             editor={editor}
             locale={locale}
           />
+          {state?.image && (
+            <>
+              <ImageAlignmentControl
+                alignment={state.imageAlign}
+                disabled={disabled}
+                editor={editor}
+                locale={locale}
+              />
+              <ImageWidthControl
+                editor={editor}
+                key={state.imagePosition}
+                locale={locale}
+                width={state.imageWidth}
+              />
+            </>
+          )}
           <ToolbarButton
             disabled={disabled}
             label={
@@ -441,6 +476,165 @@ function LinkControl({
   );
 }
 
+const imageAlignmentOptions = [
+  {
+    alignment: "left",
+    Icon: AlignHorizontalJustifyStart,
+    label: m.emailCampaignsImageAlignLeft,
+  },
+  {
+    alignment: "center",
+    Icon: AlignHorizontalJustifyCenter,
+    label: m.emailCampaignsImageAlignCenter,
+  },
+  {
+    alignment: "right",
+    Icon: AlignHorizontalJustifyEnd,
+    label: m.emailCampaignsImageAlignRight,
+  },
+] as const satisfies ReadonlyArray<{
+  readonly alignment: CampaignImageAlignment;
+  readonly Icon: typeof AlignHorizontalJustifyStart;
+  readonly label: (...args: never) => string;
+}>;
+
+/** The selected image's alignment; one saved without any is centered. */
+function selectedImageAlignment(editor: Editor): CampaignImageAlignment {
+  const { align } = editor.getAttributes("image");
+  return isCampaignImageAlignment(align)
+    ? align
+    : defaultCampaignImageAlignment;
+}
+
+/**
+ * The selected image's width in pixels: its own, or else the natural width of
+ * the picture the editor shows, so an image added before widths were kept
+ * stops filling the column once it is aligned. Unknown while that picture
+ * hasn't loaded; the image then keeps filling the column.
+ */
+function selectedImageWidth(editor: Editor): Option.Option<number> {
+  const { width } = editor.getAttributes("image");
+  if (isCampaignImageWidth(width)) return Option.some(width);
+  const element = editor.view.nodeDOM(editor.state.selection.from);
+  return element instanceof HTMLImageElement && element.naturalWidth > 0
+    ? Option.some(element.naturalWidth)
+    : Option.none();
+}
+
+/**
+ * Aligns the selected image, shown only while one is selected. Aligning
+ * records the image's width, which an image saved before widths were kept
+ * lacks; without one it fills the column, so alignment would not show.
+ */
+function ImageAlignmentControl({
+  alignment,
+  disabled,
+  editor,
+  locale,
+}: {
+  readonly alignment: CampaignImageAlignment;
+  readonly disabled: boolean;
+  readonly editor: Editor | null;
+  readonly locale: Locale;
+}) {
+  const align = (option: CampaignImageAlignment) => {
+    if (!editor) return;
+    const width = selectedImageWidth(editor);
+    editor
+      .chain()
+      .focus()
+      .updateAttributes(
+        "image",
+        Option.isSome(width)
+          ? { align: option, width: width.value }
+          : { align: option }
+      )
+      .run();
+  };
+
+  return imageAlignmentOptions.map(({ alignment: option, Icon, label }) => (
+    <ToolbarToggle
+      disabled={disabled}
+      key={option}
+      label={label({}, { locale })}
+      onPressedChange={() => align(option)}
+      pressed={alignment === option}
+    >
+      <Icon aria-hidden className="size-4" />
+    </ToolbarToggle>
+  ));
+}
+
+function ImageWidthControl({
+  editor,
+  locale,
+  width,
+}: {
+  readonly editor: Editor | null;
+  readonly locale: Locale;
+  readonly width: CampaignBodyAttributeValue | undefined;
+}) {
+  const id = useId();
+  const displayedWidth = Math.min(
+    isCampaignImageWidth(width) ? width : campaignBodyColumnWidth,
+    campaignBodyColumnWidth
+  );
+  const [previousWidth, setPreviousWidth] = useState(width);
+  const [draft, setDraft] = useState(String(displayedWidth));
+  if (previousWidth !== width) {
+    setPreviousWidth(width);
+    setDraft(String(displayedWidth));
+  }
+  const valid =
+    isCampaignImageWidth(Number(draft)) &&
+    Number(draft) <= campaignBodyColumnWidth;
+
+  return (
+    <div className="flex items-center gap-1.5 px-1">
+      <Label className="text-xs" htmlFor={id}>
+        {m.emailCampaignsImageWidth({}, { locale })}
+      </Label>
+      <Input
+        aria-invalid={!valid}
+        className="h-8 min-h-8 w-20 rounded-md px-2 py-1 text-sm"
+        disabled={!editor}
+        id={id}
+        max={campaignBodyColumnWidth}
+        min={1}
+        onBlur={() => setDraft(String(displayedWidth))}
+        onChange={(event) => {
+          const next = event.target.value;
+          setDraft(next);
+          const pixels = Number(next);
+          if (
+            isCampaignImageWidth(pixels) &&
+            pixels <= campaignBodyColumnWidth
+          ) {
+            editor?.commands.updateAttributes("image", {
+              width: pixels,
+              height: null,
+            });
+          }
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === "Escape") {
+            event.preventDefault();
+            setDraft(String(displayedWidth));
+            event.currentTarget.blur();
+          }
+        }}
+        step={1}
+        title={m.emailCampaignsImageWidthHint(
+          { maxWidth: campaignBodyColumnWidth },
+          { locale }
+        )}
+        type="number"
+        value={draft}
+      />
+    </div>
+  );
+}
+
 function ImageUploadControl({
   disabled,
   editor,
@@ -452,58 +646,86 @@ function ImageUploadControl({
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string>();
-  const upload = useWorkspaceAction(uploadCampaignImage, {
-    onSuccess: ({ data }) => {
-      setError(undefined);
-      editor?.chain().focus().setImage({ src: data.url, alt: "" }).run();
-    },
-    onError: ({ error }) =>
-      setError(
-        error.serverError ??
-          error.validationErrors?.formErrors?.[0] ??
-          m.emailCampaignsImageUploadFailed({}, { locale })
+  // The editor takes no other image until this one is in or has failed.
+  const [stage, setStage] = useState<CampaignImageUploadStage>();
+  const progress =
+    stage &&
+    (stage === "shrinking"
+      ? m.emailCampaignsImageShrinking({}, { locale })
+      : m.emailCampaignsImageUploading({}, { locale }));
+  const busy = stage !== undefined;
+
+  // Leaving the editor while an image is still uploading drops it, so none
+  // is inserted into an editor that's gone.
+  const lifetime = useRef<AbortSignal>(undefined);
+  useEffect(() => {
+    const mounted = new AbortController();
+    lifetime.current = mounted.signal;
+    return () => mounted.abort();
+  }, []);
+
+  const uploadImage = (file: File) => {
+    if (!lifetime.current) return;
+    setError(undefined);
+    setStage("uploading");
+    void uploadCampaignImage(file, locale, (next) =>
+      Effect.sync(() => setStage(next))
+    ).pipe(
+      Effect.flatMap((uploaded) =>
+        Effect.sync(() => {
+          setStage(undefined);
+          Result.match(uploaded, {
+            onSuccess: ({ url, width }) =>
+              editor
+                ?.chain()
+                .focus()
+                .setImage({ src: url, alt: "", width })
+                .run(),
+            onFailure: setError,
+          });
+        })
       ),
-  });
+      runWorkspaceBrowserEffectUntilAbort(
+        "email-campaigns.admin.upload-image",
+        lifetime.current
+      )
+    );
+  };
 
   return (
     <>
       <ToolbarButton
-        disabled={disabled || upload.isExecuting}
-        label={
-          upload.isExecuting
-            ? m.emailCampaignsImageUploading({}, { locale })
-            : m.emailCampaignsImageUploadInsert({}, { locale })
-        }
+        disabled={disabled || busy}
+        label={progress || m.emailCampaignsImageUploadInsert({}, { locale })}
         onClick={() => fileInput.current?.click()}
       >
-        {upload.isExecuting ? (
+        {progress ? (
           <Loader2 aria-hidden className="size-4 animate-spin" />
         ) : (
           <ImagePlus aria-hidden className="size-4" />
         )}
       </ToolbarButton>
       <input
-        accept="image/png,image/jpeg,image/gif,image/webp"
+        // Any picture: Cloudinary converts the ones email clients can't show.
+        accept="image/*"
         className="sr-only"
         onChange={(event) => {
           const file = event.target.files?.[0];
           event.target.value = "";
-          if (!file) return;
-          const formData = new FormData();
-          formData.set("file", file);
-          upload.execute(formData);
+          if (file) uploadImage(file);
         }}
         ref={fileInput}
         tabIndex={-1}
         type="file"
       />
       <span
-        className={cn("text-burned-orange-ink text-xs", !error && "sr-only")}
+        className={cn(
+          "text-burned-orange-ink text-xs",
+          !(progress || error) && "sr-only"
+        )}
         role="status"
       >
-        {upload.isExecuting
-          ? m.emailCampaignsImageUploading({}, { locale })
-          : error}
+        {progress || error}
       </span>
     </>
   );

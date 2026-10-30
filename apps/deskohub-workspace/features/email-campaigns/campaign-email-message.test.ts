@@ -4,7 +4,7 @@ import { testEmailAddress } from "@deskohub/test-email";
 import { Option } from "effect";
 import {
   campaignDeliveryMessage,
-  campaignEmailCategory,
+  campaignEmailKind,
   campaignTestMessage,
 } from "./campaign-email-message";
 import type { CampaignSendId } from "./campaign-identifiers";
@@ -65,7 +65,7 @@ describe("campaign delivery message", () => {
       from: sender.from,
       replyTo: sender.replyTo,
       subject: "News",
-      tags: [campaignEmailCategory],
+      tags: [campaignEmailKind.category],
       metadata: {
         campaignSendId: "send-1",
         dotyposCustomerId: "42",
@@ -87,7 +87,7 @@ describe("campaign test message", () => {
     expect(message.subject).toBe("[TEST] News");
     expect(message.headers).toBeUndefined();
     expect(message.metadata).toBeUndefined();
-    expect(message.tags).not.toContain(campaignEmailCategory);
+    expect(message.tags).not.toContain(campaignEmailKind.category);
     expect(message.sensitiveContent).toBe(false);
   });
 

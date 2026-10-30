@@ -2,7 +2,8 @@ import "@/shared/testing/workspace-test-env";
 
 import { afterAll, describe, expect, test } from "bun:test";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
 import {
   deleteAutomatedCampaigns,
   seedAutomatedCampaign,
@@ -116,14 +117,18 @@ describe.skipIf(!testDatabase)(
 
     const settle = (sendId: CampaignSendId) =>
       Effect.runPromise(
-        db
-          .transaction((tx) =>
+        Effect.flatMap(WorkspaceDatabase, ({ transaction }) =>
+          transaction(
             Effect.gen(function* () {
               const settlement = yield* AutomationRunSettlement;
-              yield* settlement.settle(tx, { sendId, at: settledAt });
+              yield* settlement.settle({ sendId, at: settledAt });
             })
           )
-          .pipe(Effect.provide(AutomationRunSettlement.Default))
+        ).pipe(
+          Effect.provide(
+            Layer.mergeAll(AutomationRunSettlement.Default, testDatabase.layer)
+          )
+        )
       );
 
     const runsOf = async (sendId: CampaignSendId) => {

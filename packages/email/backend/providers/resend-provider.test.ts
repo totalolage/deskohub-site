@@ -35,24 +35,17 @@ type BatchSendImplementation = (
   payload?: unknown,
   options?: { readonly idempotencyKey?: string; readonly signal?: AbortSignal }
 ) => Promise<BatchSendResponse>;
-type ListDomainsResponse =
-  | { readonly data: readonly unknown[]; readonly error?: never }
-  | { readonly data?: never; readonly error: { readonly message: string } };
-type ListDomainsImplementation = () => Promise<ListDomainsResponse>;
-
 let send = mock<SendImplementation>(async () => ({
   data: { id: "resend-id" },
 }));
 let batchSend = mock<BatchSendImplementation>(async () => ({
   data: { data: [] },
 }));
-let listDomains = mock<ListDomainsImplementation>(async () => ({ data: [] }));
 
 mock.module("resend", () => ({
   Resend: class {
     emails = { send: send };
     batch = { send: batchSend };
-    domains = { list: listDomains };
   },
 }));
 
@@ -68,7 +61,6 @@ beforeEach(() => {
   batchSend = mock<BatchSendImplementation>(async () => ({
     data: { data: [] },
   }));
-  listDomains = mock<ListDomainsImplementation>(async () => ({ data: [] }));
 });
 
 const config = {
@@ -588,70 +580,5 @@ describe("ResendEmailProvider span censorship", () => {
     if (result._tag === "Failure") {
       expect(result.failure._tag).toBe("NetworkError");
     }
-  });
-
-  test("verification failure carries only the fixed message", async () => {
-    listDomains = mock<ListDomainsImplementation>(async () => ({
-      error: { message: rawProviderDetail },
-    }));
-
-    const result = await runProvider(
-      Effect.gen(function* () {
-        const provider = yield* EmailProviderTag;
-        return yield* provider.verify.pipe(Effect.result);
-      })
-    );
-
-    expect(result._tag).toBe("Failure");
-    if (result._tag === "Failure") {
-      expect(result.failure).toMatchObject({
-        _tag: "EmailServiceError",
-        message: "Failed to verify Resend API key",
-      });
-      expect(JSON.stringify(result.failure)).not.toContain(rawProviderDetail);
-    }
-  });
-
-  test("a rejected domains.list keeps only the fixed message in failure and spans", async () => {
-    const rawRejectDetail =
-      "raw rejection detail: fetch failed with ECONNRESET for key rk_123";
-    listDomains = mock<ListDomainsImplementation>(async () => {
-      throw new Error(rawRejectDetail);
-    });
-    const { ended, tracer } = captureSpans();
-
-    const result = await Effect.runPromise(
-      Effect.gen(function* () {
-        const provider = yield* EmailProviderTag;
-        return yield* provider.verify.pipe(
-          Effect.withSpan("resend.verify.test"),
-          Effect.result
-        );
-      }).pipe(
-        Effect.provide(
-          ResendEmailProviderLive.pipe(
-            Layer.provide(Layer.succeed(EmailConfigTag, config))
-          )
-        ),
-        Effect.provide(Layer.succeed(Tracer.Tracer, tracer))
-      )
-    );
-
-    expect(result._tag).toBe("Failure");
-    if (result._tag === "Failure") {
-      expect(result.failure).toMatchObject({
-        _tag: "EmailServiceError",
-        message: "Failed to verify Resend API key",
-      });
-      const serialized = JSON.stringify(result.failure);
-      expect(serialized).not.toContain(rawRejectDetail);
-      expect(serialized).not.toContain("ECONNRESET");
-    }
-
-    expect(ended.length).toBeGreaterThan(0);
-    const traced = JSON.stringify(ended);
-    expect(traced).not.toContain(rawRejectDetail);
-    expect(traced).not.toContain("ECONNRESET");
-    expect(traced).not.toContain("rk_123");
   });
 });

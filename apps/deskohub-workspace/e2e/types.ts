@@ -22,11 +22,13 @@ import type {
 } from "../features/reservation/persistence-contracts";
 import type { ReservationInterval } from "../features/reservation/reservation-interval";
 import type { WorkspaceE2EStepRunner } from "./case-runner";
+import type { ReservationFormPreparation } from "./checkout/reservation-form-preparation";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "./config";
 import type { WorkspaceE2EHostedPaymentPermitService } from "./coordination/hosted-payment-permit.service";
 import type { WorkspaceE2EProviderVerificationPermitService } from "./coordination/provider-verification-permit.service";
 import type { WorkspaceE2EError } from "./errors";
 import type { E2EDatabase } from "./integrations/database.service";
+import type { Runner } from "./runtime";
 
 export type CheckoutRow = {
   reservation_id: WorkspaceReservationId;
@@ -104,7 +106,9 @@ export type CheckoutFlow = {
     datasourceConfig: DatasourceConfig,
     date: string
   ) => Effect.Effect<CheckoutData | undefined, WorkspaceE2EError>;
-  readonly submitReservationScript: (data: CheckoutData) => string;
+  readonly toReservationPreparation: (
+    data: CheckoutData
+  ) => ReservationFormPreparation;
 };
 
 export type CheckoutFlowState = {
@@ -131,14 +135,21 @@ export type PaymentTerminalScenario = {
   readonly trigger: "hosted_authentication_failure" | "injected";
 };
 
+/** What a running case gets from the case pool. */
+export type WorkspaceE2ECaseContext = {
+  /** The test's browser runner; `session` names the case's own session. */
+  readonly run: Runner;
+  readonly runStep: WorkspaceE2EStepRunner;
+  readonly session: string;
+};
+
 export type WorkspaceE2ECase = {
   readonly checkoutStates: readonly CheckoutFlowState[];
   readonly id: string;
   readonly timeoutMs: number;
-  readonly execute: (context: {
-    readonly runStep: WorkspaceE2EStepRunner;
-    readonly session: string;
-  }) => Effect.Effect<
+  readonly execute: (
+    context: WorkspaceE2ECaseContext
+  ) => Effect.Effect<
     void,
     WorkspaceE2EError,
     | E2EDatabase

@@ -12,28 +12,24 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import type {
-  CheckoutStatusKind,
-  CheckoutStatusViewModel,
-} from "@/features/checkout/backend/checkout";
+import type { CheckoutStatusViewModel } from "@/features/checkout/backend/checkout";
 import {
-  shouldOfferNewReservation,
-  shouldOfferReservationRetry,
-  shouldPromiseReservationDetailsEmail,
-} from "@/features/checkout/checkout-status-policy";
+  type CheckoutStatusKind,
+  checkoutStatusTraits,
+} from "@/features/checkout/checkout-status-kind";
 import type { CheckoutStatusSummaryPresentation } from "@/features/checkout/checkout-status-summary-presentation";
 import { getCoworkCheckoutStatusSummary } from "@/features/cowork/components/cowork-checkout-status-summary";
 import { type Locale, m } from "@/features/i18n";
 import { getMeetingRoomCheckoutStatusSummary } from "@/features/meeting-room/components/meeting-room-checkout-status-summary";
 import { getOfficeCheckoutStatusSummary } from "@/features/office/components/office-checkout-status-summary";
 import { getOfficeReservationSelection } from "@/features/reservation/office-reservation";
-import { setReservationSelectionSearchParams } from "@/features/reservation/reservation-checkout-query";
 import { formatReservationDisplayDate } from "@/features/reservation/reservation-date";
 import {
   getCoworkReservationPath,
   getReservationStartPath,
   reservationAccessPath,
 } from "@/features/reservation/routes";
+import { getSelectionPath } from "@/features/reservation/selection-path";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
 import { CheckoutFlowLayout } from "./checkout-flow-layout";
@@ -247,7 +243,9 @@ const getSupportContactMessage = (
   status: CheckoutStatusViewModel,
   locale: Locale,
   summaryPresentation: CheckoutStatusSummaryPresentation | undefined,
-  topic: NonNullable<ReturnType<typeof getSupportTopic>>
+  topic: NonNullable<
+    (typeof checkoutStatusTraits)[CheckoutStatusKind]["supportTopic"]
+  >
 ) => {
   // Without reconstructed details the order reference alone identifies it.
   const reservationDetails = [
@@ -310,26 +308,29 @@ const getRepeatReservationSearchParams = (
   );
 };
 
-/** The booked selection a failed, cancelled, or expired payment retries. */
-const getRetryReservationSearchParams = (
-  status: CheckoutStatusViewModel
-): URLSearchParams | undefined => {
-  if (status.status === "not_found" || !status.retrySearchParams) {
-    return undefined;
-  }
-
-  const searchParams = new URLSearchParams();
-  setReservationSelectionSearchParams(searchParams, status.retrySearchParams);
-  return searchParams;
-};
-
+/**
+ * The reservation page a "reserve again" link opens: a failed, cancelled, or
+ * expired payment retries its booked selection; otherwise the link repeats
+ * the reservation's options.
+ */
 const getReserveAgainPath = (
   status: CheckoutStatusViewModel,
   locale: Locale,
-  searchParams: URLSearchParams | undefined
+  {
+    offersRetry,
+    repeatSearchParams,
+  }: {
+    readonly offersRetry: boolean;
+    readonly repeatSearchParams: URLSearchParams | undefined;
+  }
 ) => {
   if (status.status === "not_found") return getCoworkReservationPath(locale);
-  return getReservationStartPath(locale, status.kind, searchParams);
+  if (!offersRetry) {
+    return getReservationStartPath(locale, status.kind, repeatSearchParams);
+  }
+  return status.retrySelection
+    ? getSelectionPath(locale, status.retrySelection)
+    : getReservationStartPath(locale, status.kind);
 };
 
 const getReserveAgainLabel = (
@@ -343,28 +344,12 @@ const getReserveAgainLabel = (
     : m.checkoutStatusReserveAgain({}, { locale });
 };
 
-/** An undelivered confirmation shares the failed-delivery support request. */
-const getSupportTopic = (status: CheckoutStatusKind) => {
-  switch (status) {
-    case "fulfillment_failed":
-    case "paid_fulfillment_delayed":
-    case "paid_delivery_delayed":
-      return "fulfillment_failed" as const;
-    case "late_payment_review":
-      return "late_payment_review" as const;
-    case "payment_pending_delayed":
-      return "payment_pending" as const;
-    default:
-      return undefined;
-  }
-};
-
 const getSupportContactHref = (
   status: CheckoutStatusViewModel,
   locale: Locale,
   summaryPresentation: CheckoutStatusSummaryPresentation | undefined
 ) => {
-  const topic = getSupportTopic(status.status);
+  const topic = checkoutStatusTraits[status.status].supportTopic;
   if (!topic || status.status === "not_found") return undefined;
 
   const url = new URL(`/${locale}/contact`, "https://deskohub.local");
@@ -394,18 +379,17 @@ export function CheckoutStatusPage({
     locale,
     summaryPresentation
   );
-  const offersRetry = shouldOfferReservationRetry(status.status);
+  const offersRetry =
+    checkoutStatusTraits[status.status].offersReservationRetry;
   const repeatReservationSearchParams =
     getRepeatReservationSearchParams(status);
-  const reserveAgainPath = getReserveAgainPath(
-    status,
-    locale,
-    offersRetry
-      ? getRetryReservationSearchParams(status)
-      : repeatReservationSearchParams
-  );
+  const reserveAgainPath = getReserveAgainPath(status, locale, {
+    offersRetry,
+    repeatSearchParams: repeatReservationSearchParams,
+  });
   const showSupportButton = !!supportContactHref;
-  const offersNewReservation = shouldOfferNewReservation(status.status);
+  const offersNewReservation =
+    checkoutStatusTraits[status.status].offersNewReservation;
   const reviewSandbox = status.status !== "not_found" && status.reviewSandbox;
   const reservationAccessHref =
     status.status === "fulfilled" && !reviewSandbox
@@ -515,7 +499,7 @@ export function CheckoutStatusPage({
           </dl>
 
           {summaryRows.length === 0 &&
-            shouldPromiseReservationDetailsEmail(status.status) && (
+            checkoutStatusTraits[status.status].promisesEmail && (
               <p className="mt-4 rounded-2xl border border-burned-orange/16 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-burned-orange-ink">
                 {m.checkoutStatusMissingSummary({}, { locale })}
               </p>

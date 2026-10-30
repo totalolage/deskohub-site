@@ -9,10 +9,14 @@ import {
   DotyposUnavailable,
 } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
+import { decodeStandardSchema } from "@deskohub/standard-schema";
 import { resendSimulatorAddress, testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer, Option } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
 import { customerMarketingConsents } from "@/db/schema";
+import { campaignEmailKind } from "../campaign-email-message";
 import type { CampaignId } from "../campaign-identifiers";
+import type { CampaignDeliveryEvent } from "./campaign-delivery-status.service";
 import {
   deleteAutomatedCampaigns,
   deleteCampaigns,
@@ -106,8 +110,8 @@ const { EmailConfigTag, EmailServiceTag } = await import("@deskohub/email");
 const { connectWorkspacePostgresTestDatabase } = await import(
   "@/shared/testing/workspace-postgres-test-database.test-utils"
 );
-const { CustomerMarketingConsentRepository } = await import(
-  "@/features/legal/backend/customer-marketing-consent.repository"
+const { MarketingConsentLedger } = await import(
+  "@/features/legal/backend/marketing-consent-ledger"
 );
 const { MarketingManagementService } = await import(
   "@/features/legal/backend/marketing-management.service"
@@ -210,7 +214,7 @@ describe.skipIf(!testDatabase)(
             CampaignUnsubscribeService.Default.pipe(
               Layer.provide(
                 Layer.mergeAll(
-                  CustomerMarketingConsentRepository.Default,
+                  MarketingConsentLedger.Default,
                   MarketingManagementService.Default
                 )
               )
@@ -272,7 +276,7 @@ describe.skipIf(!testDatabase)(
       );
 
     const recordWebhook = (event: {
-      readonly type: string;
+      readonly type: Option.Option.Value<CampaignDeliveryEvent["type"]>;
       readonly providerMessageId: string;
       readonly sendId: string;
       readonly dotyposCustomerId: string;
@@ -281,12 +285,15 @@ describe.skipIf(!testDatabase)(
         Effect.gen(function* () {
           const statuses = yield* CampaignDeliveryStatusService;
           return yield* statuses.record({
-            type: event.type,
+            type: Option.some(event.type),
             providerMessageId: event.providerMessageId,
-            tags: new Map([
-              ["campaignSendId", event.sendId],
-              ["dotyposCustomerId", event.dotyposCustomerId],
-            ]),
+            // Decoded the way the webhook decodes the email's tags.
+            recipient: Option.fromUndefinedOr(
+              decodeStandardSchema(campaignEmailKind.metadata, {
+                campaignSendId: event.sendId,
+                dotyposCustomerId: event.dotyposCustomerId,
+              })
+            ),
             occurredAt: Temporal.Now.instant(),
           });
         }).pipe(
@@ -624,17 +631,18 @@ describe.skipIf(!testDatabase)(
       return Effect.runPromise(
         Effect.gen(function* () {
           const delivery = yield* CampaignDeliveryService;
+          const { transaction } = yield* WorkspaceDatabase;
           const at = Temporal.Now.instant();
-          const sendId = yield* db.transaction((tx) =>
+          const sendId = yield* transaction(
             delivery
-              .createAutomatedSend(tx, {
+              .createAutomatedSend({
                 campaignId: input.campaignId,
                 versionId: input.versionId,
                 at,
               })
               .pipe(
                 Effect.tap((created) =>
-                  delivery.persistAutomatedBatch(tx, {
+                  delivery.persistAutomatedBatch({
                     sendId: created,
                     recipients: input.recipients.map((dotyposCustomerId) => ({
                       dotyposCustomerId,
@@ -650,9 +658,9 @@ describe.skipIf(!testDatabase)(
             sendId,
             profiles: Option.some(read),
           });
-          yield* db.transaction((tx) => settle(tx, Temporal.Now.instant()));
+          yield* transaction(settle(Temporal.Now.instant()));
           return sendId;
-        }).pipe(Effect.provide(consumerLayer))
+        }).pipe(Effect.provide(Layer.merge(consumerLayer, testDatabase.layer)))
       );
     };
 

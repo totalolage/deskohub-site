@@ -13,10 +13,7 @@ import type { AutomationTriggerKind } from "../automation-states";
 import type { AutomationEvaluationFacts } from "./automation-evaluation-facts.service";
 import { AutomationRunTransitions } from "./automation-run-transitions";
 import { planAutomationRunUnits } from "./automation-run-units";
-import type {
-  AutomationEngineTransaction,
-  PlannedAutomationUnit,
-} from "./automation-unit-handler";
+import type { PlannedAutomationUnit } from "./automation-unit-handler";
 import {
   type AutomationStepPosition,
   automationStepPosition,
@@ -226,7 +223,6 @@ const planStep = (
  */
 export const planConditionSteps = Effect.fn("automationConditionSteps.plan")(
   function* (
-    tx: AutomationEngineTransaction,
     facts: AutomationEvaluationFacts["Service"],
     input: {
       readonly campaignId: CampaignId;
@@ -245,7 +241,7 @@ export const planConditionSteps = Effect.fn("automationConditionSteps.plan")(
     );
     const ended = yield* Effect.forEach(stepPlans, (stepPlan) =>
       stepPlan._tag === "Unavailable"
-        ? AutomationRunTransitions.end(tx, {
+        ? AutomationRunTransitions.end({
             runIds: stepPlan.runIds,
             expect: {
               status: "active",
@@ -260,7 +256,6 @@ export const planConditionSteps = Effect.fn("automationConditionSteps.plan")(
         : Effect.succeed([])
     );
     const owned = yield* planAutomationRunUnits(
-      tx,
       stepPlans.flatMap((stepPlan) =>
         stepPlan._tag === "Planned" ? stepPlan.units : []
       ),

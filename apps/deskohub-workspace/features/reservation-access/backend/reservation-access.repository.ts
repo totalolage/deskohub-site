@@ -94,6 +94,9 @@ export interface IReservationAccessRepository {
   readonly claim: (input: {
     readonly id: ReservationAccessGrantId;
     readonly reservationId: WorkspaceReservationId;
+    readonly scheduledAccessStartsAt: Temporal.Instant;
+    readonly accessStartsAt: Temporal.Instant;
+    readonly accessEndsAt: Temporal.Instant;
     readonly accessName: string;
     readonly startedAt: Temporal.Instant;
   }) => Effect.Effect<boolean, ReservationAccessStorageError>;
@@ -134,6 +137,9 @@ export interface IReservationAccessRepository {
   readonly loadIssuedCode: (input: {
     readonly id: ReservationAccessGrantId;
     readonly reservationId: WorkspaceReservationId;
+    readonly scheduledAccessStartsAt: Temporal.Instant;
+    readonly accessStartsAt: Temporal.Instant;
+    readonly accessEndsAt: Temporal.Instant;
   }) => Effect.Effect<AlgoPin, ReservationAccessStorageError>;
   readonly reconcileUncertain: (input: {
     readonly reservationId: WorkspaceReservationId;
@@ -287,10 +293,23 @@ export class ReservationAccessRepository extends Context.Service<
                 failureCode: null,
                 updatedAt: input.startedAt,
               })
+              // Claim only the target this request read and will program. A
+              // concurrent request may have moved the grant to other lock
+              // hours since, or, after the reservation started, stored a
+              // start from another current hour.
               .where(
                 and(
                   eq(reservationAccessGrants.id, input.id),
-                  inArray(reservationAccessGrants.state, ["pending", "failed"])
+                  inArray(reservationAccessGrants.state, ["pending", "failed"]),
+                  eq(
+                    reservationAccessGrants.scheduledAccessStartsAt,
+                    input.scheduledAccessStartsAt
+                  ),
+                  eq(
+                    reservationAccessGrants.accessStartsAt,
+                    input.accessStartsAt
+                  ),
+                  eq(reservationAccessGrants.accessEndsAt, input.accessEndsAt)
                 )
               )
               .returning({ id: reservationAccessGrants.id })
@@ -508,10 +527,21 @@ export class ReservationAccessRepository extends Context.Service<
                 pin: reservationAccessGrants.accessCode,
               })
               .from(reservationAccessGrants)
+              // Never disclose a PIN issued for other lock hours than the
+              // request read and will show.
               .where(
                 and(
                   eq(reservationAccessGrants.id, input.id),
-                  eq(reservationAccessGrants.state, "issued")
+                  eq(reservationAccessGrants.state, "issued"),
+                  eq(
+                    reservationAccessGrants.scheduledAccessStartsAt,
+                    input.scheduledAccessStartsAt
+                  ),
+                  eq(
+                    reservationAccessGrants.accessStartsAt,
+                    input.accessStartsAt
+                  ),
+                  eq(reservationAccessGrants.accessEndsAt, input.accessEndsAt)
                 )
               )
               .limit(1)

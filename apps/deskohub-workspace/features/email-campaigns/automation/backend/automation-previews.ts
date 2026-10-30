@@ -24,6 +24,10 @@ import {
 } from "drizzle-orm";
 import { Effect, Match, Option } from "effect";
 import {
+  type WorkspaceDatabaseClient,
+  WorkspaceTransaction,
+} from "@/db/database.service";
+import {
   customerEvents,
   emailCampaignAutomationPreviewRows as previewRows,
   emailCampaignAutomationPreviews as previews,
@@ -47,7 +51,6 @@ import {
   automationPreviewOutcomes,
 } from "../automation-states";
 import { triggeringCustomerEvent } from "./automation-triggering-events";
-import type { AutomationEngineTransaction } from "./automation-unit-handler";
 
 export type AutomationPreviewRow = typeof previews.$inferSelect;
 
@@ -132,8 +135,8 @@ const replayEventCondition = (scope: ReplayEventScope): SQL =>
   )!;
 
 /** Product conditions read the triggering reservation's snapshot. */
-const eventsWithReservations = (tx: AutomationEngineTransaction) =>
-  tx
+const eventsWithReservations = (db: Pick<WorkspaceDatabaseClient, "select">) =>
+  db
     .select({
       id: customerEvents.id,
       occurredAt: customerEvents.occurredAt,
@@ -148,43 +151,48 @@ const eventsWithReservations = (tx: AutomationEngineTransaction) =>
 
 /** How many events the replay window holds, before truncation. */
 export const countReplayEvents = (
-  tx: AutomationEngineTransaction,
   scope: ReplayEventScope
-): Effect.Effect<number, DatabaseQueryError> =>
-  tx
-    .select({ events: count() })
-    .from(customerEvents)
-    .leftJoin(
-      workspaceReservations,
-      eq(workspaceReservations.id, customerEvents.workspaceReservationId)
-    )
-    .where(replayEventCondition(scope))
-    .pipe(Effect.map(([row]) => row?.events ?? 0));
+): Effect.Effect<number, DatabaseQueryError, WorkspaceTransaction> =>
+  Effect.flatMap(WorkspaceTransaction, ({ db }) =>
+    db
+      .select({ events: count() })
+      .from(customerEvents)
+      .leftJoin(
+        workspaceReservations,
+        eq(workspaceReservations.id, customerEvents.workspaceReservationId)
+      )
+      .where(replayEventCondition(scope))
+      .pipe(Effect.map(([row]) => row?.events ?? 0))
+  );
 
 /**
  * The latest 1,000 events of the replay window, optionally only the given
  * customers' among them, in time order.
  */
 export const selectReplayEvents = (
-  tx: AutomationEngineTransaction,
   scope: ReplayEventScope,
   customers?: readonly DotyposCustomerId[]
-): Effect.Effect<readonly ReplayEvent[], DatabaseQueryError> => {
-  const latest = eventsWithReservations(tx)
-    .where(replayEventCondition(scope))
-    .orderBy(desc(customerEvents.occurredAt), desc(customerEvents.id))
-    .limit(replayEventLimit)
-    .as("latest");
-  return tx
-    .select()
-    .from(latest)
-    .where(
-      customers === undefined
-        ? undefined
-        : inArray(latest.dotyposCustomerId, [...customers])
-    )
-    .orderBy(asc(latest.occurredAt), asc(latest.id));
-};
+): Effect.Effect<
+  readonly ReplayEvent[],
+  DatabaseQueryError,
+  WorkspaceTransaction
+> =>
+  Effect.flatMap(WorkspaceTransaction, ({ db }) => {
+    const latest = eventsWithReservations(db)
+      .where(replayEventCondition(scope))
+      .orderBy(desc(customerEvents.occurredAt), desc(customerEvents.id))
+      .limit(replayEventLimit)
+      .as("latest");
+    return db
+      .select()
+      .from(latest)
+      .where(
+        customers === undefined
+          ? undefined
+          : inArray(latest.dotyposCustomerId, [...customers])
+      )
+      .orderBy(asc(latest.occurredAt), asc(latest.id));
+  });
 
 /** Units of one dry run, by their `preview:<previewId>:<n>` keys. */
 const unitsOf = (previewId: AutomationPreviewId) =>
@@ -196,59 +204,58 @@ const unitsOf = (previewId: AutomationPreviewId) =>
  * which keep their slots until their claimant or the reaper settles them.
  * A dry run that is no longer running is left alone.
  */
-export const closePreview = (
-  tx: AutomationEngineTransaction,
-  input: {
-    readonly previewId: AutomationPreviewId;
-    readonly status: "superseded" | "failed";
-    readonly errorCode?: string;
-    readonly at: Temporal.Instant;
-    /** A unit closing its own dry run, so its commit still settles it `done`. */
-    readonly committingUnit?: AutomationWorkUnitId;
-  }
-): Effect.Effect<boolean, DatabaseQueryError> =>
-  tx
-    .update(previews)
-    .set({
-      status: input.status,
-      errorCode: input.errorCode ?? null,
-      completedAt: input.at,
-    })
-    .where(
-      and(eq(previews.id, input.previewId), eq(previews.status, "running"))
-    )
-    .returning({ id: previews.id })
-    .pipe(
-      Effect.tap(([closed]) =>
-        closed === undefined
-          ? Effect.void
-          : Effect.all(
-              [
-                tx
-                  .update(units)
-                  .set({ status: "dropped", settledAt: input.at })
-                  .where(
-                    and(unitsOf(input.previewId), eq(units.status, "planned"))
-                  ),
-                tx
-                  .update(units)
-                  .set({ cancelRequestedAt: input.at })
-                  .where(
-                    and(
-                      unitsOf(input.previewId),
-                      inArray(units.status, ["enqueued", "claimed"]),
-                      isNull(units.cancelRequestedAt),
-                      input.committingUnit === undefined
-                        ? undefined
-                        : ne(units.id, input.committingUnit)
-                    )
-                  ),
-              ],
-              { discard: true }
-            )
-      ),
-      Effect.map(([closed]) => closed !== undefined)
-    );
+export const closePreview = (input: {
+  readonly previewId: AutomationPreviewId;
+  readonly status: "superseded" | "failed";
+  readonly errorCode?: string;
+  readonly at: Temporal.Instant;
+  /** A unit closing its own dry run, so its commit still settles it `done`. */
+  readonly committingUnit?: AutomationWorkUnitId;
+}): Effect.Effect<boolean, DatabaseQueryError, WorkspaceTransaction> =>
+  Effect.flatMap(WorkspaceTransaction, ({ db }) =>
+    db
+      .update(previews)
+      .set({
+        status: input.status,
+        errorCode: input.errorCode ?? null,
+        completedAt: input.at,
+      })
+      .where(
+        and(eq(previews.id, input.previewId), eq(previews.status, "running"))
+      )
+      .returning({ id: previews.id })
+      .pipe(
+        Effect.tap(([closed]) =>
+          closed === undefined
+            ? Effect.void
+            : Effect.all(
+                [
+                  db
+                    .update(units)
+                    .set({ status: "dropped", settledAt: input.at })
+                    .where(
+                      and(unitsOf(input.previewId), eq(units.status, "planned"))
+                    ),
+                  db
+                    .update(units)
+                    .set({ cancelRequestedAt: input.at })
+                    .where(
+                      and(
+                        unitsOf(input.previewId),
+                        inArray(units.status, ["enqueued", "claimed"]),
+                        isNull(units.cancelRequestedAt),
+                        input.committingUnit === undefined
+                          ? undefined
+                          : ne(units.id, input.committingUnit)
+                      )
+                    ),
+                ],
+                { discard: true }
+              )
+        ),
+        Effect.map(([closed]) => closed !== undefined)
+      )
+  );
 
 /**
  * Fails a running dry run whose last progress, its creation or a unit's
@@ -256,44 +263,51 @@ export const closePreview = (
  * stands afterwards.
  */
 export const failStalledPreview = (
-  tx: AutomationEngineTransaction,
   preview: AutomationPreviewRow,
   at: Temporal.Instant
-): Effect.Effect<AutomationPreviewRow, DatabaseQueryError> =>
-  preview.status !== "running"
-    ? Effect.succeed(preview)
-    : tx
-        .select({ lastSettledAt: max(units.settledAt) })
-        .from(units)
-        .where(and(unitsOf(preview.id), eq(units.status, "done")))
-        .pipe(
-          Effect.map(([row]) =>
-            [preview.createdAt, row?.lastSettledAt ?? preview.createdAt].reduce(
-              (latest, instant) =>
+): Effect.Effect<
+  AutomationPreviewRow,
+  DatabaseQueryError,
+  WorkspaceTransaction
+> =>
+  Effect.flatMap(WorkspaceTransaction, ({ db }) =>
+    preview.status !== "running"
+      ? Effect.succeed(preview)
+      : db
+          .select({ lastSettledAt: max(units.settledAt) })
+          .from(units)
+          .where(and(unitsOf(preview.id), eq(units.status, "done")))
+          .pipe(
+            Effect.map(([row]) =>
+              [
+                preview.createdAt,
+                row?.lastSettledAt ?? preview.createdAt,
+              ].reduce((latest, instant) =>
                 Temporal.Instant.compare(instant, latest) > 0 ? instant : latest
-            )
-          ),
-          Effect.flatMap((lastProgressAt) =>
-            Temporal.Instant.compare(
-              lastProgressAt.add(previewStallLimit),
-              at
-            ) > 0
-              ? Effect.succeed(preview)
-              : closePreview(tx, {
-                  previewId: preview.id,
-                  status: "failed",
-                  errorCode: previewStalledCode,
-                  at,
-                }).pipe(
-                  Effect.as({
-                    ...preview,
-                    status: "failed" as const,
+              )
+            ),
+            Effect.flatMap((lastProgressAt) =>
+              Temporal.Instant.compare(
+                lastProgressAt.add(previewStallLimit),
+                at
+              ) > 0
+                ? Effect.succeed(preview)
+                : closePreview({
+                    previewId: preview.id,
+                    status: "failed",
                     errorCode: previewStalledCode,
-                    completedAt: at,
-                  })
-                )
+                    at,
+                  }).pipe(
+                    Effect.as({
+                      ...preview,
+                      status: "failed" as const,
+                      errorCode: previewStalledCode,
+                      completedAt: at,
+                    })
+                  )
+            )
           )
-        );
+  );
 
 /** One computed row of a dry run, as stored. */
 export type AutomationPreviewOutcomeRow = DryRunOutcome & {
@@ -313,63 +327,65 @@ export type AutomationPreviewOutcomeRow = DryRunOutcome & {
  * unit already wrote are skipped by the primary key, the counts grow by
  * the rows actually written, and the last unit completes the dry run.
  */
-export const recordPreviewUnit = (
-  tx: AutomationEngineTransaction,
-  input: {
-    readonly previewId: AutomationPreviewId;
-    readonly rows: readonly AutomationPreviewOutcomeRow[];
-    readonly at: Temporal.Instant;
-  }
-): Effect.Effect<void, DatabaseQueryError> =>
-  insertRows(tx, input).pipe(
-    Effect.flatMap((written) => {
-      const done = sql`${previews.unitsDone} + 1 >= ${previews.unitsTotal}`;
-      return tx
-        .update(previews)
-        .set({
-          unitsDone: sql`${previews.unitsDone} + 1`,
-          counts: addedCounts(written.map(({ outcome }) => outcome)),
-          status: sql`case when ${done} then 'completed' else ${previews.status} end`,
-          completedAt: sql`case when ${done} then ${input.at.toString({ smallestUnit: "microsecond" })}::timestamptz else ${previews.completedAt} end`,
-        })
-        .where(
-          and(eq(previews.id, input.previewId), eq(previews.status, "running"))
-        );
-    }),
-    Effect.asVoid
+export const recordPreviewUnit = (input: {
+  readonly previewId: AutomationPreviewId;
+  readonly rows: readonly AutomationPreviewOutcomeRow[];
+  readonly at: Temporal.Instant;
+}): Effect.Effect<void, DatabaseQueryError, WorkspaceTransaction> =>
+  Effect.flatMap(WorkspaceTransaction, ({ db }) =>
+    insertRows(input).pipe(
+      Effect.flatMap((written) => {
+        const done = sql`${previews.unitsDone} + 1 >= ${previews.unitsTotal}`;
+        return db
+          .update(previews)
+          .set({
+            unitsDone: sql`${previews.unitsDone} + 1`,
+            counts: addedCounts(written.map(({ outcome }) => outcome)),
+            status: sql`case when ${done} then 'completed' else ${previews.status} end`,
+            completedAt: sql`case when ${done} then ${input.at.toString({ smallestUnit: "microsecond" })}::timestamptz else ${previews.completedAt} end`,
+          })
+          .where(
+            and(
+              eq(previews.id, input.previewId),
+              eq(previews.status, "running")
+            )
+          );
+      }),
+      Effect.asVoid
+    )
   );
 
 /** Inserts the rows no earlier commit wrote, returning their outcomes. */
-const insertRows = (
-  tx: AutomationEngineTransaction,
-  input: {
-    readonly previewId: AutomationPreviewId;
-    readonly rows: readonly AutomationPreviewOutcomeRow[];
-  }
-): Effect.Effect<
+const insertRows = (input: {
+  readonly previewId: AutomationPreviewId;
+  readonly rows: readonly AutomationPreviewOutcomeRow[];
+}): Effect.Effect<
   readonly { readonly outcome: AutomationPreviewOutcome }[],
-  DatabaseQueryError
+  DatabaseQueryError,
+  WorkspaceTransaction
 > =>
-  input.rows.length === 0
-    ? Effect.succeed([])
-    : tx
-        .insert(previewRows)
-        .values(
-          input.rows.map((row) => ({
-            previewId: input.previewId,
-            dotyposCustomerId: row.dotyposCustomerId,
-            triggerAt: row.triggerAt,
-            customerEventId: row.customerEventId,
-            outcome: row.outcome,
-            stepId: row.stepId,
-            sendAt: row.sendAt,
-            projected: row.projected,
-            reservationStatusesApproximate:
-              row.reservationStatusesApproximate ?? false,
-          }))
-        )
-        .onConflictDoNothing()
-        .returning({ outcome: previewRows.outcome });
+  Effect.flatMap(WorkspaceTransaction, ({ db }) =>
+    input.rows.length === 0
+      ? Effect.succeed([])
+      : db
+          .insert(previewRows)
+          .values(
+            input.rows.map((row) => ({
+              previewId: input.previewId,
+              dotyposCustomerId: row.dotyposCustomerId,
+              triggerAt: row.triggerAt,
+              customerEventId: row.customerEventId,
+              outcome: row.outcome,
+              stepId: row.stepId,
+              sendAt: row.sendAt,
+              projected: row.projected,
+              reservationStatusesApproximate:
+                row.reservationStatusesApproximate ?? false,
+            }))
+          )
+          .onConflictDoNothing()
+          .returning({ outcome: previewRows.outcome })
+  );
 
 /** The stored counts plus the written outcomes, every outcome present. */
 const addedCounts = (written: readonly AutomationPreviewOutcome[]) =>

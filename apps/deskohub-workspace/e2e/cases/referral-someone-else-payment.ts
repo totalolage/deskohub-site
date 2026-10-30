@@ -14,7 +14,6 @@ import { seedWorkspaceE2EReferralOwner } from "../account/referral-fixture";
 import { resolveWorkspaceE2ESessionSigningSecret } from "../account/seeded-session";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
 import { waitForBrowserUrl } from "../browser";
-import { getSubmitCoworkReservationScript } from "../browser-scripts";
 import type { WorkspaceE2EStep } from "../case-runner";
 import {
   makeCoworkCheckoutData,
@@ -26,6 +25,7 @@ import {
   applyDiscountCode,
   assertRequestedOnlyDiscountCode,
 } from "../checkout/discount-code";
+import { toReservationStep } from "../checkout/reservation-form-preparation";
 import {
   type DatasourceConfig,
   getConfig,
@@ -172,7 +172,7 @@ export const planReferralSomeoneElsePaymentCase = ({
  * booker opens a shared referral link and books for the referred customer.
  */
 export const bindReferralSomeoneElsePaymentCase: WorkspaceE2ECaseBinder =
-  async ({ environment, run, runId, testCase }) => {
+  async ({ environment, runId, testCase }) => {
     if (testCase.id !== referralSomeoneElsePaymentCaseId) return testCase;
     const [state] = testCase.checkoutStates;
     if (!state || testCase.checkoutStates.length !== 1) {
@@ -187,7 +187,6 @@ export const bindReferralSomeoneElsePaymentCase: WorkspaceE2ECaseBinder =
       datasourceConfig,
       displayName: (label) => recipientDisplayNames[label],
       journalOwnerId: referralSomeoneElsePaymentCaseId,
-      run,
       runId,
       secret: resolveWorkspaceE2ESessionSigningSecret(environment),
     });
@@ -200,7 +199,7 @@ export const bindReferralSomeoneElsePaymentCase: WorkspaceE2ECaseBinder =
     return {
       ...testCase,
       checkoutStates: [boundState],
-      execute: ({ runStep, session }) =>
+      execute: ({ run, runStep, session }) =>
         executeReferralSomeoneElsePayment({
           config,
           datasourceConfig,
@@ -278,7 +277,7 @@ const executeReferralSomeoneElsePayment = Effect.fn(
     timeoutMs: config.timeouts.datasource,
   });
   yield* runStep({
-    execute: identities.signIn(booker, session),
+    execute: identities.signIn(booker, { run, session }),
     id: "sign-in-synthetic-booker",
     timeoutMs: config.timeouts.datasource,
   });
@@ -329,23 +328,25 @@ const executeReferralSomeoneElsePayment = Effect.fn(
       timeoutMs: config.timeouts.uiTransition,
     },
     {
-      execute: assertRequestedOnlyDiscountCode({
-        code: canonicalPromotionCodeSchema.make(referrer.code),
-        config,
-        run,
-        session,
+      execute: Effect.gen(function* () {
+        const browser = yield* browserSessionFor(run, session);
+        yield* assertRequestedOnlyDiscountCode({
+          code: canonicalPromotionCodeSchema.make(referrer.code),
+          config,
+          session: browser,
+        });
       }),
       id: "assert-referral-code-prefilled",
       timeoutMs: config.timeouts.uiTransition,
     },
     {
       execute: Effect.gen(function* () {
+        const browser = yield* browserSessionFor(run, session);
         yield* applyDiscountCode({
           appliedMessage: referralAppliedMessage(locale),
           code: referrer.code,
           config,
-          run,
-          session,
+          session: browser,
         });
         yield* waitForBrowserUrl({
           description: "referral-applied pay page",
@@ -365,11 +366,13 @@ const executeReferralSomeoneElsePayment = Effect.fn(
       timeoutMs: config.timeouts.uiTransition,
     },
     {
-      execute: assertDisplayedDiscounts({
-        config,
-        discounts: expectedDiscounts,
-        run,
-        session,
+      execute: Effect.gen(function* () {
+        const browser = yield* browserSessionFor(run, session);
+        yield* assertDisplayedDiscounts({
+          config,
+          discounts: expectedDiscounts,
+          session: browser,
+        });
       }),
       id: "assert-referral-invitation-discount",
       timeoutMs: config.timeouts.uiTransition,
@@ -383,7 +386,7 @@ const executeReferralSomeoneElsePayment = Effect.fn(
     expectedDiscounts,
     flow: {
       id: referralSomeoneElsePaymentCaseId,
-      submitReservationScript: getSubmitCoworkReservationScript,
+      toReservationPreparation: toReservationStep,
     },
     payPageSteps,
     run,

@@ -72,23 +72,6 @@ class CheckoutTestFailure extends Data.TaggedError("CheckoutTestFailure")<{
   readonly message: string;
 }> {}
 
-mock.module("@/features/legal/acceptance-snapshot", () => ({
-  getLegalAcceptanceSnapshot: mock(() =>
-    Effect.succeed({
-      termsAndConditions: {
-        path: "/legal/terms.md",
-        hash: "terms-test-hash",
-        hashAlgorithm: "sha256",
-      },
-      operatingRules: {
-        path: "/legal/rules.md",
-        hash: "rules-test-hash",
-        hashAlgorithm: "sha256",
-      },
-    })
-  ),
-}));
-
 const reservationData = Schema.decodeUnknownSync(
   normalizedCoworkReservationOrderSchema
 )({
@@ -515,7 +498,7 @@ type CheckoutHarnessOptions<ReservationOverrides extends object> = {
   readonly createPendingNexiAttempt?: ReturnType<typeof mock>;
   readonly completeInternalPayment?: ReturnType<typeof mock>;
   readonly createHostedPaymentPage?: ReturnType<typeof mock>;
-  readonly fulfillPaidOrder?: ReturnType<typeof mock>;
+  readonly run?: ReturnType<typeof mock>;
   readonly capture?: ReturnType<typeof mock>;
   readonly accountAuthority?: OptionalAccountActivityFixture;
 };
@@ -540,8 +523,8 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
   const { PostHogEventService } = await import(
     "@/shared/backend/analytics/posthog-event.service"
   );
-  const { WorkspacePaidFulfillmentService } = await import(
-    "../fulfillment/paid-fulfillment.service"
+  const { ReservationFulfillment } = await import(
+    "../fulfillment/reservation-fulfillment.service"
   );
   const { WorkspaceReservationRepository } = await import(
     "@/features/reservation/backend/workspace-reservation.repository"
@@ -576,7 +559,7 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
         timestamp: testInstant(),
       })
     );
-  const fulfillPaidOrder = options.fulfillPaidOrder ?? mock(() => Effect.void);
+  const fulfillPaidOrder = options.run ?? mock(() => Effect.void);
   const capture = options.capture ?? mock(() => Effect.void);
   const recordLegalEvidence = mock((_input: readonly unknown[]) => Effect.void);
   const findAttempt = mock(() => Effect.succeed(options.activeAttempt ?? null));
@@ -710,8 +693,8 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
             }),
             Layer.mock(PaymentAttemptRepository, paymentAttempts),
             Layer.mock(PaymentLifecycleRepository, paymentLifecycle),
-            Layer.mock(WorkspacePaidFulfillmentService, {
-              fulfillPaidOrder,
+            Layer.mock(ReservationFulfillment, {
+              run: fulfillPaidOrder,
             }),
             Layer.mock(PostHogEventService, {
               capture,
@@ -1267,9 +1250,9 @@ describe("CheckoutService", () => {
     expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
     expect(harness.attachHostedPaymentPage).not.toHaveBeenCalled();
-    expect(harness.fulfillPaidOrder).toHaveBeenCalledWith({
-      orderId: "reservation-zero-total",
-    });
+    expect(harness.fulfillPaidOrder).toHaveBeenCalledWith(
+      "reservation-zero-total"
+    );
     expect(harness.capture).toHaveBeenCalledWith(
       expect.objectContaining({
         event: "payment completed",
@@ -1351,7 +1334,7 @@ describe("CheckoutService", () => {
       orderId: "reservation-zero-total-fulfillment-fails",
       acceptedQuote,
       affirm,
-      fulfillPaidOrder,
+      run: fulfillPaidOrder,
     });
 
     const result = await Effect.runPromise(harness.effect);
@@ -1378,9 +1361,9 @@ describe("CheckoutService", () => {
         "/en-US/reservation/status/reservation-already-paid?outcome=success",
       paid: true,
     });
-    expect(harness.fulfillPaidOrder).toHaveBeenCalledWith({
-      orderId: "reservation-already-paid",
-    });
+    expect(harness.fulfillPaidOrder).toHaveBeenCalledWith(
+      "reservation-already-paid"
+    );
     expect(harness.affirm).not.toHaveBeenCalled();
     expect(harness.completeInternalPayment).not.toHaveBeenCalled();
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
@@ -1417,7 +1400,7 @@ describe("CheckoutService", () => {
       redirectUrl: `/en-US/reservation/status/${orderId}?outcome=success`,
       paid: true,
     });
-    expect(harness.fulfillPaidOrder).toHaveBeenCalledWith({ orderId });
+    expect(harness.fulfillPaidOrder).toHaveBeenCalledWith(orderId);
     expect(harness.affirm).not.toHaveBeenCalled();
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
@@ -1451,9 +1434,9 @@ describe("CheckoutService", () => {
         "/en-US/reservation/status/reservation-paid-race?outcome=success",
       paid: true,
     });
-    expect(harness.fulfillPaidOrder).toHaveBeenCalledWith({
-      orderId: "reservation-paid-race",
-    });
+    expect(harness.fulfillPaidOrder).toHaveBeenCalledWith(
+      "reservation-paid-race"
+    );
     expect(harness.affirm).not.toHaveBeenCalled();
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
@@ -2081,7 +2064,7 @@ describe("CheckoutService", () => {
         "/en-US/reservation/status/meeting-room-paid-whole-day?outcome=success",
       paid: true,
     });
-    expect(harness.fulfillPaidOrder).toHaveBeenCalledWith({ orderId });
+    expect(harness.fulfillPaidOrder).toHaveBeenCalledWith(orderId);
     expect(harness.affirm).not.toHaveBeenCalled();
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });

@@ -8,8 +8,7 @@ import {
 } from "./faq-entries";
 
 const facts = {
-  averageReservationsPerDay: 1.2,
-  coworkSeatCapacity: 28,
+  occupancy: { averageReservationsPerDay: 1.2, coworkSeatCapacity: 28 },
   officesOffered: false,
 };
 
@@ -58,6 +57,19 @@ describe.each(locales)("getFaqGroups in %s", (locale) => {
 
     expect(entries.map(({ value }) => value)).toContain("offices");
     expect(withOffices).not.toContain("offices");
+  });
+
+  test("leaves out the busyness question while last month's occupancy is unknown", () => {
+    const withoutOccupancy = getFaqGroups(locale, {
+      ...facts,
+      occupancy: undefined,
+    })
+      .flatMap((group) => group.entries)
+      .map(({ value }) => value);
+
+    expect(entries.map(({ value }) => value)).toContain("busyness");
+    expect(withoutOccupancy).not.toContain("busyness");
+    expect(withoutOccupancy).toHaveLength(entries.length - 1);
   });
 });
 

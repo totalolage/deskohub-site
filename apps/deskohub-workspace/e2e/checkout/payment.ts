@@ -1,37 +1,39 @@
+import type { Locator, Page } from "@playwright/test";
 import { Cause, Effect, Exit, Schema } from "effect";
 import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
 import {
-  activateHydratedBrowserElement,
-  evalBrowserScript,
-  focusBrowserElement,
-  openBrowserPage,
-  pressBrowserKey,
+  activateHydratedElement,
+  openPage,
   readActiveBrowserTabId,
   readBrowserUrl,
-  requireEnabledSnapshotRef,
-  requireSnapshotRef,
-  runBrowserCommand,
+  readPageUrl,
+  summarizeCheckoutPage,
   switchToBrowserTab,
-  waitForBrowserReactHydration,
   waitForBrowserUrl,
+  waitForReactHydration,
 } from "../browser";
-import {
-  browserDiagnosticsScript,
-  payPageOrderIdScript,
-} from "../browser-scripts";
+import type { E2EBrowserSession } from "../browser-session";
 import type { WorkspaceE2EConfig } from "../config";
 import {
   failWorkspaceE2E,
   toWorkspaceE2EError,
   tryWorkspaceE2ESync,
   type WorkspaceE2EError,
+  withoutWorkspaceE2ETimeout,
 } from "../errors";
 import { pollUntil } from "../polling";
+import { redact } from "../redaction";
 import type { Runner } from "../runtime";
-import { addRedaction, assert, log, parseUrl } from "../runtime";
+import {
+  addRedaction,
+  assert,
+  browserSessionFor,
+  log,
+  parseUrl,
+} from "../runtime";
 import {
   type WorkspaceE2ETimeouts,
   workspaceE2EPollIntervalMs,
@@ -39,6 +41,12 @@ import {
 import type { CheckoutData } from "../types";
 import { isCheckoutStatusUrl } from "../urls";
 import type { HostedPaymentPage } from "./nexi-hosted-payment";
+import {
+  prepareReservationForm,
+  type ReservationFormPreparation,
+  type ReservationPreparationState,
+  readReservationPreparationState,
+} from "./reservation-form-preparation";
 
 const reservationStartRetryableErrorMessages = [
   "Checkout could not be started.",
@@ -51,98 +59,56 @@ const reservationSubmitSelector = "#reservation-submit";
 // the contact step.
 const reservationActionSelector = `${reservationContinueSelector}, ${reservationSubmitSelector}`;
 const reservationPreparationStateKey = "__deskohubWorkspaceE2EPreparation";
+// The bound of each evaluation that reads page state while a wait polls it.
+const pageReadTimeoutMs = 30_000;
 const decodeWorkspaceReservationId = Schema.decodeUnknownSync(
   workspaceReservationIdSchema
 );
-
-export const startCheckoutPaymentAttempt = ({
-  config,
-  data,
-  onOrderId,
-  run,
-  session,
-  submitReservationScript,
-}: {
-  config: WorkspaceE2EConfig;
-  data: CheckoutData;
-  onOrderId?: (orderId: WorkspaceReservationId) => void;
-  run: Runner;
-  session: string;
-  submitReservationScript: string;
-}): Effect.Effect<WorkspaceReservationId, WorkspaceE2EError> =>
-  Effect.gen(function* () {
-    const orderId = yield* prepareCheckoutPaymentAttempt({
-      config,
-      data,
-      onOrderId,
-      run,
-      session,
-      submitReservationScript,
-    });
-    yield* submitPaymentAndWaitForHostedPage({
-      run,
-      session,
-      timeouts: config.timeouts,
-    });
-    log(`Started hosted payment attempt for order ${orderId}`);
-    return orderId;
-  });
 
 export const prepareCheckoutPaymentAttempt = ({
   config,
   data,
   onOrderId,
-  run,
+  preparation,
   session,
-  submitReservationScript,
 }: {
   config: WorkspaceE2EConfig;
   data: CheckoutData;
   onOrderId?: (orderId: WorkspaceReservationId) => void;
-  run: Runner;
-  session: string;
-  submitReservationScript: string;
+  preparation: ReservationFormPreparation;
+  session: E2EBrowserSession;
 }): Effect.Effect<WorkspaceReservationId, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    yield* openBrowserPage(config, run, session, data.checkoutUrl, {
+    yield* openPage(session, config, data.checkoutUrl, {
       timeoutMs: config.timeouts.browserNavigation,
     });
     return yield* submitReservationForPayPage({
       onOrderId,
-      run,
+      preparation,
       session,
-      submitReservationScript,
       timeouts: config.timeouts,
     });
   });
 
 export const submitReservationForPayPage = ({
   onOrderId,
-  run,
+  preparation,
   session,
-  submitReservationScript,
   timeouts,
 }: {
   onOrderId?: (orderId: WorkspaceReservationId) => void;
-  run: Runner;
-  session: string;
-  submitReservationScript: string;
+  preparation: ReservationFormPreparation;
+  session: E2EBrowserSession;
   timeouts: WorkspaceE2ETimeouts;
 }): Effect.Effect<WorkspaceReservationId, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const payPageUrl = yield* submitReservationAndWaitForPayPage({
       onOrderId,
-      run,
+      preparation,
       session,
-      submitReservationScript,
       timeouts,
     });
-    return yield* readPayPageOrderIdFrom({
-      onOrderId,
-      payPageUrl,
-      run,
-      session,
-    });
+    return yield* readPayPageOrderIdFrom({ onOrderId, payPageUrl, session });
   });
 
 /**
@@ -153,18 +119,15 @@ export const submitReservationForPayPage = ({
  */
 export const waitForReservationPayPage = ({
   onOrderId,
-  run,
   session,
   timeouts,
 }: {
   readonly onOrderId?: (orderId: WorkspaceReservationId) => void;
-  readonly run: Runner;
-  readonly session: string;
+  readonly session: E2EBrowserSession;
   readonly timeouts: WorkspaceE2ETimeouts;
 }): Effect.Effect<WorkspaceReservationId, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const result = yield* waitForReservationStart(
-      run,
       session,
       timeouts.checkoutStart
     );
@@ -172,24 +135,17 @@ export const waitForReservationPayPage = ({
       onOrderId,
       retryableErrorMessage: "Checkout reservation preparation failed",
     });
-    return yield* readPayPageOrderIdFrom({
-      onOrderId,
-      payPageUrl,
-      run,
-      session,
-    });
+    return yield* readPayPageOrderIdFrom({ onOrderId, payPageUrl, session });
   });
 
 const readPayPageOrderIdFrom = ({
   onOrderId,
   payPageUrl,
-  run,
   session,
 }: {
   readonly onOrderId?: (orderId: WorkspaceReservationId) => void;
   readonly payPageUrl: string;
-  readonly run: Runner;
-  readonly session: string;
+  readonly session: E2EBrowserSession;
 }): Effect.Effect<WorkspaceReservationId, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const searchOrderId = yield* tryWorkspaceE2ESync(
@@ -199,45 +155,48 @@ const readPayPageOrderIdFrom = ({
         return value ? decodeWorkspaceReservationId(value) : undefined;
       }
     );
-    const orderId = searchOrderId ?? (yield* readPayPageOrderId(run, session));
+    const orderId = searchOrderId ?? (yield* readPayPageOrderId(session));
     yield* Effect.sync(() => onOrderId?.(orderId));
     return orderId;
   });
 
+/** The first reservation id in the pay page's text. Runs in the browser. */
+const findPayPageOrderId = () => {
+  const idPattern =
+    /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+  const match = (document.body?.innerText ?? "").match(idPattern);
+  return match?.[0] ?? "";
+};
+
+// An overrunning read fails rather than timing out, as the argv `eval` it
+// replaces did.
 const readPayPageOrderId = (
-  run: Runner,
-  session: string
+  session: E2EBrowserSession
 ): Effect.Effect<WorkspaceReservationId, WorkspaceE2EError> =>
-  Effect.gen(function* () {
-    const result = yield* runBrowserCommand(
-      "read pay page order id",
-      run,
-      session,
-      ["eval", "--stdin"],
-      {
-        input: payPageOrderIdScript,
-        logOutput: false,
-        timeoutMs: 30_000,
-      }
+  session
+    .evaluate("read pay page order id", findPayPageOrderId, undefined, {
+      timeoutMs: pageReadTimeoutMs,
+    })
+    .pipe(
+      withoutWorkspaceE2ETimeout("read pay page order id"),
+      Effect.flatMap((text) =>
+        tryWorkspaceE2ESync("assert pay page order id", () => {
+          const orderId = redact(text).trim();
+          assert(orderId, "checkout pay page order id missing");
+          return decodeWorkspaceReservationId(orderId);
+        })
+      )
     );
-    return yield* tryWorkspaceE2ESync("assert pay page order id", () => {
-      const orderId = result.stdout.trim();
-      assert(orderId, "checkout pay page order id missing");
-      return decodeWorkspaceReservationId(orderId);
-    });
-  });
 
 const submitReservationAndWaitForPayPage = ({
   onOrderId,
-  run,
+  preparation,
   session,
-  submitReservationScript,
   timeouts,
 }: {
   onOrderId?: (orderId: WorkspaceReservationId) => void;
-  run: Runner;
-  session: string;
-  submitReservationScript: string;
+  preparation: ReservationFormPreparation;
+  session: E2EBrowserSession;
   timeouts: WorkspaceE2ETimeouts;
 }): Effect.Effect<string, WorkspaceE2EError> =>
   Effect.gen(function* () {
@@ -247,31 +206,26 @@ const submitReservationAndWaitForPayPage = ({
     ): Effect.Effect<ReservationStartResult, WorkspaceE2EError> =>
       Effect.gen(function* () {
         yield* prepareReservationSelection({
-          prepareScript: submitReservationScript,
-          run,
+          preparation,
           session,
           timeoutMs,
           timeouts,
         });
-        // The same script fills the contact step once Continue opens it.
-        if (yield* isReservationSelectionStep(run, session, timeouts)) {
-          yield* continueToReservationContactStep({ run, session, timeouts });
+        // The same preparation fills the contact step once Continue opens it.
+        if (yield* isReservationSelectionStep(session, timeouts)) {
+          yield* continueToReservationContactStep({ session, timeouts });
           yield* prepareReservationSelection({
-            prepareScript: submitReservationScript,
-            run,
+            preparation,
             session,
             timeoutMs,
             timeouts,
           });
         }
-        yield* activateHydratedBrowserElement(
-          run,
-          session,
-          reservationSubmitSelector,
-          { timeoutMs: timeouts.browserAction }
-        );
+        yield* activateHydratedElement(session, reservationSubmitSelector, {
+          timeoutMs: timeouts.browserAction,
+        });
 
-        const result = yield* waitForReservationStart(run, session, timeoutMs);
+        const result = yield* waitForReservationStart(session, timeoutMs);
         if (
           result.status !== "retryable_error" ||
           attempt >= reservationSubmitAttemptCount
@@ -339,18 +293,21 @@ const requireReservationPayPage = (
     );
   });
 
+const hasElement = (selector: string) =>
+  document.querySelector(selector) !== null;
+
 const isReservationSelectionStep = (
-  run: Runner,
-  session: string,
+  session: E2EBrowserSession,
   timeouts: WorkspaceE2ETimeouts
 ): Effect.Effect<boolean, WorkspaceE2EError> =>
-  evalBrowserScript(
-    "read reservation checkout step",
-    run,
-    session,
-    `document.querySelector(${JSON.stringify(reservationContinueSelector)}) !== null`,
-    { logOutput: false, timeoutMs: timeouts.browserAction }
-  ).pipe(Effect.map((result) => result.stdout.trim() === "true"));
+  session
+    .evaluate(
+      "read reservation checkout step",
+      hasElement,
+      reservationContinueSelector,
+      { timeoutMs: timeouts.browserAction }
+    )
+    .pipe(withoutWorkspaceE2ETimeout("read reservation checkout step"));
 
 /**
  * Activates the selection step's Continue natively and waits for the
@@ -358,117 +315,66 @@ const isReservationSelectionStep = (
  * page keeps its selection and nothing is submitted.
  */
 export const continueToReservationContactStep = ({
-  run,
   session,
   timeouts,
 }: {
-  readonly run: Runner;
-  readonly session: string;
+  readonly session: E2EBrowserSession;
   readonly timeouts: WorkspaceE2ETimeouts;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    yield* activateHydratedBrowserElement(
-      run,
-      session,
-      reservationContinueSelector,
-      { timeoutMs: timeouts.browserAction }
-    );
-    yield* waitForBrowserReactHydration(
-      run,
-      session,
-      reservationSubmitSelector,
-      { timeoutMs: timeouts.browserAction }
-    );
+    yield* activateHydratedElement(session, reservationContinueSelector, {
+      timeoutMs: timeouts.browserAction,
+    });
+    yield* waitForReactHydration(session, reservationSubmitSelector, {
+      timeoutMs: timeouts.browserAction,
+    });
   });
 
 /**
- * Runs a side-effect-free reservation preparation script on the hydrated
- * form: a short evaluation starts it and keeps its status in the page, and
- * the runner polls that status within `timeoutMs`. Nothing is submitted.
+ * Runs a side-effect-free reservation form preparation on the hydrated form:
+ * a short evaluation starts it and keeps its status in the page, and the
+ * runner polls that status within `timeoutMs`. Nothing is submitted.
  */
 export const prepareReservationSelection = ({
-  prepareScript,
-  run,
+  preparation,
   session,
   timeoutMs,
   timeouts,
 }: {
-  readonly prepareScript: string;
-  readonly run: Runner;
-  readonly session: string;
+  readonly preparation: ReservationFormPreparation;
+  readonly session: E2EBrowserSession;
   readonly timeoutMs: number;
   readonly timeouts: WorkspaceE2ETimeouts;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    yield* waitForBrowserReactHydration(
-      run,
-      session,
-      reservationActionSelector,
-      { timeoutMs: timeouts.browserAction }
-    );
-    yield* startReservationPreparation(
-      run,
-      session,
-      prepareScript,
-      timeouts.browserAction
-    );
-    yield* waitForReservationPreparation(run, session, timeoutMs);
+    yield* waitForReactHydration(session, reservationActionSelector, {
+      timeoutMs: timeouts.browserAction,
+    });
+    yield* session
+      .evaluate(
+        "start checkout reservation preparation",
+        prepareReservationForm,
+        { detachInto: reservationPreparationStateKey, preparation },
+        { timeoutMs: timeouts.browserAction }
+      )
+      .pipe(
+        withoutWorkspaceE2ETimeout("start checkout reservation preparation")
+      );
+    yield* waitForReservationPreparation(session, timeoutMs);
   });
 
-type ReservationPreparationState =
-  | { readonly status: "pending" | "ready" }
-  | { readonly error: string; readonly status: "failed" };
-
-const startReservationPreparation = (
-  run: Runner,
-  session: string,
-  script: string,
-  timeoutMs: number
-): Effect.Effect<void, WorkspaceE2EError> => {
-  const stateKey = JSON.stringify(reservationPreparationStateKey);
-  const kickoffScript = `
-(() => {
-  const state = { status: 'pending' };
-  globalThis[${stateKey}] = state;
-  Promise.resolve()
-    .then(() => (${script.trim()}))
-    .then(
-      () => { state.status = 'ready'; },
-      (error) => {
-        state.status = 'failed';
-        state.error = String(error instanceof Error ? error.message : error).slice(0, 500);
-      }
-    );
-  return true;
-})()
-`;
-
-  return runBrowserCommand(
-    "start checkout reservation preparation",
-    run,
-    session,
-    ["eval", "--stdin"],
-    {
-      input: kickoffScript,
-      logOutput: false,
-      timeoutMs,
-    }
-  ).pipe(Effect.asVoid);
-};
-
 const waitForReservationPreparation = (
-  run: Runner,
-  session: string,
+  session: E2EBrowserSession,
   timeoutMs: number
 ): Effect.Effect<void, WorkspaceE2EError> =>
   pollUntil(
-    readReservationPreparationState(run, session).pipe(
+    readPreparationState(session).pipe(
       Effect.flatMap((state) =>
         state.status === "failed"
           ? Effect.fail(
               toWorkspaceE2EError(
                 "prepare checkout reservation",
-                new Error(state.error)
+                new Error(redact(state.error))
               )
             )
           : Effect.succeed(state.status === "ready" ? true : undefined)
@@ -481,44 +387,34 @@ const waitForReservationPreparation = (
     }
   ).pipe(Effect.asVoid);
 
-const readReservationPreparationState = (
-  run: Runner,
-  session: string
-): Effect.Effect<ReservationPreparationState, WorkspaceE2EError> => {
-  const stateKey = JSON.stringify(reservationPreparationStateKey);
-  const stateScript = `
-(() => globalThis[${stateKey}] ?? { status: 'pending' })()
-`;
-
-  return Effect.gen(function* () {
-    const result = yield* runBrowserCommand(
+const readPreparationState = (
+  session: E2EBrowserSession
+): Effect.Effect<ReservationPreparationState, WorkspaceE2EError> =>
+  session
+    .evaluate(
       "read checkout reservation preparation state",
-      run,
-      session,
-      ["eval", "--stdin"],
-      {
-        input: stateScript,
-        logOutput: false,
-        timeoutMs: 30_000,
-      }
+      readReservationPreparationState,
+      reservationPreparationStateKey,
+      { timeoutMs: pageReadTimeoutMs }
+    )
+    .pipe(
+      withoutWorkspaceE2ETimeout("read checkout reservation preparation state"),
+      Effect.flatMap((value) =>
+        tryWorkspaceE2ESync(
+          "parse checkout reservation preparation state",
+          () => {
+            const state = value as Partial<ReservationPreparationState>;
+            assert(
+              state.status === "pending" ||
+                state.status === "ready" ||
+                (state.status === "failed" && typeof state.error === "string"),
+              "checkout reservation preparation state invalid"
+            );
+            return state as ReservationPreparationState;
+          }
+        )
+      )
     );
-    return yield* tryWorkspaceE2ESync(
-      "parse checkout reservation preparation state",
-      () => {
-        const state = JSON.parse(
-          result.stdout.trim()
-        ) as Partial<ReservationPreparationState>;
-        assert(
-          state.status === "pending" ||
-            state.status === "ready" ||
-            (state.status === "failed" && typeof state.error === "string"),
-          "checkout reservation preparation state invalid"
-        );
-        return state as ReservationPreparationState;
-      }
-    );
-  });
-};
 
 type ReservationStartResult =
   | {
@@ -532,8 +428,7 @@ type ReservationStartResult =
     };
 
 const waitForReservationStart = (
-  run: Runner,
-  session: string,
+  session: E2EBrowserSession,
   timeoutMs: number
 ): Effect.Effect<ReservationStartResult, WorkspaceE2EError> =>
   Effect.gen(function* () {
@@ -542,11 +437,11 @@ const waitForReservationStart = (
     const reservationStartExit = yield* Effect.exit(
       pollUntil(
         Effect.gen(function* () {
-          const url = yield* readBrowserUrl(run, session);
+          const url = yield* readPageUrl(session);
           if (url?.includes("/checkout/pay"))
             return { status: "ready" as const, url };
 
-          latest = yield* readReservationStartDiagnostics(run, session);
+          latest = yield* readReservationStartDiagnostics(session);
           if (isRetryableReservationStartError(latest)) {
             return {
               diagnostics: formatReservationStartDiagnostics(latest),
@@ -570,7 +465,7 @@ const waitForReservationStart = (
       latest,
       Cause.squash(reservationStartExit.cause)
     );
-    latest ??= yield* readReservationStartDiagnostics(run, session);
+    latest ??= yield* readReservationStartDiagnostics(session);
     return {
       diagnostics: formatReservationStartDiagnostics(latest),
       status: "not_ready",
@@ -594,37 +489,31 @@ const isRetryableReservationStartError = (
     diagnostics?.body?.includes(message)
   );
 
+// An unreadable page has no diagnostics, as the argv read that allowed
+// failure had none. Its text is redacted, as argv output was.
 const readReservationStartDiagnostics = (
-  run: Runner,
-  session: string
-): Effect.Effect<ReservationStartDiagnostics | undefined, WorkspaceE2EError> =>
-  runBrowserCommand(
-    "read reservation start diagnostics",
-    run,
-    session,
-    ["eval", "--stdin"],
-    {
-      allowFailure: true,
-      input: browserDiagnosticsScript,
-      logOutput: false,
-      timeoutMs: 30_000,
-    }
-  ).pipe(
-    Effect.map((result) => {
-      if (result.exitCode !== 0) return undefined;
-
-      try {
-        const parsed = JSON.parse(result.stdout.trim()) as unknown;
-        return parsed && typeof parsed === "object"
-          ? (parsed as ReservationStartDiagnostics)
-          : undefined;
-      } catch {
-        return {
-          body: result.stdout,
-        };
-      }
-    })
-  );
+  session: E2EBrowserSession
+): Effect.Effect<ReservationStartDiagnostics | undefined> =>
+  session
+    .evaluate(
+      "read reservation start diagnostics",
+      summarizeCheckoutPage,
+      undefined,
+      { timeoutMs: pageReadTimeoutMs }
+    )
+    .pipe(
+      Effect.map(
+        (summary): ReservationStartDiagnostics => ({
+          body: redact(summary.body),
+          submitDisabled: summary.submitDisabled,
+          submitText:
+            summary.submitText === null ? null : redact(summary.submitText),
+          title: redact(summary.title),
+          url: redact(summary.url),
+        })
+      ),
+      Effect.orElseSucceed(() => undefined)
+    );
 
 const addReservationStartTimeout = (
   diagnostics: ReservationStartDiagnostics | undefined,
@@ -673,7 +562,13 @@ export const submitPaymentAndWaitForHostedPage = ({
     addRedaction(
       parseUrl(checkoutPageUrl)?.searchParams.get("payState") ?? undefined
     );
-    const checkoutTabId = yield* submitCheckoutPayment(run, session);
+    // The hosted payment steps still switch tabs by argv tab id (stage 5c),
+    // so the checkout tab's id is read here, before the payment is submitted.
+    const checkoutTabId = yield* readActiveBrowserTabId(run, session);
+    yield* submitCheckoutPayment(
+      yield* browserSessionFor(run, session),
+      timeouts
+    );
 
     const hostedPaymentUrl = yield* waitForBrowserUrl({
       description: "Nexi hosted payment page",
@@ -703,43 +598,138 @@ export const submitPaymentAndWaitForHostedPage = ({
     } satisfies HostedPaymentPage;
   });
 
-export const submitCheckoutPayment = (run: Runner, session: string) =>
+/**
+ * Gives the pay page's legal consent and activates its enabled pay button
+ * with native key presses. Returns the checkout page it submitted from, which
+ * the caller activates again when the payment opens another page.
+ */
+export const submitCheckoutPayment = (
+  session: E2EBrowserSession,
+  timeouts: WorkspaceE2ETimeouts
+): Effect.Effect<Page, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const checkoutTabId = yield* readActiveBrowserTabId(run, session);
-    yield* clickCheckoutPayConsent(run, session);
-    yield* activateCheckoutPayButton(run, session);
-    return checkoutTabId;
-  });
-
-const clickCheckoutPayConsent = (run: Runner, session: string) =>
-  Effect.gen(function* () {
-    yield* waitForBrowserReactHydration(
-      run,
-      session,
-      "#checkout-pay-legal-consent"
+    const checkoutPage = yield* session.use(
+      "read active browser tab",
+      async (page) => {
+        if (page.isClosed()) throw new Error("no active browser tab");
+        return page;
+      }
     );
-    const ref = yield* requireSnapshotRef({
-      description: "payment legal consent",
-      labels: ["I agree to the", "Souhlasím"],
-      role: "checkbox",
-      run,
-      session,
-    });
-    yield* focusBrowserElement(run, session, ref, { timeoutMs: 30_000 });
-    yield* pressBrowserKey(run, session, "Space", { timeoutMs: 30_000 });
+    yield* giveCheckoutPayConsent(session, timeouts);
+    yield* activateCheckoutPayButton(session, timeouts);
+    return checkoutPage;
   });
 
-const activateCheckoutPayButton = (run: Runner, session: string) =>
-  Effect.gen(function* () {
-    const ref = yield* requireEnabledSnapshotRef({
-      description: "enabled payment submit button",
-      labels: ["ORDER AND PAY", "Order and pay"],
-      run,
-      session,
-    });
-    yield* focusBrowserElement(run, session, ref, { timeoutMs: 30_000 });
-    yield* pressBrowserKey(run, session, "Enter", { timeoutMs: 30_000 });
+// The argv runner found the consent and the pay button in the interactive
+// snapshot, polling for at most `checkoutPayControl` and failing, not timing
+// out, when they never showed; it focused them within `browserAction`.
+const giveCheckoutPayConsent = Effect.fnUntraced(function* (
+  session: E2EBrowserSession,
+  timeouts: WorkspaceE2ETimeouts
+) {
+  yield* waitForReactHydration(session, "#checkout-pay-legal-consent", {
+    timeoutMs: timeouts.checkoutPayControl,
   });
+  const nameMatch = yield* session
+    .use(
+      "payment legal consent",
+      (page) =>
+        waitForPayControl(
+          (match) => checkoutPayConsent(page, match),
+          timeouts.checkoutPayControl
+        ),
+      { timeoutMs: timeouts.checkoutPayControl }
+    )
+    .pipe(withoutWorkspaceE2ETimeout("payment legal consent"));
+  yield* session.use("focus browser element", (page) =>
+    checkoutPayConsent(page, nameMatch).focus({
+      timeout: timeouts.browserAction,
+    })
+  );
+  // As the argv `press` command, the key press has no timeout of its own.
+  yield* session.use("press browser key", (page) =>
+    page.keyboard.press("Space")
+  );
+});
+
+const activateCheckoutPayButton = Effect.fnUntraced(function* (
+  session: E2EBrowserSession,
+  timeouts: WorkspaceE2ETimeouts
+) {
+  const nameMatch = yield* session
+    .use(
+      "enabled payment submit button",
+      (page) =>
+        waitForPayControl(
+          (match) => checkoutPayButton(page, match),
+          timeouts.checkoutPayControl
+        ),
+      { timeoutMs: timeouts.checkoutPayControl }
+    )
+    .pipe(withoutWorkspaceE2ETimeout("enabled payment submit button"));
+  yield* session.use("focus browser element", (page) =>
+    checkoutPayButton(page, nameMatch).focus({
+      timeout: timeouts.browserAction,
+    })
+  );
+  yield* session.use("press browser key", (page) =>
+    page.keyboard.press("Enter")
+  );
+});
+
+/** Whether a control is matched by its exact accessible name. */
+type NameMatch = "contains" | "equals";
+
+// The pay page's controls by their English or Czech accessible names.
+const payControlName = (labels: string, nameMatch: NameMatch) =>
+  new RegExp(nameMatch === "equals" ? `^(?:${labels})$` : labels, "i");
+
+const checkoutPayConsent = (page: Page, nameMatch: NameMatch) =>
+  page
+    .getByRole("checkbox", {
+      name: payControlName("I agree to the|Souhlasím", nameMatch),
+    })
+    .filter({ visible: true })
+    .first();
+
+// The argv runner looked the pay button up by name in the page's whole
+// accessibility snapshot, whatever its role, so any enabled widget named so
+// qualifies, the first in document order.
+const payButtonRoles = [
+  "button",
+  "checkbox",
+  "link",
+  "menuitem",
+  "menuitemcheckbox",
+  "menuitemradio",
+  "option",
+  "radio",
+  "switch",
+  "tab",
+  "treeitem",
+] as const;
+
+const checkoutPayButton = (page: Page, nameMatch: NameMatch) => {
+  const name = payControlName("Order and pay", nameMatch);
+  return payButtonRoles
+    .map((role) => page.getByRole(role, { disabled: false, name }))
+    .reduce((controls, control) => controls.or(control))
+    .filter({ visible: true })
+    .first();
+};
+
+/**
+ * Waits for a visible control and tells how to match it: as the argv
+ * snapshot lookup did, a control named exactly a label wins over one whose
+ * name only contains it.
+ */
+const waitForPayControl = async (
+  locate: (nameMatch: NameMatch) => Locator,
+  timeout: number
+): Promise<NameMatch> => {
+  await locate("contains").waitFor({ timeout });
+  return (await locate("equals").count()) > 0 ? "equals" : "contains";
+};
 
 const getSearchOrderId = (value: string | undefined) => {
   if (!value) return undefined;

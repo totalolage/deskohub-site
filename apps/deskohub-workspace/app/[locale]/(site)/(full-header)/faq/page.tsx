@@ -16,9 +16,8 @@ export default async function LocalizedFaqPage() {
 
   return runWithRequestLocale((locale) => (
     <FaqPage
-      averageReservationsPerDay={occupancy.averageReservationsPerDay}
-      coworkSeatCapacity={occupancy.coworkSeatCapacity}
       locale={locale}
+      occupancy={occupancy}
       officesOffered={officePageEnabled}
     />
   ));

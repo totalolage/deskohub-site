@@ -3,10 +3,6 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { decodeStandardSchema } from "@deskohub/standard-schema";
 import { Effect, Layer, Result } from "effect";
-import {
-  type PaidFulfillmentProgress,
-  WorkspaceReservationRepository,
-} from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import {
   makeMemoryQueue,
@@ -15,9 +11,9 @@ import {
 import { QueueRedelivery } from "@/shared/backend/queue/queue-consumer";
 import type { QueuePublisher } from "@/shared/backend/queue/queue-publisher";
 import {
-  WorkspacePaidFulfillmentError,
-  WorkspacePaidFulfillmentService,
-} from "./paid-fulfillment.service";
+  FulfillmentLedger,
+  type PaidFulfillmentProgress,
+} from "./fulfillment-ledger.repository";
 import {
   PaidFulfillmentQueueService,
   paidFulfillmentTopic,
@@ -27,6 +23,10 @@ import {
   processPaidFulfillmentMessage,
 } from "./paid-fulfillment-queue-consumer";
 import { reconcileStalledPaidFulfillments } from "./paid-fulfillment-reconciliation";
+import {
+  ReservationFulfillment,
+  WorkspacePaidFulfillmentError,
+} from "./reservation-fulfillment.service";
 
 const orderId = "reservation-id" as WorkspaceReservationId;
 
@@ -48,16 +48,16 @@ const fulfillmentFailure = (
 
 const processMessage = (input: {
   readonly message: { readonly orderId: WorkspaceReservationId };
-  readonly fulfillPaidOrder: ReturnType<typeof mock>;
+  readonly run: ReturnType<typeof mock>;
   readonly progressAfter?: Partial<PaidFulfillmentProgress> | null;
 }) =>
   processPaidFulfillmentMessage(input.message).pipe(
     Effect.provide(
       Layer.mergeAll(
-        Layer.mock(WorkspacePaidFulfillmentService, {
-          fulfillPaidOrder: input.fulfillPaidOrder,
+        Layer.mock(ReservationFulfillment, {
+          run: input.run,
         }),
-        Layer.mock(WorkspaceReservationRepository, {
+        Layer.mock(FulfillmentLedger, {
           findPaidFulfillmentProgress: mock(() =>
             Effect.succeed(
               input.progressAfter === null
@@ -134,7 +134,7 @@ describe("paid fulfillment queue", () => {
       const failure = fulfillmentFailure("fulfillment_order_load_failed");
       const result = await processMessage({
         message: { orderId },
-        fulfillPaidOrder: mock(() => Effect.fail(failure)),
+        run: mock(() => Effect.fail(failure)),
         progressAfter: { fulfillmentState },
       });
 
@@ -160,7 +160,7 @@ describe("paid fulfillment queue", () => {
     ] as const) {
       const result = await processMessage({
         message: { orderId },
-        fulfillPaidOrder: mock(() => Effect.void),
+        run: mock(() => Effect.void),
         progressAfter: { fulfillmentState: "not_started", ...progressAfter },
       });
 
@@ -175,7 +175,7 @@ describe("paid fulfillment queue", () => {
     for (const reservationState of ["held", "confirmed"] as const) {
       const result = await processMessage({
         message: { orderId },
-        fulfillPaidOrder: mock(() => Effect.fail(failure)),
+        run: mock(() => Effect.fail(failure)),
         progressAfter: { fulfillmentState: "failed", reservationState },
       });
 
@@ -196,7 +196,7 @@ describe("paid fulfillment queue", () => {
     const failure = fulfillmentFailure("dotypos_reservation_failed");
     const result = await processMessage({
       message: { orderId },
-      fulfillPaidOrder: mock(() => Effect.fail(failure)),
+      run: mock(() => Effect.fail(failure)),
       progressAfter: {
         fulfillmentState: "failed",
         reservationState: "cancelled",
@@ -223,7 +223,7 @@ describe("paid fulfillment queue", () => {
     async (_label, progressAfter) => {
       const result = await processMessage({
         message: { orderId },
-        fulfillPaidOrder: mock(() => Effect.void),
+        run: mock(() => Effect.void),
         progressAfter: { fulfillmentState: "not_started", ...progressAfter },
       });
 
@@ -249,7 +249,7 @@ describe("paid fulfillment queue", () => {
   ] as const)("settles %s", async (_label, progressAfter, reason) => {
     const result = await processMessage({
       message: { orderId },
-      fulfillPaidOrder: mock(() => Effect.void),
+      run: mock(() => Effect.void),
       progressAfter,
     });
 
@@ -259,7 +259,7 @@ describe("paid fulfillment queue", () => {
   test("retries a failed invoice although the order is fulfilled", async () => {
     const result = await processMessage({
       message: { orderId },
-      fulfillPaidOrder: mock(() =>
+      run: mock(() =>
         Effect.fail(fulfillmentFailure("invoice_processing_failed"))
       ),
     });
@@ -275,7 +275,7 @@ describe("paid fulfillment queue", () => {
   test("keeps redelivering a paid order in a state no fulfillment path expects", async () => {
     const result = await processMessage({
       message: { orderId },
-      fulfillPaidOrder: mock(() => Effect.void),
+      run: mock(() => Effect.void),
       progressAfter: {
         fulfillmentState: "not_started",
         reservationState: "cancelling",
@@ -301,7 +301,7 @@ describe("paid fulfillment queue", () => {
       const failure = fulfillmentFailure("dotypos_reservation_failed");
       const result = await processMessage({
         message: { orderId },
-        fulfillPaidOrder: mock(() => Effect.fail(failure)),
+        run: mock(() => Effect.fail(failure)),
         progressAfter: { fulfillmentState: "failed", reservationState },
       });
 
@@ -321,7 +321,7 @@ describe("paid fulfillment queue", () => {
       const failure = fulfillmentFailure("dotypos_reservation_failed");
       const result = await processMessage({
         message: { orderId },
-        fulfillPaidOrder: mock(() => Effect.fail(failure)),
+        run: mock(() => Effect.fail(failure)),
         progressAfter: { fulfillmentState: "failed", latePaymentRecoveryState },
       });
 
@@ -353,8 +353,8 @@ describe("paid fulfillment queue", () => {
     const selectStalledPaidFulfillments = mock(() =>
       Effect.succeed(stalledOrderIds)
     );
-    const fulfillPaidOrder = mock((input: { orderId: string }) =>
-      input.orderId === "stalled-a"
+    const fulfillPaidOrder = mock((orderId: string) =>
+      orderId === "stalled-a"
         ? Effect.fail(new Error("dotypos down") as never)
         : Effect.void
     );
@@ -365,8 +365,8 @@ describe("paid fulfillment queue", () => {
     }).pipe(
       Effect.provide(
         Layer.mergeAll(
-          Layer.mock(WorkspacePaidFulfillmentService, { fulfillPaidOrder }),
-          Layer.mock(WorkspaceReservationRepository, {
+          Layer.mock(ReservationFulfillment, { run: fulfillPaidOrder }),
+          Layer.mock(FulfillmentLedger, {
             selectStalledPaidFulfillments,
           })
         )
@@ -378,9 +378,9 @@ describe("paid fulfillment queue", () => {
       updatedBefore: Temporal.Instant.from("2026-10-11T05:45:00Z"),
       limit: 25,
     });
-    expect(fulfillPaidOrder.mock.calls.map(([input]) => input)).toEqual([
-      { orderId: "stalled-a" },
-      { orderId: "stalled-b" },
+    expect(fulfillPaidOrder.mock.calls.map(([orderId]) => orderId)).toEqual([
+      "stalled-a",
+      "stalled-b",
     ]);
     expect(result).toEqual({ attempted: 2, failed: 1 });
   });

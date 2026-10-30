@@ -6,7 +6,7 @@ import {
   readInIdFilterBatches,
 } from "@deskohub/dotypos";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
-import { Array as Arr, Effect, Option, Schema } from "effect";
+import { Array as Arr, Effect, Match, Option, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   emailCampaignSends,
@@ -41,16 +41,15 @@ import {
 import type { AutomationTriggerKind } from "../automation-states";
 import { automationTickAtOrBefore } from "../automation-ticks";
 import {
-  type AutomationTriggerVerdict,
-  stillHolds,
-  verifiesTriggeringVisit,
+  readsTriggeringVisit,
+  triggeringVisitVerdict,
+  withdrawnByCancellation,
 } from "../automation-trigger-verification";
 import { lockAutomationForEngine } from "./automation-lifecycle-lock";
 import { appendAutomationRunProgress } from "./automation-run-timeline";
 import { AutomationRunTransitions } from "./automation-run-transitions";
 import { lockTriggeringReservations } from "./automation-triggering-reservations";
 import {
-  type AutomationEngineTransaction,
   AutomationUnitFetchFailure,
   type AutomationUnitHandler,
   AutomationUnitRecheckFailed,
@@ -183,7 +182,7 @@ export const makeDeliverHandler = Effect.gen(function* () {
       visits.ofReservations(
         open.flatMap((run) =>
           run.triggerReservationId !== null &&
-          verifiesTriggeringVisit(run.triggerKind)
+          readsTriggeringVisit(run.triggerKind)
             ? [run.triggerReservationId]
             : []
         )
@@ -268,12 +267,11 @@ export const makeDeliverHandler = Effect.gen(function* () {
     );
 
   const commit = (
-    tx: AutomationEngineTransaction,
     unit: ClaimedAutomationUnit<DeliverSubject>,
     facts: DeliverFacts,
     at: Temporal.Instant
   ) =>
-    lockAutomationForEngine(tx, facts.campaignId).pipe(
+    lockAutomationForEngine(facts.campaignId).pipe(
       Effect.filterOrFail(
         (lifecycle) => lifecycle.status === "active",
         (lifecycle) =>
@@ -283,10 +281,9 @@ export const makeDeliverHandler = Effect.gen(function* () {
       ),
       Effect.andThen(
         Option.match(facts.sendStepId, {
-          onNone: () =>
-            failUndeliverable(tx, unit, facts, at).pipe(Effect.asVoid),
+          onNone: () => failUndeliverable(unit, facts, at).pipe(Effect.asVoid),
           onSome: (sendStepId) =>
-            persist(tx, { unit, facts, sendStepId, at }).pipe(Effect.asVoid),
+            persist({ unit, facts, sendStepId, at }).pipe(Effect.asVoid),
         })
       ),
       Effect.as<ReadonlyArray<PlannedAutomationUnit>>([])
@@ -294,12 +291,11 @@ export const makeDeliverHandler = Effect.gen(function* () {
 
   /** A flow that no longer decodes can't send: its runs end failed. */
   const failUndeliverable = (
-    tx: AutomationEngineTransaction,
     unit: ClaimedAutomationUnit<DeliverSubject>,
     facts: DeliverFacts,
     at: Temporal.Instant
   ) =>
-    AutomationRunTransitions.end(tx, {
+    AutomationRunTransitions.end({
       runIds: facts.runs.map((run) => run.id),
       expect: { status: "active", phase: "ready", workUnitId: unit.id },
       outcome: "failed",
@@ -313,19 +309,15 @@ export const makeDeliverHandler = Effect.gen(function* () {
    * and persists the rest as one send with batch 0, recording the send on
    * the unit.
    */
-  const persist = (
-    tx: AutomationEngineTransaction,
-    input: {
-      readonly unit: ClaimedAutomationUnit<DeliverSubject>;
-      readonly facts: DeliverFacts;
-      readonly sendStepId: AutomationStepId;
-      readonly at: Temporal.Instant;
-    }
-  ) =>
+  const persist = (input: {
+    readonly unit: ClaimedAutomationUnit<DeliverSubject>;
+    readonly facts: DeliverFacts;
+    readonly sendStepId: AutomationStepId;
+    readonly at: Temporal.Instant;
+  }) =>
     Effect.Do.pipe(
       Effect.bind("cancelled", () =>
         lockTriggeringReservations(
-          tx,
           input.facts.runs.map((run) => run.triggerReservationId)
         )
       ),
@@ -345,7 +337,7 @@ export const makeDeliverHandler = Effect.gen(function* () {
           }) as const
       ),
       Effect.tap(({ verdicts, expect }) =>
-        AutomationRunTransitions.end(tx, {
+        AutomationRunTransitions.end({
           runIds: (verdicts.withdraw ?? []).map((run) => run.id),
           expect,
           outcome: "withdrawn",
@@ -353,28 +345,25 @@ export const makeDeliverHandler = Effect.gen(function* () {
         }).pipe(Effect.when(Effect.succeed(verdicts.withdraw !== undefined)))
       ),
       Effect.tap(({ verdicts }) =>
-        defer(tx, { ...input, deferred: verdicts.defer ?? [] }).pipe(
+        defer({ ...input, deferred: verdicts.defer ?? [] }).pipe(
           Effect.when(Effect.succeed(verdicts.defer !== undefined))
         )
       ),
       Effect.tap(({ verdicts }) =>
-        persistSend(tx, { ...input, sendable: verdicts.send ?? [] }).pipe(
+        persistSend({ ...input, sendable: verdicts.send ?? [] }).pipe(
           Effect.when(Effect.succeed(verdicts.send !== undefined))
         )
       )
     );
 
-  const defer = (
-    tx: AutomationEngineTransaction,
-    input: {
-      readonly unit: ClaimedAutomationUnit<DeliverSubject>;
-      readonly sendStepId: AutomationStepId;
-      readonly deferred: readonly DeliverRun[];
-      readonly at: Temporal.Instant;
-    }
-  ) => {
+  const defer = (input: {
+    readonly unit: ClaimedAutomationUnit<DeliverSubject>;
+    readonly sendStepId: AutomationStepId;
+    readonly deferred: readonly DeliverRun[];
+    readonly at: Temporal.Instant;
+  }) => {
     const recheckAt = automationTickAtOrBefore(input.at).add(deferredRecheck);
-    return tx
+    return db
       .update(runs)
       .set({
         phase: "waiting",
@@ -398,7 +387,6 @@ export const makeDeliverHandler = Effect.gen(function* () {
       .pipe(
         Effect.flatMap((deferred) =>
           appendAutomationRunProgress(
-            tx,
             deferred.map(({ id }) => ({
               runId: id,
               kind: "deferred" as const,
@@ -419,18 +407,15 @@ export const makeDeliverHandler = Effect.gen(function* () {
    * recipients from the runs that moved, then persists batch 0 and records
    * the send on the unit, all before any request.
    */
-  const persistSend = (
-    tx: AutomationEngineTransaction,
-    input: {
-      readonly unit: ClaimedAutomationUnit<DeliverSubject>;
-      readonly facts: DeliverFacts;
-      readonly sendStepId: AutomationStepId;
-      readonly sendable: readonly DeliverRun[];
-      readonly at: Temporal.Instant;
-    }
-  ) =>
+  const persistSend = (input: {
+    readonly unit: ClaimedAutomationUnit<DeliverSubject>;
+    readonly facts: DeliverFacts;
+    readonly sendStepId: AutomationStepId;
+    readonly sendable: readonly DeliverRun[];
+    readonly at: Temporal.Instant;
+  }) =>
     delivery
-      .createAutomatedSend(tx, {
+      .createAutomatedSend({
         campaignId: input.facts.campaignId,
         versionId: input.unit.subject.versionId,
         at: input.at,
@@ -438,7 +423,7 @@ export const makeDeliverHandler = Effect.gen(function* () {
       .pipe(
         Effect.bindTo("sendId"),
         Effect.bind("sending", ({ sendId }) =>
-          tx
+          db
             .update(runs)
             .set({
               status: "sending",
@@ -468,11 +453,11 @@ export const makeDeliverHandler = Effect.gen(function* () {
           sending.length === 0
             ? // No run moved (only possible for a commit about to lose its
               // claim): the empty send goes.
-              tx
+              db
                 .delete(emailCampaignSends)
                 .where(eq(emailCampaignSends.id, sendId))
             : delivery
-                .persistAutomatedBatch(tx, {
+                .persistAutomatedBatch({
                   sendId,
                   recipients: sending.map(({ dotyposCustomerId }) => ({
                     dotyposCustomerId,
@@ -486,7 +471,6 @@ export const makeDeliverHandler = Effect.gen(function* () {
                 .pipe(
                   Effect.andThen(
                     appendAutomationRunProgress(
-                      tx,
                       sending.map(({ id }) => ({
                         runId: id,
                         kind: "send-queued" as const,
@@ -497,20 +481,17 @@ export const makeDeliverHandler = Effect.gen(function* () {
                     )
                   ),
                   Effect.andThen(
-                    recordUnitSend(tx, { unitId: input.unit.id, sendId })
+                    recordUnitSend({ unitId: input.unit.id, sendId })
                   )
                 )
         )
       );
 
-  const recordUnitSend = (
-    tx: AutomationEngineTransaction,
-    input: {
-      readonly unitId: AutomationWorkUnitId;
-      readonly sendId: CampaignSendId;
-    }
-  ) =>
-    tx
+  const recordUnitSend = (input: {
+    readonly unitId: AutomationWorkUnitId;
+    readonly sendId: CampaignSendId;
+  }) =>
+    db
       .update(units)
       .set({ sendId: input.sendId })
       .where(and(eq(units.id, input.unitId), isNull(units.sendId)));
@@ -528,13 +509,12 @@ export const makeDeliverHandler = Effect.gen(function* () {
         })
         .pipe(
           Effect.map(
-            (settlement) =>
-              (tx: AutomationEngineTransaction, at: Temporal.Instant) =>
-                // Serialises the settlement with archive (§5.4).
-                Effect.forEach(
-                  Option.toArray(Option.fromNullishOr(unit.campaignId)),
-                  (campaignId) => lockAutomationForEngine(tx, campaignId)
-                ).pipe(Effect.andThen(settlement(tx, at)))
+            (settlement) => (at: Temporal.Instant) =>
+              // Serialises the settlement with archive (§5.4).
+              Effect.forEach(
+                Option.toArray(Option.fromNullishOr(unit.campaignId)),
+                (campaignId) => lockAutomationForEngine(campaignId)
+              ).pipe(Effect.andThen(settlement(at)))
           ),
           Effect.catchTag("CampaignDeliveryIncomplete", (cause) =>
             Effect.fail(
@@ -550,27 +530,39 @@ export const makeDeliverHandler = Effect.gen(function* () {
   return registerAutomationUnitHandler(handler);
 });
 
-/** What the pre-submit check makes of one run. */
+/**
+ * What the pre-submit check (§5.9) makes of one run at the send instant:
+ * `send`, `withdraw` because its reservation was cancelled or is gone
+ * (D28), or `defer` because Dotypos moved its visit so the trigger hasn't
+ * happened yet.
+ */
 const verdictOf = (input: {
   readonly run: DeliverRun;
   readonly facts: DeliverFacts;
   readonly cancelled: ReadonlySet<WorkspaceReservationId>;
   readonly at: Temporal.Instant;
-}): AutomationTriggerVerdict => {
+}): "send" | "withdraw" | "defer" => {
   const { run } = input;
   const reservation = run.triggerReservationId;
   if (reservation === null) return "send";
   if (
-    verifiesTriggeringVisit(run.triggerKind) &&
+    withdrawnByCancellation(run.triggerKind) &&
     input.cancelled.has(reservation)
   ) {
     return "withdraw";
   }
-  return stillHolds({
-    kind: run.triggerKind,
-    visit: Option.flatten(
-      Option.fromNullishOr(input.facts.visits.get(reservation))
-    ),
-    at: input.at,
-  });
+  return Match.value(
+    triggeringVisitVerdict({
+      kind: run.triggerKind,
+      visit: Option.flatten(
+        Option.fromNullishOr(input.facts.visits.get(reservation))
+      ),
+      asOf: input.at,
+    })
+  ).pipe(
+    Match.when("current", () => "send" as const),
+    Match.when("withdrawn", () => "withdraw" as const),
+    Match.when("moved", () => "defer" as const),
+    Match.exhaustive
+  );
 };

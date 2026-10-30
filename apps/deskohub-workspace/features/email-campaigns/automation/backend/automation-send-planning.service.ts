@@ -12,10 +12,10 @@ import type {
   AutomationVersionId,
 } from "../automation-identifiers";
 import type { AutomationTriggerKind } from "../automation-states";
-import { verifiesTriggeringVisit } from "../automation-trigger-verification";
+import { readsTriggeringVisit } from "../automation-trigger-verification";
 import { lockAutomationForEngine } from "./automation-lifecycle-lock";
 import { planAutomationRunUnits } from "./automation-run-units";
-import type { AutomationEngineTransaction } from "./automation-unit-handler";
+
 import { deliverUnitRunLimit, plannedDeliverUnit } from "./deliver";
 
 /** What planner step 7 did, for the plan summary. */
@@ -63,7 +63,6 @@ export type DeliverStepRun = {
  * the runs it just passed (D36).
  */
 export const planDeliverRuns = (
-  tx: AutomationEngineTransaction,
   ready: readonly DeliverStepRun[],
   at: Temporal.Instant
 ) => {
@@ -78,14 +77,14 @@ export const planDeliverRuns = (
           versionId: chunk[0].versionId,
           runIds,
           reservations: chunk.filter((run) =>
-            verifiesTriggeringVisit(run.triggerKind)
+            readsTriggeringVisit(run.triggerKind)
           ).length,
           customers: chunk.length,
           at,
         }),
       };
     });
-  return planAutomationRunUnits(tx, planned, at).pipe(
+  return planAutomationRunUnits(planned, at).pipe(
     Effect.map(
       (owned): AutomationSendPlan => ({
         runsPlanned: owned.reduce((total, ofUnit) => total + ofUnit.length, 0),
@@ -113,14 +112,14 @@ export class AutomationSendPlanning extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const { db } = yield* WorkspaceDatabase;
+      const { db, transaction } = yield* WorkspaceDatabase;
 
       /**
        * The automations with send-ready runs that are still active, under
        * their lifecycle locks taken first (§5.4).
        */
-      const lockActiveAutomations = (tx: AutomationEngineTransaction) =>
-        tx
+      const lockActiveAutomations = () =>
+        db
           .selectDistinct({ campaignId: runs.campaignId })
           .from(runs)
           .innerJoin(versions, eq(versions.id, runs.versionId))
@@ -129,7 +128,7 @@ export class AutomationSendPlanning extends Context.Service<
           .pipe(
             Effect.flatMap((pending) =>
               Effect.filter(pending, ({ campaignId }) =>
-                lockAutomationForEngine(tx, campaignId).pipe(
+                lockAutomationForEngine(campaignId).pipe(
                   Effect.map((lifecycle) => lifecycle.status === "active")
                 )
               )
@@ -141,11 +140,8 @@ export class AutomationSendPlanning extends Context.Service<
        * Their send-ready runs in version and id order. Runs another planner
        * holds are skipped, and the ownership CAS rechecks the rest.
        */
-      const selectReadyRuns = (
-        tx: AutomationEngineTransaction,
-        campaignIds: readonly CampaignId[]
-      ) =>
-        tx
+      const selectReadyRuns = (campaignIds: readonly CampaignId[]) =>
+        db
           .select({
             id: runs.id,
             campaignId: runs.campaignId,
@@ -160,21 +156,21 @@ export class AutomationSendPlanning extends Context.Service<
           .limit(sendPlanningRunLimit)
           .for("update", { of: runs, skipLocked: true });
 
-      const plan = (tx: AutomationEngineTransaction, at: Temporal.Instant) =>
-        lockActiveAutomations(tx).pipe(
+      const plan = (at: Temporal.Instant) =>
+        lockActiveAutomations().pipe(
           Effect.flatMap((campaignIds) =>
             campaignIds.length === 0
               ? Effect.succeed([])
-              : selectReadyRuns(tx, campaignIds)
+              : selectReadyRuns(campaignIds)
           ),
-          Effect.flatMap((ready) => planDeliverRuns(tx, ready, at))
+          Effect.flatMap((ready) => planDeliverRuns(ready, at))
         );
 
       return {
         plan: (at) =>
-          db
-            .transaction((tx) => plan(tx, at))
-            .pipe(Effect.withSpan("AutomationSendPlanning.plan")),
+          transaction(plan(at)).pipe(
+            Effect.withSpan("AutomationSendPlanning.plan")
+          ),
       };
     })
   );

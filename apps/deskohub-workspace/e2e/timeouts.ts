@@ -35,6 +35,10 @@ export const workspaceE2ETimeouts = {
   // Releasing a probe response's body, so a stuck release can't hold up the
   // session's cleanup.
   browserResponseDisposal: 30 * SECOND,
+  // A case waiting for a second browser session it opened, such as a
+  // signed-out visitor's, to close. Its failure is ignored, and the case's
+  // Scope still closes a session that outlives the wait.
+  browserSessionClose: 2 * MINUTE,
   // One MCP exchange, with room for a cold advisory snapshot to fill from
   // Dotypos (one full Dotypos request timeout).
   customerMcpRequest: 60 * SECOND,
@@ -54,6 +58,8 @@ export const workspaceE2ETimeouts = {
   calendarSaleAdvertisement: 2 * MINUTE,
   calendarSaleAdvertisementAttempt: 10 * SECOND,
   checkoutCase: 6 * MINUTE,
+  // The pay page's consent and enabled pay button showing up, each.
+  checkoutPayControl: 60 * SECOND,
   checkoutStart: 2 * MINUTE,
   // The original 30-second finalizer budget plus one full Dotypos request:
   // reservation cleanup cancels each reservation with a single unretried
@@ -72,6 +78,9 @@ export const workspaceE2ETimeouts = {
   // the new-locale document, so whatever the old page renders in between
   // stays on screen long enough to observe.
   localeSwitchHeldResponse: 3 * SECOND,
+  // Reading a failed page's state for its diagnostics. A wedged page then
+  // reports its state as unavailable instead of hiding the failure.
+  pageDiagnosticsRead: 5 * SECOND,
   paymentTerminalCase: 4 * MINUTE,
   providerTransition: 90 * SECOND,
   // Edits, reloads, and restoration checks on one reservation form, with no
@@ -193,6 +202,9 @@ export const workspaceAgentEvalPlaywrightTimeout = (taskBudgetMs: number) =>
 export type WorkspaceE2ETimeouts = Readonly<
   Record<keyof typeof workspaceE2ETimeouts, number>
 >;
+
+/** How long an argv runner command may run when its caller sets none. */
+export const argvCommandTimeoutMs = 2 * MINUTE;
 
 export const workspaceE2EPollIntervalMs = {
   advertisedPricing: 5 * SECOND,

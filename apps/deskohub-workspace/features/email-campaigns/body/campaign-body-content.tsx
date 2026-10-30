@@ -1,11 +1,28 @@
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { renderToReactElement } from "@tiptap/static-renderer/pm/react";
-import { Button, Heading, Hr, Img, Link, Section, Text } from "react-email";
+import {
+  Button,
+  Column,
+  Heading,
+  Hr,
+  Img,
+  Link,
+  Row,
+  Section,
+  Text,
+} from "react-email";
 import type { CampaignBodyDocument } from "./campaign-body-document";
 import {
   campaignBodyExtensions,
   campaignBodySchema,
 } from "./campaign-body-extensions";
+import {
+  type CampaignImageAlignment,
+  campaignBodyColumnWidth,
+  defaultCampaignImageAlignment,
+  isCampaignImageAlignment,
+  isCampaignImageWidth,
+} from "./campaign-image";
 
 const headingClassNames = {
   1: "m-0 mt-6 text-[26px] font-bold leading-[34px] text-navy sm:text-[30px] sm:leading-[38px]",
@@ -22,6 +39,56 @@ const isInListItem = (parent: ProseMirrorNode | undefined): boolean =>
   parent?.type.name === "listItem";
 
 const listClassName = "m-0 mt-4 pl-6 text-[16px] leading-[25px] text-[#373a59]";
+
+/**
+ * Outlook's Word engine aligns by the cell's `align` and ignores auto margins;
+ * other clients center a block image by its margins.
+ */
+const imageAlignmentClassNames = {
+  left: { cell: "text-left", image: "" },
+  center: { cell: "text-center", image: "mx-auto" },
+  right: { cell: "text-right", image: "ml-auto mr-0" },
+} as const satisfies Record<
+  CampaignImageAlignment,
+  { readonly cell: string; readonly image: string }
+>;
+
+/**
+ * An image as wide as it is, up to the body column, in its own cell aligned
+ * like the editor shows it. An image without a known width, such as one saved
+ * before images had a width, fills the column as it always has. A preview may
+ * hold values saving refuses; they render as the defaults.
+ */
+const CampaignBodyImage = ({ node }: { readonly node: ProseMirrorNode }) => {
+  if (!isCampaignImageWidth(node.attrs.width)) {
+    return (
+      <Img
+        alt={node.attrs.alt ?? ""}
+        className="mt-4 block h-auto w-full max-w-full rounded-2xl"
+        src={node.attrs.src}
+        width={campaignBodyColumnWidth}
+      />
+    );
+  }
+  const align = isCampaignImageAlignment(node.attrs.align)
+    ? node.attrs.align
+    : defaultCampaignImageAlignment;
+  const classNames = imageAlignmentClassNames[align];
+
+  return (
+    // Outlook drops table margins, so the cell's padding spaces the image.
+    <Row>
+      <Column align={align} className={`pt-4 ${classNames.cell}`}>
+        <Img
+          alt={node.attrs.alt ?? ""}
+          className={`block h-auto max-w-full rounded-2xl ${classNames.image}`}
+          src={node.attrs.src}
+          width={Math.min(node.attrs.width, campaignBodyColumnWidth)}
+        />
+      </Column>
+    </Row>
+  );
+};
 
 /** Renders a campaign body as React Email components. */
 export function CampaignBodyContent({
@@ -63,14 +130,7 @@ export function CampaignBodyContent({
           </ol>
         ),
         listItem: ({ children }) => <li className="mt-1">{children}</li>,
-        image: ({ node }) => (
-          <Img
-            alt={node.attrs.alt ?? ""}
-            className="mt-4 block h-auto w-full max-w-full rounded-2xl"
-            src={node.attrs.src}
-            width="534"
-          />
-        ),
+        image: ({ node }) => <CampaignBodyImage node={node} />,
         horizontalRule: () => (
           <Hr className="m-0 mt-6 border-[#e6ded2] border-solid" />
         ),

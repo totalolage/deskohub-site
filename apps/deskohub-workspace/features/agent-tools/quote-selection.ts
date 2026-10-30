@@ -12,19 +12,16 @@ import {
 import type { Locale } from "@/features/i18n";
 import { loadAdvisoryOfficeSeatCapacity } from "@/features/office/backend/office-advisory-seat-capacity";
 import { getCoworkAdvertisedPriceReservation } from "@/features/reservation/cowork-reservation";
-import { getCoworkReservationSelectionSearchParams } from "@/features/reservation/cowork-reservation-checkout-query";
 import { getMeetingRoomDurationAdvertisedPriceRequests } from "@/features/reservation/meeting-room-advertised-price";
-import { getMeetingRoomReservationSelectionSearchParams } from "@/features/reservation/meeting-room-reservation-checkout-query";
 import {
   getMeetingRoomReservationDurationKey,
   type MeetingRoomReservationDuration,
   type MeetingRoomReservationDurationKey,
 } from "@/features/reservation/meeting-room-reservation-duration";
 import { getOfficeAdvertisedPriceRequest } from "@/features/reservation/office-advertised-price";
-import { getOfficeReservationSelectionSearchParams } from "@/features/reservation/office-reservation-checkout-query";
-import type { ReservationSelectionSearchParams } from "@/features/reservation/reservation-checkout-query";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import type { ReservationInterval } from "@/features/reservation/reservation-interval-domain";
+import type { ReservationSelection } from "@/features/reservation/selection-path";
 import { getWorkspaceAvailabilityRange } from "@/features/reservation/workspace-availability";
 import { AgentToolError } from "./agent-tool-error";
 import {
@@ -94,7 +91,7 @@ export type SelectedReservation =
 export type QuoteSelection = {
   readonly request: AdvertisedPriceRequest;
   /** Names every quoted option, so the page fills nothing from history. */
-  readonly reservationSearchParams: ReservationSelectionSearchParams;
+  readonly reservationSelection: ReservationSelection;
   readonly reservation: SelectedReservation;
 };
 
@@ -138,8 +135,7 @@ const getCoworkSelection = Effect.fn("agentTools.getCoworkQuoteSelection")(
             locale,
             reservation: getCoworkAdvertisedPriceReservation(offer),
           },
-          reservationSearchParams:
-            getCoworkReservationSelectionSearchParams(offer),
+          reservationSelection: { kind: "cowork", ...offer },
           reservation: { kind: "cowork", ...offer },
         })
       )
@@ -247,12 +243,11 @@ const getMeetingRoomSelection = Effect.fn(
     Effect.map(
       ({ input, request, meetingRoom }): QuoteSelection => ({
         request,
-        reservationSearchParams: getMeetingRoomReservationSelectionSearchParams(
-          {
-            duration: meetingRoom.durationKey,
-            startDateTime: meetingRoom.startDateTime,
-          }
-        ),
+        reservationSelection: {
+          kind: "meeting-room",
+          duration: meetingRoom.durationKey,
+          startDateTime: meetingRoom.startDateTime,
+        },
         reservation: {
           kind: "meeting-room",
           duration: meetingRoom.duration,
@@ -311,11 +306,12 @@ const getOfficeSelection = Effect.fn("agentTools.getOfficeQuoteSelection")(
             seats,
             locale,
           }),
-          reservationSearchParams: getOfficeReservationSelectionSearchParams({
+          reservationSelection: {
+            kind: "office",
             startsOn: range.startsOn,
             dayCount: range.dates.length,
             seats,
-          }),
+          },
           reservation: {
             kind: "office",
             startsOn: range.startsOn,

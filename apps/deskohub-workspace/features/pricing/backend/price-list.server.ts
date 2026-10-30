@@ -1,7 +1,6 @@
 import "server-only";
 
 import { Effect, Layer, Option } from "effect";
-import { cacheLife } from "next/cache";
 import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import { loadPublicPriceList } from "@/features/checkout/backend/checkout/public-offerings";
 import {
@@ -12,6 +11,7 @@ import { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend";
 import type { Locale } from "@/features/i18n";
 import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
 import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
+import { readSharedSnapshot } from "@/shared/backend/shared-snapshot";
 import { runWorkspaceEffectOrElse } from "@/shared/backend/workspace-effect";
 
 /** The price list every visitor gets, and whether a visitor's may differ. */
@@ -115,23 +115,26 @@ export async function loadSharedPriceList(
 ): Promise<SharedPriceList> {
   "use cache";
 
-  const priceList = await loadSharedOfferings(locale).pipe(
-    runWorkspaceEffectOrElse("pricing.shared-price-list.load", {
-      failureCode: "pricing.shared_price_list.load_failed",
-      orElse: (): SharedPriceList => ({
-        offerings: getPublicCatalogOfferings({ locale }),
-        variesByVisitor: true,
-        complete: false,
-      }),
-    })
+  return await readSharedSnapshot(
+    "pricing.shared-price-list.load",
+    loadSharedOfferings(locale),
+    {
+      complete: { lifetime: "minutes" },
+      incomplete: {
+        when: (priceList) => !priceList.complete,
+        lifetime: incompletePriceListLife,
+      },
+      failure: {
+        failureCode: "pricing.shared_price_list.load_failed",
+        fallback: (): SharedPriceList => ({
+          offerings: getPublicCatalogOfferings({ locale }),
+          variesByVisitor: true,
+          complete: false,
+        }),
+        lifetime: incompletePriceListLife,
+      },
+    }
   );
-  if (priceList.complete) {
-    cacheLife("minutes");
-  } else {
-    cacheLife(incompletePriceListLife);
-  }
-
-  return priceList;
 }
 
 const VisitorPriceListLive = Layer.mergeAll(

@@ -2,7 +2,7 @@ import type { DotyposCustomerId } from "@deskohub/dotypos";
 import type { AutomationFlowType as AutomationFlow } from "@deskohub/workspace-admin-api";
 import { and, eq, sql } from "drizzle-orm";
 import { Effect, Option } from "effect";
-import { WorkspaceDatabase } from "@/db/database.service";
+import { WorkspaceDatabase, WorkspaceTransaction } from "@/db/database.service";
 import { emailCampaignAutomationScheduleFires as fires } from "@/db/schema";
 import { currentInstant } from "@/shared/utils/temporal";
 import {
@@ -28,7 +28,6 @@ import {
   scheduleDedupKey,
 } from "./automation-schedule-fires";
 import {
-  type AutomationEngineTransaction,
   AutomationUnitDefect,
   AutomationUnitFetchFailure,
   type AutomationUnitHandler,
@@ -63,12 +62,12 @@ const campaignOf = (unit: ClaimedAutomationUnit<FireChunkSubject>) =>
  * it is still `entering`. Returns the fire's version and every activation.
  */
 const recheckFire = Effect.fn("automationSchedules.recheckFire")(function* (
-  tx: AutomationEngineTransaction,
   campaignId: CampaignId,
   fireAt: Temporal.Instant
 ) {
-  yield* lockScheduleFireEntry(tx, campaignId);
-  const state = yield* lockAutomationForEngine(tx, campaignId);
+  const { db } = yield* WorkspaceTransaction;
+  yield* lockScheduleFireEntry(campaignId);
+  const state = yield* lockAutomationForEngine(campaignId);
   if (
     state.status !== "active" ||
     state.acceptingSince === null ||
@@ -76,7 +75,7 @@ const recheckFire = Effect.fn("automationSchedules.recheckFire")(function* (
   ) {
     return Option.none();
   }
-  const [fire] = yield* tx
+  const [fire] = yield* db
     .select({ versionId: fires.versionId })
     .from(fires)
     .where(
@@ -88,13 +87,13 @@ const recheckFire = Effect.fn("automationSchedules.recheckFire")(function* (
     )
     .for("update");
   if (fire === undefined) return Option.none();
-  const versions = yield* loadAutomationVersionActivations(tx, campaignId);
+  const versions = yield* loadAutomationVersionActivations(campaignId);
   return Option.some({ versionId: fire.versionId, versions });
 });
 
 /** The `fire-chunk` unit: evaluates one chunk of a schedule fire's pool and enters its customers (§5.7). */
 export const makeFireChunkHandler = Effect.gen(function* () {
-  const { db } = yield* WorkspaceDatabase;
+  const { db, transaction } = yield* WorkspaceDatabase;
   const facts = yield* AutomationEvaluationFacts;
   const recipients = yield* CampaignRecipientService;
 
@@ -102,17 +101,14 @@ export const makeFireChunkHandler = Effect.gen(function* () {
    * Counts the chunk done. The commit completing the fire's last chunk
    * marks it `entered`, advances `next_fire_at` and plans the next due fire.
    */
-  const completeChunk = (
-    tx: AutomationEngineTransaction,
-    input: {
-      readonly campaignId: CampaignId;
-      readonly fireAt: Temporal.Instant;
-      readonly entered: number;
-      readonly versions: Parameters<typeof enterScheduleFire>[1]["versions"];
-      readonly at: Temporal.Instant;
-    }
-  ) =>
-    tx
+  const completeChunk = (input: {
+    readonly campaignId: CampaignId;
+    readonly fireAt: Temporal.Instant;
+    readonly entered: number;
+    readonly versions: Parameters<typeof enterScheduleFire>[0]["versions"];
+    readonly at: Temporal.Instant;
+  }) =>
+    db
       .update(fires)
       .set({
         chunksDone: sql`${fires.chunksDone} + 1`,
@@ -130,8 +126,8 @@ export const makeFireChunkHandler = Effect.gen(function* () {
         Effect.flatMap(([fire]) =>
           fire === undefined || fire.done < fire.total
             ? Effect.void
-            : enterScheduleFire(tx, { ...input, status: "entered" }).pipe(
-                Effect.andThen(planNextFire(tx, input.campaignId, input.at)),
+            : enterScheduleFire({ ...input, status: "entered" }).pipe(
+                Effect.andThen(planNextFire(input.campaignId, input.at)),
                 Effect.provideService(AutomationEvaluationFacts, facts),
                 Effect.asVoid
               )
@@ -145,7 +141,6 @@ export const makeFireChunkHandler = Effect.gen(function* () {
       // Fire chunks never expire (D34); only a solo chunk that keeps missing
       // its deadline counts as unavailable, so it can't block the fire.
       expire: Effect.fn("fireChunk.expire")(function* (
-        tx: AutomationEngineTransaction,
         unit: ClaimedAutomationUnit<FireChunkSubject>,
         at: Temporal.Instant
       ) {
@@ -157,9 +152,9 @@ export const makeFireChunkHandler = Effect.gen(function* () {
           return "remaining" as const;
         }
         const campaignId = yield* campaignOf(unit);
-        const fire = yield* recheckFire(tx, campaignId, fireAt);
+        const fire = yield* recheckFire(campaignId, fireAt);
         if (Option.isNone(fire)) return "settled" as const;
-        yield* enterAutomationRuns(tx, {
+        yield* enterAutomationRuns({
           campaignId,
           versionId: fire.value.versionId,
           rejected: customerIds.map((customerId) => ({
@@ -168,7 +163,7 @@ export const makeFireChunkHandler = Effect.gen(function* () {
           })),
           at,
         }).pipe(Effect.catchTag("AutomationUnitRecheckFailed", Effect.die));
-        yield* completeChunk(tx, {
+        yield* completeChunk({
           campaignId,
           fireAt,
           entered: 0,
@@ -195,11 +190,9 @@ export const makeFireChunkHandler = Effect.gen(function* () {
           )
           .pipe(Effect.mapError(databaseFailure));
         if (fire === undefined) return { _tag: "Stale" } as const;
-        const version = (yield* db
-          .transaction((tx) =>
-            loadAutomationEntryVersions(tx, [fire.versionId])
-          )
-          .pipe(Effect.mapError(databaseFailure))).get(fire.versionId);
+        const version = (yield* transaction(
+          loadAutomationEntryVersions([fire.versionId])
+        ).pipe(Effect.mapError(databaseFailure))).get(fire.versionId);
         if (version === undefined || Option.isNone(version.flow)) {
           return { _tag: "Undecodable" } as const;
         }
@@ -243,14 +236,13 @@ export const makeFireChunkHandler = Effect.gen(function* () {
         } as const;
       }),
       commit: Effect.fn("fireChunk.commit")(function* (
-        tx: AutomationEngineTransaction,
         unit: ClaimedAutomationUnit<FireChunkSubject>,
         evaluation: FireChunkEvaluation,
         at: Temporal.Instant
       ) {
         const campaignId = yield* campaignOf(unit);
         const { fireAt } = unit.subject;
-        const fire = yield* recheckFire(tx, campaignId, fireAt);
+        const fire = yield* recheckFire(campaignId, fireAt);
         if (Option.isNone(fire) || evaluation._tag === "Stale") {
           return yield* new AutomationUnitRecheckFailed({
             code: "fire-not-entering",
@@ -260,19 +252,19 @@ export const makeFireChunkHandler = Effect.gen(function* () {
         if (evaluation._tag === "Undecodable") {
           // The next fire proceeds; the fire's other chunks drop at their
           // recheck.
-          yield* enterScheduleFire(tx, {
+          yield* enterScheduleFire({
             campaignId,
             fireAt,
             status: "failed",
             versions,
             at,
           });
-          yield* planNextFire(tx, campaignId, at).pipe(
+          yield* planNextFire(campaignId, at).pipe(
             Effect.provideService(AutomationEvaluationFacts, facts)
           );
           return [];
         }
-        const entry = yield* enterAutomationRuns(tx, {
+        const entry = yield* enterAutomationRuns({
           campaignId,
           versionId: evaluation.versionId,
           admitted: {
@@ -285,7 +277,7 @@ export const makeFireChunkHandler = Effect.gen(function* () {
           rejected: [],
           at,
         });
-        yield* completeChunk(tx, {
+        yield* completeChunk({
           campaignId,
           fireAt,
           entered: entry.started + entry.alreadyActive,

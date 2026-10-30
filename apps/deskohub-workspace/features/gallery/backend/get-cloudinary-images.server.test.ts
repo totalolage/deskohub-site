@@ -1,17 +1,16 @@
 import "@/shared/testing/workspace-test-env";
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { Effect, Predicate } from "effect";
+import { recordNextCache } from "@/shared/testing/next-cache-recorder.test-utils";
+import { cloudinaryTags } from "@/shared/utils/cache-tags";
 
 const providerMessage =
   "provider failure for cloudinary-account-id-sentinel " +
   "with api_secret=synthetic-cloudinary-secret-sentinel";
 
 let tagListAttempts = 0;
-const cacheLife = mock(
-  (_profile: string | { stale: number; revalidate: number; expire: number }) =>
-    undefined
-);
+let tagListStatus = 401;
+const nextCache = recordNextCache();
 
 // The SDK only builds URLs here; signing is covered by the package tests.
 const cloudinary = {
@@ -26,19 +25,21 @@ const originalFetch = globalThis.fetch;
 const rejectingFetch: typeof globalThis.fetch = Object.assign(
   async () => {
     tagListAttempts += 1;
-    return new Response(providerMessage, { status: 401 });
+    return new Response(providerMessage, { status: tagListStatus });
   },
   { preconnect: originalFetch.preconnect }
 );
 
-const cacheProfiles = () =>
-  cacheLife.mock.calls.flatMap(([profile]) =>
-    Predicate.isString(profile) ? [] : [profile]
-  );
+const galleryLife = { stale: 300, revalidate: 300, expire: 86_400 };
+const failureLife = { stale: 30, revalidate: 60, expire: 300 };
+const galleryTags = {
+  cacheTag: [cloudinaryTags.all(), cloudinaryTags.search([["gallery"]], 50)],
+};
 
 beforeEach(() => {
   tagListAttempts = 0;
-  cacheLife.mockClear();
+  tagListStatus = 401;
+  nextCache.clear();
   globalThis.fetch = rejectingFetch;
 });
 
@@ -48,8 +49,7 @@ afterEach(() => {
 
 mock.module("cloudinary", () => ({ v2: cloudinary }));
 mock.module("next/cache", () => ({
-  cacheLife,
-  cacheTag: () => undefined,
+  ...nextCache.module,
   revalidateTag: () => undefined,
 }));
 mock.module("@/env", () => ({
@@ -60,27 +60,6 @@ mock.module("@/env", () => ({
     CLOUDINARY_API_SECRET: "test-secret",
   },
 }));
-// The real runner's only addition on top of a plain rejection is log
-// annotation, so the propagated escaping error stays identical. The extra
-// exports keep bun's cross-file module registry satisfied. The fallback
-// runner's own runtime-failure handling is covered beside it in `shared` and
-// by `get-cloudinary-images.server.runtime-failure.test.ts`.
-mock.module("@/shared/backend/workspace-effect", () => ({
-  runWorkspaceEffect:
-    () =>
-    <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>
-      Effect.runPromise(effect),
-  runWorkspaceEffectOrElse:
-    <B>(
-      _operation: string,
-      { orElse }: { readonly orElse: (cause: unknown) => B }
-    ) =>
-    <A, E>(effect: Effect.Effect<A, E, never>): Promise<A | B> =>
-      Effect.runPromise(effect).catch(orElse),
-  defineWorkspaceTask: () => () => Promise.reject(new Error("unused")),
-  scheduleWorkspaceTelemetryFlush: () => Effect.void,
-}));
-
 const { getCloudinaryImages } = await import("./get-cloudinary-images.server");
 
 describe("getCloudinaryImages provider failures", () => {
@@ -89,25 +68,30 @@ describe("getCloudinaryImages provider failures", () => {
 
     expect(images).toEqual([]);
     expect(tagListAttempts).toBe(1);
-    // The gallery profile applies first; the failure profile overrides it.
-    const [galleryProfile, failureProfile] = cacheProfiles();
-    expect(failureProfile?.revalidate).toBeLessThanOrEqual(60);
-    expect(failureProfile?.revalidate).toBeLessThan(
-      galleryProfile?.revalidate ?? 0
-    );
+    expect(nextCache.calls).toEqual([{ cacheLife: failureLife }, galleryTags]);
   });
 });
 
 describe("getCloudinaryImages caching", () => {
-  test("bounds the cache life so a webhook refresh racing the CDN tag list heals", async () => {
-    await getCloudinaryImages({ tags: [["gallery"]] }).catch(() => undefined);
+  test("shares a tag list under the gallery lifetime and its search tags", async () => {
+    // Cloudinary answers 404 for a tag that no asset carries.
+    tagListStatus = 404;
 
-    const [galleryProfile] = cacheProfiles();
+    await expect(getCloudinaryImages({ tags: [["gallery"]] })).resolves.toEqual(
+      []
+    );
+    expect(nextCache.calls).toEqual([{ cacheLife: galleryLife }, galleryTags]);
+  });
+
+  test("bounds the cache life so a webhook refresh racing the CDN tag list heals", () => {
     // A tag change must surface within about six minutes: one minute of CDN
     // regeneration plus at most five minutes until the next revalidation.
-    expect(galleryProfile?.revalidate).toBeLessThanOrEqual(5 * 60);
-    expect(Number.isFinite(galleryProfile?.expire)).toBe(true);
-    expect(cacheLife).not.toHaveBeenCalledWith("max");
+    expect(galleryLife.revalidate).toBeLessThanOrEqual(5 * 60);
+    expect(Number.isFinite(galleryLife.expire)).toBe(true);
+    // The failure lifetime refreshes within a minute and keeps the 5-minute
+    // expiry that holds a caller without Suspense in the static shell.
+    expect(failureLife.revalidate).toBeLessThanOrEqual(60);
+    expect(failureLife.expire).toBe(300);
   });
 
   test("selects nothing for exclusion-only expressions without a request", async () => {
@@ -115,5 +99,6 @@ describe("getCloudinaryImages caching", () => {
 
     expect(images).toEqual([]);
     expect(tagListAttempts).toBe(0);
+    expect(nextCache.calls).toEqual([{ cacheLife: galleryLife }]);
   });
 });

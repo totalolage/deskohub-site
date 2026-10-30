@@ -26,7 +26,12 @@ export const requiredTemporalApis = {
     getters: ["days"],
   },
   Instant: {
-    static: ["compare", "from", "fromEpochMilliseconds"],
+    static: [
+      "compare",
+      "from",
+      "fromEpochMilliseconds",
+      "fromEpochNanoseconds",
+    ],
     methods: [
       "add",
       "equals",

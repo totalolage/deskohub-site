@@ -3,6 +3,7 @@ import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { eq, inArray } from "drizzle-orm";
 import { Cause, Effect, Exit, Fiber, Layer, Option, Schema } from "effect";
 import { TestClock } from "effect/testing";
+import { WorkspaceTransaction } from "@/db/database.service";
 import {
   emailCampaigns,
   emailCampaignAutomationWorkUnits as units,
@@ -570,12 +571,14 @@ describe.skipIf(!database)("automation unit processor", () => {
       kind: "deliver",
       subject: Schema.Struct({ label: Schema.String }),
       fetch: () => Effect.succeed("fetched"),
-      commit: (tx, claimed) =>
-        tx
-          .update(units)
-          .set({ sendId })
-          .where(eq(units.id, claimed.id))
-          .pipe(Effect.as([])),
+      commit: (claimed) =>
+        Effect.flatMap(WorkspaceTransaction, ({ db }) =>
+          db
+            .update(units)
+            .set({ sendId })
+            .where(eq(units.id, claimed.id))
+            .pipe(Effect.as([]))
+        ),
       submit: (persisted, fetched) =>
         Effect.sync(() =>
           submitted.push({

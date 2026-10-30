@@ -10,7 +10,6 @@ import {
   workspaceE2ECaseIds,
 } from "../playwright-checkout/case-catalog";
 import { workspaceE2ERunIdSchema } from "../run-identifiers";
-import type { Runner } from "../runtime";
 import type { WorkspaceE2ECase } from "../types";
 import {
   bindWorkspaceE2ECheckoutBooker,
@@ -28,7 +27,6 @@ const environment = (secrets: string | undefined) =>
     WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL:
       "postgresql://provider-permit:synthetic-password@ep-coordinator.eu.neon.tech/neondb",
   }) as WorkspaceE2EEnvironment;
-const run: Runner = async () => ({ exitCode: 0, stderr: "", stdout: "" });
 // The booker binder never touches the worker browser.
 const browser = {} as Browser;
 
@@ -51,7 +49,6 @@ const bind = (id: string, secrets: string | undefined) =>
   bindWorkspaceE2ECheckoutBooker({
     browser,
     environment: environment(secrets),
-    run,
     runId,
     testCase: plannedCase(id),
   });
@@ -103,7 +100,6 @@ test("leaves signed-out cases and cases with their own identities as planned", a
     const bound = await bindWorkspaceE2ECheckoutBooker({
       browser,
       environment: environment(signingSecrets),
-      run,
       runId,
       testCase: planned,
     });
@@ -130,7 +126,6 @@ test("keeps the planned contact of a case that books for someone else", async ()
   const bound = await bindWorkspaceE2ECheckoutBooker({
     browser,
     environment: environment(signingSecrets),
-    run,
     runId,
     testCase: planned,
   });

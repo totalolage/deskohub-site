@@ -34,10 +34,10 @@ const provideOwnership = (options: {
 }) => {
   const resolver =
     options.resolve instanceof CustomerAccountAccessError
-      ? Layer.succeed(CustomerAccountResolver, {
+      ? Layer.mock(CustomerAccountResolver, {
           resolve: Effect.fail(options.resolve),
         })
-      : Layer.succeed(CustomerAccountResolver, {
+      : Layer.mock(CustomerAccountResolver, {
           resolve: Effect.succeed(options.resolve ?? account),
         });
   const activity = options.activity ?? {

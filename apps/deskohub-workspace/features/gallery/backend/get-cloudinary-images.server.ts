@@ -7,8 +7,8 @@ import {
 } from "@deskohub/cloudinary";
 import { getGalleryImages } from "@deskohub/cloudinary/server";
 import { Effect } from "effect";
-import { cacheLife, cacheTag } from "next/cache";
-import { runWorkspaceEffectOrElse } from "@/shared/backend/workspace-effect";
+import { cacheLife } from "next/cache";
+import { readSharedSnapshot } from "@/shared/backend/shared-snapshot";
 import { cloudinaryTags } from "@/shared/utils/cache-tags";
 import type { CloudinaryTag } from "../types/cloudinary-tag";
 import {
@@ -51,7 +51,6 @@ export async function getCloudinaryImages({
   // Shared across server instances, so cold starts reuse the cached list
   // instead of refetching it from Cloudinary.
   "use cache: remote";
-  cacheLife(cloudinaryGalleryCacheLife);
   const expression = normalizeExpression(tags);
   // Tag lists cannot answer empty or negative-only groups: they need a
   // positive tag to list from.
@@ -59,10 +58,14 @@ export async function getCloudinaryImages({
     expression.length === 0 ||
     expression.some((group) => !group.some((tag) => !tag.startsWith("!")))
   ) {
+    cacheLife(cloudinaryGalleryCacheLife);
     return [];
   }
 
-  cacheTag(cloudinaryTags.all(), cloudinaryTags.search(tags, maxResults ?? 50));
+  const galleryTags = [
+    cloudinaryTags.all(),
+    cloudinaryTags.search(tags, maxResults ?? 50),
+  ];
 
   // A Cloudinary outage, a rejected tag list request, or a Workspace runtime
   // that cannot start must not fail the page: under Cache Components a
@@ -70,19 +73,21 @@ export async function getCloudinaryImages({
   // catches it. Serve no photos and refresh soon. The expiry stays at the
   // 5-minute prerender threshold so callers without a Suspense boundary
   // remain part of the static shell instead of becoming dynamic holes.
-  return getGalleryImages(expression, {
-    maxResults,
-    sortBy,
-    sortDirection,
-  }).pipe(
-    Effect.provide(WorkspaceCloudinaryLayer),
-    // `getGalleryImages` logs the lookup failure; this logs the served fallback under a stable code.
-    runWorkspaceEffectOrElse("gallery.images.load", {
-      failureCode: "gallery.images.load_failed",
-      orElse: (): readonly CloudinaryAsset[] => {
-        cacheLife(cloudinaryFailureCacheLife);
-        return [];
+  // `getGalleryImages` logs the lookup failure; the reader logs the served
+  // fallback under a stable code.
+  return await readSharedSnapshot(
+    "gallery.images.load",
+    getGalleryImages(expression, { maxResults, sortBy, sortDirection }).pipe(
+      Effect.provide(WorkspaceCloudinaryLayer)
+    ),
+    {
+      complete: { lifetime: cloudinaryGalleryCacheLife, tags: galleryTags },
+      failure: {
+        failureCode: "gallery.images.load_failed",
+        fallback: (): readonly CloudinaryAsset[] => [],
+        lifetime: cloudinaryFailureCacheLife,
+        tags: galleryTags,
       },
-    })
+    }
   );
 }

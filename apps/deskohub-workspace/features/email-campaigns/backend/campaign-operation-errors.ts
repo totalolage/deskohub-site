@@ -41,6 +41,7 @@ import {
   type CampaignEmailDeliveryFailed,
   type CampaignEmailNotConfigured,
   type CampaignFallbackContentMissing,
+  type CampaignImageNotUploaded,
   CampaignLocaleContentMissing,
   type CampaignNoRecipients,
   type CampaignNotFound,
@@ -89,6 +90,7 @@ export type CampaignOperationCause =
   | CampaignEmailDeliveryFailed
   | CampaignEmailNotConfigured
   | CampaignFallbackContentMissing
+  | CampaignImageNotUploaded
   | CampaignLocaleContentMissing
   | CampaignNoRecipients
   | CampaignNotFound
@@ -155,6 +157,17 @@ export const toOperationError = (
         new OperationInputInvalid({
           code: "content-invalid",
           message: `The campaign content is invalid: ${failure.cause.message}`,
+          cause,
+        })
+    ),
+    // Released `dhw` binaries know `content-invalid`; the message says which
+    // image, so no new code is needed.
+    Match.tag(
+      "CampaignImageNotUploaded",
+      ({ locale, source }) =>
+        new OperationInputInvalid({
+          code: "content-invalid",
+          message: `The ${locale} body adds an image that wasn't uploaded through the campaign editor: ${source}. Upload it in the editor, or keep an image the campaign already has.`,
           cause,
         })
     ),

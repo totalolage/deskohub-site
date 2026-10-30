@@ -1,41 +1,28 @@
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { NextResponse } from "next/server";
 import {
-  ResendWebhookProcessingError,
-  ResendWebhookService,
-  resendWebhookRefusal,
+  customerAccessDeliveryReports,
+  ReservationFulfillment,
 } from "@/features/checkout/backend/fulfillment";
+import { campaignDeliveryReports } from "@/features/email-campaigns/backend/campaign-delivery-reports";
+import { CampaignDeliveryStatusService } from "@/features/email-campaigns/backend/campaign-delivery-status.service";
+import {
+  type DeliveryReportHandler,
+  ingestDeliveryReport,
+} from "@/shared/backend/email/delivery-reports";
+import { ResendWebhookConfig } from "@/shared/backend/email/resend-webhook.config";
+import { resendWebhookRefusal } from "@/shared/backend/email/resend-webhook-disposition";
 import { defineWebhookRoute } from "@/shared/backend/service-route";
 
-const processWebhookRequest = Effect.fn("processResendWebhookRequest")(
-  function* (request: Request) {
-    const payload = yield* Effect.tryPromise({
-      try: () => request.text(),
-      catch: (cause) =>
-        new ResendWebhookProcessingError({
-          errorCode: "resend_webhook_payload_invalid",
-          message: "Resend webhook request body could not be read.",
-          cause,
-        }),
-    });
-
-    const webhooks = yield* ResendWebhookService;
-    return yield* webhooks.processWebhook({
-      payload,
-      headers: {
-        id: request.headers.get("svix-id"),
-        timestamp: request.headers.get("svix-timestamp"),
-        signature: request.headers.get("svix-signature"),
-      },
-    });
-  },
-  Effect.scoped
-);
+const deliveryReportHandlers: readonly DeliveryReportHandler<
+  ReservationFulfillment | CampaignDeliveryStatusService
+>[] = [customerAccessDeliveryReports, campaignDeliveryReports];
 
 /**
  * POST /api/webhooks/resend
  *
- * Receives Resend delivery status for workspace customer fulfilment emails.
+ * Receives Resend delivery reports for the customer confirmation and for
+ * campaign emails.
  */
 export const POST = defineWebhookRoute(
   {
@@ -43,12 +30,18 @@ export const POST = defineWebhookRoute(
     failureMessage: "Resend webhook processing failed",
   },
   (request) =>
-    processWebhookRequest(request).pipe(
+    ingestDeliveryReport(request, deliveryReportHandlers).pipe(
       Effect.tap((result) =>
         Effect.logInfo("Resend webhook response ready", { result })
       ),
       Effect.mapError(resendWebhookRefusal),
-      Effect.provide(ResendWebhookService.Live)
+      Effect.provide(
+        Layer.mergeAll(
+          ResendWebhookConfig.Default,
+          ReservationFulfillment.Live,
+          CampaignDeliveryStatusService.Live
+        )
+      )
     )
 );
 
