@@ -14,13 +14,9 @@ import {
   activateElement,
   activateHydratedElement,
   assertPageCheck,
-  closeBrowserTab,
   normalizeBrowserText,
-  openBrowserPage,
   openPage,
-  readBrowserNetworkLog,
-  switchToBrowserTab,
-  waitForBrowserUrl,
+  readNetworkLog,
   waitForPageCondition,
   waitForPageText,
   waitForPageUrl,
@@ -375,11 +371,12 @@ const runHostedPaymentAttempt = (
   Effect.gen(function* () {
     const stepId = (id: string) => (rejectedRow ? `${id}-retry` : id);
     const hostedPaymentPage = yield* runStep({
-      execute: submitPaymentAndWaitForHostedPage({
-        run,
-        session,
-        timeouts: config.timeouts,
-      }),
+      execute: Effect.flatMap(browserSessionFor(run, session), (browser) =>
+        submitPaymentAndWaitForHostedPage({
+          session: browser,
+          timeouts: config.timeouts,
+        })
+      ),
       id: stepId("start-checkout-payment"),
       timeoutMs: config.timeouts.providerTransition,
     });
@@ -404,17 +401,18 @@ const runHostedPaymentAttempt = (
 
     let authorizationRequested = false;
     const rejected = yield* runStep({
-      execute: completeNexiHostedPayment({
-        ...(challengeOutcome ? { challengeOutcome } : {}),
-        data,
-        hostedPaymentPage,
-        onPaymentAuthorizationRequested: () => {
-          authorizationRequested = true;
-        },
-        run,
-        session,
-        timeouts: config.timeouts,
-      }),
+      execute: Effect.flatMap(browserSessionFor(run, session), (browser) =>
+        completeNexiHostedPayment({
+          ...(challengeOutcome ? { challengeOutcome } : {}),
+          data,
+          hostedPaymentPage,
+          onPaymentAuthorizationRequested: () => {
+            authorizationRequested = true;
+          },
+          session: browser,
+          timeouts: config.timeouts,
+        })
+      ),
       id: stepId("complete-hosted-payment"),
       timeoutMs: config.timeouts.hostedPayment,
     }).pipe(
@@ -464,7 +462,8 @@ const restartSandboxRejectedPayment = (
   rejected: Extract<HostedPaymentAttempt, { kind: "sandbox-rejected" }>
 ): Effect.Effect<boolean, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
-    const networkLog = yield* readBrowserNetworkLog(run, session);
+    const browser = yield* browserSessionFor(run, session);
+    const networkLog = yield* readNetworkLog(browser);
     const decision = decideNexiSandboxRetry({
       authorizationRequested: rejected.authorizationRequested,
       error: rejected.error,
@@ -489,18 +488,47 @@ const restartSandboxRejectedPayment = (
       paymentAttemptId
     );
 
-    const { checkoutPageUrl, checkoutTabId, hostedPaymentTabId } =
-      rejected.hostedPaymentPage;
-    if (hostedPaymentTabId !== checkoutTabId) {
-      yield* closeBrowserTab(run, session, hostedPaymentTabId);
-      yield* switchToBrowserTab(run, session, checkoutTabId);
+    yield* leaveRejectedHostedPayment({
+      config,
+      hostedPaymentPage: rejected.hostedPaymentPage,
+      session: browser,
+    });
+    return true;
+  });
+
+/**
+ * Closes Nexi's own page, if the payment opened one, and reopens the checkout
+ * pay page after `nexiSandboxRetryDelayMs`, which starts a fresh payment
+ * attempt and Nexi order.
+ */
+export const leaveRejectedHostedPayment = ({
+  config,
+  hostedPaymentPage: { checkoutPage, checkoutPageUrl, page },
+  session,
+}: {
+  readonly config: Pick<WorkspaceE2EConfig, "bypassSecret" | "timeouts">;
+  readonly hostedPaymentPage: HostedPaymentPage;
+  readonly session: E2EBrowserSession;
+}): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    if (page !== checkoutPage) {
+      // As the argv tab command did, a page that already closed fails. The
+      // argv close had no bound of its own.
+      yield* session.use(
+        "close browser tab",
+        async () => {
+          if (page.isClosed()) throw new Error("hosted payment tab is closed");
+          await page.close();
+        },
+        { timeoutMs: config.timeouts.browserAction }
+      );
+      yield* session.activate(checkoutPage);
     }
     // Give the shared sandbox a moment before the next card-data submission.
     yield* Effect.sleep(`${nexiSandboxRetryDelayMs} millis`);
-    yield* openBrowserPage(config, run, session, checkoutPageUrl, {
+    yield* openPage(session, config, checkoutPageUrl, {
       timeoutMs: config.timeouts.browserNavigation,
     });
-    return true;
   });
 
 const waitForCheckoutStatusPage = (
@@ -508,11 +536,10 @@ const waitForCheckoutStatusPage = (
   run: Runner,
   session: string
 ) =>
-  waitForBrowserUrl({
+  waitForPageUrl({
     description: "checkout status page",
     matches: (url) => isExpectedCheckoutStatusUrl(url, config.expectedHost),
-    run,
-    session,
+    session: browserSessionFor(run, session),
     timeoutMs: config.timeouts.providerTransition,
   }).pipe(Effect.asVoid);
 
@@ -526,7 +553,7 @@ const restartReservationAfterFulfillment = ({
   data: CheckoutData;
   run: Runner;
   session: string;
-}) =>
+}): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const reservationPath = yield* tryWorkspaceE2ESync(
       "read fresh reservation path",
