@@ -45,7 +45,7 @@ mock.module("@/env", () => ({
   },
 }));
 
-const { getCloudinaryImages } = await import("./get-cloudinary-images.server");
+const { loadVenuePhotos } = await import("./load-venue-photos.server");
 
 test("serves no images with the failure cache profile when the Workspace runtime cannot start", async () => {
   globalThis.fetch = Object.assign(fetchCalls, {
@@ -54,7 +54,7 @@ test("serves no images with the failure cache profile when the Workspace runtime
   const warn = spyOn(console, "warn").mockImplementation(() => undefined);
 
   try {
-    const images = await getCloudinaryImages({ tags: [["gallery"]] });
+    const images = await loadVenuePhotos("gallery", "en-US");
 
     expect(images).toEqual([]);
     expect(fetchCalls).not.toHaveBeenCalled();
@@ -63,7 +63,7 @@ test("serves no images with the failure cache profile when the Workspace runtime
       {
         cacheTag: [
           cloudinaryTags.all(),
-          cloudinaryTags.search([["gallery"]], 50),
+          cloudinaryTags.search(["gallery"], 80),
         ],
       },
     ]);

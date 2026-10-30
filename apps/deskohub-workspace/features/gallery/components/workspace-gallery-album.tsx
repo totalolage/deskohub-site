@@ -3,16 +3,16 @@
 import { useMemo, useState } from "react";
 import { MasonryPhotoAlbum, type Photo } from "react-photo-album";
 import "react-photo-album/masonry.css";
-import Lightbox, { type SlideImage } from "yet-another-react-lightbox";
+import Lightbox from "yet-another-react-lightbox";
 import "yet-another-react-lightbox/styles.css";
 import { type Locale, m } from "@/features/i18n";
-import type { GalleryPhoto } from "../types/gallery-photo";
+import type { VenuePhoto } from "../types/venue-photo";
 
-type WorkspaceAlbumPhoto = Photo & GalleryPhoto;
+type WorkspaceAlbumPhoto = Photo & VenuePhoto;
 
 type WorkspaceGalleryAlbumProps = {
   locale: Locale;
-  photos: readonly GalleryPhoto[];
+  photos: readonly VenuePhoto[];
 };
 
 const eagerGalleryImageCount = 3;
@@ -37,16 +37,8 @@ export function WorkspaceGalleryAlbum({
     [locale, photos]
   );
 
-  const lightboxSlides: SlideImage[] = useMemo(
-    () =>
-      photos.map((photo) => ({
-        alt: photo.alt,
-        description: photo.caption,
-        height: photo.height,
-        src: photo.fullSrc,
-        title: photo.caption,
-        width: photo.width,
-      })),
+  const lightboxSlides = useMemo(
+    () => photos.map((photo) => photo.lightbox),
     [photos]
   );
 

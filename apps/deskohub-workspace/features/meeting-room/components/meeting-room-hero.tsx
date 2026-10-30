@@ -1,14 +1,13 @@
 import { CloudinaryImage } from "@deskohub/cloudinary-image";
-import { getLocalizedCloudinaryContextValue } from "@deskohub/cloudinary-image/localized-context";
 import { ArrowDown, ArrowUpRight } from "lucide-react";
 import Link from "next/link";
-import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
+import type { VenuePhoto } from "@/features/gallery/types/venue-photo";
 import { type Locale, m } from "@/features/i18n";
 import { getMeetingRoomReservationPath } from "@/features/reservation/routes";
 import { Button } from "@/shared/components/ui/button";
 
 type MeetingRoomHeroProps = {
-  image?: CloudinaryAsset;
+  image?: VenuePhoto;
   locale: Locale;
 };
 
@@ -115,15 +114,12 @@ export function MeetingRoomHero({ image, locale }: MeetingRoomHeroProps) {
             <div className="relative aspect-[9/10] overflow-hidden rounded-t-[15.625rem] rounded-b-[1.625rem] border border-white/25 bg-white/6">
               {image ? (
                 <CloudinaryImage
-                  alt={
-                    getLocalizedCloudinaryContextValue(image, "alt", locale) ??
-                    m.meetingRoomHeroImageAlt({}, { locale })
-                  }
+                  alt={image.alt}
                   className="absolute inset-0 size-full object-cover brightness-[0.74] contrast-[1.08] saturate-[0.76]"
                   preload
                   sizes="(min-width: 1024px) 46vw, (min-width: 640px) 75vw, 92vw"
                   size={{ width: "fill", height: "fill" }}
-                  source={image}
+                  source={image.publicId}
                   variant="gallery"
                 />
               ) : (
