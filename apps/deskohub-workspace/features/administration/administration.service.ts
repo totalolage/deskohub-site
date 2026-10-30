@@ -107,7 +107,6 @@ import {
   instantStringSchema,
   temporalInstantToIsoString,
 } from "@/shared/utils/temporal";
-import type { AdministrationCustomerMarketingConsentState } from "./customer-list-filters";
 import {
   type AdministrationCustomerName,
   unnamedCustomerDisplayName,
