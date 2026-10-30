@@ -12,6 +12,7 @@ import {
   workspaceE2EHostedPaymentPermitDirectory,
 } from "../coordination/hosted-payment-permit.service";
 import { makeWorkspaceE2EEnvironment } from "../e2e-env";
+import { assertE2ECalendarSaleCoverage } from "../integrations/calendar-sale-coverage";
 import { seedDiscountE2EFixtures } from "../integrations/discount-fixtures";
 import { resolveE2EDotyposDiscountGroup } from "../integrations/dotypos";
 import { assertPreviewEndpointsReady } from "../preview-readiness";
@@ -31,7 +32,7 @@ import { withWorkspaceE2ERuntime } from "./runtime-fixtures";
 // Readiness, seeding, availability preparation, and plan construction share
 // one test so the case phase waits for a single Playwright phase barrier and
 // worker start instead of one per preparation stage.
-test("prepare the workspace checkout run", async () => {
+test("prepare the workspace checkout run", async ({ browser }) => {
   const environment = makeWorkspaceE2EEnvironment();
   const config = getConfig(environment);
   const datasourceConfig = getDatasourceConfig(environment);
@@ -118,6 +119,15 @@ test("prepare the workspace checkout run", async () => {
               { concurrency: "unbounded" }
             );
           const preparation = { ...prepared, customerDiscountGroup };
+          yield* assertE2ECalendarSaleCoverage({
+            browser,
+            candidateDates: [
+              ...prepared.discounts.availableBasicDates,
+              ...prepared.discounts.availablePlusDates,
+              ...prepared.discounts.availableReservedDeskDates,
+            ],
+            config,
+          });
           const cases = yield* makeWorkspaceE2ECases({
             allocation: runContext.allocation,
             config,

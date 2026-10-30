@@ -13,6 +13,7 @@ import {
 import { makeCoworkCheckoutData } from "../checkout/data";
 import type { WorkspaceE2EConfig } from "../config";
 import { workspaceE2EError } from "../errors";
+import { assertE2ECalendarSaleCoverage } from "../integrations/calendar-sale-coverage";
 import type { ExpectedDiscountApplication } from "../integrations/database";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
@@ -390,11 +391,11 @@ test.skipIf(!chromiumAvailable)(
 // is already made, and the sale shows from the `showFromLoad`th load on.
 let formLoads = 0;
 let showFromLoad = 1;
-let formHtml = (_load: number) => "";
+let formHtml = (_load: number, _request: Request) => "";
 const formServer = Bun.serve({
-  fetch: () => {
+  fetch: (request) => {
     formLoads += 1;
-    return new Response(formHtml(formLoads), {
+    return new Response(formHtml(formLoads, request), {
       headers: { "content-type": "text/html; charset=utf-8" },
     });
   },
@@ -463,3 +464,86 @@ test.skipIf(!chromiumAvailable)(
   },
   60_000
 );
+
+for (const { candidateDates, detail, covered } of [
+  { candidateDates: ["2026-12-30", "2026-12-31"], covered: true },
+  { candidateDates: ["2027-01-01", "2026-12-31"], covered: false },
+  {
+    candidateDates: ["2027-01-28", "2026-12-31", "2027-01-01"],
+    covered: false,
+  },
+  {
+    candidateDates: ["2026-12-31"],
+    detail: "E2E Calendar sale 10%",
+    covered: false,
+  },
+  { candidateDates: [], covered: false },
+]) {
+  test.skipIf(!chromiumAvailable)(
+    `checks Calendar fixture coverage before case construction (${candidateDates.join(",")} ${detail ?? "20%"})`,
+    async () => {
+      if (!browser) throw new Error("Chromium is not running");
+      const datesRead: string[] = [];
+      const methods: string[] = [];
+      let casesConstructed = false;
+      const contextCount = browser.contexts().length;
+      formHtml = (_load, request) => {
+        const date = new URL(request.url).searchParams.get("date") ?? "";
+        datesRead.push(date);
+        methods.push(request.method);
+        // The known fixture's all-day end is exclusive on January 1.
+        const details =
+          date < "2027-01-01"
+            ? discountDetails(detail ? { detail } : {})
+            : discountDetails({ detail: "No discounts" });
+        return `<!doctype html><body>
+          <input name="date" value="${date}" />
+          <button data-reservation-type-price="open-space" data-reservation-type-price-ready="true"></button>
+          <input id="reservation-entry-tier-open-space" type="radio" checked />
+          ${details}
+          <button id="reservation-continue">Continue</button>
+        </body>`;
+      };
+      const result = await Effect.runPromise(
+        assertE2ECalendarSaleCoverage({
+          browser,
+          candidateDates,
+          config: {
+            baseUrl: formServer.url.origin,
+            timeouts: {
+              ...workspaceE2ETimeouts,
+              browserAction: 2000,
+              calendarSaleAdvertisement: 2000,
+              calendarSaleAdvertisementAttempt: 500,
+            },
+          } as WorkspaceE2EConfig,
+        }).pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              casesConstructed = true;
+            })
+          ),
+          Effect.result
+        )
+      );
+      expect(casesConstructed).toBe(covered);
+      if (!covered) {
+        expect(result._tag).toBe("Failure");
+        if (result._tag === "Failure") {
+          expect(result.failure.message).toBe(
+            "Calendar sale fixture coverage failed: expected E2E Calendar sale at 20% on the furthest planned candidate service date"
+          );
+          expect(result.failure.operation).toBe(
+            "verify E2E Calendar sale coverage"
+          );
+        }
+      }
+      expect(datesRead).toEqual(
+        candidateDates.length ? [candidateDates.toSorted().at(-1)!] : []
+      );
+      expect(methods.every((method) => method === "GET")).toBe(true);
+      expect(browser.contexts().length).toBe(contextCount);
+    },
+    30_000
+  );
+}
