@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { Effect, Layer, Predicate } from "effect";
 import { RedirectType, redirect } from "next/navigation";
 import { env } from "@/env";
+import { CustomerAccountContactService } from "@/features/account";
 import {
   buildCheckoutPayPathFromToken,
   CheckoutReferralService,
@@ -14,9 +15,8 @@ import { addCheckoutReferralAppliedMarker } from "@/features/checkout/checkout-r
 import type { DiscountCodeRejection } from "@/features/checkout/discount-code-rejection";
 import { defaultLocale, isLocale, type Locale } from "@/features/i18n";
 import { ReferralService } from "@/features/referrals";
-import { parseSharedReferralCode } from "@/features/referrals/referral-code-cookie";
 import { ReferralFeatureFlagRequest } from "@/features/referrals/referral-feature-flag.server";
-import { rememberReferralCode } from "@/features/referrals/remembered-referral-code.server";
+import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { applyDiscountCodeSchema } from "./apply-discount-code-input";
 import {
@@ -34,12 +34,18 @@ const applyDiscountCodeAction = defineWorkspaceAction(
   (input) =>
     applyDiscountCodeToPayState(input).pipe(
       Effect.provide(
-        Layer.mergeAll(
-          CheckoutPricingService.Live,
-          PayableReservationService.Live,
-          ReferralService.Live,
-          CheckoutReferralService.Live
-        ).pipe(Layer.provideMerge(ReferralFeatureFlagRequest))
+        RememberedReferral.Cookies.pipe(
+          Layer.provideMerge(
+            Layer.mergeAll(
+              CheckoutPricingService.Live,
+              PayableReservationService.Live,
+              ReferralService.Live,
+              CheckoutReferralService.Live,
+              CustomerAccountContactService.Live
+            )
+          ),
+          Layer.provideMerge(ReferralFeatureFlagRequest)
+        )
       )
     )
 );
@@ -79,10 +85,6 @@ export async function applyDiscountCodeForm(
     freshPayUrl &&
     (data?.status === "accepted" || data?.status === "already_accepted")
   ) {
-    const acceptedCode = parseSharedReferralCode(
-      Predicate.isString(submittedCode) ? submittedCode : undefined
-    );
-    if (acceptedCode) await rememberReferralCode(acceptedCode);
     redirect(
       addCheckoutReferralAppliedMarker(freshPayUrl, locale) ?? freshPayUrl,
       RedirectType.replace

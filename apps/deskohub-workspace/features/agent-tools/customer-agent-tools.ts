@@ -4,6 +4,7 @@ import { CheckoutPricingService } from "@/features/checkout/backend/checkout/che
 import { CheckoutStatusService } from "@/features/checkout/backend/checkout/checkout-status.service";
 import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
 import { ReferralFeatureFlagRequest } from "@/features/referrals/referral-feature-flag.server";
+import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import { SharedAvailabilityInventoryLive } from "@/features/reservation/backend/availability-inventory-cache.server";
 import { payStatePreparationServices } from "@/features/reservation/backend/pay-state-preparation-services";
 import { SharedReservationRecordsLive } from "@/features/reservation/backend/reservation-records-cache.server";
@@ -16,7 +17,8 @@ import { ReviewSandbox } from "@/features/review-accounts";
  * and office capacity only from the shared advisory snapshots, never from
  * Dotypos directly. Signed-in tools book live and read the customer's own
  * reservations from the shared reservation records, which protects the
- * Dotypos quota bookings share; browser pages read those live.
+ * Dotypos quota bookings share; browser pages read those live. An agent's
+ * tool call has no browser, so it remembers no referral code.
  */
 export const CustomerAgentToolsLive = Layer.mergeAll(
   WorkspaceAvailabilityService.Live,
@@ -26,6 +28,7 @@ export const CustomerAgentToolsLive = Layer.mergeAll(
   ),
   OfficeReservationFeatureFlagService.Live,
   payStatePreparationServices,
+  RememberedReferral.none,
   WorkspaceReservationRepository.Live,
   CheckoutStatusService.withRecords(SharedReservationRecordsLive),
   CustomerReservationHistoryService.withRecords(SharedReservationRecordsLive),

@@ -24,7 +24,6 @@ import {
   CustomerReservationHistoryService,
   type ReservationHistoryAccount,
 } from "@/features/account/backend/customer-reservation-history.service";
-import { isRememberedReferralCodeUsed } from "@/features/account/backend/remembered-referral-code";
 import { recordSignupReferral } from "@/features/account/backend/signup-referral";
 import type {
   AccountDeletion,
@@ -50,7 +49,7 @@ import {
 } from "@/features/referrals/client";
 import type { ReferralAccountOverview } from "@/features/referrals/contracts";
 import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
-import { RememberedReferralCode } from "@/features/referrals/remembered-referral-code.service";
+import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import { ReviewAccounts } from "@/features/review-accounts";
 import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/workspace-url.config";
 import {
@@ -154,6 +153,7 @@ type AccountSectionFailureCode =
   | "account.passkeys.unavailable"
   | "account.referral-code.unavailable"
   | "account.referrals.unavailable"
+  | "account.remembered-referral.unavailable"
   | "account.reservation-history.unavailable"
   | "account.review.unavailable"
   | "account.signup-referral.unavailable";
@@ -318,8 +318,7 @@ const loadCustomerAgentConnections = Effect.flatMap(
 const loadLinkedAccount = Effect.fn(function* (
   user: { readonly email: string },
   account: LinkedCustomerAccount,
-  referralsEnabled: boolean,
-  rememberedReferralCode: ReferralCode | undefined
+  referralsEnabled: boolean
 ) {
   const profile = yield* Effect.flatMap(CustomerProfileService, (service) =>
     service.load(account)
@@ -355,11 +354,17 @@ const loadLinkedAccount = Effect.fn(function* (
     : undefined;
   // Checked after both recording paths, so a code they just used is forgotten
   // on this visit.
-  const rememberedReferralCodeUsed =
-    referralsEnabled &&
-    (yield* isRememberedReferralCodeUsed(rememberedReferralCode, account).pipe(
-      withOperation("account.remembered-referral")
-    ));
+  const rememberedReferralCodeUsed = yield* Effect.flatMap(
+    RememberedReferral,
+    (remembered) =>
+      remembered.isSettled({
+        kind: "account",
+        customerId: account.dotyposCustomerId,
+      })
+  ).pipe(
+    degradable("account.remembered-referral.unavailable", () => false),
+    withOperation("account.remembered-referral")
+  );
 
   const history = yield* loadReservationHistory(account);
 
@@ -505,12 +510,13 @@ const loadSignedInAccount = Effect.fn(function* (
     } satisfies SignedInAccountContent;
   }
   const referralsEnabled = yield* referralsReleased;
-  const rememberedReferralCode = referralsEnabled
-    ? yield* Effect.flatMap(
-        RememberedReferralCode,
-        (remembered) => remembered.current
-      ).pipe(Effect.orElseSucceed(() => undefined))
-    : undefined;
+  const rememberedReferralCode = yield* Effect.flatMap(
+    RememberedReferral,
+    (remembered) => remembered.code
+  ).pipe(
+    degradable("account.remembered-referral.unavailable", () => undefined),
+    withOperation("account.remembered-referral")
+  );
   const resolution = yield* Effect.flatMap(
     CustomerAccountResolver,
     (resolver) => resolver.resolveLink
@@ -546,8 +552,7 @@ const loadSignedInAccount = Effect.fn(function* (
     return yield* loadLinkedAccount(
       user,
       resolution.success.account,
-      referralsEnabled,
-      rememberedReferralCode
+      referralsEnabled
     );
   }
 
