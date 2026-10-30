@@ -1,14 +1,12 @@
 import "server-only";
 
 import { Effect } from "effect";
-import { cacheLife } from "next/cache";
 import { customerAgentCatalog } from "@/features/agent-tools/customer-agent-catalog";
 import type { GlobalRelease } from "@/features/feature-flags/backend/global-release";
-import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
-import { serializeMarkdown } from "@/shared/markdown/markdown";
 import { llmsTxtLocale, llmsTxtMarkdown } from "../llms-txt";
 import {
   type PublicPageMarkdownReleases,
+  readSharedMarkdown,
   renderFromMarkdownSources,
 } from "./public-page-markdown.server";
 
@@ -23,10 +21,9 @@ export async function renderLlmsTxt(
 ): Promise<string> {
   "use cache";
 
-  const { value: blocks, complete } = await renderFromMarkdownSources(
-    llmsTxtLocale,
-    releases,
-    ({ offerings }) =>
+  return await readSharedMarkdown(
+    "llmsTxt.render",
+    renderFromMarkdownSources(llmsTxtLocale, releases, ({ offerings }) =>
       Effect.map(offerings, (loaded) =>
         llmsTxtMarkdown({
           pages: releases.publishedPathnames,
@@ -37,9 +34,6 @@ export async function renderLlmsTxt(
           },
         })
       )
-  ).pipe(runWorkspaceEffect("llmsTxt.render", { boundary: "route" }));
-
-  if (complete) cacheLife("publicContent");
-  else cacheLife({ expire: 0 });
-  return serializeMarkdown(blocks);
+    )
+  );
 }

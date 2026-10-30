@@ -995,6 +995,8 @@
   "emailCampaignsImageAlignCenter": "Zarovnat obrázek na střed",
   "emailCampaignsImageAlignLeft": "Zarovnat obrázek vlevo",
   "emailCampaignsImageAlignRight": "Zarovnat obrázek vpravo",
+  "emailCampaignsImageWidth": "Šířka obrázku (px)",
+  "emailCampaignsImageWidthHint": "Zadejte celé číslo od 1 do {maxWidth}. Na menších obrazovkách se obrázky zmenší.",
   "emailCampaignsImageShrinking": "Zmenšování obrázku…",
   "emailCampaignsImageUploadAnimationTooLarge": "Animovaný obrázek může mít nejvýše {maxMegabytes} MB a {maxMegapixels} megapixelů ve všech snímcích dohromady. Animaci zkraťte nebo zmenšete.",
   "emailCampaignsImageUploadFailed": "Obrázek se nepodařilo nahrát. Zkuste to znovu.",

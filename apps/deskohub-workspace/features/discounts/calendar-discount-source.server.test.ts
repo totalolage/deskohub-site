@@ -9,8 +9,9 @@ import {
 } from "@deskohub/google-calendar";
 import { GoogleCalendarServiceMock } from "@deskohub/google-calendar/backend/service.mock";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Cause, Effect, Exit, Layer, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import * as googleCalendarConfigModule from "@/shared/backend/config/google-calendar.config";
+import { recordNextCache } from "@/shared/testing/next-cache-recorder.test-utils";
 import * as discountDefinitionRepositoryModule from "./discount-definition.repository";
 import { DiscountDefinitionRepositoryMock } from "./discount-definition.repository.mock";
 import { storedDiscountIdSchema } from "./persistence-contracts";
@@ -40,26 +41,9 @@ const loadById = mock<
     products: [{ kind: "cowork" }],
   })
 );
-const cacheLife = mock(
-  (_profile: string | { readonly expire: number }) => undefined
-);
-const cacheTag = mock((_tag: string) => undefined);
+const nextCache = recordNextCache();
 
-mock.module("next/cache", () => ({ cacheLife, cacheTag }));
-// Follows the runner's contract: `orElse` answers any failure once.
-mock.module("@/shared/backend/workspace-effect", () => ({
-  runWorkspaceEffectOrElse:
-    <B>(
-      _operation: string,
-      { orElse }: { readonly orElse: (cause: unknown) => B }
-    ) =>
-    async <A, E>(effect: Effect.Effect<A, E, never>): Promise<A | B> => {
-      const exit = await Effect.runPromiseExit(effect);
-      return Exit.isSuccess(exit)
-        ? exit.value
-        : orElse(Cause.squash(exit.cause));
-    },
-}));
+mock.module("next/cache", () => nextCache.module);
 mock.module("@/shared/backend/config/google-calendar.config", () => ({
   ...googleCalendarConfigModule,
   WorkspaceGoogleCalendarLayer: GoogleCalendarServiceMock({ listEvents }),
@@ -89,9 +73,10 @@ const { calendarDiscountSourceTag, loadCalendarDiscountSource } = await import(
 );
 
 beforeEach(() => {
-  for (const fn of [listEvents, loadById, cacheLife, cacheTag]) {
+  for (const fn of [listEvents, loadById]) {
     fn.mockClear();
   }
+  nextCache.clear();
 });
 
 describe("loadCalendarDiscountSource", () => {
@@ -100,8 +85,10 @@ describe("loadCalendarDiscountSource", () => {
 
     expect(source.complete).toBe(true);
     expect(source.sales).toHaveLength(1);
-    expect(cacheLife.mock.calls).toEqual([["advertisedPricingSources"]]);
-    expect(cacheTag.mock.calls).toEqual([[calendarDiscountSourceTag]]);
+    expect(nextCache.calls).toEqual([
+      { cacheLife: "advertisedPricingSources" },
+      { cacheTag: [calendarDiscountSourceTag] },
+    ]);
   });
 
   test("never shares a source missing a discount definition", async () => {
@@ -118,8 +105,7 @@ describe("loadCalendarDiscountSource", () => {
     const source = await loadCalendarDiscountSource("2026-07-14");
 
     expect(source).toEqual({ sales: [], complete: false });
-    expect(cacheLife.mock.calls).toEqual([[{ expire: 0 }]]);
-    expect(cacheTag).not.toHaveBeenCalled();
+    expect(nextCache.calls).toEqual([{ cacheLife: { expire: 0 } }]);
   });
 
   test("marks a failed Calendar load uncacheable before rejecting", async () => {
@@ -135,7 +121,6 @@ describe("loadCalendarDiscountSource", () => {
     );
 
     await expect(loadCalendarDiscountSource("2026-07-14")).rejects.toThrow();
-    expect(cacheLife.mock.calls).toEqual([[{ expire: 0 }]]);
-    expect(cacheTag).not.toHaveBeenCalled();
+    expect(nextCache.calls).toEqual([{ cacheLife: { expire: 0 } }]);
   });
 });

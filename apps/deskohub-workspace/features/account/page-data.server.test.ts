@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import { AccountFeatureFlagService } from "@/features/account/backend/account-feature-flag.service";
 import { CustomerAgentConnections } from "@/features/account/backend/auth/customer-agent-connections.service";
 import { CustomerPasskeys } from "@/features/account/backend/auth/customer-passkeys.service";
+import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
 import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { CustomerAvatarService } from "@/features/account/backend/customer-avatar.service";
@@ -23,13 +24,12 @@ import type { CustomerAgentConnection } from "@/features/account/customer-agent-
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import {
   getReferralShareUrl,
-  parseReferralCode,
   type ReferralCode,
 } from "@/features/referrals/client";
 import { ReferralError } from "@/features/referrals/contracts";
 import { ReferralServiceMock } from "@/features/referrals/referral.service.mock";
 import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
-import { RememberedReferralCode } from "@/features/referrals/remembered-referral-code.service";
+import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import { ReferralSignupIntentRepository } from "@/features/referrals/signup-intent.repository";
 import { ReviewAccountsMock } from "@/features/review-accounts/backend/review-accounts.repository.mock";
 import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/workspace-url.config";
@@ -172,6 +172,12 @@ let storedSignupIntent: StoredSignupIntent | undefined;
 
 let rememberedReferralCode: string | undefined;
 let rememberedReferralCodeReads = 0;
+const cookieWithCountingGetter = {
+  get value() {
+    rememberedReferralCodeReads += 1;
+    return rememberedReferralCode;
+  },
+};
 
 const avatarsFlag = mock(() => Promise.resolve(true));
 const passkeysFlag = mock(() => Promise.resolve(false));
@@ -306,12 +312,9 @@ const pageLayer = () =>
           return true;
         }),
     }),
-    rememberedReferralCode: Layer.mock(RememberedReferralCode, {
-      current: Effect.sync(() => {
-        rememberedReferralCodeReads += 1;
-        return parseReferralCode(rememberedReferralCode);
-      }),
-    }),
+    rememberedReferral: RememberedReferral.inMemory(
+      cookieWithCountingGetter
+    ).pipe(Layer.provide(Layer.mock(CustomerAccountContactService, {}))),
     referralRelease: Layer.unwrap(
       Effect.promise(() => referralsFlag()).pipe(
         Effect.map(ReferralFeatureFlagService.fromDecision)
@@ -1452,7 +1455,7 @@ describe("loadAccountPageState", () => {
       for (const code of [
         "account.auto-link.referral.unavailable",
         "account.signup-referral.unavailable",
-        "account.remembered-referral.unknown",
+        "referrals.remembered-referral.unavailable",
         "account.referrals.unavailable",
       ]) {
         expect(logged).toContain(code);

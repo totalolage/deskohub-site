@@ -32,7 +32,7 @@ export const faqPageMarkdown = (
     Effect.map((occupancy) => [
       markdownHeading(1, m.faqPageTitle({}, { locale })),
       ...getFaqGroups(locale, {
-        ...occupancy,
+        occupancy,
         officesOffered: isPublished("/reservation/office"),
       }).flatMap((group) => [
         markdownHeading(2, group.title),

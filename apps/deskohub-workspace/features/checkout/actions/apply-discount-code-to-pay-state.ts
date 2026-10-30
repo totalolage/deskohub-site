@@ -15,6 +15,7 @@ import {
   normalizeSubmittedPromotionCode,
 } from "@/features/discounts";
 import { ReferralService } from "@/features/referrals";
+import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { getCalendarActionDeadline } from "@/shared/backend/calendar-action-deadline";
@@ -67,6 +68,7 @@ export const applyDiscountCodeToPayState = Effect.fn(
     const botProtection = yield* BotProtectionService;
     const referrals = yield* ReferralService;
     const checkoutReferrals = yield* CheckoutReferralService;
+    const rememberedReferral = yield* RememberedReferral;
     const pricing = yield* CheckoutPricingService;
     const payableReservations = yield* PayableReservationService;
 
@@ -113,9 +115,22 @@ export const applyDiscountCodeToPayState = Effect.fn(
       });
       if (
         result.status === "accepted" ||
-        result.status === "already_accepted" ||
-        (result.status === "pricing_changed" &&
-          result.freshPayUrl !== undefined)
+        result.status === "already_accepted"
+      ) {
+        // The accepted code replaces any shared-link code, so an order edit
+        // keeps it. The signed pay state already carries the referral.
+        yield* rememberedReferral
+          .remember(submittedCode)
+          .pipe(
+            Effect.catchTag("RememberedReferralError", () =>
+              Effect.logWarning("Accepted referral code was not remembered")
+            )
+          );
+        return result;
+      }
+      if (
+        result.status === "pricing_changed" &&
+        result.freshPayUrl !== undefined
       ) {
         return result;
       }

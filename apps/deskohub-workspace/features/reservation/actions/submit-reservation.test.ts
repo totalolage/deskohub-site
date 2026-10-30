@@ -3,18 +3,13 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
+import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
+import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
 
 mock.module("server-only", () => ({}));
 
-// The referral code this browser remembers from a shared link.
 let rememberedReferralCode: string | undefined;
-mock.module("@/features/referrals/remembered-referral-code.server", () => ({
-  readRememberedReferralCode: Effect.sync(() => rememberedReferralCode),
-  forgetRememberedReferralCode: async () => {
-    rememberedReferralCode = undefined;
-  },
-}));
 
 const input = {
   locale: "en-US" as const,
@@ -45,6 +40,7 @@ const runSubmitReservation = async (options?: {
   );
   const hasSettledReferral =
     options?.hasSettledReferral ?? mock(() => Effect.succeed(false));
+  const cookie = { value: rememberedReferralCode };
 
   const verifyHuman = options?.verifyHuman ?? mock(() => Effect.void);
   const createHostedPaymentCheckout =
@@ -57,6 +53,20 @@ const runSubmitReservation = async (options?: {
       })
     );
 
+  const contacts = Layer.mock(CustomerAccountContactService, {
+    currentAccount: Effect.succeed(
+      options?.bookerCustomerId === undefined
+        ? ({ status: "signed-out" } as const)
+        : ({
+            status: "linked",
+            accountId: "booker-account",
+            dotyposCustomerId: options.bookerCustomerId,
+          } as never)
+    ),
+  });
+  const referrals = ReferralServiceMock({
+    hasSettledReferral: hasSettledReferral as never,
+  });
   const effect = submitWorkspaceReservation({
     ...input,
     locale: options?.locale ?? input.locale,
@@ -67,24 +77,25 @@ const runSubmitReservation = async (options?: {
         Layer.succeed(CheckoutService, {
           createHostedPaymentCheckout,
         }),
-        Layer.mock(CustomerAccountContactService, {
-          currentAccount: Effect.succeed(
-            options?.bookerCustomerId === undefined
-              ? { status: "signed-out" }
-              : ({
-                  status: "linked",
-                  accountId: "booker-account",
-                  dotyposCustomerId: options.bookerCustomerId,
-                } as never)
-          ),
-        }),
-        ReferralServiceMock({ hasSettledReferral: hasSettledReferral as never })
+        contacts,
+        referrals,
+        ReferralFeatureFlagService.fromDecision(true),
+        RememberedReferral.inMemory(cookie).pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              ReferralFeatureFlagService.fromDecision(true),
+              referrals,
+              contacts
+            )
+          )
+        )
       )
     )
   );
 
   return {
     effect,
+    cookie,
     verifyHuman,
     createHostedPaymentCheckout,
   };
@@ -184,7 +195,7 @@ describe("submitWorkspaceReservation", () => {
         redirectUrl,
         paid: true,
       });
-      expect(rememberedReferralCode).toBeUndefined();
+      expect(scenario.cookie.value).toBeUndefined();
     }
   );
 
@@ -213,7 +224,7 @@ describe("submitWorkspaceReservation", () => {
       expect(hasSettledReferral.mock.calls).toEqual([
         [{ dotyposCustomerId: "booker-customer" }],
       ]);
-      expect(rememberedReferralCode).toBe(codeAfter);
+      expect(scenario.cookie.value).toBe(codeAfter);
     }
   );
 
@@ -223,7 +234,7 @@ describe("submitWorkspaceReservation", () => {
 
     await Effect.runPromise(scenario.effect);
 
-    expect(rememberedReferralCode).toBe("RFL12345");
+    expect(scenario.cookie.value).toBe("RFL12345");
   });
 
   test.each(["en-US", "cs-CZ"] as const)(
