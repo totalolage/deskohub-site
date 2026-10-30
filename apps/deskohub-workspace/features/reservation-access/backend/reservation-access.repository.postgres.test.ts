@@ -264,9 +264,7 @@ describe.skipIf(!testDatabase)(
           repository.loadIssuedCode({
             id: grant.id,
             reservationId,
-            scheduledAccessStartsAt: grant.scheduledAccessStartsAt,
-            accessStartsAt: grant.accessStartsAt,
-            accessEndsAt: grant.accessEndsAt,
+            ...moved,
           })
         )
       ).toBe(accessCode);
@@ -364,7 +362,7 @@ describe.skipIf(!testDatabase)(
       }
       expect(
         await run((repository) =>
-          repository.loadIssuedCode({ id: grant.id, reservationId })
+          repository.loadIssuedCode({ id: grant.id, reservationId, ...rescheduled })
         )
       ).toBe(accessCode);
     });

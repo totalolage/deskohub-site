@@ -581,6 +581,7 @@ describe("ReservationAccessService", () => {
               Layer.mock(ReservationAccessRepository, {
                 findByReservationId: mock(() => Effect.succeed(null)),
                 ensure: mock(() => Effect.succeed(exactGrant)),
+                rescheduleIssued: rescheduleIssuedToBounds(),
                 loadIssuedCode,
                 claim,
               }),
@@ -595,13 +596,13 @@ describe("ReservationAccessService", () => {
     expect(issued).toEqual({
       grantId,
       accessCode,
-      accessStartsAt: exactGrant.accessStartsAt,
-      accessEndsAt: exactGrant.accessEndsAt,
+      accessStartsAt: reservation.reservedFrom,
+      accessEndsAt: reservation.reservedUntil,
     });
     expect(formatBounds(loadIssuedCode.mock.calls[0]?.[0])).toEqual({
-      scheduledAccessStartsAt: "2099-07-01T08:45:00Z",
-      accessStartsAt: "2099-07-01T08:45:00Z",
-      accessEndsAt: "2099-07-01T15:30:00Z",
+      scheduledAccessStartsAt: reservation.reservedFrom.toString(),
+      accessStartsAt: reservation.reservedFrom.toString(),
+      accessEndsAt: reservation.reservedUntil.toString(),
     });
     expect(claim).not.toHaveBeenCalled();
     expect(issueHourlyAlgoPin).not.toHaveBeenCalled();

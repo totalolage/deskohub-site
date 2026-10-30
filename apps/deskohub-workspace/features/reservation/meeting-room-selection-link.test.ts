@@ -318,23 +318,23 @@ describe("meetingRoomSelectionLink.write", () => {
     } as const;
     setReservationSelectionSearchParams(
       searchParams,
-      getMeetingRoomReservationSelectionSearchParams({
+      meetingRoomSelectionLink.write({
         ...selection,
         earlySetup: true,
       })
     );
     setReservationSelectionSearchParams(
       searchParams,
-      getMeetingRoomReservationSelectionSearchParams({
+      meetingRoomSelectionLink.write({
         ...selection,
         earlySetup: false,
       })
     );
 
     expect(
-      getMeetingRoomReservationDefaultValuesFromSearchParams(
+      meetingRoomSelectionLink.read(
         searchParams,
-        deterministicNow()
+        { now: deterministicNow() }
       ).earlySetup
     ).toBe(false);
   });
@@ -357,7 +357,7 @@ describe("meetingRoomSelectionLink.write", () => {
     expect(
       getEarliestMeetingRoomStartDateTime(
         { unit: "hour", amount: 4 },
-        { now: ongoingNow }
+        ongoingNow
       )
     ).not.toBe(ongoingSelection.startDateTime);
 
