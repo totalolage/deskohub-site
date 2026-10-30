@@ -42,7 +42,11 @@ import {
   type MeetingRoomReservationDuration,
 } from "@/features/reservation/meeting-room-reservation-duration";
 import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
-import { getMeetingRoomSelectionAvailabilityQuery } from "@/features/reservation/workspace-availability";
+import {
+  getMeetingRoomSelectionAvailabilityQuery,
+  getMeetingRoomStartTimesQuery,
+  workspaceAvailabilityKeys,
+} from "@/features/reservation/workspace-availability";
 import {
   workspaceUseAction,
   workspaceUseSearchParams,
@@ -1035,6 +1039,51 @@ describe("MeetingRoomReservationForm", () => {
       fireEvent.click(checkbox);
       await waitFor(() => expect(isChecked(checkbox)).toBe(false));
       expect(isDisabled(checkbox)).toBe(true);
+    });
+
+    test("keeps setup selected while stale unavailable starts are rechecked and become eligible", async () => {
+      const queryClient = new QueryClient();
+      const queryKey = [
+        ...workspaceAvailabilityKeys.meetingRoomStartTimes(
+          getMeetingRoomStartTimesQuery({
+            duration: "hour:1",
+            startDateTime: "2099-07-30T10:00",
+          })
+        ),
+        null,
+      ];
+      queryClient.setQueryData(
+        queryKey,
+        {
+          ...startTimesResponse,
+          startTimes: startTimesResponse.startTimes.map((start) => ({
+            ...start,
+            earlySetupAvailable: false,
+          })),
+        },
+        { updatedAt: 0 }
+      );
+      const recheck = Promise.withResolvers<Response>();
+      globalThis.fetch = mock((request: RequestInfo | URL) =>
+        isStartTimesRequest(request)
+          ? recheck.promise
+          : Promise.resolve(jsonResponse(availabilityResponse))
+      ) as typeof fetch;
+
+      const view = renderForm(
+        { initialReservation: { ...initialReservation, earlySetup: true } },
+        queryClient
+      );
+      const checkbox = getEarlySetupCheckbox(view);
+      await waitFor(() => expect(queryClient.isFetching({ queryKey })).toBe(1));
+      expect(isChecked(checkbox)).toBe(true);
+      expect(getReason(checkbox)).toBeFalsy();
+
+      recheck.resolve(jsonResponse(startTimesResponse));
+      await waitFor(() => expect(queryClient.isFetching({ queryKey })).toBe(0));
+      expect(isDisabled(checkbox)).toBe(false);
+      expect(isChecked(checkbox)).toBe(true);
+      expect(getReason(checkbox)).toBeFalsy();
     });
 
     test("explains a whole day's setup time it couldn't check", async () => {
