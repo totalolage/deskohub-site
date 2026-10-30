@@ -1,33 +1,28 @@
 import "@/shared/testing/workspace-test-env";
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
-import type { MarketingManagementCookieStore } from "@/features/legal/backend/marketing-management-cookies.server";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { Effect } from "effect";
+import { MarketingManagementCookies } from "@/features/legal/backend/marketing-management-cookies.service";
+import { makeMemoryMarketingCookies } from "@/features/legal/backend/marketing-management-cookies.service.mock";
 
-const setPendingMarketingManagementCookie = mock(
-  async (_rawToken: string) => undefined
-);
-const cookieStore = {};
-const cookies = mock(async () => cookieStore);
-
-mock.module(
-  "@/features/legal/backend/marketing-management-cookies.server",
-  () => ({
-    createMarketingManagementCookies: (
-      _store: MarketingManagementCookieStore
-    ) => ({
-      setPendingMarketingManagementCookie,
-    }),
-  })
-);
-mock.module("next/headers", () => ({ cookies }));
+const memory = makeMemoryMarketingCookies();
+const originalDefault = MarketingManagementCookies.Default;
+MarketingManagementCookies.Default = memory.layer;
+afterAll(() => {
+  MarketingManagementCookies.Default = originalDefault;
+});
+mock.module("@/shared/backend/workspace-effect", () => ({
+  runWorkspaceEffect: () => (effect: Effect.Effect<unknown>) =>
+    Effect.runPromise(effect),
+}));
 
 const { GET, HEAD } = await import("./route");
 
 const validToken = Buffer.alloc(32, 17).toString("base64url");
 
 beforeEach(() => {
-  cookies.mockClear();
-  setPendingMarketingManagementCookie.mockClear();
+  memory.state.pending = undefined;
+  memory.state.session = undefined;
 });
 
 const invoke = (method: "GET" | "HEAD", path: string, locale = "en-US") =>
@@ -49,10 +44,7 @@ describe("marketing preferences access route", () => {
     );
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(response.headers.get("referrer-policy")).toBe("no-referrer");
-    expect(setPendingMarketingManagementCookie).toHaveBeenCalledWith(
-      validToken
-    );
-    expect(cookies).toHaveBeenCalledTimes(1);
+    expect(memory.state.pending).toBe(validToken);
   });
 
   test.each([
@@ -61,9 +53,7 @@ describe("marketing preferences access route", () => {
     `${"A".repeat(42)}=`,
     `${"A".repeat(42)}!`,
     `${"A".repeat(43)}&token=${validToken}`,
-  ])("stores the invalid sentinel for malformed token %j", async (token) => {
-    setPendingMarketingManagementCookie.mockClear();
-
+  ])("stores the invalid sentinel for malformed token", async (token) => {
     const response = await invoke(
       "GET",
       `/cs-CZ/marketing-preferences/access${token.includes("&") ? `?token=${token}` : `?token=${encodeURIComponent(token)}`}`,
@@ -74,12 +64,10 @@ describe("marketing preferences access route", () => {
     expect(response.headers.get("location")).toBe(
       "https://workspace.test/cs-CZ/account/legal"
     );
-    expect(setPendingMarketingManagementCookie).toHaveBeenCalledWith("invalid");
-    expect(cookies).toHaveBeenCalledTimes(1);
+    expect(memory.state.pending).toBe("invalid");
   });
 
   test("rejects a non-canonical 32-byte encoding", async () => {
-    setPendingMarketingManagementCookie.mockClear();
     const nonCanonicalToken = `${validToken.slice(0, -1)}B`;
 
     const response = await invoke(
@@ -88,12 +76,10 @@ describe("marketing preferences access route", () => {
     );
 
     expect(response.status).toBe(303);
-    expect(setPendingMarketingManagementCookie).toHaveBeenCalledWith("invalid");
+    expect(memory.state.pending).toBe("invalid");
   });
 
   test("validates the locale before writing state", async () => {
-    setPendingMarketingManagementCookie.mockClear();
-
     const response = await invoke(
       "GET",
       `/sk-SK/marketing-preferences/access?token=${validToken}`,
@@ -101,13 +87,11 @@ describe("marketing preferences access route", () => {
     );
 
     expect(response.status).toBe(404);
-    expect(setPendingMarketingManagementCookie).not.toHaveBeenCalled();
-    expect(cookies).not.toHaveBeenCalled();
+    expect(memory.state.pending).toBeUndefined();
+    expect(memory.state.session).toBeUndefined();
   });
 
   test("does not consume or set state for HEAD", async () => {
-    setPendingMarketingManagementCookie.mockClear();
-
     const response = await invoke(
       "HEAD",
       `/en-US/marketing-preferences/access?token=${validToken}`
@@ -119,7 +103,7 @@ describe("marketing preferences access route", () => {
     );
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(response.headers.get("referrer-policy")).toBe("no-referrer");
-    expect(setPendingMarketingManagementCookie).not.toHaveBeenCalled();
-    expect(cookies).not.toHaveBeenCalled();
+    expect(memory.state.pending).toBeUndefined();
+    expect(memory.state.session).toBeUndefined();
   });
 });
