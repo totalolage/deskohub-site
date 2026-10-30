@@ -42,6 +42,7 @@ export const getMeetingRoomEarlySetupAvailability = ({
   /** The selected booking's start, when the selection books an interval. */
   readonly startsAt: Temporal.Instant | undefined;
 }): MeetingRoomEarlySetupAvailability => {
+  if (startTimes.isFetching) return "loading";
   if (startTimes.isError) return "failed";
   if (!(startTimes.isSuccess && startsAt)) return "loading";
 
