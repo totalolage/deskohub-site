@@ -20,7 +20,6 @@ export {
   type EmailSendError,
   EmailServiceError,
   EmailServiceTag,
-  EmailTemplateServiceTag,
 } from "./backend/service";
 export { isTestEmailRecipient } from "./backend/test-recipients";
 export type {
@@ -31,8 +30,5 @@ export type {
   EmailProviderConfig,
   EmailRecipient,
   EmailSendResult,
-  EmailTemplateData,
-  EmailTemplateType,
-  ReservationConfirmationData,
 } from "./types/email.types";
 export { EmailDeliveryIdSchema } from "./types/email.types";

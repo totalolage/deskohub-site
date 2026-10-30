@@ -2,7 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { resendSimulatorAddress } from "@deskohub/test-email";
-import { Effect, Layer } from "effect";
+import { ConfigProvider, Effect, Layer } from "effect";
 import type { Locale } from "@/features/i18n";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 
@@ -48,14 +48,16 @@ mock.module("@/instrumentation", () => ({
 
 // The test environment has no Resend key, so routing would log every send to
 // Console; a synthetic key routes these sends to the mocked Resend client.
-const { EmailConfigTag } = await import("@deskohub/email/backend/service");
 const emailConfig = await import("@/shared/backend/config/email.config");
 mock.module("@/shared/backend/config/email.config", () => ({
   ...emailConfig,
-  EmailConfigLayer: Layer.succeed(EmailConfigTag, {
-    defaultFrom: { email: emailConfig.workspaceDefaultFromAddress },
-    apiKey: "re_test",
-  }),
+  WorkspaceEmailLayer: emailConfig.WorkspaceEmailLayer.pipe(
+    Layer.provide(
+      ConfigProvider.layer(
+        ConfigProvider.fromUnknown({ EMAIL_API_KEY: "re_test" })
+      )
+    )
+  ),
 }));
 
 const { workspaceSendMagicLink } = await import("./auth-server");

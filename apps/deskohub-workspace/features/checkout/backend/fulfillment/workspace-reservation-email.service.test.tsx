@@ -162,8 +162,7 @@ const sendPaidReservationEmail = async (
       sentMessages.push(message);
       return Effect.succeed(sentResult(`email-${sentMessages.length}`));
     }),
-    sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
-    verify: Effect.succeed(true),
+    sendBatch: () => Effect.die("Reservation email tests do not send batches."),
   };
   const emailConfig: EmailProviderConfig = {
     provider: "console",
@@ -542,8 +541,8 @@ describe("workspace reservation email details", () => {
         sentMessages.push(message);
         return Effect.succeed(sentResult(`email-${sentMessages.length}`));
       }),
-      sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
-      verify: Effect.succeed(true),
+      sendBatch: () =>
+        Effect.die("Reservation email tests do not send batches."),
     };
     const emailConfig: EmailProviderConfig = {
       provider: "console",
@@ -681,8 +680,8 @@ describe("sendPaidReservationEmails internal notification failure", () => {
     });
     const emailService: EmailService = {
       send,
-      sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
-      verify: Effect.succeed(true),
+      sendBatch: () =>
+        Effect.die("Reservation email tests do not send batches."),
     };
     const emailConfig: EmailProviderConfig = {
       provider: "console",
@@ -925,8 +924,8 @@ describe("sendPaidReservationEmails author confirmation", () => {
           ? Effect.fail(new EmailServiceError("Author send failed."))
           : Effect.succeed(sentResult(`email-${sentMessages.length}`));
       }),
-      sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
-      verify: Effect.succeed(true),
+      sendBatch: () =>
+        Effect.die("Reservation email tests do not send batches."),
     };
     const emailConfig: EmailProviderConfig = {
       provider: "console",
@@ -1165,8 +1164,8 @@ describe("sendPaidReservationEmails idempotency", () => {
         sentMessages.push(message);
         return Effect.succeed(sentResult(`email-${sentMessages.length}`));
       }),
-      sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
-      verify: Effect.succeed(true),
+      sendBatch: () =>
+        Effect.die("Reservation email tests do not send batches."),
     };
     const emailConfig: EmailProviderConfig = {
       provider: "console",
@@ -1252,8 +1251,8 @@ describe("sendPaidReservationEmails idempotent retry stability", () => {
         sentMessages.push(message);
         return Effect.succeed(sentResult(`email-${sentMessages.length}`));
       }),
-      sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
-      verify: Effect.succeed(true),
+      sendBatch: () =>
+        Effect.die("Reservation email tests do not send batches."),
     };
     const emailConfig: EmailProviderConfig = {
       provider: "console",
@@ -1367,8 +1366,8 @@ describe("sendPaidReservationEmails reservation access capability", () => {
         sentMessages.push(message);
         return Effect.succeed(sentResult("preference-email-1"));
       }),
-      sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
-      verify: Effect.succeed(true),
+      sendBatch: () =>
+        Effect.die("Reservation email tests do not send batches."),
     };
     const emailConfig: EmailProviderConfig = {
       provider: "console",
@@ -1491,8 +1490,8 @@ describe("sendPaidReservationEmails reservation access capability", () => {
           sentResult(`captured-email-${sentMessages.length}`)
         );
       }),
-      sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
-      verify: Effect.succeed(true),
+      sendBatch: () =>
+        Effect.die("Reservation email tests do not send batches."),
     };
     const emailConfig: EmailProviderConfig = {
       provider: "console",
@@ -1685,8 +1684,8 @@ describe("reservation customer email language", () => {
         sentMessages.push(message);
         return Effect.succeed(sentResult(`email-${sentMessages.length}`));
       }),
-      sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
-      verify: Effect.succeed(true),
+      sendBatch: () =>
+        Effect.die("Reservation email tests do not send batches."),
     };
     const emailConfig: EmailProviderConfig = {
       provider: "console",

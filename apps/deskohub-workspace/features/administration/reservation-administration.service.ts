@@ -1,5 +1,4 @@
 import { DotyposService } from "@deskohub/dotypos";
-import { EmailServiceTag } from "@deskohub/email/backend/service";
 import { Context, Data, Effect, Layer, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { CustomerEmailLocaleService } from "@/features/account";
@@ -14,7 +13,7 @@ import { WorkspaceReservationRepository } from "@/features/reservation/backend/w
 import { WorkspaceReservationService } from "@/features/reservation/backend/workspace-reservation.service";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
-import { EmailConfigLayer } from "@/shared/backend/config/email.config";
+import { WorkspaceEmailLayer } from "@/shared/backend/config/email.config";
 import {
   ADMINISTRATION_CANCELLATION_RETRY_AFTER_MS,
   canCancelReservation,
@@ -298,10 +297,7 @@ export class ReservationAdministrationService extends Context.Service<
         WorkspaceReservationEmailService.Default,
         Layer.provideMerge(
           Layer.provideMerge(
-            Layer.provideMerge(
-              EmailServiceTag.RecipientRouted,
-              EmailConfigLayer
-            ),
+            WorkspaceEmailLayer,
             WorkspaceCheckoutNetworkDetailsService.Default
           ),
           CustomerEmailLocaleService.Live

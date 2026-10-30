@@ -12,15 +12,8 @@ import {
   seededCustomerReads,
   seededReservationReads,
 } from "@deskohub/dotypos/backend/service.mock";
-import {
-  EmailDeliveryIdSchema,
-  type EmailMessage,
-  NetworkError as EmailNetworkError,
-  type EmailSendError,
-  type EmailSendResult,
-  EmailServiceError,
-  EmailServiceTag,
-} from "@deskohub/email";
+import { EmailConfigTag, EmailServiceTag } from "@deskohub/email";
+import { makeEmailProviderFake } from "@deskohub/email/testing";
 import { testEmailAddress } from "@deskohub/test-email";
 import { emailAutomationTickMinutes } from "@deskohub/workspace-admin-api";
 import { Effect, Fiber, Layer, Result } from "effect";
@@ -50,7 +43,6 @@ import { CampaignDeliveryService } from "../../backend/campaign-delivery.service
 import { CampaignEmailConfig } from "../../backend/campaign-email.config";
 import { CampaignRecipientService } from "../../backend/campaign-recipient.service";
 import { CampaignUnsubscribeService } from "../../backend/campaign-unsubscribe.service";
-import { campaignDeliveryPayloadHash } from "../../campaign-delivery-batches";
 import type { CampaignId } from "../../campaign-identifiers";
 import type { AutomationWorkUnitId } from "../automation-identifiers";
 import {
@@ -292,124 +284,21 @@ export const engineProfile = (
 // ---------------------------------------------------------------------------
 // Resend
 
-/** How the Resend stand-in answers one batch request. */
-export type ResendFakeResponse =
-  /** Mails the batch and answers with its ids. */
-  | "accept"
-  /** Mails the batch but the answer never arrives (a lost response). */
-  | "accept-lost"
-  /** Refuses the batch and mails nothing. */
-  | "refuse"
-  /** Mails the batch, then never answers, as when the consumer is cut off. */
-  | "accept-hang"
-  /** Never answers and mails nothing. */
-  | "hang";
-
-/**
- * Resend's batch API with its idempotency contract: a key replayed with the
- * identical payload answers the accepted batch without mailing it again,
- * and one reused with a different payload is refused as 409 (an unknown
- * outcome). `respond` decides how each fresh request is answered.
- */
+/** The shared provider exercised through the same delivery service as production. */
 export const makeResendFake = () => {
-  const accepted = new Map<
-    string,
-    { readonly payloadHash: string; readonly ids: readonly string[] }
-  >();
-  const requests: { readonly key: string; readonly to: string[] }[] = [];
-  const mailed: string[] = [];
-  const subjects: { readonly to: string; readonly subject: string }[] = [];
-  let respond: (key: string) => ResendFakeResponse = () => "accept";
-  let reached: () => void = () => {};
-  let beforeRequest: () => Promise<void> = () => Promise.resolve();
-  // Provider message ids are unique across sends.
-  const fakeId = crypto.randomUUID();
-  let nextId = 0;
-
-  const recipientsOf = (messages: readonly EmailMessage[]) =>
-    messages.flatMap((message) => [message.to].flat().map((to) => to.email));
-
-  const accept = (key: string, messages: readonly EmailMessage[]) => {
-    const payloadHash = campaignDeliveryPayloadHash(messages);
-    const earlier = accepted.get(key);
-    if (earlier !== undefined) {
-      return earlier.payloadHash === payloadHash ? earlier.ids : undefined;
-    }
-    const ids = messages.map(() => `resend-fake-${fakeId}-${++nextId}`);
-    accepted.set(key, { payloadHash, ids });
-    mailed.push(...recipientsOf(messages));
-    for (const message of messages) {
-      for (const to of [message.to].flat()) {
-        subjects.push({ to: to.email, subject: message.subject });
-      }
-    }
-    return ids;
-  };
-
-  const layer = Layer.mock(EmailServiceTag, {
-    sendBatch: (messages, { idempotencyKey: key }) =>
-      Effect.promise(() => beforeRequest()).pipe(
-        Effect.andThen(
-          Effect.suspend(
-            (): Effect.Effect<readonly EmailSendResult[], EmailSendError> => {
-              requests.push({ key, to: recipientsOf(messages) });
-              reached();
-              const response = accepted.has(key) ? "accept" : respond(key);
-              if (response === "refuse") {
-                return Effect.fail(new EmailServiceError("Invalid batch"));
-              }
-              if (response === "hang") return Effect.never;
-              const ids = accept(key, messages);
-              if (ids === undefined) {
-                return Effect.fail(
-                  new EmailNetworkError({
-                    message: "invalid_idempotent_request",
-                  })
-                );
-              }
-              if (response === "accept-hang") return Effect.never;
-              if (response === "accept-lost") {
-                return Effect.fail(
-                  new EmailNetworkError({ message: "response lost" })
-                );
-              }
-              return Effect.succeed(
-                ids.map((id) => ({
-                  id: EmailDeliveryIdSchema.make(id),
-                  status: "sent" as const,
-                  provider: "resend",
-                  timestamp: new Date(),
-                }))
-              );
-            }
-          )
-        )
-      ),
-  });
-
+  const fake = makeEmailProviderFake();
   return {
-    layer,
-    /** Every request, replays included, in order. */
-    requests: () => [...requests],
-    /** Every address really mailed. */
-    mailed: () => [...mailed],
-    /** The subject of every message really mailed, with its address. */
-    subjects: () => [...subjects],
-    respondWith: (next: (key: string) => ResendFakeResponse) => {
-      respond = next;
-    },
-    /** Runs `check` as each request reaches the provider. */
-    beforeEachRequest: (check: () => Promise<void>) => {
-      beforeRequest = check;
-    },
-    /** Resolves when the next request reaches the provider. */
-    nextRequest: () =>
-      new Promise<void>((resolve) => {
-        reached = () => {
-          reached = () => {};
-          resolve();
-        };
-      }),
+    ...fake,
+    layer: EmailServiceTag.Default.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          fake.layer,
+          Layer.succeed(EmailConfigTag, {
+            defaultFrom: { email: testEmailAddress("automation-sender") },
+          })
+        )
+      )
+    ),
   };
 };
 export type ResendFake = ReturnType<typeof makeResendFake>;

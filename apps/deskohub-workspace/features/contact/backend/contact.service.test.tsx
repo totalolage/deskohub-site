@@ -35,8 +35,7 @@ describe("ContactService", () => {
     });
     const emailService: EmailService = {
       send,
-      sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
-      verify: Effect.succeed(true),
+      sendBatch: () => Effect.die("Contact tests do not send batches."),
     };
     const emailConfig: EmailConfig = {
       defaultFrom: {
