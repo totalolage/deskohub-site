@@ -7,11 +7,12 @@ import {
   IgloohomeService,
 } from "@deskohub/igloohome";
 import { NodeCrypto } from "@effect/platform-node";
-import { Deferred, Effect, Fiber, Layer, Result } from "effect";
+import { Deferred, Effect, Fiber, Layer, Option, Result } from "effect";
 import { TestClock } from "effect/testing";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { getIgloohomeAccessWindow } from "./igloohome-access-window";
 import { ReservationAccessRepository } from "./reservation-access.repository";
 import { ReservationAccessService } from "./reservation-access.service";
 
@@ -63,7 +64,7 @@ describe.skipIf(!testDatabase)(
       { first: beforeHour, second: afterHour },
       { first: afterHour, second: beforeHour },
     ])(
-      "programs the lock with the stored start when requests at $first and $second straddle an hour",
+      "keeps exact bounds and one issuance when requests at $first and $second straddle an hour",
       async ({ first, second }) => {
         const reservationId = await insertReservation();
         const requestedHours: { startsAt: string; endsAt: string }[] = [];
@@ -148,13 +149,25 @@ describe.skipIf(!testDatabase)(
           const [requested] = requestedHours;
           if (!requested) return;
           expect(
-            Temporal.Instant.from(requested.startsAt).equals(
-              grant.accessStartsAt
+            grant.scheduledAccessStartsAt.equals(reservation.reservedFrom)
+          ).toBe(true);
+          expect(grant.accessStartsAt.equals(reservation.reservedFrom)).toBe(
+            true
+          );
+          expect(grant.accessEndsAt.equals(reservation.reservedUntil)).toBe(
+            true
+          );
+          // The first claimant owns issuance; provider hours are adapter data,
+          // independent of the exact reservation bounds both requests share.
+          expect(requested).toEqual(
+            Option.getOrNull(
+              getIgloohomeAccessWindow({
+                startsAt: reservation.reservedFrom,
+                endsAt: reservation.reservedUntil,
+                now: first,
+              })
             )
-          ).toBe(true);
-          expect(
-            Temporal.Instant.from(requested.endsAt).equals(grant.accessEndsAt)
-          ).toBe(true);
+          );
 
           const results = [firstResult, secondResult];
           const issued = results.filter(Result.isSuccess);
@@ -165,7 +178,7 @@ describe.skipIf(!testDatabase)(
           const [lost] = results.filter(Result.isFailure);
           expect(lost?.failure.outcome).toBe("uncertain");
 
-          // The losing request's retry discloses the stored hours and PIN
+          // The losing request's retry discloses the exact stored bounds and PIN
           // without programming the lock again.
           const retried = yield* issueAt(afterHour.add({ seconds: 5 }));
           expect(Result.isSuccess(retried)).toBe(true);

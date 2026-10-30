@@ -3,12 +3,11 @@ import {
   type IgloohomeRequestError,
   IgloohomeService,
 } from "@deskohub/igloohome";
-import { Context, Data, Effect, Layer, Match, Schema } from "effect";
+import { Context, Data, Effect, Layer, Match, Option, Schema } from "effect";
 import { env } from "@/env";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { WorkspaceIgloohomeLayer } from "@/shared/backend/config/igloohome.config";
-import { workspaceSiteConstants } from "@/shared/utils";
-import { currentInstant, floorToWholeHour } from "@/shared/utils/temporal";
+import { currentInstant } from "@/shared/utils/temporal";
 import type {
   IssuedReservationAccess,
   ReservationAccessGrant,
@@ -17,13 +16,14 @@ import {
   makeReservationAccessName,
   reservationAccessProvisioningStaleAfterMilliseconds,
 } from "../reservation-access";
-import { getReservationAccessSchedule } from "./igloohome-access-window";
+import {
+  getIgloohomeAccessWindow,
+  isSameIgloohomeAccessWindow,
+} from "./igloohome-access-window";
 import {
   ReservationAccessRepository,
   type ReservationAccessStorageError,
 } from "./reservation-access.repository";
-
-const maximumHourlyAlgoPinDurationHours = 672;
 
 export type ReservationAccessIssuanceOutcome = "rejected" | "uncertain";
 
@@ -36,6 +36,11 @@ export class ReservationAccessIssuanceError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
+/**
+ * The access a reservation's door code grants. Workspace records the exact
+ * span the reservation holds; the Igloohome window is the whole-hour span the
+ * lock is programmed with, which only the provider request uses.
+ */
 export interface ReservationAccessInterval {
   readonly scheduledStartsAt: Temporal.Instant;
   readonly startsAt: Temporal.Instant;
@@ -52,7 +57,6 @@ export const getReservationAccessInterval = (input: {
 }): Effect.Effect<ReservationAccessInterval, ReservationAccessIssuanceError> =>
   Effect.gen(function* () {
     const now = input.now ?? (yield* currentInstant);
-    const schedule = getReservationAccessSchedule(input);
 
     if (Temporal.Instant.compare(now, input.reservedUntil) >= 0) {
       return yield* new ReservationAccessIssuanceError({
@@ -62,24 +66,12 @@ export const getReservationAccessInterval = (input: {
       });
     }
 
-    const currentHour = floorToWholeHour(
-      now.toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
-    );
-    const accessStart =
-      Temporal.ZonedDateTime.compare(schedule.startsAt, currentHour) >= 0
-        ? schedule.startsAt
-        : currentHour;
-    const accessStartsAt = accessStart.toInstant();
-    const accessEndsAt = schedule.endsAt.toInstant();
-    const durationHours =
-      (accessEndsAt.epochMilliseconds - accessStartsAt.epochMilliseconds) /
-      3_600_000;
-
-    if (
-      !Number.isInteger(durationHours) ||
-      durationHours < 1 ||
-      durationHours > maximumHourlyAlgoPinDurationHours
-    ) {
+    const window = getIgloohomeAccessWindow({
+      startsAt: input.reservedFrom,
+      endsAt: input.reservedUntil,
+      now,
+    });
+    if (Option.isNone(window)) {
       return yield* new ReservationAccessIssuanceError({
         reservationId: input.reservationId,
         outcome: "rejected",
@@ -88,19 +80,41 @@ export const getReservationAccessInterval = (input: {
     }
 
     return {
-      scheduledStartsAt: schedule.startsAt.toInstant(),
-      startsAt: accessStartsAt,
-      endsAt: accessEndsAt,
-      providerStartsAt: accessStart.toString({
-        smallestUnit: "second",
-        timeZoneName: "never",
-      }),
-      providerEndsAt: schedule.endsAt.toString({
-        smallestUnit: "second",
-        timeZoneName: "never",
-      }),
+      scheduledStartsAt: input.reservedFrom,
+      startsAt: input.reservedFrom,
+      endsAt: input.reservedUntil,
+      providerStartsAt: window.value.startsAt,
+      providerEndsAt: window.value.endsAt,
     };
   });
+
+const hasReservationAccessBounds = (
+  grant: ReservationAccessGrant,
+  bounds: Pick<
+    ReservationAccessGrant,
+    "scheduledAccessStartsAt" | "accessStartsAt" | "accessEndsAt"
+  >
+) =>
+  grant.scheduledAccessStartsAt.equals(bounds.scheduledAccessStartsAt) &&
+  grant.accessStartsAt.equals(bounds.accessStartsAt) &&
+  grant.accessEndsAt.equals(bounds.accessEndsAt);
+
+/** The reservation span a door code is requested for. */
+interface ReservationAccessRequest {
+  readonly reservationId: WorkspaceReservationId;
+  readonly reservedFrom: Temporal.Instant;
+  readonly reservedUntil: Temporal.Instant;
+}
+
+/** Whether an issued grant's credential covers a reservation span. */
+const isProgrammedFor = (
+  grant: ReservationAccessGrant,
+  reservation: ReservationAccessRequest
+) =>
+  isSameIgloohomeAccessWindow(
+    { startsAt: grant.scheduledAccessStartsAt, endsAt: grant.accessEndsAt },
+    { startsAt: reservation.reservedFrom, endsAt: reservation.reservedUntil }
+  );
 
 export interface IReservationAccessService {
   readonly loadGrant: (
@@ -112,11 +126,9 @@ export interface IReservationAccessService {
   readonly confirmProviderCredentialRemoved: (
     reservationId: WorkspaceReservationId
   ) => Effect.Effect<ReservationAccessGrant, ReservationAccessIssuanceError>;
-  readonly issueForReservation: (input: {
-    readonly reservationId: WorkspaceReservationId;
-    readonly reservedFrom: Temporal.Instant;
-    readonly reservedUntil: Temporal.Instant;
-  }) => Effect.Effect<IssuedReservationAccess, ReservationAccessIssuanceError>;
+  readonly issueForReservation: (
+    input: ReservationAccessRequest
+  ) => Effect.Effect<IssuedReservationAccess, ReservationAccessIssuanceError>;
 }
 
 export class ReservationAccessService extends Context.Service<
@@ -130,6 +142,83 @@ export class ReservationAccessService extends Context.Service<
       const igloohome = yield* IgloohomeService;
       const deviceId = Schema.decodeUnknownSync(IgloohomeDeviceIdSchema)(
         env.IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID
+      );
+
+      /**
+       * Presents the PIN of an issued grant programmed for the reservation's
+       * hours, first recording the span the reservation now holds.
+       */
+      const reuseIssued = Effect.fn("ReservationAccessService.reuseIssued")(
+        function* (
+          issued: ReservationAccessGrant,
+          input: ReservationAccessRequest
+        ) {
+          // A Dotypos timing change within the same hours keeps the PIN,
+          // and the grant records the span the reservation now holds.
+          const bounds = {
+            scheduledAccessStartsAt: input.reservedFrom,
+            accessStartsAt: input.reservedFrom,
+            accessEndsAt: input.reservedUntil,
+          };
+          const grant = hasReservationAccessBounds(issued, bounds)
+            ? issued
+            : yield* repository
+                .rescheduleIssued({
+                  id: issued.id,
+                  reservationId: input.reservationId,
+                  from: issued,
+                  to: bounds,
+                  rescheduledAt: Temporal.Now.instant(),
+                })
+                .pipe(
+                  Effect.mapError(
+                    () =>
+                      new ReservationAccessIssuanceError({
+                        reservationId: input.reservationId,
+                        outcome: "rejected",
+                        message:
+                          "Rescheduled reservation access could not be recorded.",
+                      })
+                  ),
+                  Effect.flatMap((rescheduled) =>
+                    rescheduled
+                      ? Effect.succeed(rescheduled)
+                      : Effect.fail(
+                          new ReservationAccessIssuanceError({
+                            reservationId: input.reservationId,
+                            outcome: "rejected",
+                            message:
+                              "Reservation access grant changed concurrently.",
+                          })
+                        )
+                  )
+                );
+          const accessCode = yield* repository
+            .loadIssuedCode({
+              id: grant.id,
+              reservationId: input.reservationId,
+              scheduledAccessStartsAt: grant.scheduledAccessStartsAt,
+              accessStartsAt: grant.accessStartsAt,
+              accessEndsAt: grant.accessEndsAt,
+            })
+            .pipe(
+              Effect.mapError(
+                () =>
+                  new ReservationAccessIssuanceError({
+                    reservationId: input.reservationId,
+                    outcome: "rejected",
+                    message:
+                      "Issued reservation access could not be recovered.",
+                  })
+              )
+            );
+          return {
+            grantId: grant.id,
+            accessCode,
+            accessStartsAt: grant.accessStartsAt,
+            accessEndsAt: grant.accessEndsAt,
+          };
+        }
       );
 
       return ReservationAccessService.of({
@@ -172,50 +261,6 @@ export class ReservationAccessService extends Context.Service<
         issueForReservation: Effect.fn(
           "ReservationAccessService.issueForReservation"
         )(function* (input) {
-          const schedule = getReservationAccessSchedule(input);
-          // Later releases record the grant's exact span rather than the
-          // whole hours the lock is programmed with; both compare the same.
-          const isProgrammedForRequestedHours = (
-            grant: ReservationAccessGrant
-          ) => {
-            const grantSchedule = getReservationAccessSchedule({
-              reservedFrom: grant.scheduledAccessStartsAt,
-              reservedUntil: grant.accessEndsAt,
-            });
-            return (
-              grantSchedule.startsAt.equals(schedule.startsAt) &&
-              grantSchedule.endsAt.equals(schedule.endsAt)
-            );
-          };
-          // Loads the PIN only for the bounds this request read and shows.
-          const recoverIssued = (grant: ReservationAccessGrant) =>
-            repository
-              .loadIssuedCode({
-                id: grant.id,
-                reservationId: input.reservationId,
-                scheduledAccessStartsAt: grant.scheduledAccessStartsAt,
-                accessStartsAt: grant.accessStartsAt,
-                accessEndsAt: grant.accessEndsAt,
-              })
-              .pipe(
-                Effect.mapError(
-                  () =>
-                    new ReservationAccessIssuanceError({
-                      reservationId: input.reservationId,
-                      outcome: "rejected",
-                      message:
-                        "Issued reservation access could not be recovered.",
-                    })
-                ),
-                Effect.map(
-                  (accessCode): IssuedReservationAccess => ({
-                    grantId: grant.id,
-                    accessCode,
-                    accessStartsAt: grant.accessStartsAt,
-                    accessEndsAt: grant.accessEndsAt,
-                  })
-                )
-              );
           const existingGrant = yield* repository
             .findByReservationId(input.reservationId)
             .pipe(
@@ -254,8 +299,11 @@ export class ReservationAccessService extends Context.Service<
                 message: "Reservation access device changed after issuance.",
               });
             }
-            if (isProgrammedForRequestedHours(existingGrant)) {
-              return yield* recoverIssued(existingGrant);
+            // Releases that record the whole hours a lock is programmed with,
+            // rather than the exact span, issue grants that compare the same
+            // and take the exact span when reused.
+            if (isProgrammedFor(existingGrant, input)) {
+              return yield* reuseIssued(existingGrant, input);
             }
           }
 
@@ -267,6 +315,9 @@ export class ReservationAccessService extends Context.Service<
               scheduledAccessStartsAt: interval.scheduledStartsAt,
               accessStartsAt: interval.startsAt,
               accessEndsAt: interval.endsAt,
+              // Only an issued grant moved to other hours reaches here.
+              replacingIssued:
+                existingGrant?.state === "issued" ? existingGrant : null,
             })
             .pipe(
               Effect.mapError(
@@ -280,16 +331,16 @@ export class ReservationAccessService extends Context.Service<
             );
 
           if (grant.state === "issued") {
-            // A concurrent request may have moved the grant to other lock
-            // hours after this request ensured it.
-            if (!isProgrammedForRequestedHours(grant)) {
+            // A concurrent request issued it first. Keep that credential, but
+            // never present a PIN programmed for other hours or another lock.
+            if (grant.deviceId !== deviceId || !isProgrammedFor(grant, input)) {
               return yield* new ReservationAccessIssuanceError({
                 reservationId: input.reservationId,
                 outcome: "rejected",
-                message: "Issued reservation access could not be recovered.",
+                message: "Reservation access grant changed concurrently.",
               });
             }
-            return yield* recoverIssued(grant);
+            return yield* reuseIssued(grant, input);
           }
 
           if (grant.state === "uncertain") {

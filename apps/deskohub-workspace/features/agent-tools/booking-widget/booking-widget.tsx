@@ -70,8 +70,8 @@ function BookingSession({ start }: { readonly start: BookingStart }) {
         setCheck({ selection, start });
       }}
       onOpenLink={openLink}
-      onReserve={(selection) =>
-        setReservation({ selection, locale: start.locale })
+      onReserve={(selection, earlySetup) =>
+        setReservation({ selection, earlySetup, locale: start.locale })
       }
       onSelectionChange={clearResults}
       reservation={reservation}

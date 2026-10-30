@@ -483,6 +483,32 @@ describe("workspace reservation email details", () => {
     expect(internalHtml).not.toContain("Monitory");
   });
 
+  test("adds the setup start of a meeting room booked with early setup", async () => {
+    const { createReservationRows } = await import(
+      "./workspace-reservation-email.service"
+    );
+    const { m } = await import("@/features/i18n");
+    const setupLabel = m.reservationEmailSetupLabel({}, { locale: "en-US" });
+    const booked = makeReservation({
+      reservationDetails: { kind: "meeting-room" },
+    });
+    const earlySetup = makeReservation({
+      reservationDetails: { kind: "meeting-room", earlySetup: true },
+      setupFrom: Temporal.Instant.from("2026-06-12T06:45:00Z"),
+    });
+
+    const rows = createReservationRows(earlySetup, "en-US");
+
+    expect(rows).toContainEqual({ label: setupLabel, value: "8:45 AM" });
+    expect(rows).toContainEqual({
+      label: "Reservation time",
+      value: "9:00 AM – 1:00 PM",
+    });
+    expect(
+      createReservationRows(booked, "en-US").map(({ label }) => label)
+    ).not.toContain(setupLabel);
+  });
+
   test("renders the inclusive office date range and seats", async () => {
     const { createReservationRows } = await import(
       "./workspace-reservation-email.service"

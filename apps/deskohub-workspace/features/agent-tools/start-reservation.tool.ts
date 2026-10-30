@@ -32,6 +32,12 @@ import {
 
 const inputSchema = Schema.Struct({
   ...completeSelectionFields,
+  early_setup: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "Meeting room only: set true when the customer wants to come 15 minutes before the start to set up. It's free; the booked time and price stay the same.",
+    })
+  ),
   marketing_consent: Schema.optionalKey(
     Schema.Boolean.annotate({
       description:
@@ -59,7 +65,7 @@ export const startReservationTool = defineSignedInAgentTool({
   name: "start_reservation",
   title: "Start a Deskohub Workspace booking",
   description:
-    "Holds a complete selection for the signed-in customer, with the same arguments as get_quote, and returns a pay_url. Give the pay_url to the customer: they check the order, accept the terms, and pay on the website before the link expires; this tool can't pay. The customer's account profile is the contact. Calling again with the same selection returns the same held order and pay_url until the link expires; a different selection replaces the unpaid hold you made before. A hold whose payment has started is kept, and holds made by other assistants are not affected.",
+    "Holds a complete selection for the signed-in customer, with the same arguments as get_quote plus early_setup for a meeting room, and returns a pay_url. Give the pay_url to the customer: they check the order, accept the terms, and pay on the website before the link expires; this tool can't pay. The customer's account profile is the contact. Calling again with the same selection returns the same held order and pay_url until the link expires; a different selection replaces the unpaid hold you made before. A hold whose payment has started is kept, and holds made by other assistants are not affected.",
   scope: "reservations:create",
   accountBudget: startReservationAccountBudget,
   readOnly: false,
@@ -75,7 +81,8 @@ export const startReservationTool = defineSignedInAgentTool({
       Effect.let("locale", ({ input }) => getAgentToolLocale(input)),
       Effect.bind("now", () => currentInstant),
       Effect.bind("grant", () => CurrentCustomerAgentGrant),
-      Effect.bind("selection", resolveQuoteSelection),
+      Effect.bind("quoted", resolveQuoteSelection),
+      Effect.bind("selection", withEarlySetup),
       Effect.let("identifiers", ({ grant, selection }) =>
         deriveAgentCheckoutIdentifiers({
           grant,
@@ -102,6 +109,28 @@ export const startReservationTool = defineSignedInAgentTool({
     )
   ),
 });
+
+/**
+ * Adds the early setup the customer asked for to a meeting-room selection.
+ * The selection key then differs, so a repeat with another choice replaces
+ * the hold. Setup is free, so the quoted price stays. Other families offer no
+ * setup time.
+ */
+const withEarlySetup = ({
+  input,
+  quoted,
+}: {
+  readonly input: StartReservationInput;
+  readonly quoted: QuoteSelection;
+}): Effect.Effect<QuoteSelection, AgentToolError> => {
+  if (input.early_setup !== true) return Effect.succeed(quoted);
+  return quoted.reservation.kind === "meeting-room"
+    ? Effect.succeed({
+        ...quoted,
+        reservation: { ...quoted.reservation, earlySetup: true },
+      })
+    : Effect.fail(AgentToolError.invalidInput("early_setup"));
+};
 
 /**
  * The customer's own account profile, the contact every account booking

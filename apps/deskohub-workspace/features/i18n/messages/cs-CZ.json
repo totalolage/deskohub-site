@@ -134,6 +134,7 @@
   "accountFeatureUnavailableDescription": "Ve tvém účtu zatím není k dispozici.",
   "account_future_feature_tooltip": "Tato funkce bude k dispozici v budoucnu.",
   "accountReservationValidity": "Platnost",
+  "accountReservationSetupFrom": "Příprava od {time}",
   "accountReservationView": "Zobrazit rezervaci",
   "accountReservationWifi": "Wi-Fi",
   "workspaceTitle": "Deskohub Workspace",
@@ -509,6 +510,9 @@
   "reservationMeetingRoomStartTimesLoading": "Načítáme volné časy začátku pro tento den.",
   "reservationMeetingRoomStartTimesEmpty": "V tento den pro zvolenou délku nejsou volné žádné časy začátku. Zkus jiné datum nebo kratší délku rezervace.",
   "reservationMeetingRoomStartTimesError": "Volné časy začátku se nepodařilo načíst. Čas začátku můžeš i tak zadat výše.",
+  "reservationMeetingRoomEarlySetupLabel": "Chci přijít o 15 minut dřív a připravit se",
+  "reservationMeetingRoomEarlySetupUnavailable": "Zasedací místnost je těsně před tímto časem obsazená.",
+  "reservationMeetingRoomEarlySetupError": "Nepodařilo se ověřit, jestli je zasedací místnost před tímto časem volná. Zkus to prosím později.",
   "reservationOfficeProductTitle": "Soukromá kancelář",
   "reservationOfficeBasePriceLabel": [
     {
@@ -795,6 +799,7 @@
   "checkoutStatusSummaryTierLabel": "Nabídka",
   "checkoutStatusSummaryDateLabel": "Datum",
   "checkoutStatusSummaryTimeLabel": "Čas",
+  "checkoutStatusSummarySetupLabel": "Příprava od",
   "checkoutStatusSummaryCoffeeLabel": "Káva",
   "checkoutStatusSummaryMonitorLabel": "Monitorový setup",
   "checkoutStatusSummarySeatsLabel": "Počet míst",
@@ -843,6 +848,7 @@
   "reservationEmailReservationLabel": "Rezervace",
   "reservationEmailDateLabel": "Datum rezervace",
   "reservationEmailTimeLabel": "Čas rezervace",
+  "reservationEmailSetupLabel": "Příprava od",
   "reservationEmailCoffeeLabel": "Káva",
   "reservationEmailMonitorsLabel": "Monitory",
   "reservationEmailSeatsLabel": "Počet míst",

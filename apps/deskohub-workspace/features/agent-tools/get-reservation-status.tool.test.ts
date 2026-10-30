@@ -130,10 +130,42 @@ describe("get_reservation_status", () => {
     expect(serialized).not.toContain(testEmailAddress("someone"));
     expect(serialized).not.toContain("Desk 1");
     expect(serialized).not.toContain("x-vercel-protection-bypass");
+    expect(serialized).not.toContain("setup_starts_at");
     // The tool never returns contact details, so it skips their uncached read.
     expect(getStatus).toHaveBeenCalledWith(
       expect.objectContaining({ includeSupportContact: false })
     );
+  });
+
+  test("reports the booked time and setup start of an early-setup meeting room", async () => {
+    getStatus.mockImplementationOnce(({ orderId }) =>
+      Effect.succeed({
+        kind: "meeting-room",
+        orderId,
+        returnOutcome: "unknown",
+        status: "fulfilled",
+        paymentStatus: "paid",
+        fulfillmentStatus: "fulfilled",
+        summary: {
+          kind: "meeting-room",
+          earlySetup: true,
+          price: { value: 45_000, exponent: 2, currency: "CZK" },
+          reservedFrom: Temporal.Instant.from("2099-07-01T08:00:00Z"),
+          reservedUntil: Temporal.Instant.from("2099-07-01T09:00:00Z"),
+          setupFrom: Temporal.Instant.from("2099-07-01T07:45:00Z"),
+        },
+      })
+    );
+
+    expect(await status()).toMatchObject({
+      _tag: "Success",
+      success: {
+        family: "meeting-room",
+        starts_at: "2099-07-01T08:00:00Z",
+        ends_at: "2099-07-01T09:00:00Z",
+        setup_starts_at: "2099-07-01T07:45:00Z",
+      },
+    });
   });
 
   test("reports an order booked for the customer's linked profile", async () => {
