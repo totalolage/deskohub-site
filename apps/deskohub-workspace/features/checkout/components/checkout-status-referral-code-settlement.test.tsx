@@ -5,7 +5,7 @@ import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer } from "effect";
 import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
-import type { CheckoutStatusKind } from "@/features/checkout/backend/checkout";
+import type { CheckoutStatusKind } from "@/features/checkout/checkout-status-kind";
 import { ReferralServiceMock } from "@/features/referrals/referral.service.mock";
 import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";

@@ -10,6 +10,7 @@ import type {
 } from "@/features/account";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { CheckoutStatusViewModel } from "@/features/checkout/backend/checkout/checkout-status.service";
+import { checkoutStatusKinds } from "@/features/checkout/checkout-status-kind";
 import type { WorkspaceReservation } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { ReviewSandboxMock } from "@/features/review-accounts/backend/review-sandbox.service.mock";
@@ -139,6 +140,23 @@ describe("get_reservation_status", () => {
     stored = { authorAccountId: null, dotyposCustomerId: linkedCustomerId };
 
     expect((await status())._tag).toBe("Success");
+  });
+
+  test("accepts every reportable status in its output and refuses not_found", async () => {
+    const result = await status();
+    if (result._tag !== "Success") throw new Error("Expected an own order");
+
+    for (const kind of checkoutStatusKinds) {
+      const output = { ...result.success, status: kind };
+      const validation =
+        await getReservationStatusTool.output["~standard"].validate(output);
+
+      if (kind === "not_found") {
+        expect(validation).toMatchObject({ issues: expect.any(Array) });
+      } else {
+        expect(validation).toEqual({ value: output });
+      }
+    }
   });
 
   test("refuses another customer's order exactly like a missing one", async () => {
