@@ -12,7 +12,10 @@ import type {
   LatePaymentRecovery,
   PaymentState,
 } from "@/db/schema";
-import { shouldOfferReservationRetry } from "@/features/checkout/checkout-status-policy";
+import {
+  type CheckoutStatusKind,
+  checkoutStatusTraits,
+} from "@/features/checkout/checkout-status-kind";
 import { getProviderOrderAbandonmentCutoff } from "@/features/checkout/provider-order-abandonment";
 import {
   getWorkspaceTableMap,
@@ -64,24 +67,6 @@ import {
 import type { PaymentLifecycleRepositoryError } from "../repositories/payment-lifecycle.repository";
 
 export type CheckoutStatusReturnOutcome = "success" | "cancelled" | "unknown";
-
-export type CheckoutStatusKind =
-  | "not_found"
-  | "created"
-  | "pending"
-  | "payment_pending_delayed"
-  | "paid_waiting_fulfillment"
-  | "paid_fulfillment_delayed"
-  | "paid_awaiting_delivery"
-  | "paid_delivery_delayed"
-  | "fulfilled"
-  | "fulfillment_failed"
-  | "payment_failed"
-  | "cancelled"
-  | "expired"
-  | "late_payment_checking"
-  | "late_payment_refund"
-  | "late_payment_review";
 
 type CheckoutReservationStatusKind = Exclude<CheckoutStatusKind, "not_found">;
 
@@ -384,18 +369,6 @@ const getSupportContactPrefill = (
   return prefill.name || prefill.email || prefill.phone ? prefill : undefined;
 };
 
-/**
- * Statuses that show the customer's contact details: the address an
- * undelivered confirmation went to, and the support request prefill.
- */
-const showsCustomerContact = (statusKind: CheckoutReservationStatusKind) =>
-  statusKind === "fulfillment_failed" ||
-  statusKind === "late_payment_review" ||
-  statusKind === "payment_pending_delayed" ||
-  statusKind === "paid_fulfillment_delayed" ||
-  statusKind === "paid_awaiting_delivery" ||
-  statusKind === "paid_delivery_delayed";
-
 const getEmptyCheckoutStatusReservation = (
   details: WorkspaceReservation["reservationDetails"]
 ): CheckoutStatusReservationReconstruction =>
@@ -630,7 +603,8 @@ const implementation = Effect.gen(function* () {
     reservation: WorkspaceReservation,
     statusKind: CheckoutReservationStatusKind
   ) {
-    if (!showsCustomerContact(statusKind)) return undefined;
+    if (!checkoutStatusTraits[statusKind].showsCustomerContact)
+      return undefined;
 
     return yield* dotypos.getCustomer(reservation.dotyposCustomerId).pipe(
       Effect.map(
@@ -834,7 +808,7 @@ const implementation = Effect.gen(function* () {
         supportContactPrefill,
         // A late payment that settled takes over the status, and with it the
         // retry of the payment it replaced.
-        ...(shouldOfferReservationRetry(statusKind) &&
+        ...(checkoutStatusTraits[statusKind].offersReservationRetry &&
           retrySelection && { retrySelection }),
       };
       const result: CheckoutReservationStatusViewModel = {

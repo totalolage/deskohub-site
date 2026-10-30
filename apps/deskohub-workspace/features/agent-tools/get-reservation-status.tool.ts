@@ -4,6 +4,7 @@ import {
   CheckoutStatusService,
   type CheckoutStatusViewModel,
 } from "@/features/checkout/backend/checkout/checkout-status.service";
+import { checkoutStatusKinds } from "@/features/checkout/checkout-status-kind";
 import type { Locale } from "@/features/i18n";
 import { ReservationAuthorizationService } from "@/features/reservation/backend/reservation-authorization.service";
 import {
@@ -29,29 +30,12 @@ const inputSchema = Schema.Struct({
   locale: agentToolLocaleField,
 });
 
-/** Every status an order can report, as on its status page. */
-const reservationStatuses = [
-  "created",
-  "pending",
-  "payment_pending_delayed",
-  "paid_waiting_fulfillment",
-  "paid_fulfillment_delayed",
-  "paid_awaiting_delivery",
-  "paid_delivery_delayed",
-  "fulfilled",
-  "fulfillment_failed",
-  "payment_failed",
-  "cancelled",
-  "expired",
-  "late_payment_checking",
-  "late_payment_refund",
-  "late_payment_review",
-] as const;
-
 const outputSchema = Schema.Struct({
   order_id: Schema.String,
   family: workspaceReservationKindSchema,
-  status: Schema.Literals(reservationStatuses).annotate({
+  status: Schema.Literals(
+    checkoutStatusKinds.filter((kind) => kind !== "not_found")
+  ).annotate({
     description:
       "created: held, not paid yet. pending: payment in progress. paid_*: paid and being confirmed. fulfilled: confirmed. payment_failed, cancelled, expired: not booked. late_payment_*: a payment after the hold expired is being checked or refunded.",
   }),

@@ -2,8 +2,10 @@ import "server-only";
 
 import { Effect, Layer } from "effect";
 import { CustomerAccountContactService } from "@/features/account";
-import type { CheckoutStatusKind } from "@/features/checkout/backend/checkout";
-import { isPaidCheckoutStatus } from "@/features/checkout/paid-checkout-status";
+import {
+  type CheckoutStatusKind,
+  checkoutStatusTraits,
+} from "@/features/checkout/checkout-status-kind";
 import { ReferralService } from "@/features/referrals";
 import { ForgetRememberedReferralCode } from "@/features/referrals/forget-remembered-referral-code";
 import { ReferralFeatureFlagRequest } from "@/features/referrals/referral-feature-flag.server";
@@ -20,7 +22,7 @@ import { runWorkspaceEffectOrElse } from "@/shared/backend/workspace-effect";
 export const isRememberedReferralSettledByStatus = Effect.fn(
   "checkout.isRememberedReferralSettledByStatus"
 )(function* (status: CheckoutStatusKind) {
-  if (!isPaidCheckoutStatus(status)) return false;
+  if (!checkoutStatusTraits[status].paid) return false;
   const remembered = yield* RememberedReferral;
   return yield* remembered.isSettled({ kind: "order", paid: true });
 });
@@ -36,7 +38,7 @@ export async function CheckoutStatusReferralCodeSettlement({
 }: {
   readonly status: CheckoutStatusKind;
 }) {
-  if (!isPaidCheckoutStatus(status)) return null;
+  if (!checkoutStatusTraits[status].paid) return null;
   const settled = await isRememberedReferralSettledByStatus(status).pipe(
     Effect.provide(
       RememberedReferral.Cookies.pipe(
