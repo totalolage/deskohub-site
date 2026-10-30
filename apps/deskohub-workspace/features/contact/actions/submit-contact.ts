@@ -1,6 +1,5 @@
 "use server";
 
-import { EmailServiceTag } from "@deskohub/email/backend/service";
 import {
   Effect,
   Layer,
@@ -15,7 +14,7 @@ import {
 } from "@/features/contact/actions/contact";
 import { ContactService } from "@/features/contact/backend/contact.service";
 import { locales } from "@/features/i18n";
-import { EmailConfigLayer } from "@/shared/backend/config/email.config";
+import { WorkspaceEmailLayer } from "@/shared/backend/config/email.config";
 import { defineWorkspaceStateAction } from "@/shared/backend/workspace-action";
 
 const getSubmittedString = (
@@ -73,9 +72,7 @@ const contactFormDataStandardSchema = Schema.toStandardSchemaV1(
 );
 
 const ContactActionLive = ContactService.Default.pipe(
-  Layer.provide(
-    EmailServiceTag.RecipientRouted.pipe(Layer.provideMerge(EmailConfigLayer))
-  )
+  Layer.provide(WorkspaceEmailLayer)
 );
 
 const submitContactAction = defineWorkspaceStateAction(

@@ -416,11 +416,18 @@ describe("meeting-room start times", () => {
           startDateTime: "2099-06-10T09:00",
           startsAt: "2099-06-10T07:00:00Z",
           endsAt: "2099-06-10T08:00:00Z",
+          earlySetupAvailable: false,
         },
       ],
     };
 
     expect(parseMeetingRoomStartTimesResponse(response)).toEqual(response);
+    expect(() =>
+      parseMeetingRoomStartTimesResponse({
+        ...response,
+        startTimes: [{ ...response.startTimes[0], earlySetupAvailable: "no" }],
+      })
+    ).toThrow();
     expect(() =>
       parseMeetingRoomStartTimesResponse({ ...response, duration: "hour:2" })
     ).toThrow();

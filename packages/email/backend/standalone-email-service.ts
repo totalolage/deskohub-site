@@ -1,1 +1,0 @@
-export { EmailServiceTag } from "./service";

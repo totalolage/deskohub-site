@@ -48,6 +48,12 @@ export const getAdministrationReservationExportColumns = (
       formatAdministrationExportDateTime(reservation.endsAt),
   },
   {
+    header: m.administrationReservationExportColumnEarlySetup({}, { locale }),
+    value: (reservation) =>
+      reservation.setupStartsAt &&
+      formatAdministrationExportDateTime(reservation.setupStartsAt),
+  },
+  {
     header: m.administrationReservationExportColumnStatus({}, { locale }),
     value: (reservation) =>
       getAdministrationReservationStatusLabel(reservation.status.code, locale),

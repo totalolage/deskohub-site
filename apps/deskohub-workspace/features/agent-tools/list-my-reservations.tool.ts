@@ -24,6 +24,12 @@ const reservationSchema = Schema.Struct({
   tier: Schema.optionalKey(Schema.Literals(workspaceCoworkTiers)),
   starts_at: Schema.NullOr(Schema.String),
   ends_at: Schema.NullOr(Schema.String),
+  setup_starts_at: Schema.optionalKey(
+    Schema.String.annotate({
+      description:
+        "Meeting room booked with early setup only: when the customer may arrive to set up, before starts_at.",
+    })
+  ),
   seats: Schema.NullOr(Schema.Finite),
   status: Schema.Literals([
     "cancelled",
@@ -136,6 +142,9 @@ const toReservation = (
   }),
   starts_at: reservation.startsAt,
   ends_at: reservation.endsAt,
+  ...(reservation.setupStartsAt && {
+    setup_starts_at: reservation.setupStartsAt,
+  }),
   seats: reservation.seats,
   status: reservation.status,
   party: toParty(reservation.party),

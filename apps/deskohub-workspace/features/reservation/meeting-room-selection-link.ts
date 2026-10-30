@@ -25,6 +25,7 @@ import type { CustomerLastReservationForKind } from "@/features/reservation/rese
 import { hasReservationIntervalEnded } from "@/features/reservation/reservation-interval";
 import { defineSelectionLink } from "@/features/reservation/selection-link";
 import type { SupportedSearchParams } from "@/shared/utils";
+import { meetingRoomEarlySetupSearchParam } from "./meeting-room-early-setup-link";
 
 const queryMeetingRoomStartDateTimeSchema = Schema.toStandardSchemaV1(
   meetingRoomStartDateTimeSchema
@@ -34,7 +35,7 @@ const queryMeetingRoomDurationKeySchema = Schema.toStandardSchemaV1(
 );
 
 type MeetingRoomSelection = Partial<
-  Pick<MeetingRoomReservationInput, "startDateTime" | "duration">
+  Pick<MeetingRoomReservationInput, "startDateTime" | "duration" | "earlySetup">
 >;
 
 /**
@@ -43,7 +44,7 @@ type MeetingRoomSelection = Partial<
  */
 export const meetingRoomSelectionLink = defineSelectionLink({
   kind: "meeting-room",
-  params: ["startDateTime", "duration"],
+  params: ["startDateTime", "duration", "earlySetup"],
   read: (
     searchParams: SupportedSearchParams,
     {
@@ -86,12 +87,21 @@ export const meetingRoomSelectionLink = defineSelectionLink({
       ...decodeReservationCheckoutCustomer(searchParams),
       duration: getMeetingRoomReservationDurationKey(duration),
       startDateTime: startDateTimeOrEarliest,
+      earlySetup:
+        getTrimmedSearchParam(
+          searchParams,
+          meetingRoomEarlySetupSearchParam.name
+        ) === meetingRoomEarlySetupSearchParam.value,
       marketingConsent: false,
     };
   },
   write: (selection: MeetingRoomSelection) => ({
     startDateTime: selection.startDateTime || undefined,
     duration: selection.duration,
+    earlySetup:
+      selection.earlySetup === true
+        ? meetingRoomEarlySetupSearchParam.value
+        : undefined,
   }),
   /**
    * The stored start and duration. A row without a recorded duration takes
@@ -115,6 +125,7 @@ export const meetingRoomSelectionLink = defineSelectionLink({
       : {
           startDateTime: getMeetingRoomStartDateTime(reservation.reservedFrom),
           duration: getMeetingRoomReservationDurationKey(duration),
+          earlySetup: reservation.earlySetup === true,
         };
   },
 });

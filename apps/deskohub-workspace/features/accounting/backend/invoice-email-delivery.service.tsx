@@ -15,7 +15,7 @@ import {
 } from "@/features/accounting/invoice-settlement";
 import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
 import { m } from "@/features/i18n";
-import { EmailConfigLayer } from "@/shared/backend/config/email.config";
+import { WorkspaceEmailLayer } from "@/shared/backend/config/email.config";
 import { renderWorkspaceEmail } from "@/shared/backend/email/render-react-email";
 import {
   internalWorkspaceEmailRecipientFor,
@@ -469,7 +469,7 @@ function getInvoiceEmailDeliveryDependencies() {
     accountingSnapshots,
     invoices,
     InvoiceEmailDeliveryRepository.Live,
-    Layer.provideMerge(EmailServiceTag.RecipientRouted, EmailConfigLayer)
+    WorkspaceEmailLayer
   );
 }
 

@@ -12,6 +12,7 @@ import {
 } from "@/shared/testing/workspace-component-test-env";
 import type { AdministrationReservationDetail as ReservationDetailData } from "./administration.service";
 import { loadFixtureReservation } from "./fixtures";
+import { formatAdministrationDateTime } from "./formatters";
 
 mock.module("server-only", () => ({}));
 mock.module("next/server", () => ({ connection: () => Promise.resolve() }));
@@ -111,6 +112,41 @@ describe("AdministrationReservationDetail", () => {
     ).toBeDefined();
     expect(view.queryByText("Reservation details")).toBeNull();
     expect(view.queryByText("Rezervaci vytvořil účet")).toBeNull();
+  });
+
+  test("shows an early-setup meeting room's setup start beside its booked start", async () => {
+    locale = "en-US";
+    const fixture = loadFixtureReservation("0198-admin-fixture-attention");
+    if (!fixture) throw new Error("Missing reservation fixture");
+    const startsAt = "2026-08-10T08:00:00Z";
+    const setupStartsAt = "2026-08-10T07:45:00Z";
+    const renderTimes = async (setup: string | null) => {
+      detail = {
+        ...fixture,
+        reservation: {
+          ...fixture.reservation,
+          startsAt,
+          setupStartsAt: setup,
+        },
+      };
+      return prerenderReservationDetail();
+    };
+
+    const early = await renderTimes(setupStartsAt);
+    expect(
+      early.getByText(formatAdministrationDateTime(startsAt, locale))
+    ).toBeDefined();
+    expect(
+      early.getByText(formatAdministrationDateTime(setupStartsAt, locale))
+    ).toBeDefined();
+
+    const onTime = await renderTimes(null);
+    expect(
+      onTime.getByText(formatAdministrationDateTime(startsAt, locale))
+    ).toBeDefined();
+    expect(
+      onTime.queryByText(formatAdministrationDateTime(setupStartsAt, locale))
+    ).toBeNull();
   });
 
   const authorEmail = testEmailAddress("ada.author");

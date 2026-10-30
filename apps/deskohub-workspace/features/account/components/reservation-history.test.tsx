@@ -632,6 +632,36 @@ describe("ReservationHistory", () => {
     }
   });
 
+  test("shows the setup start beside each early-setup meeting room only", () => {
+    const setupStartsAt = "2026-09-18T11:45:00Z";
+    const setupText = m.accountReservationSetupFrom(
+      {
+        time: new Intl.DateTimeFormat("en-US", {
+          timeStyle: "short",
+          timeZone: "Europe/Prague",
+        }).format(new Date(setupStartsAt)),
+      },
+      { locale: "en-US" }
+    );
+    const view = renderHistory("en-US", {
+      kind: "available",
+      groups: {
+        current: [
+          reservation({ id: "featured", setupStartsAt }),
+          reservation({ id: "compact", setupStartsAt }),
+          reservation({ id: "compact-without-setup" }),
+        ],
+        past: [
+          reservation({ id: "past", setupStartsAt }),
+          reservation({ id: "past-without-setup" }),
+        ],
+        unavailable: [],
+      },
+    });
+
+    expect(view.getAllByText(setupText)).toHaveLength(3);
+  });
+
   test("omits the current panel entirely when the history has no current reservations", () => {
     const view = renderHistory("en-US", {
       kind: "available",

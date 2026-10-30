@@ -49,7 +49,7 @@ import type { DatabaseQueryError } from "@/db/sql-constraint";
 import { type Locale, locales } from "@/features/i18n";
 import { marketingConsentState } from "@/features/legal/backend/marketing-consent-ledger";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
-import { EmailConfigLayer } from "@/shared/backend/config/email.config";
+import { WorkspaceEmailLayer } from "@/shared/backend/config/email.config";
 import { currentInstant } from "@/shared/utils/temporal";
 import type { AutomationVersionId } from "../automation/automation-identifiers";
 import { AutomationRunSettlement } from "../automation/backend/automation-run-settlement.service";
@@ -1612,7 +1612,7 @@ export class CampaignDeliveryService extends Context.Service<
         CampaignUnsubscribeService.Live,
         AutomationRunSettlement.Default,
         WorkspaceDotyposLayer,
-        EmailServiceTag.RecipientRouted.pipe(Layer.provide(EmailConfigLayer))
+        WorkspaceEmailLayer
       )
     ),
     Layer.provide(WorkspaceDatabase.Default)

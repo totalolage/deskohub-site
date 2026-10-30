@@ -25,6 +25,18 @@ export const formatAdministrationDateTime = (value: string, locale: Locale) =>
     timeZone: workspaceSiteConstants.location.timeZone,
   }).format(temporalInstantToDate(Temporal.Instant.from(value)));
 
+const formatAdministrationTime = (value: string, locale: Locale) =>
+  new Intl.DateTimeFormat(locale, {
+    timeStyle: "short",
+    hourCycle: "h23",
+    timeZone: workspaceSiteConstants.location.timeZone,
+  }).format(temporalInstantToDate(Temporal.Instant.from(value)));
+
+const toWorkspaceDate = (value: string) =>
+  Temporal.Instant.from(value)
+    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+    .toPlainDate();
+
 /**
  * A Prague date-time for a file export, such as `2026-10-20 14:30`, which
  * spreadsheets read as a date in every locale.
@@ -54,6 +66,33 @@ export const formatAdministrationReservationDate = (
   return reservation.date
     ? formatAdministrationPlainDate(reservation.date, locale)
     : null;
+};
+
+/**
+ * When a meeting room booked with early setup is held from, beside its booked
+ * start: the time, with the date when setup starts the day before. Null
+ * without early setup.
+ */
+export const formatAdministrationEarlySetup = (
+  reservation: Pick<
+    AdministrationReservationSummary,
+    "setupStartsAt" | "startsAt"
+  >,
+  locale: Locale
+) => {
+  const { setupStartsAt, startsAt } = reservation;
+  if (!setupStartsAt) return null;
+  const sameDate =
+    startsAt !== null &&
+    toWorkspaceDate(setupStartsAt).equals(toWorkspaceDate(startsAt));
+  return m.administrationReservationEarlySetup(
+    {
+      time: sameDate
+        ? formatAdministrationTime(setupStartsAt, locale)
+        : formatAdministrationDateTime(setupStartsAt, locale),
+    },
+    { locale }
+  );
 };
 
 export type AdministrationPaymentStatus = {

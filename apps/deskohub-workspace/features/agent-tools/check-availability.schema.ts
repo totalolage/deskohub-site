@@ -28,6 +28,10 @@ export const checkAvailabilityResultSchema = Schema.Struct({
       duration: Schema.String,
       starts_at: Schema.String,
       ends_at: Schema.String,
+      early_setup_available: Schema.Boolean.annotate({
+        description:
+          "Whether the meeting room is also free for the 15 minutes before the start, so the customer can come early to set up.",
+      }),
     })
   ),
   office: Schema.optionalKey(

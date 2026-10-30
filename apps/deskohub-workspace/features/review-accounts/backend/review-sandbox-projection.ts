@@ -11,10 +11,10 @@ import {
   groupCustomerReservations,
 } from "@/features/account/contracts";
 import type {
-  CheckoutStatusKind,
   CheckoutStatusReturnOutcome,
   CheckoutStatusViewModel,
 } from "@/features/checkout/backend/checkout/checkout-status.service";
+import type { CheckoutStatusKind } from "@/features/checkout/checkout-status-kind";
 import type { ReviewSandboxReservation } from "./review-sandbox-reservation";
 
 type ReservationState = ReviewSandboxReservation["state"];

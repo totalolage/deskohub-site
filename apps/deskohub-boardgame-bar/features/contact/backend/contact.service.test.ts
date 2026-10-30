@@ -40,8 +40,6 @@ const runSubmit = (
               send,
               sendBatch: () =>
                 Effect.die("Contact submissions do not send batches."),
-              sendTemplate: mock(() => Effect.succeed(sent("template"))),
-              verify: Effect.succeed(true),
             })
           )
         )

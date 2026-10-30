@@ -47,8 +47,6 @@ const runSubmit = (
               send,
               sendBatch: () =>
                 Effect.die("Training reservations do not send batches."),
-              sendTemplate: mock(() => Effect.succeed(sent("template"))),
-              verify: Effect.succeed(true),
             })
           )
         )

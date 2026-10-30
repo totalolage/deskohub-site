@@ -19,7 +19,6 @@ export {
   type CheckoutCoworkStatusSummary,
   type CheckoutMeetingRoomStatusSummary,
   type CheckoutOfficeStatusSummary,
-  type CheckoutStatusKind,
   CheckoutStatusService,
   type CheckoutStatusViewModel,
 } from "./checkout-status.service";

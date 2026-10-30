@@ -12,7 +12,7 @@ import {
   getReservationStatusSignInPath,
   isStatusViewerSignedOut,
 } from "@/features/checkout/backend/checkout/checkout-status-sign-in";
-import { shouldAutoRefreshCheckoutStatus } from "@/features/checkout/checkout-status-refresh-policy";
+import { checkoutStatusTraits } from "@/features/checkout/checkout-status-kind";
 import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow-layout";
 import { CheckoutPaymentWindowCoordinator } from "@/features/checkout/components/checkout-payment-window";
 import { CheckoutStatusPage } from "@/features/checkout/components/checkout-status-page";
@@ -134,7 +134,7 @@ async function CheckoutStatusContent({
     return (
       <>
         <RouteAutoRefresh
-          enabled={shouldAutoRefreshCheckoutStatus(status.status)}
+          enabled={checkoutStatusTraits[status.status].autoRefresh}
         />
         <CheckoutStatusReferralCodeSettlement status={status.status} />
         <CheckoutStatusPage

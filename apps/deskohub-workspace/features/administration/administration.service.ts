@@ -87,6 +87,7 @@ import {
 } from "@/features/discounts/persistence-contracts";
 import { marketingConsentState } from "@/features/legal/backend/marketing-consent-ledger";
 import type { MarketingConsentStatus } from "@/features/legal/marketing-consent-status";
+import { decodeBookedReservation } from "@/features/reservation/backend/booked-reservation";
 import { loadEarlySetupDetails } from "@/features/reservation/backend/early-setup-details";
 import {
   StoredReservationDetails,
@@ -102,7 +103,10 @@ import { getReservationAccessName } from "@/features/reservation-access";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import type { Money } from "@/shared/money/money";
 import { workspaceSiteConstants } from "@/shared/utils";
-import { instantStringSchema } from "@/shared/utils/temporal";
+import {
+  instantStringSchema,
+  temporalInstantToIsoString,
+} from "@/shared/utils/temporal";
 import {
   type AdministrationCustomerName,
   unnamedCustomerDisplayName,
@@ -273,6 +277,11 @@ export type AdministrationReservationSummary = {
   /** The booked start, after any early-setup time. */
   readonly startsAt: string | null;
   readonly endsAt: string | null;
+  /**
+   * When the room is held from for a meeting room booked with early setup,
+   * which Dotypos stores as the reservation's start; otherwise null.
+   */
+  readonly setupStartsAt: string | null;
   readonly date: string | null;
   readonly type: "cowork" | "meeting-room" | "office";
   readonly product: AdministrationReservationProduct;
@@ -901,6 +910,15 @@ const toReservationSummary = ({
   readonly live: LiveReservationDetails;
   readonly row: SafeReservationRow;
 }): AdministrationReservationSummary => {
+  // An early-setup booking's Dotypos start is its setup start, so show the
+  // booked start beside it. Other bookings keep the provider's values as is;
+  // derived starts use the provider's millisecond ISO format.
+  const earlySetup = Option.fromNullishOr(live.reservation).pipe(
+    Option.map((reservation) =>
+      decodeBookedReservation(reservation, row.reservationDetails)
+    ),
+    Option.flatMap(({ setupStart, start }) => Option.all({ setupStart, start }))
+  );
   return {
     id: row.id,
     dotyposReservationId: row.dotyposReservationId,
@@ -909,10 +927,15 @@ const toReservationSummary = ({
       ? toCustomer(live.customer, row.dotyposCustomerId)
       : null,
     liveDetailsAvailable: Boolean(live.reservation),
-    startsAt: live.reservation
-      ? getBookedStartsAt(live.reservation, row.reservationDetails)
-      : null,
+    startsAt: Option.match(earlySetup, {
+      onNone: () => live.reservation?.startDate ?? null,
+      onSome: ({ start }) => temporalInstantToIsoString(start),
+    }),
     endsAt: live.reservation?.endDate ?? null,
+    setupStartsAt: Option.match(earlySetup, {
+      onNone: () => null,
+      onSome: ({ setupStart }) => temporalInstantToIsoString(setupStart),
+    }),
     date: live.reservation
       ? getReservationDate(live.reservation, row.reservationDetails)
       : null,

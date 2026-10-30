@@ -1,6 +1,7 @@
 import { Effect, Option, Schema, SchemaGetter, SchemaIssue } from "effect";
 import { workspaceMeetingRoomCatalog } from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
+import { getMeetingRoomEarlySetupField } from "@/features/reservation/meeting-room-early-setup";
 import {
   getMeetingRoomReservationDuration,
   getMeetingRoomReservationDurationKey,
@@ -78,6 +79,7 @@ const meetingRoomReservationOrderBaseSchema = Schema.Struct({
   reservationDate: plainDateStringSchema,
   startsAt: reservationTimestampInputSchema,
   endsAt: reservationTimestampInputSchema,
+  earlySetup: Schema.optionalKey(Schema.Boolean),
 });
 
 export const meetingRoomReservationOrderInputSchema = Schema.Struct({
@@ -95,6 +97,7 @@ export const normalizedMeetingRoomReservationOrderSchema =
       reservationDate: plainDateStringSchema,
       startsAt: instantStringSchema,
       endsAt: instantStringSchema,
+      earlySetup: Schema.optionalKey(Schema.Boolean),
     })
   );
 
@@ -129,6 +132,7 @@ export const getMeetingRoomReservationDetails = (
     reservationDate: reservation.reservationDate,
     startsAt: reservation.startsAt,
     endsAt: reservation.endsAt,
+    ...getMeetingRoomEarlySetupField(reservation),
   });
 
 const meetingRoomReservationPricingInputSchema = Schema.Struct({
@@ -188,7 +192,7 @@ export const getMeetingRoomAdvertisedPriceReservation = (
 
 export type MeetingRoomReservationProductInput = Pick<
   MeetingRoomReservationOrderInput,
-  "kind" | "duration"
+  "kind" | "duration" | "earlySetup"
 >;
 
 export const storedMeetingRoomReservationDetailsSchema = Schema.Struct({
@@ -212,9 +216,11 @@ export type StoredMeetingRoomReservationDetails =
 
 export const getStoredMeetingRoomReservationDetails = ({
   duration,
+  earlySetup,
 }: MeetingRoomReservationProductInput): StoredMeetingRoomReservationDetails => ({
   kind: meetingRoomReservationKind,
   duration,
+  ...getMeetingRoomEarlySetupField({ earlySetup }),
 });
 
 const getMeetingRoomDurationMessage = (
@@ -345,6 +351,7 @@ export const normalizeMeetingRoomReservationOrder = (
         phone: reservation.phone,
         billing: reservation.billing ?? defaultReservationBillingSelection,
         ...interval,
+        ...getMeetingRoomEarlySetupField(reservation),
       })
     )
   );
@@ -394,6 +401,7 @@ const meetingRoomReservationBaseSchema = Schema.Struct({
   billing: reservationBillingSelectionInputSchema,
   startDateTime: meetingRoomStartDateTimeSchema,
   duration: meetingRoomReservationDurationKeySchema,
+  earlySetup: Schema.Boolean,
   marketingConsent: Schema.Boolean,
 });
 
@@ -437,6 +445,7 @@ export const meetingRoomReservationDefaultValues: MeetingRoomReservationInput =
   {
     startDateTime: "",
     duration: "hour:1",
+    earlySetup: false,
     name: "",
     email: "",
     phone: "",
@@ -458,6 +467,7 @@ export const getMeetingRoomReservationDefaultValues = (
   return {
     startDateTime,
     duration: getMeetingRoomReservationDurationKey(reservation.duration),
+    earlySetup: reservation.earlySetup === true,
     name: reservation.name,
     email: reservation.email,
     phone: reservation.phone,
@@ -487,6 +497,7 @@ export const getMeetingRoomReservationOrder = (
         .toString()
     ),
     ...interval,
+    ...getMeetingRoomEarlySetupField(reservation),
     name: reservation.name,
     email: reservation.email,
     phone: reservation.phone,
