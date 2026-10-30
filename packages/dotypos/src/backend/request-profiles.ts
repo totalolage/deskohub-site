@@ -74,7 +74,6 @@ export const dotyposRequestProfiles = {
     repeat: "unsafe",
     retry: "creation",
   },
-  "customers.list": transientRead,
   "customers.page": singleRead,
   "customers.changes": singleRead,
   "customers.search": transientRead,

@@ -5,6 +5,7 @@ import {
   DotyposCustomerIdSchema,
   type DotyposReadFailure,
   type DotyposReservation,
+  type DotyposReservationId,
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
 import {
@@ -89,8 +90,8 @@ import { makeSweepPageHandler } from "./sweep-page";
 
 /** The single-request Dotypos reads the engine makes. */
 export type EngineDotyposMethod =
-  | "getCustomersPage"
-  | "getCustomers"
+  | "getCustomersByIds"
+  | "getReservationsByIds"
   | "listReservationsPage"
   | "listReservations"
   | "listActiveReservationsPage";
@@ -107,8 +108,8 @@ export type EngineDotyposRequestHook = (request: {
 }) => Effect.Effect<void, EngineDotyposFailure>;
 
 const engineDotyposMethods: readonly EngineDotyposMethod[] = [
-  "getCustomersPage",
-  "getCustomers",
+  "getCustomersByIds",
+  "getReservationsByIds",
   "listReservationsPage",
   "listReservations",
   "listActiveReservationsPage",
@@ -155,20 +156,16 @@ export const makeEngineDotypos = () => {
     seededReservationReads([...reservations.values()]);
 
   const layer = DotyposServiceMock({
-    getCustomersPage: (ids) =>
-      request("getCustomersPage", () =>
-        seededCustomerReads([...customers.values()]).getCustomersPage(ids)
-      ),
-    // Delivery's replay re-reads its batch's profiles.
-    getCustomers: ({ ids }) =>
-      request("getCustomers", () => {
-        const selected = new Set<string>(ids);
-        return Effect.succeed(
-          [...customers.values()].filter(
-            ({ id }) => id !== undefined && selected.has(id)
-          )
-        );
-      }),
+    getCustomersByIds: (ids) => {
+      const selected = [...new Set(ids)];
+      return selected.length === 0
+        ? Effect.succeed(new Map<DotyposCustomerId, DotyposCustomer>())
+        : request("getCustomersByIds", () =>
+            seededCustomerReads([...customers.values()]).getCustomersByIds(
+              selected
+            )
+          );
+    },
     listReservationsPage: (options) =>
       request("listReservationsPage", () =>
         reservationReads().listReservationsPage(options)
@@ -177,6 +174,14 @@ export const makeEngineDotypos = () => {
       request("listReservations", () =>
         reservationReads().listReservations(options)
       ),
+    getReservationsByIds: (ids, options) => {
+      const selected = [...new Set(ids)];
+      return selected.length === 0
+        ? Effect.succeed(new Map<DotyposReservationId, DotyposReservation>())
+        : request("getReservationsByIds", () =>
+            reservationReads().getReservationsByIds(selected, options)
+          );
+    },
     listActiveReservationsPage: (interval, page) =>
       request("listActiveReservationsPage", () =>
         reservationReads().listActiveReservationsPage(interval, page)

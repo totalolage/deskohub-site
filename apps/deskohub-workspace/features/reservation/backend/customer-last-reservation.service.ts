@@ -71,11 +71,13 @@ export class CustomerLastReservationService extends Context.Service<
       > =>
         dotyposReservationId
           ? dotypos
-              .listReservations({ ids: [dotyposReservationId] })
+              .getReservationsByIds([dotyposReservationId])
               .pipe(
                 Effect.map((reservations) =>
                   Option.map(
-                    Option.fromUndefinedOr(reservations[0]),
+                    Option.fromUndefinedOr(
+                      reservations.get(dotyposReservationId)
+                    ),
                     (reservation) =>
                       decodeBookedReservation(reservation, reservationDetails)
                   )

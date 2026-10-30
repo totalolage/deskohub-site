@@ -1376,7 +1376,7 @@ describe.skipIf(!database)(
         const [killed] = await deliverUnits(campaignId);
         expect(killed).toMatchObject({ status: "claimed" });
         expect(killed.send_id).not.toBeNull();
-        const verified = scenario.dotypos.calls.listReservationsPage;
+        const verified = scenario.dotypos.calls.getReservationsByIds;
 
         // Cancelled after the verification: the persisted batch goes out anyway.
         fixtures.cancelVisit(reservation);
@@ -1396,7 +1396,7 @@ describe.skipIf(!database)(
           },
         ]);
         expect(mailed()).toEqual([emailOf(customer)]);
-        expect(scenario.dotypos.calls.listReservationsPage).toBe(verified);
+        expect(scenario.dotypos.calls.getReservationsByIds).toBe(verified);
         expect(await deliverUnits(campaignId)).toEqual([
           expect.objectContaining({ id: killed.id, status: "done" }),
         ]);
@@ -1439,7 +1439,7 @@ describe.skipIf(!database)(
           const [killed] = await deliverUnits(persisted.campaignId);
           expect(killed).toMatchObject({ status: "claimed" });
           expect(killed.send_id).not.toBeNull();
-          const verified = scenario.dotypos.calls.listReservationsPage;
+          const verified = scenario.dotypos.calls.getReservationsByIds;
 
           if (then === "pause") {
             await scenario.lifecycle(
@@ -1502,7 +1502,7 @@ describe.skipIf(!database)(
           expect(mailed().sort()).toEqual(
             [first.customer, second.customer, other].map(emailOf).sort()
           );
-          expect(scenario.dotypos.calls.listReservationsPage).toBe(verified);
+          expect(scenario.dotypos.calls.getReservationsByIds).toBe(verified);
           expect(await deliverUnits(persisted.campaignId)).toEqual([
             expect.objectContaining({ id: killed.id, status: "done" }),
           ]);

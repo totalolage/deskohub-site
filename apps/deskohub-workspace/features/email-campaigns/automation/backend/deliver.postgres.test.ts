@@ -505,7 +505,7 @@ describe.skipIf(!database)("deliver units on disposable Postgres", () => {
       const [killed] = await unitsOf(seeded.campaignId);
       expect(killed).toMatchObject({ status: "claimed" });
       expect(killed!.send_id).not.toBeNull();
-      const verified = engine.dotypos.calls.listReservationsPage;
+      const verified = engine.dotypos.calls.getReservationsByIds;
       expect(verified).toBe(1);
 
       if (then === "pause") {
@@ -556,7 +556,7 @@ describe.skipIf(!database)("deliver units on disposable Postgres", () => {
       expect(engine.resend.mailed().sort()).toEqual(
         [booked, account, other].map((id) => testEmailAddress(id)).sort()
       );
-      expect(engine.dotypos.calls.listReservationsPage).toBe(verified);
+      expect(engine.dotypos.calls.getReservationsByIds).toBe(verified);
       expect((await unitsOf(seeded.campaignId))[0]).toMatchObject({
         status: "done",
       });

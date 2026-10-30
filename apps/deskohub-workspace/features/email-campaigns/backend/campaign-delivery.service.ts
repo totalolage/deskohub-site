@@ -567,20 +567,7 @@ export class CampaignDeliveryService extends Context.Service<
         );
 
       const loadProfiles = (customerIds: readonly DotyposCustomerId[]) =>
-        dotypos
-          .getCustomers({ ids: customerIds })
-          .pipe(
-            Effect.map(
-              (profiles) =>
-                new Map(
-                  profiles.flatMap((profile: DotyposCustomer) =>
-                    profile.id === undefined
-                      ? []
-                      : [[profile.id, profile] as const]
-                  )
-                )
-            )
-          );
+        dotypos.getCustomersByIds(customerIds);
 
       /** The address to mail the recipient at, or why they're skipped. */
       const classifyRecipient = (input: {

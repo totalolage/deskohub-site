@@ -5,7 +5,6 @@ import {
   DotyposService,
   dotyposFailureLogFields,
   getCustomerDisplayName,
-  readInIdFilterBatches,
 } from "@deskohub/dotypos";
 import { Effect, Option } from "effect";
 
@@ -25,40 +24,39 @@ export const readAutomationCustomerContacts = Effect.fn(
   "readAutomationCustomerContacts"
 )(function* (customers: Iterable<DotyposCustomerId>) {
   const dotypos = yield* DotyposService;
-  return yield* readInIdFilterBatches(customers, dotypos.getCustomersPage, {
-    concurrency: 1,
-  }).pipe(
-    Effect.map((pages) =>
-      Option.some(
-        new Map(
-          pages.flat().flatMap((profile) =>
-            profile.id === undefined
-              ? []
-              : [
-                  [
-                    profile.id,
-                    {
-                      name: getCustomerDisplayName(profile) ?? null,
-                      email: profile.email?.trim() || null,
-                    } satisfies AutomationCustomerContact,
-                  ] as const,
-                ]
+  return yield* dotypos
+    .getCustomersByIds(customers, {
+      concurrency: 1,
+    })
+    .pipe(
+      Effect.map((profiles) =>
+        Option.some(
+          new Map(
+            [...profiles].map(
+              ([id, profile]) =>
+                [
+                  id,
+                  {
+                    name: getCustomerDisplayName(profile) ?? null,
+                    email: profile.email?.trim() || null,
+                  } satisfies AutomationCustomerContact,
+                ] as const
+            )
+          ) as ReadonlyMap<DotyposCustomerId, AutomationCustomerContact>
+        )
+      ),
+      // Only the classification: Dotypos failures can carry customer values.
+      Effect.catch((cause) =>
+        Effect.logWarning(
+          "Customer contacts couldn't be read",
+          dotyposFailureLogFields(cause)
+        ).pipe(
+          Effect.as(
+            Option.none<
+              ReadonlyMap<DotyposCustomerId, AutomationCustomerContact>
+            >()
           )
-        ) as ReadonlyMap<DotyposCustomerId, AutomationCustomerContact>
-      )
-    ),
-    // Only the classification: Dotypos failures can carry customer values.
-    Effect.catch((cause) =>
-      Effect.logWarning(
-        "Customer contacts couldn't be read",
-        dotyposFailureLogFields(cause)
-      ).pipe(
-        Effect.as(
-          Option.none<
-            ReadonlyMap<DotyposCustomerId, AutomationCustomerContact>
-          >()
         )
       )
-    )
-  );
+    );
 });

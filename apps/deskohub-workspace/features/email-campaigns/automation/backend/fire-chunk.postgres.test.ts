@@ -260,7 +260,7 @@ describe.skipIf(!database)("fire-chunk units on Postgres", () => {
     const outcome = await process(unitIds[0]!);
 
     expect(outcome).toBe("done");
-    expect(dotypos.calls.getCustomersPage).toBe(0);
+    expect(dotypos.calls.getCustomersByIds).toBe(0);
     expect(await receiptsOf(campaignId)).toEqual([
       [scheduleDedupKey(today, alice), "failed"],
     ]);

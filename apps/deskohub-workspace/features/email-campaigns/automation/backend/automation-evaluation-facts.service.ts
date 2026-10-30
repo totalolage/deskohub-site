@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import {
-  type DotyposCustomer,
   type DotyposCustomerId,
   DotyposService,
-  dotyposIdFilterBatchSize,
+  dotyposIdReadBatchSize,
+  dotyposIdReadRequests,
 } from "@deskohub/dotypos";
 import type {
   AutomationConditionFilter,
@@ -39,11 +39,11 @@ const maxUnitRequestCost = 8;
 
 /**
  * The most booked reservations a customer can have and still share a packed
- * unit: one profile request plus ⌈350 / 50⌉ visit pages fill the request
+ * unit: one profile request plus ⌈700 / 100⌉ visit pages fill the request
  * cap. A customer above it becomes a solo unit (§5.3).
  */
 export const soloUnitBookingThreshold =
-  (maxUnitRequestCost - 1) * dotyposIdFilterBatchSize;
+  (maxUnitRequestCost - 1) * dotyposIdReadBatchSize;
 
 /**
  * What one automation unit evaluates: the version's entry audience
@@ -110,9 +110,9 @@ interface IAutomationEvaluationFacts {
   /** The Dotypos requests fetching these customers' facts makes. */
   readonly cost: (input: ReadsForCustomers) => Effect.Effect<number>;
   /**
-   * Packs customers, in the given order, into units of at most 50 that each
+   * Packs customers, in the given order, into units of at most 100 that each
    * make at most 8 Dotypos requests: one profile request if needed, plus
-   * their visit reads. A customer too large for any unit alone (above 350
+   * their visit reads. A customer too large for any unit alone (above 700
    * booked reservations with profiles) becomes a solo unit.
    */
   readonly pack: (
@@ -209,7 +209,11 @@ export class AutomationEvaluationFacts extends Context.Service<
         cost: (input) =>
           bookingsOf(input).pipe(
             Effect.map((bookings) =>
-              requestCost(input.reads, totalBookings(input.customers, bookings))
+              requestCost(
+                input.reads,
+                totalBookings(input.customers, bookings),
+                new Set(input.customers).size
+              )
             ),
             Effect.withSpan("AutomationEvaluationFacts.cost")
           ),
@@ -224,10 +228,12 @@ export class AutomationEvaluationFacts extends Context.Service<
           Effect.Do.pipe(
             Effect.bind("profiles", () =>
               reads.profiles
-                ? dotypos.getCustomersPage(customers).pipe(
-                    Effect.map((page) => Option.some(profilesById(page))),
-                    Effect.mapError(AutomationUnitFetchFailure.fromDotypos)
-                  )
+                ? dotypos
+                    .getCustomersByIds(customers, { concurrency: 1 })
+                    .pipe(
+                      Effect.map(Option.some),
+                      Effect.mapError(AutomationUnitFetchFailure.fromDotypos)
+                    )
                 : Effect.succeed(Option.none())
             ),
             Effect.bind("visits", () =>
@@ -323,24 +329,23 @@ const factFilterOf = (
   ],
 });
 
-const profilesById = (
-  page: readonly DotyposCustomer[]
-): ReadonlyMap<DotyposCustomerId, DotyposCustomer> =>
-  new Map(
-    page.flatMap((customer) =>
-      customer.id === undefined ? [] : [[customer.id, customer] as const]
-    )
-  );
-
 const totalBookings = (
   customers: readonly DotyposCustomerId[],
   bookings: ReadonlyMap<DotyposCustomerId, number>
-) => customers.reduce((total, id) => total + (bookings.get(id) ?? 0), 0);
+) =>
+  [...new Set(customers)].reduce(
+    (total, id) => total + (bookings.get(id) ?? 0),
+    0
+  );
 
-/** One profile page if needed, plus ⌈bookings / 50⌉ visit pages if needed. */
-const requestCost = (reads: AudienceDotyposReads, bookings: number) =>
-  (reads.profiles ? 1 : 0) +
-  (reads.visits ? Math.ceil(bookings / dotyposIdFilterBatchSize) : 0);
+/** One profile page if needed, plus ⌈bookings / 100⌉ visit pages if needed. */
+const requestCost = (
+  reads: AudienceDotyposReads,
+  bookings: number,
+  customers: number
+) =>
+  (reads.profiles ? dotyposIdReadRequests(customers) : 0) +
+  (reads.visits ? dotyposIdReadRequests(bookings) : 0);
 
 type OpenChunk = {
   readonly customers: DotyposCustomerId[];
@@ -358,22 +363,26 @@ const packCustomers = (
     if (open.customers.length > 0) {
       chunks.push({
         customers: open.customers,
-        requestCost: requestCost(reads, open.bookings),
+        requestCost: requestCost(reads, open.bookings, open.customers.length),
       });
     }
     open = { customers: [], bookings: 0 };
   };
-  for (const id of customers) {
+  for (const id of new Set(customers)) {
     const booked = reads.visits ? (bookings.get(id) ?? 0) : 0;
-    if (requestCost(reads, booked) > maxUnitRequestCost) {
+    if (requestCost(reads, booked, 1) > maxUnitRequestCost) {
       // Units follow id order, so the open unit closes before a solo one.
       close();
-      chunks.push({ customers: [id], requestCost: requestCost(reads, booked) });
+      chunks.push({
+        customers: [id],
+        requestCost: requestCost(reads, booked, 1),
+      });
       continue;
     }
     if (
-      open.customers.length >= dotyposIdFilterBatchSize ||
-      requestCost(reads, open.bookings + booked) > maxUnitRequestCost
+      open.customers.length >= dotyposIdReadBatchSize ||
+      requestCost(reads, open.bookings + booked, open.customers.length + 1) >
+        maxUnitRequestCost
     ) {
       close();
     }
