@@ -2,10 +2,10 @@ import "@/shared/testing/workspace-test-env";
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resendSimulatorAddress, testEmailAddress } from "@deskohub/test-email";
-import { Effect, Layer, Logger } from "effect";
+import { ConfigProvider, Effect, Layer, Logger } from "effect";
 import * as envModule from "@/env";
 import { m } from "@/features/i18n";
-import { workspaceDefaultFromAddress } from "@/shared/backend/config/email.config";
+import { WorkspaceEmailLayer } from "@/shared/backend/config/email.config";
 import { workspaceSiteConstants } from "@/shared/utils";
 
 type ResendPayload = {
@@ -40,9 +40,6 @@ mock.module("@/env", () => ({
   }),
 }));
 
-const { EmailConfigTag, EmailServiceTag } = await import(
-  "@deskohub/email/backend/service"
-);
 const { ContactService } = await import("./contact.service");
 
 afterAll(() => {
@@ -74,23 +71,17 @@ const submit = (email: string) => {
   }).pipe(
     Effect.provide(
       Layer.mergeAll(
-        ContactService.Default.pipe(
-          Layer.provide(
-            Layer.provideMerge(
-              EmailServiceTag.RecipientRouted,
-              Layer.succeed(EmailConfigTag, {
-                apiKey: "re_test",
-                defaultFrom: { email: workspaceDefaultFromAddress },
-              })
-            )
-          )
-        ),
+        ContactService.Default.pipe(Layer.provide(WorkspaceEmailLayer)),
         Logger.layer([
           Logger.make((options) => {
             consoleLogs.push([...options.message]);
           }),
         ])
       )
+    ),
+    Effect.provideService(
+      ConfigProvider.ConfigProvider,
+      ConfigProvider.fromUnknown({ EMAIL_API_KEY: "re_test" })
     ),
     Effect.runPromise,
     (promise) => promise.then(() => consoleRecipients(consoleLogs))

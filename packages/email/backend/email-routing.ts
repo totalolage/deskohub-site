@@ -109,7 +109,6 @@ export const RoutedEmailProviderLive = Layer.effect(
           return routes.map((route) => results[route][taken[route]++]!);
         }
       ),
-      verify: resend ? resend.verify : Effect.succeed(false),
     };
 
     return provider;

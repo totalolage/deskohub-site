@@ -18,16 +18,6 @@ export class EmailServiceError extends Data.TaggedError("EmailServiceError")<{
 
 export type EmailSendError = EmailServiceError | NetworkError;
 
-export class EmailTemplateError extends Data.TaggedError("EmailTemplateError")<{
-  readonly message: string;
-  readonly template: string;
-  readonly cause?: unknown;
-}> {
-  constructor(message: string, template: string, cause?: unknown) {
-    super({ message, template, cause });
-  }
-}
-
 /** Options of one batch request; the key stays the same across retries. */
 export interface EmailBatchOptions {
   readonly idempotencyKey: string;
@@ -47,7 +37,6 @@ export interface EmailProvider {
     messages: readonly EmailMessage[],
     options: EmailBatchOptions
   ) => Effect.Effect<readonly EmailSendResult[], EmailSendError>;
-  readonly verify: Effect.Effect<boolean, EmailServiceError>;
 }
 
 export class EmailProviderTag extends Context.Service<

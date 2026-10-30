@@ -27,7 +27,7 @@ import {
 import { type Locale, locales } from "@/features/i18n";
 import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
-import { EmailConfigLayer } from "@/shared/backend/config/email.config";
+import { WorkspaceEmailLayer } from "@/shared/backend/config/email.config";
 import {
   getWorkspaceRuntimeCallbackOrigin,
   type WorkspaceUrlConfigError,
@@ -637,7 +637,7 @@ export class CampaignSendService extends Context.Service<
           ),
           CampaignEmailConfig.Default,
           CampaignSendQueueService.Live,
-          EmailServiceTag.RecipientRouted.pipe(Layer.provide(EmailConfigLayer))
+          WorkspaceEmailLayer
         )
       ),
       Layer.provide(WorkspaceDatabase.Default)
