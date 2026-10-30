@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.30.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.29.0...dhw-v1.30.0) (2026-10-30)
+
+
+### Features
+
+* **dhw:** show the early-setup start of meeting-room reservations ([f015d85](https://github.com/totalolage/deskohub-site/commit/f015d85fd1a1a0cfc5e5fa9b6e1c8ebc9efdfa64))
+
 ## [1.29.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.28.0...dhw-v1.29.0) (2026-10-27)
 
 
