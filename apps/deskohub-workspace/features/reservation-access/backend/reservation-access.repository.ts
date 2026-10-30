@@ -293,10 +293,8 @@ export class ReservationAccessRepository extends Context.Service<
                 failureCode: null,
                 updatedAt: input.startedAt,
               })
-              // Claim only the target this request read and will program. A
-              // concurrent request may have moved the grant to other lock
-              // hours since, or, after the reservation started, stored a
-              // start from another current hour.
+              // Claim only the exact reservation bounds this request read.
+              // A concurrent request may have changed the grant's target.
               .where(
                 and(
                   eq(reservationAccessGrants.id, input.id),
@@ -527,8 +525,8 @@ export class ReservationAccessRepository extends Context.Service<
                 pin: reservationAccessGrants.accessCode,
               })
               .from(reservationAccessGrants)
-              // Never disclose a PIN issued for other lock hours than the
-              // request read and will show.
+              // Never disclose a PIN for other exact reservation bounds
+              // than the request read and will show.
               .where(
                 and(
                   eq(reservationAccessGrants.id, input.id),
