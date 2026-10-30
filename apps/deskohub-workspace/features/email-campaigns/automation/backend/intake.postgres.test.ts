@@ -643,7 +643,8 @@ describe.skipIf(!database)("intake units on Postgres", () => {
 
     await runEngineAt(drainAutomationUnitQueue(queue), layer, now);
 
-    expect(dotypos.calls.getReservationsByIds).toBe(1);
+    // Planning saw one visit; the 121 now require two transport batches.
+    expect(dotypos.calls.getReservationsByIds).toBe(2);
     expect(await receipts(campaignId)).toEqual([
       {
         key: `reservation-finished:${visit.reservationId}`,

@@ -132,8 +132,8 @@ describe.skipIf(!database)(
 
       const units = await unitsOf(seeded.campaignId);
       expect(units.map((unit) => unit.run_ids.length)).toEqual([100, 100, 100]);
-      // Two profile pages per unit; account runs verify no reservation.
-      expect(units.map((unit) => unit.request_cost)).toEqual([2, 2, 2]);
+      // One profile batch per unit; account runs verify no reservation.
+      expect(units.map((unit) => unit.request_cost)).toEqual([1, 1, 1]);
       expect(units.map((unit) => unit.status).sort()).toEqual([
         "enqueued",
         "planned",
@@ -202,11 +202,11 @@ describe.skipIf(!database)(
 
       await plan(startedAt);
 
-      // Two pages of 55 reservations and two of 55 profiles.
-      expect((await unitsOf(reading.campaignId))[0]?.request_cost).toBe(4);
-      // A cancellation trigger reads no visit: two profile pages only.
+      // One batch of 55 reservations and one of 55 profiles.
+      expect((await unitsOf(reading.campaignId))[0]?.request_cost).toBe(2);
+      // A cancellation trigger reads no visit: one profile batch only.
       expect((await unitsOf(cancellations.campaignId))[0]?.request_cost).toBe(
-        2
+        1
       );
     });
 

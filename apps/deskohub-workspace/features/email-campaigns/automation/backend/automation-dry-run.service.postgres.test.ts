@@ -1433,7 +1433,7 @@ describe.skipIf(!testDatabase)(
       const finished = await start(finishedCampaign);
       const cancelled = await start(cancelledCampaign);
       // Neither audience nor flow reads Dotypos, so only the re-check costs
-      // requests: one per 50 of a chunk's reservations, none for cancellations.
+      // requests: one per 100 of a chunk's reservations, none for cancellations.
       const finishedUnits = await unitsOf(finished.previewId);
       expect(finishedUnits.length).toBeGreaterThan(0);
       expect(finishedUnits.filter((unit) => unit.requestCost === 0)).toEqual(

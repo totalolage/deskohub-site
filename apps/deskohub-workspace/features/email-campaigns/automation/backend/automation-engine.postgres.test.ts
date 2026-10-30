@@ -2861,7 +2861,9 @@ describe.skipIf(!database)(
         const other = await kit.seedActive(comeBackOfferFlow, { at: start });
         const regular = await lapsedRegular("blocked-regular");
         scenario.dotypos.onRequest(({ method }) =>
-          method === "listReservationsPage" || method === "listReservations"
+          method === "listReservationsPage" ||
+          method === "listReservations" ||
+          method === "getReservationsByIds"
             ? Effect.fail(
                 new DotyposUnavailable({
                   operation: method,

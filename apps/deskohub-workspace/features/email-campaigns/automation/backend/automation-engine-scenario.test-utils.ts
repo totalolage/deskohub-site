@@ -3,10 +3,11 @@ import {
   type DotyposCustomer,
   type DotyposCustomerId,
   DotyposCustomerIdSchema,
+  type DotyposIdReadOptions,
   type DotyposReadFailure,
   type DotyposReservation,
-  type DotyposReservationId,
   DotyposReservationIdSchema,
+  dotyposIdReadBatchSize,
 } from "@deskohub/dotypos";
 import {
   DotyposServiceMock,
@@ -17,7 +18,7 @@ import { EmailConfigTag, EmailServiceTag } from "@deskohub/email";
 import { makeEmailProviderFake } from "@deskohub/email/testing";
 import { testEmailAddress } from "@deskohub/test-email";
 import { emailAutomationTickMinutes } from "@deskohub/workspace-admin-api";
-import { Effect, Fiber, Layer, Result } from "effect";
+import { Array as Arr, Effect, Fiber, Layer, Result } from "effect";
 import { TestClock } from "effect/testing";
 import { customerEvents, customerMarketingConsents } from "@/db/schema";
 import type { CustomerAccountId } from "@/features/account/customer-account";
@@ -88,7 +89,7 @@ import { makeSweepPageHandler } from "./sweep-page";
 // ---------------------------------------------------------------------------
 // Dotypos
 
-/** The single-request Dotypos reads the engine makes. */
+/** The Dotypos read operations the engine uses. */
 export type EngineDotyposMethod =
   | "getCustomersByIds"
   | "getReservationsByIds"
@@ -105,6 +106,7 @@ export type EngineDotyposFailure = DotyposReadFailure;
  */
 export type EngineDotyposRequestHook = (request: {
   readonly method: EngineDotyposMethod;
+  readonly ids?: readonly string[];
 }) => Effect.Effect<void, EngineDotyposFailure>;
 
 const engineDotyposMethods: readonly EngineDotyposMethod[] = [
@@ -135,7 +137,8 @@ export const makeEngineDotypos = () => {
 
   const request = <A, E>(
     method: EngineDotyposMethod,
-    answer: () => Effect.Effect<A, E>
+    answer: () => Effect.Effect<A, E>,
+    ids?: readonly string[]
   ): Effect.Effect<A, E | EngineDotyposFailure> =>
     Effect.suspend(() => {
       calls[method] += 1;
@@ -147,7 +150,7 @@ export const makeEngineDotypos = () => {
       return (
         gate === undefined ? Effect.void : Effect.promise(() => gate.released)
       ).pipe(
-        Effect.andThen(hook?.({ method }) ?? Effect.void),
+        Effect.andThen(hook?.({ method, ids }) ?? Effect.void),
         Effect.andThen(Effect.suspend(answer))
       );
     });
@@ -155,17 +158,42 @@ export const makeEngineDotypos = () => {
   const reservationReads = () =>
     seededReservationReads([...reservations.values()]);
 
-  const layer = DotyposServiceMock({
-    getCustomersByIds: (ids) => {
-      const selected = [...new Set(ids)];
-      return selected.length === 0
-        ? Effect.succeed(new Map<DotyposCustomerId, DotyposCustomer>())
-        : request("getCustomersByIds", () =>
-            seededCustomerReads([...customers.values()]).getCustomersByIds(
-              selected
+  const readIds = <Id extends string, A>(
+    method: "getCustomersByIds" | "getReservationsByIds",
+    ids: Iterable<Id>,
+    read: (
+      batch: readonly Id[]
+    ) => Effect.Effect<ReadonlyMap<Id, A>, DotyposReadFailure>,
+    options: DotyposIdReadOptions = {}
+  ) =>
+    Effect.suspend(() =>
+      Effect.forEach(
+        Arr.chunksOf([...new Set(ids)], dotyposIdReadBatchSize),
+        (batch) =>
+          request(method, () => read(batch), batch).pipe(
+            Effect.catch((failure) =>
+              options.onBatchFailure
+                ? options
+                    .onBatchFailure(failure)
+                    .pipe(Effect.as(new Map<Id, A>()))
+                : Effect.fail(failure)
             )
-          );
-    },
+          ),
+        { concurrency: options.concurrency ?? "inherit" }
+      ).pipe(
+        Effect.map((batches) => new Map(batches.flatMap((batch) => [...batch])))
+      )
+    );
+
+  const layer = DotyposServiceMock({
+    getCustomersByIds: (ids, options) =>
+      readIds(
+        "getCustomersByIds",
+        ids,
+        (batch) =>
+          seededCustomerReads([...customers.values()]).getCustomersByIds(batch),
+        options
+      ),
     listReservationsPage: (options) =>
       request("listReservationsPage", () =>
         reservationReads().listReservationsPage(options)
@@ -174,14 +202,13 @@ export const makeEngineDotypos = () => {
       request("listReservations", () =>
         reservationReads().listReservations(options)
       ),
-    getReservationsByIds: (ids, options) => {
-      const selected = [...new Set(ids)];
-      return selected.length === 0
-        ? Effect.succeed(new Map<DotyposReservationId, DotyposReservation>())
-        : request("getReservationsByIds", () =>
-            reservationReads().getReservationsByIds(selected, options)
-          );
-    },
+    getReservationsByIds: (ids, options) =>
+      readIds(
+        "getReservationsByIds",
+        ids,
+        (batch) => reservationReads().getReservationsByIds(batch, options),
+        options
+      ),
     listActiveReservationsPage: (interval, page) =>
       request("listActiveReservationsPage", () =>
         reservationReads().listActiveReservationsPage(interval, page)
