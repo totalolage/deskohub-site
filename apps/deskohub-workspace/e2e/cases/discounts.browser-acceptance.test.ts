@@ -182,6 +182,56 @@ for (const [caller, input] of Object.entries(browserInputs)) {
   );
 }
 
+test.skipIf(!chromiumAvailable)(
+  "reopens dismissed discount details when the trigger is still focused",
+  async () => {
+    if (!browser) throw new Error("Chromium is not running");
+    const result = await runBrowserStep({
+      browser,
+      drive: ({ session }) =>
+        assertDisplayedDiscounts({
+          config,
+          discounts: [calendarDiscountExpectation],
+          session,
+          timeoutMs: 2000,
+        }),
+      prepare: (session) =>
+        session.use("dismiss the focused discount tooltip", async (payPage) => {
+          await payPage.setContent(discountDetails());
+          const trigger = payPage.locator("[data-checkout-discount-details]");
+          await trigger.evaluate((element) => {
+            element.addEventListener("focus", () =>
+              element.setAttribute("aria-describedby", "discount-tip")
+            );
+            element.addEventListener("keydown", (event) => {
+              if (event.key === "Escape") {
+                element.removeAttribute("aria-describedby");
+              }
+            });
+          });
+          await trigger.focus();
+          await payPage.keyboard.press("Escape");
+
+          expect(
+            await trigger.evaluate(
+              (element) => document.activeElement === element
+            )
+          ).toBe(true);
+          expect(
+            await payPage.evaluate(
+              isDiscountDetailShown,
+              toDiscountDetail(calendarDiscountExpectation)
+            )
+          ).toBe(false);
+        }),
+    });
+
+    expect(result.succeeded).toBe(true);
+    expect(result.annotations).toEqual([]);
+  },
+  60_000
+);
+
 // The reservation form behind the Calendar sale advertisement: the selection
 // is already made, and the sale shows from the `showFromLoad`th load on.
 let formLoads = 0;

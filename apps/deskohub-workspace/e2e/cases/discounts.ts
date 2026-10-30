@@ -1446,12 +1446,13 @@ export const assertDisplayedDiscounts = ({
     yield* scrollIntoView(session, discountDetailsTrigger, {
       timeoutMs: config.timeouts.browserAction,
     });
-    yield* session.use("focus browser element", (page) =>
-      page
+    yield* session.use("focus browser element", async (page) => {
+      const trigger = page
         .locator(discountDetailsTrigger)
-        .filter({ visible: true })
-        .focus({ timeout: config.timeouts.browserAction })
-    );
+        .filter({ visible: true });
+      await trigger.blur({ timeout: config.timeouts.browserAction });
+      await trigger.focus({ timeout: config.timeouts.browserAction });
+    });
     for (const discount of discounts) {
       yield* waitForPageCondition(
         session,
