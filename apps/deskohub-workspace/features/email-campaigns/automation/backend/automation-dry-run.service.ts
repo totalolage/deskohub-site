@@ -4,7 +4,7 @@ import {
   type DotyposCustomerId,
   DotyposCustomerIdSchema,
   DotyposService,
-  dotyposIdFilterBatchSize,
+  dotyposIdReadRequests,
 } from "@deskohub/dotypos";
 import type {
   AutomationFlowType as AutomationFlow,
@@ -696,7 +696,7 @@ const conditionFilters = (flow: AutomationFlow) =>
     onSome: (condition) => ({ condition }),
   });
 
-/** One Dotypos request per 50 of the chunk's replayed reservations. */
+/** One Dotypos request per 100 of the chunk's replayed reservations. */
 const recheckCost = (
   events: readonly {
     readonly dotyposCustomerId: DotyposCustomerId;
@@ -712,7 +712,7 @@ const recheckCost = (
         : []
     )
   );
-  return Math.ceil(reservations.size / dotyposIdFilterBatchSize);
+  return dotyposIdReadRequests(reservations.size);
 };
 
 /**

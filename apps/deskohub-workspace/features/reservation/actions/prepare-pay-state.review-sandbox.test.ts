@@ -1,3 +1,4 @@
+import { seededReservationReads } from "@deskohub/dotypos/backend/service.mock";
 import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
@@ -371,9 +372,17 @@ describe.skipIf(!database)(
                 Layer.mergeAll(
                   database.layer,
                   DotyposServiceMock({
-                    getCustomers: () => Effect.succeed([]),
+                    getCustomersByIds: () => Effect.succeed(new Map()),
                     getTables: () => Effect.succeed([]),
                     listReservations: () => Effect.succeed([]),
+                    getReservationsByIds: (ids) =>
+                      Effect.succeed([]).pipe(
+                        Effect.flatMap((records) =>
+                          seededReservationReads(records).getReservationsByIds(
+                            ids
+                          )
+                        )
+                      ),
                   }),
                   Layer.succeed(
                     PostHogReservationHistory,

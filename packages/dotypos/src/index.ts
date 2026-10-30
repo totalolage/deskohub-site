@@ -1,4 +1,5 @@
 export { dotyposApiTimeoutDefaultMilliseconds } from "./api-timeout";
+export type { DotyposIdReadOptions } from "./backend/id-reads";
 export type {
   CustomerChanges,
   CustomerChangesOptions,
@@ -43,6 +44,7 @@ export {
   dotyposFailureCode,
   dotyposFailureLogFields,
 } from "./errors";
+export { dotyposIdReadBatchSize, dotyposIdReadRequests } from "./id-reads";
 export type { DotyposTimestamp } from "./timestamp";
 export {
   DotyposTimestampFromString,
@@ -97,8 +99,4 @@ export {
 } from "./types";
 export { toCustomerEmailIdentity } from "./utils/customer-email";
 export { getCustomerDisplayName } from "./utils/customer-name";
-export {
-  dotyposIdFilterBatchSize,
-  readInIdFilterBatches,
-} from "./utils/id-filter-batches";
 export { normalizePhoneNumber } from "./utils/phone-formatting";

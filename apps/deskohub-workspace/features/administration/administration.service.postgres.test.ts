@@ -1,3 +1,7 @@
+import {
+  seededCustomerReads,
+  seededReservationReads,
+} from "@deskohub/dotypos/backend/service.mock";
 import "@/shared/testing/workspace-test-env";
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -111,7 +115,7 @@ describe.skipIf(!testDatabase)(
                   testDatabase.layer,
                   DotyposServiceMock({
                     getCustomer: () => Effect.succeed(Option.none()),
-                    getCustomers: ({ ids }) =>
+                    getCustomersByIds: (ids) =>
                       Effect.succeed(
                         ids?.includes(authorCustomerId)
                           ? [
@@ -122,9 +126,21 @@ describe.skipIf(!testDatabase)(
                               },
                             ]
                           : []
+                      ).pipe(
+                        Effect.flatMap((records) =>
+                          seededCustomerReads(records).getCustomersByIds(ids)
+                        )
                       ),
                     getTables: () => Effect.succeed([]),
                     listReservations,
+                    getReservationsByIds: (ids, options) =>
+                      listReservations({ ...options, ids: [...ids] }).pipe(
+                        Effect.flatMap((records) =>
+                          seededReservationReads(records).getReservationsByIds(
+                            ids
+                          )
+                        )
+                      ),
                   }),
                   Layer.succeed(
                     PostHogReservationHistory,
@@ -524,6 +540,12 @@ describe.skipIf(!testDatabase)(
       ) =>
         run((administration) => administration.listCustomers(input), {
           listReservations: () => Effect.succeed(bookings),
+          getReservationsByIds: (ids) =>
+            Effect.succeed(bookings).pipe(
+              Effect.flatMap((records) =>
+                seededReservationReads(records).getReservationsByIds(ids)
+              )
+            ),
         });
 
       /** Lists every customer page and keeps only this suite's customers. */
@@ -552,6 +574,17 @@ describe.skipIf(!testDatabase)(
                 listInputs.push(input);
                 return inRangeLabels.map(booking);
               }),
+            getReservationsByIds: (ids, readOptions) => {
+              const input = { ...readOptions, ids: [...ids] };
+              return Effect.sync(() => {
+                listInputs.push(input);
+                return inRangeLabels.map(booking);
+              }).pipe(
+                Effect.flatMap((records) =>
+                  seededReservationReads(records).getReservationsByIds(ids)
+                )
+              );
+            },
           }
         );
 
@@ -618,7 +651,15 @@ describe.skipIf(!testDatabase)(
           customerIds(
             await run(
               (administration) => administration.exportCustomers(range),
-              { listReservations: () => Effect.succeed(bookings("CANCELLED")) }
+              {
+                listReservations: () => Effect.succeed(bookings("CANCELLED")),
+                getReservationsByIds: (ids) =>
+                  Effect.succeed(bookings("CANCELLED")).pipe(
+                    Effect.flatMap((records) =>
+                      seededReservationReads(records).getReservationsByIds(ids)
+                    )
+                  ),
+              }
             )
           )
         ).toEqual(customerIds(cancelled.items));
@@ -710,6 +751,17 @@ describe.skipIf(!testDatabase)(
                   reason: "server",
                 })
               ),
+            getReservationsByIds: (ids) =>
+              Effect.fail(
+                new DotyposUnavailable({
+                  operation: "listReservations",
+                  reason: "server",
+                })
+              ).pipe(
+                Effect.flatMap((records) =>
+                  seededReservationReads(records).getReservationsByIds(ids)
+                )
+              ),
           }
         );
         expect(result).toEqual({
@@ -728,6 +780,12 @@ describe.skipIf(!testDatabase)(
         ) =>
           run((administration) => administration.exportCustomers(input), {
             listReservations: () => Effect.succeed(bookings),
+            getReservationsByIds: (ids) =>
+              Effect.succeed(bookings).pipe(
+                Effect.flatMap((records) =>
+                  seededReservationReads(records).getReservationsByIds(ids)
+                )
+              ),
           });
 
         test("exports the customers the list shows under each filter", async () => {
@@ -768,6 +826,17 @@ describe.skipIf(!testDatabase)(
                     reason: "server",
                   })
                 ),
+              getReservationsByIds: (ids) =>
+                Effect.fail(
+                  new DotyposUnavailable({
+                    operation: "listReservations",
+                    reason: "server",
+                  })
+                ).pipe(
+                  Effect.flatMap((records) =>
+                    seededReservationReads(records).getReservationsByIds(ids)
+                  )
+                ),
             }
           );
           expect(failure).toMatchObject({
@@ -784,6 +853,12 @@ describe.skipIf(!testDatabase)(
           {
             listReservations: () =>
               Effect.die(new Error("Dotypos must not be read")),
+            getReservationsByIds: (ids) =>
+              Effect.die(new Error("Dotypos must not be read")).pipe(
+                Effect.flatMap((records) =>
+                  seededReservationReads(records).getReservationsByIds(ids)
+                )
+              ),
           }
         );
         expect(result.dateFilterUnavailable).toBe(false);
@@ -901,6 +976,12 @@ describe.skipIf(!testDatabase)(
               {
                 listReservations: () =>
                   Effect.succeed(pagedLabels.map(booking)),
+                getReservationsByIds: (ids) =>
+                  Effect.succeed(pagedLabels.map(booking)).pipe(
+                    Effect.flatMap((records) =>
+                      seededReservationReads(records).getReservationsByIds(ids)
+                    )
+                  ),
               }
             );
             expect(exported).toHaveLength(26);
@@ -1262,7 +1343,15 @@ describe.skipIf(!testDatabase)(
               sort: "date",
               to: "2026-10-31",
             }),
-          { listReservations: () => Effect.succeed(bookings) }
+          {
+            listReservations: () => Effect.succeed(bookings),
+            getReservationsByIds: (ids) =>
+              Effect.succeed(bookings).pipe(
+                Effect.flatMap((records) =>
+                  seededReservationReads(records).getReservationsByIds(ids)
+                )
+              ),
+          }
         );
 
         expect(
@@ -1336,6 +1425,18 @@ describe.skipIf(!testDatabase)(
                     ? bookings.toReversed()
                     : bookings
                 ),
+              getReservationsByIds: (ids, readOptions) => {
+                const options = { ...readOptions, ids: [...ids] };
+                return Effect.succeed(
+                  options?.order === "startDateDescending"
+                    ? bookings.toReversed()
+                    : bookings
+                ).pipe(
+                  Effect.flatMap((records) =>
+                    seededReservationReads(records).getReservationsByIds(ids)
+                  )
+                );
+              },
             }
           ).then((exported) =>
             exported.map(({ dotyposReservationId }) => dotyposReservationId)

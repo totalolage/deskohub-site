@@ -1,3 +1,7 @@
+import {
+  seededCustomerReads,
+  seededReservationReads,
+} from "@deskohub/dotypos/backend/service.mock";
 import "@/shared/testing/workspace-test-env";
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import {
@@ -117,9 +121,24 @@ describe("AdministrationService", () => {
                 WorkspaceDatabase.make({ select: () => makeQuery([]) } as never)
               ),
               DotyposServiceMock({
-                getCustomers: () => Effect.succeed([]),
+                getCustomersByIds: (ids) =>
+                  Effect.succeed([]).pipe(
+                    Effect.flatMap((records) =>
+                      seededCustomerReads(records).getCustomersByIds(ids)
+                    )
+                  ),
                 getTables: () => Effect.succeed([]),
                 listReservations: () => Effect.succeed(bookings),
+                getReservationsByIds: (ids) =>
+                  ids.length === 0
+                    ? Effect.succeed(new Map())
+                    : Effect.succeed(bookings).pipe(
+                        Effect.flatMap((records) =>
+                          seededReservationReads(records).getReservationsByIds(
+                            ids
+                          )
+                        )
+                      ),
               }),
               Layer.succeed(
                 PostHogReservationHistory,
@@ -201,7 +220,12 @@ describe("AdministrationService", () => {
                 } as never)
               ),
               DotyposServiceMock({
-                getCustomers: () => Effect.succeed([]),
+                getCustomersByIds: (ids) =>
+                  Effect.succeed([]).pipe(
+                    Effect.flatMap((records) =>
+                      seededCustomerReads(records).getCustomersByIds(ids)
+                    )
+                  ),
                 getTables: () => Effect.succeed([]),
                 listReservations: (input) =>
                   Effect.sync(() => {
@@ -221,6 +245,33 @@ describe("AdministrationService", () => {
                         status: "CONFIRMED" as const,
                       }));
                   }),
+                getReservationsByIds: (ids, readOptions) => {
+                  if (ids.length === 0) return Effect.succeed(new Map());
+                  const { concurrency, onBatchFailure, ...filters } =
+                    readOptions ?? {};
+                  const input = { ...filters, ids: [...ids] };
+                  return Effect.sync(() => {
+                    listInputs.push(input);
+                    return Object.entries(heldStarts)
+                      .toSorted(([, left], [, right]) =>
+                        Temporal.Instant.compare(left, right)
+                      )
+                      .map(([id, startDate]) => ({
+                        _branchId: "branch",
+                        _cloudId: "cloud",
+                        _customerId: null,
+                        id,
+                        startDate,
+                        endDate: "2026-08-11T06:00:00+02:00",
+                        seats: "1",
+                        status: "CONFIRMED" as const,
+                      }));
+                  }).pipe(
+                    Effect.flatMap((records) =>
+                      seededReservationReads(records).getReservationsByIds(ids)
+                    )
+                  );
+                },
               }),
               Layer.succeed(
                 PostHogReservationHistory,
@@ -281,6 +332,20 @@ describe("AdministrationService", () => {
                     listInputs.push(input);
                     return [];
                   }),
+                getReservationsByIds: (ids, readOptions) => {
+                  if (ids.length === 0) return Effect.succeed(new Map());
+                  const { concurrency, onBatchFailure, ...filters } =
+                    readOptions ?? {};
+                  const input = { ...filters, ids: [...ids] };
+                  return Effect.sync(() => {
+                    listInputs.push(input);
+                    return [];
+                  }).pipe(
+                    Effect.flatMap((records) =>
+                      seededReservationReads(records).getReservationsByIds(ids)
+                    )
+                  );
+                },
               }),
               Layer.succeed(
                 PostHogReservationHistory,
@@ -371,6 +436,27 @@ describe("AdministrationService", () => {
                       status: "CONFIRMED" as const,
                     }))
                   ),
+                getReservationsByIds: (ids) =>
+                  ids.length === 0
+                    ? Effect.succeed(new Map())
+                    : Effect.succeed(
+                        Object.entries(heldStarts).map(([id, startDate]) => ({
+                          _branchId: "branch",
+                          _cloudId: "cloud",
+                          _customerId: "customer",
+                          id,
+                          startDate,
+                          endDate: "2026-08-11T06:00:00Z",
+                          seats: "1",
+                          status: "CONFIRMED" as const,
+                        }))
+                      ).pipe(
+                        Effect.flatMap((records) =>
+                          seededReservationReads(records).getReservationsByIds(
+                            ids
+                          )
+                        )
+                      ),
               }),
               Layer.succeed(
                 PostHogReservationHistory,
@@ -428,6 +514,20 @@ describe("AdministrationService", () => {
                     listInputs.push(input);
                     return [];
                   }),
+                getReservationsByIds: (ids, readOptions) => {
+                  if (ids.length === 0) return Effect.succeed(new Map());
+                  const { concurrency, onBatchFailure, ...filters } =
+                    readOptions ?? {};
+                  const input = { ...filters, ids: [...ids] };
+                  return Effect.sync(() => {
+                    listInputs.push(input);
+                    return [];
+                  }).pipe(
+                    Effect.flatMap((records) =>
+                      seededReservationReads(records).getReservationsByIds(ids)
+                    )
+                  );
+                },
               }),
               Layer.succeed(
                 PostHogReservationHistory,
@@ -499,8 +599,12 @@ describe("AdministrationService", () => {
                 WorkspaceDatabase.make(database as never)
               ),
               DotyposServiceMock({
-                getCustomers: () =>
-                  Effect.succeed([{ id: "dotypos-customer" }]),
+                getCustomersByIds: (ids) =>
+                  Effect.succeed([{ id: "dotypos-customer" }]).pipe(
+                    Effect.flatMap((records) =>
+                      seededCustomerReads(records).getCustomersByIds(ids)
+                    )
+                  ),
                 listReservations: () =>
                   Effect.fail(
                     new DotyposUnavailable({
@@ -508,6 +612,21 @@ describe("AdministrationService", () => {
                       reason: "server",
                     })
                   ),
+                getReservationsByIds: (ids) =>
+                  ids.length === 0
+                    ? Effect.succeed(new Map())
+                    : Effect.fail(
+                        new DotyposUnavailable({
+                          operation: "listReservations",
+                          reason: "server",
+                        })
+                      ).pipe(
+                        Effect.flatMap((records) =>
+                          seededReservationReads(records).getReservationsByIds(
+                            ids
+                          )
+                        )
+                      ),
               }),
               Layer.succeed(
                 PostHogReservationHistory,
@@ -596,8 +715,12 @@ describe("AdministrationService", () => {
                 } as never)
               ),
               DotyposServiceMock({
-                getCustomers: () =>
-                  Effect.succeed([{ id: "dotypos-customer" }]),
+                getCustomersByIds: (ids) =>
+                  Effect.succeed([{ id: "dotypos-customer" }]).pipe(
+                    Effect.flatMap((records) =>
+                      seededCustomerReads(records).getCustomersByIds(ids)
+                    )
+                  ),
                 listReservations: () =>
                   Effect.succeed([
                     {
@@ -611,6 +734,27 @@ describe("AdministrationService", () => {
                       status: "CONFIRMED",
                     },
                   ]),
+                getReservationsByIds: (ids) =>
+                  ids.length === 0
+                    ? Effect.succeed(new Map())
+                    : Effect.succeed([
+                        {
+                          _branchId: "branch",
+                          _cloudId: "cloud",
+                          _customerId: "dotypos-customer",
+                          id: "dotypos-reservation",
+                          startDate: "2026-08-10T10:00:00Z",
+                          endDate: "2026-08-10T11:00:00Z",
+                          seats: "1",
+                          status: "CONFIRMED",
+                        },
+                      ]).pipe(
+                        Effect.flatMap((records) =>
+                          seededReservationReads(records).getReservationsByIds(
+                            ids
+                          )
+                        )
+                      ),
               }),
               Layer.succeed(
                 PostHogReservationHistory,
@@ -678,11 +822,16 @@ describe("AdministrationService", () => {
                 } as never)
               ),
               DotyposServiceMock({
-                getCustomers: ({ ids = [] }) =>
-                  Effect.sync(() => {
+                getCustomersByIds: (ids, _readOptions) => {
+                  return Effect.sync(() => {
                     customerCalls.push([...ids]);
                     return ids.map((id) => ({ id }));
-                  }),
+                  }).pipe(
+                    Effect.flatMap((records) =>
+                      seededCustomerReads(records).getCustomersByIds(ids)
+                    )
+                  );
+                },
                 listReservations: (input) =>
                   Effect.sync(() => {
                     const ids = [...(input.ids ?? [])];
@@ -698,6 +847,30 @@ describe("AdministrationService", () => {
                       status: "CONFIRMED" as const,
                     }));
                   }),
+                getReservationsByIds: (ids, readOptions) => {
+                  if (ids.length === 0) return Effect.succeed(new Map());
+                  const { concurrency, onBatchFailure, ...filters } =
+                    readOptions ?? {};
+                  const input = { ...filters, ids: [...ids] };
+                  return Effect.sync(() => {
+                    const ids = [...(input.ids ?? [])];
+                    reservationCalls.push(ids);
+                    return ids.map((id, index) => ({
+                      _branchId: "branch",
+                      _cloudId: "cloud",
+                      _customerId: `customer-${index}`,
+                      id,
+                      startDate: "2026-08-10T10:00:00Z",
+                      endDate: "2026-08-10T11:00:00Z",
+                      seats: "1",
+                      status: "CONFIRMED" as const,
+                    }));
+                  }).pipe(
+                    Effect.flatMap((records) =>
+                      seededReservationReads(records).getReservationsByIds(ids)
+                    )
+                  );
+                },
               }),
               Layer.succeed(
                 PostHogReservationHistory,
@@ -781,8 +954,13 @@ describe("AdministrationService", () => {
                 } as never)
               ),
               DotyposServiceMock({
-                getCustomers: ({ ids = [] }) =>
-                  Effect.succeed(ids.map((id) => ({ id }))),
+                getCustomersByIds: (ids, _readOptions) => {
+                  return Effect.succeed(ids.map((id) => ({ id }))).pipe(
+                    Effect.flatMap((records) =>
+                      seededCustomerReads(records).getCustomersByIds(ids)
+                    )
+                  );
+                },
                 listReservations: (input) =>
                   Effect.succeed(
                     (input.ids ?? []).map((id) => ({
@@ -796,6 +974,28 @@ describe("AdministrationService", () => {
                       status: "CONFIRMED" as const,
                     }))
                   ),
+                getReservationsByIds: (ids, readOptions) => {
+                  if (ids.length === 0) return Effect.succeed(new Map());
+                  const { concurrency, onBatchFailure, ...filters } =
+                    readOptions ?? {};
+                  const input = { ...filters, ids: [...ids] };
+                  return Effect.succeed(
+                    (input.ids ?? []).map((id) => ({
+                      _branchId: "branch",
+                      _cloudId: "cloud",
+                      _customerId: "customer",
+                      id,
+                      startDate: heldStarts.get(id) ?? "",
+                      endDate: "2026-08-10T11:00:00.000+02:00",
+                      seats: "1",
+                      status: "CONFIRMED" as const,
+                    }))
+                  ).pipe(
+                    Effect.flatMap((records) =>
+                      seededReservationReads(records).getReservationsByIds(ids)
+                    )
+                  );
+                },
               }),
               Layer.succeed(
                 PostHogReservationHistory,
@@ -876,15 +1076,20 @@ describe("AdministrationService", () => {
                       itemCalls.push(id);
                       return Option.some({ firstName: "Ada", id });
                     }),
-                  getCustomers: () =>
-                    batchFails
+                  getCustomersByIds: (ids) =>
+                    (batchFails
                       ? Effect.fail(
                           new DotyposUnavailable({
-                            operation: "getCustomers",
+                            operation: "getCustomersByIds",
                             reason: "server",
                           })
                         )
-                      : Effect.succeed([]),
+                      : Effect.succeed([])
+                    ).pipe(
+                      Effect.flatMap((records) =>
+                        seededCustomerReads(records).getCustomersByIds(ids)
+                      )
+                    ),
                 }),
                 Layer.succeed(
                   PostHogReservationHistory,
@@ -939,11 +1144,15 @@ describe("AdministrationService", () => {
                 } as never)
               ),
               DotyposServiceMock({
-                getCustomers: () =>
+                getCustomersByIds: (ids) =>
                   Effect.succeed([
                     { companyName: " Acme Studio ", id: "named-customer" },
                     { companyName: " ", id: "unnamed-customer" },
-                  ]),
+                  ]).pipe(
+                    Effect.flatMap((records) =>
+                      seededCustomerReads(records).getCustomersByIds(ids)
+                    )
+                  ),
               }),
               Layer.succeed(
                 PostHogReservationHistory,
@@ -1004,11 +1213,15 @@ describe("AdministrationService", () => {
                 } as never)
               ),
               DotyposServiceMock({
-                getCustomers: () =>
+                getCustomersByIds: (ids) =>
                   Effect.fail(
                     new Error("network request interrupted", {
                       cause: interruption,
                     })
+                  ).pipe(
+                    Effect.flatMap((records) =>
+                      seededCustomerReads(records).getCustomersByIds(ids)
+                    )
                   ),
               }),
               Layer.succeed(
@@ -1214,8 +1427,9 @@ describe("AdministrationService", () => {
                   } as never)
                 ),
                 DotyposServiceMock({
-                  getCustomers: (options) =>
-                    Effect.sync(() => {
+                  getCustomersByIds: (ids, _readOptions) => {
+                    const options = { ids };
+                    return Effect.sync(() => {
                       customerListInputs.push(options);
                       return options.ids.map((id) => ({
                         created:
@@ -1225,7 +1439,12 @@ describe("AdministrationService", () => {
                         firstName: id.replace("customer-", ""),
                         id,
                       }));
-                    }),
+                    }).pipe(
+                      Effect.flatMap((records) =>
+                        seededCustomerReads(records).getCustomersByIds(ids)
+                      )
+                    );
+                  },
                   listReservations: (input) => {
                     listInputs.push(input);
                     if (reservationsUnavailable) {
@@ -1239,6 +1458,38 @@ describe("AdministrationService", () => {
                     return Effect.succeed(
                       overviewReservations.filter(({ id }) =>
                         input?.ids?.includes(id)
+                      )
+                    );
+                  },
+                  getReservationsByIds: (ids, readOptions) => {
+                    if (ids.length === 0) return Effect.succeed(new Map());
+                    const { concurrency, onBatchFailure, ...filters } =
+                      readOptions ?? {};
+                    const input = { ...filters, ids: [...ids] };
+                    listInputs.push(input);
+                    if (reservationsUnavailable) {
+                      return Effect.fail(
+                        new DotyposUnavailable({
+                          operation: "listReservations",
+                          reason: "server",
+                        })
+                      ).pipe(
+                        Effect.flatMap((records) =>
+                          seededReservationReads(records).getReservationsByIds(
+                            ids
+                          )
+                        )
+                      );
+                    }
+                    return Effect.succeed(
+                      overviewReservations.filter(({ id }) =>
+                        input?.ids?.includes(id)
+                      )
+                    ).pipe(
+                      Effect.flatMap((records) =>
+                        seededReservationReads(records).getReservationsByIds(
+                          ids
+                        )
                       )
                     );
                   },
@@ -1418,12 +1669,28 @@ describe("AdministrationService", () => {
             } as never)
           ),
           DotyposServiceMock({
-            getCustomers: () => Effect.succeed([]),
+            getCustomersByIds: (ids) =>
+              Effect.succeed([]).pipe(
+                Effect.flatMap((records) =>
+                  seededCustomerReads(records).getCustomersByIds(ids)
+                )
+              ),
             listReservations: () =>
               Effect.sync(() => {
                 listReservationsCalls += 1;
                 return reservations;
               }),
+            getReservationsByIds: (ids) =>
+              ids.length === 0
+                ? Effect.succeed(new Map())
+                : Effect.sync(() => {
+                    listReservationsCalls += 1;
+                    return reservations;
+                  }).pipe(
+                    Effect.flatMap((records) =>
+                      seededReservationReads(records).getReservationsByIds(ids)
+                    )
+                  ),
           }),
           Layer.succeed(
             PostHogReservationHistory,
@@ -1493,15 +1760,33 @@ describe("AdministrationService", () => {
                 } as never)
               ),
               DotyposServiceMock({
-                getCustomers: (options) =>
-                  Effect.succeed(
+                getCustomersByIds: (ids, _readOptions) => {
+                  const options = { ids };
+                  return Effect.succeed(
                     options.ids.map((id) => ({
                       created: "2026-01-01T00:00:00Z",
                       firstName: id,
                       id,
                     }))
-                  ),
+                  ).pipe(
+                    Effect.flatMap((records) =>
+                      seededCustomerReads(records).getCustomersByIds(ids)
+                    )
+                  );
+                },
                 listReservations: input.listReservations,
+                getReservationsByIds: (ids, options) =>
+                  ids.length === 0
+                    ? Effect.succeed(new Map())
+                    : input
+                        .listReservations({ ...options, ids: [...ids] })
+                        .pipe(
+                          Effect.flatMap((records) =>
+                            seededReservationReads(
+                              records
+                            ).getReservationsByIds(ids)
+                          )
+                        ),
               }),
               Layer.succeed(
                 PostHogReservationHistory,
@@ -1533,7 +1818,7 @@ describe("AdministrationService", () => {
       listReservations: (input) =>
         Effect.sync(() => {
           listInputs.push(input);
-          return (input?.ids ?? []).slice(-1).map((id) => ({
+          return (input?.ids ?? []).slice(-2).map((id) => ({
             _branchId: "branch",
             _cloudId: "cloud",
             _customerId: "customer",
@@ -1548,13 +1833,8 @@ describe("AdministrationService", () => {
 
     expect(listInputs).toEqual([
       {
-        ids: linkedIds.slice(0, 50),
-        order: "startDateAscending",
-        startsAtOrAfter: "2026-08-19T21:45:00Z",
-        startsBefore: "2026-09-25T22:00:00Z",
-      },
-      {
-        ids: linkedIds.slice(50),
+        ids: linkedIds,
+        concurrency: 3,
         order: "startDateAscending",
         startsAtOrAfter: "2026-08-19T21:45:00Z",
         startsBefore: "2026-09-25T22:00:00Z",
@@ -1595,6 +1875,7 @@ describe("AdministrationService", () => {
     const { source } = await loadLinkedOverview({
       linkedIds: bookings.map(({ id }) => id),
       listReservations: () => Effect.succeed(bookings),
+
       earlySetupIds: ["booking-setup"],
     });
 
@@ -1612,7 +1893,7 @@ describe("AdministrationService", () => {
         (_, index) => `booking-${String(index).padStart(2, "0")}`
       ),
       listReservations: (input) =>
-        input?.ids?.length === 1
+        input?.ids?.includes("booking-50")
           ? Effect.fail(
               new DotyposUnavailable({
                 operation: "listReservations",
@@ -2082,6 +2363,64 @@ describe("AdministrationService", () => {
                       },
                     ];
                   }),
+                getReservationsByIds: (ids, readOptions) => {
+                  if (ids.length === 0) return Effect.succeed(new Map());
+                  const { concurrency, onBatchFailure, ...filters } =
+                    readOptions ?? {};
+                  const input = { ...filters, ids: [...ids] };
+                  return Effect.sync(() => {
+                    listInputs.push(input);
+                    return [
+                      {
+                        ...booking,
+                        id: "booking-one",
+                        dotyposReservationId: "booking-one",
+                        startDate: "2026-08-09T22:30:00Z",
+                      },
+                      {
+                        ...booking,
+                        id: "booking-two",
+                        dotyposReservationId: "booking-two",
+                        startDate: "2026-08-10T18:00:00Z",
+                      },
+                      {
+                        ...booking,
+                        id: "booking-profi",
+                        dotyposReservationId: "booking-profi",
+                        startDate: "2026-08-11T08:00:00Z",
+                      },
+                      {
+                        ...booking,
+                        id: "booking-meeting-room",
+                        dotyposReservationId: "booking-meeting-room",
+                        startDate: "2026-08-10T12:00:00Z",
+                      },
+                      {
+                        ...booking,
+                        id: "booking-office",
+                        dotyposReservationId: "booking-office",
+                        startDate: "2026-08-12T08:00:00Z",
+                      },
+                      {
+                        ...booking,
+                        id: "booking-not-linked",
+                        dotyposReservationId: "booking-not-linked",
+                        startDate: "2026-08-13T08:00:00Z",
+                      },
+                      {
+                        ...booking,
+                        id: "booking-today",
+                        dotyposReservationId: "booking-today",
+                        startDate: "2026-08-26T14:00:00Z",
+                        endDate: "2026-08-26T15:00:00Z",
+                      },
+                    ];
+                  }).pipe(
+                    Effect.flatMap((records) =>
+                      seededReservationReads(records).getReservationsByIds(ids)
+                    )
+                  );
+                },
               }),
               Layer.succeed(
                 PostHogReservationHistory,
@@ -2153,6 +2492,21 @@ describe("AdministrationService", () => {
                       reason: "server",
                     })
                   ),
+                getReservationsByIds: (ids) =>
+                  ids.length === 0
+                    ? Effect.succeed(new Map())
+                    : Effect.fail(
+                        new DotyposUnavailable({
+                          operation: "listReservations",
+                          reason: "server",
+                        })
+                      ).pipe(
+                        Effect.flatMap((records) =>
+                          seededReservationReads(records).getReservationsByIds(
+                            ids
+                          )
+                        )
+                      ),
               }),
               Layer.succeed(
                 PostHogReservationHistory,
@@ -2199,7 +2553,21 @@ describe("AdministrationService", () => {
                   ),
                 } as never)
               ),
-              DotyposServiceMock({ listReservations: input.listReservations }),
+              DotyposServiceMock({
+                listReservations: input.listReservations,
+                getReservationsByIds: (ids, options) =>
+                  ids.length === 0
+                    ? Effect.succeed(new Map())
+                    : input
+                        .listReservations({ ...options, ids: [...ids] })
+                        .pipe(
+                          Effect.flatMap((records) =>
+                            seededReservationReads(
+                              records
+                            ).getReservationsByIds(ids)
+                          )
+                        ),
+              }),
               Layer.succeed(
                 PostHogReservationHistory,
                 PostHogReservationHistory.of({
@@ -2305,6 +2673,7 @@ describe("AdministrationService", () => {
 
     expect(listInputs).toEqual([
       {
+        concurrency: 3,
         ids: [
           "booking-cancelled",
           "booking-confirmed",
@@ -2364,6 +2733,7 @@ describe("AdministrationService", () => {
     const result = await loadOverviewReservationActivity({
       linkedIds: bookings.map(({ id }) => id),
       listReservations: () => Effect.succeed(bookings),
+
       earlySetupIds: [
         "booking-setup-from-range-start",
         "booking-setup-midnight",
@@ -2390,23 +2760,21 @@ describe("AdministrationService", () => {
       listReservations: (input) =>
         Effect.sync(() => {
           requestedIds.push(input?.ids);
-          const id = input?.ids?.at(-1) ?? "";
-          return [
-            {
-              _branchId: "branch",
-              _cloudId: "cloud",
-              _customerId: "dotypos-customer",
-              endDate: "2026-08-10T23:00:00Z",
-              id,
-              seats: "1",
-              startDate: "2026-08-10T08:00:00Z",
-              status: "CONFIRMED" as const,
-            },
-          ];
+          const returnedIds = input?.ids?.slice(-2) ?? [];
+          return returnedIds.map((id) => ({
+            _branchId: "branch",
+            _cloudId: "cloud",
+            _customerId: "dotypos-customer",
+            endDate: "2026-08-10T23:00:00Z",
+            id,
+            seats: "1",
+            startDate: "2026-08-10T08:00:00Z",
+            status: "CONFIRMED" as const,
+          }));
         }),
     });
 
-    expect(requestedIds).toEqual([linkedIds.slice(0, 50), linkedIds.slice(50)]);
+    expect(requestedIds).toEqual([linkedIds]);
     expect(result.dates).toEqual([{ count: 2, date: "2026-08-10" }]);
   });
 
@@ -2419,7 +2787,7 @@ describe("AdministrationService", () => {
     const result = await loadOverviewReservationActivity({
       linkedIds,
       listReservations: (input) =>
-        input?.ids?.length === 1
+        input?.ids?.includes("booking-50")
           ? Effect.fail(
               new DotyposUnavailable({
                 operation: "listReservations",
@@ -2706,6 +3074,20 @@ describe("AdministrationService", () => {
                     listInputs.push(input);
                     return providerBookings;
                   }),
+                getReservationsByIds: (ids, readOptions) => {
+                  if (ids.length === 0) return Effect.succeed(new Map());
+                  const { concurrency, onBatchFailure, ...filters } =
+                    readOptions ?? {};
+                  const input = { ...filters, ids: [...ids] };
+                  return Effect.sync(() => {
+                    listInputs.push(input);
+                    return providerBookings;
+                  }).pipe(
+                    Effect.flatMap((records) =>
+                      seededReservationReads(records).getReservationsByIds(ids)
+                    )
+                  );
+                },
               }),
               Layer.succeed(
                 PostHogReservationHistory,
@@ -2877,7 +3259,7 @@ describe("AdministrationService reservation author", () => {
                   Effect.succeed(
                     Option.some({ id, firstName: "Bea", lastName: "Booked" })
                   ),
-                getCustomers: ({ ids }) =>
+                getCustomersByIds: (ids) =>
                   Effect.succeed(
                     ids?.includes(authorCustomerId)
                       ? [
@@ -2888,9 +3270,23 @@ describe("AdministrationService reservation author", () => {
                           },
                         ]
                       : []
+                  ).pipe(
+                    Effect.flatMap((records) =>
+                      seededCustomerReads(records).getCustomersByIds(ids)
+                    )
                   ),
                 getTables: () => Effect.succeed([]),
                 listReservations: () => Effect.succeed([]),
+                getReservationsByIds: (ids) =>
+                  ids.length === 0
+                    ? Effect.succeed(new Map())
+                    : Effect.succeed([]).pipe(
+                        Effect.flatMap((records) =>
+                          seededReservationReads(records).getReservationsByIds(
+                            ids
+                          )
+                        )
+                      ),
               }),
               Layer.succeed(
                 PostHogReservationHistory,

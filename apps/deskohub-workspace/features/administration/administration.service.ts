@@ -8,7 +8,6 @@ import {
   type DotyposTableId,
   DotyposTableIdSchema,
   getCustomerDisplayName,
-  readInIdFilterBatches,
 } from "@deskohub/dotypos";
 import type {
   Customer as DotyposCustomer,
@@ -689,14 +688,6 @@ const toCustomer = (
     phone: customer.phone?.trim() || null,
   };
 };
-
-const indexCustomersById = (customers: readonly DotyposCustomer[]) =>
-  new Map(
-    customers.flatMap((customer) => {
-      const id = Option.getOrUndefined(decodeDotyposCustomerId(customer.id));
-      return id ? [[id, customer] as const] : [];
-    })
-  );
 
 type SafePaymentAttemptRow = {
   readonly id: PaymentAttemptId;
@@ -1603,14 +1594,23 @@ export class AdministrationService extends Context.Service<
           yield* Effect.annotateCurrentSpan({
             uniqueCustomerCount: new Set(ids).size,
           });
-          const batches = yield* readInIdFilterBatches(
-            ids,
-            (batchIds) =>
-              dotypos.getCustomers({ ids: batchIds }).pipe(
-                Effect.map((customers) => ({
-                  customers,
-                  ids: batchIds,
-                })),
+          const customersById = new Map(
+            yield* dotypos
+              .getCustomersByIds(ids, {
+                concurrency: 3,
+                ...(policy === degradeOnProviderFailure && {
+                  onBatchFailure: (cause) =>
+                    degradeOnProviderFailure.recover(
+                      {
+                        cause,
+                        message: "Batch customer details unavailable",
+                        source: "customer-details",
+                      },
+                      undefined
+                    ),
+                }),
+              })
+              .pipe(
                 Effect.catch(
                   recoverProviderRead(
                     policy,
@@ -1618,23 +1618,15 @@ export class AdministrationService extends Context.Service<
                       message: "Batch customer details unavailable",
                       source: "customer-details",
                     },
-                    { customers: [] as const, ids: batchIds }
+                    new Map<DotyposCustomerId, DotyposCustomer>()
                   )
                 )
-              ),
-            { concurrency: 3 }
+              )
           );
-          const customersById = indexCustomersById(
-            batches.flatMap(({ customers }) => customers)
+          // Missing batch records, including degraded batches, retain the individual lookup fallback.
+          const unreturnedIds = [...new Set(ids)].filter(
+            (id) => !customersById.has(id)
           );
-          // A batch can leave out a customer that a single read still
-          // returns, so every customer a batch didn't return is read alone:
-          // under an export only those of successful batches, since a failed
-          // batch already failed it. Only a customer Dotypos doesn't know
-          // stays absent without a failure.
-          const unreturnedIds = batches
-            .flatMap(({ ids: batchIds }) => batchIds)
-            .filter((id) => !customersById.has(id));
           const missingCustomers = yield* Effect.all(
             unreturnedIds.map((id) =>
               dotypos.getCustomer(id).pipe(
@@ -1721,30 +1713,37 @@ export class AdministrationService extends Context.Service<
             ? [row.dotyposReservationId]
             : []
         );
-        const reservationBatches = yield* readInIdFilterBatches(
-          missingReservationIds,
-          (batchIds) =>
-            dotypos.listReservations({ ids: batchIds }).pipe(
-              Effect.catch(
-                recoverProviderRead(
-                  policy,
+        const loadedReservations = yield* dotypos
+          .getReservationsByIds(missingReservationIds, {
+            concurrency: 3,
+            ...(policy === degradeOnProviderFailure && {
+              onBatchFailure: (cause) =>
+                degradeOnProviderFailure.recover(
                   {
+                    cause,
                     message: "Live booking details unavailable",
                     source: "booking-details",
                   },
-                  [] as const
-                )
+                  undefined
+                ),
+            }),
+          })
+          .pipe(
+            Effect.catch(
+              recoverProviderRead(
+                policy,
+                {
+                  message: "Live booking details unavailable",
+                  source: "booking-details",
+                },
+                new Map<DotyposReservationId, DotyposReservation>()
               )
-            ),
-          { concurrency: 3 }
-        );
-        const reservationsById = new Map(knownReservations);
-        for (const reservation of reservationBatches.flat()) {
-          const id = Option.getOrUndefined(
-            decodeDotyposReservationId(reservation.id)
+            )
           );
-          if (id) reservationsById.set(id, reservation);
-        }
+        const reservationsById = new Map([
+          ...(knownReservations ?? []),
+          ...loadedReservations,
+        ]);
         const customerIds = [
           ...new Set(
             rows.map((row) => {
@@ -3585,16 +3584,13 @@ export class AdministrationService extends Context.Service<
         range: AdministrationReservationDateRange
       ) {
         const bounds = getAdministrationReservationHeldRangeBounds(range);
-        const held = (yield* readInIdFilterBatches(
-          ids.toSorted(),
-          (batchIds) =>
-            dotypos.listReservations({
-              ids: batchIds,
-              ...bounds,
-              order: "startDateAscending",
-            }),
-          { concurrency: 3 }
-        )).flat();
+        const held = [
+          ...(yield* dotypos.getReservationsByIds(ids.toSorted(), {
+            ...bounds,
+            order: "startDateAscending",
+            concurrency: 3,
+          })).values(),
+        ];
         const earlySetupDetails = yield* loadEarlySetupDetails(
           db,
           held.flatMap((reservation) =>

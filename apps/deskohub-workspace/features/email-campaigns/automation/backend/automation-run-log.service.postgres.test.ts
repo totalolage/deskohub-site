@@ -103,7 +103,12 @@ describe.skipIf(!testDatabase)(
     let kindCheckDefinition = "";
 
     const noCustomers = DotyposServiceMock({
-      getCustomersPage: () => Effect.succeed([]),
+      getCustomersByIds: (ids) =>
+        Effect.succeed([]).pipe(
+          Effect.flatMap((records) =>
+            seededCustomerReads(records).getCustomersByIds(ids)
+          )
+        ),
     });
 
     const run = <A, E>(
@@ -625,7 +630,7 @@ describe.skipIf(!testDatabase)(
       const reads: (readonly DotyposCustomerId[])[] = [];
       let anaFirstName = "Ana";
       const dotypos = DotyposServiceMock({
-        getCustomersPage: (ids) => {
+        getCustomersByIds: (ids) => {
           reads.push(ids);
           return seededCustomerReads([
             profile(customerId("ana"), {
@@ -634,7 +639,7 @@ describe.skipIf(!testDatabase)(
               email: ` ${anaEmail} `,
             }),
             profile(customerId("bob"), { companyName: "Bob Test s.r.o." }),
-          ]).getCustomersPage(ids);
+          ]).getCustomersByIds(ids);
         },
       });
       const contactsOf = (page: {
@@ -696,7 +701,7 @@ describe.skipIf(!testDatabase)(
       expect(contactsOf(first)).toEqual([ghost, bob, bob, ana]);
       expect(contactsOf(second)).toEqual([ghost, bob, bob, renamed]);
       expect(detail).toMatchObject(renamed);
-      expect(reads.map((ids) => [...ids].sort())).toEqual([
+      expect(reads.map((ids) => [...new Set(ids)].sort())).toEqual([
         everyCustomer,
         everyCustomer,
         [customerId("ana")],
@@ -720,13 +725,17 @@ describe.skipIf(!testDatabase)(
     test("lists runs without contacts when Dotypos can't be read", async () => {
       const { campaignId } = seeded;
       const unavailable = DotyposServiceMock({
-        getCustomersPage: () =>
+        getCustomersByIds: (ids) =>
           Effect.fail(
             new DotyposUnavailable({
-              operation: "getCustomersPage",
+              operation: "getCustomersByIds",
               reason: "server",
               httpStatus: 503,
             })
+          ).pipe(
+            Effect.flatMap((records) =>
+              seededCustomerReads(records).getCustomersByIds(ids)
+            )
           ),
       });
 

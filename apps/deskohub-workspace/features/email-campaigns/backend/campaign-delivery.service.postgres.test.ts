@@ -1,3 +1,4 @@
+import { seededCustomerReads } from "@deskohub/dotypos/backend/service.mock";
 import "@/shared/testing/workspace-test-env";
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -193,7 +194,12 @@ describe.skipIf(!testDatabase)(
         Layer.provide(
           Layer.mergeAll(
             DotyposServiceMock({
-              getCustomers: ({ ids }) => readCustomers(ids),
+              getCustomersByIds: (ids) =>
+                readCustomers(ids).pipe(
+                  Effect.flatMap((records) =>
+                    seededCustomerReads(records).getCustomersByIds(ids)
+                  )
+                ),
             }),
             EmailServiceTag.Live.pipe(
               Layer.provide(
@@ -1036,7 +1042,7 @@ describe.skipIf(!testDatabase)(
               Effect.andThen(
                 Effect.fail(
                   new DotyposUnavailable({
-                    operation: "getCustomers",
+                    operation: "getCustomersByIds",
                     reason: "transport",
                   })
                 )

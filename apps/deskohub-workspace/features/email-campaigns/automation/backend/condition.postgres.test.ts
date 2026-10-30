@@ -1,3 +1,4 @@
+import { seededCustomerReads } from "@deskohub/dotypos/backend/service.mock";
 import "@/shared/testing/workspace-test-env";
 
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
@@ -139,21 +140,27 @@ describe.skipIf(!database)("condition units on Postgres", () => {
   };
 
   const dotyposLayer = DotyposServiceMock({
-    getCustomersPage: (ids) => {
+    getCustomersByIds: (ids) => {
       dotypos.profilePages += 1;
       const wanted = new Set<string>(ids);
-      return dotypos.failing
-        ? Effect.fail(
-            new DotyposUnavailable({
-              operation: "getCustomersPage",
-              reason: "transport",
-            })
-          )
-        : Effect.succeed(
-            dotypos.profiles.filter(
-              ({ id }) => id !== undefined && wanted.has(id)
+      return (
+        dotypos.failing
+          ? Effect.fail(
+              new DotyposUnavailable({
+                operation: "getCustomersByIds",
+                reason: "transport",
+              })
             )
-          );
+          : Effect.succeed(
+              dotypos.profiles.filter(
+                ({ id }) => id !== undefined && wanted.has(id)
+              )
+            )
+      ).pipe(
+        Effect.flatMap((records) =>
+          seededCustomerReads(records).getCustomersByIds(ids)
+        )
+      );
     },
   });
   const candidates = CampaignCandidateRepository.Default.pipe(

@@ -7,7 +7,7 @@ import {
   DotyposService,
 } from "@deskohub/dotypos";
 import type { AudienceAttributeOfKind } from "@deskohub/workspace-admin-api";
-import { Array as Arr, Context, Effect, Layer, Match, Option } from "effect";
+import { Context, Effect, Layer, Match, Option } from "effect";
 import { decodeBookedReservation } from "@/features/reservation/backend/booked-reservation";
 import {
   InvalidDotyposReservationInterval,
@@ -53,7 +53,6 @@ import { CampaignCandidateRepository } from "./campaign-candidate.repository";
 const visitLowerBoundMargin = { days: 7 } as const;
 
 /** Dotypos customers requested per live profile read. */
-const profileChunkSize = 100;
 
 /** Which Dotypos facts evaluating a filter reads. */
 export type AudienceDotyposReads = {
@@ -314,23 +313,9 @@ export class AudienceFactsService extends Context.Service<
         });
 
       const liveProfiles = (customers: readonly DotyposCustomerId[]) =>
-        Effect.forEach(Arr.chunksOf(customers, profileChunkSize), (chunk) =>
-          dotypos.getCustomers({ ids: chunk })
-        ).pipe(
-          Effect.map(
-            (pages): ReadonlyMap<DotyposCustomerId, DotyposCustomer> =>
-              new Map(
-                pages
-                  .flat()
-                  .flatMap((customer) =>
-                    customer.id === undefined
-                      ? []
-                      : [[customer.id, customer] as const]
-                  )
-              )
-          ),
-          Effect.mapError(CampaignRecipientResolutionError.dotypos)
-        );
+        dotypos
+          .getCustomersByIds(customers, { concurrency: 1 })
+          .pipe(Effect.mapError(CampaignRecipientResolutionError.dotypos));
 
       const keyed = <
         Request extends AudienceCountRequest | AudienceDateRequest,

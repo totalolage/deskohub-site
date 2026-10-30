@@ -2,10 +2,15 @@ import "@/shared/testing/workspace-test-env";
 
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import {
+  DotyposBranchIdSchema,
+  DotyposCloudIdSchema,
   type DotyposCustomerId,
   DotyposCustomerIdSchema,
+  type DotyposIdReadOptions,
+  type DotyposReadFailure,
   type DotyposReservation,
   DotyposReservationIdSchema,
+  DotyposService,
   DotyposUnavailable,
 } from "@deskohub/dotypos";
 import type {
@@ -13,7 +18,7 @@ import type {
   AutomationFlow,
   CalendarExpression,
 } from "@deskohub/workspace-admin-api";
-import { Effect, Layer, Option, References } from "effect";
+import { Effect, Fiber, Layer, Option, References, Result } from "effect";
 import { TestClock } from "effect/testing";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import {
@@ -37,6 +42,7 @@ import {
   databaseInstant,
   engineProfile,
   makeAutomationEngineScenario,
+  makeEngineDotypos,
 } from "./automation-engine-scenario.test-utils";
 import {
   type AutomationEngineSimulation,
@@ -59,7 +65,7 @@ const database = await createWorkspacePostgresSuiteDatabase(
 
 /**
  * Real Postgres under simulated hours: well past the package's 30 s
- * default. The 60-fire drain commits about 2,900 chunk units.
+ * default. The 60-fire drain commits hundreds of chunk units.
  */
 const scenarioTimeout = { timeout: 120_000 };
 const drainTimeout = { timeout: 420_000 };
@@ -138,7 +144,7 @@ const seedActiveWithPreTickSchedule = async (
 
 /**
  * Everyone who visited within a year: the audience reads visits, so a chunk
- * of 50 customers with r bookings each costs 1 + r requests (§5.12).
+ * of 100 customers with r bookings each costs 1 + r requests (§5.12).
  */
 const visitedThisYear: AudienceFilter = {
   _tag: "Condition",
@@ -148,7 +154,7 @@ const visitedThisYear: AudienceFilter = {
 };
 
 const rateLimited = new DotyposUnavailable({
-  operation: "listReservationsPage",
+  operation: "getReservationsByIds",
   reason: "rate-limited",
   httpStatus: 429,
   message: "rate limited",
@@ -176,6 +182,118 @@ const fireSeconds = (fire: FireRow) =>
     databaseInstant(fire.created_at)!,
     databaseInstant(fire.settled_at)!
   );
+
+describe("engine Dotypos transport batches", () => {
+  for (const method of ["getCustomersByIds", "getReservationsByIds"] as const) {
+    const adapter = (count: number) => {
+      const fake = makeEngineDotypos();
+      const ids = Array.from({ length: count }, (_, index) => `batch-${index}`);
+      for (const id of ids) {
+        const customerId = DotyposCustomerIdSchema.make(id);
+        fake.customers.set(customerId, engineProfile(customerId));
+        fake.reservations.set(id, {
+          id: DotyposReservationIdSchema.make(id),
+          _customerId: customerId,
+          _branchId: DotyposBranchIdSchema.make("batch-branch"),
+          _cloudId: DotyposCloudIdSchema.make("batch-cloud"),
+          startDate: start.toString(),
+          endDate: start.add({ hours: 1 }).toString(),
+          seats: "1",
+          status: "CONFIRMED",
+        });
+      }
+      const read = (options: DotyposIdReadOptions = {}) =>
+        Effect.flatMap(DotyposService, (dotypos) =>
+          method === "getCustomersByIds"
+            ? dotypos
+                .getCustomersByIds(
+                  ids.map(DotyposCustomerIdSchema.make),
+                  options
+                )
+                .pipe(
+                  Effect.map((records): readonly string[] => [
+                    ...records.keys(),
+                  ])
+                )
+            : dotypos
+                .getReservationsByIds(
+                  ids.map(DotyposReservationIdSchema.make),
+                  options
+                )
+                .pipe(
+                  Effect.map((records): readonly string[] => [
+                    ...records.keys(),
+                  ])
+                )
+        ).pipe(Effect.provide(fake.layer));
+      return { fake, ids, read };
+    };
+
+    for (const count of [0, 100, 101, 200]) {
+      test(`${method}: ${count} IDs count and delay every sequential transport batch`, async () => {
+        const { fake, ids, read } = adapter(count);
+        const batches: Array<readonly string[] | undefined> = [];
+        fake.onRequest(({ ids }) => {
+          batches.push(ids);
+          return Effect.sleep("2 seconds");
+        });
+        // Repeated IDs must not create an extra transport batch.
+        ids.push(...ids);
+        const unique = [...new Set(ids)];
+        const records = await Effect.runPromise(
+          Effect.gen(function* () {
+            const fiber = yield* Effect.forkChild(read({ concurrency: 1 }));
+            yield* TestClock.adjust(0);
+            for (let index = 0; index < Math.ceil(count / 100); index++) {
+              expect(fake.calls[method]).toBe(index + 1);
+              expect(fiber.pollUnsafe()).toBeUndefined();
+              yield* TestClock.adjust("2 seconds");
+            }
+            return yield* Fiber.join(fiber);
+          }).pipe(Effect.provide(TestClock.layer()))
+        );
+        expect(records).toEqual(unique);
+        expect(fake.calls[method]).toBe(Math.ceil(count / 100));
+        expect(batches).toEqual(
+          Array.from({ length: Math.ceil(count / 100) }, (_, index) =>
+            unique.slice(index * 100, (index + 1) * 100)
+          )
+        );
+      });
+    }
+
+    test(`${method}: a later batch fails by default and recovery retains successful batches`, async () => {
+      const { fake, ids, read } = adapter(201);
+      const failure = new DotyposUnavailable({
+        operation: method,
+        reason: "timeout",
+      });
+      fake.onRequest(({ ids: batch }) =>
+        batch?.[0] === ids[100] ? Effect.fail(failure) : Effect.void
+      );
+      const failed = await Effect.runPromise(
+        read({ concurrency: 1 }).pipe(Effect.result)
+      );
+      expect(Result.isFailure(failed)).toBe(true);
+      if (Result.isFailure(failed)) expect(failed.failure).toBe(failure);
+      expect(fake.calls[method]).toBe(2);
+      fake.resetCalls();
+      const recovered: DotyposReadFailure[] = [];
+      const records = await Effect.runPromise(
+        read({
+          concurrency: 1,
+          onBatchFailure: (error) =>
+            Effect.sync(() => {
+              recovered.push(error);
+            }),
+        })
+      );
+      expect(recovered).toEqual([failure]);
+      expect(records).toEqual([...ids.slice(0, 100), ids[200]!]);
+      expect(fake.calls[method]).toBe(3);
+    });
+  }
+});
 
 describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
   if (!database) return;
@@ -554,7 +672,7 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
         );
 
         const [fire] = await readFires(schedule.campaignId);
-        expect(fire).toMatchObject({ status: "entered", chunks_total: 20 });
+        expect(fire).toMatchObject({ status: "entered", chunks_total: 10 });
         expect(await readRuns(schedule.campaignId)).toHaveLength(1000);
         expect(await readRuns(booked.campaignId)).toHaveLength(200);
         expect(claimed.peak.claimed).toBe(1);
@@ -660,10 +778,10 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
         latency: 30,
         overhead: 5,
       });
-      // In id order: a 400-booking customer, a 300-booking one, then 298 with two.
+      // In id order: an 800-booking customer, a 600-booking one, then 298 with two.
       const customers = await seedCustomers({
         count: 300,
-        bookings: (index) => [400, 300][index] ?? 2,
+        bookings: (index) => [800, 600][index] ?? 2,
       });
       const visits = await scenario.kit.seedActive(scheduleFlow(dailyAtNine), {
         audienceFilter: visitedThisYear,
@@ -707,20 +825,20 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
       const solo = chunks.find(
         (unit) => unit.subject.customerIds?.[0] === customers[0]
       )!;
-      // The 400-booking customer: 1 + ⌈400/50⌉ = 9 requests, alone.
+      // The 800-booking customer: 1 + ⌈800/100⌉ = 9 requests, alone.
       expect(solo).toMatchObject({ request_cost: 9 });
       expect(solo.subject.customerIds).toEqual([customers[0]]);
-      // The 300-booking one shares a chunk: 300 + 25 × 2 = 350 bookings, 8 requests.
+      // The 600-booking one shares a chunk: 600 + 50 × 2 = 700 bookings, 8 requests.
       const shared = chunks.find((unit) =>
         unit.subject.customerIds?.includes(customers[1]!)
       )!;
       expect(shared.request_cost).toBe(8);
-      expect(shared.subject.customerIds).toHaveLength(26);
+      expect(shared.subject.customerIds).toHaveLength(51);
 
-      const packed = new Set(
+      const packed = new Map(
         [...chunks, ...(await readUnits("deliver"))]
           .filter((unit) => unit.request_cost <= 8)
-          .map((unit) => unit.id)
+          .map((unit) => [unit.id, unit.request_cost] as const)
       );
       const packedDeliveries = simulation
         .deliveries()
@@ -728,6 +846,7 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
       expect(packedDeliveries.length).toBeGreaterThan(0);
       for (const delivery of packedDeliveries) {
         expect(delivery.outcome).toBe("done");
+        expect(delivery.requests).toBe(packed.get(delivery.unitId));
         expect(delivery.requests).toBeLessThanOrEqual(8);
         // At most 8 × 30 s: inside the 270 s deadline.
         expect(
@@ -770,7 +889,7 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
             planning: ["schedules"],
           });
         const customers = await seedCustomers({
-          count: 100,
+          count: 200,
           bookings: () => 2,
         });
         const { campaignId } = await scenario.kit.seedActive(
@@ -778,7 +897,7 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
           { audienceFilter: visitedThisYear, at: start.subtract({ hours: 1 }) }
         );
         let failed = false;
-        // The first chunk's second request (its first visit page) is rate limited once.
+        // The first chunk's second request (its first visit batch) is rate limited once.
         failWhen(({ request }) => {
           if (failed || request !== 2) return false;
           failed = true;
@@ -815,11 +934,11 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
           )
         ).toBeGreaterThanOrEqual(0);
         const receipts = await readReceipts(campaignId);
-        expect(receipts).toHaveLength(100);
+        expect(receipts).toHaveLength(200);
         expect(
           new Set(receipts.map((receipt) => receipt.dotypos_customer_id))
         ).toEqual(new Set(customers));
-        expect(await readRuns(campaignId)).toHaveLength(100);
+        expect(await readRuns(campaignId)).toHaveLength(200);
       }
     );
 
@@ -904,7 +1023,7 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
           simulation.run({ until: start.add({ minutes: 10 }) })
         );
 
-        // n = 2 chunks of c = 3 run side by side: T = 3 × 30 + 5 = 95 s.
+        // n = 1 chunk of c = 3: T = 3 × 30 + 5 = 95 s.
         const entered = (await readFires(campaignId)).filter(
           (fire) => fire.status === "entered"
         );
@@ -939,7 +1058,7 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
     );
 
     test(
-      "1,800 × 2 at L = 2 s, o = 1 s, S = 4 enters one fire in ≈ 63 s",
+      "1,800 × 2 at L = 2 s, o = 1 s, S = 4 enters one fire in ≈ 35 s",
       scenarioTimeout,
       async () => {
         const { scenario, simulation, seedCustomers } = await capacityEngine({
@@ -961,16 +1080,16 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
           })
         );
 
-        // n = 36 chunks of c = 1 + 2; t = c·L + o = 7 s; ⌈36/4⌉ = 9 rounds.
+        // n = 18 chunks of c = 1 + 2; t = c·L + o = 7 s; ⌈18/4⌉ = 5 rounds.
         const [fire] = await readFires(campaignId);
-        expect(fire).toMatchObject({ status: "entered", chunks_total: 36 });
+        expect(fire).toMatchObject({ status: "entered", chunks_total: 18 });
         expect(await readRuns(campaignId)).toHaveLength(1800);
-        expectNearModel(fireSeconds(fire!), 63);
+        expectNearModel(fireSeconds(fire!), 35);
       }
     );
 
     test(
-      "60 missed 1,000 × 2 fires drain in ≈ 84 min, in order",
+      "60 missed 1,000 × 2 fires drain in ≈ 32 min, in order",
       drainTimeout,
       async () => {
         const { scenario, simulation, seedCustomers } = await capacityEngine({
@@ -1013,11 +1132,14 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
           })
         );
 
-        // T = ⌈20/4⌉ × (3 × 2 + 1) = 35 s against I = 60 s, so B = 60 fires
-        // drain in B·T / (1 − T/I) = 60 × 35 / (25/60) = 5,040 s = 84 min.
-        // Fires are discrete: the 142nd (09:22) enters at 142 × 35 = 4,970 s,
-        // before 09:23 falls due, so the backlog clears at ≈ 82.8 min.
-        expectNearModel(secondsBetween(start, drained) / 60, 84);
+        // T = ⌈10/4⌉ × (3 × 2 + 1) = 21 s against I = 60 s, so B = 60 fires
+        // drain in B·T / (1 − T/I) = 60 × 21 / (39/60) ≈ 1,938 s = 32.3 min.
+        // Fires are discrete: the 91st (09:31) enters at 91 × 21 = 1,911 s,
+        // before 09:32 falls due, so the backlog clears at ≈ 31.9 min.
+        expectNearModel(
+          secondsBetween(start, drained) / 60,
+          (60 * 21) / (1 - 21 / 60) / 60
+        );
         const fires = await readFires(campaignId);
         expect(fires.every((fire) => fire.status === "entered")).toBe(true);
         expect(databaseInstant(fires[0]!.fire_at)).toEqual(
@@ -1112,8 +1234,8 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
       expect(eventRuns).toHaveLength(10);
       expect(eventRuns.every((run) => run.outcome === "sent")).toBe(true);
 
-      // T: the busy automation's entered fires (20 chunks of 3 at 95 s each,
-      // ⌈20/S⌉ rounds: 475 s at S = 4, 665 s at S = 3, more while the hourly
+      // T: the busy automation's entered fires (10 chunks of 3 at 95 s each,
+      // ⌈10/S⌉ rounds: 285 s at S = 4, 380 s at S = 3, more while the hourly
       // fire shares the slots).
       const entered = (await readFires(busy.campaignId)).filter(
         (fire) => fire.status === "entered"

@@ -1,3 +1,4 @@
+import { seededReservationReads } from "@deskohub/dotypos/backend/service.mock";
 import "@/shared/testing/workspace-test-env";
 
 import { afterAll, describe, expect, test } from "bun:test";
@@ -105,6 +106,20 @@ describe.skipIf(!testDatabase)(
             return reservation ? [reservation] : [];
           });
         }),
+      getReservationsByIds: (ids, readOptions) => {
+        const options = { ...readOptions, ids: [...ids] };
+        return Effect.sync(() => {
+          listedIds.push([...(options?.ids ?? [])]);
+          return (options?.ids ?? []).flatMap((id) => {
+            const reservation = dotyposReservations.get(id);
+            return reservation ? [reservation] : [];
+          });
+        }).pipe(
+          Effect.flatMap((records) =>
+            seededReservationReads(records).getReservationsByIds(ids)
+          )
+        );
+      },
     });
 
     /** Runs every batch, as `dhw` does, and keeps this suite's rows only. */

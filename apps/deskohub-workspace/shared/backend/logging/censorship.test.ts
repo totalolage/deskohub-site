@@ -650,7 +650,7 @@ describe("censorLogValue", () => {
   test("retains the classification fields of a logged Dotypos outcome", () => {
     const privateValue = testEmailAddress("private");
     const failure = new DotyposUnavailable({
-      operation: "getCustomersPage",
+      operation: "getCustomersByIds",
       request: "customers.page",
       reason: "server",
       httpStatus: 503,
@@ -664,7 +664,7 @@ describe("censorLogValue", () => {
       cause: {
         _tag: "DotyposUnavailable",
         reason: "server",
-        operation: "getCustomersPage",
+        operation: "getCustomersByIds",
         request: "customers.page",
         httpStatus: 503,
       },

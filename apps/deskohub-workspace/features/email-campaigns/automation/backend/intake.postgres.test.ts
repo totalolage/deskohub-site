@@ -631,7 +631,7 @@ describe.skipIf(!database)("intake units on Postgres", () => {
     );
     // The gate reads the visits, which cover the triggering one.
     expect(unit.request_cost).toBe(1);
-    for (let index = 0; index < 60; index++) {
+    for (let index = 0; index < 120; index++) {
       await fixtures.book({
         label: `grown-${index}`,
         customer,
@@ -643,7 +643,8 @@ describe.skipIf(!database)("intake units on Postgres", () => {
 
     await runEngineAt(drainAutomationUnitQueue(queue), layer, now);
 
-    expect(dotypos.calls.listReservationsPage).toBe(2);
+    // Planning saw one visit; the 121 now require two transport batches.
+    expect(dotypos.calls.getReservationsByIds).toBe(2);
     expect(await receipts(campaignId)).toEqual([
       {
         key: `reservation-finished:${visit.reservationId}`,

@@ -316,7 +316,7 @@ describe.skipIf(!testDatabase)(
         deadlineMisses: 2,
         largestCustomerBookedCount:
           (baseline.largestCustomerBookedCount ?? 0) + 2,
-        soloThreshold: 350,
+        soloThreshold: 700,
         warnings: [],
       });
       const automation = (campaignId: CampaignId) =>
