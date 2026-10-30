@@ -10,11 +10,11 @@ import {
 } from "@/features/checkout/backend/reservation";
 import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
 import { getCoworkReservationIntervalInput } from "@/features/reservation/cowork-reservation";
+import { getMeetingRoomOccupiedInterval } from "@/features/reservation/meeting-room-early-setup";
 import { getMeetingRoomReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
 import {
   getMeetingRoomDayLastServiceDate,
   getMeetingRoomDayStartTimes,
-  getMeetingRoomLastServiceDate,
   type MeetingRoomStartTime,
 } from "@/features/reservation/meeting-room-reservation-time";
 import {
@@ -27,7 +27,6 @@ import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   currentInstant,
   getPlainDatesBetween,
-  type PlainDate,
   plainDateStringSchema,
 } from "@/shared/utils/temporal";
 import {
@@ -405,23 +404,42 @@ const implementation = Effect.gen(function* () {
       Effect.let("fullyOccupiedDates", ({ inventory }) =>
         getFullyOccupiedCalendarDates(inventory.limitations)
       ),
-      Effect.flatMap(({ dates, inventory, fullyOccupiedDates }) =>
-        Effect.filter(candidates, (candidate) =>
+      Effect.flatMap(({ dates, inventory, fullyOccupiedDates }) => {
+        const isMeetingRoomFree = (interval: ReservationInterval) =>
           Effect.fromResult(
-            evaluateMeetingRoomStart({
-              date: query.date,
-              candidate,
+            evaluateMeetingRoomInterval({
+              interval,
               dates,
               tables: inventory.tables,
               reservations: inventory.reservations,
               fullyOccupiedDates,
             })
+          );
+        return Effect.filter(candidates, (candidate) =>
+          isMeetingRoomFree(candidate.interval)
+        ).pipe(
+          Effect.flatMap((freeCandidates) =>
+            Effect.forEach(freeCandidates, (candidate) =>
+              isMeetingRoomFree(
+                getMeetingRoomOccupiedInterval({
+                  ...candidate.interval,
+                  earlySetup: true,
+                })
+              ).pipe(
+                Effect.map(
+                  (earlySetupAvailable): FreeMeetingRoomStartTime => ({
+                    ...candidate,
+                    earlySetupAvailable,
+                  })
+                )
+              )
+            )
           )
-        )
-      ),
+        );
+      }),
       // A day with no start left needs no inventory.
       Effect.when(Effect.succeed(candidates.length > 0)),
-      Effect.map(Option.getOrElse((): MeetingRoomStartTime[] => []))
+      Effect.map(Option.getOrElse((): FreeMeetingRoomStartTime[] => []))
     );
 
   const getMeetingRoomStartTimes = Effect.fn(
@@ -446,10 +464,13 @@ const implementation = Effect.gen(function* () {
           ({ query, startTimes }): MeetingRoomStartTimes => ({
             date: query.date,
             duration: query.duration,
-            startTimes: startTimes.map(({ startDateTime, interval }) => ({
-              startDateTime,
-              ...interval,
-            })),
+            startTimes: startTimes.map(
+              ({ startDateTime, interval, earlySetupAvailable }) => ({
+                startDateTime,
+                ...interval,
+                earlySetupAvailable,
+              })
+            ),
           })
         ),
         Effect.tap((result) => Effect.annotateLogsScoped({ result })),
@@ -504,37 +525,36 @@ const getFullyOccupiedCalendarDates = (
     )
   );
 
+/** A free start, and whether the room is also free for its setup time. */
+type FreeMeetingRoomStartTime = MeetingRoomStartTime & {
+  readonly earlySetupAvailable: boolean;
+};
+
 /**
- * Evaluates one listed start exactly as a single-interval query for it would
- * be, over the dates its own interval touches.
+ * Evaluates one meeting-room interval exactly as a single-interval check for
+ * it would be, over the inventory dates the interval itself touches. A listed
+ * start passes its booked interval; its setup check passes the occupied one.
  */
-const evaluateMeetingRoomStart = ({
-  date,
-  candidate: { interval },
+const evaluateMeetingRoomInterval = ({
+  interval,
   dates,
   ...inventory
 }: Pick<
   AvailabilityEvaluationInput,
   "tables" | "reservations" | "fullyOccupiedDates"
 > & {
-  readonly date: PlainDate;
-  readonly candidate: MeetingRoomStartTime;
+  readonly interval: ReservationInterval;
   readonly dates: readonly Temporal.PlainDate[];
 }) => {
-  const lastServiceDate = getMeetingRoomLastServiceDate(interval);
+  const { from, to } = getAvailabilityTouchedDateRange(interval);
   return evaluateAvailability({
     ...inventory,
-    query: {
-      kind: meetingRoomReservationKind,
-      from: date,
-      to: lastServiceDate,
-      ...interval,
-    },
+    query: { kind: meetingRoomReservationKind, from, to, ...interval },
     dates: dates
       .map(plainDateToString)
-      .filter((touchedDate) => touchedDate <= lastServiceDate),
+      .filter((touchedDate) => touchedDate >= from && touchedDate <= to),
     reservation: interval,
-    selectedDate: date,
+    selectedDate: from,
   }).pipe(Result.map(isMeetingRoomAvailable));
 };
 
@@ -575,14 +595,15 @@ const getDateRange = Effect.fn(function* (from: string, to: string) {
 });
 
 /**
- * Every date a meeting-room booking starting on `date` can occupy. All
+ * Every date a meeting-room booking starting on `date` can occupy, from the
+ * previous date, which a midnight start's setup time reaches. All
  * meeting-room reads for a start date load inventory over these dates, so a
  * single check and the date's start-times list request the same shared
  * snapshot entries whatever their duration.
  */
 const getMeetingRoomInventoryDates = (date: Temporal.PlainDate) =>
   getPlainDatesBetween(
-    date,
+    date.subtract({ days: 1 }),
     Temporal.PlainDate.from(
       getMeetingRoomDayLastServiceDate(
         plainDateStringSchema.make(date.toString())

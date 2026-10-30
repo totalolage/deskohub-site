@@ -3,6 +3,7 @@ import "@/shared/polyfills/temporal";
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
+import { withMeetingRoomEarlySetup } from "./meeting-room-early-setup-link";
 import {
   getMeetingRoomReservationDefaultValues,
   type NormalizedMeetingRoomReservationOrder,
@@ -42,6 +43,7 @@ describe("meetingRoomSelectionLink.read", () => {
     expect(values).toEqual({
       startDateTime: "2099-08-12T09:00",
       duration: "hour:1",
+      earlySetup: false,
       name: "Ada Lovelace",
       email: adaEmail,
       phone: "+420777777777",
@@ -90,6 +92,7 @@ describe("meetingRoomSelectionLink.read", () => {
     ).toEqual({
       startDateTime: "2099-07-30T10:00",
       duration: "hour:1",
+      earlySetup: false,
       name: "Ada Lovelace",
       email: adaEmail,
       phone: "",
@@ -254,6 +257,22 @@ describe("customer last reservation defaults", () => {
 });
 
 describe("meetingRoomSelectionLink.write", () => {
+  test("keeps setup in the reservation link", () => {
+    const link = new URL(
+      withMeetingRoomEarlySetup(
+        "https://workspace.example/reservation/meeting-room?startDateTime=2099-08-12T09%3A00&duration=hour%3A1"
+      )
+    );
+    expect(
+      meetingRoomSelectionLink.read(link.searchParams, {
+        now: deterministicNow(),
+      })
+    ).toMatchObject({
+      startDateTime: "2099-08-12T09:00",
+      duration: "hour:1",
+      earlySetup: true,
+    });
+  });
   test("names the selection in the declared order", () => {
     expect(
       Object.entries(
@@ -265,6 +284,7 @@ describe("meetingRoomSelectionLink.write", () => {
     ).toEqual([
       ["startDateTime", "2099-08-13T14:00"],
       ["duration", "hour:4"],
+      ["earlySetup", undefined],
     ]);
   });
 
@@ -272,16 +292,25 @@ describe("meetingRoomSelectionLink.write", () => {
     expect(meetingRoomSelectionLink.write({ duration: "day:1" })).toEqual({
       startDateTime: undefined,
       duration: "day:1",
+      earlySetup: undefined,
     });
     expect(
       meetingRoomSelectionLink.write({ duration: "day:1", startDateTime: "" })
-    ).toEqual({ startDateTime: undefined, duration: "day:1" });
+    ).toEqual({
+      startDateTime: undefined,
+      duration: "day:1",
+      earlySetup: undefined,
+    });
   });
 
   test.each([
-    { startDateTime: "2099-08-12T09:00", duration: "hour:1" },
-    { startDateTime: "2099-08-13T14:00", duration: "hour:4" },
-    { startDateTime: "2099-08-14T08:00", duration: "day:1" },
+    {
+      startDateTime: "2099-08-12T09:00",
+      duration: "hour:1",
+      earlySetup: false,
+    },
+    { startDateTime: "2099-08-13T14:00", duration: "hour:4", earlySetup: true },
+    { startDateTime: "2099-08-14T08:00", duration: "day:1", earlySetup: true },
   ] as const)("the parser reads back the written selection %o", (selection) => {
     const searchParams = new URLSearchParams(
       "duration=hour:4&discountCode=SPRING"
@@ -295,6 +324,33 @@ describe("meetingRoomSelectionLink.write", () => {
       meetingRoomSelectionLink.read(searchParams, { now: deterministicNow() })
     ).toEqual(expect.objectContaining(selection));
     expect(searchParams.get("discountCode")).toBe("SPRING");
+  });
+
+  test("turns a written setup choice off again", () => {
+    const searchParams = new URLSearchParams();
+    const selection = {
+      startDateTime: "2099-08-12T09:00",
+      duration: "hour:1",
+    } as const;
+    setReservationSelectionSearchParams(
+      searchParams,
+      meetingRoomSelectionLink.write({
+        ...selection,
+        earlySetup: true,
+      })
+    );
+    setReservationSelectionSearchParams(
+      searchParams,
+      meetingRoomSelectionLink.write({
+        ...selection,
+        earlySetup: false,
+      })
+    );
+
+    expect(
+      meetingRoomSelectionLink.read(searchParams, { now: deterministicNow() })
+        .earlySetup
+    ).toBe(false);
   });
 
   const ongoingNow = workspaceInstant("2099-07-30T10:30");
@@ -353,6 +409,36 @@ describe("meetingRoomSelectionLink.write", () => {
       })
     );
   });
+
+  test("a Pay restoration keeps the signed setup choice unless the URL edits the selection", () => {
+    const restoredReservation: NormalizedMeetingRoomReservationOrder = {
+      kind: "meeting-room",
+      duration: { unit: "hour", amount: 4 },
+      reservationDate: "2099-07-30",
+      startsAt: "2099-07-30T07:00:00Z",
+      endsAt: "2099-07-30T11:00:00Z",
+      earlySetup: true,
+      name: "Ada Lovelace",
+      email: adaEmail,
+      phone: "+420777777777",
+      billing: { purpose: "personal", invoice: "none" },
+    };
+
+    expect(
+      meetingRoomSelectionLink.restore(
+        getMeetingRoomReservationDefaultValues(restoredReservation),
+        new URLSearchParams("payState=signed"),
+        { now: ongoingNow }
+      )?.earlySetup
+    ).toBe(true);
+    expect(
+      meetingRoomSelectionLink.restore(
+        getMeetingRoomReservationDefaultValues(restoredReservation),
+        writeSelection(new URLSearchParams("payState=signed")),
+        { now: ongoingNow }
+      )?.earlySetup
+    ).toBe(false);
+  });
 });
 
 describe("meetingRoomSelectionLink.fromStored", () => {
@@ -397,6 +483,23 @@ describe("meetingRoomSelectionLink.fromStored", () => {
       ).toEqual(expect.objectContaining(selection));
     }
   );
+
+  test("keeps a stored setup choice", () => {
+    const stored = {
+      kind: "meeting-room",
+      duration: { unit: "hour", amount: 1 },
+      reservedFrom: workspaceInstant("2099-08-12T09:00"),
+      reservedUntil: workspaceInstant("2099-08-12T10:00"),
+    } as const;
+
+    expect(readBack({ ...stored, earlySetup: true })).toEqual(
+      expect.objectContaining({
+        startDateTime: "2099-08-12T09:00",
+        earlySetup: true,
+      })
+    );
+    expect(readBack(stored).earlySetup).toBe(false);
+  });
 
   test("takes the duration from the interval when the row has none", () => {
     expect(

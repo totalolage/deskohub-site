@@ -7,11 +7,15 @@ import { m } from "@/features/i18n";
 import { loadAdvisoryOfficeSeatCapacity } from "@/features/office/backend/office-advisory-seat-capacity";
 import { getShareableReservationUrl } from "@/features/reservation/backend/shareable-reservation-url";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
+import type { MeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
+import type { ReservationInterval } from "@/features/reservation/reservation-interval-domain";
 import type { ReservationSelection } from "@/features/reservation/selection-path";
 import {
+  findMeetingRoomStartTime,
   getCoworkAvailabilityQueries,
   getMeetingRoomAvailabilityQuery,
+  getMeetingRoomStartTimesQuery,
   getOfficeAvailabilityQuery,
   isCoworkOfferAvailable,
   isMeetingRoomAvailable,
@@ -226,13 +230,21 @@ const checkMeetingRoom = Effect.fn("agentTools.checkMeetingRoomAvailability")(
           now,
         })
       ),
-      Effect.bind("availability", ({ meetingRoom }) =>
-        loadAvailability(getMeetingRoomAvailabilityQuery(meetingRoom.interval))
+      Effect.bind("checks", ({ meetingRoom }) =>
+        Effect.all(
+          {
+            availability: loadAvailability(
+              getMeetingRoomAvailabilityQuery(meetingRoom.interval)
+            ),
+            earlySetupAvailable: loadEarlySetupAvailability(meetingRoom),
+          },
+          { concurrency: "inherit" }
+        )
       ),
-      Effect.let("available", ({ availability }) =>
-        isMeetingRoomAvailable(availability)
+      Effect.let("available", ({ checks }) =>
+        isMeetingRoomAvailable(checks.availability)
       ),
-      Effect.map(({ input, meetingRoom, available }) => {
+      Effect.map(({ input, meetingRoom, available, checks }) => {
         const { timeZone } = workspaceSiteConstants.location;
 
         return {
@@ -249,6 +261,7 @@ const checkMeetingRoom = Effect.fn("agentTools.checkMeetingRoomAvailability")(
               instant: Temporal.Instant.from(meetingRoom.interval.endsAt),
               timeZone,
             }),
+            early_setup_available: available && checks.earlySetupAvailable,
           },
           reservationSelection: {
             kind: "meeting-room",
@@ -259,6 +272,35 @@ const checkMeetingRoom = Effect.fn("agentTools.checkMeetingRoomAvailability")(
       })
     )
 );
+
+// The page's start-times query for the selected date, so whether the setup
+// time before the start is free follows the reservation page's rule.
+const loadEarlySetupAvailability = ({
+  durationKey,
+  startDateTime,
+  interval,
+}: {
+  readonly durationKey: MeetingRoomReservationDurationKey;
+  readonly startDateTime: string;
+  readonly interval: ReservationInterval;
+}) => {
+  const query = getMeetingRoomStartTimesQuery({
+    duration: durationKey,
+    startDateTime,
+  });
+  if (!query) return Effect.succeed(false);
+  return WorkspaceAvailabilityService.pipe(
+    Effect.flatMap((service) => service.getMeetingRoomStartTimes({ query })),
+    Effect.map(
+      (startTimes) =>
+        findMeetingRoomStartTime(
+          startTimes,
+          Temporal.Instant.from(interval.startsAt)
+        )?.earlySetupAvailable ?? false
+    ),
+    Effect.mapError(AgentToolError.unavailable("availability_unavailable"))
+  );
+};
 
 const checkOffice = Effect.fn("agentTools.checkOfficeAvailability")(
   (selection: AvailabilitySelection) =>

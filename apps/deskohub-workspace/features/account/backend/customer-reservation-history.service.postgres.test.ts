@@ -759,7 +759,7 @@ describe.skipIf(!testDatabase)(
       expect(history.groups.unavailable[1]?.seats).toBeNull();
     });
 
-    test("shows an early-setup meeting room at its booked start", async () => {
+    test("shows an early-setup meeting room at its booked start with its setup start", async () => {
       const seeded = await seedOwnReservations([
         {
           key: "early-setup",
@@ -801,13 +801,15 @@ describe.skipIf(!testDatabase)(
       const summaryOf = (key: string) =>
         summaries.find(({ id }) => id === seeded.idsOf(key).workspace);
       expect(summaryOf("early-setup")).toMatchObject({
-        startsAt: "2000-04-02T10:00:00Z",
+        startsAt: "2000-04-02T10:00:00.000Z",
         endsAt: "2000-04-02T11:00:00.000Z",
+        setupStartsAt: "2000-04-02T09:45:00.000Z",
       });
       expect(summaryOf("without-setup")).toMatchObject({
         startsAt: "2000-04-01T09:45:00.000Z",
         endsAt: "2000-04-01T11:00:00.000Z",
       });
+      expect(summaryOf("without-setup")).not.toHaveProperty("setupStartsAt");
       // Ordered by booked start, newest first.
       expect(
         summaries

@@ -61,6 +61,14 @@ Hourly products begin at the selected local time. The selected duration remains 
 
 A meeting-room reservation remains eligible for submission and payment after its start while its exclusive end is still in the future. It is no longer eligible after that end.
 
+### Early setup
+
+A customer booking a meeting room may choose to come 15 minutes before the booked start to set up. The choice is off by default and free. It holds the room, and lets the customer in, from 15 minutes before the booked start until the booked end. Price, discounts, cancellation, and every other time rule still apply to the booked interval alone.
+
+The choice is offered only when a meeting room is free for the booked interval extended 15 minutes earlier. The workspace is open around the clock, so a booking that starts at midnight sets up from 23:45 on the previous day. When the room is booked just before the start, the choice stays visible but can't be selected, with a short reason, and changing to such a time or duration turns it off. Availability is checked again when the booking is submitted.
+
+Reservations made without the choice keep their booked interval as they always have.
+
 ## Office
 
 An office reservation spans an inclusive range of Prague calendar dates. The customer selects a start date, a positive number of days, and a positive number of seats supported by the office capacity.
@@ -75,7 +83,7 @@ The office is exclusive for the complete selected date range. Any existing occup
 
 ## Cross-family rules
 
-- The customer confirmation email contains a protected link to the dedicated reservation access page, never the door PIN itself. Once an authorized paid, locally and live-confirmed reservation has an issued PIN, the access page displays it together with the exact programmed access bounds. Igloohome's programmed AlgoPIN bounds alone determine when the lock accepts the code; there is no local display time gate, and display never extends the reserved use of the space. Payment redirects and fulfillment recovery remain on the separate reservation status page.
+- The customer confirmation email contains a protected link to the dedicated reservation access page, never the door PIN itself. Once an authorized paid, locally and live-confirmed reservation has an issued PIN, the access page displays it together with the exact reservation access span, including any selected early setup. Igloohome's programmed AlgoPIN bounds alone determine when the lock accepts the code; there is no local display time gate, and display never extends the reserved use of the space. Payment redirects and fulfillment recovery remain on the separate reservation status page.
 - Product identity includes the reservation family and every choice that changes the purchased product.
 - Discount configuration may target a whole reservation family or a single current cowork offer, while quotes and completed purchases preserve the exact selected product.
 - Availability, pricing, summaries, persistence, confirmation, email, and status views dispatch each family explicitly.

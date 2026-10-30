@@ -124,7 +124,7 @@ export type WorkspaceAvailabilityUnavailableTarget =
 export const workspaceAvailabilityKeys = {
   availability: (query: WorkspaceAvailabilityQuery) =>
     ["workspace-availability", query] as const,
-  meetingRoomStartTimes: (query: MeetingRoomStartTimesQuery) =>
+  meetingRoomStartTimes: (query: MeetingRoomStartTimesQuery | undefined) =>
     ["workspace-availability", "meeting-room-start-times", query] as const,
 };
 
@@ -161,6 +161,11 @@ const meetingRoomStartTimesResponseSchema = Schema.Struct({
       startDateTime: localDateTimeSchema,
       startsAt: instantStringSchema,
       endsAt: instantStringSchema,
+      /**
+       * Whether a meeting room is also free for the setup time before the
+       * start, so the customer may come early to set up.
+       */
+      earlySetupAvailable: Schema.Boolean,
     })
   ),
 });
@@ -345,6 +350,22 @@ export const getMeetingRoomStartTimesQuery = ({
       })
     ),
     Option.getOrUndefined
+  );
+
+/**
+ * The listed free start that books from `startsAt`, which says whether its
+ * setup time is free too, or none when that start isn't free.
+ */
+export const findMeetingRoomStartTime = (
+  { startTimes }: MeetingRoomStartTimes,
+  startsAt: Temporal.Instant
+) =>
+  startTimes.find(
+    (startTime) =>
+      Temporal.Instant.compare(
+        Temporal.Instant.from(startTime.startsAt),
+        startsAt
+      ) === 0
   );
 
 /**

@@ -2,8 +2,7 @@ import Interpolate from "@doist/react-interpolate";
 import Link from "next/link";
 import { connection } from "next/server";
 import { type ReactNode, Suspense } from "react";
-import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
-import { getCloudinaryImages } from "@/features/gallery/backend/get-cloudinary-images.server";
+import { loadVenuePhotos } from "@/features/gallery/backend/load-venue-photos.server";
 import { RoomImageCarousel } from "@/features/gallery/components/room-image-carousel";
 import { type Locale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
@@ -16,13 +15,6 @@ import { Skeleton } from "@/shared/components/ui/skeleton";
 import { textLink } from "@/shared/components/ui/text-link";
 
 export const instant = true;
-
-const getRoomImages = (
-  tags: readonly ["ttrpg-room", "ttrpg-room-bar" | "ttrpg-room-workspace"]
-) =>
-  getCloudinaryImages({ tags: [tags] }).catch(
-    (): readonly CloudinaryAsset[] => []
-  );
 
 export const generateMetadata = publicPageMetadata("/ttrpg-room");
 
@@ -122,7 +114,7 @@ export default async function LocalizedTtrpgRoomPage() {
         <RoomCarousel
           locale={locale}
           roomTitle={m.ttrpgRoomBarChoiceTitle({}, { locale })}
-          tags={["ttrpg-room", "ttrpg-room-bar"]}
+          album="ttrpg-room-bar"
         />
       }
       locale={locale}
@@ -130,7 +122,7 @@ export default async function LocalizedTtrpgRoomPage() {
         <RoomCarousel
           locale={locale}
           roomTitle={m.ttrpgRoomWorkspaceChoiceTitle({}, { locale })}
-          tags={["ttrpg-room", "ttrpg-room-workspace"]}
+          album="ttrpg-room-workspace"
         />
       }
     />
@@ -140,17 +132,17 @@ export default async function LocalizedTtrpgRoomPage() {
 function RoomCarousel({
   locale,
   roomTitle,
-  tags,
+  album,
 }: {
   locale: Locale;
   roomTitle: string;
-  tags: readonly ["ttrpg-room", "ttrpg-room-bar" | "ttrpg-room-workspace"];
+  album: "ttrpg-room-bar" | "ttrpg-room-workspace";
 }) {
   const label = m.ttrpgRoomCarouselOpen({ roomTitle }, { locale });
 
   return (
     <Suspense fallback={<RoomCarouselFallback label={label} />}>
-      <RoomCarouselContent label={label} locale={locale} tags={tags} />
+      <RoomCarouselContent label={label} locale={locale} album={album} />
     </Suspense>
   );
 }
@@ -158,24 +150,19 @@ function RoomCarousel({
 async function RoomCarouselContent({
   label,
   locale,
-  tags,
+  album,
 }: {
   label: string;
   locale: Locale;
-  tags: readonly ["ttrpg-room", "ttrpg-room-bar" | "ttrpg-room-workspace"];
+  album: "ttrpg-room-bar" | "ttrpg-room-workspace";
 }) {
   await connection();
-  const images = await getRoomImages(tags);
+  const images = await loadVenuePhotos(album, locale);
 
   return (
     <RoomImageCarousel
       emptyText={m.ttrpgRoomPhotosComingSoon({}, { locale })}
-      imageAlt={{
-        "ttrpg-room-bar": m.ttrpgRoomBarImageAlt,
-        "ttrpg-room-workspace": m.ttrpgRoomWorkspaceImageAlt,
-      }[tags[1]]({}, { locale })}
       images={images}
-      locale={locale}
       openLabel={label}
     />
   );

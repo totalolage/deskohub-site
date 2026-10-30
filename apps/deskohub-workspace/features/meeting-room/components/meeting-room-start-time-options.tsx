@@ -1,15 +1,10 @@
 "use client";
 
-import { type UseQueryResult, useQuery } from "@tanstack/react-query";
+import type { UseQueryResult } from "@tanstack/react-query";
 import { useId } from "react";
 import { type Locale, m } from "@/features/i18n";
 import { ReservationSkeletonBlock } from "@/features/reservation/components/reservation-form-fallback";
-import {
-  type MeetingRoomStartTimes,
-  type MeetingRoomStartTimesQuery,
-  workspaceAvailabilityKeys,
-} from "@/features/reservation/workspace-availability";
-import { loadMeetingRoomStartTimes } from "@/features/reservation/workspace-availability-client";
+import type { MeetingRoomStartTimes } from "@/features/reservation/workspace-availability";
 import { cn } from "@/shared/utils";
 import { formatInstantTime } from "@/shared/utils/date-time-format";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
@@ -17,8 +12,7 @@ import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 type MeetingRoomStartTimeOptionsProps = {
   readonly locale: Locale;
   readonly onSelect: (startDateTime: string) => void;
-  readonly query: MeetingRoomStartTimesQuery;
-  readonly replacementToken?: string;
+  readonly result: UseQueryResult<MeetingRoomStartTimes>;
   readonly selectedStartDateTime: string;
 };
 
@@ -36,21 +30,10 @@ const getStartTimesState = (result: UseQueryResult<MeetingRoomStartTimes>) => {
 export function MeetingRoomStartTimeOptions({
   locale,
   onSelect,
-  query,
-  replacementToken,
+  result,
   selectedStartDateTime,
 }: MeetingRoomStartTimeOptionsProps) {
   const labelId = useId();
-  const result = useQuery<MeetingRoomStartTimes>({
-    queryKey: [
-      ...workspaceAvailabilityKeys.meetingRoomStartTimes(query),
-      replacementToken ?? null,
-    ],
-    queryFn: ({ signal }) =>
-      loadMeetingRoomStartTimes({ query, replacementToken, signal }),
-    retry: (failureCount) => failureCount < 3,
-    staleTime: 30_000,
-  });
   const state = getStartTimesState(result);
   const startTimes = state === "ready" ? result.data?.startTimes : undefined;
 

@@ -9,7 +9,7 @@ import {
 } from "bun:test";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import type { StaticImageData } from "next/image";
-import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
+import type { VenuePhoto } from "@/features/gallery/types/venue-photo";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -54,24 +54,39 @@ const testImages: readonly StaticImageData[] = [
   },
 ];
 
-const cloudinaryImages = [
+const venuePhotos: readonly VenuePhoto[] = [
   {
-    context: {
-      custom: { "alt-cs-CZ": "Czech alt", "alt-en-US": "Localized alt" },
+    alt: "Localized alt",
+    caption: "Localized caption",
+    height: 600,
+    id: "room-one",
+    lightbox: {
+      alt: "Localized alt",
+      description: "Localized caption",
+      height: 600,
+      src: "https://example.test/room-one-lightbox.jpg",
+      title: "Localized caption",
+      width: 800,
     },
-    height: 600,
-    public_id: "room-one",
-    secure_url: "https://example.test/room-one.jpg",
+    publicId: "room-one",
+    src: "https://example.test/room-one.jpg",
     width: 800,
   },
   {
-    context: { custom: { alt: " " } },
+    alt: "Room fallback alt",
     height: 600,
-    public_id: "room-two",
-    secure_url: "https://example.test/room-two.jpg",
+    id: "room-two",
+    lightbox: {
+      alt: "Room fallback alt",
+      height: 600,
+      src: "https://example.test/room-two-lightbox.jpg",
+      width: 800,
+    },
+    publicId: "room-two",
+    src: "https://example.test/room-two.jpg",
     width: 800,
   },
-] as readonly CloudinaryAsset[];
+];
 
 const createPointerEvent = ({
   buttons,
@@ -117,14 +132,12 @@ describe("RoomImageCarousel", () => {
     await unregisterWorkspaceComponentTestEnv();
   });
 
-  test("describes Cloudinary photos with localized or fallback alts and numbered controls", async () => {
+  test("renders projected alt and caption and uses the projected lightbox", async () => {
     const { RoomImageCarousel } = await import("./room-image-carousel");
     const view = render(
       <RoomImageCarousel
         emptyText="No photos"
-        imageAlt="Room fallback alt"
-        images={cloudinaryImages}
-        locale="en-US"
+        images={venuePhotos}
         openLabel="Open room gallery"
       />
     );
@@ -138,8 +151,12 @@ describe("RoomImageCarousel", () => {
     expect(view.getByTestId("lightbox").textContent).toBe(
       "Localized alt|Room fallback alt"
     );
+    expect(view.getByText("Localized caption")).toBeTruthy();
     expect(
-      view.getAllByRole("button", { name: "Open room gallery 2" })
+      view.getAllByRole("button", { name: "Localized caption" })
+    ).not.toHaveLength(0);
+    expect(
+      view.getAllByRole("button", { name: "Room fallback alt" })
     ).not.toHaveLength(0);
     expect(
       view.queryAllByRole("button", { hidden: true, name: /room-(one|two)/ })
@@ -155,9 +172,7 @@ describe("RoomImageCarousel", () => {
           alt: `Meeting room ${index + 1}`,
           src,
         }))}
-        imageAlt="Meeting room"
         images={[]}
-        locale="en-US"
         openLabel="Open meeting room gallery"
       />
     );
@@ -183,9 +198,7 @@ describe("RoomImageCarousel", () => {
           alt: `Meeting room ${index + 1}`,
           src,
         }))}
-        imageAlt="Meeting room"
         images={[]}
-        locale="en-US"
         openLabel="Open meeting room gallery"
       />
     );

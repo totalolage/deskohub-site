@@ -59,6 +59,8 @@ The customer export supports marketing outreach. It holds every customer that th
 
 The reservation list filters by booking start date. Without an explicit date range it shows bookings starting on or after January 1 of the current Prague calendar year, with no end date, so upcoming bookings remain visible. The date controls show that effective range, and an operator widens or narrows it explicitly. A list opened for one customer has no default range and shows that customer's complete reservation history.
 
+A meeting room booked with early setup shows its booked time, and beside it when the customer may arrive to set up, in the reservation list, the reservation detail, the export, the administration API, and `dhw`. The date filter uses the booked date, so a booking from midnight with setup from 23:45 the evening before is listed on its booked date. The date sort and the Overview counts and activity charts follow the time the reservation system holds the room from, which for these bookings is the setup start.
+
 Secret Workspace access codes, payment security values, payment redirect addresses, free-form provider notes, and raw provider or analytics payloads are excluded from administration projections. Reservation access state, validity, device, provider credential identifier, and failure metadata are visible without the code itself.
 
 Standalone access-code creation keeps internal attempt evidence containing safe metadata and the final outcome only, never the PIN. That evidence supports reliable retries; it is not an operator-facing audit history.

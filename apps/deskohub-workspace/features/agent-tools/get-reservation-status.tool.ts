@@ -47,6 +47,12 @@ const outputSchema = Schema.Struct({
   ends_at: Schema.optionalKey(
     Schema.String.annotate({ description: "End, as an ISO 8601 instant." })
   ),
+  setup_starts_at: Schema.optionalKey(
+    Schema.String.annotate({
+      description:
+        "Meeting room booked with early setup only: when the customer may arrive to set up, before starts_at, as an ISO 8601 instant.",
+    })
+  ),
   total: Schema.optionalKey(agentToolMoneySchema),
   status_url: Schema.String.annotate({
     description:
@@ -143,6 +149,10 @@ const toReservationStatusResult = ({
           onSome: (summary) => ({
             starts_at: summary.reservedFrom.toString(),
             ends_at: summary.reservedUntil.toString(),
+            ...("setupFrom" in summary &&
+              summary.setupFrom && {
+                setup_starts_at: summary.setupFrom.toString(),
+              }),
             total: toAgentToolMoney(summary.price),
           }),
         }),

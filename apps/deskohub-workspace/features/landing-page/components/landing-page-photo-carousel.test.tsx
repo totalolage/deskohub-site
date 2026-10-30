@@ -8,8 +8,7 @@ import {
   test,
 } from "bun:test";
 import { cleanup, render } from "@testing-library/react";
-import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
-import { m } from "@/features/i18n";
+import type { VenuePhoto } from "@/features/gallery/types/venue-photo";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -41,27 +40,50 @@ mock.module("next/image", () => ({
 }));
 
 mock.module("yet-another-react-lightbox", () => ({
-  default: ({ slides }: { slides: readonly { alt?: string }[] }) => (
+  default: ({
+    slides,
+  }: {
+    slides: readonly { alt?: string; title?: string }[];
+  }) => (
     <output data-testid="lightbox-slides">
-      {slides.map((slide) => slide.alt).join("|")}
+      {slides.map((slide) => `${slide.alt}|${slide.title ?? ""}`).join(";")}
     </output>
   ),
 }));
 
-const images = [
+const images: readonly VenuePhoto[] = [
   {
+    alt: "Český popis",
+    caption: "Český titulek",
     height: 1200,
-    public_id: "landing-one",
-    secure_url: "https://example.test/landing-one.jpg",
+    id: "landing-one",
+    lightbox: {
+      alt: "Český popis",
+      description: "Český titulek",
+      height: 1200,
+      src: "https://example.test/landing-one-lightbox.jpg",
+      title: "Český titulek",
+      width: 1600,
+    },
+    publicId: "landing-one",
+    src: "https://example.test/landing-one.jpg",
     width: 1600,
   },
   {
+    alt: "Landing fallback alt",
     height: 1200,
-    public_id: "landing-two",
-    secure_url: "https://example.test/landing-two.jpg",
+    id: "landing-two",
+    lightbox: {
+      alt: "Landing fallback alt",
+      height: 1200,
+      src: "https://example.test/landing-two-lightbox.jpg",
+      width: 1600,
+    },
+    publicId: "landing-two",
+    src: "https://example.test/landing-two.jpg",
     width: 1600,
   },
-] as readonly CloudinaryAsset[];
+];
 
 describe("LandingPagePhotoCarousel", () => {
   beforeAll(() => {
@@ -76,41 +98,26 @@ describe("LandingPagePhotoCarousel", () => {
     await unregisterWorkspaceComponentTestEnv();
   });
 
-  test("uses the locale-specific Cloudinary alt text and skips empty values", async () => {
+  test("renders projected alt and caption and uses the projected lightbox", async () => {
     const { LandingPagePhotoCarousel } = await import(
       "./landing-page-photo-carousel"
     );
-    const localizedImages = [
-      {
-        ...images[0]!,
-        context: {
-          custom: {
-            alt: "Default alt",
-            "alt-cs-CZ": "Český popis",
-            "alt-en-US": "English alt",
-          },
-        },
-      },
-      {
-        ...images[1]!,
-        context: { custom: { alt: " ", "alt-cs-CZ": "" } },
-      },
-    ] as readonly CloudinaryAsset[];
     const view = render(
       <LandingPagePhotoCarousel
         ariaLabel="Workspace photos"
-        images={localizedImages}
+        images={images}
         locale="cs-CZ"
       />
     );
-    const fallbackAlt = m.landingCarouselImageAlt({}, { locale: "cs-CZ" });
 
     expect(view.getAllByRole("img", { name: "Český popis" })).not.toHaveLength(
       0
     );
-    expect(view.getAllByRole("img", { name: fallbackAlt })).not.toHaveLength(0);
+    expect(
+      view.getAllByRole("img", { name: "Landing fallback alt" })
+    ).not.toHaveLength(0);
     expect(view.getByTestId("lightbox-slides").textContent).toBe(
-      `Český popis|${fallbackAlt}`
+      "Český popis|Český titulek;Landing fallback alt|"
     );
   });
 

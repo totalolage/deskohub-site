@@ -2,10 +2,9 @@ import Interpolate from "@doist/react-interpolate";
 import Link from "next/link";
 import { connection } from "next/server";
 import { type ReactNode, Suspense } from "react";
-import { getCloudinaryImages } from "@/features/gallery/backend/get-cloudinary-images.server";
+import { loadVenuePhotos } from "@/features/gallery/backend/load-venue-photos.server";
 import { GalleryErrorBoundary } from "@/features/gallery/components/gallery-error-boundary";
 import { WorkspaceGalleryAlbum } from "@/features/gallery/components/workspace-gallery-album";
-import { toGalleryPhotos } from "@/features/gallery/types/gallery-photo";
 import { type Locale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { publicPageMetadata } from "@/features/public-pages/backend/public-page-route.server";
@@ -79,20 +78,12 @@ function Gallery({
 
 async function GalleryContent({ locale }: { readonly locale: Locale }) {
   await connection();
-  const assets = await getCloudinaryImages({
-    tags: ["gallery"],
-    maxResults: 80,
-  });
-  const photos = toGalleryPhotos(
-    assets,
-    locale,
-    m.galleryImageFallbackAlt({}, { locale })
-  );
+  const photos = await loadVenuePhotos("gallery", locale);
 
   return photos.length > 0 ? (
     <WorkspaceGalleryAlbum locale={locale} photos={photos} />
   ) : (
-    <EmptyGallery assetsCount={assets.length} locale={locale} />
+    <EmptyGallery locale={locale} />
   );
 }
 
@@ -110,22 +101,14 @@ function GalleryFallback({ locale }: { readonly locale: Locale }) {
   );
 }
 
-function EmptyGallery({
-  assetsCount,
-  locale,
-}: {
-  readonly assetsCount: number;
-  readonly locale: Locale;
-}) {
+function EmptyGallery({ locale }: { readonly locale: Locale }) {
   return (
     <div className="grid gap-4 sm:grid-cols-3">
       <div className="min-h-64 rounded-[1.35rem] bg-linear-to-br from-white via-[#f8efe3] to-burned-orange/24 shadow-[0_24px_70px_-50px_rgba(0,2,79,0.72)] ring-1 ring-navy-blue/8" />
       <div className="min-h-80 rounded-[1.35rem] bg-linear-to-br from-[#fff9ef] via-white to-navy-blue/18 shadow-[0_24px_70px_-50px_rgba(0,2,79,0.72)] ring-1 ring-navy-blue/8" />
       <div className="min-h-56 rounded-[1.35rem] bg-linear-to-br from-white via-sunset-yellow/20 to-chilean-fire/28 shadow-[0_24px_70px_-50px_rgba(0,2,79,0.72)] ring-1 ring-navy-blue/8" />
       <p className="sm:col-span-3 rounded-[1.35rem] border border-navy-blue/10 bg-white/72 px-5 py-4 text-sm text-navy-blue/70 shadow-[0_18px_60px_-46px_rgba(0,2,79,0.7)] backdrop-blur">
-        {assetsCount === 0
-          ? m.galleryEmptyNoPhotos({}, { locale })
-          : m.galleryEmptyMissingMetadata({}, { locale })}
+        {m.galleryEmptyNoPhotos({}, { locale })}
       </p>
     </div>
   );

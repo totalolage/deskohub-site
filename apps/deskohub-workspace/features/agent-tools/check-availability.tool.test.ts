@@ -115,12 +115,50 @@ describe("check_availability", () => {
         duration: "hour:4",
         starts_at: `${free}T09:00`,
         ends_at: `${free}T13:00`,
+        early_setup_available: true,
       },
       reservation_url: `http://deskohub.test/reservation/meeting-room?startDateTime=${free}T09%3A00&duration=hour%3A4`,
     });
     expect(busyResult).toMatchObject({
       available: false,
-      meeting_room: { starts_at: `${busy}T00:00` },
+      meeting_room: {
+        starts_at: `${busy}T00:00`,
+        early_setup_available: false,
+      },
+    });
+    expect(services.dotyposRequests).toEqual([]);
+  });
+
+  test("reports the setup time before a free start as taken when the room is booked until the start", async () => {
+    const [booked, next] = [5, 6].map(workspaceDateFromToday);
+    const services = makeAgentToolTestServices({
+      occupancy: [makeTestOccupancy({ tableId: "room-1", date: booked! })],
+    });
+
+    const midnight = await checkAvailability(
+      { family: "meeting-room", date: next!, duration: "day:1" },
+      services
+    );
+    const morning = await checkAvailability(
+      {
+        family: "meeting-room",
+        date: next!,
+        start_time: "09:00",
+        duration: "hour:4",
+      },
+      services
+    );
+
+    expect(midnight).toMatchObject({
+      available: true,
+      meeting_room: {
+        starts_at: `${next}T00:00`,
+        early_setup_available: false,
+      },
+    });
+    expect(morning).toMatchObject({
+      available: true,
+      meeting_room: { early_setup_available: true },
     });
     expect(services.dotyposRequests).toEqual([]);
   });

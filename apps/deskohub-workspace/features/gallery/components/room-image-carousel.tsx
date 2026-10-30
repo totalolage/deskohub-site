@@ -1,26 +1,21 @@
 "use client";
 
-import type { CloudinaryPublicId } from "@deskohub/cloudinary/schema";
 import { CloudinaryImage } from "@deskohub/cloudinary-image";
 import { motion, type Transition } from "motion/react";
 import Image, { type StaticImageData } from "next/image";
 import { useMemo, useState } from "react";
 import Lightbox, { type SlideImage } from "yet-another-react-lightbox";
 import "yet-another-react-lightbox/styles.css";
-import { getLocalizedCloudinaryContextValue } from "@deskohub/cloudinary-image/localized-context";
-import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
 import {
   useMotionSwipeCarousel,
   wrapIndex,
 } from "@/features/gallery/hooks/use-motion-swipe-carousel";
-import type { Locale } from "@/features/i18n";
+import type { VenuePhoto } from "@/features/gallery/types/venue-photo";
 import { CarouselPositionIndicator } from "@/shared/components/carousel-position-indicator";
 import { cn } from "@/shared/utils";
 
 type RoomImageCarouselProps = {
-  images: readonly CloudinaryAsset[];
-  imageAlt: string;
-  locale: Locale;
+  images: readonly VenuePhoto[];
   emptyText: string;
   openLabel: string;
   fallbackImages?: readonly RoomImageCarouselFallbackImage[];
@@ -42,11 +37,11 @@ type RoomImageCarouselImage =
       alt: string;
       caption?: string;
       height: number;
-      id: CloudinaryPublicId;
+      id: string;
       kind: "cloudinary";
       label: string;
-      source: CloudinaryAsset;
-      src: string;
+      source: string;
+      lightbox: SlideImage;
       width: number;
     }
   | {
@@ -57,7 +52,7 @@ type RoomImageCarouselImage =
       kind: "static";
       label: string;
       source: StaticImageData;
-      src: string;
+      lightbox: SlideImage;
       width: number;
     };
 
@@ -81,8 +76,6 @@ const getSlideMotion = (offset: number) => ({
 
 export function RoomImageCarousel({
   images,
-  imageAlt,
-  locale,
   emptyText,
   openLabel,
   fallbackImages,
@@ -105,26 +98,17 @@ export function RoomImageCarousel({
       : []);
   const carouselImages: readonly RoomImageCarouselImage[] =
     images.length > 0
-      ? images.map((image, index) => {
-          const alt = getLocalizedCloudinaryContextValue(image, "alt", locale);
-          const caption = getLocalizedCloudinaryContextValue(
-            image,
-            "caption",
-            locale
-          );
-
-          return {
-            alt: alt || imageAlt,
-            caption,
-            height: image.height,
-            id: image.public_id,
-            kind: "cloudinary",
-            label: caption || alt || `${openLabel} ${index + 1}`,
-            source: image,
-            src: image.secure_url,
-            width: image.width,
-          };
-        })
+      ? images.map((image) => ({
+          alt: image.alt,
+          caption: image.caption,
+          height: image.height,
+          id: image.id,
+          kind: "cloudinary",
+          label: image.caption || image.alt,
+          source: image.publicId,
+          lightbox: image.lightbox,
+          width: image.width,
+        }))
       : normalizedFallbackImages.map((image, index) => ({
           alt: image.alt,
           caption: image.caption,
@@ -136,7 +120,14 @@ export function RoomImageCarousel({
             image.alt.trim() ||
             `${openLabel} ${index + 1}`,
           source: image.src,
-          src: image.src.src,
+          lightbox: {
+            alt: image.alt,
+            description: image.caption,
+            height: image.src.height,
+            src: image.src.src,
+            title: image.caption,
+            width: image.src.width,
+          },
           width: image.src.width,
         }));
   const {
@@ -163,16 +154,8 @@ export function RoomImageCarousel({
   const lightboxAnimation = shouldReduceMotion
     ? { fade: 0, navigation: 0, swipe: 0 }
     : undefined;
-  const slides: SlideImage[] = useMemo(
-    () =>
-      carouselImages.map((image) => ({
-        alt: image.alt,
-        description: image.caption,
-        height: image.height,
-        src: image.src,
-        title: image.caption,
-        width: image.width,
-      })),
+  const slides = useMemo(
+    () => carouselImages.map((image) => image.lightbox),
     [carouselImages]
   );
 

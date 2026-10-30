@@ -249,6 +249,48 @@ describe("administration reservation components", () => {
     expect(view.getAllByText(/Aug 10, 2026, 10:00/)).toHaveLength(2);
   });
 
+  test("shows when an early-setup meeting room is held from", () => {
+    const reservation = loadFixtureReservations({}).items[0];
+    if (!reservation) throw new Error("Missing reservation fixture");
+    const view = render(
+      <ReservationTable
+        reservations={[
+          {
+            ...reservation,
+            id: "early-setup",
+            type: "meeting-room",
+            date: "2026-08-10",
+            startsAt: "2026-08-10T08:00:00Z",
+            setupStartsAt: "2026-08-10T07:45:00Z",
+          },
+          {
+            ...reservation,
+            id: "on-time",
+            type: "meeting-room",
+            date: "2026-08-11",
+            startsAt: "2026-08-11T08:00:00Z",
+            setupStartsAt: null,
+          },
+          {
+            ...reservation,
+            id: "midnight",
+            type: "meeting-room",
+            date: "2026-08-13",
+            startsAt: "2026-08-12T22:00:00Z",
+            setupStartsAt: "2026-08-12T21:45:00Z",
+          },
+        ]}
+      />
+    );
+
+    // The table and the narrow-screen list each show the setup time once,
+    // with its date when setup starts the day before.
+    expect(view.getAllByText(/Aug 10, 2026, 10:00/)).toHaveLength(2);
+    expect(view.getAllByText(/09:45/)).toHaveLength(2);
+    expect(view.getAllByText(/Aug 11, 2026, 10:00/)).toHaveLength(2);
+    expect(view.getAllByText(/Aug 12, 2026, 23:45/)).toHaveLength(2);
+  });
+
   test("links sortable reservation headers to server-side ordering", () => {
     const reservations = loadFixtureReservations({}).items;
     const view = render(
