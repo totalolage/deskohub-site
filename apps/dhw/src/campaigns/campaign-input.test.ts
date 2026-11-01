@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import type { AudienceFilterType } from "@deskohub/workspace-admin-api";
 import { BunServices } from "@effect/platform-bun";
 import { Effect, Option } from "effect";
 import { readAudienceFilter } from "./campaign-input";
@@ -14,7 +15,7 @@ test("reads and preserves completed coworking visit filters from inline JSON", a
     },
     operator: "eq",
     value: 1,
-  };
+  } satisfies AudienceFilterType;
   const result = await Effect.runPromise(
     readAudienceFilter({
       filter: Option.some(JSON.stringify(filter)),

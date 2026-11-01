@@ -78,9 +78,8 @@ const audienceId = AdministrationCampaignAudienceId.make(
 const customerId = AdministrationDotyposCustomerId.make("1001");
 const otherCustomerId = AdministrationDotyposCustomerId.make("1002");
 const createdAt = Temporal.Instant.from("2026-10-14T08:00:00Z");
-const testDhwVersion = campaignsMinimumDhwVersion;
 const AuthorizedCliRequest = authorizedCliRequest();
-const TestDhwVersionHeader = cliClientVersion(testDhwVersion);
+const TestDhwVersionHeader = cliClientVersion(campaignsMinimumDhwVersion);
 
 const campaignRow = (overrides: Partial<CampaignRow> = {}): CampaignRow => ({
   id: campaignId,
@@ -163,7 +162,7 @@ const callCampaignsApi = <A, E>(
   call: (client: CampaignsClient) => Effect.Effect<A, E>,
   overrides: CampaignServiceOverrides = {},
   bearer = AuthorizedCliRequest,
-  dhwVersion: string = testDhwVersion
+  dhwVersion: string = campaignsMinimumDhwVersion
 ) =>
   campaignsClient.pipe(
     Effect.flatMap(call),
@@ -1003,7 +1002,7 @@ describe.skipIf(!testDatabase)(
         approvedBy: AdministrationLegacyUsername.make("operator"),
         tokenHash,
         clientName: "ledger test client",
-        cliVersion: testDhwVersion,
+        cliVersion: campaignsMinimumDhwVersion,
         buildTarget: "development",
         createdAt: createdAt,
         lastUsedAt: createdAt,
