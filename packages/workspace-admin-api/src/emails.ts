@@ -191,7 +191,7 @@ export const emailDocumentForPublication = (
       )
     )
     .pipe(
-      Schema.decodeTo(EmailDocument, {
+      Schema.decodeTo(Schema.toType(EmailDocument), {
         decode: SchemaGetter.transform((document) => ({
           ...document,
           values: document.values.map((definition) => {
