@@ -66,6 +66,17 @@ export {
   emailCampaigns,
 } from "./email-campaigns";
 export {
+  type EmailDiscountIssuanceRow,
+  type EmailPreparationRow,
+  type EmailRow,
+  type EmailVersionRow,
+  emailDiscountIssuances,
+  emailPreparations,
+  emails,
+  emailValueSnapshots,
+  emailVersions,
+} from "./emails";
+export {
   invoiceEmailDeliveries,
   invoiceEmailDeliveryAudiences,
   invoiceEmailDeliveryStates,

@@ -8,7 +8,12 @@ const dialect = new PgDialect();
 
 /** Whether the column's encoder marks every value it binds as sensitive. */
 const isSensitiveColumn = (column: Column) => {
-  const encoded = column.mapToDriverValue("synthetic");
+  const encoded = column.mapToDriverValue(
+    column.dataType === "custom" &&
+      column.getSQLType() === "timestamp with time zone"
+      ? Temporal.Instant.from("2037-01-01T12:00:00.123456Z")
+      : "synthetic"
+  );
   return (
     is(encoded, SQL) &&
     getSensitiveDatabaseQueryParameterIndexes(dialect.sqlToQuery(encoded).sql)
