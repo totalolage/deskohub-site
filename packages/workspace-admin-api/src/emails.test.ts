@@ -7,16 +7,22 @@ import {
   emailCustomerFieldCatalogue,
   validateEmailCustomerSelection,
 } from "./email-customer-selection";
+import { EmailValueName } from "./email-identifiers";
 import {
   EmailDocument,
   EmailDraft,
+  type EmailTranslation,
   emailDocumentForPublication,
   requiredEmailValueNames,
 } from "./emails";
 
-const text = [{ _tag: "Text", text: "Hello" }];
-const translation = { subject: text, preheader: [], texts: { body: text } };
-const document = {
+const text = [{ _tag: "Text", text: "Hello" }] as const;
+const translation: EmailTranslation = {
+  subject: text,
+  preheader: [],
+  texts: { body: text },
+};
+const document: EmailDocument = {
   purpose: "marketing",
   templateKey: "workspace",
   structure: [{ _tag: "Paragraph", id: "body", textKey: "body" }],
@@ -115,7 +121,9 @@ describe("reusable email publication", () => {
         },
       },
     });
-    expect(requiredEmailValueNames(result)).toEqual(["first", "second"]);
+    expect(requiredEmailValueNames(result)).toEqual(
+      ["first", "second"].map(Schema.decodeSync(EmailValueName))
+    );
   });
 
   test("discount exposes code and expiry scalars, while offer keeps shared destination", () => {
@@ -152,7 +160,9 @@ describe("reusable email publication", () => {
         },
       },
     });
-    expect(requiredEmailValueNames(result)).toEqual(["offer"]);
+    expect(requiredEmailValueNames(result)).toEqual([
+      Schema.decodeSync(EmailValueName)("offer"),
+    ]);
     expect(() =>
       publish({
         ...result,
