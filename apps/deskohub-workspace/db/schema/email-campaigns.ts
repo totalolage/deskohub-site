@@ -46,8 +46,8 @@ import { instant } from "../instant";
 import { sensitiveText } from "../sensitive-text";
 import { postgresUuidV7 } from "../uuid-v7";
 import { emailCampaignAutomationVersions } from "./email-campaign-automations";
-import { quotedSqlList } from "./sql-list";
 import { emails, emailVersions } from "./emails";
+import { quotedSqlList } from "./sql-list";
 
 // Keyed by every purpose so a new one fails to compile until it's listed.
 // A type-only import keeps drizzle-kit off the body module's env loading.
@@ -81,7 +81,9 @@ export const emailCampaigns = pgTable(
   {
     id: text("id").primaryKey().default(postgresUuidV7).$type<CampaignId>(),
     title: text("title").notNull(),
-    emailId: text("email_id").references(() => emails.id).$type<EmailId>(),
+    emailId: text("email_id")
+      .references(() => emails.id)
+      .$type<EmailId>(),
     purpose: text("purpose").notNull().$type<CampaignPurpose>(),
     // Templates live in code, so the service validates the key on write
     // instead of a check constraint that each new template would migrate.
@@ -141,7 +143,9 @@ export const emailCampaignSends = pgTable(
       .$type<CampaignAudienceId>(),
     audienceFilter: jsonb("audience_filter").$type<AudienceFilter>().notNull(),
     contentHash: text("content_hash").notNull().$type<CampaignContentHash>(),
-    frozenEmailVersionId: text("frozen_email_version_id").references(() => emailVersions.id).$type<EmailVersionId>(),
+    frozenEmailVersionId: text("frozen_email_version_id")
+      .references(() => emailVersions.id)
+      .$type<EmailVersionId>(),
     /**
      * The automation version an automated send delivers, whose audience
      * filter and content hash it copies. Null for the send of a `once`
@@ -167,7 +171,10 @@ export const emailCampaignSends = pgTable(
     completedAt: instant("completed_at"),
   },
   (t) => [
-    check("email_campaign_sends_frozen_email_check", sql`${t.frozenEmailVersionId} is null or ${t.automationVersionId} is null`),
+    check(
+      "email_campaign_sends_frozen_email_check",
+      sql`${t.frozenEmailVersionId} is null or ${t.automationVersionId} is null`
+    ),
     uniqueIndex("email_campaign_sends_once_campaign_unique_idx")
       .on(t.campaignId)
       .where(sql`${t.automationVersionId} is null`),

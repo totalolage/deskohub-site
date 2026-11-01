@@ -1,2 +1,11 @@
-export { EmailNotFound, EmailPersistence, EmailPublicationInvalid, EmailVersionInvalid } from "./email-persistence.service";
-export { EmailPreparationConflict, EmailRecipientPersistence, type EmailIssuanceParameters } from "./email-recipient-persistence.service";
+export {
+  EmailNotFound,
+  EmailPersistence,
+  EmailPublicationInvalid,
+  EmailVersionInvalid,
+} from "./email-persistence.service";
+export {
+  type EmailIssuanceParameters,
+  EmailPreparationConflict,
+  EmailRecipientPersistence,
+} from "./email-recipient-persistence.service";

@@ -66,6 +66,17 @@ export {
   emailCampaigns,
 } from "./email-campaigns";
 export {
+  type EmailDiscountIssuanceRow,
+  type EmailPreparationRow,
+  type EmailRow,
+  type EmailVersionRow,
+  emailDiscountIssuances,
+  emailPreparations,
+  emails,
+  emailValueSnapshots,
+  emailVersions,
+} from "./emails";
+export {
   invoiceEmailDeliveries,
   invoiceEmailDeliveryAudiences,
   invoiceEmailDeliveryStates,
@@ -127,5 +138,3 @@ export {
   type WorkspaceReservationRow,
   workspaceReservations,
 } from "./workspace-reservations";
-
-export { emails, emailVersions, emailPreparations, emailValueSnapshots, emailDiscountIssuances, type EmailRow, type EmailVersionRow, type EmailPreparationRow, type EmailDiscountIssuanceRow } from "./emails";
