@@ -238,13 +238,11 @@ export class EmailRecipientPersistence extends Context.Service<
                       })
                   )
                 );
-                yield* db
-                  .insert(emailValueSnapshots)
-                  .values({
-                    preparationId,
-                    valueName,
-                    value: canonicalJson(validated),
-                  });
+                yield* db.insert(emailValueSnapshots).values({
+                  preparationId,
+                  valueName,
+                  value: canonicalJson(validated),
+                });
               })
             );
           }
