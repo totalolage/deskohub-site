@@ -24,6 +24,29 @@ const forbiddenColumnFragments = [
 ].map((fragment) => fragment.split("_"));
 
 const allowedColumns = new Map([
+  // Reusable email/version identities and value-definition keys are not customer contact data.
+  [
+    "public.email_campaign_automation_versions.email_id",
+    "reusable email identity",
+  ],
+  [
+    "public.email_campaign_sends.frozen_email_version_id",
+    "published email version identity",
+  ],
+  ["public.email_campaigns.email_id", "reusable email identity"],
+  [
+    "public.email_preparations.email_version_id",
+    "published email version identity",
+  ],
+  ["public.email_versions.email_id", "reusable email identity"],
+  [
+    "public.email_discount_issuances.value_name",
+    "named recipient value definition key",
+  ],
+  [
+    "public.email_value_snapshots.value_name",
+    "named recipient value definition key",
+  ],
   // Better Auth owns the login email; AGENTS.md permits it in the auth schema.
   ["auth.user.email", "Better Auth login email"],
   ["auth.user.email_verified", "Better Auth login email verification flag"],
