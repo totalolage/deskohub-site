@@ -6,6 +6,7 @@ import {
   type EmailValueName,
   EmailValueSnapshot,
   type EmailVersionId,
+  emailValueSnapshotForDefinition,
 } from "@deskohub/workspace-admin-api";
 import { and, eq } from "drizzle-orm";
 import { Context, Data, Effect, Layer, Schema } from "effect";
@@ -21,6 +22,7 @@ import {
   emailDiscountIssuances,
   emailPreparations,
   emailValueSnapshots,
+  emailVersions,
 } from "@/db/schema/emails";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
 import type { CampaignSendId } from "@/features/email-campaigns/campaign-identifiers";
@@ -191,7 +193,33 @@ export class EmailRecipientPersistence extends Context.Service<
           }: NamedValue & { readonly value: EmailValueSnapshot }) {
             return yield* transaction(
               Effect.gen(function* () {
-                yield* lockedPreparation(preparationId);
+                const preparation = yield* lockedPreparation(preparationId);
+                const [version] = yield* db
+                  .select({ document: emailVersions.document })
+                  .from(emailVersions)
+                  .where(eq(emailVersions.id, preparation.emailVersionId));
+                const definition = version?.document.values.find(
+                  (value) => value.name === valueName
+                );
+                if (!definition)
+                  return yield* new EmailPreparationConflict({
+                    preparationId,
+                    reason: "invalid-snapshot",
+                  });
+                const validated = yield* Schema.decodeEffect(
+                  emailValueSnapshotForDefinition(
+                    definition,
+                    preparation.locale
+                  )
+                )(value).pipe(
+                  Effect.mapError(
+                    () =>
+                      new EmailPreparationConflict({
+                        preparationId,
+                        reason: "invalid-snapshot",
+                      })
+                  )
+                );
                 const [existing] = yield* db
                   .select()
                   .from(emailValueSnapshots)
@@ -201,7 +229,7 @@ export class EmailRecipientPersistence extends Context.Service<
                       eq(emailValueSnapshots.valueName, valueName)
                     )
                   );
-                const encoded = canonicalJson(value);
+                const encoded = canonicalJson(validated);
                 if (existing) {
                   if (existing.value !== encoded)
                     return yield* new EmailPreparationConflict({

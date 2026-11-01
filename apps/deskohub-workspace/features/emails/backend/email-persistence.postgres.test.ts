@@ -67,21 +67,21 @@ describe.skipIf(!database)(
     ).pipe(Layer.provide(database.layer));
     const run = (effect) =>
       Effect.runPromise(effect.pipe(Effect.provide(layer)));
-    const publication = async () =>
+    const publication = async (emailDraft = draft) =>
       run(
         Effect.gen(function* () {
           const emails = yield* EmailPersistence;
           const email = yield* emails.create({
             title: "Synthetic email",
-            draft,
+            draft: emailDraft,
           });
           return yield* emails.publish(email.id);
         })
       );
     const recipient = () =>
       DotyposCustomerIdSchema.make(`synthetic-${crypto.randomUUID()}`);
-    const selected = async () => {
-      const version = await publication();
+    const selected = async (emailDraft = draft) => {
+      const version = await publication(emailDraft);
       const customer = recipient();
       const { sendId } = await seedCampaignSend(db, {
         purpose: "marketing",
@@ -317,7 +317,13 @@ describe.skipIf(!database)(
           Effect.flatMap(EmailRecipientPersistence, (service) =>
             service.saveSnapshot({
               ...input,
-              value: { _tag: "Fallback", text: "changed" },
+              value: {
+                _tag: "Resolved",
+                value: {
+                  code: "DIFFERENT-SYNTHETIC",
+                  expiresAt: parameters.expiresAt,
+                },
+              },
             })
           ).pipe(Effect.flip)
         )
@@ -351,6 +357,80 @@ describe.skipIf(!database)(
         "update email_preparations set state = 'preparing' where id = $1",
       ])
         await expect(pool.query(statement, [preparation.id])).rejects.toThrow();
+    });
+
+    test("rejects unselected customer fields before storing or sealing a snapshot", async () => {
+      const name = EmailValueName.make("consent");
+      const customerDraft = {
+        ...draft,
+        translations: Object.fromEntries(
+          Object.entries(draft.translations).map(([locale, translation]) => [
+            locale,
+            {
+              ...translation,
+              texts: {
+                intro: [{ _tag: "Value", name, field: ["documentHash"] }],
+              },
+            },
+          ])
+        ),
+        values: [
+          {
+            name,
+            source: {
+              kind: "customer",
+              path: ["activity", "marketingConsent"],
+              fields: [["documentHash"]],
+            },
+            fallback: { "cs-CZ": "Unknown" },
+          },
+        ],
+      };
+      const preparation = await selected(customerDraft);
+      const input = { preparationId: preparation.id, valueName: name };
+      const invalid = await run(
+        Effect.flatMap(EmailRecipientPersistence, (service) =>
+          service.saveSnapshot({
+            ...input,
+            value: {
+              _tag: "Resolved",
+              value: { documentHash: "synthetic", locale: "cs-CZ" },
+            },
+          })
+        ).pipe(Effect.flip)
+      );
+      expect(invalid).toMatchObject({
+        _tag: "EmailPreparationConflict",
+        reason: "invalid-snapshot",
+      });
+      expect(
+        (
+          await pool.query(
+            "select count(*)::integer as count from email_value_snapshots where preparation_id = $1",
+            [preparation.id]
+          )
+        ).rows[0].count
+      ).toBe(0);
+      await expect(
+        run(
+          Effect.flatMap(EmailRecipientPersistence, (service) =>
+            service.finish(preparation.id, "ready")
+          )
+        )
+      ).rejects.toThrow();
+      await run(
+        Effect.flatMap(EmailRecipientPersistence, (service) =>
+          service.saveSnapshot({
+            ...input,
+            value: { _tag: "Resolved", value: { documentHash: "synthetic" } },
+          })
+        )
+      );
+      await run(
+        Effect.flatMap(EmailRecipientPersistence, (service) =>
+          service.finish(preparation.id, "ready")
+        )
+      );
     });
 
     test("snapshot insert and ready serialize on the preparation row", async () => {
