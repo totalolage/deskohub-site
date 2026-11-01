@@ -232,7 +232,9 @@ describe.skipIf(!database)(
       for (const fetched of [false, true]) {
         // Only the locally cancelled reservation matches an explicit status;
         // confirmed provider-cancelled and active reservations remain excluded.
-        expect(await evaluate(1, now, fetched, false, "cancelled")).toBe("match");
+        expect(await evaluate(1, now, fetched, false, "cancelled")).toBe(
+          "match"
+        );
         expect(await evaluate(1, at("2026-05-31T00:00:00Z"), fetched)).toBe(
           "noMatch"
         );
