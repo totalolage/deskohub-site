@@ -65,20 +65,21 @@ function CoworkingHero({
       aria-labelledby="coworking-heading"
       className="relative pt-(--site-header-height)"
     >
-      <div className="mx-auto grid w-full max-w-8xl items-center gap-12 px-4 pb-20 pt-10 sm:px-6 sm:pb-24 lg:grid-cols-[minmax(0,1fr)_minmax(24rem,0.92fr)] lg:gap-[clamp(3rem,5vw,5.5rem)] lg:px-8 lg:pb-28 lg:pt-14 xl:px-14">
+      <div className="mx-auto w-full max-w-8xl px-4 pb-20 pt-4 sm:px-6 sm:pb-24 lg:px-8 lg:pb-28 xl:px-14">
+        <PublicPageBreadcrumbs
+          crumbs={[
+            {
+              pathname: "/coworking",
+              name: m.coworkingBreadcrumb({}, { locale }),
+            },
+          ]}
+          locale={locale}
+          tone="inverse"
+        />
+        <div className="mt-8 grid items-center gap-12 lg:mt-10 lg:grid-cols-[minmax(0,1fr)_minmax(24rem,0.92fr)] lg:gap-[clamp(3rem,5vw,5.5rem)]">
         <div>
-          <PublicPageBreadcrumbs
-            crumbs={[
-              {
-                pathname: "/coworking",
-                name: m.coworkingBreadcrumb({}, { locale }),
-              },
-            ]}
-            locale={locale}
-            tone="inverse"
-          />
           <h1
-            className="mt-10 max-w-4xl text-[clamp(3.25rem,7vw,7.25rem)] leading-[0.9] tracking-[-0.065em] text-balance"
+            className="max-w-4xl text-[clamp(3.25rem,7vw,7.25rem)] leading-[0.9] tracking-[-0.065em] text-balance"
             id="coworking-heading"
           >
             {m.coworkingHeroTitle({}, { locale })}
@@ -151,6 +152,7 @@ function CoworkingHero({
             </div>
           </figure>
         )}
+        </div>
       </div>
     </section>
   );
