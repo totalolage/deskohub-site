@@ -22,6 +22,17 @@ export const emailValueSnapshotForDefinition = (
   EmailValueSnapshot.check(
     Schema.makeFilter(
       (snapshot) => {
+        const current =
+          definition.source.kind === "customer"
+            ? selectedEmailCustomerShape(definition.source)
+            : undefined;
+        if (
+          definition.source.kind === "customer" &&
+          (!current ||
+            (definition.customerShape &&
+              !sameCustomerShape(definition.customerShape, current)))
+        )
+          return false;
         if (snapshot._tag === "Fallback")
           return definition.fallback?.[locale] === snapshot.text;
         const value = snapshot.value;
@@ -37,14 +48,8 @@ export const emailValueSnapshotForDefinition = (
             Number.isFinite(Date.parse(value.expiresAt))
           );
         const selection = definition.source;
-        const current = selectedEmailCustomerShape(selection);
-        if (!current) return false;
-        if (
-          definition.customerShape &&
-          !sameCustomerShape(definition.customerShape, current)
-        )
-          return false;
         const selected = definition.customerShape ?? current;
+        if (!selected) return false;
         if (
           selected.kind === "list" &&
           selection.limit !== undefined &&

@@ -14,7 +14,7 @@ export const EmailCustomerSelection = Schema.Struct({
   ),
   sort: Schema.optionalKey(
     Schema.Struct({
-      path: fieldPath,
+      path: Schema.Array(Schema.NonEmptyString),
       direction: Schema.Literals(["asc", "desc"]),
     })
   ),

@@ -398,4 +398,49 @@ test("publication freezes selected field types and rejects incompatible historic
       emailValueSnapshotForDefinition(historical, "cs-CZ")
     )({ _tag: "Resolved", value: { documentHash: 5 } })
   ).toThrow();
+  expect(() =>
+    Schema.decodeUnknownSync(
+      emailValueSnapshotForDefinition(
+        { ...historical, fallback: { "cs-CZ": "Unknown" } },
+        "cs-CZ"
+      )
+    )({ _tag: "Fallback", text: "Unknown" })
+  ).toThrow();
+});
+
+test("typed list components select sorting and limits within the frozen source", () => {
+  const values = [
+    {
+      name: "recent",
+      source: {
+        kind: "customer",
+        path: ["activity", "reservations"],
+        fields: [["id"]],
+        limit: 3,
+      },
+    },
+  ];
+  const component = {
+    _tag: "List",
+    id: "recent",
+    value: "recent",
+    fields: [{ field: ["id"], labelKey: "body" }],
+    sort: { path: ["id"], direction: "desc" },
+    limit: 2,
+  };
+  expect(
+    publish({ ...document, values, structure: [component] }).structure[0]?._tag
+  ).toBe("List");
+  expect(() =>
+    publish({
+      ...document,
+      values,
+      structure: [
+        { ...component, sort: { path: ["createdAt"], direction: "desc" } },
+      ],
+    })
+  ).toThrow();
+  expect(() =>
+    publish({ ...document, values, structure: [{ ...component, limit: 4 }] })
+  ).toThrow();
 });
