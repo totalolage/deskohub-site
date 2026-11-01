@@ -22,8 +22,8 @@ afterAll(async () => {
 });
 
 // The meeting-room form lays the date and time side by side; the date column
-// grows with its long-date description below the field. The plain time input
-// shows what Chromium's own clock button looks like.
+// grows with its long-date description below the field. The plain time inputs
+// show the same text with and without Chromium's own clock button.
 const markup = renderToStaticMarkup(
   <main className="grid gap-4 p-4" style={{ width: 720 }}>
     <ReservationDateTimePicker
@@ -34,28 +34,29 @@ const markup = renderToStaticMarkup(
       timeStepMinutes={60}
       value="2099-11-28T10:00"
     />
-    <div style={{ width: 340 }}>
-      <Input
-        aria-label="Plain time"
-        data-plain-time
-        type="time"
-        value="10:00"
-      />
-    </div>
+    {["with-button", "without-button"].map((plainTime) => (
+      <div key={plainTime} style={{ width: 340 }}>
+        <Input
+          aria-label="Plain time"
+          data-plain-time={plainTime}
+          defaultValue="10:00"
+          type="time"
+        />
+      </div>
+    ))}
   </main>
 );
 
-// Counts the non-white pixels near a time field's trailing edge, where Chromium
-// draws its clock button. The clip stays clear of the rounded border.
-const countTrailingInk = async (page: Page, selector: string) => {
+// Counts the non-white pixels inside a time field, clear of its rounded border.
+const countFieldInk = async (page: Page, selector: string) => {
   const box = await page.locator(selector).boundingBox();
   if (!box) throw new Error(`${selector} has no box.`);
   const shot = await page.screenshot({
     clip: {
-      height: box.height - 8,
-      width: 38,
-      x: box.x + box.width - 46,
-      y: box.y + 4,
+      height: box.height - 16,
+      width: box.width - 24,
+      x: box.x + 12,
+      y: box.y + 8,
     },
   });
   return page.evaluate(async (base64) => {
@@ -136,23 +137,29 @@ test.skipIf(!chromiumAvailable)(
         wrapperFitsField: true,
       });
 
-      // With the orange clock hidden, the field's trailing edge stays blank:
-      // Chromium's clock button is there but transparent.
+      // With the orange clock hidden, the field draws only its text: Chromium's
+      // clock button is there but transparent.
+      await page.addStyleTag({
+        content:
+          '[data-plain-time="without-button"]::-webkit-calendar-picker-indicator{display:none}',
+      });
       await page.evaluate(() => {
         const clock = document
           .querySelector('input[type="time"]')
           ?.parentElement?.querySelector("svg");
         if (clock) clock.style.visibility = "hidden";
       });
+      const textInk = await countFieldInk(
+        page,
+        '[data-plain-time="without-button"]'
+      );
+      expect(textInk).toBeGreaterThan(0);
       expect(
-        await countTrailingInk(
-          page,
-          'input[type="time"]:not([data-plain-time])'
-        )
-      ).toBe(0);
+        await countFieldInk(page, '[data-plain-time="with-button"]')
+      ).toBeGreaterThan(textInk);
       expect(
-        await countTrailingInk(page, "input[data-plain-time]")
-      ).toBeGreaterThan(0);
+        await countFieldInk(page, 'input[type="time"]:not([data-plain-time])')
+      ).toBe(textInk);
     } finally {
       await page.close();
     }
