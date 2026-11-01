@@ -120,8 +120,8 @@ describe.skipIf(!testDatabase)(
       const customerReads = seededCustomerReads(customers);
       const reservationReads = seededReservationReads(input.reservations ?? []);
       const calls = {
-        getCustomersPage: 0,
-        getCustomers: 0,
+        getCustomersByIds: 0,
+        getReservationsByIds: 0,
         listReservationsPage: 0,
         listReservations: 0,
         listActiveReservationsPage: 0,
@@ -129,17 +129,11 @@ describe.skipIf(!testDatabase)(
       return {
         calls,
         layer: DotyposServiceMock({
-          getCustomersPage: (ids) => {
-            calls.getCustomersPage += 1;
-            return customerReads.getCustomersPage(ids);
+          getCustomersByIds: (ids) => {
+            calls.getCustomersByIds += 1;
+            return customerReads.getCustomersByIds(ids);
           },
-          getCustomers: ({ ids }) => {
-            calls.getCustomers += 1;
-            const selected = new Set(ids);
-            return Effect.succeed(
-              customers.filter(({ id }) => id !== undefined && selected.has(id))
-            );
-          },
+
           listReservationsPage: (options) => {
             calls.listReservationsPage += 1;
             return reservationReads.listReservationsPage(options);
@@ -147,6 +141,17 @@ describe.skipIf(!testDatabase)(
           listReservations: (options) => {
             calls.listReservations += 1;
             return reservationReads.listReservations(options);
+          },
+          getReservationsByIds: (ids, readOptions) => {
+            const options = { ...readOptions, ids: [...ids] };
+            calls.getReservationsByIds += 1;
+            return reservationReads
+              .listReservations(options)
+              .pipe(
+                Effect.flatMap((records) =>
+                  seededReservationReads(records).getReservationsByIds(ids)
+                )
+              );
           },
           listActiveReservationsPage: (interval, page) => {
             calls.listActiveReservationsPage += 1;
@@ -456,9 +461,8 @@ describe.skipIf(!testDatabase)(
 
       expect(result.plan.reads).toEqual({ visits: true, profiles: true });
       expect(result.decisions.get(known)?.outcome).toBe("match");
-      expect(dotypos.calls.getCustomersPage).toBe(1);
-      expect(dotypos.calls.listReservationsPage).toBe(1);
-      expect(dotypos.calls.getCustomers).toBe(0);
+      expect(dotypos.calls.getCustomersByIds).toBe(1);
+      expect(dotypos.calls.getReservationsByIds).toBe(1);
     });
 
     test("uses the trigger window for last-visit conditions", async () => {
@@ -544,7 +548,6 @@ describe.skipIf(!testDatabase)(
       });
 
       expect(result.decisions.get(known)?.outcome).toBe("match");
-      expect(dotypos.calls.getCustomersPage).toBe(0);
       expect(dotypos.calls.listReservationsPage).toBe(0);
     });
 
@@ -621,8 +624,8 @@ describe.skipIf(!testDatabase)(
       );
 
       expect(live).toEqual(fetched.decisions);
-      expect(dotypos.calls.getCustomers).toBeGreaterThan(0);
-      expect(dotypos.calls.listReservationsPage).toBe(1);
+      expect(dotypos.calls.getCustomersByIds).toBeGreaterThan(0);
+      expect(dotypos.calls.getReservationsByIds).toBe(1);
     });
   }
 );

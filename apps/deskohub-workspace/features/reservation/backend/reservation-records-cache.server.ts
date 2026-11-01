@@ -16,7 +16,7 @@ import {
   type ReservationRecordReads,
   ReservationRecords,
   type ReservationRecordsError,
-  readRecordsInSortedBatches,
+  readReservationSnapshotGroups,
 } from "./reservation-records";
 
 /**
@@ -53,7 +53,7 @@ export const SharedReservationRecordsLive = Layer.succeed(ReservationRecords, {
 } satisfies ReservationRecordReads);
 
 function listSharedByIds(ids: readonly DotyposReservationId[]) {
-  return readRecordsInSortedBatches(ids, (batch) =>
+  return readReservationSnapshotGroups(ids, (batch) =>
     fromRecordsSnapshot("listByIds", () =>
       loadSharedReservationRecordsByIds(batch)
     )

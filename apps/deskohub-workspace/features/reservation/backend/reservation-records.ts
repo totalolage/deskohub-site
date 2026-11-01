@@ -3,9 +3,8 @@ import {
   type DotyposReadFailure,
   type DotyposReservationId,
   DotyposService,
-  readInIdFilterBatches,
 } from "@deskohub/dotypos";
-import { Context, Effect, Layer } from "effect";
+import { Array as Arr, Context, Effect, Layer } from "effect";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import type { SharedSnapshotLoadFailure } from "@/shared/backend/shared-snapshot";
 import {
@@ -37,18 +36,17 @@ export interface ReservationRecordReads {
 }
 
 /**
- * Reads ids in sorted `id|in|` batches, so the same ids always form the same
- * batches whatever order the caller lists them in.
+ * Groups sorted IDs into stable snapshot keys, independent of provider transport batching.
  */
-export const readRecordsInSortedBatches = <E>(
+export const readReservationSnapshotGroups = <E>(
   ids: readonly DotyposReservationId[],
   readBatch: (
     batch: readonly DotyposReservationId[]
   ) => Effect.Effect<readonly ReservationRecord[], E>
 ) =>
-  readInIdFilterBatches(ids.toSorted(), readBatch).pipe(
-    Effect.map((batches) => batches.flat())
-  );
+  Effect.forEach(Arr.chunksOf([...new Set(ids)].toSorted(), 50), readBatch, {
+    concurrency: "inherit",
+  }).pipe(Effect.map((batches) => batches.flat()));
 
 /** Reads every reservation record live from Dotypos. */
 const makeProviderReservationRecords = Effect.gen(function* () {
@@ -67,13 +65,15 @@ const makeProviderReservationRecords = Effect.gen(function* () {
           Effect.map((reservations) => reservations.map(toReservationRecord))
         ),
     listByIds: (ids) =>
-      readRecordsInSortedBatches(ids, (batch) =>
-        dotypos
-          .listReservations({ ids: batch, order: "startDateDescending" })
-          .pipe(
-            Effect.map((reservations) => reservations.map(toReservationRecord))
+      dotypos
+        .getReservationsByIds(ids.toSorted(), {
+          order: "startDateDescending",
+        })
+        .pipe(
+          Effect.map((reservations) =>
+            [...reservations.values()].map(toReservationRecord)
           )
-      ),
+        ),
   } satisfies ReservationRecordReads;
 });
 

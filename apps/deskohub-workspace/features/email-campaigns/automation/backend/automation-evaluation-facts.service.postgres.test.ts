@@ -8,7 +8,7 @@ import {
   type DotyposReadFailure,
   type DotyposReservation,
   DotyposUnavailable,
-  dotyposIdFilterBatchSize,
+  dotyposIdReadBatchSize,
 } from "@deskohub/dotypos";
 import {
   DotyposServiceMock,
@@ -124,8 +124,8 @@ const makeDotypos = (input: {
   const customerReads = seededCustomerReads(customers);
   const reservationReads = seededReservationReads(input.reservations ?? []);
   const calls = {
-    getCustomersPage: 0,
-    getCustomers: 0,
+    getCustomersByIds: 0,
+    getReservationsByIds: 0,
     listReservationsPage: 0,
     listReservations: 0,
     listActiveReservationsPage: 0,
@@ -133,19 +133,13 @@ const makeDotypos = (input: {
   return {
     calls,
     layer: DotyposServiceMock({
-      getCustomersPage: (ids) => {
-        calls.getCustomersPage += 1;
+      getCustomersByIds: (ids) => {
+        calls.getCustomersByIds += 1;
         return input.customerPageError
           ? Effect.fail(input.customerPageError)
-          : customerReads.getCustomersPage(ids);
+          : customerReads.getCustomersByIds(ids);
       },
-      getCustomers: ({ ids }) => {
-        calls.getCustomers += 1;
-        const selected = new Set(ids);
-        return Effect.succeed(
-          customers.filter(({ id }) => id !== undefined && selected.has(id))
-        );
-      },
+
       listReservationsPage: (options) => {
         calls.listReservationsPage += 1;
         return reservationReads.listReservationsPage(options);
@@ -153,6 +147,17 @@ const makeDotypos = (input: {
       listReservations: (options) => {
         calls.listReservations += 1;
         return reservationReads.listReservations(options);
+      },
+      getReservationsByIds: (ids, readOptions) => {
+        const options = { ...readOptions, ids: [...ids] };
+        calls.getReservationsByIds += 1;
+        return reservationReads
+          .listReservations(options)
+          .pipe(
+            Effect.flatMap((records) =>
+              seededReservationReads(records).getReservationsByIds(ids)
+            )
+          );
       },
       listActiveReservationsPage: (interval, page) => {
         calls.listActiveReservationsPage += 1;
@@ -345,16 +350,16 @@ describe.skipIf(!testDatabase)(
         dotypos.layer
       );
 
-      expect(withVisits).toBe(4);
+      expect(withVisits).toBe(3);
       expect(profilesOnly).toBe(1);
     });
 
-    test("packs ordered customers by cost and the 50-customer limit", async () => {
+    test("packs ordered customers by cost and the 100-customer limit", async () => {
       const [a, b, c, d, unconfirmed] = ["a", "b", "c", "d", "unconfirmed"].map(
         (label) => customerId(`pack-${label}`)
       );
       const reservations = [
-        ...Array.from({ length: 300 }, (_, index) => ({
+        ...Array.from({ length: 600 }, (_, index) => ({
           label: `pack-a-${index}`,
           customer: a!,
         })),
@@ -362,7 +367,7 @@ describe.skipIf(!testDatabase)(
           label: `pack-b-${index}`,
           customer: b!,
         })),
-        ...Array.from({ length: 400 }, (_, index) => ({
+        ...Array.from({ length: 800 }, (_, index) => ({
           label: `pack-c-${index}`,
           customer: c!,
         })),
@@ -394,7 +399,7 @@ describe.skipIf(!testDatabase)(
       expect(
         chunks.every(
           ({ customers: unit, requestCost }) =>
-            unit.length <= 50 &&
+            unit.length <= 100 &&
             (requestCost <= 8 || (unit.length === 1 && requestCost === 9))
         )
       ).toBe(true);
@@ -428,8 +433,7 @@ describe.skipIf(!testDatabase)(
           requestCost,
         ])
       ).toEqual([
-        [50, 1],
-        [50, 1],
+        [100, 1],
         [20, 1],
       ]);
       expect(profileOnly.flatMap(({ customers: unit }) => unit)).toEqual(
@@ -437,12 +441,12 @@ describe.skipIf(!testDatabase)(
       );
       expect(
         profileOnly.every(
-          ({ customers: unit }) => unit.length <= dotyposIdFilterBatchSize
+          ({ customers: unit }) => unit.length <= dotyposIdReadBatchSize
         )
       ).toBe(true);
     });
 
-    test("fetches one profile page and one reservation read per 50 booked IDs", async () => {
+    test("fetches profiles and visits through their ID operations", async () => {
       const customers = ["one", "two", "three"].map((label) =>
         customerId(`fetch-${label}`)
       );
@@ -469,10 +473,8 @@ describe.skipIf(!testDatabase)(
         dotypos.layer
       );
 
-      expect(dotypos.calls.getCustomersPage).toBe(1);
-      expect(dotypos.calls.listReservationsPage).toBe(
-        Math.ceil(reservations.length / dotyposIdFilterBatchSize)
-      );
+      expect(dotypos.calls.getCustomersByIds).toBe(1);
+      expect(dotypos.calls.getReservationsByIds).toBe(1);
       expect(AudienceFactSource.$is("Fetched")(facts)).toBe(true);
       if (AudienceFactSource.$is("Fetched")(facts)) {
         expect(Option.getOrThrow(facts.profiles).has(customers[0]!)).toBe(true);
@@ -497,8 +499,8 @@ describe.skipIf(!testDatabase)(
       );
 
       expect(dotypos.calls).toEqual({
-        getCustomersPage: 0,
-        getCustomers: 0,
+        getCustomersByIds: 0,
+        getReservationsByIds: 0,
         listReservationsPage: 0,
         listReservations: 0,
         listActiveReservationsPage: 0,
@@ -513,7 +515,7 @@ describe.skipIf(!testDatabase)(
     test("maps a Dotypos 429 to one failed fetch attempt", async () => {
       const dotypos = makeDotypos({
         customerPageError: new DotyposUnavailable({
-          operation: "getCustomersPage",
+          operation: "getCustomersByIds",
           reason: "rate-limited",
           httpStatus: 429,
           message: "rate limited",
@@ -529,7 +531,7 @@ describe.skipIf(!testDatabase)(
         dotypos.layer
       );
 
-      expect(dotypos.calls.getCustomersPage).toBe(1);
+      expect(dotypos.calls.getCustomersByIds).toBe(1);
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
         expect(Cause.squash(exit.cause)).toMatchObject({

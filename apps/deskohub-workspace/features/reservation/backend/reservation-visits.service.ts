@@ -5,8 +5,7 @@ import {
   type DotyposReservationId,
   type DotyposReservationStatus,
   DotyposService,
-  dotyposIdFilterBatchSize,
-  readInIdFilterBatches,
+  dotyposIdReadRequests,
 } from "@deskohub/dotypos";
 import { and, count, inArray, isNotNull, type SQL } from "drizzle-orm";
 import { Context, Data, Effect, Layer, Option } from "effect";
@@ -46,31 +45,17 @@ type ReservationVisitsPage = {
   readonly nextPage: Option.Option<number>;
 };
 
-/** Dotypos paged a reservation read filtered to at most one page of ids. */
-export class UnexpectedDotyposReservationPage extends Data.TaggedError(
-  "UnexpectedDotyposReservationPage"
-)<{ readonly message: string }> {}
-
 /** A Dotypos reservation's start and end don't form a valid interval. */
 export class InvalidDotyposReservationInterval extends Data.TaggedError(
   "InvalidDotyposReservationInterval"
 )<{ readonly message: string }> {}
 
-/**
- * Dotypos couldn't answer a visit read. It carries only the Dotypos error,
- * never reservation values; the caller retries through queue redelivery.
- */
+/** Dotypos couldn't answer a visit read; the caller retries through queue redelivery. */
 export class ReservationVisitsUnavailable extends Data.TaggedError(
   "ReservationVisitsUnavailable"
-)<{
-  readonly cause:
-    | DotyposReadFailure
-    | UnexpectedDotyposReservationPage
-    | InvalidDotyposReservationInterval;
-}> {
-  static fromDotypos = (
-    cause: DotyposReadFailure | UnexpectedDotyposReservationPage
-  ) => new ReservationVisitsUnavailable({ cause });
+)<{ readonly cause: DotyposReadFailure | InvalidDotyposReservationInterval }> {
+  static fromDotypos = (cause: DotyposReadFailure) =>
+    new ReservationVisitsUnavailable({ cause });
 }
 
 interface IReservationVisits {
@@ -215,7 +200,8 @@ export class ReservationVisits extends Context.Service<
               )
             )
             .pipe(Effect.orDie);
-          return Math.ceil((row?.booked ?? 0) / dotyposIdFilterBatchSize);
+          // Non-null linked Dotypos IDs have a unique DB index, so row count is unique-ID count.
+          return dotyposIdReadRequests(row?.booked ?? 0);
         });
 
         const bookings = Effect.fn("ReservationVisits.bookings")(function* (
@@ -284,46 +270,38 @@ export class ReservationVisits extends Context.Service<
             );
 
         /**
-         * Fetches the visits not memoised yet, ≤ 50 Dotypos ids per request,
+         * Fetches the visits not memoised yet, ≤ 100 Dotypos ids per request,
          * one request at a time.
          */
         const lookUp = (booked: readonly CountedReservationLink[]) =>
-          readInIdFilterBatches(
-            booked
-              .filter(
-                (reservation) => !memo.has(reservation.workspaceReservationId)
-              )
-              .map((reservation) => reservation.dotyposReservationId),
-            (ids) =>
-              dotypos.listReservationsPage({ ids, page: 1 }).pipe(
-                Effect.filterOrFail(
-                  (result) => Option.isNone(result.nextPage),
-                  () =>
-                    new UnexpectedDotyposReservationPage({
-                      message: "Dotypos paged an id-filtered reservation read",
-                    })
-                ),
-                Effect.mapError(ReservationVisitsUnavailable.fromDotypos)
-              ),
-            // A unit's requests are sequential, so in-flight units bound Dotypos load.
-            { concurrency: 1 }
-          ).pipe(
-            Effect.flatMap((pages) =>
-              remember(
-                booked,
-                pages.flatMap((result) => result.reservations)
-              )
-            ),
-            Effect.tap(() =>
-              Effect.sync(() => {
-                for (const reservation of booked) {
-                  if (!memo.has(reservation.workspaceReservationId)) {
-                    memo.set(reservation.workspaceReservationId, Option.none());
-                  }
-                }
-              })
+          dotypos
+            .getReservationsByIds(
+              booked
+                .filter(
+                  (reservation) => !memo.has(reservation.workspaceReservationId)
+                )
+                .map((reservation) => reservation.dotyposReservationId),
+              // A unit's requests stay sequential.
+              { concurrency: 1 }
             )
-          );
+            .pipe(
+              Effect.mapError(ReservationVisitsUnavailable.fromDotypos),
+              Effect.flatMap((reservations) =>
+                remember(booked, [...reservations.values()])
+              ),
+              Effect.tap(() =>
+                Effect.sync(() => {
+                  for (const reservation of booked) {
+                    if (!memo.has(reservation.workspaceReservationId)) {
+                      memo.set(
+                        reservation.workspaceReservationId,
+                        Option.none()
+                      );
+                    }
+                  }
+                })
+              )
+            );
 
         /** Joins Dotypos rows to booked reservations and memoises the visits. */
         const remember = (

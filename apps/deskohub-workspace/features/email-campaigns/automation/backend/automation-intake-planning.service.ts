@@ -1,5 +1,5 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
-import { dotyposIdFilterBatchSize } from "@deskohub/dotypos";
+import { dotyposIdReadRequests } from "@deskohub/dotypos";
 import {
   and,
   asc,
@@ -167,8 +167,8 @@ export class AutomationIntakePlanning extends Context.Service<
 
       /**
        * Packs the matched events by customer, in id order, into units of
-       * at most 50 customers and 8 requests: the gates' reads plus, unless
-       * the gates read the customers' visits anyway, one request per 50
+       * at most 100 customers and 8 requests: the gates' reads plus, unless
+       * the gates read the customers' visits anyway, one request per 100
        * triggering reservations to re-check. A customer too large for any
        * unit alone stays a solo unit.
        */
@@ -184,12 +184,12 @@ export class AutomationIntakePlanning extends Context.Service<
         const revisitCost = (ofCustomers: readonly DotyposCustomerId[]) =>
           reads.visits
             ? 0
-            : Math.ceil(
+            : dotyposIdReadRequests(
                 revisitedReservations(
                   ofCustomers.flatMap((id) =>
                     (byCustomer.get(id) ?? []).map(({ event }) => event)
                   )
-                ).length / dotyposIdFilterBatchSize
+                ).length
               );
         const fit = (chunk: {
           readonly customers: readonly DotyposCustomerId[];

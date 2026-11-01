@@ -1,3 +1,4 @@
+import { seededReservationReads } from "@deskohub/dotypos/backend/service.mock";
 import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -54,6 +55,12 @@ mock.module("@/shared/backend/config/dotypos.config", () => ({
   WorkspaceDotyposLayer: Layer.succeed(DotyposService, {
     getReservationWithoutCustomer,
     listReservations,
+    getReservationsByIds: (ids, options) =>
+      listReservations({ ...options, ids: [...ids] }).pipe(
+        Effect.flatMap((records) =>
+          seededReservationReads(records).getReservationsByIds(ids)
+        )
+      ),
   } as never),
 }));
 
@@ -106,13 +113,19 @@ describe("shared reservation records", () => {
       DotyposReservationIdSchema.make(`r-${String(index).padStart(3, "0")}`)
     );
 
+    listReservations.mockImplementation((options) =>
+      Effect.succeed([{ ...reservation, id: options.ids?.[0] }])
+    );
     const records = await Effect.runPromise(
       Effect.flatMap(ReservationRecords, (shared) =>
         shared.listByIds([...ids].reverse().concat(ids[0]!))
       ).pipe(Effect.provide(SharedReservationRecordsLive))
     );
 
-    expect(records).toEqual([record, record]);
+    expect(records).toEqual([
+      { ...record, id: ids[0] },
+      { ...record, id: ids[50] },
+    ]);
     expect(listReservations.mock.calls).toEqual([
       [{ ids: ids.slice(0, 50), order: "startDateDescending" }],
       [{ ids: ids.slice(50), order: "startDateDescending" }],

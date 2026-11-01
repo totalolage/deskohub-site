@@ -3,7 +3,6 @@ import {
   type DotyposReservationId,
   DotyposService,
   getCustomerDisplayName,
-  readInIdFilterBatches,
 } from "@deskohub/dotypos";
 import { desc, eq, or } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
@@ -454,26 +453,27 @@ export class CustomerReservationHistoryService extends Context.Service<
           : Effect.succeed(new Map<DotyposCustomerId, string>());
 
       const readPartyNamesOf = (entries: readonly HistoryEntry[]) =>
-        readInIdFilterBatches(
-          entries.flatMap(({ relation }) => getNamedCustomerId(relation) ?? []),
-          (ids) => dotypos.getCustomers({ ids })
-        ).pipe(
-          Effect.map(
-            (batches) =>
-              new Map<DotyposCustomerId, string>(
-                batches.flat().flatMap((customer) => {
-                  const name = getCustomerDisplayName(customer);
-                  return customer.id && name
-                    ? [[customer.id, name] as const]
-                    : [];
-                })
-              )
-          ),
-          Effect.tapError(() =>
-            logUnavailableParty("account.reservation-history.names")
-          ),
-          Effect.orElseSucceed(() => new Map<DotyposCustomerId, string>())
-        );
+        dotypos
+          .getCustomersByIds(
+            entries.flatMap(
+              ({ relation }) => getNamedCustomerId(relation) ?? []
+            )
+          )
+          .pipe(
+            Effect.map(
+              (customers) =>
+                new Map<DotyposCustomerId, string>(
+                  [...customers].flatMap(([id, customer]) => {
+                    const name = getCustomerDisplayName(customer);
+                    return name ? [[id, name] as const] : [];
+                  })
+                )
+            ),
+            Effect.tapError(() =>
+              logUnavailableParty("account.reservation-history.names")
+            ),
+            Effect.orElseSucceed(() => new Map<DotyposCustomerId, string>())
+          );
 
       const loadRecorded = (
         account: ReservationHistoryAccount,

@@ -1,4 +1,5 @@
 import type { DotyposReservation } from "@deskohub/dotypos";
+import { dotyposIdReadRequests } from "@deskohub/dotypos";
 import {
   DotyposServiceMock,
   seededReservationReads,
@@ -23,9 +24,9 @@ export const countedDotyposReservationReads = (
   let open = 0;
   let peakOpen = 0;
   const reads = seededReservationReads(reservations);
-  const counted = <A, E>(read: () => Effect.Effect<A, E>) =>
+  const counted = <A, E>(read: () => Effect.Effect<A, E>, cost = 1) =>
     Effect.suspend(() => {
-      requests += 1;
+      requests += cost;
       open += 1;
       peakOpen = Math.max(peakOpen, open);
       return Effect.yieldNow.pipe(
@@ -37,6 +38,11 @@ export const countedDotyposReservationReads = (
     layer: DotyposServiceMock({
       listReservations: (options) =>
         counted(() => reads.listReservations(options)),
+      getReservationsByIds: (ids, options) =>
+        counted(
+          () => reads.getReservationsByIds(ids, options),
+          dotyposIdReadRequests(new Set(ids).size)
+        ),
       listReservationsPage: (options) =>
         counted(() => reads.listReservationsPage(options)),
       listActiveReservationsPage: (interval, page) =>
@@ -99,7 +105,7 @@ export const reservationVisitsFake = (
       cost: (customers) =>
         Effect.succeed(
           Math.ceil(
-            customers.flatMap((id) => customerVisits(visits, id)).length / 50
+            customers.flatMap((id) => customerVisits(visits, id)).length / 100
           )
         ),
     })

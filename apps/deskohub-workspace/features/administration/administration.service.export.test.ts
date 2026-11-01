@@ -1,3 +1,7 @@
+import {
+  seededCustomerReads,
+  seededReservationReads,
+} from "@deskohub/dotypos/backend/service.mock";
 import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import { DotyposUnavailable } from "@deskohub/dotypos";
@@ -73,9 +77,14 @@ const providerUnavailable = () =>
 
 const customerNotFound = () => Effect.succeed(Option.none());
 
-const customersFor = ({ ids }: { readonly ids: readonly string[] }) =>
+const customersFor = (ids: Iterable<string>) =>
   Effect.succeed(
-    ids.map((id) => ({ id, firstName: "Synthetic", lastName: id }))
+    [...ids].map((id) => ({ id, firstName: "Synthetic", lastName: id }))
+  ).pipe(
+    Effect.map(
+      (customers) =>
+        new Map(customers.map((customer) => [customer.id, customer] as const))
+    )
   );
 
 /**
@@ -143,7 +152,7 @@ describe("AdministrationService.exportReservations", () => {
     const { value: exported } = await runAdministration(
       {
         dotypos: {
-          getCustomers: customersFor,
+          getCustomersByIds: customersFor,
           listReservations: ({ ids }) =>
             Effect.sync(() => {
               bookingReads.push(ids ?? []);
@@ -151,6 +160,19 @@ describe("AdministrationService.exportReservations", () => {
                 makeBooking(Number(id.replace("dotypos-reservation-", "")))
               );
             }),
+          getReservationsByIds: (ids) =>
+            ids.length === 0
+              ? Effect.succeed(new Map())
+              : Effect.sync(() => {
+                  bookingReads.push(ids ?? []);
+                  return (ids ?? []).map((id) =>
+                    makeBooking(Number(id.replace("dotypos-reservation-", "")))
+                  );
+                }).pipe(
+                  Effect.flatMap((records) =>
+                    seededReservationReads(records).getReservationsByIds(ids)
+                  )
+                ),
         },
         selects: exportSelects(rows),
       },
@@ -162,7 +184,7 @@ describe("AdministrationService.exportReservations", () => {
     );
 
     expect(exported.map(({ id }) => id)).toEqual(rows.map(({ id }) => id));
-    expect(bookingReads.map((ids) => ids.length)).toEqual([50, 10]);
+    expect(bookingReads.map((ids) => ids.length)).toEqual([60]);
     expect(exported[59]).toMatchObject({
       dotyposReservationId: "dotypos-reservation-59",
       customerId: "dotypos-customer-2",
@@ -177,13 +199,25 @@ describe("AdministrationService.exportReservations", () => {
     const { value: exported } = await runAdministration(
       {
         dotypos: {
-          getCustomers: customersFor,
+          getCustomersByIds: customersFor,
           listReservations: () =>
             Effect.succeed([
               makeBooking(3, "2026-08-02T08:00:00Z"),
               makeBooking(1, "2026-08-03T08:00:00Z"),
               makeBooking(2, "2026-08-04T08:00:00Z"),
             ]),
+          getReservationsByIds: (ids) =>
+            ids.length === 0
+              ? Effect.succeed(new Map())
+              : Effect.succeed([
+                  makeBooking(3, "2026-08-02T08:00:00Z"),
+                  makeBooking(1, "2026-08-03T08:00:00Z"),
+                  makeBooking(2, "2026-08-04T08:00:00Z"),
+                ]).pipe(
+                  Effect.flatMap((records) =>
+                    seededReservationReads(records).getReservationsByIds(ids)
+                  )
+                ),
         },
         selects: [
           rows.map(({ id, dotyposReservationId }) => ({
@@ -216,8 +250,21 @@ describe("AdministrationService.exportReservations", () => {
       {
         dotypos: {
           getCustomer: customerNotFound,
-          getCustomers: () => Effect.succeed([]),
+          getCustomersByIds: (ids) =>
+            Effect.succeed([]).pipe(
+              Effect.flatMap((records) =>
+                seededCustomerReads(records).getCustomersByIds(ids)
+              )
+            ),
           listReservations: () => Effect.succeed([]),
+          getReservationsByIds: (ids) =>
+            ids.length === 0
+              ? Effect.succeed(new Map())
+              : Effect.succeed([]).pipe(
+                  Effect.flatMap((records) =>
+                    seededReservationReads(records).getReservationsByIds(ids)
+                  )
+                ),
         },
         selects: exportSelects([makeRow(1)]),
       },
@@ -233,21 +280,49 @@ describe("AdministrationService.exportReservations", () => {
       {
         name: "the date range",
         input: { from: "2026-08-01" },
-        dotypos: { listReservations: providerUnavailable },
+        dotypos: {
+          listReservations: providerUnavailable,
+          getReservationsByIds: (ids, options) =>
+            ids.length === 0
+              ? Effect.succeed(new Map())
+              : providerUnavailable({ ...options, ids: [...ids] }).pipe(
+                  Effect.flatMap((records) =>
+                    seededReservationReads(records).getReservationsByIds(ids)
+                  )
+                ),
+        },
         source: "booking-dates",
       },
       {
         name: "the date order",
         input: { sort: "date" },
-        dotypos: { listReservations: providerUnavailable },
+        dotypos: {
+          listReservations: providerUnavailable,
+          getReservationsByIds: (ids, options) =>
+            ids.length === 0
+              ? Effect.succeed(new Map())
+              : providerUnavailable({ ...options, ids: [...ids] }).pipe(
+                  Effect.flatMap((records) =>
+                    seededReservationReads(records).getReservationsByIds(ids)
+                  )
+                ),
+        },
         source: "booking-dates",
       },
       {
         name: "booking details",
         input: {},
         dotypos: {
-          getCustomers: customersFor,
+          getCustomersByIds: customersFor,
           listReservations: providerUnavailable,
+          getReservationsByIds: (ids, options) =>
+            ids.length === 0
+              ? Effect.succeed(new Map())
+              : providerUnavailable({ ...options, ids: [...ids] }).pipe(
+                  Effect.flatMap((records) =>
+                    seededReservationReads(records).getReservationsByIds(ids)
+                  )
+                ),
         },
         source: "booking-details",
       },
@@ -256,8 +331,16 @@ describe("AdministrationService.exportReservations", () => {
         input: {},
         dotypos: {
           getCustomer: () => Effect.die("no single-record fallback"),
-          getCustomers: providerUnavailable,
+          getCustomersByIds: providerUnavailable,
           listReservations: () => Effect.succeed([makeBooking(1)]),
+          getReservationsByIds: (ids) =>
+            ids.length === 0
+              ? Effect.succeed(new Map())
+              : Effect.succeed([makeBooking(1)]).pipe(
+                  Effect.flatMap((records) =>
+                    seededReservationReads(records).getReservationsByIds(ids)
+                  )
+                ),
         },
         source: "customer-details",
       },
@@ -294,12 +377,20 @@ describe("AdministrationService.exportReservations", () => {
                 return getCustomer?.(id) ?? Effect.die("no single read");
               }),
             // The batch answers for the first customer only.
-            getCustomers: ({ ids }) =>
-              customersFor({
-                ids: ids.filter((id) => id === "dotypos-customer-1"),
-              }),
+            getCustomersByIds: (ids) =>
+              customersFor(
+                [...ids].filter((id) => id === "dotypos-customer-1")
+              ),
             listReservations: () =>
               Effect.succeed([makeBooking(1), makeBooking(2)]),
+            getReservationsByIds: (ids) =>
+              ids.length === 0
+                ? Effect.succeed(new Map())
+                : Effect.succeed([makeBooking(1), makeBooking(2)]).pipe(
+                    Effect.flatMap((records) =>
+                      seededReservationReads(records).getReservationsByIds(ids)
+                    )
+                  ),
           },
           selects: exportSelects([makeRow(1), makeRow(2)]),
         },
@@ -352,12 +443,20 @@ describe("AdministrationService.exportCustomers", () => {
   });
 
   const exportTwo = (
-    dotypos: Pick<DotyposOverrides, "getCustomer" | "getCustomers">
+    dotypos: Pick<DotyposOverrides, "getCustomer" | "getCustomersByIds">
   ) =>
     runAdministration(
       {
         dotypos: {
           listReservations: () => Effect.die("no date range"),
+          getReservationsByIds: (ids) =>
+            ids.length === 0
+              ? Effect.succeed(new Map())
+              : Effect.die("no date range").pipe(
+                  Effect.flatMap((records) =>
+                    seededReservationReads(records).getReservationsByIds(ids)
+                  )
+                ),
           ...dotypos,
         },
         selects: [
@@ -374,14 +473,14 @@ describe("AdministrationService.exportCustomers", () => {
     ).then(({ value }) => value);
 
   // The batch answers for the first customer only.
-  const firstCustomerOnly: DotyposOverrides["getCustomers"] = ({ ids }) =>
-    customersFor({ ids: ids.filter((id) => id === "dotypos-customer-1") });
+  const firstCustomerOnly: DotyposOverrides["getCustomersByIds"] = (ids) =>
+    customersFor([...ids].filter((id) => id === "dotypos-customer-1"));
 
   test("reads a customer the batch left out on its own", async () => {
     const result = await exportTwo({
       getCustomer: (id) =>
         Effect.succeed(Option.some({ id, firstName: "Single", lastName: id })),
-      getCustomers: firstCustomerOnly,
+      getCustomersByIds: firstCustomerOnly,
     });
 
     expect(
@@ -398,7 +497,7 @@ describe("AdministrationService.exportCustomers", () => {
   test("keeps a customer Dotypos doesn't have, without details", async () => {
     const result = await exportTwo({
       getCustomer: customerNotFound,
-      getCustomers: firstCustomerOnly,
+      getCustomersByIds: firstCustomerOnly,
     });
 
     expect(
@@ -411,14 +510,14 @@ describe("AdministrationService.exportCustomers", () => {
       name: "the customer batch fails",
       dotypos: {
         getCustomer: () => Effect.die("no single-record fallback"),
-        getCustomers: providerUnavailable,
+        getCustomersByIds: providerUnavailable,
       },
     },
     {
       name: "the single read of a left-out customer fails",
       dotypos: {
         getCustomer: providerUnavailable,
-        getCustomers: firstCustomerOnly,
+        getCustomersByIds: firstCustomerOnly,
       },
     },
   ] as const) {
@@ -437,7 +536,17 @@ describe("AdministrationService.listReservations under the same Dotypos failures
   test("still shows the date filter as unavailable", async () => {
     const { value: page } = await runAdministration(
       {
-        dotypos: { listReservations: providerUnavailable },
+        dotypos: {
+          listReservations: providerUnavailable,
+          getReservationsByIds: (ids, options) =>
+            ids.length === 0
+              ? Effect.succeed(new Map())
+              : providerUnavailable({ ...options, ids: [...ids] }).pipe(
+                  Effect.flatMap((records) =>
+                    seededReservationReads(records).getReservationsByIds(ids)
+                  )
+                ),
+        },
         selects: [[{ value: 0 }], []],
       },
       (administration) =>
@@ -451,8 +560,16 @@ describe("AdministrationService.listReservations under the same Dotypos failures
     const { value: page } = await runAdministration(
       {
         dotypos: {
-          getCustomers: customersFor,
+          getCustomersByIds: customersFor,
           listReservations: providerUnavailable,
+          getReservationsByIds: (ids, options) =>
+            ids.length === 0
+              ? Effect.succeed(new Map())
+              : providerUnavailable({ ...options, ids: [...ids] }).pipe(
+                  Effect.flatMap((records) =>
+                    seededReservationReads(records).getReservationsByIds(ids)
+                  )
+                ),
         },
         selects: [[{ value: 1 }], [makeRow(1)], [], [], []],
       },
@@ -476,8 +593,16 @@ describe("AdministrationService.listReservations under the same Dotypos failures
               singleReads.push(id);
               return Option.some({ id, firstName: "Single", lastName: id });
             }),
-          getCustomers: providerUnavailable,
+          getCustomersByIds: providerUnavailable,
           listReservations: () => Effect.succeed([makeBooking(1)]),
+          getReservationsByIds: (ids) =>
+            ids.length === 0
+              ? Effect.succeed(new Map())
+              : Effect.succeed([makeBooking(1)]).pipe(
+                  Effect.flatMap((records) =>
+                    seededReservationReads(records).getReservationsByIds(ids)
+                  )
+                ),
         },
         selects: [[{ value: 1 }], [makeRow(1)], [], [], []],
       },
@@ -495,8 +620,21 @@ describe("AdministrationService.listReservations under the same Dotypos failures
       {
         dotypos: {
           getCustomer: providerUnavailable,
-          getCustomers: () => Effect.succeed([]),
+          getCustomersByIds: (ids) =>
+            Effect.succeed([]).pipe(
+              Effect.flatMap((records) =>
+                seededCustomerReads(records).getCustomersByIds(ids)
+              )
+            ),
           listReservations: () => Effect.succeed([makeBooking(1)]),
+          getReservationsByIds: (ids) =>
+            ids.length === 0
+              ? Effect.succeed(new Map())
+              : Effect.succeed([makeBooking(1)]).pipe(
+                  Effect.flatMap((records) =>
+                    seededReservationReads(records).getReservationsByIds(ids)
+                  )
+                ),
         },
         selects: [[{ value: 1 }], [makeRow(1)], [], [], []],
       },

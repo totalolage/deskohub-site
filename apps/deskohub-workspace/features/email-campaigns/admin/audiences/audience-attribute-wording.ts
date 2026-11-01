@@ -235,6 +235,10 @@ const audienceAttributeWordings = (
               {},
               options
             ),
+            visitEnd: m.emailCampaignsAudienceReservationCountDateBasisVisitEnd(
+              {},
+              options
+            ),
             booking: m.emailCampaignsAudienceReservationCountDateBasisBooking(
               {},
               options
@@ -280,16 +284,24 @@ const audienceAttributeWordings = (
             optionOf(reservationNouns, params, "status") ??
             m.emailCampaignsAudienceReservationCountNounBooked
           )({ count, product }, options),
-        period: (params, period) =>
-          params.dateBasis === "booking"
-            ? m.emailCampaignsAudienceReservationCountBookingPeriod(
-                { period },
-                options
-              )
-            : m.emailCampaignsAudienceReservationCountVisitPeriod(
-                { period },
-                options
-              ),
+        period: (params, period) => {
+          if (params.dateBasis === "booking") {
+            return m.emailCampaignsAudienceReservationCountBookingPeriod(
+              { period },
+              options
+            );
+          }
+          if (params.dateBasis === "visitEnd") {
+            return m.emailCampaignsAudienceReservationCountVisitEndPeriod(
+              { period },
+              options
+            );
+          }
+          return m.emailCampaignsAudienceReservationCountVisitPeriod(
+            { period },
+            options
+          );
+        },
         none: (phrase) =>
           m.emailCampaignsAudienceReservationCountNone(phrase, options),
         any: (phrase) =>

@@ -16,6 +16,7 @@ import {
   CliServiceUnavailable,
   CliSessionId,
   CliSessionUnauthorized,
+  campaignsMinimumDhwVersion,
   digestCliAuthenticationSecret,
   makeCliAuthenticationSecret,
   WorkspaceAdminApi,
@@ -77,9 +78,8 @@ const audienceId = AdministrationCampaignAudienceId.make(
 const customerId = AdministrationDotyposCustomerId.make("1001");
 const otherCustomerId = AdministrationDotyposCustomerId.make("1002");
 const createdAt = Temporal.Instant.from("2026-10-14T08:00:00Z");
-const testDhwVersion = "1.20.0";
 const AuthorizedCliRequest = authorizedCliRequest();
-const TestDhwVersionHeader = cliClientVersion(testDhwVersion);
+const TestDhwVersionHeader = cliClientVersion(campaignsMinimumDhwVersion);
 
 const campaignRow = (overrides: Partial<CampaignRow> = {}): CampaignRow => ({
   id: campaignId,
@@ -161,7 +161,8 @@ type CampaignsClient = Effect.Success<typeof campaignsClient>;
 const callCampaignsApi = <A, E>(
   call: (client: CampaignsClient) => Effect.Effect<A, E>,
   overrides: CampaignServiceOverrides = {},
-  bearer = AuthorizedCliRequest
+  bearer = AuthorizedCliRequest,
+  dhwVersion: string = campaignsMinimumDhwVersion
 ) =>
   campaignsClient.pipe(
     Effect.flatMap(call),
@@ -177,13 +178,39 @@ const callCampaignsApi = <A, E>(
     Effect.provide(ClaimEveryCliMutation),
     Effect.provide(CliClientCompatibilityLive),
     Effect.provide(UnrecordedAdministrationActions),
-    Effect.provide(TestDhwVersionHeader),
+    Effect.provide(cliClientVersion(dhwVersion)),
     Effect.provide(NodeHttpServer.layerHttpServices),
     Effect.scoped,
     Effect.runPromise
   );
 
 describe("campaign admin API", () => {
+  test.each(["1.20.0", "1.24.0", "1.30.0", "1.31.0-rc.1"])(
+    "refuses dhw %s before it reads or writes visit-end filters",
+    async (dhwVersion) => {
+      for (const call of [
+        (client: CampaignsClient) =>
+          client.getCampaign({ params: { campaignId } }).pipe(Effect.flip),
+        (client: CampaignsClient) =>
+          client
+            .updateCampaign({
+              params: { campaignId },
+              payload: { title: "Changed" },
+            })
+            .pipe(Effect.flip),
+      ]) {
+        const error = await callCampaignsApi(
+          call,
+          {},
+          AuthorizedCliRequest,
+          dhwVersion
+        );
+        expect(error).toBeInstanceOf(CliInputInvalid);
+        expect(error.message).toContain("dhw update");
+      }
+    }
+  );
+
   test("reports the deployment's admin inbox as the test-send inbox", async () => {
     const config = await Effect.runPromise(
       CampaignEmailConfig.pipe(Effect.provide(CampaignEmailConfig.Default))
@@ -975,7 +1002,7 @@ describe.skipIf(!testDatabase)(
         approvedBy: AdministrationLegacyUsername.make("operator"),
         tokenHash,
         clientName: "ledger test client",
-        cliVersion: testDhwVersion,
+        cliVersion: campaignsMinimumDhwVersion,
         buildTarget: "development",
         createdAt: createdAt,
         lastUsedAt: createdAt,

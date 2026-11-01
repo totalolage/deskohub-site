@@ -508,9 +508,8 @@ export const campaignErrors = [
 ];
 
 /**
- * The first `dhw` release that decodes the first visit, "any time so far",
- * and one campaign's emails. An older binary drops a stored filter's
- * `campaign` and would write "any campaign" back, so every campaign and
- * audience operation, reads included, requires it.
+ * The first `dhw` release that decodes visit-end reservation counts. Older
+ * binaries cannot read these filters, so every campaign and audience
+ * operation, reads included, requires it.
  */
-export const campaignsMinimumDhwVersion = DhwVersion.make("1.20.0");
+export const campaignsMinimumDhwVersion = DhwVersion.make("1.31.0");

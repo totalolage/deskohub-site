@@ -1339,7 +1339,7 @@ describe.skipIf(!database)(
         const { campaignId, email, reservation, unitId } = await plannedDeliver(
           "dotypos-cancel-before"
         );
-        const verification = scenario.dotypos.gate("listReservationsPage");
+        const verification = scenario.dotypos.gate("getReservationsByIds");
         const unit = scenario.start(unitId, at);
         await verification.reached;
         fixtures.cancelVisit(reservation);
@@ -1420,7 +1420,7 @@ describe.skipIf(!database)(
             unitId,
             campaignId,
             order,
-            gate: () => scenario.dotypos.gate("getCustomersPage"),
+            gate: () => scenario.dotypos.gate("getCustomersByIds"),
             operation: () => pool.query(...marking),
             hold: async () => {
               const held = await hold(...marking);
