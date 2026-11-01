@@ -408,13 +408,14 @@ export {
   campaignsMinimumDhwVersion,
 } from "./email-campaigns";
 export {
-  type EmailCustomerField,
+  EmailCustomerField,
   EmailCustomerSelection,
   EmailCustomerSelectionInvalid,
   emailCustomerFieldAtPath,
   emailCustomerFieldCatalogue,
   inspectEmailCustomerSelection,
   isEmailCustomerScalar,
+  selectedEmailCustomerShape,
   validateEmailCustomerSelection,
 } from "./email-customer-selection";
 export {

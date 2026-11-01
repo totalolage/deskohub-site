@@ -1,10 +1,11 @@
-import { Schema } from "effect";
+import { Array as Arr, Schema } from "effect";
 import {
-  type EmailCustomerField,
-  emailCustomerFieldAtPath,
-  emailCustomerFieldCatalogue,
+  EmailCustomerField,
+  selectedEmailCustomerShape,
 } from "./email-customer-selection";
 import type { EmailValueDefinition } from "./emails";
+
+const sameCustomerShape = Schema.toEquivalence(EmailCustomerField);
 
 /** Fallback replaces the whole value/component, including scalar references into a missing record. */
 export const EmailValueSnapshot = Schema.Union([
@@ -28,7 +29,7 @@ export const emailValueSnapshotForDefinition = (
         if (definition.source.kind === "discount")
           return (
             typeof value === "object" &&
-            !Array.isArray(value) &&
+            !Arr.isArray<Schema.Json>(value) &&
             Object.keys(value).length === 2 &&
             typeof value.code === "string" &&
             value.code.length > 0 &&
@@ -36,28 +37,21 @@ export const emailValueSnapshotForDefinition = (
             Number.isFinite(Date.parse(value.expiresAt))
           );
         const selection = definition.source;
-        const selected = emailCustomerFieldAtPath(
-          emailCustomerFieldCatalogue,
-          selection.path
-        );
-        if (!selected) return false;
-        if (selected.kind === "list")
-          return (
-            Array.isArray(value) &&
-            (selection.limit === undefined ||
-              value.length <= selection.limit) &&
-            value.every((item) =>
-              selected.element.kind === "record"
-                ? matchesSelectedRecord(
-                    item,
-                    selected.element,
-                    selection.fields ?? []
-                  )
-                : matchesField(item, selected.element)
-            )
-          );
-        if (selected.kind === "record")
-          return matchesSelectedRecord(value, selected, selection.fields ?? []);
+        const current = selectedEmailCustomerShape(selection);
+        if (!current) return false;
+        if (
+          definition.customerShape &&
+          !sameCustomerShape(definition.customerShape, current)
+        )
+          return false;
+        const selected = definition.customerShape ?? current;
+        if (
+          selected.kind === "list" &&
+          selection.limit !== undefined &&
+          Arr.isArray<Schema.Json>(value) &&
+          value.length > selection.limit
+        )
+          return false;
         return matchesField(value, selected);
       },
       {
@@ -86,75 +80,22 @@ function matchesField(
       );
     case "list":
       return (
-        Array.isArray(value) &&
+        Arr.isArray<Schema.Json>(value) &&
         value.every((item) => matchesField(item, field.element))
       );
     case "record":
-      return false;
+      return (
+        typeof value === "object" &&
+        !Arr.isArray<Schema.Json>(value) &&
+        Object.keys(value).every((key) => Object.hasOwn(field.fields, key)) &&
+        Object.entries(field.fields).every(([key, descriptor]) =>
+          matchesField(
+            Object.hasOwn(value, key) ? value[key] : undefined,
+            descriptor
+          )
+        )
+      );
     case "unsupported":
       return false;
   }
-}
-
-function matchesSelectedRecord(
-  value: Schema.Json,
-  field: EmailCustomerField,
-  paths: readonly (readonly string[])[]
-): boolean {
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    Array.isArray(value) ||
-    paths.length === 0
-  )
-    return false;
-  if (!hasOnlySelectedFields(value, paths, [])) return false;
-  return paths.every((path) => {
-    const descriptor = emailCustomerFieldAtPath(field, path);
-    return (
-      descriptor !== undefined &&
-      matchesField(valueAtPath(value, path), descriptor)
-    );
-  });
-}
-
-function valueAtPath(
-  value: Schema.Json,
-  path: readonly string[]
-): Schema.Json | undefined {
-  let result: Schema.Json | undefined = value;
-  for (const part of path) {
-    if (result === null || result === undefined) return result;
-    if (
-      typeof result !== "object" ||
-      Array.isArray(result) ||
-      !Object.hasOwn(result, part)
-    )
-      return undefined;
-    result = result[part];
-  }
-  return result;
-}
-
-function hasOnlySelectedFields(
-  value: Schema.Json,
-  paths: readonly (readonly string[])[],
-  prefix: readonly string[]
-): boolean {
-  if (typeof value !== "object" || value === null || Array.isArray(value))
-    return paths.some(
-      (path) =>
-        path.length >= prefix.length &&
-        prefix.every((part, index) => part === path[index])
-    );
-  return Object.entries(value).every(([key, child]) => {
-    const path = [...prefix, key];
-    return (
-      paths.some(
-        (selected) =>
-          selected.length >= path.length &&
-          path.every((part, index) => part === selected[index])
-      ) && hasOnlySelectedFields(child, paths, path)
-    );
-  });
 }
