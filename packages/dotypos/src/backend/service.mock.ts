@@ -2,6 +2,7 @@ import { Effect, Layer, Option } from "effect";
 import type {
   DotyposCustomer,
   DotyposReservation,
+  DotyposReservationId,
   DotyposReservationInterval,
 } from "../types";
 import {
@@ -16,12 +17,16 @@ export const DotyposServiceMock = Layer.mock(DotyposService);
 /** A mock customer ID read that selects matching seeded customers. */
 export const seededCustomerReads = (
   customers: readonly DotyposCustomer[]
-): Pick<DotyposService["Service"], "getCustomersPage"> => ({
-  getCustomersPage: (ids) => {
+): Pick<DotyposService["Service"], "getCustomersByIds"> => ({
+  getCustomersByIds: (ids) => {
     const selectedIds = new Set<string>(ids);
     return Effect.succeed(
-      customers.filter(
-        (customer) => customer.id !== undefined && selectedIds.has(customer.id)
+      new Map(
+        customers.flatMap((customer) =>
+          customer.id !== undefined && selectedIds.has(customer.id)
+            ? [[customer.id, customer] as const]
+            : []
+        )
       )
     );
   },
@@ -36,16 +41,17 @@ export const seededReservationReads = (
   reservations: readonly DotyposReservation[]
 ): Pick<
   DotyposService["Service"],
-  "listReservations" | "listReservationsPage" | "listActiveReservationsPage"
+  | "getReservationsByIds"
+  | "listReservations"
+  | "listReservationsPage"
+  | "listActiveReservationsPage"
 > => {
   const select = (options: ReservationListOptions) => {
-    const ids = options.ids && new Set<string>(options.ids);
     const startsAtOrAfter = parseInstant(options.startsAtOrAfter);
     const startsBefore = parseInstant(options.startsBefore);
     const selected = reservations.filter((reservation) => {
       const startsAt = Date.parse(reservation.startDate);
       return (
-        (!ids || (reservation.id !== undefined && ids.has(reservation.id))) &&
         (!options.customerId ||
           reservation._customerId === options.customerId) &&
         (startsAtOrAfter === undefined || startsAt >= startsAtOrAfter) &&
@@ -69,6 +75,17 @@ export const seededReservationReads = (
     );
 
   return {
+    getReservationsByIds: (ids, options = {}) =>
+      Effect.sync(() => {
+        const selected = new Set<DotyposReservationId>(ids);
+        return new Map(
+          select(options).flatMap((reservation) =>
+            reservation.id !== undefined && selected.has(reservation.id)
+              ? [[reservation.id, reservation] as const]
+              : []
+          )
+        );
+      }),
     listReservations: (options = {}) => Effect.sync(() => select(options)),
     listReservationsPage: ({ page, ...options }) =>
       Effect.sync(() => pageOf(select(options), page)),

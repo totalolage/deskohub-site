@@ -99,9 +99,6 @@ export class AutomationUnitFetchFailure extends Data.TaggedError(
         Match.tagsExhaustive({
           DotyposUnavailable: dotyposFailureCode,
           DotyposRejected: dotyposFailureCode,
-          // Dotypos answered unusably, as it does for a rejected read.
-          UnexpectedDotyposReservationPage: () =>
-            DotyposFailureCode.DotyposRejected,
           InvalidDotyposReservationInterval: () =>
             DotyposFailureCode.DotyposRejected,
         })

@@ -1,3 +1,7 @@
+import {
+  seededCustomerReads,
+  seededReservationReads,
+} from "@deskohub/dotypos/backend/service.mock";
 import { testEmailAddress } from "@deskohub/test-email";
 import "@/shared/testing/workspace-test-env";
 
@@ -202,20 +206,48 @@ const makeHistoryLayer = (
                       (b.startDate ?? "").localeCompare(a.startDate ?? "")
                     )
                 ),
-              getCustomers: ({ ids }) => {
-                options.customerReads?.push([...ids]);
-                return options.failNames
-                  ? Effect.fail(
-                      new DotyposUnavailable({
-                        operation: "getCustomers",
-                        reason: "server",
-                      })
+              getReservationsByIds: (ids, readOptions) => {
+                const filter = { ...readOptions, ids: [...ids] };
+                return Effect.succeed(
+                  reservations
+                    .filter(
+                      (reservation) =>
+                        (!filter.customerId ||
+                          !reservation._customerId ||
+                          reservation._customerId === filter.customerId) &&
+                        (!filter.ids ||
+                          (reservation.id !== undefined &&
+                            filter.ids.includes(reservation.id)))
                     )
-                  : Effect.succeed(
-                      (options.customers ?? []).filter(
-                        (customer) => customer.id && ids.includes(customer.id)
+                    .toSorted((a, b) =>
+                      (b.startDate ?? "").localeCompare(a.startDate ?? "")
+                    )
+                ).pipe(
+                  Effect.flatMap((records) =>
+                    seededReservationReads(records).getReservationsByIds(ids)
+                  )
+                );
+              },
+              getCustomersByIds: (ids) => {
+                options.customerReads?.push([...ids]);
+                return (
+                  options.failNames
+                    ? Effect.fail(
+                        new DotyposUnavailable({
+                          operation: "getCustomersByIds",
+                          reason: "server",
+                        })
                       )
-                    );
+                    : Effect.succeed(
+                        (options.customers ?? []).filter(
+                          (customer) => customer.id && ids.includes(customer.id)
+                        )
+                      )
+                ).pipe(
+                  Effect.flatMap((records) =>
+                    seededCustomerReads(records).getCustomersByIds(ids)
+                  )
+                );
               },
             } as Partial<DotyposService["Service"]>)
           )

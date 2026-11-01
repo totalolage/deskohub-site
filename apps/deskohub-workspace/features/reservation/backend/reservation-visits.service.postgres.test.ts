@@ -130,7 +130,7 @@ describe.skipIf(!testDatabase)(
         )
       );
 
-    test("reads 120 booked reservations in 3 sequential requests, as their cost says", async () => {
+    test("reads 120 booked reservations in 2 sequential requests, as their cost says", async () => {
       const customers = ["a", "b", "c"].map((label) =>
         customerId(`cost-${label}`)
       );
@@ -161,9 +161,9 @@ describe.skipIf(!testDatabase)(
         )
       );
 
-      expect(cost).toBe(3);
+      expect(cost).toBe(2);
       expect(customers.map((id) => booked.get(id))).toEqual([40, 40, 40]);
-      expect(dotypos.requests()).toBe(3);
+      expect(dotypos.requests()).toBe(2);
       expect(dotypos.peakOpenRequests()).toBe(1);
       expect(customers.map((id) => visits.get(id)?.length)).toEqual([
         40, 40, 40,
@@ -517,7 +517,7 @@ describe.skipIf(!testDatabase)(
       await insert([{ label: "failing", customer }]);
       let requests = 0;
       const rateLimited = (
-        operation: "listReservationsPage" | "listActiveReservationsPage"
+        operation: "getReservationsByIds" | "listActiveReservationsPage"
       ) =>
         Effect.suspend(() => {
           requests += 1;
@@ -529,7 +529,7 @@ describe.skipIf(!testDatabase)(
           );
         });
       const failing = DotyposServiceMock({
-        listReservationsPage: () => rateLimited("listReservationsPage"),
+        getReservationsByIds: () => rateLimited("getReservationsByIds"),
         listActiveReservationsPage: () =>
           rateLimited("listActiveReservationsPage"),
       });

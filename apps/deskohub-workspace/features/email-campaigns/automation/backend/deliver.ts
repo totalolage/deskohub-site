@@ -2,8 +2,7 @@ import {
   type DotyposCustomer,
   type DotyposCustomerId,
   DotyposService,
-  dotyposIdFilterBatchSize,
-  readInIdFilterBatches,
+  dotyposIdReadRequests,
 } from "@deskohub/dotypos";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { Array as Arr, Effect, Match, Option, Schema } from "effect";
@@ -99,15 +98,15 @@ export const plannedDeliverUnit = (input: {
 });
 
 /**
- * The unit's Dotypos requests: one reservation page per 50 triggering
- * reservations, and one profile page per 50 customers for the recheck.
+ * The unit's Dotypos requests: one reservation page per 100 triggering
+ * reservations, and one profile page per 100 customers for the recheck.
  */
 const deliverRequestCost = (input: {
   readonly reservations: number;
   readonly customers: number;
 }) =>
-  Math.ceil(input.reservations / dotyposIdFilterBatchSize) +
-  Math.ceil(input.customers / dotyposIdFilterBatchSize);
+  dotyposIdReadRequests(input.reservations) +
+  dotyposIdReadRequests(input.customers);
 
 type DeliverRun = {
   readonly id: AutomationRunId;
@@ -195,21 +194,9 @@ export const makeDeliverHandler = Effect.gen(function* () {
 
   // One page at a time: a unit's requests are sequential (§5.3).
   const readProfiles = (customerIds: readonly DotyposCustomerId[]) =>
-    readInIdFilterBatches(customerIds, dotypos.getCustomersPage, {
-      concurrency: 1,
-    }).pipe(
-      Effect.map(
-        (pages) =>
-          new Map(
-            pages
-              .flat()
-              .flatMap((profile) =>
-                profile.id === undefined ? [] : [[profile.id, profile] as const]
-              )
-          )
-      ),
-      Effect.mapError(AutomationUnitFetchFailure.fromDotypos)
-    );
+    dotypos
+      .getCustomersByIds(customerIds, { concurrency: 1 })
+      .pipe(Effect.mapError(AutomationUnitFetchFailure.fromDotypos));
 
   const fetch = (unit: ClaimedAutomationUnit<DeliverSubject>) =>
     Effect.Do.pipe(

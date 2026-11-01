@@ -41,13 +41,13 @@ describe("seededCustomerReads", () => {
     const reads = seededCustomerReads(seeded);
 
     const selected = await Effect.runPromise(
-      reads.getCustomersPage([
+      reads.getCustomersByIds([
         dotyposCustomerId("customer-2"),
         dotyposCustomerId("missing"),
       ])
     );
 
-    expect(selected).toEqual([customer("customer-2")]);
+    expect([...selected.values()]).toEqual([customer("customer-2")]);
   });
 });
 

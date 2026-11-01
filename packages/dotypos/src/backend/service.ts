@@ -46,7 +46,6 @@ import {
   DotyposTableSchema,
 } from "../types";
 import { toCustomerEmailIdentity } from "../utils/customer-email";
-import { dotyposIdFilterBatchSize } from "../utils/id-filter-batches";
 import { normalizePhoneNumber } from "../utils/phone-formatting";
 import {
   DotyposAccessToken,
@@ -60,6 +59,7 @@ import {
   dotyposInvalidResponse,
   dotyposTimeout,
 } from "./failure-classification";
+import { type DotyposIdReadOptions, readByIds } from "./id-reads";
 import {
   type DotyposAttemptFailure,
   type DotyposRequestFailure,
@@ -67,7 +67,6 @@ import {
 } from "./request-profiles";
 
 export type ReservationListOptions = {
-  readonly ids?: readonly DotyposReservationId[];
   readonly customerId?: DotyposCustomerId;
   readonly startsAtOrAfter?: string;
   readonly startsBefore?: string;
@@ -77,10 +76,6 @@ export type ReservationListOptions = {
 export type ReservationPage = {
   readonly reservations: readonly DotyposReservation[];
   readonly nextPage: Option.Option<number>;
-};
-
-export type CustomerListOptions = {
-  readonly ids: readonly DotyposCustomerId[];
 };
 
 /**
@@ -245,26 +240,18 @@ type ReservationListQuery = {
   readonly sort?: string;
 };
 
-/**
- * The reservation list request's filter and sort, or none when an empty id
- * selection leaves nothing to read.
- */
+/** The reservation list request's filter and sort. */
 const reservationListQuery = (
   options: ReservationListOptions,
   operation: DotyposOperation
-): Effect.Effect<Option.Option<ReservationListQuery>, DotyposRejected> => {
-  const ids = [...new Set(options.ids ?? [])];
-  if (options.ids && ids.length === 0) return Effect.succeed(Option.none());
+): Effect.Effect<ReservationListQuery, DotyposRejected> => {
   const filterValues = [
     options.customerId,
     options.startsAtOrAfter,
     options.startsBefore,
   ].filter((value): value is string => value !== undefined);
 
-  if (
-    ids.some((id) => !id.trim() || /[|;,]/.test(id)) ||
-    filterValues.some((value) => !value.trim() || /[|;]/.test(value))
-  ) {
+  if (filterValues.some((value) => !value.trim() || /[|;]/.test(value))) {
     return Effect.fail(
       dotyposInvalidRequest(
         operation,
@@ -274,7 +261,6 @@ const reservationListQuery = (
   }
 
   const filter = [
-    ids.length > 0 && `id|in|${ids.join(",")}`,
     options.customerId && `_customerId|eq|${options.customerId}`,
     options.startsAtOrAfter && `startDate|gteq|${options.startsAtOrAfter}`,
     options.startsBefore && `startDate|lt|${options.startsBefore}`,
@@ -282,16 +268,34 @@ const reservationListQuery = (
     .filter((value): value is string => Boolean(value))
     .join(";");
 
-  return Effect.succeed(
-    Option.some({
-      ...(filter && { filter }),
-      ...(options.order && {
-        sort:
-          options.order === "startDateAscending" ? "startDate" : "-startDate",
-      }),
-    })
-  );
+  return Effect.succeed({
+    ...(filter && { filter }),
+    ...(options.order && {
+      sort: options.order === "startDateAscending" ? "startDate" : "-startDate",
+    }),
+  });
 };
+
+const singleIdPage = <A>(
+  page: DotyposPage<A>,
+  call: DotyposCall<"customers.page" | "reservations.page">
+) =>
+  getNextDotyposPageNumber({
+    currentPage: 1,
+    nextPage: page.nextPage,
+    call,
+  }).pipe(
+    Effect.filterOrFail(
+      (next) =>
+        next === undefined &&
+        !(page.lastPage !== undefined && Number(page.lastPage) > 1),
+      () =>
+        dotyposInvalidResponse(call, {
+          message: "Dotypos paged an id-filtered read",
+        })
+    ),
+    Effect.as(page.data ?? [])
+  );
 
 const validateReservationPageNumber = (
   page: number,
@@ -590,12 +594,21 @@ export interface IDotyposService {
   readonly getCustomer: (
     id: DotyposCustomerId
   ) => Effect.Effect<Option.Option<DotyposCustomer>, DotyposReadFailure>;
-  readonly getCustomers: (
-    options: CustomerListOptions
-  ) => Effect.Effect<readonly DotyposCustomer[], DotyposReadFailure>;
-  readonly getCustomersPage: (
-    ids: ReadonlyArray<DotyposCustomerId>
-  ) => Effect.Effect<ReadonlyArray<DotyposCustomer>, DotyposReadFailure>;
+  /** Missing IDs and records without IDs are omitted. Batches never retry or follow paging. */
+  readonly getCustomersByIds: (
+    ids: Iterable<DotyposCustomerId>,
+    options?: DotyposIdReadOptions
+  ) => Effect.Effect<
+    ReadonlyMap<DotyposCustomerId, DotyposCustomer>,
+    DotyposReadFailure
+  >;
+  readonly getReservationsByIds: (
+    ids: Iterable<DotyposReservationId>,
+    options?: DotyposIdReadOptions & ReservationListOptions
+  ) => Effect.Effect<
+    ReadonlyMap<DotyposReservationId, DotyposReservation>,
+    DotyposReadFailure
+  >;
   readonly listCustomerChanges: (
     options: CustomerChangesOptions
   ) => Effect.Effect<CustomerChanges, DotyposReadFailure>;
@@ -1205,98 +1218,69 @@ const makeDotyposService: Effect.Effect<
   const getCustomer = (id: DotyposCustomerId) =>
     readCustomer(id, "getCustomer").pipe(noneWhenNotFound("customer.get"));
 
-  const getCustomers = Effect.fn("getCustomers")(function* (
-    options: CustomerListOptions
-  ) {
-    const uniqueIds = [...new Set(options.ids)];
-    if (uniqueIds.length === 0) return [];
-    if (uniqueIds.some((value) => !value.trim() || /[|;,]/.test(value))) {
-      return yield* dotyposInvalidRequest(
-        "getCustomers",
-        "Customer filters contain an invalid value"
-      );
-    }
-    const filter = [`id|in|${uniqueIds.join(",")}`, "deleted|in|0,1"].join(";");
-    const call = {
-      operation: "getCustomers",
-      request: "customers.list",
-    } as const;
-
-    return yield* loadAllDotyposPages({
-      loadPage: (page) =>
-        runDotyposRequest(
-          client.getCustomers(config.cloudId, {
-            params: {
-              filter,
-              limit: 100,
-              page,
-            },
-          }),
-          call
-        ).pipe(
-          emptyFirstPageWhenNotFound(page),
-          Effect.flatMap((result) =>
-            decodeProviderPage(DotyposCustomerSchema, result, call)
-          )
-        ),
-      call,
-    }).pipe(retryDotyposRequest(call.request));
-  });
-
-  const getCustomersPage = Effect.fn("getCustomersPage")(function* (
-    ids: ReadonlyArray<DotyposCustomerId>
-  ) {
-    const uniqueIds = [...new Set(ids)];
-    if (uniqueIds.length === 0) return [];
-    if (uniqueIds.length > dotyposIdFilterBatchSize) {
-      return yield* dotyposInvalidRequest(
-        "getCustomersPage",
-        `Customer filters accept at most ${dotyposIdFilterBatchSize} ids`
-      );
-    }
-    if (uniqueIds.some((value) => !value.trim() || /[|;,]/.test(value))) {
-      return yield* dotyposInvalidRequest(
-        "getCustomersPage",
-        "Customer filters contain an invalid value"
-      );
-    }
-
-    const filter = [`id|in|${uniqueIds.join(",")}`, "deleted|in|0,1"].join(";");
-    const call = {
-      operation: "getCustomersPage",
-      request: "customers.page",
-    } as const;
-    const page = yield* runDotyposRequest(
-      client.getCustomers(config.cloudId, {
-        params: {
-          filter,
-          limit: dotyposMaximumPageSize,
-          page: 1,
+  const getCustomersByIds = Effect.fn("getCustomersByIds")(
+    (ids: Iterable<DotyposCustomerId>, options?: DotyposIdReadOptions) =>
+      readByIds(
+        ids,
+        "getCustomersByIds",
+        (batch) => {
+          const call = {
+            operation: "getCustomersByIds",
+            request: "customers.page",
+          } as const;
+          return runDotyposRequest(
+            client.getCustomers(config.cloudId, {
+              params: {
+                filter: `id|in|${batch.join(",")};deleted|in|0,1`,
+                limit: dotyposMaximumPageSize,
+                page: 1,
+              },
+            }),
+            call
+          ).pipe(
+            emptyFirstPageWhenNotFound(1),
+            Effect.flatMap((result) =>
+              decodeProviderPage(DotyposCustomerSchema, result, call)
+            ),
+            Effect.flatMap((page) => singleIdPage(page, call))
+          );
         },
-      }),
-      call
-    ).pipe(
-      emptyFirstPageWhenNotFound(1),
-      Effect.flatMap((result) =>
-        decodeProviderPage(DotyposCustomerSchema, result, call)
-      ),
-      retryDotyposRequest(call.request)
-    );
-    const nextPage = yield* getNextDotyposPageNumber({
-      currentPage: 1,
-      nextPage: page.nextPage,
-      call,
-    });
-    if (
-      nextPage !== undefined ||
-      (page.lastPage !== undefined && Number(page.lastPage) > 1)
-    ) {
-      return yield* dotyposInvalidResponse(call, {
-        message: "Dotypos paged an id-filtered customer read",
-      });
-    }
-    return page.data ?? [];
-  });
+        options
+      )
+  );
+
+  const getReservationsByIds = Effect.fn("getReservationsByIds")(
+    (
+      ids: Iterable<DotyposReservationId>,
+      options: DotyposIdReadOptions & ReservationListOptions = {}
+    ) =>
+      readByIds(
+        ids,
+        "getReservationsByIds",
+        (batch) => {
+          const call = {
+            operation: "getReservationsByIds",
+            request: "reservations.page",
+          } as const;
+          return reservationListQuery(options, call.operation).pipe(
+            Effect.flatMap((query) =>
+              readReservationPage({
+                query: {
+                  ...query,
+                  filter: [`id|in|${batch.join(",")}`, query.filter]
+                    .filter(Boolean)
+                    .join(";"),
+                },
+                page: 1,
+                call,
+              })
+            ),
+            Effect.flatMap((page) => singleIdPage(page, call))
+          );
+        },
+        options
+      )
+  );
 
   /**
    * Reads the first page of customer changes for an incremental export; the
@@ -2104,9 +2088,8 @@ const makeDotyposService: Effect.Effect<
     options: ReservationListOptions = {}
   ) {
     const query = yield* reservationListQuery(options, "listReservations");
-    if (Option.isNone(query)) return [];
     const { items: reservations } = yield* loadReservations(
-      query.value,
+      query,
       "listReservations"
     );
     return reservations;
@@ -2122,15 +2105,8 @@ const makeDotyposService: Effect.Effect<
   ) {
     yield* validateReservationPageNumber(options.page, "listReservationsPage");
     const query = yield* reservationListQuery(options, "listReservationsPage");
-    if (Option.isNone(query)) {
-      const empty: ReservationPage = {
-        reservations: [],
-        nextPage: Option.none(),
-      };
-      return empty;
-    }
     return yield* readSingleReservationPage({
-      query: query.value,
+      query,
       page: options.page,
       operation: "listReservationsPage",
     });
@@ -2286,8 +2262,8 @@ const makeDotyposService: Effect.Effect<
     getReservationWithoutCustomer,
     getReservationStatus,
     getCustomer,
-    getCustomers,
-    getCustomersPage,
+    getCustomersByIds,
+    getReservationsByIds,
     listCustomerChanges,
     createCustomer,
     patchCustomer,

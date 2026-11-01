@@ -20,7 +20,12 @@ description: Dotypos API, @deskohub/dotypos, DotyposService, OpenAPI contract, g
 
 ## Reading many records by id
 
-Read more ids than one `id|in|` filter should carry with `readInIdFilterBatches` (`src/utils/id-filter-batches.ts`, 50 ids per batch). It dedupes the ids and returns each batch's result; the caller's batch effect decides whether a failed batch degrades or fails the read. Don't hand-roll the dedupe and chunking.
+Use `getCustomersByIds(ids, options?)` or `getReservationsByIds(ids, options?)`. They deduplicate, batch internally and return a `ReadonlyMap`; missing records and records without an id are omitted. List and paginated operations serve unfiltered, customer and time-range reads.
+
+- `dotyposIdReadBatchSize` is an operational batch of 100, not a provider ID-filter maximum. The [official paging contract](https://docs.api.dotypos.com/api-reference/general/paging/) caps each page at 100 records. The [filtering contract](https://docs.api.dotypos.com/api-reference/general/filter/) gives no ID-count or URL-length maximum. Authenticated read-only probes on 2026-10-30 accepted 50, 100 and 101 distinct nonexistent signed-long IDs for customers and reservations, returning the documented empty 404 with a null body. Both resource OPTIONS requests returned 200 with GET allowed. The largest encoded URL was 2432 bytes. These probes establish bounded query acceptance, not positive-result cardinality or the actual provider ceiling.
+- `dotyposIdReadRequests(uniqueIdCount)` uses the same batch rule. Count unique requested IDs, not returned records. It is exact for successful, unretried, single-page transport batches, excluding access-token exchanges. Failures may stop unsent batches. Both ID operations never retry or follow pagination; unexpected paging is `DotyposRejected{invalid-response}`. Keep retry-policy changes in the request-profile work.
+- Default concurrency inherits the caller's limit. Set `concurrency: 1` for sequential automation reads. An optional `onBatchFailure` receives the typed failure and recovers that batch only; successful batches remain in the map. Without it the read fails. Administration degrades per batch for views, fails exports, and keeps its individual missing-customer fallback.
+- Reservation ID reads accept the existing customer/time/order filters. Customer lifecycle and each context's name/email precedence remain caller policy. Backfill's database batch cap of 50 and reservation snapshot key groups of 50 are independent of provider transport batching.
 
 ## Add or change an operation
 

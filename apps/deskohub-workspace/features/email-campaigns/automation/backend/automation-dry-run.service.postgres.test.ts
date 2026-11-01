@@ -157,33 +157,37 @@ const dotyposState = {
   reservationReads: 0,
 };
 const dotypos = DotyposServiceMock({
-  getCustomersPage: (ids) => {
+  getCustomersByIds: (ids) => {
     dotyposState.customerPageCalls.push(ids.length);
     if (dotyposState.failNextCustomerPage) {
       dotyposState.failNextCustomerPage = false;
       return Effect.fail(
         new DotyposUnavailable({
-          operation: "getCustomersPage",
+          operation: "getCustomersByIds",
           reason: "server",
           httpStatus: 503,
         })
       );
     }
-    return seededCustomerReads(dotyposState.customers).getCustomersPage(ids);
+    return seededCustomerReads(dotyposState.customers).getCustomersByIds(ids);
   },
-  getCustomers: ({ ids }) => {
-    const selected = new Set<string>(ids);
-    return Effect.succeed(
-      dotyposState.customers.filter(
-        ({ id }) => id !== undefined && selected.has(id)
-      )
-    );
-  },
+
   listReservations: (options) => {
     dotyposState.reservationReads += 1;
     return seededReservationReads(dotyposState.reservations).listReservations(
       options
     );
+  },
+  getReservationsByIds: (ids, readOptions) => {
+    const options = { ...readOptions, ids: [...ids] };
+    dotyposState.reservationReads += 1;
+    return seededReservationReads(dotyposState.reservations)
+      .listReservations(options)
+      .pipe(
+        Effect.flatMap((records) =>
+          seededReservationReads(records).getReservationsByIds(ids)
+        )
+      );
   },
   listReservationsPage: (options) => {
     dotyposState.reservationReads += 1;
@@ -1429,7 +1433,7 @@ describe.skipIf(!testDatabase)(
       const finished = await start(finishedCampaign);
       const cancelled = await start(cancelledCampaign);
       // Neither audience nor flow reads Dotypos, so only the re-check costs
-      // requests: one per 50 of a chunk's reservations, none for cancellations.
+      // requests: one per 100 of a chunk's reservations, none for cancellations.
       const finishedUnits = await unitsOf(finished.previewId);
       expect(finishedUnits.length).toBeGreaterThan(0);
       expect(finishedUnits.filter((unit) => unit.requestCost === 0)).toEqual(
@@ -1628,7 +1632,7 @@ describe.skipIf(!testDatabase)(
         });
         const started = await start(campaignId);
         const units = await unitsOf(started.previewId);
-        expect(units.length).toBeGreaterThanOrEqual(5);
+        expect(units.length).toBeGreaterThanOrEqual(3);
 
         // The last unit fails its Dotypos read once and is redelivered.
         const [last, ...rest] = units.toReversed();
@@ -1748,7 +1752,7 @@ describe.skipIf(!testDatabase)(
           new Set(page.rows.map(({ customerId }) => customerId)).size
         );
         expect(dotyposState.customerPageCalls.length).toBeLessThanOrEqual(4);
-        expect(dotyposState.customerPageCalls.every((ids) => ids <= 50)).toBe(
+        expect(dotyposState.customerPageCalls.every((ids) => ids <= 200)).toBe(
           true
         );
         const named = page.customers.find(

@@ -320,13 +320,12 @@ export class ReservationProductDetailsBackfill extends Context.Service<
         readonly incomplete: readonly IncompleteRow[];
       }) =>
         dotypos
-          .listReservations({
-            ids: incomplete.map(
-              ({ dotyposReservationId }) => dotyposReservationId
-            ),
-          })
+          .getReservationsByIds(
+            incomplete.map(({ dotyposReservationId }) => dotyposReservationId)
+          )
           .pipe(
             Effect.mapError(fail("Dotypos reservations could not be loaded.")),
+            Effect.map((reservations) => [...reservations.values()]),
             Effect.when(Effect.succeed(incomplete.length > 0)),
             Effect.map(Option.getOrElse(() => []))
           );

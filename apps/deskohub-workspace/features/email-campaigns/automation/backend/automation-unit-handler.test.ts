@@ -7,12 +7,11 @@ import {
 import {
   InvalidDotyposReservationInterval,
   ReservationVisitsUnavailable,
-  UnexpectedDotyposReservationPage,
 } from "@/features/reservation/backend/reservation-visits.service";
 import { AutomationUnitFetchFailure } from "./automation-unit-handler";
 
 /**
- * Each row is an input automation's Dotypos reads (`getCustomersPage`, and
+ * Each row is an input automation's Dotypos reads (`getCustomersByIds`, and
  * `listReservationsPage` through reservation visits) can meet, the outcome the
  * package builds for it (its service tests prove the input → outcome step),
  * and the `last_error_code` stored for it: the outcome's Dotypos failure code.
@@ -25,7 +24,7 @@ const codeRows: ReadonlyArray<{
   {
     input: "HTTP 503",
     cause: new DotyposUnavailable({
-      operation: "getCustomersPage",
+      operation: "getCustomersByIds",
       request: "customers.page",
       reason: "server",
       httpStatus: 503,
@@ -55,7 +54,7 @@ const codeRows: ReadonlyArray<{
   {
     input: "access-token HTTP 503",
     cause: new DotyposUnavailable({
-      operation: "getCustomersPage",
+      operation: "getCustomersByIds",
       request: "customers.page",
       reason: "server",
       httpStatus: 503,
@@ -65,7 +64,7 @@ const codeRows: ReadonlyArray<{
   {
     input: "transport failure",
     cause: new DotyposUnavailable({
-      operation: "getCustomersPage",
+      operation: "getCustomersByIds",
       request: "customers.page",
       reason: "transport",
     }),
@@ -83,7 +82,7 @@ const codeRows: ReadonlyArray<{
   {
     input: "HTTP 401",
     cause: new DotyposRejected({
-      operation: "getCustomersPage",
+      operation: "getCustomersByIds",
       request: "customers.page",
       reason: "unauthorized",
       httpStatus: 401,
@@ -93,7 +92,7 @@ const codeRows: ReadonlyArray<{
   {
     input: "access-token HTTP 404",
     cause: new DotyposRejected({
-      operation: "getCustomersPage",
+      operation: "getCustomersByIds",
       request: "customers.page",
       reason: "unauthorized",
       httpStatus: 404,
@@ -113,7 +112,7 @@ const codeRows: ReadonlyArray<{
   {
     input: "id-filter validation before any request",
     cause: new DotyposRejected({
-      operation: "getCustomersPage",
+      operation: "getCustomersByIds",
       reason: "invalid-request",
     }),
     code: "dotypos-rejected",
@@ -121,7 +120,7 @@ const codeRows: ReadonlyArray<{
   {
     input: "malformed entity identifiers",
     cause: new DotyposRejected({
-      operation: "getCustomersPage",
+      operation: "getCustomersByIds",
       request: "customers.page",
       reason: "invalid-response",
     }),
@@ -130,7 +129,7 @@ const codeRows: ReadonlyArray<{
   {
     input: "id-filtered page reporting another page",
     cause: new DotyposRejected({
-      operation: "getCustomersPage",
+      operation: "getCustomersByIds",
       request: "customers.page",
       reason: "invalid-response",
     }),
@@ -157,7 +156,7 @@ const codeRows: ReadonlyArray<{
   {
     input: "generated schema decode failure",
     cause: new DotyposRejected({
-      operation: "getCustomersPage",
+      operation: "getCustomersByIds",
       request: "customers.page",
       reason: "invalid-response",
     }),
@@ -166,7 +165,7 @@ const codeRows: ReadonlyArray<{
   {
     input: "unreadable 2xx body",
     cause: new DotyposRejected({
-      operation: "getCustomersPage",
+      operation: "getCustomersByIds",
       request: "customers.page",
       reason: "invalid-response",
       httpStatus: 200,
@@ -189,7 +188,10 @@ describe("AutomationUnitFetchFailure.fromReservationVisits", () => {
     ...codeRows,
     {
       input: "an id-filtered reservation page reporting another page",
-      cause: new UnexpectedDotyposReservationPage({ message: "synthetic" }),
+      cause: new DotyposRejected({
+        operation: "getReservationsByIds",
+        reason: "invalid-response",
+      }),
       code: "dotypos-rejected",
     },
     {

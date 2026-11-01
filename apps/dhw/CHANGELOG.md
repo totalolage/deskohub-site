@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.31.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.30.0...dhw-v1.31.0) (2026-11-01)
+
+
+### Features
+
+* **dhw:** count completed visits with ordinary conditions ([a6ac071](https://github.com/totalolage/deskohub-site/commit/a6ac0714ca8350b4332a26deb930ce8cac06172a))
+* **dhw:** require the first release decoding visit-end conditions ([b02a071](https://github.com/totalolage/deskohub-site/commit/b02a0715cf96925099fb9144dcd0b87f46822d5b))
+
+
+### Bug Fixes
+
+* **dhw:** explain completion filters and correct scenario setup ([9b5dd2c](https://github.com/totalolage/deskohub-site/commit/9b5dd2ce027fca8d21945f79ac8134a54c24035e))
+
 ## [1.30.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.29.0...dhw-v1.30.0) (2026-10-30)
 
 

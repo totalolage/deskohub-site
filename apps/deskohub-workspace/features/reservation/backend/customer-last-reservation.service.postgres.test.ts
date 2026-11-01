@@ -1,3 +1,4 @@
+import { seededReservationReads } from "@deskohub/dotypos/backend/service.mock";
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
@@ -88,7 +89,12 @@ const loadLastReservation = async (
           WorkspaceDatabase.make(testDatabase!.db)
         ),
         Layer.mock(DotyposService, {
-          listReservations,
+          getReservationsByIds: (ids) =>
+            listReservations({ ids: [...ids] }).pipe(
+              Effect.flatMap((records) =>
+                seededReservationReads(records).getReservationsByIds(ids)
+              )
+            ),
         } as Partial<DotyposService["Service"]>)
       )
     )

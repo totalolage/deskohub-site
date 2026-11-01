@@ -24,6 +24,7 @@ import type {
   Reservation,
   Table,
 } from "../generated/effect.gen";
+import { dotyposIdReadBatchSize, dotyposIdReadRequests } from "../id-reads";
 import {
   DotyposTimestampFromString,
   DotyposTimestampSchema,
@@ -38,7 +39,6 @@ import {
   DotyposTableIdSchema,
   DotyposTableSchema,
 } from "../types";
-import { dotyposIdFilterBatchSize } from "../utils/id-filter-batches";
 import { DotyposAccessToken, DotyposGeneratedClient } from "./api";
 import { dotyposRequestProfiles } from "./request-profiles";
 import {
@@ -542,20 +542,18 @@ describe("DotyposService customer lookup", () => {
     const result = await runWithService(
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
-        const customers = yield* dotypos.getCustomers({
-          ids: [
-            dotyposCustomerId("customer-1"),
-            dotyposCustomerId("customer-2"),
-            dotyposCustomerId("customer-1"),
-          ],
-        });
-        yield* dotypos.getCustomers({ ids: [] });
+        const customers = yield* dotypos.getCustomersByIds([
+          dotyposCustomerId("customer-1"),
+          dotyposCustomerId("customer-2"),
+          dotyposCustomerId("customer-1"),
+        ]);
+        yield* dotypos.getCustomersByIds([]);
         return customers;
       }),
       fetchMock
     );
 
-    expect(result).toEqual([first, second]);
+    expect([...result.values()]).toEqual([first, second]);
     const customerCalls = fetchMock.mock.calls
       .map((call) => new URL(getUrl(call as FetchCall)))
       .filter(({ pathname }) => pathname === "/clouds/cloud-id/customers");
@@ -1817,24 +1815,24 @@ describe("DotyposService customer page", () => {
     const result = await runWithService(
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
-        return yield* dotypos.getCustomersPage([
+        return yield* dotypos.getCustomersByIds([
           dotyposCustomerId("customer-1"),
         ]);
       }),
       fetchMock
     );
 
-    expect(result).toEqual([]);
+    expect(result).toEqual(new Map());
     expect(customerListRequests(fetchMock)).toHaveLength(0);
   });
 
-  test("reads up to 50 selected customers with one request", async () => {
-    const ids = Array.from({ length: dotyposIdFilterBatchSize }, (_, index) =>
+  test("reads up to 100 selected customers with one request", async () => {
+    const ids = Array.from({ length: dotyposIdReadBatchSize }, (_, index) =>
       dotyposCustomerId(`customer-${index + 1}`)
     );
     const customers = [
       customer({ id: "customer-1" }),
-      customer({ id: `customer-${dotyposIdFilterBatchSize}` }),
+      customer({ id: `customer-${dotyposIdReadBatchSize}` }),
     ];
     const fetchMock = mockDotyposFetch((request) => {
       const url = new URL(request.url);
@@ -1845,12 +1843,12 @@ describe("DotyposService customer page", () => {
     const result = await runWithService(
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
-        return yield* dotypos.getCustomersPage(ids);
+        return yield* dotypos.getCustomersByIds(ids);
       }),
       fetchMock
     );
 
-    expect(result).toEqual(customers);
+    expect([...result.values()]).toEqual(customers);
     const requests = customerListRequests(fetchMock);
     expect(requests).toHaveLength(1);
     expect(Object.fromEntries(requests[0]?.searchParams ?? [])).toEqual({
@@ -1860,14 +1858,14 @@ describe("DotyposService customer page", () => {
     });
   });
 
-  test("returns empty ids without a request and rejects more than 50 ids", async () => {
+  test("returns empty ids without a request and batches more than 100 ids", async () => {
     const fetchMock = mockDotyposFetch((request) => {
       const url = new URL(request.url);
       if (url.pathname === "/signin/token") return tokenResponse();
       return Response.json({ data: [] });
     });
     const tooManyIds = Array.from(
-      { length: dotyposIdFilterBatchSize + 1 },
+      { length: dotyposIdReadBatchSize + 1 },
       (_, index) => dotyposCustomerId(`customer-${index + 1}`)
     );
 
@@ -1875,23 +1873,16 @@ describe("DotyposService customer page", () => {
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
         return yield* Effect.all([
-          dotypos.getCustomersPage([]),
-          dotypos.getCustomersPage(tooManyIds).pipe(Effect.result),
+          dotypos.getCustomersByIds([]),
+          dotypos.getCustomersByIds(tooManyIds).pipe(Effect.result),
         ]);
       }),
       fetchMock
     );
 
-    expect(empty).toEqual([]);
-    expect(tooMany).toMatchObject({
-      _tag: "Failure",
-      failure: {
-        _tag: "DotyposRejected",
-        reason: "invalid-request",
-        operation: "getCustomersPage",
-      },
-    });
-    expect(customerListRequests(fetchMock)).toHaveLength(0);
+    expect(empty).toEqual(new Map());
+    expect(tooMany).toMatchObject({ _tag: "Success", success: new Map() });
+    expect(customerListRequests(fetchMock)).toHaveLength(2);
   });
 
   test.each([
@@ -1905,7 +1896,7 @@ describe("DotyposService customer page", () => {
       error: {
         _tag: "DotyposUnavailable",
         reason: "rate-limited",
-        operation: "getCustomersPage",
+        operation: "getCustomersByIds",
         request: "customers.page",
         httpStatus: 429,
       },
@@ -1920,7 +1911,7 @@ describe("DotyposService customer page", () => {
       error: {
         _tag: "DotyposUnavailable",
         reason: "server",
-        operation: "getCustomersPage",
+        operation: "getCustomersByIds",
         request: "customers.page",
         httpStatus: 503,
       },
@@ -1933,7 +1924,7 @@ describe("DotyposService customer page", () => {
       error: {
         _tag: "DotyposUnavailable",
         reason: "transport",
-        operation: "getCustomersPage",
+        operation: "getCustomersByIds",
         request: "customers.page",
       },
     },
@@ -1950,7 +1941,7 @@ describe("DotyposService customer page", () => {
         Effect.gen(function* () {
           const dotypos = yield* DotyposService;
           return yield* dotypos
-            .getCustomersPage([dotyposCustomerId("customer-1")])
+            .getCustomersByIds([dotyposCustomerId("customer-1")])
             .pipe(Effect.result);
         }),
         fetchMock
@@ -1984,7 +1975,7 @@ describe("DotyposService customer page", () => {
         const fiber = yield* Effect.gen(function* () {
           const dotypos = yield* DotyposService;
           return yield* dotypos
-            .getCustomersPage([dotyposCustomerId("customer-1")])
+            .getCustomersByIds([dotyposCustomerId("customer-1")])
             .pipe(Effect.result);
         }).pipe(
           Effect.provide(
@@ -2008,7 +1999,7 @@ describe("DotyposService customer page", () => {
       failure: {
         _tag: "DotyposUnavailable",
         reason: "timeout",
-        operation: "getCustomersPage",
+        operation: "getCustomersByIds",
         request: "customers.page",
       },
     });
@@ -2029,7 +2020,7 @@ describe("DotyposService customer page", () => {
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
         return yield* dotypos
-          .getCustomersPage([dotyposCustomerId("customer-1")])
+          .getCustomersByIds([dotyposCustomerId("customer-1")])
           .pipe(Effect.result);
       }),
       fetchMock
@@ -2040,7 +2031,7 @@ describe("DotyposService customer page", () => {
       failure: {
         _tag: "DotyposRejected",
         reason: "invalid-response",
-        operation: "getCustomersPage",
+        operation: "getCustomersByIds",
         request: "customers.page",
       },
     });
@@ -2268,14 +2259,14 @@ describe("DotyposService reservation page", () => {
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
         return yield* Effect.all([
-          dotypos.listReservationsPage({ ids: [], page: 1 }),
+          dotypos.getReservationsByIds([]),
           dotypos.listReservationsPage({ page: 0 }).pipe(Effect.result),
         ]);
       }),
       fetchMock
     );
 
-    expect(empty).toEqual({ reservations: [], nextPage: Option.none() });
+    expect(empty).toEqual(new Map());
     expect(invalid).toMatchObject({
       _tag: "Failure",
       failure: {
@@ -3607,16 +3598,18 @@ describe("DotyposService reservation listing", () => {
     await runWithService(
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
-        return yield* dotypos.listReservations({
-          ids: [
+        return yield* dotypos.getReservationsByIds(
+          [
             dotyposReservationId("reservation-1"),
             dotyposReservationId("reservation-2"),
           ],
-          customerId: dotyposCustomerId("customer-id"),
-          startsAtOrAfter: "2026-08-04T00:00:00+02:00",
-          startsBefore: "2026-08-05T00:00:00+02:00",
-          order: "startDateDescending",
-        });
+          {
+            customerId: dotyposCustomerId("customer-id"),
+            startsAtOrAfter: "2026-08-04T00:00:00+02:00",
+            startsBefore: "2026-08-05T00:00:00+02:00",
+            order: "startDateDescending",
+          }
+        );
       }),
       fetchMock
     );
@@ -3926,7 +3919,7 @@ describe("DotyposService paginated list responses", () => {
 
 type FailureOutcomeOperation =
   | "getCustomer"
-  | "getCustomers"
+  | "getCustomersByIds"
   | "cancelReservation"
   | "patchCustomer"
   | "confirmReservation"
@@ -3940,9 +3933,9 @@ const failureOutcomeOperations = {
     method: "GET",
     path: "/clouds/cloud-id/customers/customer-id",
   },
-  getCustomers: {
+  getCustomersByIds: {
     kind: "read",
-    request: "customers.list",
+    request: "customers.page",
     method: "GET",
     path: "/clouds/cloud-id/customers",
   },
@@ -4028,7 +4021,7 @@ const failureOutcomeInputs: readonly FailureOutcomeInput[] = [
   {
     label: "200 malformed page",
     kind: "malformed-page",
-    operations: ["getCustomers"],
+    operations: ["getCustomersByIds"],
   },
   {
     label: "200 empty creation array",
@@ -4095,10 +4088,8 @@ const invokeFailureOutcomeOperation = (
   switch (operation) {
     case "getCustomer":
       return dotypos.getCustomer(dotyposCustomerId("customer-id"));
-    case "getCustomers":
-      return dotypos.getCustomers({
-        ids: [dotyposCustomerId("customer-id")],
-      });
+    case "getCustomersByIds":
+      return dotypos.getCustomersByIds([dotyposCustomerId("customer-id")]);
     case "cancelReservation":
       return dotypos.cancelReservation(dotyposReservationId("reservation-id"));
     case "patchCustomer":
@@ -4118,7 +4109,7 @@ const successOutcomeResponse = (operation: FailureOutcomeOperation) => {
   switch (operation) {
     case "getCustomer":
       return Response.json(customer());
-    case "getCustomers":
+    case "getCustomersByIds":
       return Response.json({
         data: [customer()],
         nextPage: null,
@@ -4170,7 +4161,7 @@ const outcomeResponse = (
     if (operation === "getCustomer") {
       return Response.json({ ...customer(), id: "" });
     }
-    if (operation === "getCustomers") {
+    if (operation === "getCustomersByIds") {
       return Response.json({
         data: [{ ...customer(), id: "" }],
         nextPage: null,
@@ -4235,7 +4226,7 @@ const failureOutcomeExpectation = (
   if (
     input.kind === "status" &&
     input.status === 404 &&
-    operation === "getCustomers"
+    operation === "getCustomersByIds"
   ) {
     return { success: "empty" } as const;
   }
@@ -4362,7 +4353,7 @@ describe("DotyposService failure classification table", () => {
           Option.isSome((result as { success: Option.Option<unknown> }).success)
         ).toBe(true);
       } else if (expected.success === "empty") {
-        expect((result as { success: unknown }).success).toEqual([]);
+        expect((result as { success: unknown }).success).toEqual(new Map());
       }
     } else {
       expect(result).toMatchObject({
@@ -4837,7 +4828,6 @@ describe("DotyposService creation retry guard", () => {
         repeat: "unsafe",
         retry: "creation",
       },
-      "customers.list": { effect: "read", repeat: "safe", retry: "transient" },
       "customers.page": { effect: "read", repeat: "safe", retry: "none" },
       "customers.changes": { effect: "read", repeat: "safe", retry: "none" },
       "customers.search": {
@@ -4870,7 +4860,7 @@ describe("DotyposService creation retry guard", () => {
       "products.list": { effect: "read", repeat: "safe", retry: "transient" },
       "categories.list": { effect: "read", repeat: "safe", retry: "transient" },
     });
-    expect(Object.keys(dotyposRequestProfiles)).toHaveLength(24);
+    expect(Object.keys(dotyposRequestProfiles)).toHaveLength(23);
   });
 });
 
@@ -5178,12 +5168,12 @@ describe("DotyposService conditional-write replay", () => {
 });
 
 type SingleReadPageOperation =
-  | "getCustomersPage"
+  | "getCustomersByIds"
   | "listCustomerChanges"
   | "listReservationsPage";
 
 const singleReadPageSpecs = {
-  getCustomersPage: {
+  getCustomersByIds: {
     request: "customers.page",
     path: "/clouds/cloud-id/customers",
   },
@@ -5202,8 +5192,8 @@ const invokeSingleReadPage = (
   operation: SingleReadPageOperation
 ): Effect.Effect<unknown, unknown, never> => {
   switch (operation) {
-    case "getCustomersPage":
-      return dotypos.getCustomersPage([dotyposCustomerId("customer-id")]);
+    case "getCustomersByIds":
+      return dotypos.getCustomersByIds([dotyposCustomerId("customer-id")]);
     case "listCustomerChanges":
       return dotypos.listCustomerChanges({
         selection: CustomerVersionSelection.ChangedFrom({
@@ -5379,7 +5369,7 @@ const failureOutcomeChangedSince = Schema.decodeUnknownSync(
 describe("DotyposService package input validation", () => {
   test.each([
     { family: "reservation dates", operation: "createReservation" },
-    { family: "customer id filter", operation: "getCustomersPage" },
+    { family: "customer id filter", operation: "getCustomersByIds" },
     { family: "ambiguous customer lookup", operation: "findOrCreateCustomer" },
   ])("rejects invalid $family inputs before writes", async (row) => {
     const duplicateCustomers = [
@@ -5416,11 +5406,11 @@ describe("DotyposService package input validation", () => {
                 startDate: new Date("invalid"),
               })
               .pipe(Effect.result);
-          case "getCustomersPage":
+          case "getCustomersByIds":
             return yield* dotypos
-              .getCustomersPage(
-                Array.from({ length: dotyposIdFilterBatchSize + 1 }, (_, i) =>
-                  dotyposCustomerId(`customer-${i + 1}`)
+              .getCustomersByIds(
+                Array.from({ length: dotyposIdReadBatchSize + 1 }, (_, i) =>
+                  dotyposCustomerId(`customer-${i + 1};invalid`)
                 )
               )
               .pipe(Effect.result);
@@ -5472,4 +5462,225 @@ describe("DotyposService package input validation", () => {
       expect(fetchMock).not.toHaveBeenCalled();
     }
   });
+});
+
+describe("DotyposService ID reads", () => {
+  const read = (
+    dotypos: IDotyposService,
+    resource: "customers" | "reservations",
+    ids: readonly string[],
+    options?: import("./id-reads").DotyposIdReadOptions
+  ): Effect.Effect<
+    ReadonlyMap<string, unknown>,
+    import("../errors").DotyposReadFailure
+  > =>
+    resource === "customers"
+      ? dotypos.getCustomersByIds(
+          ids.map((id) => dotyposCustomerId(id)),
+          options
+        )
+      : dotypos.getReservationsByIds(
+          ids.map((id) => dotyposReservationId(id)),
+          options
+        );
+
+  test.each(["customers", "reservations"] as const)(
+    "%s handles empty 404s, unidentified records and invalid filters",
+    async (resource) => {
+      for (const response of [
+        () => Response.json(null, { status: 404 }),
+        () => {
+          const { id, ...unidentified } =
+            resource === "customers" ? customer() : reservation();
+          return Response.json({ data: [unidentified] });
+        },
+      ]) {
+        let attempts = 0;
+        const fetchMock = mockDotyposFetch((request) => {
+          if (new URL(request.url).pathname === "/signin/token")
+            return tokenResponse();
+          attempts++;
+          return response();
+        });
+        const result = await runWithService(
+          Effect.flatMap(DotyposService, (dotypos) =>
+            read(dotypos, resource, ["id-0"])
+          ),
+          fetchMock
+        );
+        expect(result.size).toBe(0);
+        expect(attempts).toBe(1);
+      }
+      let attempts = 0;
+      const fetchMock = mockDotyposFetch(() => {
+        attempts++;
+        return tokenResponse();
+      });
+      const result = await runWithService(
+        Effect.flatMap(DotyposService, (dotypos) =>
+          read(dotypos, resource, ["id-0", "invalid;id"]).pipe(Effect.result)
+        ),
+        fetchMock
+      );
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "DotyposRejected", reason: "invalid-request" },
+      });
+      expect(attempts).toBe(0);
+    }
+  );
+
+  test.each(["customers", "reservations"] as const)(
+    "%s deduplicates, batches and matches request cost",
+    async (resource) => {
+      for (const count of [0, 1, 99, 100, 101, 200, 201, 301]) {
+        const ids = Array.from({ length: count }, (_, i) => `id-${i}`);
+        const calls: string[][] = [];
+        const fetchMock = mockDotyposFetch((request) => {
+          const url = new URL(request.url);
+          if (url.pathname === "/signin/token") return tokenResponse();
+          const selected = url.searchParams
+            .get("filter")!
+            .split(";")[0]!
+            .slice(6)
+            .split(",");
+          calls.push(selected);
+          expect(url.searchParams.get("limit")).toBe("100");
+          expect(url.searchParams.get("page")).toBe("1");
+          return Response.json({
+            data: selected
+              .filter((id) => id !== "id-0")
+              .map((id) =>
+                resource === "customers"
+                  ? customer({ id })
+                  : reservation({ id })
+              ),
+            nextPage: null,
+            lastPage: "1",
+          });
+        });
+        const result = await runWithService(
+          Effect.flatMap(DotyposService, (dotypos) =>
+            read(dotypos, resource, [...ids, ...ids], { concurrency: 1 })
+          ),
+          fetchMock
+        );
+        expect(calls).toHaveLength(dotyposIdReadRequests(new Set(ids).size));
+        expect(calls.flat()).toEqual(ids);
+        expect(result.size).toBe(Math.max(0, count - 1));
+        expect(result.has("id-0" as never)).toBe(false);
+      }
+    }
+  );
+
+  test.each(["customers", "reservations"] as const)(
+    "%s retains successful batches only when the caller recovers a failed batch",
+    async (resource) => {
+      const ids = Array.from({ length: 201 }, (_, i) => `id-${i}`);
+      const failures: string[] = [];
+      let attempts = 0;
+      const fetchMock = mockDotyposFetch((request) => {
+        const url = new URL(request.url);
+        if (url.pathname === "/signin/token") return tokenResponse();
+        attempts++;
+        const selected = url.searchParams
+          .get("filter")!
+          .split(";")[0]!
+          .slice(6)
+          .split(",");
+        if (selected[0] === "id-100")
+          return new Response("Unavailable", { status: 503 });
+        return Response.json({
+          data: selected.map((id) =>
+            resource === "customers" ? customer({ id }) : reservation({ id })
+          ),
+        });
+      });
+      const recover = (failure: { readonly _tag: string }) =>
+        Effect.sync(() => {
+          failures.push(failure._tag);
+        });
+      const result = await runWithService(
+        Effect.flatMap(DotyposService, (dotypos) =>
+          read(dotypos, resource, ids, {
+            concurrency: 1,
+            onBatchFailure: recover,
+          })
+        ),
+        fetchMock
+      );
+      expect(attempts).toBe(3);
+      expect(failures).toEqual(["DotyposUnavailable"]);
+      expect([...result.keys()]).toEqual([...ids.slice(0, 100), "id-200"]);
+      attempts = 0;
+      const failed = await runWithService(
+        Effect.flatMap(DotyposService, (dotypos) =>
+          read(dotypos, resource, ids, { concurrency: 1 }).pipe(Effect.result)
+        ),
+        fetchMock
+      );
+      expect(failed).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "DotyposUnavailable" },
+      });
+      expect(attempts).toBe(2);
+    }
+  );
+
+  test.each(["customers", "reservations"] as const)(
+    "%s rejects unexpected paging without following it",
+    async (resource) => {
+      for (const paging of [
+        { nextPage: "2" },
+        { lastPage: "2" },
+        { nextPage: "invalid" },
+      ]) {
+        let attempts = 0;
+        const fetchMock = mockDotyposFetch((request) => {
+          if (new URL(request.url).pathname === "/signin/token")
+            return tokenResponse();
+          attempts++;
+          return Response.json({ data: [], ...paging });
+        });
+        const result = await runWithService(
+          Effect.flatMap(DotyposService, (dotypos) =>
+            read(dotypos, resource, ["id-0"]).pipe(Effect.result)
+          ),
+          fetchMock
+        );
+        expect(result).toMatchObject({
+          _tag: "Failure",
+          failure: { _tag: "DotyposRejected", reason: "invalid-response" },
+        });
+        expect(attempts).toBe(1);
+      }
+    }
+  );
+
+  test.each(["customers", "reservations"] as const)(
+    "%s honors sequential and bounded concurrency",
+    async (resource) => {
+      for (const concurrency of [1, 2]) {
+        let open = 0;
+        let peak = 0;
+        const fetchMock = mockDotyposFetch(async (request) => {
+          if (new URL(request.url).pathname === "/signin/token")
+            return tokenResponse();
+          open++;
+          peak = Math.max(peak, open);
+          await Promise.resolve();
+          open--;
+          return Response.json({ data: [] });
+        });
+        const ids = Array.from({ length: 301 }, (_, i) => `id-${i}`);
+        await runWithService(
+          Effect.flatMap(DotyposService, (dotypos) =>
+            read(dotypos, resource, ids, { concurrency })
+          ),
+          fetchMock
+        );
+        expect(peak).toBe(concurrency);
+      }
+    }
+  );
 });

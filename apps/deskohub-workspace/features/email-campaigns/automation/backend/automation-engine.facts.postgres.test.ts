@@ -412,7 +412,7 @@ describe.skipIf(!database)("automation facts at rest (§5.13)", async () => {
       { at: activatedAt, audienceFilter: taggedAudience }
     );
     const tagged = new Set<string>();
-    for (let index = 0; index < 60; index += 1) {
+    for (let index = 0; index < 120; index += 1) {
       const label = `chunked-${String(index).padStart(2, "0")}`;
       const id = await customer(label, { tags: [tag] });
       tagged.add(id);
@@ -563,7 +563,7 @@ describe.skipIf(!database)("automation facts at rest (§5.13)", async () => {
     await scenario.plan(fireAt);
     const restore = scenario.dotypos.fail(
       new DotyposUnavailable({
-        operation: "getCustomersPage",
+        operation: "getCustomersByIds",
         reason: "server",
         httpStatus: 503,
       })
