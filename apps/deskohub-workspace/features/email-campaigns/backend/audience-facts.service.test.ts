@@ -1020,41 +1020,87 @@ describe("audienceDotyposReads", () => {
 
 describe("visit-end reservation counts", () => {
   test("live and fetched reads count ends, including a visit crossing the lower bound", async () => {
-    const filter = reservations({ dateBasis: "visitEnd", period: { _tag: "Last", count: 1, unit: "day" } });
+    const filter = reservations({
+      dateBasis: "visitEnd",
+      period: { _tag: "Last", count: 1, unit: "day" },
+    });
     const visits = [
-      { ...visit("crossing", "2026-10-13T08:00:00Z"), endDate: "2026-10-14T11:00:00Z" },
+      {
+        ...visit("crossing", "2026-10-13T08:00:00Z"),
+        endDate: "2026-10-14T11:00:00Z",
+      },
       visit("exact", "2026-10-15T09:00:00Z"),
       visit("ongoing", "2026-10-15T09:30:00Z"),
       visit("cancelled", "2026-10-15T08:00:00Z", "CANCELLED"),
       visit("future", "2026-10-16T08:00:00Z"),
     ];
-    const booked = visits.map(({ id }) => ({ dotyposReservationId: id!, dotyposCustomerId: customerId("a") }));
+    const booked = visits.map(({ id }) => ({
+      dotyposReservationId: id!,
+      dotyposCustomerId: customerId("a"),
+    }));
     const fetched = visits.map(({ id, startDate, endDate, status }) => ({
       ...reservationVisit(id!, "a", startDate),
       endsAt: instant(endDate),
-      status: status === "CANCELLED" ? "cancelled" as const : "active" as const,
+      status:
+        status === "CANCELLED" ? ("cancelled" as const) : ("active" as const),
     }));
-    const live = await resolveFacts({ filter, visits, booked, respectVisitBounds: true });
-    const unit = await resolveFacts({ filter, booked, facts: AudienceFactSource.Fetched({ visits: Option.some(new Map([[customerId("a"), fetched]])), profiles: Option.none() }) });
-    expect([...facts(live.exit).counts.values()][0]?.get(customerId("a"))).toBe(2);
+    const live = await resolveFacts({
+      filter,
+      visits,
+      booked,
+      respectVisitBounds: true,
+    });
+    const unit = await resolveFacts({
+      filter,
+      booked,
+      facts: AudienceFactSource.Fetched({
+        visits: Option.some(new Map([[customerId("a"), fetched]])),
+        profiles: Option.none(),
+      }),
+    });
+    expect([...facts(live.exit).counts.values()][0]?.get(customerId("a"))).toBe(
+      2
+    );
     expect(facts(unit.exit)).toEqual(facts(live.exit));
   });
 
   test("AnyTime reads end dates and includes future visits; explicit cancelled selection remains available", async () => {
     const input = {
-      visits: [visit("future", "2026-11-01T08:00:00Z"), visit("cancelled", "2026-10-01T08:00:00Z", "CANCELLED")],
-      booked: ["future", "cancelled"].map((id) => ({ dotyposReservationId: reservationId(id), dotyposCustomerId: customerId("a") })),
+      visits: [
+        visit("future", "2026-11-01T08:00:00Z"),
+        visit("cancelled", "2026-10-01T08:00:00Z", "CANCELLED"),
+      ],
+      booked: ["future", "cancelled"].map((id) => ({
+        dotyposReservationId: reservationId(id),
+        dotyposCustomerId: customerId("a"),
+      })),
     };
     for (const status of [undefined, "cancelled"] as const) {
-      const filter = reservations({ dateBasis: "visitEnd", period: { _tag: "AnyTime" }, ...(status && { status }) });
-      expect(audienceDotyposReads(filter, [audienceEvaluationAt(now)]).visits).toBe(true);
+      const filter = reservations({
+        dateBasis: "visitEnd",
+        period: { _tag: "AnyTime" },
+        ...(status && { status }),
+      });
+      expect(
+        audienceDotyposReads(filter, [audienceEvaluationAt(now)]).visits
+      ).toBe(true);
       const result = await resolveFacts({ ...input, filter });
-      expect([...facts(result.exit).counts.values()][0]?.get(customerId("a"))).toBe(status ? 2 : 1);
+      expect(
+        [...facts(result.exit).counts.values()][0]?.get(customerId("a"))
+      ).toBe(status ? 2 : 1);
     }
   });
 
   test("fails end-date resolution when an interval is invalid", async () => {
-    const result = await resolveFacts({ filter: reservations({ dateBasis: "visitEnd", period: { _tag: "Past" } }), visits: [{ ...visit("invalid", now.toString()), endDate: now.subtract({ hours: 1 }).toString() }] });
+    const result = await resolveFacts({
+      filter: reservations({ dateBasis: "visitEnd", period: { _tag: "Past" } }),
+      visits: [
+        {
+          ...visit("invalid", now.toString()),
+          endDate: now.subtract({ hours: 1 }).toString(),
+        },
+      ],
+    });
     expect(Exit.isFailure(result.exit)).toBe(true);
   });
 });

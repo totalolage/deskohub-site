@@ -42,15 +42,18 @@ export const audienceAttributeCatalogue = defineAudienceAttributeCatalogue({
     label: "Reservation count",
     section: "Reservations",
     params: {
-      dateBasis: choiceParam(Schema.Literals(["visit", "visitEnd", "booking"]), {
-        label: "Date basis",
-        control: "toggle",
-        options: {
-          visit: { label: "visit date", periodVerb: "visiting " },
-          visitEnd: { label: "visit end", periodVerb: "ending " },
-          booking: { label: "booking date", periodVerb: "confirmed " },
-        },
-      }),
+      dateBasis: choiceParam(
+        Schema.Literals(["visit", "visitEnd", "booking"]),
+        {
+          label: "Date basis",
+          control: "toggle",
+          options: {
+            visit: { label: "visit date", periodVerb: "visiting " },
+            visitEnd: { label: "visit end", periodVerb: "ending " },
+            booking: { label: "booking date", periodVerb: "confirmed " },
+          },
+        }
+      ),
       period: periodParam,
       status: optionalChoiceParam(AdministrationReservationStatusFilter, {
         label: "Reservation status",

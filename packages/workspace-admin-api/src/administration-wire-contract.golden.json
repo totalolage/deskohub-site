@@ -33165,6 +33165,7 @@
                     "type": "string",
                     "enum": [
                       "visit",
+                      "visitEnd",
                       "booking"
                     ]
                   },
@@ -33755,6 +33756,7 @@
                     "type": "string",
                     "enum": [
                       "visit",
+                      "visitEnd",
                       "booking"
                     ]
                   },
@@ -34415,6 +34417,7 @@
                     "type": "string",
                     "enum": [
                       "visit",
+                      "visitEnd",
                       "booking"
                     ]
                   },
