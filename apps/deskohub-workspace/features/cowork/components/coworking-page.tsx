@@ -77,81 +77,83 @@ function CoworkingHero({
           tone="inverse"
         />
         <div className="mt-8 grid items-center gap-12 lg:mt-10 lg:grid-cols-[minmax(0,1fr)_minmax(24rem,0.92fr)] lg:gap-[clamp(3rem,5vw,5.5rem)]">
-        <div>
-          <h1
-            className="max-w-4xl text-[clamp(3.25rem,7vw,7.25rem)] leading-[0.9] tracking-[-0.065em] text-balance"
-            id="coworking-heading"
-          >
-            {m.coworkingHeroTitle({}, { locale })}
-          </h1>
-          <p className="mt-8 max-w-[38rem] text-lg leading-[1.65] text-silver/82 sm:text-xl">
-            {m.coworkingHeroIntro({}, { locale })}
-          </p>
+          <div>
+            <h1
+              className="max-w-4xl text-[clamp(3.25rem,7vw,7.25rem)] leading-[0.9] tracking-[-0.065em] text-balance"
+              id="coworking-heading"
+            >
+              {m.coworkingHeroTitle({}, { locale })}
+            </h1>
+            <p className="mt-8 max-w-[38rem] text-lg leading-[1.65] text-silver/82 sm:text-xl">
+              {m.coworkingHeroIntro({}, { locale })}
+            </p>
 
-          <div className="mt-9 flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
-            <Button
-              asChild
-              tone="chilean-fire"
-              size="2xl"
-              shape="rounded"
-              caps
-              className="group sm:min-w-[17rem]"
+            <div className="mt-9 flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
+              <Button
+                asChild
+                tone="chilean-fire"
+                size="2xl"
+                shape="rounded"
+                caps
+                className="group sm:min-w-[17rem]"
+              >
+                <Link href={getCoworkReservationPath(locale)}>
+                  {m.coworkReservationLink({}, { locale })}
+                  <ArrowUpRight
+                    aria-hidden="true"
+                    className="ml-auto size-5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+                  />
+                </Link>
+              </Button>
+              <Button
+                asChild
+                variant="ghost"
+                tone="inverse"
+                size="2xl"
+                shape="rounded"
+                caps
+              >
+                <a href="#coworking-desks">
+                  {m.coworkingCompareCta({}, { locale })}
+                  <ArrowDown
+                    aria-hidden="true"
+                    className="size-4 text-burned-orange"
+                  />
+                </a>
+              </Button>
+            </div>
+
+            <ul
+              aria-label={m.coworkingFactsLabel({}, { locale })}
+              className="mt-10 flex flex-col items-start gap-2 text-sm text-silver/76 sm:flex-row sm:gap-0"
             >
-              <Link href={getCoworkReservationPath(locale)}>
-                {m.coworkReservationLink({}, { locale })}
-                <ArrowUpRight
-                  aria-hidden="true"
-                  className="ml-auto size-5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
-                />
-              </Link>
-            </Button>
-            <Button
-              asChild
-              variant="ghost"
-              tone="inverse"
-              size="2xl"
-              shape="rounded"
-              caps
-            >
-              <a href="#coworking-desks">
-                {m.coworkingCompareCta({}, { locale })}
-                <ArrowDown
-                  aria-hidden="true"
-                  className="size-4 text-burned-orange"
-                />
-              </a>
-            </Button>
+              <li className="sm:pr-4">
+                {m.coworkingFactMetro({}, { locale })}
+              </li>
+              <li className="sm:border-l sm:border-white/22 sm:px-4">
+                {m.coworkingFactAlwaysOpen({}, { locale })}
+              </li>
+              <li className="sm:border-l sm:border-white/22 sm:pl-4">
+                {m.coworkingFactPin({}, { locale })}
+              </li>
+            </ul>
           </div>
 
-          <ul
-            aria-label={m.coworkingFactsLabel({}, { locale })}
-            className="mt-10 flex flex-col items-start gap-2 text-sm text-silver/76 sm:flex-row sm:gap-0"
-          >
-            <li className="sm:pr-4">{m.coworkingFactMetro({}, { locale })}</li>
-            <li className="sm:border-l sm:border-white/22 sm:px-4">
-              {m.coworkingFactAlwaysOpen({}, { locale })}
-            </li>
-            <li className="sm:border-l sm:border-white/22 sm:pl-4">
-              {m.coworkingFactPin({}, { locale })}
-            </li>
-          </ul>
-        </div>
-
-        {photo && (
-          <figure className="relative m-0 before:absolute before:-inset-3 before:-z-10 before:translate-x-3 before:translate-y-3 before:rounded-[2rem] before:border before:border-burned-orange/70 max-sm:before:-inset-2 max-sm:before:translate-x-2 max-sm:before:translate-y-2">
-            <div className="relative aspect-[4/5] overflow-hidden rounded-[1.75rem] border border-white/20 bg-white/6 sm:aspect-[5/4] lg:aspect-[4/5]">
-              <CloudinaryImage
-                alt={photo.alt}
-                className="absolute inset-0 size-full object-cover"
-                preload
-                sizes="(min-width: 1024px) 44vw, 92vw"
-                size={{ width: "fill", height: "fill" }}
-                source={photo.publicId}
-                variant="gallery"
-              />
-            </div>
-          </figure>
-        )}
+          {photo && (
+            <figure className="relative m-0 before:absolute before:-inset-3 before:-z-10 before:translate-x-3 before:translate-y-3 before:rounded-[2rem] before:border before:border-burned-orange/70 max-sm:before:-inset-2 max-sm:before:translate-x-2 max-sm:before:translate-y-2">
+              <div className="relative aspect-[4/5] overflow-hidden rounded-[1.75rem] border border-white/20 bg-white/6 sm:aspect-[5/4] lg:aspect-[4/5]">
+                <CloudinaryImage
+                  alt={photo.alt}
+                  className="absolute inset-0 size-full object-cover"
+                  preload
+                  sizes="(min-width: 1024px) 44vw, 92vw"
+                  size={{ width: "fill", height: "fill" }}
+                  source={photo.publicId}
+                  variant="gallery"
+                />
+              </div>
+            </figure>
+          )}
         </div>
       </div>
     </section>
