@@ -21,6 +21,7 @@ import {
 } from "drizzle-orm/pg-core";
 import type { CampaignSendId } from "@/features/email-campaigns/campaign-identifiers";
 import { instant } from "../instant";
+import { sensitiveInstant } from "../sensitive-instant";
 import { sensitiveText } from "../sensitive-text";
 import { postgresUuidV7 } from "../uuid-v7";
 import { emailCampaignRecipients } from "./email-campaigns";
@@ -180,7 +181,7 @@ export const emailDiscountIssuances = pgTable(
       .$type<EmailIssuanceState>()
       .default("reserved"),
     code: sensitiveText("code"),
-    expiresAt: instant("expires_at"),
+    expiresAt: sensitiveInstant("expires_at"),
     createdAt: instant("created_at").notNull().default(sql`now()`),
   },
   (t) => [
