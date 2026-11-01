@@ -42,6 +42,47 @@ export type EmailCustomerField = Presence &
     | { readonly kind: "unsupported" }
   );
 
+export const EmailCustomerField: Schema.Codec<EmailCustomerField> =
+  Schema.Union([
+    Schema.Struct({
+      kind: Schema.Literal("scalar"),
+      type: Schema.Literals(["string", "number", "boolean"]),
+      choices: Schema.optionalKey(
+        Schema.Array(
+          Schema.Union([Schema.String, Schema.Finite, Schema.Boolean])
+        )
+      ),
+      nullable: Schema.Boolean,
+      optional: Schema.Boolean,
+    }),
+    Schema.Struct({
+      kind: Schema.Literal("record"),
+      fields: Schema.Record(
+        Schema.String,
+        Schema.suspend(() => EmailCustomerField)
+      ),
+      nullable: Schema.Boolean,
+      optional: Schema.Boolean,
+    }),
+    Schema.Struct({
+      kind: Schema.Literal("list"),
+      element: Schema.suspend(() => EmailCustomerField),
+      nullable: Schema.Boolean,
+      optional: Schema.Boolean,
+    }),
+    Schema.Struct({
+      kind: Schema.Literal("union"),
+      alternatives: Schema.Array(Schema.suspend(() => EmailCustomerField)),
+      nullable: Schema.Boolean,
+      optional: Schema.Boolean,
+    }),
+    Schema.Struct({
+      kind: Schema.Literal("unsupported"),
+      nullable: Schema.Boolean,
+      optional: Schema.Boolean,
+    }),
+  ]);
+
 /** Only schema-declared fields can be selected, including explicit internal fields. */
 export const emailCustomerFieldCatalogue: EmailCustomerField = describeField(
   AdministrationCustomerDetail.ast
@@ -135,20 +176,22 @@ export const inspectEmailCustomerSelection = (
 /** Paths cannot cross list boundaries implicitly or use numeric indexes. */
 export const emailCustomerFieldAtPath = (
   root: EmailCustomerField,
-  path: readonly string[]
+  path: readonly string[],
+  options: { readonly inheritPresence?: boolean } = {}
 ): EmailCustomerField | undefined => {
   let field: EmailCustomerField | undefined = root;
   for (const segment of path) {
     if (field?.kind !== "record" || !Object.hasOwn(field.fields, segment))
       return undefined;
-    const child = field.fields[segment];
-    field = child
-      ? {
-          ...child,
-          nullable: field.nullable || child.nullable,
-          optional: field.optional || child.optional,
-        }
-      : undefined;
+    const child: EmailCustomerField | undefined = field.fields[segment];
+    field =
+      child && options.inheritPresence !== false
+        ? {
+            ...child,
+            nullable: field.nullable || child.nullable,
+            optional: field.optional || child.optional,
+          }
+        : child;
   }
   return field;
 };
@@ -160,6 +203,56 @@ export const isEmailCustomerScalar = (
   (field?.kind === "union" &&
     field.alternatives.length > 0 &&
     field.alternatives.every(isEmailCustomerScalar));
+
+/** Freeze only the selected structure so unrelated new fields do not invalidate old emails. */
+export const selectedEmailCustomerShape = (
+  selection: EmailCustomerSelection
+): EmailCustomerField | undefined => {
+  const selected = emailCustomerFieldAtPath(
+    emailCustomerFieldCatalogue,
+    selection.path,
+    { inheritPresence: false }
+  );
+  if (!selected) return undefined;
+  if (selected.kind === "record")
+    return projectShape(selected, selection.fields ?? []);
+  if (selected.kind === "list" && selected.element.kind === "record")
+    return {
+      ...selected,
+      element: projectShape(selected.element, selection.fields ?? []),
+    };
+  return selected;
+};
+
+function projectShape(
+  field: EmailCustomerField,
+  paths: readonly (readonly string[])[]
+): EmailCustomerField {
+  if (field.kind !== "record") return field;
+  const names = [
+    ...new Set(paths.flatMap((path) => (path[0] ? [path[0]] : []))),
+  ];
+  return {
+    ...field,
+    fields: Object.fromEntries(
+      names.flatMap((name) => {
+        const child = field.fields[name];
+        if (!child) return [];
+        const relative = paths
+          .filter((path) => path[0] === name)
+          .map((path) => path.slice(1));
+        return [
+          [
+            name,
+            relative.some((path) => path.length === 0)
+              ? child
+              : projectShape(child, relative),
+          ],
+        ];
+      })
+    ),
+  };
+}
 
 function describeField(ast: SchemaAST.AST): EmailCustomerField {
   const presence: Presence = {

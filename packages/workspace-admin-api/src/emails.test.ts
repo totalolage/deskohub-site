@@ -304,6 +304,9 @@ describe("recipient snapshot contract", () => {
       })
     ).toThrow();
     expect(() => decode({ _tag: "Resolved", value: null })).toThrow();
+    expect(() =>
+      decode({ _tag: "Resolved", value: { documentHash: null } })
+    ).toThrow();
     expect(decode({ _tag: "Fallback", text: "Unknown" })._tag).toBe("Fallback");
     expect(() => decode({ _tag: "Fallback", text: "Other" })).toThrow();
   });
@@ -341,4 +344,58 @@ describe("recipient snapshot contract", () => {
       )({ _tag: "Resolved", value: { code: "SAMPLE-NOT-REDEEMABLE" } })
     ).toThrow();
   });
+});
+
+test("publication freezes selected field types and rejects incompatible historical preparation", () => {
+  const published = publish({
+    ...document,
+    values: [
+      {
+        name: "consent",
+        source: {
+          kind: "customer",
+          path: ["activity", "marketingConsent"],
+          fields: [["documentHash"]],
+        },
+      },
+    ],
+  });
+  const definition = published.values[0];
+  if (!definition) throw new Error("missing test definition");
+  expect(definition.customerShape).toMatchObject({
+    kind: "record",
+    fields: {
+      documentHash: { kind: "scalar", type: "string", nullable: false },
+    },
+  });
+  const decode = Schema.decodeUnknownSync(
+    emailValueSnapshotForDefinition(definition, "cs-CZ")
+  );
+  expect(
+    decode({ _tag: "Resolved", value: { documentHash: "synthetic" } })._tag
+  ).toBe("Resolved");
+  expect(() =>
+    decode({ _tag: "Resolved", value: { documentHash: null } })
+  ).toThrow();
+  const historical = {
+    ...definition,
+    customerShape: {
+      kind: "record",
+      nullable: true,
+      optional: false,
+      fields: {
+        documentHash: {
+          kind: "scalar",
+          type: "number",
+          nullable: false,
+          optional: false,
+        },
+      },
+    },
+  } as const;
+  expect(() =>
+    Schema.decodeUnknownSync(
+      emailValueSnapshotForDefinition(historical, "cs-CZ")
+    )({ _tag: "Resolved", value: { documentHash: 5 } })
+  ).toThrow();
 });

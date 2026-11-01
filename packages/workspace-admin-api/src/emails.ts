@@ -1,13 +1,15 @@
-import { Effect, Match, Schema } from "effect";
+import { Effect, Match, Schema, SchemaGetter } from "effect";
 import { AdministrationCampaignPurpose } from "./campaign-locale-and-purpose";
 import { AdministrationCampaignTemplateKey } from "./email-campaigns";
 import {
+  EmailCustomerField,
   EmailCustomerSelection,
   EmailCustomerSelectionInvalid,
   emailCustomerFieldAtPath,
   emailCustomerFieldCatalogue,
   inspectEmailCustomerSelection,
   isEmailCustomerScalar,
+  selectedEmailCustomerShape,
 } from "./email-customer-selection";
 import { EmailValueName } from "./email-identifiers";
 import { AdministrationStoredDiscountId } from "./workspace-admin-api";
@@ -44,6 +46,7 @@ export const EmailValueDefinition = Schema.Struct({
   name: EmailValueName,
   source: Schema.Union([EmailCustomerSelection, EmailDiscountSelection]),
   fallback: Schema.optionalKey(Schema.Record(key, Schema.String)),
+  customerShape: Schema.optionalKey(EmailCustomerField),
 });
 export type EmailValueDefinition = typeof EmailValueDefinition.Type;
 
@@ -151,6 +154,7 @@ export const EmailDraft = Schema.Struct({
       Schema.Struct({
         name: Schema.optionalKey(Schema.String),
         source: Schema.optionalKey(draftSource),
+        customerShape: Schema.optionalKey(EmailCustomerField),
         fallback: Schema.optionalKey(Schema.Record(key, Schema.String)),
       })
     )
@@ -175,16 +179,30 @@ export type EmailDocument = typeof EmailDocument.Type;
 export const emailDocumentForPublication = (
   currentLocales: readonly string[]
 ) =>
-  EmailDocument.check(
-    Schema.makeFilter(
-      (document) =>
-        emailPublicationProblems(document, currentLocales).length === 0,
-      {
-        description:
-          "Every current language, nonempty subjects and body, unique names and component ids, valid localized text and typed value references are required.",
-      }
+  EmailDocument.annotate({ parseOptions: { onExcessProperty: "error" } })
+    .check(
+      Schema.makeFilter(
+        (document) =>
+          emailPublicationProblems(document, currentLocales).length === 0,
+        {
+          description:
+            "Every current language, nonempty subjects and body, unique names and component ids, valid localized text and typed value references are required.",
+        }
+      )
     )
-  );
+    .pipe(
+      Schema.decodeTo(EmailDocument, {
+        decode: SchemaGetter.transform((document) => ({
+          ...document,
+          values: document.values.map((definition) => {
+            if (definition.source.kind !== "customer") return definition;
+            const shape = selectedEmailCustomerShape(definition.source);
+            return shape ? { ...definition, customerShape: shape } : definition;
+          }),
+        })),
+        encode: SchemaGetter.transform((document) => document),
+      })
+    );
 
 /** Stable ordered required set, frozen alongside the selected version before generation. */
 export const requiredEmailValueNames = (
