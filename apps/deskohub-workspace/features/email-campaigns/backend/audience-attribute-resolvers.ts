@@ -41,6 +41,11 @@ export type AudienceResolution = {
   readonly visitsIn: (
     bounds: DatePeriodBounds
   ) => Resolved<readonly DotyposReservationId[]>;
+  /** Valid visit ends in the bounds; booked counts exclude provider cancellations. */
+  readonly visitEndsIn: (
+    bounds: DatePeriodBounds,
+    includeCancelled: boolean
+  ) => Resolved<readonly DotyposReservationId[]>;
   /** Every Dotypos reservation that has begun by `asOf`, with its start. */
   readonly pastVisits: (
     asOf: Temporal.Instant
@@ -51,8 +56,8 @@ type Resolved<Value> = Effect.Effect<Value, CampaignRecipientResolutionError>;
 
 /**
  * Counts each customer's records for a count condition's request.
- * `readsVisits` says whether the request reads Dotypos visits
- * (`visitsIn` or `pastVisits`), so a unit fetches them only when needed.
+ * `readsVisits` says whether the request reads Dotypos visits, so a unit
+ * fetches them only when needed.
  */
 export type AudienceCountResolver<Params> = {
   readonly count: (
@@ -158,7 +163,9 @@ const database = CampaignRecipientResolutionError.database;
  * Booked reservations by booking date count from local data; by visit date
  * in a bounded period they count among the Dotypos reservations starting in
  * it; by visit date at any time every booked reservation counts. A replay
- * counts the reservations as they stood at its moment.
+ * counts the reservations as they stood at its moment. Visit-end counts
+ * always read valid ends; `Past` makes them completed intervals. Without
+ * an explicit status they also exclude provider-cancelled visits.
  */
 const countReservations = (
   {
@@ -170,7 +177,7 @@ const countReservations = (
     >;
     readonly reservationsAsOf?: Temporal.Instant;
   },
-  { candidates, scope, visitsIn }: AudienceResolution
+  { candidates, scope, visitsIn, visitEndsIn }: AudienceResolution
 ) => {
   const selection = {
     ...(status && { status }),
@@ -189,6 +196,13 @@ const countReservations = (
       .pipe(Effect.mapError(database));
   return Match.value(dateBasis).pipe(
     Match.when("booking", () => countSelected({ booked: period })),
+    Match.when("visitEnd", () =>
+      visitEndsIn(period, status !== undefined).pipe(
+        Effect.flatMap((dotyposReservationIds) =>
+          countSelected({ dotyposReservationIds })
+        )
+      )
+    ),
     Match.when("visit", () =>
       isUnboundedPeriod(period)
         ? countSelected({})
@@ -270,7 +284,8 @@ export const audienceAttributeResolvers: AudienceAttributeResolvers = {
   reservationCount: {
     count: countReservations,
     readsVisits: ({ params: { dateBasis, period } }) =>
-      dateBasis === "visit" && !isUnboundedPeriod(period),
+      dateBasis === "visitEnd" ||
+      (dateBasis === "visit" && !isUnboundedPeriod(period)),
   },
   campaignEmailCount: {
     // The evaluating campaign without one (`null`) has sent nobody anything.

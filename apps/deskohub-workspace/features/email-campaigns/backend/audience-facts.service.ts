@@ -8,7 +8,10 @@ import {
 } from "@deskohub/dotypos";
 import type { AudienceAttributeOfKind } from "@deskohub/workspace-admin-api";
 import { Context, Effect, Layer, Match, Option } from "effect";
-import { decodeBookedReservation } from "@/features/reservation/backend/booked-reservation";
+import {
+  type BookedInterval,
+  decodeBookedReservation,
+} from "@/features/reservation/backend/booked-reservation";
 import {
   InvalidDotyposReservationInterval,
   type ReservationVisit,
@@ -56,7 +59,7 @@ const visitLowerBoundMargin = { days: 7 } as const;
 
 /** Which Dotypos facts evaluating a filter reads. */
 export type AudienceDotyposReads = {
-  /** Visit times: visit-basis counts over a bounded period, first and last visits. */
+  /** Visit times: bounded start counts, all end counts, first and last visits. */
   readonly visits: boolean;
   /** Profiles: tags and discount group. */
   readonly profiles: boolean;
@@ -131,14 +134,14 @@ export const audienceDotyposReads = (
 };
 
 /**
- * A visit's booked start, read with its stored details when early setup
+ * A visit's booked interval, read with its stored details when early setup
  * holds it from before then; a visit without a readable interval fails the
  * resolution.
  */
-const visitStart = (
+const visitInterval = (
   reservation: DotyposReservation,
   details?: StoredWorkspaceReservationDetails
-): Effect.Effect<Temporal.Instant, CampaignRecipientResolutionError> =>
+): Effect.Effect<BookedInterval, CampaignRecipientResolutionError> =>
   Option.match(decodeBookedReservation(reservation, details).interval, {
     onNone: () =>
       Effect.fail(
@@ -148,7 +151,7 @@ const visitStart = (
           })
         )
       ),
-    onSome: ({ startsAt }) => Effect.succeed(startsAt),
+    onSome: Effect.succeed,
   });
 
 /**
@@ -183,7 +186,10 @@ const resolveDates = (
   resolution: AudienceResolution
 ) => audienceAttributeResolvers[request.attribute].dates(request, resolution);
 
-type VisitReads = Pick<AudienceResolution, "visitsIn" | "pastVisits">;
+type VisitReads = Pick<
+  AudienceResolution,
+  "visitsIn" | "visitEndsIn" | "pastVisits"
+>;
 
 export class AudienceFactsService extends Context.Service<
   AudienceFactsService,
@@ -206,8 +212,8 @@ export class AudienceFactsService extends Context.Service<
         Effect.mapError(CampaignRecipientResolutionError.database)
       );
 
-      /** Each visit's booked start, with the stored details early setup needs. */
-      const bookedStarts = (visits: readonly DotyposReservation[]) =>
+      /** Each visit's booked interval, with the stored details early setup needs. */
+      const bookedIntervals = (visits: readonly DotyposReservation[]) =>
         candidates
           .earlySetupDetails(
             visits.flatMap(({ id }) => (id === undefined ? [] : [id]))
@@ -216,23 +222,38 @@ export class AudienceFactsService extends Context.Service<
             Effect.mapError(CampaignRecipientResolutionError.database),
             Effect.flatMap((details) =>
               Effect.forEach(visits, (visit) =>
-                visitStart(
+                visitInterval(
                   visit,
                   visit.id === undefined ? undefined : details.get(visit.id)
-                ).pipe(Effect.map((startsAt) => [visit.id, startsAt] as const))
+                ).pipe(
+                  Effect.map((interval) => ({
+                    id: visit.id,
+                    interval,
+                    cancelled: visit.status === "CANCELLED",
+                  }))
+                )
               )
             )
           );
 
       /**
-       * The visits booked in the bounds, by ID, with their booked starts.
+       * The visits dated in the bounds, by ID, with their selected date.
        * Dotypos holds an early-setup meeting room from before its booked
        * start, so the query starts that much earlier and the booked starts
        * decide what stays.
        */
-      const listVisitsIn = (bounds: DatePeriodBounds) =>
+      const listVisitsIn = (
+        bounds: DatePeriodBounds,
+        dateBasis: "visit" | "visitEnd" = "visit",
+        includeCancelled = true
+      ) =>
         visitLowerBound.pipe(
-          Effect.map((lowerBound) => bounds.startsAtOrAfter ?? lowerBound),
+          // A visit ending in the period may have started before it.
+          Effect.map((lowerBound) =>
+            dateBasis === "visitEnd"
+              ? lowerBound
+              : (bounds.startsAtOrAfter ?? lowerBound)
+          ),
           Effect.flatMap((startsAtOrAfter) =>
             startsAtOrAfter === undefined
               ? Effect.succeed([])
@@ -252,17 +273,23 @@ export class AudienceFactsService extends Context.Service<
                   })
                   .pipe(
                     Effect.mapError(CampaignRecipientResolutionError.dotypos),
-                    Effect.flatMap(bookedStarts)
+                    Effect.flatMap(bookedIntervals)
                   )
           ),
           Effect.map(
-            (starts) =>
+            (visits) =>
               new Map(
-                starts.flatMap(([id, startsAt]) =>
-                  id !== undefined && isWithinDatePeriodBounds(bounds, startsAt)
-                    ? [[id, startsAt] as const]
-                    : []
-                )
+                visits.flatMap(({ id, interval, cancelled }) => {
+                  const at =
+                    dateBasis === "visitEnd"
+                      ? interval.endsAt
+                      : interval.startsAt;
+                  return id !== undefined &&
+                    (includeCancelled || !cancelled) &&
+                    isWithinDatePeriodBounds(bounds, at)
+                    ? [[id, at] as const]
+                    : [];
+                })
               )
           )
         );
@@ -289,6 +316,10 @@ export class AudienceFactsService extends Context.Service<
             return {
               visitsIn: (bounds) =>
                 listVisitsIn(bounds).pipe(
+                  Effect.map((visits) => [...visits.keys()])
+                ),
+              visitEndsIn: (bounds, includeCancelled) =>
+                listVisitsIn(bounds, "visitEnd", includeCancelled).pipe(
                   Effect.map((visits) => [...visits.keys()])
                 ),
               pastVisits: (asOf) =>
@@ -423,6 +454,15 @@ const fetchedVisitReads = (
             : []
         )
       ),
+    visitEndsIn: (bounds, includeCancelled) =>
+      Effect.succeed(
+        visits.flatMap(({ dotyposReservationId, endsAt, status }) =>
+          (includeCancelled || status !== "cancelled") &&
+          isWithinDatePeriodBounds(bounds, endsAt)
+            ? [dotyposReservationId]
+            : []
+        )
+      ),
     pastVisits: (asOf) =>
       Effect.succeed(
         new Map(
@@ -442,5 +482,6 @@ const fetchedVisitReads = (
  */
 const unfetchedVisitReads: VisitReads = {
   visitsIn: () => Effect.die("Audience visits were read but not fetched"),
+  visitEndsIn: () => Effect.die("Audience visits were read but not fetched"),
   pastVisits: () => Effect.die("Audience visits were read but not fetched"),
 };
