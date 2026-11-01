@@ -44,7 +44,7 @@ const offer = (count: number): AudienceFilter => ({
       params: {
         dateBasis: "visitEnd",
         period: { _tag: "Past" },
-        product: { family: "cowork" },
+        product: { family: "cowork", properties: [] },
       },
       operator: "eq",
       value: count,
