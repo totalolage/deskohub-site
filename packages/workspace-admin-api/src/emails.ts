@@ -27,6 +27,15 @@ export const EmailInlinePart = Schema.Union([
 ]);
 export type EmailInlinePart = typeof EmailInlinePart.Type;
 const inline = Schema.Array(EmailInlinePart);
+const draftInline = Schema.Array(
+  Schema.Union([
+    Schema.TaggedStruct("Text", { text: Schema.optionalKey(Schema.String) }),
+    Schema.TaggedStruct("Value", {
+      name: Schema.optionalKey(Schema.String),
+      field: Schema.optionalKey(Schema.Array(Schema.String)),
+    }),
+  ])
+);
 
 export const EmailDiscountSelection = Schema.Struct({
   kind: Schema.Literal("discount"),
@@ -156,10 +165,10 @@ export const EmailDraft = Schema.Struct({
     Schema.Record(
       key,
       Schema.Struct({
-        subject: Schema.optionalKey(inline),
-        preheader: Schema.optionalKey(inline),
-        texts: Schema.optionalKey(Schema.Record(key, inline)),
-        operationalReason: Schema.optionalKey(inline),
+        subject: Schema.optionalKey(draftInline),
+        preheader: Schema.optionalKey(draftInline),
+        texts: Schema.optionalKey(Schema.Record(key, draftInline)),
+        operationalReason: Schema.optionalKey(draftInline),
       })
     )
   ),
