@@ -71,6 +71,13 @@ export const EmailBodyComponent = Schema.Union([
     id: key,
     value: EmailValueName,
     fields: Schema.optionalKey(fields),
+    sort: Schema.optionalKey(
+      Schema.Struct({
+        path: Schema.Array(key),
+        direction: Schema.Literals(["asc", "desc"]),
+      })
+    ),
+    limit: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0))),
   }),
   Schema.TaggedStruct("Offer", {
     id: key,
@@ -125,6 +132,13 @@ const draftComponent = Schema.Struct({
   href: Schema.optionalKey(Schema.String),
   labelKey: Schema.optionalKey(Schema.String),
   value: Schema.optionalKey(Schema.String),
+  sort: Schema.optionalKey(
+    Schema.Struct({
+      path: Schema.optionalKey(Schema.Array(Schema.String)),
+      direction: Schema.optionalKey(Schema.Literals(["asc", "desc"])),
+    })
+  ),
+  limit: Schema.optionalKey(Schema.Int),
   fields: Schema.optionalKey(
     Schema.Array(
       Schema.Struct({
@@ -310,6 +324,27 @@ export const emailPublicationProblems = (
       continue;
     }
     const item = selected.kind === "list" ? selected.element : selected;
+    if (component._tag === "List") {
+      if (
+        component.sort &&
+        (!isEmailCustomerScalar(
+          emailCustomerFieldAtPath(item, component.sort.path)
+        ) ||
+          (item.kind === "record" &&
+            !source.fields?.some((field) =>
+              samePath(field, component.sort?.path ?? [])
+            )))
+      )
+        problems.push(`Unselected list sort field: ${component.value}.`);
+      if (
+        component.limit !== undefined &&
+        source.limit !== undefined &&
+        component.limit > source.limit
+      )
+        problems.push(
+          `List component limit exceeds selected source: ${component.value}.`
+        );
+    }
     if (item.kind === "record" && !component.fields?.length)
       problems.push(`Record fields required: ${component.value}.`);
     if (
