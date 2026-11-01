@@ -12,6 +12,17 @@
 - Keep tests off real network services. Child-process script tests stub HTTP with a `--preload` fixture that replaces `fetch`, as `apps/deskohub-workspace/scripts/production-release.vercel-api-fixture.ts` does, and assert the child's exit code.
 - Gate Bun browser tests with `test.skipIf(!(await playwrightChromiumAvailable()))`. It skips locally when Chromium is missing and throws when `CI` is set, so CI never drops browser coverage. Keep each heavy browser suite in its own file so shards can spread them.
 
+## Test coverage
+
+`bun run coverage` at the repository root writes Istanbul `coverage/coverage-final.json` for tools such as visual-crap (`--root <repo> --source <dir> --coverage coverage/coverage-final.json`). It runs `turbo run test --force --continue` with `@deskohub/test-coverage`'s preload in `BUN_OPTIONS`, so the preload loads before any package preload. Arguments go to Turbo, for example `bun run coverage --filter=@deskohub/dotypos`.
+
+- The report has one entry per authored source file: tracked or untracked-but-not-ignored `.ts`, `.tsx`, `.js`, `.jsx`, and `.mjs`/`.cjs` variants under `apps/`, `packages/`, and `scripts/`, excluding `*.test.*`, `*.spec.*`, `*.pw.*`, declarations, and the coverage package. Files no test loads appear with zero counts. Gitignored generated code stays out. Keys are absolute paths.
+- It measures code that runs in Bun test processes and in Bun processes those tests spawn (they inherit `NODE_ENV=test`). Code bundled into Playwright browser pages and Playwright E2E runs isn't measured.
+- For complete numbers, set `WORKSPACE_TEST_DATABASE_URL` (see CI below) and install Playwright Chromium. Otherwise database and browser suites skip and their code reads as unexecuted. Don't export `NODE_ENV=test` in your shell, or build steps such as client generation report coverage too.
+- Failed tests still produce a report, but the command exits non-zero and says the report covers only the tests that ran.
+- Instrumented code is cached under `coverage/istanbul/cache`, keyed by path, content, and instrumenter version. Delete the directory to reclaim space.
+- `packages/test-coverage/src/coverage-collection.test.ts` runs real `bun test` processes over a fixture. Extend it when you change collection.
+
 ## Test email addresses
 
 Tests, fixtures, E2E code, and visual scripts never contain a literal email address. Build recipients with `testEmailAddress(localPart)` from `@deskohub/test-email`, which uses the `EMAIL_TEST_DOMAIN` constant so mail goes to the Console provider. Use `resendSimulatorAddress(outcome)` only when a test needs a real Resend destination. Boardgame Bar is exempt.
