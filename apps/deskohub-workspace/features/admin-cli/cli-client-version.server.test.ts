@@ -3,10 +3,10 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import {
   automationsMinimumDhwVersion,
-  campaignsMinimumDhwVersion,
   CliClientCompatibility,
   CliInputInvalid,
   CliServiceUnavailable,
+  campaignsMinimumDhwVersion,
   DhwVersion,
   dhwVersionHeader,
   invoicesMinimumDhwVersion,
