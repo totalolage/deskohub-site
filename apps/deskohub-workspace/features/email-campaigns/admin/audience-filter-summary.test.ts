@@ -563,7 +563,7 @@ test("visit-end summaries distinguish completed intervals from started visits in
     period: { _tag: "Past" },
   });
   expect(describe_(filter)).toBe(
-    "Customers who have exactly 1 booked reservation ending any time so far"
+    "Customers who have exactly 1 booked reservation ending at any time so far"
   );
   expect(describe_(filter, "cs-CZ")).toContain("s koncem");
 });

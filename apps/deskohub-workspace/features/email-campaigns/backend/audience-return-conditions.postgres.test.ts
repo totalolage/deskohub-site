@@ -139,6 +139,7 @@ describe.skipIf(!database)(
                       fulfillment: "fulfilled" as const,
                     },
               overrides: {
+                createdAt: at("2026-05-01T00:00:00Z"),
                 dotyposReservationId: id,
                 reservationConfirmedAt: at("2026-05-01T00:00:00Z"),
               },
