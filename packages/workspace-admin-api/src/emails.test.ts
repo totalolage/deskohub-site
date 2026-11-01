@@ -444,3 +444,20 @@ test("typed list components select sorting and limits within the frozen source",
     publish({ ...document, values, structure: [{ ...component, limit: 4 }] })
   ).toThrow();
 });
+
+test("unfinished inline values round-trip in drafts and cannot publish", () => {
+  for (const part of [{ _tag: "Value" }, { _tag: "Value", name: "" }]) {
+    const draft = { translations: { "cs-CZ": { subject: [part] } } };
+    const saved = Schema.decodeUnknownSync(EmailDraft)(draft);
+    expect(JSON.stringify(saved)).toBe(JSON.stringify(draft));
+    expect(() =>
+      publish({
+        ...document,
+        translations: {
+          ...document.translations,
+          "cs-CZ": { ...translation, subject: [part] },
+        },
+      })
+    ).toThrow();
+  }
+});
