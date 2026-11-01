@@ -34,7 +34,7 @@ const campaign = campaignIdSchema.make(crypto.randomUUID());
 const otherCampaign = campaignIdSchema.make(crypto.randomUUID());
 
 /** Ordinary conditions reused by the first- and second-visit offers. */
-const offer = (count: number): AudienceFilter => ({
+const offer = (count: number, status?: "cancelled"): AudienceFilter => ({
   _tag: "Group",
   operator: "and",
   filters: [
@@ -45,6 +45,7 @@ const offer = (count: number): AudienceFilter => ({
         dateBasis: "visitEnd",
         period: { _tag: "Past" },
         product: { family: "cowork", properties: [] },
+        ...(status && { status }),
       },
       operator: "eq",
       value: count,
@@ -172,9 +173,10 @@ describe.skipIf(!database)(
         count: number,
         time: Temporal.Instant,
         fetched = false,
-        replayed = false
+        replayed = false,
+        status?: "cancelled"
       ) => {
-        const filter = offer(count);
+        const filter = offer(count, status);
         const context = {
           ...audienceEvaluationAt(time),
           campaignId: Option.some(campaign),
@@ -228,6 +230,9 @@ describe.skipIf(!database)(
         });
       };
       for (const fetched of [false, true]) {
+        // Only the locally cancelled reservation matches an explicit status;
+        // confirmed provider-cancelled and active reservations remain excluded.
+        expect(await evaluate(1, now, fetched, false, "cancelled")).toBe("match");
         expect(await evaluate(1, at("2026-05-31T00:00:00Z"), fetched)).toBe(
           "noMatch"
         );
