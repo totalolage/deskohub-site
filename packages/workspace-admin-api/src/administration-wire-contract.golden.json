@@ -20957,13 +20957,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -21153,13 +21153,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -21337,13 +21337,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -21573,13 +21573,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -21800,13 +21800,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -22002,13 +22002,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -22210,13 +22210,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -22360,13 +22360,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -22561,13 +22561,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -22960,13 +22960,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -23202,13 +23202,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -23503,13 +23503,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -23818,13 +23818,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -24325,13 +24325,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -24784,13 +24784,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -25110,13 +25110,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -25285,13 +25285,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -25512,13 +25512,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -25692,13 +25692,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -25921,13 +25921,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -26137,13 +26137,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -26340,13 +26340,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.20.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -26705,13 +26705,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -27087,13 +27087,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -27481,13 +27481,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -27759,13 +27759,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -28280,13 +28280,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -28546,13 +28546,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -28927,13 +28927,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -29308,13 +29308,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -29683,13 +29683,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -29940,13 +29940,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -30294,13 +30294,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -30876,13 +30876,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -31307,13 +31307,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -31616,13 +31616,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -31802,13 +31802,13 @@
           },
           "@deskohub/workspace-admin-api/MinimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           }
         },
         "effectiveAnnotations": {
           "minimumDhwVersion": {
             "_tag": "Some",
-            "value": "1.24.0"
+            "value": "1.31.0"
           },
           "outdatedDhwRefusal": "CliInputInvalid"
         },
@@ -33165,6 +33165,7 @@
                     "type": "string",
                     "enum": [
                       "visit",
+                      "visitEnd",
                       "booking"
                     ]
                   },
@@ -33755,6 +33756,7 @@
                     "type": "string",
                     "enum": [
                       "visit",
+                      "visitEnd",
                       "booking"
                     ]
                   },
@@ -34415,6 +34417,7 @@
                     "type": "string",
                     "enum": [
                       "visit",
+                      "visitEnd",
                       "booking"
                     ]
                   },
