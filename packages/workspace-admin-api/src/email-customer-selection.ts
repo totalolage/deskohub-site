@@ -168,21 +168,28 @@ function describeField(ast: SchemaAST.AST): EmailCustomerField {
       return { ...presence, kind: "scalar", type: "boolean" };
     case "Literal": {
       const literal = ast.literal;
-      return typeof literal === "string" ||
-        typeof literal === "number" ||
-        typeof literal === "boolean"
-        ? {
-            ...presence,
-            kind: "scalar",
-            type:
-              typeof literal === "string"
-                ? "string"
-                : typeof literal === "number"
-                  ? "number"
-                  : "boolean",
-            choices: [literal],
-          }
-        : { ...presence, kind: "unsupported" };
+      if (typeof literal === "string")
+        return {
+          ...presence,
+          kind: "scalar",
+          type: "string",
+          choices: [literal],
+        };
+      if (typeof literal === "number")
+        return {
+          ...presence,
+          kind: "scalar",
+          type: "number",
+          choices: [literal],
+        };
+      if (typeof literal === "boolean")
+        return {
+          ...presence,
+          kind: "scalar",
+          type: "boolean",
+          choices: [literal],
+        };
+      return { ...presence, kind: "unsupported" };
     }
     case "Objects":
       return {
