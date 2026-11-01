@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { BunFileSystem } from "@effect/platform-bun";
+import { BunServices } from "@effect/platform-bun";
 import { Effect, Option } from "effect";
 import { readAudienceFilter } from "./campaign-input";
 
@@ -16,7 +16,7 @@ test("reads and preserves completed coworking visit filters from inline JSON", a
     value: 1,
   };
   const result = await Effect.runPromise(
-    readAudienceFilter({ filter: Option.some(JSON.stringify(filter)), filterFile: Option.none() }).pipe(Effect.provide(BunFileSystem.layer))
+    readAudienceFilter({ filter: Option.some(JSON.stringify(filter)), filterFile: Option.none() }).pipe(Effect.provide(BunServices.layer))
   );
   expect(Option.getOrThrow(result)).toEqual(filter);
 });
