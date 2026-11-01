@@ -39,56 +39,100 @@ type InsertedDiscountCode = {
   readonly code: CanonicalPromotionCode;
 };
 
+const promotionValues = (values: DiscountCodeValues) => ({
+  code: values.code,
+  enabled: values.enabled,
+  validFrom: values.validFrom,
+  validUntil: values.validUntil,
+});
+
+/** The new promotion's id, or none when `skip` meets an already taken value. */
+const insertPromotion = ({
+  values,
+  onTakenCode,
+}: {
+  readonly values: DiscountCodeValues;
+  readonly onTakenCode: "fail" | "skip";
+}) =>
+  WorkspaceTransaction.pipe(
+    Effect.flatMap(({ db }) => {
+      const insert = db
+        .insert(promotionCodes)
+        .values({ kind: "discount", ...promotionValues(values) });
+      return (
+        onTakenCode === "skip"
+          ? insert.onConflictDoNothing({ target: promotionCodes.code })
+          : insert
+      ).returning({ id: promotionCodes.id });
+    }),
+    Effect.map(([promotion]) => Option.fromNullishOr(promotion?.id))
+  );
+
+type PromotionRows = {
+  readonly values: DiscountCodeValues;
+  readonly promotionCodeId: PromotionCodeId;
+};
+
+const insertDiscountCodeChild = ({ values, promotionCodeId }: PromotionRows) =>
+  WorkspaceTransaction.pipe(
+    Effect.flatMap(({ db }) =>
+      db
+        .insert(discountCodes)
+        .values({
+          ...promotionValues(values),
+          promotionCodeId,
+          discountId: values.discountId,
+          maxUses: values.maxUses,
+          maxUsesPerCustomer: values.maxUsesPerCustomer,
+        })
+        .returning({ id: discountCodes.id })
+    ),
+    Effect.flatMap(([code]) =>
+      code
+        ? Effect.succeed(code.id)
+        : Effect.die(new Error("Discount code insert returned no identifier."))
+    )
+  );
+
+const insertAudience = ({ values, promotionCodeId }: PromotionRows) =>
+  WorkspaceTransaction.pipe(
+    Effect.flatMap(({ db }) =>
+      db.insert(promotionCodeCustomers).values(
+        values.audience.map((dotyposCustomerId) => ({
+          promotionCodeId,
+          dotyposCustomerId,
+        }))
+      )
+    ),
+    Effect.when(Effect.succeed(values.audience.length > 0))
+  );
+
 /**
  * Inserts the code's rows unless another promotion already took its value.
  * Skipping a taken value fails no statement, so the caller's transaction stays
  * usable without a savepoint.
  */
 const insertUnlessCodeTaken = Effect.fn("DiscountCodes.insertUnlessCodeTaken")(
-  function* (values: DiscountCodeValues, onTakenCode: "fail" | "skip") {
-    const { db } = yield* WorkspaceTransaction;
-    const promotionValues = {
-      code: values.code,
-      enabled: values.enabled,
-      validFrom: values.validFrom,
-      validUntil: values.validUntil,
-    };
-    const insertPromotion = db
-      .insert(promotionCodes)
-      .values({ kind: "discount", ...promotionValues });
-    const [promotion] = yield* (
-      onTakenCode === "skip"
-        ? insertPromotion.onConflictDoNothing({ target: promotionCodes.code })
-        : insertPromotion
-    ).returning({ id: promotionCodes.id });
-    if (!promotion) return Option.none<InsertedDiscountCode>();
-    const [code] = yield* db
-      .insert(discountCodes)
-      .values({
-        ...promotionValues,
-        promotionCodeId: promotion.id,
-        discountId: values.discountId,
-        maxUses: values.maxUses,
-        maxUsesPerCustomer: values.maxUsesPerCustomer,
-      })
-      .returning({ id: discountCodes.id });
-    if (!code)
-      return yield* Effect.die(
-        new Error("Discount code insert returned no identifier.")
-      );
-    if (values.audience.length > 0)
-      yield* db.insert(promotionCodeCustomers).values(
-        values.audience.map((dotyposCustomerId) => ({
-          promotionCodeId: promotion.id,
-          dotyposCustomerId,
-        }))
-      );
-    return Option.some<InsertedDiscountCode>({
-      id: code.id,
-      promotionCodeId: promotion.id,
-      code: values.code,
-    });
-  }
+  (values: DiscountCodeValues, onTakenCode: "fail" | "skip") =>
+    insertPromotion({ values, onTakenCode }).pipe(
+      Effect.flatMap(
+        Option.match({
+          onNone: () => Effect.succeedNone,
+          onSome: (promotionCodeId) =>
+            Effect.succeed({ values, promotionCodeId }).pipe(
+              Effect.bind("id", insertDiscountCodeChild),
+              Effect.tap(insertAudience),
+              Effect.map(
+                ({
+                  id,
+                  promotionCodeId,
+                }): Option.Option<InsertedDiscountCode> =>
+                  Option.some({ id, promotionCodeId, code: values.code })
+              )
+            ),
+        })
+      )
+    )
 );
 
 /**
@@ -96,14 +140,18 @@ const insertUnlessCodeTaken = Effect.fn("DiscountCodes.insertUnlessCodeTaken")(
  * child, and its customer audience, committing with the caller. A taken code
  * value fails with the registry's unique violation.
  */
-export const insertDiscountCode = Effect.fn("DiscountCodes.insert")(function* (
-  values: DiscountCodeValues
-) {
-  const inserted = yield* insertUnlessCodeTaken(values, "fail");
-  return Option.isSome(inserted)
-    ? inserted.value
-    : yield* Effect.die(new Error("Promotion insert returned no identifier."));
-});
+export const insertDiscountCode = Effect.fn("DiscountCodes.insert")(
+  (values: DiscountCodeValues) =>
+    insertUnlessCodeTaken(values, "fail").pipe(
+      Effect.flatMap(
+        Option.match({
+          onNone: () =>
+            Effect.die(new Error("Promotion insert returned no identifier.")),
+          onSome: Effect.succeed,
+        })
+      )
+    )
+);
 
 /** Generated values repeatedly collided with existing codes. */
 export class DiscountCodeSpaceExhausted extends Data.TaggedError(
