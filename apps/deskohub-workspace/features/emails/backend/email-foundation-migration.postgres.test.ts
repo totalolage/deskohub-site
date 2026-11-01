@@ -16,6 +16,7 @@ import {
   CampaignEmailFooter,
   renderCampaignEmail,
 } from "@/features/email-campaigns/body/render-campaign-email";
+import { campaignDeliveryBatchIdempotencyKey } from "@/features/email-campaigns/campaign-delivery-batches";
 
 const migration = "20261101154650_perfect_victor_mancha";
 const databaseUrl = process.env.WORKSPACE_TEST_DATABASE_URL;
@@ -79,6 +80,17 @@ describe.skipIf(!databaseUrl)(
                   "select to_jsonb(t) as row from email_campaign_recipients t order by send_id"
                 )
               ).rows,
+              retryKeys: (
+                await pool.query(
+                  "select send_id, delivery_attempt, batch_index from email_campaign_delivery_batches order by send_id"
+                )
+              ).rows.map((row) =>
+                campaignDeliveryBatchIdempotencyKey({
+                  sendId: row.send_id,
+                  deliveryAttempt: row.delivery_attempt,
+                  batchIndex: row.batch_index,
+                })
+              ),
               batches: (
                 await pool.query(
                   "select to_jsonb(t) as row from email_campaign_delivery_batches t order by send_id"
