@@ -424,6 +424,10 @@ export {
   EmailVersionId,
 } from "./email-identifiers";
 export {
+  EmailValueSnapshot,
+  emailValueSnapshotForDefinition,
+} from "./email-value-snapshot";
+export {
   EmailBodyComponent,
   EmailDiscountSelection,
   EmailDocument,
@@ -431,7 +435,6 @@ export {
   EmailInlinePart,
   EmailTranslation,
   EmailValueDefinition,
-  EmailValueSnapshot,
   emailDocumentForPublication,
   emailPublicationProblems,
   requiredEmailValueNames,

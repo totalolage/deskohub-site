@@ -1,4 +1,4 @@
-import { Match, Schema } from "effect";
+import { Effect, Match, Schema } from "effect";
 import { AdministrationCampaignPurpose } from "./campaign-locale-and-purpose";
 import { AdministrationCampaignTemplateKey } from "./email-campaigns";
 import {
@@ -30,8 +30,12 @@ export const EmailDiscountSelection = Schema.Struct({
   kind: Schema.Literal("discount"),
   discountId: AdministrationStoredDiscountId,
   validDays: Schema.Int.check(Schema.isGreaterThan(0)),
-  maxUses: Schema.Int.check(Schema.isGreaterThan(0)),
-  maxUsesPerCustomer: Schema.Int.check(Schema.isGreaterThan(0)),
+  maxUses: Schema.Int.check(Schema.isGreaterThan(0)).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed(1))
+  ),
+  maxUsesPerCustomer: Schema.Int.check(Schema.isGreaterThan(0)).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed(1))
+  ),
 });
 export type EmailDiscountSelection = typeof EmailDiscountSelection.Type;
 
@@ -83,11 +87,54 @@ const translationFields = Schema.Struct({
 export const EmailTranslation = translationFields;
 export type EmailTranslation = typeof EmailTranslation.Type;
 
-/** An incomplete editor state is serializable, but is never a published document. */
+/** Partly configured controls remain serializable until explicit publication. */
+const draftSource = Schema.Struct({
+  kind: Schema.Literals(["customer", "discount"]),
+  path: Schema.optionalKey(Schema.Array(Schema.String)),
+  fields: Schema.optionalKey(Schema.Array(Schema.Array(Schema.String))),
+  sort: Schema.optionalKey(
+    Schema.Struct({
+      path: Schema.optionalKey(Schema.Array(Schema.String)),
+      direction: Schema.optionalKey(Schema.Literals(["asc", "desc"])),
+    })
+  ),
+  limit: Schema.optionalKey(Schema.Int),
+  discountId: Schema.optionalKey(Schema.String),
+  validDays: Schema.optionalKey(Schema.Int),
+  maxUses: Schema.optionalKey(Schema.Int),
+  maxUsesPerCustomer: Schema.optionalKey(Schema.Int),
+});
+const draftComponent = Schema.Struct({
+  _tag: Schema.Literals([
+    "Paragraph",
+    "Heading",
+    "Image",
+    "Button",
+    "Record",
+    "List",
+    "Offer",
+  ]),
+  id: Schema.optionalKey(Schema.String),
+  textKey: Schema.optionalKey(Schema.String),
+  level: Schema.optionalKey(Schema.Literals([1, 2, 3])),
+  src: Schema.optionalKey(Schema.String),
+  altKey: Schema.optionalKey(Schema.String),
+  href: Schema.optionalKey(Schema.String),
+  labelKey: Schema.optionalKey(Schema.String),
+  value: Schema.optionalKey(Schema.String),
+  fields: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        field: Schema.optionalKey(Schema.Array(Schema.String)),
+        labelKey: Schema.optionalKey(Schema.String),
+      })
+    )
+  ),
+});
 export const EmailDraft = Schema.Struct({
   purpose: Schema.optionalKey(AdministrationCampaignPurpose),
   templateKey: Schema.optionalKey(AdministrationCampaignTemplateKey),
-  structure: Schema.optionalKey(Schema.Array(EmailBodyComponent)),
+  structure: Schema.optionalKey(Schema.Array(draftComponent)),
   translations: Schema.optionalKey(
     Schema.Record(
       key,
@@ -99,8 +146,19 @@ export const EmailDraft = Schema.Struct({
       })
     )
   ),
-  values: Schema.optionalKey(Schema.Array(EmailValueDefinition)),
-}).annotate({ identifier: "EmailDraft" });
+  values: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        name: Schema.optionalKey(Schema.String),
+        source: Schema.optionalKey(draftSource),
+        fallback: Schema.optionalKey(Schema.Record(key, Schema.String)),
+      })
+    )
+  ),
+}).annotate({
+  identifier: "EmailDraft",
+  parseOptions: { onExcessProperty: "error" },
+});
 export type EmailDraft = typeof EmailDraft.Type;
 
 /** Historical decoding deliberately does not require today's Workspace languages or field catalogue. */
@@ -180,9 +238,20 @@ export const emailPublicationProblems = (
       )
     )
       problems.push(`Empty subject: ${locale}.`);
-    for (const textKey of componentTextKeys(document.structure))
+    for (const textKey of componentTextKeys(document.structure)) {
       if (!Object.hasOwn(translation.texts, textKey))
         problems.push(`Missing text ${textKey}: ${locale}.`);
+      const decorative = !componentTextKeys(
+        document.structure.filter((component) => component._tag !== "Image")
+      ).includes(textKey);
+      if (
+        !decorative &&
+        !(translation.texts[textKey] ?? []).some(
+          (part) => part._tag === "Value" || part.text.trim().length > 0
+        )
+      )
+        problems.push(`Empty text ${textKey}: ${locale}.`);
+    }
     for (const part of translatedParts(document.structure, translation)) {
       if (
         part._tag === "Value" &&
@@ -238,13 +307,6 @@ export const emailPublicationProblems = (
   }
   return problems;
 };
-
-/** Saved once before payload construction. Top-level missing is a preparation outcome. */
-export const EmailValueSnapshot = Schema.Union([
-  Schema.TaggedStruct("Resolved", { value: Schema.Json }),
-  Schema.TaggedStruct("Fallback", { text: Schema.String }),
-]);
-export type EmailValueSnapshot = typeof EmailValueSnapshot.Type;
 
 function samePath(left: readonly string[], right: readonly string[]): boolean {
   return (
