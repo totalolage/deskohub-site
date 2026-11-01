@@ -174,7 +174,12 @@ function describeField(ast: SchemaAST.AST): EmailCustomerField {
         ? {
             ...presence,
             kind: "scalar",
-            type: typeof literal,
+            type:
+              typeof literal === "string"
+                ? "string"
+                : typeof literal === "number"
+                  ? "number"
+                  : "boolean",
             choices: [literal],
           }
         : { ...presence, kind: "unsupported" };

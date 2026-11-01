@@ -209,9 +209,10 @@ export const emailPublicationProblems = (
       );
       continue;
     }
+    const source = definition.source;
     const selected = emailCustomerFieldAtPath(
       emailCustomerFieldCatalogue,
-      definition.source.path
+      source.path
     );
     if (
       !selected ||
