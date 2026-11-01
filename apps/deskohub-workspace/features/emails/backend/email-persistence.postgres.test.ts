@@ -37,7 +37,7 @@ const draft = {
       name: discountName,
       source: {
         kind: "discount",
-        discountId: "synthetic-discount",
+        discountId: "11111111-1111-4111-8111-111111111111",
         validDays: 7,
         maxUses: 1,
         maxUsesPerCustomer: 1,
@@ -46,7 +46,7 @@ const draft = {
   ],
 };
 const parameters = {
-  discountId: "synthetic-discount",
+  discountId: "11111111-1111-4111-8111-111111111111",
   expiresAt: "2027-01-10T12:00:00Z",
   maxUses: 1,
   maxUsesPerCustomer: 1,
@@ -215,6 +215,28 @@ describe.skipIf(!database)(
       expect(retries[0].emailVersionId).toBe(first.id);
       expect(retries[0].locale).toBe("cs-CZ");
       const oneOff = await selected();
+      const oneOffRetries = await Promise.all(
+        Array.from({ length: 6 }, () =>
+          run(
+            Effect.flatMap(EmailRecipientPersistence, (service) =>
+              service.select({
+                sendId: oneOff.sendId,
+                dotyposCustomerId: oneOff.dotyposCustomerId,
+                emailVersionId: second.id,
+                locale: "en-US",
+              })
+            )
+          )
+        )
+      );
+      expect(
+        oneOffRetries.every(
+          (row) =>
+            row.id === oneOff.id &&
+            row.emailVersionId === oneOff.emailVersionId &&
+            row.locale === oneOff.locale
+        )
+      ).toBe(true);
       await expect(
         pool.query(
           "update email_campaign_sends set frozen_email_version_id = $1 where id = $2",
@@ -349,6 +371,32 @@ describe.skipIf(!database)(
       } finally {
         await connection.query("rollback");
         connection.release();
+      }
+    });
+
+    test("cannot begin an issuance after preparation fails or skips", async () => {
+      for (const state of ["failed", "skipped"]) {
+        const preparation = await selected();
+        await run(
+          Effect.flatMap(EmailRecipientPersistence, (service) =>
+            service.reserveIssuance({
+              preparationId: preparation.id,
+              valueName: discountName,
+              parameters,
+            })
+          )
+        );
+        await run(
+          Effect.flatMap(EmailRecipientPersistence, (service) =>
+            service.finish(preparation.id, state)
+          )
+        );
+        await expect(
+          pool.query(
+            "update email_discount_issuances set state = 'issuing' where preparation_id = $1",
+            [preparation.id]
+          )
+        ).rejects.toThrow("pending delivery");
       }
     });
 

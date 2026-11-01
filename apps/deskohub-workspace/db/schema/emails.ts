@@ -52,7 +52,7 @@ export const emailVersions = pgTable(
     requiredValueNames: text("required_value_names")
       .array()
       .notNull()
-      .$type<readonly EmailValueName[]>(),
+      .$type<EmailValueName[]>(),
     publishedAt: instant("published_at").notNull().default(sql`now()`),
   },
   (t) => [
@@ -98,7 +98,7 @@ export const emailPreparations = pgTable(
     requiredValueNames: text("required_value_names")
       .array()
       .notNull()
-      .$type<readonly EmailValueName[]>()
+      .$type<EmailValueName[]>()
       .default([]),
     state: text("state")
       .notNull()

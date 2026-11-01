@@ -10,7 +10,10 @@ import {
 import { and, eq } from "drizzle-orm";
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import { emailCampaignSends } from "@/db/schema/email-campaigns";
+import {
+  emailCampaignRecipients,
+  emailCampaignSends,
+} from "@/db/schema/email-campaigns";
 import {
   type EmailDeliveryOutcome,
   type EmailDiscountIssuanceRow,
@@ -69,9 +72,7 @@ export interface IEmailRecipientPersistence {
   readonly saveSnapshot: (
     input: NamedValue & { readonly value: EmailValueSnapshot }
   ) => Effect.Effect<void, RecipientPersistenceFailure>;
-  readonly readSnapshots: (
-    preparationId: EmailPreparationId
-  ) => Effect.Effect<
+  readonly readSnapshots: (preparationId: EmailPreparationId) => Effect.Effect<
     readonly {
       readonly valueName: EmailValueName;
       readonly value: EmailValueSnapshot;
@@ -133,15 +134,39 @@ export class EmailRecipientPersistence extends Context.Service<
         ) {
           return yield* transaction(
             Effect.gen(function* () {
+              // Match delivery's lock order: send, then recipient, then preparation.
               yield* db
-                .insert(emailPreparations)
-                .values(input)
-                .onConflictDoNothing({
-                  target: [
-                    emailPreparations.sendId,
-                    emailPreparations.dotyposCustomerId,
-                  ],
-                });
+                .select({ id: emailCampaignSends.id })
+                .from(emailCampaignSends)
+                .where(eq(emailCampaignSends.id, input.sendId))
+                .for("share");
+              yield* db
+                .select({ sendId: emailCampaignRecipients.sendId })
+                .from(emailCampaignRecipients)
+                .where(
+                  and(
+                    eq(emailCampaignRecipients.sendId, input.sendId),
+                    eq(
+                      emailCampaignRecipients.dotyposCustomerId,
+                      input.dotyposCustomerId
+                    )
+                  )
+                )
+                .for("update");
+              const [existing] = yield* db
+                .select()
+                .from(emailPreparations)
+                .where(
+                  and(
+                    eq(emailPreparations.sendId, input.sendId),
+                    eq(
+                      emailPreparations.dotyposCustomerId,
+                      input.dotyposCustomerId
+                    )
+                  )
+                );
+              if (existing) return existing;
+              yield* db.insert(emailPreparations).values(input);
               const [row] = yield* db
                 .select()
                 .from(emailPreparations)

@@ -88,7 +88,7 @@ export class EmailPersistence extends Context.Service<
         }) {
           const [row] = yield* db
             .update(emails)
-            .set({ draft, updatedAt: currentInstant() })
+            .set({ draft, updatedAt: yield* currentInstant })
             .where(eq(emails.id, emailId))
             .returning();
           if (!row) return yield* new EmailNotFound({ emailId });
@@ -123,7 +123,7 @@ export class EmailPersistence extends Context.Service<
                   emailId,
                   versionNumber: (latest?.number ?? 0) + 1,
                   document,
-                  requiredValueNames: requiredEmailValueNames(document),
+                  requiredValueNames: [...requiredEmailValueNames(document)],
                 })
                 .returning();
               return version!;
@@ -139,7 +139,7 @@ export class EmailPersistence extends Context.Service<
             .from(emailVersions)
             .where(eq(emailVersions.id, versionId));
           if (!version) return undefined;
-          const document = yield* Schema.decodeUnknownEffect(EmailDocument)(
+          const document = yield* Schema.decodeEffect(EmailDocument)(
             version.document
           ).pipe(
             Effect.mapError(
@@ -158,7 +158,7 @@ export class EmailPersistence extends Context.Service<
             .orderBy(desc(emailVersions.versionNumber))
             .limit(1);
           if (!version) return undefined;
-          const document = yield* Schema.decodeUnknownEffect(EmailDocument)(
+          const document = yield* Schema.decodeEffect(EmailDocument)(
             version.document
           ).pipe(
             Effect.mapError(

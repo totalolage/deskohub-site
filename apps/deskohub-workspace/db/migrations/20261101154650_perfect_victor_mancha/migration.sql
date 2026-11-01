@@ -193,7 +193,7 @@ BEGIN
       RAISE EXCEPTION 'invalid email issuance transition' USING ERRCODE = '23514';
     END IF;
   END IF;
-  IF NEW.state = 'issuing' AND preparation.delivery_outcome <> 'pending' THEN
+  IF NEW.state = 'issuing' AND (preparation.delivery_outcome <> 'pending' OR preparation.state NOT IN ('selected', 'preparing')) THEN
     RAISE EXCEPTION 'issuance requires pending delivery' USING ERRCODE = '23514';
   END IF;
   IF TG_OP = 'UPDATE' AND OLD.code IS NULL AND NEW.code IS NOT NULL AND NEW.state <> 'issued' THEN
