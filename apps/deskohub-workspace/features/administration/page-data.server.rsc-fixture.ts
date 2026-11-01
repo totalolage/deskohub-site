@@ -94,6 +94,7 @@ AdministrationService.Live = Layer.succeed(AdministrationService, {
   exportCustomers: unused,
   loadCustomerReservations: unused,
   loadCustomerActivity: unused,
+  loadCustomerActivityStrict: unused,
   loadCustomerReservationActivity: unused,
   loadReservationActivity: unused,
   listOrders: unused,
