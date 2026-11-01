@@ -408,6 +408,35 @@ export {
   campaignsMinimumDhwVersion,
 } from "./email-campaigns";
 export {
+  type EmailCustomerField,
+  EmailCustomerSelection,
+  EmailCustomerSelectionInvalid,
+  emailCustomerFieldAtPath,
+  emailCustomerFieldCatalogue,
+  inspectEmailCustomerSelection,
+  isEmailCustomerScalar,
+  validateEmailCustomerSelection,
+} from "./email-customer-selection";
+export {
+  EmailId,
+  EmailPreparationId,
+  EmailValueName,
+  EmailVersionId,
+} from "./email-identifiers";
+export {
+  EmailBodyComponent,
+  EmailDiscountSelection,
+  EmailDocument,
+  EmailDraft,
+  EmailInlinePart,
+  EmailTranslation,
+  EmailValueDefinition,
+  EmailValueSnapshot,
+  emailDocumentForPublication,
+  emailPublicationProblems,
+  requiredEmailValueNames,
+} from "./emails";
+export {
   type OperationInvoke,
   type OperationRequest,
   operationGroupHandlers,
