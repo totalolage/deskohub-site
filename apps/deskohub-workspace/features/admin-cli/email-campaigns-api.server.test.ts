@@ -9,7 +9,6 @@ import {
   AdministrationCampaignSendId,
   AdministrationDotyposCustomerId,
   AdministrationLegacyUsername,
-  campaignsMinimumDhwVersion,
   CliInputInvalid,
   CliMutationRejected,
   CliMutationRequestId,
@@ -17,6 +16,7 @@ import {
   CliServiceUnavailable,
   CliSessionId,
   CliSessionUnauthorized,
+  campaignsMinimumDhwVersion,
   digestCliAuthenticationSecret,
   makeCliAuthenticationSecret,
   WorkspaceAdminApi,
@@ -190,10 +190,22 @@ describe("campaign admin API", () => {
     "refuses dhw %s before it reads or writes visit-end filters",
     async (dhwVersion) => {
       for (const call of [
-        (client: CampaignsClient) => client.getCampaign({ params: { campaignId } }).pipe(Effect.flip),
-        (client: CampaignsClient) => client.updateCampaign({ params: { campaignId }, payload: { title: "Changed" } }).pipe(Effect.flip),
+        (client: CampaignsClient) =>
+          client.getCampaign({ params: { campaignId } }).pipe(Effect.flip),
+        (client: CampaignsClient) =>
+          client
+            .updateCampaign({
+              params: { campaignId },
+              payload: { title: "Changed" },
+            })
+            .pipe(Effect.flip),
       ]) {
-        const error = await callCampaignsApi(call, {}, AuthorizedCliRequest, dhwVersion);
+        const error = await callCampaignsApi(
+          call,
+          {},
+          AuthorizedCliRequest,
+          dhwVersion
+        );
         expect(error).toBeInstanceOf(CliInputInvalid);
         expect(error.message).toContain("dhw update");
       }
