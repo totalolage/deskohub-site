@@ -3,7 +3,6 @@ import {
   DotyposCustomerIdSchema,
   type DotyposReservation,
   DotyposService,
-  readInIdFilterBatches,
   toCustomerEmailIdentity,
 } from "@deskohub/dotypos";
 import { or, sql } from "drizzle-orm";
@@ -136,11 +135,11 @@ export const enumerateRunOwnedReservations = Effect.fn(
         ]),
       ].map((id) => Schema.decodeUnknownSync(DotyposCustomerIdSchema)(id))
   );
-  const customers = (yield* readInIdFilterBatches(
-    customerIds,
-    (ids) => dotypos.getCustomers({ ids }),
-    { concurrency: 1 }
-  )).flat();
+  const customers = [
+    ...(yield* dotypos.getCustomersByIds(customerIds, {
+      concurrency: 1,
+    })).values(),
+  ];
   const returned = new Set(customers.map(({ id }) => id));
   if (
     returned.size !== customers.length ||

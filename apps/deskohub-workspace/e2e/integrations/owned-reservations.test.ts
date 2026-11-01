@@ -49,6 +49,7 @@ const fixture = async (
     | "bad-page"
     | "page-failure"
     | "missing-customer"
+    | "customer-page"
     | "missing-owner"
 ) => {
   const requests: { readonly method: string; readonly path: string }[] = [];
@@ -135,26 +136,20 @@ const fixture = async (
           .split(",");
         const page = Number(url.searchParams.get("page"));
         const selected = customers.filter(({ id }) => ids.includes(id));
-        const customer = selected[page - 1];
         return Response.json({
           currentPage: String(page),
           data:
-            mode === "missing-customer" || !customer
+            mode === "missing-customer"
               ? []
-              : [
-                  {
-                    ...customer,
-                    _cloudId: "cloud",
-                    firstName: "Synthetic",
-                    points: null,
-                    flags: "0",
-                    display: true,
-                  },
-                ],
-          nextPage:
-            mode !== "missing-customer" && page < selected.length
-              ? String(page + 1)
-              : null,
+              : selected.map((customer) => ({
+                  ...customer,
+                  _cloudId: "cloud",
+                  firstName: "Synthetic",
+                  points: null,
+                  flags: "0",
+                  display: true,
+                })),
+          nextPage: mode === "customer-page" ? "2" : null,
         });
       }
       return new Response(null, { status: 400 });
@@ -209,6 +204,7 @@ for (const mode of [
   "bad-page",
   "page-failure",
   "missing-customer",
+  "customer-page",
   "missing-owner",
 ] as const) {
   test(`${mode} invalidates enumeration rather than returning zero`, async () => {

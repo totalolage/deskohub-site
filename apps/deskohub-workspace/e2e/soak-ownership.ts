@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { isTestEmailAddress } from "@deskohub/test-email";
 import { workspaceE2EAccountCaseIds } from "./account/catalog";
 import { makeWorkspaceE2EAccountRecipientForRunId } from "./account/config";
+import { workspaceE2EAccountLaneId } from "./account/journal";
 import type { E2EEnvironment } from "./e2e-env";
 import { nightlyCasesEnabled } from "./e2e-env";
 import {
@@ -36,6 +37,10 @@ export const readRunOwnership = async (
     resolve(artifactRoot, "run-plan.json")
   );
   const context = plan.runContext;
+  const caseExpected = (caseId: string) =>
+    (plan.preparation.office !== undefined ||
+      !isWorkspaceE2EOfficeCaseId(caseId)) &&
+    (nightlyCasesEnabled(environment) || !isWorkspaceE2ENightlyCaseId(caseId));
   if (
     context.runId !==
       `${environment.GITHUB_RUN_ID}-${environment.GITHUB_RUN_ATTEMPT}` ||
@@ -60,13 +65,9 @@ export const readRunOwnership = async (
     const journal = await readReservationJournal(
       resolve(root, `${caseId}.json`)
     );
-    const expected =
-      (plan.preparation.office !== undefined ||
-        !isWorkspaceE2EOfficeCaseId(caseId)) &&
-      (nightlyCasesEnabled(environment) ||
-        !isWorkspaceE2ENightlyCaseId(caseId));
     if (!journal) {
-      if (expected) throw new Error("Missing case ownership journal");
+      if (caseExpected(caseId))
+        throw new Error("Missing case ownership journal");
       continue;
     }
     if (journal.caseId !== caseId || !Array.isArray(journal.checkoutStates)) {
@@ -88,6 +89,7 @@ export const readRunOwnership = async (
     journalCount++;
   }
   for (const owner of workspaceE2ECheckoutJournalOwners) {
+    const caseId = owner.caseId ?? owner.ownerId;
     for (const label of owner.recipientLabels) {
       emails.add(
         makeWorkspaceE2EAccountRecipientForRunId(context.runId, label)
@@ -96,7 +98,11 @@ export const readRunOwnership = async (
     const journal = await readReservationJournal(
       resolve(accounts, `${owner.ownerId}.json`)
     );
-    if (!journal) continue;
+    if (!journal) {
+      if (caseId === workspaceE2EAccountLaneId || caseExpected(caseId))
+        throw new Error("Missing account ownership journal");
+      continue;
+    }
     if (journal.laneId !== owner.ownerId)
       throw new Error("Unknown account owner");
     addIds(customerIds, journal.dotyposCustomerIds);

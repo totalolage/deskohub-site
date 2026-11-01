@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { testEmailAddress } from "@deskohub/test-email";
 import { makeTestE2EEnvironment } from "./e2e-env.test-fixture";
 import { workspaceE2ECaseIds } from "./playwright-checkout/case-catalog";
+import { workspaceE2ECheckoutJournalOwners } from "./playwright-checkout/journal-owners";
 import { makeE2ERunContext } from "./services/telemetry";
 import { readRunOwnership } from "./soak-ownership";
 
@@ -55,6 +56,42 @@ test("the actual ownership reader requires complete case, owner, run and pre-cre
         caseId: id,
         reservationIntents: id === caseId ? [intent] : [],
       });
+    const accountJournal = {
+      laneId: "account-lane",
+      dotyposCustomerIds: [],
+      authUserIds: [],
+      reservationIntents: [],
+    };
+    for (const { ownerId } of workspaceE2ECheckoutJournalOwners)
+      await write(`account-journals/${ownerId}.json`, {
+        ...accountJournal,
+        laneId: ownerId,
+      });
+    expect((await readRunOwnership(environment, directory)).intents).toEqual([
+      intent,
+    ]);
+    await rm(join(directory, "account-journals/account-lane.json"));
+    await rejected();
+    await write("account-journals/account-lane.json", accountJournal);
+    const booker = workspaceE2ECheckoutJournalOwners.find(
+      (owner) => owner.caseId === caseId
+    )!;
+    for (const ownerId of [booker.ownerId, "referral-share-link-checkout"]) {
+      await rm(join(directory, `account-journals/${ownerId}.json`));
+      await rejected();
+      await write(`account-journals/${ownerId}.json`, {
+        ...accountJournal,
+        laneId: ownerId,
+      });
+    }
+    // These cases are not admitted by this ordinary run without office slots.
+    for (const owner of workspaceE2ECheckoutJournalOwners) {
+      if (
+        (owner.caseId ?? owner.ownerId) === "automation-reservation-booked" ||
+        (owner.caseId ?? owner.ownerId).startsWith("checkout-office-")
+      )
+        await rm(join(directory, `account-journals/${owner.ownerId}.json`));
+    }
     expect((await readRunOwnership(environment, directory)).intents).toEqual([
       intent,
     ]);
