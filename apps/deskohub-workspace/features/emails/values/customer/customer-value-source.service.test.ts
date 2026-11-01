@@ -11,6 +11,8 @@ import { AdministrationService } from "@/features/administration/administration.
 import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
 import { CurrentAdministrator } from "@/features/administrators/backend/current-administrator";
 import { DiscountAdministration } from "@/features/discounts/admin/discount-administration.service";
+import { WorkspaceReservationDetailsMalformedError } from "@/features/reservation/backend/stored-reservation-details.server";
+import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { CustomerValueSource } from "./customer-value-source.service";
 
@@ -284,6 +286,19 @@ describe("CustomerValueSource", () => {
       _tag: "Failure",
       failure: { _tag: "CustomerValueRejected", reason: "invalid-data" },
     });
+  });
+
+  test("rejects malformed stored activity instead of reporting a temporary failure", async () => {
+    const result = await Effect.flatMap(CustomerValueSource, (source) => source.activity({ customerId })).pipe(
+      Effect.provide(sourceLayer({ loadActivity: () => Effect.fail(new WorkspaceReservationDetailsMalformedError({
+        reservationId: Schema.decodeUnknownSync(workspaceReservationIdSchema)("019b0000-0000-7000-8000-000000000003"),
+        message: "Synthetic malformed reservation details",
+        cause: { email: testEmailAddress("malformed-customer-value") },
+      })) })),
+      Effect.provideService(CurrentAdministrator, actor), Effect.result, Effect.runPromise,
+    );
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "CustomerValueRejected", reason: "invalid-data" } });
+    expect(JSON.stringify(result)).not.toContain(testEmailAddress("malformed-customer-value"));
   });
 
   test("projects activity to the authoritative contract and keeps nulls and bounded history flags", async () => {
