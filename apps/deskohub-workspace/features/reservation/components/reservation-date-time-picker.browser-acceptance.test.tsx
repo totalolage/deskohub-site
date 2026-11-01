@@ -137,18 +137,14 @@ test.skipIf(!chromiumAvailable)(
         wrapperFitsField: true,
       });
 
-      // With the orange clock hidden, the field draws only its text: Chromium's
-      // clock button is there but transparent.
+      // The field draws its text and the orange clock. With the clock hidden,
+      // it draws only its text: Chromium's clock button is there but
+      // transparent.
       await page.addStyleTag({
         content:
           '[data-plain-time="without-button"]::-webkit-calendar-picker-indicator{display:none}',
       });
-      await page.evaluate(() => {
-        const clock = document
-          .querySelector('input[type="time"]')
-          ?.parentElement?.querySelector("svg");
-        if (clock) clock.style.visibility = "hidden";
-      });
+      const field = 'input[type="time"]:not([data-plain-time])';
       const textInk = await countFieldInk(
         page,
         '[data-plain-time="without-button"]'
@@ -157,9 +153,14 @@ test.skipIf(!chromiumAvailable)(
       expect(
         await countFieldInk(page, '[data-plain-time="with-button"]')
       ).toBeGreaterThan(textInk);
-      expect(
-        await countFieldInk(page, 'input[type="time"]:not([data-plain-time])')
-      ).toBe(textInk);
+      expect(await countFieldInk(page, field)).toBeGreaterThan(textInk);
+      await page.evaluate((selector) => {
+        const clock = document
+          .querySelector(selector)
+          ?.parentElement?.querySelector("svg");
+        if (clock) clock.style.visibility = "hidden";
+      }, field);
+      expect(await countFieldInk(page, field)).toBe(textInk);
     } finally {
       await page.close();
     }

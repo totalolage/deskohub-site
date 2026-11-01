@@ -176,17 +176,13 @@ export function ReservationDateTimePicker({
         // The time field keeps its own height when the date column grows
         // with its description, so the clock centers on the field.
         <div className="relative self-start">
-          <Clock
-            aria-hidden="true"
-            className="pointer-events-none absolute end-4 top-1/2 h-5 w-5 -translate-y-1/2 text-burned-orange"
-          />
           <Input
             id={id ? `${id}-time` : undefined}
             aria-describedby={ariaDescribedBy}
             aria-invalid={ariaInvalid}
             aria-label={timeLabel}
             // Chromium draws its own clock button. It stays clickable as a
-            // transparent hit area over the orange clock, so the field shows
+            // transparent hit area under the orange clock, so the field shows
             // one clock.
             className="relative pe-12 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-y-0 [&::-webkit-calendar-picker-indicator]:end-0 [&::-webkit-calendar-picker-indicator]:m-0 [&::-webkit-calendar-picker-indicator]:h-auto [&::-webkit-calendar-picker-indicator]:w-12 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0"
             min={selectedDateMinimumTime}
@@ -197,6 +193,11 @@ export function ReservationDateTimePicker({
             required={ariaRequired}
             value={selectedTime}
             variant={variant}
+          />
+          {/* After the field, so the positioned field doesn't paint over it. */}
+          <Clock
+            aria-hidden="true"
+            className="pointer-events-none absolute end-4 top-1/2 h-5 w-5 -translate-y-1/2 text-burned-orange"
           />
         </div>
       )}
