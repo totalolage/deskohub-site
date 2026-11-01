@@ -24,6 +24,10 @@ import {
 } from "../errors";
 import { pollUntil } from "../polling";
 import { redact } from "../redaction";
+import {
+  recordCheckoutIntent,
+  recordReservationResult,
+} from "../reservation-intents";
 import { addRedaction, assert, log, parseUrl } from "../runtime";
 import {
   type WorkspaceE2ETimeouts,
@@ -74,6 +78,7 @@ export const prepareCheckoutPaymentAttempt = ({
       timeoutMs: config.timeouts.browserNavigation,
     });
     return yield* submitReservationForPayPage({
+      data,
       onOrderId,
       preparation,
       session,
@@ -82,24 +87,33 @@ export const prepareCheckoutPaymentAttempt = ({
   });
 
 export const submitReservationForPayPage = ({
+  data,
   onOrderId,
   preparation,
   session,
   timeouts,
 }: {
+  data: CheckoutData;
   onOrderId?: (orderId: WorkspaceReservationId) => void;
   preparation: ReservationFormPreparation;
   session: E2EBrowserSession;
   timeouts: WorkspaceE2ETimeouts;
 }): Effect.Effect<WorkspaceReservationId, WorkspaceE2EError> =>
   Effect.gen(function* () {
+    const intent = yield* recordCheckoutIntent(data);
     const payPageUrl = yield* submitReservationAndWaitForPayPage({
       onOrderId,
       preparation,
       session,
       timeouts,
     });
-    return yield* readPayPageOrderIdFrom({ onOrderId, payPageUrl, session });
+    const orderId = yield* readPayPageOrderIdFrom({
+      onOrderId,
+      payPageUrl,
+      session,
+    });
+    yield* recordReservationResult(intent, { orderId });
+    return orderId;
   });
 
 /**

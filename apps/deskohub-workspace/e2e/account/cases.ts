@@ -1190,17 +1190,21 @@ export const makeWorkspaceE2EAccountCases = ({
                   customerId,
                 }
               );
+              yield* recordFixtureIds(journalRef, {
+                dotyposReservationIds: first.reservationId
+                  ? [first.reservationId]
+                  : [],
+              });
               const second = yield* createSyntheticReservation(
                 datasourceConfig,
                 {
                   customerId,
                 }
               );
-              const reservationIds = [first.reservationId, second.reservationId]
-                .filter((value) => value !== undefined)
-                .map((value) => value as string);
               yield* recordFixtureIds(journalRef, {
-                dotyposReservationIds: reservationIds,
+                dotyposReservationIds: second.reservationId
+                  ? [second.reservationId]
+                  : [],
               });
               return [first, second];
             }),

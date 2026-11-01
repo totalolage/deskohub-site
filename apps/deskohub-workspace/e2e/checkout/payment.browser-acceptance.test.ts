@@ -391,6 +391,7 @@ test.skipIf(!chromiumAvailable)(
       prepare: showReservation(scenario),
       drive: ({ session }) =>
         submitReservationForPayPage({
+          data,
           onOrderId: (value) => receivedOrderIds.push(value),
           preparation: preparationFor(data),
           session,
@@ -423,6 +424,7 @@ test.skipIf(!chromiumAvailable)(
       prepare: showReservation(scenario),
       drive: ({ session }) =>
         submitReservationForPayPage({
+          data,
           preparation: preparationFor(data),
           session,
           timeouts: shortTimeouts,
@@ -447,6 +449,7 @@ test.skipIf(!chromiumAvailable)(
       drive: ({ session }) => {
         addRedaction(redactedOrderId);
         return submitReservationForPayPage({
+          data,
           onOrderId: (value) => receivedOrderIds.push(value),
           preparation: preparationFor(data),
           session,
@@ -473,6 +476,7 @@ test.skipIf(!chromiumAvailable)(
       prepare: showReservation(scenario),
       drive: ({ session }) =>
         submitReservationForPayPage({
+          data,
           preparation: preparationFor(data),
           session,
           timeouts: shortTimeouts,
@@ -520,6 +524,7 @@ test.skipIf(!chromiumAvailable)(
         ),
       drive: ({ session }) =>
         submitReservationForPayPage({
+          data,
           preparation: preparationFor(data),
           session,
           timeouts: shortTimeouts,
@@ -547,6 +552,7 @@ test.skipIf(!chromiumAvailable)(
       prepare: showReservation(scenario),
       drive: ({ session }) =>
         submitReservationForPayPage({
+          data,
           preparation: preparationFor(data),
           session,
           timeouts: shortTimeouts,
@@ -585,6 +591,7 @@ test.skipIf(!chromiumAvailable)(
       prepare: showReservation(scenario),
       drive: ({ session }) =>
         submitReservationForPayPage({
+          data,
           onOrderId: (value) => receivedOrderIds.push(value),
           preparation: preparationFor(data),
           session,
@@ -610,6 +617,7 @@ test.skipIf(!chromiumAvailable)(
       prepare: showReservation(scenario),
       drive: ({ session }) =>
         submitReservationForPayPage({
+          data,
           preparation: preparationFor(data, 6_000),
           session,
           timeouts: shortTimeouts,
@@ -633,6 +641,7 @@ test.skipIf(!chromiumAvailable)(
       drive: ({ session }) => {
         addRedaction(syntheticIdSecret);
         return submitReservationForPayPage({
+          data,
           preparation: preparationFor(data, 500),
           session,
           timeouts: shortTimeouts,
@@ -658,6 +667,7 @@ test.skipIf(!chromiumAvailable)(
       prepare: showReservation(scenario),
       drive: ({ session }) =>
         submitReservationForPayPage({
+          data,
           preparation: preparationFor(data, 8_000),
           session,
           timeouts: { ...shortTimeouts, checkoutStart: 1_200 },
@@ -680,6 +690,7 @@ test.skipIf(!chromiumAvailable)(
       prepare: showReservation(scenario),
       drive: ({ session }) =>
         submitReservationForPayPage({
+          data,
           preparation: preparationFor(data),
           session,
           timeouts: shortTimeouts,
@@ -702,6 +713,7 @@ test.skipIf(!chromiumAvailable)(
       prepare: showReservation(scenario),
       drive: ({ session }) =>
         submitReservationForPayPage({
+          data,
           preparation: preparationFor(data, 48_000),
           session,
           timeouts: { ...shortTimeouts, checkoutStart: 52_000 },
@@ -730,6 +742,7 @@ test.skipIf(!chromiumAvailable)(
       drive: ({ session }) => {
         addRedaction(diagnosticSecret);
         return submitReservationForPayPage({
+          data,
           preparation: preparationFor(data),
           session,
           timeouts: { ...shortTimeouts, checkoutStart: 1_200 },
@@ -758,6 +771,7 @@ test.skipIf(!chromiumAvailable)(
       prepare: showReservation(scenario),
       drive: ({ session }) =>
         submitReservationForPayPage({
+          data,
           preparation: preparationFor(data, 8_000),
           session,
           timeouts: { ...shortTimeouts, checkoutStart: 10_000 },

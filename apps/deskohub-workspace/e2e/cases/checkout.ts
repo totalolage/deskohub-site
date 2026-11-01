@@ -68,6 +68,10 @@ import {
   type ValidatedDotyposReservation,
   validateDotypos,
 } from "../integrations/dotypos";
+import {
+  recordCheckoutIntent,
+  recordReservationResult,
+} from "../reservation-intents";
 import type { Runner } from "../runtime";
 import { assert, browserSessionFor, log, parseUrl } from "../runtime";
 import type {
@@ -128,6 +132,10 @@ export const executeCheckoutFlow = ({
   Effect.gen(function* () {
     const httpClient = yield* HttpClient.HttpClient;
     state.startedAt = new Date();
+    const agentIntent =
+      "startReservation" in flow
+        ? yield* recordCheckoutIntent(data)
+        : undefined;
     const orderId =
       "startReservation" in flow
         ? yield* flow.startReservation
@@ -139,6 +147,7 @@ export const executeCheckoutFlow = ({
               });
               if (beforeReservationSubmit) yield* beforeReservationSubmit;
               return yield* submitReservationForPayPage({
+                data,
                 onOrderId: (startedOrderId) => {
                   state.orderId = startedOrderId;
                 },
@@ -150,6 +159,7 @@ export const executeCheckoutFlow = ({
             id: "prepare-checkout-pay-page",
             timeoutMs: config.timeouts.checkoutStart,
           });
+    yield* recordReservationResult(agentIntent, { orderId });
     if (payPageSteps) {
       for (const step of payPageSteps(orderId)) yield* runStep(step);
     }
