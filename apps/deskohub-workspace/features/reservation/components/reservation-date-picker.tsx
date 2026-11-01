@@ -4,7 +4,6 @@ import { Option, Predicate } from "effect";
 import { CalendarIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { isLocale, m } from "@/features/i18n";
-import { fieldTriggerVariants } from "@/shared/components/ui/field-trigger";
 import { useFormField } from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
 import {
@@ -276,7 +275,7 @@ export function ReservationDatePicker({
           if (!nextOpen) onBlur?.();
         }}
       >
-        <div className="flex gap-2">
+        <div className="relative">
           <Input
             ref={inputRef}
             id={id}
@@ -292,7 +291,7 @@ export function ReservationDatePicker({
             aria-label={ariaLabelledBy ? undefined : ariaLabel}
             aria-labelledby={ariaLabelledBy}
             autoComplete="off"
-            className="min-w-0 flex-1"
+            className="pe-12"
             onBlur={() => {
               if (commitText()) onBlur?.();
             }}
@@ -325,16 +324,10 @@ export function ReservationDatePicker({
               onFocus={reservationCalendar.preload}
               onPointerDown={reservationCalendar.preload}
               onPointerEnter={reservationCalendar.preload}
-              className={cn(
-                fieldTriggerVariants({ variant: fieldVariant }),
-                "w-auto shrink-0 justify-center px-3.5"
-              )}
+              className="absolute inset-y-1 end-1 flex w-10 cursor-pointer items-center justify-center rounded-[0.85rem] text-burned-orange outline-none transition hover:bg-burned-orange/10 focus-visible:ring-2 focus-visible:ring-burned-orange"
               type="button"
             >
-              <CalendarIcon
-                aria-hidden="true"
-                className="h-5 w-5 text-burned-orange"
-              />
+              <CalendarIcon aria-hidden="true" className="h-5 w-5" />
             </button>
           </PopoverTrigger>
         </div>
