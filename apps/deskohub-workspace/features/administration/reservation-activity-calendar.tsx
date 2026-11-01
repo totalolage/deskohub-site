@@ -171,67 +171,77 @@ function ReservationActivityGrid<
         {},
         { locale }
       )}
-      className="overflow-x-auto rounded-lg"
+      className="@container"
     >
-      <div className="min-w-[50rem]">
-        <div className="mb-1 grid grid-cols-[2rem_minmax(0,1fr)] gap-x-2">
-          <span />
-          <div
-            className="grid gap-1 text-xs text-navy-blue/55"
-            style={gridStyle}
-          >
-            {weekStarts.map((weekStart, week) => (
-              <span className="whitespace-nowrap" key={weekStart}>
-                {monthLabels.get(week)}
-              </span>
-            ))}
-          </div>
+      {/* The columns, gaps, and type all shrink with the card, so the year
+          always fits its width without scrolling. */}
+      <div className="mb-1 grid grid-cols-[2rem_minmax(0,1fr)] gap-x-2">
+        <span />
+        <div
+          className="grid gap-px text-[0.5rem] text-navy-blue/55 @lg:gap-0.5 @lg:text-[0.625rem] @3xl:gap-1 @3xl:text-xs"
+          style={gridStyle}
+        >
+          {weekStarts.map((weekStart, week) => (
+            <span
+              className={cn(
+                "whitespace-nowrap",
+                // A month starting in one of the last two weeks ends at its
+                // week's edge, so it can't run past the grid. Narrow cards
+                // hide it, as it would run into the previous month's label.
+                week >= weekCount - 2 &&
+                  "invisible flex justify-end @2xl:visible"
+              )}
+              key={weekStart}
+            >
+              {monthLabels.get(week)}
+            </span>
+          ))}
         </div>
-        <div className="grid grid-cols-[2rem_minmax(0,1fr)] gap-x-2">
-          <div
-            aria-hidden="true"
-            className="grid grid-rows-7 gap-1 text-xs leading-none text-navy-blue/55"
-          >
-            <span>{formatWeekday({ isoDay: 1, locale })}</span>
-            <span />
-            <span>{formatWeekday({ isoDay: 3, locale })}</span>
-            <span />
-            <span>{formatWeekday({ isoDay: 5, locale })}</span>
-            <span />
-            <span />
-          </div>
-          <div
-            className="grid grid-flow-col grid-rows-7 gap-1"
-            style={gridStyle}
-          >
-            {leadingDates.map((date) => (
-              <span aria-hidden="true" key={date} />
-            ))}
-            {days.map((date) => {
-              const dateString = date.toString();
-              const activity = activityByDate.get(dateString);
-              const appearance = activity
-                ? getDayAppearance(activity)
-                : { className: emptyDayClassName };
-              return (
-                <time
-                  aria-hidden="true"
-                  className={cn(
-                    "block aspect-square w-full border border-navy-blue/8",
-                    appearance.className
-                  )}
-                  dateTime={dateString}
-                  key={dateString}
-                  style={appearance.style}
-                  title={formatReservationActivityLabel(
-                    dateString,
-                    activity?.count ?? 0,
-                    locale
-                  )}
-                />
-              );
-            })}
-          </div>
+      </div>
+      <div className="grid grid-cols-[2rem_minmax(0,1fr)] gap-x-2">
+        <div
+          aria-hidden="true"
+          className="grid grid-rows-7 gap-px text-[0.5rem] leading-none text-navy-blue/55 @lg:gap-0.5 @lg:text-[0.625rem] @3xl:gap-1 @3xl:text-xs"
+        >
+          <span>{formatWeekday({ isoDay: 1, locale })}</span>
+          <span />
+          <span>{formatWeekday({ isoDay: 3, locale })}</span>
+          <span />
+          <span>{formatWeekday({ isoDay: 5, locale })}</span>
+          <span />
+          <span />
+        </div>
+        <div
+          className="grid grid-flow-col grid-rows-7 gap-px @lg:gap-0.5 @3xl:gap-1"
+          style={gridStyle}
+        >
+          {leadingDates.map((date) => (
+            <span aria-hidden="true" key={date} />
+          ))}
+          {days.map((date) => {
+            const dateString = date.toString();
+            const activity = activityByDate.get(dateString);
+            const appearance = activity
+              ? getDayAppearance(activity)
+              : { className: emptyDayClassName };
+            return (
+              <time
+                aria-hidden="true"
+                className={cn(
+                  "block aspect-square w-full border border-navy-blue/8",
+                  appearance.className
+                )}
+                dateTime={dateString}
+                key={dateString}
+                style={appearance.style}
+                title={formatReservationActivityLabel(
+                  dateString,
+                  activity?.count ?? 0,
+                  locale
+                )}
+              />
+            );
+          })}
         </div>
       </div>
       <ul className="sr-only">
