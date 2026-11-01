@@ -556,3 +556,9 @@ describe("reservation product phrasing", () => {
     );
   });
 });
+
+test("visit-end summaries distinguish completed intervals from started visits in both locales", () => {
+  const filter = reservations("eq", 1, { dateBasis: "visitEnd", period: { _tag: "Past" } });
+  expect(describe_(filter)).toBe("Customers who have exactly 1 booked reservation ending any time so far");
+  expect(describe_(filter, "cs-CZ")).toContain("s koncem");
+});
