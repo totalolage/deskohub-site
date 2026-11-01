@@ -1,5 +1,6 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import type {
+  EmailId,
   AutomationRunEventDetail,
   AutomationTrigger,
 } from "@deskohub/workspace-admin-api";
@@ -76,6 +77,7 @@ import {
   emailCampaigns,
 } from "./email-campaigns";
 import { quotedSqlList } from "./sql-list";
+import { emails } from "./emails";
 import { workspaceReservations } from "./workspace-reservations";
 
 /**
@@ -96,6 +98,7 @@ export const emailCampaignAutomationVersions = pgTable(
       .references(() => emailCampaigns.id)
       .$type<CampaignId>(),
     versionNumber: integer("version_number").notNull(),
+    emailId: text("email_id").references(() => emails.id).$type<EmailId>(),
     // Saved-audience conditions store ids only; they're evaluated live.
     flow: jsonb("flow").notNull(),
     // The flow trigger's tag, such as "Schedule" or "ReservationBooked".

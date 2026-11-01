@@ -127,3 +127,5 @@ export {
   type WorkspaceReservationRow,
   workspaceReservations,
 } from "./workspace-reservations";
+
+export { emails, emailVersions, emailPreparations, emailValueSnapshots, emailDiscountIssuances, type EmailRow, type EmailVersionRow, type EmailPreparationRow, type EmailDiscountIssuanceRow } from "./emails";
