@@ -6,6 +6,7 @@ import {
   CliClientCompatibility,
   CliInputInvalid,
   CliServiceUnavailable,
+  campaignsMinimumDhwVersion,
   DhwVersion,
   dhwVersionHeader,
   invoicesMinimumDhwVersion,
@@ -31,7 +32,7 @@ import { handleWorkspaceAdminApiRequest } from "./workspace-admin-api.server";
 
 const minimum = DhwVersion.make("1.20.0");
 const groupMinimums: Partial<Record<string, DhwVersion>> = {
-  campaigns: minimum,
+  campaigns: campaignsMinimumDhwVersion,
   automations: automationsMinimumDhwVersion,
 };
 const endpointMinimums: Partial<Record<string, DhwVersion>> = {

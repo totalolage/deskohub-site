@@ -16,7 +16,6 @@ import {
   CliMutationRejected,
   CliResourceNotFound,
   CliSessionUnauthorized,
-  openEngineWarningsDhwVersion,
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
 import { NodeHttpServer } from "@effect/platform-node";
@@ -152,9 +151,8 @@ describe("automation admin API", () => {
     expect(error).toBeInstanceOf(CliSessionUnauthorized);
   });
 
-  // dhw 1.22.0 and 1.23.0 shipped before the automation commands did.
-  test.each(["1.21.0", "1.22.0", "1.23.0", "1.24.0-rc.1"])(
-    "refuses dhw %s, which lacks the automation commands",
+  test.each(["1.21.0", "1.24.0", "1.30.0", "1.31.0-rc.1"])(
+    "refuses dhw %s, which cannot decode visit-end conditions",
     async (dhwVersion) => {
       const error = await callAutomationsApi(
         (client) =>
@@ -168,8 +166,8 @@ describe("automation admin API", () => {
     }
   );
 
-  test.each(["1.24.0", "1.24.0+pr.762.abc1234", "1.25.0"])(
-    "accepts dhw %s, the first release with the automation commands or later",
+  test.each([automationsMinimumDhwVersion, "1.31.0+pr.762.abc1234", "1.32.0"])(
+    "accepts dhw %s, the first release with visit-end conditions or later",
     async (dhwVersion) => {
       const detail = await callAutomationsApi(
         (client) => client.getAutomation({ params: { campaignId } }),
@@ -426,41 +424,19 @@ describe("automation admin API", () => {
     "reconcile-stalled",
     "synthetic-later-warning",
   ];
-  // `AutomationEngineHealth` as dhw 1.24.0 to 1.27.0 decode it: a closed list
-  // of warnings, which rejects the whole report on a code it doesn't know.
-  const ReleasedAutomationEngineHealth = Schema.Struct({
-    warnings: Schema.Array(
-      Schema.Literals([
-        "planner-stale",
-        "sweep-lagging",
-        "event-backlog",
-        "unit-backlog",
-        "schedule-lagging",
-        "falling-behind",
-      ])
-    ),
-  });
-
-  test.each(["1.24.0", "1.27.0", "1.28.0-rc.1"])(
-    "serves dhw %s engine health without the warnings it can't decode",
+  test.each(["1.24.0", "1.27.0", "1.28.0", "1.30.0"])(
+    "refuses engine health for dhw %s below the automation floor",
     async (dhwVersion) => {
-      const health = await callAutomationsApi(
-        (client) => client.getAutomationEngineHealth(),
+      const error = await callAutomationsApi(
+        (client) => client.getAutomationEngineHealth().pipe(Effect.flip),
         stalledEngine,
         { dhwVersion }
       );
-
-      expect(health.reconcileLagSeconds).toBe(8160);
-      expect(health.warnings).toEqual(["sweep-lagging"]);
-      expect(
-        Schema.decodeUnknownSync(ReleasedAutomationEngineHealth)(
-          Schema.encodeSync(AutomationEngineHealth)(health)
-        ).warnings
-      ).toEqual(["sweep-lagging"]);
+      expect(error).toBeInstanceOf(CliInputInvalid);
     }
   );
 
-  test.each([openEngineWarningsDhwVersion, "1.28.0+pr.827.ead84a5", "1.29.0"])(
+  test.each([automationsMinimumDhwVersion, "1.31.0+pr.827.ead84a5", "1.32.0"])(
     "serves dhw %s every engine warning",
     async (dhwVersion) => {
       const health = await callAutomationsApi(

@@ -830,11 +830,11 @@ export const AutomationEngineHealth = Schema.Struct({
 export type AutomationEngineHealth = typeof AutomationEngineHealth.Type;
 
 /**
- * The first `dhw` release with the `automations` and `calendar` commands.
- * Older binaries can't decode a flow, so every automation operation, reads
- * included, requires it.
+ * The first `dhw` release that decodes visit-end conditions in automation
+ * flows. Older binaries cannot read them, so every automation operation,
+ * reads included, requires it.
  */
-export const automationsMinimumDhwVersion = DhwVersion.make("1.24.0");
+export const automationsMinimumDhwVersion = DhwVersion.make("1.31.0");
 
 /**
  * The first `dhw` release that decodes any engine warning code. Older

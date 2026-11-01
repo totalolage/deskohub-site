@@ -32,22 +32,28 @@ import { AdministrationReservationStatusFilter } from "./workspace-admin-api";
  */
 export const audienceAttributeCatalogue = defineAudienceAttributeCatalogue({
   /**
-   * Booked reservations dated by visit (the Dotypos start) or booking
+   * Booked reservations dated by visit start, visit end, or booking
    * (`reservation_confirmed_at`) within the period. Without a status only
    * booked reservations count: confirmed and never cancelled.
+   * `visitEnd` also excludes provider cancellations without a status;
+   * paired with `Past` it counts completed intervals, not attendance.
    */
   reservationCount: countAttribute("reservationCount", {
     label: "Reservation count",
     section: "Reservations",
     params: {
-      dateBasis: choiceParam(Schema.Literals(["visit", "booking"]), {
-        label: "Date basis",
-        control: "toggle",
-        options: {
-          visit: { label: "visit date", periodVerb: "visiting " },
-          booking: { label: "booking date", periodVerb: "confirmed " },
-        },
-      }),
+      dateBasis: choiceParam(
+        Schema.Literals(["visit", "visitEnd", "booking"]),
+        {
+          label: "Date basis",
+          control: "toggle",
+          options: {
+            visit: { label: "visit date", periodVerb: "visiting " },
+            visitEnd: { label: "visit end", periodVerb: "ending " },
+            booking: { label: "booking date", periodVerb: "confirmed " },
+          },
+        }
+      ),
       period: periodParam,
       status: optionalChoiceParam(AdministrationReservationStatusFilter, {
         label: "Reservation status",
