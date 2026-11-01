@@ -27,7 +27,13 @@ export class CustomerValueUnavailable extends Data.TaggedError(
 
 export class CustomerValueRejected extends Data.TaggedError(
   "CustomerValueRejected"
-)<{ readonly reason: "source-rejected" | "invalid-data" }> {}
+)<{
+  readonly reason:
+    | "source-rejected"
+    | "invalid-data"
+    | "incompatible-shape"
+    | "incompatible-sort";
+}> {}
 
 type CustomerValueSourceFailure =
   | CustomerValueUnauthorized

@@ -461,3 +461,49 @@ test("unfinished inline values round-trip in drafts and cannot publish", () => {
     ).toThrow();
   }
 });
+
+test("publication freezes source sorting separately from projected customer fields", () => {
+  const published = publish({
+    ...document,
+    values: [
+      {
+        name: "codes",
+        source: {
+          kind: "customer",
+          path: ["profile", "codes"],
+          fields: [["code"]],
+          sort: { path: ["createdAt"], direction: "desc" },
+          limit: 2,
+        },
+      },
+    ],
+  });
+  expect(published.values[0]?.customerSortShape).toEqual({
+    kind: "scalar",
+    type: "string",
+    nullable: false,
+    optional: false,
+  });
+  expect(published.values[0]?.customerShape).toMatchObject({
+    kind: "list",
+    element: { kind: "record", fields: { code: { type: "string" } } },
+  });
+  expect(
+    Object.keys(
+      published.values[0]?.customerShape?.kind === "list" &&
+        published.values[0].customerShape.element.kind === "record"
+        ? published.values[0].customerShape.element.fields
+        : {}
+    )
+  ).toEqual(["code"]);
+  const historical = Schema.decodeUnknownSync(EmailValueDefinition)({
+    name: "legacy_sort",
+    source: {
+      kind: "customer",
+      path: ["profile", "codes"],
+      fields: [["code"]],
+      sort: { path: ["createdAt"], direction: "desc" },
+    },
+  });
+  expect(historical.customerSortShape).toBeUndefined();
+});
