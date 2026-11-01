@@ -1,6 +1,10 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
-import { EmailValueName } from "@deskohub/workspace-admin-api";
+import {
+  EmailValueName,
+  emailCustomerFieldAtPath,
+  emailCustomerFieldCatalogue,
+} from "@deskohub/workspace-admin-api";
 import { Effect, Layer } from "effect";
 import {
   seedAutomatedCampaign,
@@ -431,6 +435,100 @@ describe.skipIf(!database)(
           service.finish(preparation.id, "ready")
         )
       );
+    });
+
+    test("replays frozen snapshots after catalogue drift and still rejects conflicting values", async () => {
+      const name = EmailValueName.make("consent");
+      const customerDraft = {
+        ...draft,
+        translations: Object.fromEntries(
+          Object.entries(draft.translations).map(([locale, translation]) => [
+            locale,
+            {
+              ...translation,
+              texts: {
+                intro: [{ _tag: "Value", name, field: ["documentHash"] }],
+              },
+            },
+          ])
+        ),
+        values: [
+          {
+            name,
+            source: {
+              kind: "customer",
+              path: ["activity", "marketingConsent"],
+              fields: [["documentHash"]],
+            },
+          },
+        ],
+      };
+      const preparation = await selected(customerDraft);
+      const other = await selected(customerDraft);
+      const input = { preparationId: preparation.id, valueName: name };
+      const value = {
+        _tag: "Resolved",
+        value: { documentHash: "synthetic-original" },
+      };
+      await run(
+        Effect.flatMap(EmailRecipientPersistence, (service) =>
+          service.saveSnapshot({ ...input, value })
+        )
+      );
+      await run(
+        Effect.flatMap(EmailRecipientPersistence, (service) =>
+          service.finish(preparation.id, "ready")
+        )
+      );
+      const descriptor = emailCustomerFieldAtPath(
+        emailCustomerFieldCatalogue,
+        ["activity", "marketingConsent", "documentHash"],
+        { inheritPresence: false }
+      );
+      if (descriptor?.kind !== "scalar")
+        throw new Error("Expected the synthetic customer scalar descriptor");
+      const original = descriptor.type;
+      try {
+        Object.assign(descriptor, { type: "number" });
+        await run(
+          Effect.flatMap(EmailRecipientPersistence, (service) =>
+            service.saveSnapshot({ ...input, value })
+          )
+        );
+        expect(
+          await run(
+            Effect.flatMap(EmailRecipientPersistence, (service) =>
+              service.readSnapshots(preparation.id)
+            )
+          )
+        ).toEqual([{ valueName: name, value }]);
+        expect(
+          await run(
+            Effect.flatMap(EmailRecipientPersistence, (service) =>
+              service.saveSnapshot({
+                ...input,
+                value: {
+                  _tag: "Resolved",
+                  value: { documentHash: "different" },
+                },
+              })
+            ).pipe(Effect.flip)
+          )
+        ).toMatchObject({ reason: "snapshot-conflict" });
+        expect(
+          await run(
+            Effect.flatMap(EmailRecipientPersistence, (service) =>
+              service.saveSnapshot({
+                preparationId: other.id,
+                valueName: name,
+                value,
+              })
+            ).pipe(Effect.flip)
+          )
+        ).toMatchObject({ reason: "invalid-snapshot" });
+      } finally {
+        Object.assign(descriptor, { type: original });
+      }
     });
 
     test("snapshot insert and ready serialize on the preparation row", async () => {

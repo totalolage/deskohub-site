@@ -194,6 +194,24 @@ export class EmailRecipientPersistence extends Context.Service<
             return yield* transaction(
               Effect.gen(function* () {
                 const preparation = yield* lockedPreparation(preparationId);
+                const [existing] = yield* db
+                  .select()
+                  .from(emailValueSnapshots)
+                  .where(
+                    and(
+                      eq(emailValueSnapshots.preparationId, preparationId),
+                      eq(emailValueSnapshots.valueName, valueName)
+                    )
+                  );
+                const encoded = canonicalJson(value);
+                if (existing) {
+                  if (existing.value !== encoded)
+                    return yield* new EmailPreparationConflict({
+                      preparationId,
+                      reason: "snapshot-conflict",
+                    });
+                  return;
+                }
                 const [version] = yield* db
                   .select({ document: emailVersions.document })
                   .from(emailVersions)
@@ -220,27 +238,13 @@ export class EmailRecipientPersistence extends Context.Service<
                       })
                   )
                 );
-                const [existing] = yield* db
-                  .select()
-                  .from(emailValueSnapshots)
-                  .where(
-                    and(
-                      eq(emailValueSnapshots.preparationId, preparationId),
-                      eq(emailValueSnapshots.valueName, valueName)
-                    )
-                  );
-                const encoded = canonicalJson(validated);
-                if (existing) {
-                  if (existing.value !== encoded)
-                    return yield* new EmailPreparationConflict({
-                      preparationId,
-                      reason: "snapshot-conflict",
-                    });
-                  return;
-                }
                 yield* db
                   .insert(emailValueSnapshots)
-                  .values({ preparationId, valueName, value: encoded });
+                  .values({
+                    preparationId,
+                    valueName,
+                    value: canonicalJson(validated),
+                  });
               })
             );
           }
