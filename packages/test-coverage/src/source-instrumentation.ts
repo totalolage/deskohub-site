@@ -25,10 +25,13 @@ const instrumenterOptions = {
 };
 
 // The instrumented code embeds the file path and depends on the
-// instrumenter's version and options, so all of them key the cache.
+// instrumenter's version and options and on the counter guard, so all of them
+// key the cache.
+const counterGuardVersion = 1;
 const cacheKeyPrefix = JSON.stringify([
   instrumenterPackage.version,
   instrumenterOptions,
+  counterGuardVersion,
 ]);
 
 export type SourceInstrumentation = {
@@ -58,7 +61,9 @@ export function createSourceInstrumentation(
       if (existsSync(cached)) {
         return readFileSync(cached, "utf8");
       }
-      const instrumented = instrumenter.instrumentSync(source, path);
+      const instrumented = guardCounters(
+        instrumenter.instrumentSync(source, path)
+      );
       writeFileAtomically(cached, instrumented);
       return instrumented;
     },
@@ -67,6 +72,22 @@ export function createSourceInstrumentation(
       return instrumenter.lastFileCoverage();
     },
   };
+}
+
+/**
+ * Istanbul counts through a module-level `cov_<hash>()` function. Tests send
+ * some functions to Playwright pages as source text, where that function does
+ * not exist, so each counter falls back to an object that absorbs increments.
+ */
+function guardCounters(instrumented: string): string {
+  const counter = /function (cov_\w+)\(\)/.exec(instrumented)?.[1];
+  if (counter === undefined) {
+    return instrumented;
+  }
+  return instrumented.replaceAll(
+    new RegExp(`(?<!function )\\b${counter}\\(\\)`, "g"),
+    `(typeof ${counter} === "function" ? ${counter}() : new Proxy(function () {}, { get: (_, key, proxy) => (key === Symbol.toPrimitive ? () => 0 : proxy), set: () => true }))`
+  );
 }
 
 /** Writes through a sibling temporary file so readers never see a partial file. */

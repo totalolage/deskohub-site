@@ -75,11 +75,33 @@ function isCoverageMapData(value: unknown): value is CoverageMapData {
 }
 
 function isFileCoverageData(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const file: Record<string, unknown> = { ...value };
   return (
-    typeof value === "object" &&
-    value !== null &&
-    ["path", "statementMap", "fnMap", "branchMap", "s", "f", "b"].every(
-      (field) => field in value
+    typeof file.path === "string" &&
+    [file.statementMap, file.fnMap, file.branchMap].every(isPlainRecord) &&
+    isCounterRecord(file.s, isCount) &&
+    isCounterRecord(file.f, isCount) &&
+    isCounterRecord(
+      file.b,
+      (counts) => Array.isArray(counts) && counts.every(isCount)
     )
   );
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isCounterRecord(
+  value: unknown,
+  isCounter: (counter: unknown) => boolean
+): boolean {
+  return isPlainRecord(value) && Object.values(value).every(isCounter);
+}
+
+function isCount(value: unknown): boolean {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }

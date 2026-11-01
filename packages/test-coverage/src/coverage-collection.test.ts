@@ -51,6 +51,15 @@ export function mockedValue(): string {
   return "real";
 }
 `,
+  "src/in-page.ts": `
+export const readTitle = () => {
+  const title = "page";
+  return title.toUpperCase();
+};
+`,
+  "src/teardown.ts": `
+export function fileTeardown(): void {}
+`,
   "src/never-loaded.ts": `
 export function neverLoaded(flag: boolean): number {
   return flag ? 1 : 0;
@@ -85,6 +94,15 @@ test("signs and greets", async () => {
   expect((globalThis as { fixtureEnvironment?: string }).fixtureEnvironment).toBe("test");
 });
 `,
+  "tests/in-page.test.ts": `
+import { afterAll, expect, test } from "bun:test";
+import { readTitle } from "../src/in-page";
+import { fileTeardown } from "../src/teardown";
+afterAll(() => fileTeardown());
+test("runs a function from its source text, as a browser page does", () => {
+  expect(new Function(\`return (\${readTitle.toString()})();\`)()).toBe("PAGE");
+});
+`,
   "tests/child.test.ts": `
 import { expect, test } from "bun:test";
 test("runs a child script", async () => {
@@ -100,6 +118,8 @@ const sourcePaths = [
   "src/environment.ts",
   "src/script-only.ts",
   "src/mocked.ts",
+  "src/in-page.ts",
+  "src/teardown.ts",
   "src/never-loaded.ts",
 ];
 
@@ -184,7 +204,7 @@ describe.each([
   ["isolated test files", ["--parallel=1"]],
   ["a shared global", []],
 ])("coverage collection with %s", (_, testArguments) => {
-  test("sums counters across test files and covers preloads, child scripts, and unloaded sources", async () => {
+  test("sums counters across test files and covers preloads, teardown, child scripts, and unloaded sources", async () => {
     const { report, file } = await collectFixtureCoverage(testArguments);
 
     expect(Object.keys(report.coverage).sort()).toEqual(
@@ -199,6 +219,7 @@ describe.each([
     ).toBeGreaterThan(0);
     expect(functionCalls(file("src/script-only.ts"), "scriptOnly")).toBe(1);
     expect(functionCalls(file("src/mocked.ts"), "mockedValue")).toBe(0);
+    expect(functionCalls(file("src/teardown.ts"), "fileTeardown")).toBe(1);
 
     const neverLoaded = file("src/never-loaded.ts");
     expect(functionCalls(neverLoaded, "neverLoaded")).toBe(0);

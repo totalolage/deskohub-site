@@ -72,6 +72,9 @@ function scheduleCoverageDump(
     }
     return (dump) => process.on("exit", dump);
   }
+  // Preload afterAll hooks run after the test file's, in registration order,
+  // so code run by a later preload's afterAll goes uncounted. An afterAll
+  // registered inside another hook runs at once, so it cannot be moved later.
   return (dump) => afterAll(dump);
 }
 

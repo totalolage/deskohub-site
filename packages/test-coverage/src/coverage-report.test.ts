@@ -25,7 +25,20 @@ function fixture() {
 test("rejects a dump that is not Istanbul coverage", () => {
   const { directory, source, instrumentation } = fixture();
   const dump = join(directory, "dump.json");
-  writeFileSync(dump, JSON.stringify({ [source]: { path: source } }));
+  writeFileSync(
+    dump,
+    JSON.stringify({
+      [source]: {
+        path: source,
+        statementMap: true,
+        fnMap: {},
+        branchMap: {},
+        s: true,
+        f: {},
+        b: {},
+      },
+    })
+  );
 
   expect(() =>
     buildCoverageReport({
