@@ -8,10 +8,12 @@ import {
   validateEmailCustomerSelection,
 } from "./email-customer-selection";
 import { EmailValueName } from "./email-identifiers";
+import { emailValueSnapshotForDefinition } from "./email-value-snapshot";
 import {
   EmailDocument,
   EmailDraft,
   type EmailTranslation,
+  EmailValueDefinition,
   emailDocumentForPublication,
   requiredEmailValueNames,
 } from "./emails";
@@ -46,6 +48,26 @@ describe("reusable email publication", () => {
     ).toEqual({ translations: { "cs-CZ": { subject: [] } } });
     expect(() => publish({})).toThrow();
     expect(publish(document)).toEqual(document);
+  });
+
+  test("saves partially configured controls but blocks publishing empty body text", () => {
+    const incomplete = {
+      structure: [{ _tag: "Button", id: "cta" }],
+      values: [{ name: "offer", source: { kind: "discount" } }],
+    };
+    expect(
+      Schema.decodeUnknownSync(EmailDraft)(incomplete).structure
+    ).toHaveLength(1);
+    expect(() => publish(incomplete)).toThrow();
+    expect(() =>
+      publish({
+        ...document,
+        translations: {
+          ...document.translations,
+          "cs-CZ": { ...translation, texts: { body: [] } },
+        },
+      })
+    ).toThrow();
   });
 
   test("current languages are required only at publication, not historical decoding", () => {
@@ -122,7 +144,7 @@ describe("reusable email publication", () => {
       },
     });
     expect(requiredEmailValueNames(result)).toEqual(
-      ["first", "second"].map(Schema.decodeSync(EmailValueName))
+      ["first", "second"].map((name) => Schema.decodeSync(EmailValueName)(name))
     );
   });
 
@@ -200,6 +222,13 @@ describe("administration-schema customer selections", () => {
     expect(
       emailCustomerFieldAtPath(emailCustomerFieldCatalogue, [
         "activity",
+        "marketingConsent",
+        "documentHash",
+      ])
+    ).toMatchObject({ kind: "scalar", type: "string", nullable: true });
+    expect(
+      emailCustomerFieldAtPath(emailCustomerFieldCatalogue, [
+        "activity",
         "stats",
         "favoriteReservationProduct",
       ])
@@ -248,5 +277,68 @@ describe("administration-schema customer selections", () => {
       )
     );
     expect(list.kind).toBe("list");
+  });
+});
+
+describe("recipient snapshot contract", () => {
+  test("refuses extra customer fields and top-level missing data before sealing", () => {
+    const definition = Schema.decodeUnknownSync(EmailValueDefinition)({
+      name: "consent",
+      source: {
+        kind: "customer",
+        path: ["activity", "marketingConsent"],
+        fields: [["documentHash"]],
+      },
+      fallback: { "cs-CZ": "Unknown" },
+    });
+    const decode = Schema.decodeUnknownSync(
+      emailValueSnapshotForDefinition(definition, "cs-CZ")
+    );
+    expect(
+      decode({ _tag: "Resolved", value: { documentHash: "synthetic" } })._tag
+    ).toBe("Resolved");
+    expect(() =>
+      decode({
+        _tag: "Resolved",
+        value: { documentHash: "synthetic", locale: "cs-CZ" },
+      })
+    ).toThrow();
+    expect(() => decode({ _tag: "Resolved", value: null })).toThrow();
+    expect(decode({ _tag: "Fallback", text: "Unknown" })._tag).toBe("Fallback");
+    expect(() => decode({ _tag: "Fallback", text: "Other" })).toThrow();
+  });
+  test("bounds lists and defaults discount values to recipient single-use", () => {
+    const list = Schema.decodeUnknownSync(EmailValueDefinition)({
+      name: "bookings",
+      source: {
+        kind: "customer",
+        path: ["activity", "reservations"],
+        fields: [["id"]],
+        limit: 1,
+      },
+    });
+    expect(() =>
+      Schema.decodeUnknownSync(emailValueSnapshotForDefinition(list, "cs-CZ"))({
+        _tag: "Resolved",
+        value: [{ id: "one" }, { id: "two" }],
+      })
+    ).toThrow();
+    const discount = Schema.decodeUnknownSync(EmailValueDefinition)({
+      name: "offer",
+      source: {
+        kind: "discount",
+        discountId: "01900000-0000-7000-8000-000000000001",
+        validDays: 30,
+      },
+    });
+    expect(discount.source).toMatchObject({
+      maxUses: 1,
+      maxUsesPerCustomer: 1,
+    });
+    expect(() =>
+      Schema.decodeUnknownSync(
+        emailValueSnapshotForDefinition(discount, "cs-CZ")
+      )({ _tag: "Resolved", value: { code: "SAMPLE-NOT-REDEEMABLE" } })
+    ).toThrow();
   });
 });

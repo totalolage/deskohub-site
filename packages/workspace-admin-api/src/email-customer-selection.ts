@@ -141,7 +141,14 @@ export const emailCustomerFieldAtPath = (
   for (const segment of path) {
     if (field?.kind !== "record" || !Object.hasOwn(field.fields, segment))
       return undefined;
-    field = field.fields[segment];
+    const child = field.fields[segment];
+    field = child
+      ? {
+          ...child,
+          nullable: field.nullable || child.nullable,
+          optional: field.optional || child.optional,
+        }
+      : undefined;
   }
   return field;
 };
@@ -203,7 +210,7 @@ function describeField(ast: SchemaAST.AST): EmailCustomerField {
       };
     case "Arrays": {
       const element = ast.rest[0];
-      return element
+      return element && ast.elements.length === 0 && ast.rest.length === 1
         ? { ...presence, kind: "list", element: describeField(element) }
         : { ...presence, kind: "unsupported" };
     }
