@@ -117,14 +117,15 @@ export class EmailPersistence extends Context.Service<
                 })
                 .from(emailVersions)
                 .where(eq(emailVersions.emailId, emailId));
+              const publication: typeof emailVersions.$inferInsert = {
+                emailId,
+                versionNumber: (latest?.number ?? 0) + 1,
+                document,
+                requiredValueNames: [...requiredEmailValueNames(document)],
+              };
               const [version] = yield* db
                 .insert(emailVersions)
-                .values({
-                  emailId,
-                  versionNumber: (latest?.number ?? 0) + 1,
-                  document,
-                  requiredValueNames: [...requiredEmailValueNames(document)],
-                })
+                .values(publication)
                 .returning();
               return version!;
             })

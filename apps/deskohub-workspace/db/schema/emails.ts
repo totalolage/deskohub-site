@@ -50,9 +50,9 @@ export const emailVersions = pgTable(
     versionNumber: integer("version_number").notNull(),
     document: jsonb("document").notNull().$type<EmailDocument>(),
     requiredValueNames: text("required_value_names")
+      .$type<EmailValueName>()
       .array()
-      .notNull()
-      .$type<EmailValueName[]>(),
+      .notNull(),
     publishedAt: instant("published_at").notNull().default(sql`now()`),
   },
   (t) => [
@@ -96,9 +96,9 @@ export const emailPreparations = pgTable(
     locale: text("locale").notNull(),
     // The insert trigger copies these from the selected immutable version.
     requiredValueNames: text("required_value_names")
+      .$type<EmailValueName>()
       .array()
       .notNull()
-      .$type<EmailValueName[]>()
       .default([]),
     state: text("state")
       .notNull()
