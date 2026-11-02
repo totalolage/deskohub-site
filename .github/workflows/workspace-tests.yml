@@ -95,6 +95,10 @@ jobs:
       - name: Lint and test Portal
         run: bun turbo lint test --filter=deskohub-portal
 
+      # No app depends on the coverage tooling, so the test shards skip it.
+      - name: Lint and test the coverage tooling
+        run: bun turbo lint test --filter=@deskohub/test-coverage
+
   test-functional-shards:
     if: github.event.action != 'converted_to_draft'
     runs-on: ubuntu-latest
