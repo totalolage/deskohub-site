@@ -73,9 +73,9 @@ type PublishOptions = {
 };
 
 type RefreshCycle = {
+  /** Settles once the cycle finishes, whether the refresh succeeded or not. */
   readonly promise: Promise<void>;
-  readonly reject: (cause: unknown) => void;
-  readonly resolve: () => void;
+  readonly settle: () => void;
   activeEpoch: number;
   requestedEpoch: number;
 };
@@ -327,7 +327,6 @@ const startRefresh = (cycle: RefreshCycle, epoch: number): void => {
 
   void (async () => {
     let succeeded = false;
-    let cause: unknown;
     try {
       const snapshot = readCurrentSession();
       await snapshot.refetch(authoritativeRefreshOptions);
@@ -339,10 +338,9 @@ const startRefresh = (cycle: RefreshCycle, epoch: number): void => {
         logSessionRefreshFailure(refreshError);
       }
     } catch (failure) {
-      cause = failure;
       logSessionRefreshFailure(failure);
     } finally {
-      finishRefresh(cycle, epoch, succeeded, cause);
+      finishRefresh(cycle, epoch, succeeded);
     }
   })();
   syncAnalyticsIdentity();
@@ -360,8 +358,7 @@ const logSessionRefreshFailure = (cause: unknown) => {
 const finishRefresh = (
   cycle: RefreshCycle,
   epoch: number,
-  succeeded: boolean,
-  cause: unknown
+  succeeded: boolean
 ) => {
   if (refreshCycle !== cycle || cycle.activeEpoch !== epoch) return;
 
@@ -388,27 +385,19 @@ const finishRefresh = (
 
   clearAnonymousOverrideAfterRefresh(epoch);
   syncAnalyticsIdentity();
-  if (succeeded) cycle.resolve();
-  else cycle.reject(cause);
+  cycle.settle();
 };
 
 const createRefreshCycle = (epoch: number): RefreshCycle => {
-  let resolve: () => void = () => undefined;
-  let reject: (cause: unknown) => void = () => undefined;
-  const promise = new Promise<void>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise;
-    reject = rejectPromise;
+  let settle: () => void = () => undefined;
+  const promise = new Promise<void>((resolvePromise) => {
+    settle = resolvePromise;
   });
-  // A failed refresh already publishes the unavailable identity. Only a
-  // caller that awaits the cycle observes the rejection, so a refresh nobody
-  // awaits must not surface as an unhandled rejection.
-  promise.catch(() => undefined);
   return {
     activeEpoch: epoch,
     promise,
-    reject,
     requestedEpoch: epoch,
-    resolve,
+    settle,
   };
 };
 
@@ -553,9 +542,10 @@ export function subscribeAnalyticsAccountIdentity(
 }
 
 /**
- * Refreshes the identity from the authoritative session. The promise rejects
- * when the refresh fails; that failure is also published as the unavailable
- * identity.
+ * Refreshes the identity from the authoritative session. The promise resolves
+ * once the refresh settles and never rejects: a failed refresh publishes the
+ * unavailable identity and reports `account.analytics-session.refresh-failed`
+ * itself, so callers neither catch nor report it.
  */
 export function refreshAnalyticsAccountIdentity(options?: {
   readonly settleTransition?: true;

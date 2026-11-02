@@ -217,7 +217,7 @@ function PostHogClient({
         consented &&
         (source === "explicit" || (source === "storage" && !wasConsented));
       if (shouldRefreshIdentity) {
-        void refreshAnalyticsAccountIdentity().catch(() => undefined);
+        void refreshAnalyticsAccountIdentity();
       }
 
       reconcilePostHogIdentity(consented);

@@ -93,13 +93,19 @@ non-production traffic apart:
 - Pause analytics while auth is `pending` or `unavailable`, and don't repeat
   resets while authority is uncertain. A failed logout refreshes authority and
   doesn't reset early.
-- Callers use `beginAnalyticsAccountTransition`,
-  `completeAnalyticsAccountSignOut`, and `refreshAnalyticsAccountIdentity`.
-  A plain refresh keeps an unresolved mutation barrier, so focus refreshes and
-  `SessionRefresh` can't resume analytics mid-mutation. A failed logout or
-  deletion, or a completed outcome that didn't delete the account, calls
-  `refreshAnalyticsAccountIdentity({ settleTransition: true })`. Confirmed
-  success calls `completeAnalyticsAccountSignOut`.
+- Account exits go through `features/account/account-exit.ts`, which owns
+  the transition order. Sign-out calls `signOutOfAccount` and leaves the page
+  only on `"signed-out"`. Deletion calls `beginAccountExit()` on confirm, then
+  the handle's `left()` on a deleted outcome, before leaving the page, or
+  `stayed()` for any other outcome or a failed request. The first call
+  settles the exit; later calls do nothing. `left` runs
+  `completeAnalyticsAccountSignOut`, and `stayed` runs
+  `refreshAnalyticsAccountIdentity({ settleTransition: true })`. Don't call
+  the analytics transition primitives from components or fixtures.
+- A plain `refreshAnalyticsAccountIdentity()` keeps an unresolved mutation
+  barrier, so focus refreshes and `SessionRefresh` can't resume analytics
+  mid-mutation. It never rejects: a failed refresh publishes `unavailable` and
+  reports its own failure log, so callers neither catch nor report it.
 - Refresh authoritative session state on mount, focus or visibility recovery,
   and cross-tab auth signals. Publish `pending` during the refresh and
   `unavailable` after an authority failure.
