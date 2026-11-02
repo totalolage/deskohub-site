@@ -302,6 +302,81 @@ describe("OpeningHoursCalendarService", () => {
     ]);
   });
 
+  test("ignores timed events without a usable timed period", async () => {
+    const exceptions = await runWithEvents([
+      {
+        id: eventId("missing-end"),
+        description: "[bar:hours]",
+        start: { dateTime: "2026-08-04T10:00:00+02:00" },
+      },
+      {
+        id: eventId("missing-start-time"),
+        description: "[bar:hours]",
+        start: { date: "2026-08-04" },
+        end: { dateTime: "2026-08-04T18:00:00+02:00" },
+      },
+      {
+        id: eventId("start-also-all-day"),
+        description: "[bar:hours]",
+        start: { dateTime: "2026-08-05T10:00:00+02:00", date: "2026-08-05" },
+        end: { dateTime: "2026-08-05T18:00:00+02:00" },
+      },
+      {
+        id: eventId("end-also-all-day"),
+        description: "[bar:hours]",
+        start: { dateTime: "2026-08-05T10:00:00+02:00" },
+        end: { dateTime: "2026-08-05T18:00:00+02:00", date: "2026-08-06" },
+      },
+      {
+        id: eventId("invalid-end"),
+        description: "[bar:hours]",
+        start: { dateTime: "2026-08-06T10:00:00+02:00" },
+        end: { dateTime: "not-a-date-time" },
+      },
+      {
+        id: eventId("ends-before-start"),
+        description: "[bar:hours]",
+        start: { dateTime: "2026-08-07T18:00:00+02:00" },
+        end: { dateTime: "2026-08-07T10:00:00+02:00" },
+      },
+      {
+        id: eventId("spans-two-nights"),
+        description: "[bar:hours]",
+        start: { dateTime: "2026-08-08T18:00:00+02:00" },
+        end: { dateTime: "2026-08-10T02:00:00+02:00" },
+      },
+    ]);
+
+    expect(exceptions).toEqual([]);
+  });
+
+  test("orders special hours on the same date by opening time", async () => {
+    const exceptions = await runWithEvents([
+      {
+        id: eventId("evening"),
+        description: "[bar:hours]",
+        start: { dateTime: "2026-08-06T19:00:00+02:00" },
+        end: { dateTime: "2026-08-06T23:30:00+02:00" },
+      },
+      {
+        id: eventId("next-day"),
+        description: "[bar:hours]",
+        start: { dateTime: "2026-08-07T09:00:00+02:00" },
+        end: { dateTime: "2026-08-07T12:00:00+02:00" },
+      },
+      {
+        id: eventId("morning"),
+        description: "[bar:hours]",
+        start: { dateTime: "2026-08-06T09:00:00+02:00" },
+        end: { dateTime: "2026-08-06T12:00:00+02:00" },
+      },
+    ]);
+
+    expect(
+      exceptions.map(({ sourceEventReference }) => sourceEventReference)
+    ).toEqual(["morning", "evening", "next-day"]);
+  });
+
   test("lets a closure win over special hours on the same date", async () => {
     const exceptions = await runWithEvents([
       {

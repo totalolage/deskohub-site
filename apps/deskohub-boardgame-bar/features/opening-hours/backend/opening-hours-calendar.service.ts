@@ -173,18 +173,8 @@ const getSpecialHoursExceptions = (
   event: GoogleCalendarEvent,
   sourceEventReference: string,
   query: OpeningHoursExceptionQuery
-): readonly OpeningHoursException[] => {
-  const startValue = event.start?.dateTime;
-  const endValue = event.end?.dateTime;
-
-  if (!startValue || !endValue || event.start?.date || event.end?.date) {
-    return [];
-  }
-
-  return Option.all({
-    start: toBarZonedDateTime(startValue, event.start?.timeZone),
-    end: toBarZonedDateTime(endValue, event.end?.timeZone),
-  }).pipe(
+): readonly OpeningHoursException[] =>
+  getTimedEventPeriod(event).pipe(
     Option.map(({ end, start }) =>
       toSpecialHoursException({
         end,
@@ -195,6 +185,22 @@ const getSpecialHoursExceptions = (
     ),
     Option.getOrElse(() => [])
   );
+
+/**
+ * Reads a timed event's start and end in the bar's time zone. All-day events,
+ * events missing either time, and unparseable times have no timed period.
+ */
+const getTimedEventPeriod = (event: GoogleCalendarEvent) => {
+  const { end, start } = event;
+
+  if (!start?.dateTime || !end?.dateTime || start.date || end.date) {
+    return Option.none();
+  }
+
+  return Option.all({
+    start: toBarZonedDateTime(start.dateTime, start.timeZone),
+    end: toBarZonedDateTime(end.dateTime, end.timeZone),
+  });
 };
 
 const toSpecialHoursException = (input: {
