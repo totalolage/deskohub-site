@@ -63,33 +63,24 @@ export function getAcceptedConsentCategoriesFromCookieValue(
   diagnostics?: ConsentCookieDiagnostics
 ) {
   if (!cookieValue) return [];
+  const reportUnexpectedValue = (reason: UnexpectedConsentCookieReason) =>
+    diagnostics?.onUnexpectedValue?.(reason);
 
-  const parsedValue = parseConsentCookieValue(cookieValue);
-  if (Option.isNone(parsedValue)) {
-    diagnostics?.onUnexpectedValue?.("invalid_json");
-    return [];
-  }
-  const value = parsedValue.value;
-  if (!Predicate.isObject(value)) {
-    diagnostics?.onUnexpectedValue?.("invalid_value_type");
-    return [];
-  }
-
-  const { categories } = value as { categories?: unknown };
-  if (!Array.isArray(categories)) {
-    diagnostics?.onUnexpectedValue?.("invalid_categories_type");
+  const categories = readConsentCookieCategories(cookieValue);
+  if (Result.isFailure(categories)) {
+    reportUnexpectedValue(categories.failure);
     return [];
   }
 
   const acceptedCategories: ConsentCategory[] = [];
 
-  for (const category of categories) {
+  for (const category of categories.success) {
     if (!Predicate.isString(category)) {
-      diagnostics?.onUnexpectedValue?.("invalid_category_type");
+      reportUnexpectedValue("invalid_category_type");
       continue;
     }
     if (!isConsentCategory(category)) {
-      diagnostics?.onUnexpectedValue?.("unknown_category");
+      reportUnexpectedValue("unknown_category");
       continue;
     }
 
@@ -98,6 +89,21 @@ export function getAcceptedConsentCategoriesFromCookieValue(
 
   return acceptedCategories;
 }
+
+/** The categories list a consent cookie value holds, or why it holds none. */
+const readConsentCookieCategories = (
+  cookieValue: string
+): Result.Result<readonly unknown[], UnexpectedConsentCookieReason> => {
+  const parsedValue = parseConsentCookieValue(cookieValue);
+  if (Option.isNone(parsedValue)) return Result.fail("invalid_json");
+  const value = parsedValue.value;
+  if (!Predicate.isObject(value)) return Result.fail("invalid_value_type");
+
+  const { categories } = value as { categories?: unknown };
+  return Array.isArray(categories)
+    ? Result.succeed(categories)
+    : Result.fail("invalid_categories_type");
+};
 
 const parseJsonCookieValue = Option.liftThrowable(
   (cookieValue: string): unknown => JSON.parse(cookieValue)
@@ -112,4 +118,4 @@ const parseConsentCookieValue = (cookieValue: string) =>
     Option.orElse(() => parseUriEncodedJsonCookieValue(cookieValue))
   );
 
-import { Option, Predicate } from "effect";
+import { Option, Predicate, Result } from "effect";
