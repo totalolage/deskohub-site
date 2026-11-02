@@ -3,6 +3,8 @@
   "globalDependencies": [".env", ".env.local"],
   "globalEnv": ["NODE_ENV", "VERCEL_ENV"],
   "globalPassThroughEnv": [
+    "BUN_OPTIONS",
+    "DESKOHUB_COVERAGE_RUN_DIR",
     "ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID",
     "ACCOUNTING_DOCUMENT_SNAPSHOT_KEY_*",
     "CHECKOUT_RETURN_STATE_TOKEN_SECRET",

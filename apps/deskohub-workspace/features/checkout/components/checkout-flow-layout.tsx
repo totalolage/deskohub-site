@@ -150,7 +150,7 @@ export function CheckoutFlowLayout({
 }: CheckoutFlowLayoutProps) {
   return (
     <main className="min-h-screen overflow-x-clip bg-navy-blue text-white">
-      <section className="relative isolate overflow-hidden pb-20 pt-24 sm:pb-24 sm:pt-32">
+      <section className="relative isolate overflow-hidden pb-20 pt-[calc(var(--site-header-height)+1rem)] sm:pb-24">
         <div className="absolute left-1/2 top-16 -z-10 h-80 w-3xl -translate-x-1/2 rotate-[-9deg] rounded-full bg-burned-orange/16 blur-3xl" />
         <div className="absolute -right-28 bottom-24 -z-10 h-72 w-72 rounded-full bg-aquamarine-green/14 blur-3xl" />
 
