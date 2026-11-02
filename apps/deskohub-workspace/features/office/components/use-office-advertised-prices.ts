@@ -16,7 +16,7 @@ import { useAdvertisedPrices } from "@/features/reservation/components/use-adver
 import { getOfficeSeatAdvertisedPriceRequests } from "@/features/reservation/office-advertised-price";
 import type { OfficeReservationDetails } from "@/features/reservation/office-reservation";
 
-export type OfficeAdvertisedPrice = Extract<
+type OfficeAdvertisedPrice = Extract<
   AdvertisedPrice,
   { readonly kind: "office" }
 >;
@@ -26,7 +26,7 @@ type AdvertisedPriceQueryResult = ReturnType<
 >[number];
 
 /** Each seat option's settled office price, keyed by seat count. */
-export const getAdvertisedPricesBySeats = (
+const getAdvertisedPricesBySeats = (
   requests: ReadonlyArray<OfficeAdvertisedPriceRequest>,
   queryResults: ReadonlyArray<AdvertisedPriceQueryResult>
 ) => {
@@ -48,7 +48,7 @@ export const getAdvertisedPricesBySeats = (
 };
 
 /** The selected seat count's price state the checkout form submits and shows. */
-export const getOfficeCheckoutAdvertisedPrice = ({
+const getOfficeCheckoutAdvertisedPrice = ({
   advertisedPrice,
   locale,
   queryResult,

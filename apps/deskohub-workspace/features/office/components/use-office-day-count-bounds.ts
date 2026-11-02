@@ -19,7 +19,7 @@ type OfficeSelection = Pick<
 >;
 
 /** Whether the chosen start has no free day, or the stay runs past one. */
-export const isOfficeStayUnavailable = ({
+const isOfficeStayUnavailable = ({
   dayCount,
   maximumDayCount,
   startsOn,
@@ -38,7 +38,7 @@ export const isOfficeStayUnavailable = ({
  * The message that blocks checkout: the stay doesn't fit the free dates, or,
  * once nothing loads any more, availability failed.
  */
-export const getOfficeAvailabilityState = ({
+const getOfficeAvailabilityState = ({
   availabilityResult: { isError, isPending },
   locale,
   unavailable,
