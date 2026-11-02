@@ -8,6 +8,7 @@
   ],
   "type": "module",
   "scripts": {
+    "coverage": "bun packages/test-coverage/src/collect-coverage.ts",
     "prepare": "effect-tsgo patch --typescript --no-oxlint"
   },
   "devDependencies": {

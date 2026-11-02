@@ -69,7 +69,7 @@ const markup = renderToStaticMarkup(
 );
 
 test.skipIf(!chromiumAvailable)(
-  "keeps the typed field beside its calendar button in every slot width",
+  "keeps the calendar button inside the typed field's trailing edge in every slot width",
   async () => {
     if (!browser) throw new Error("The layout browser has not been launched.");
     const page = await browser.newPage({
@@ -97,25 +97,41 @@ test.skipIf(!chromiumAvailable)(
           const frameBox = frame.getBoundingClientRect();
           const inputBox = input.getBoundingClientRect();
           const buttonBox = button.getBoundingClientRect();
+          const inputStyle = getComputedStyle(input);
+          const textRight =
+            inputBox.right -
+            Number.parseFloat(inputStyle.borderRightWidth) -
+            Number.parseFloat(inputStyle.paddingRight);
           return {
-            buttonAfterInput: buttonBox.left >= inputBox.right,
             buttonHeight: buttonBox.height,
             buttonWidth: buttonBox.width,
-            fitsSlot: buttonBox.right <= frameBox.right + 0.5,
-            sameRow: Math.abs(buttonBox.top - inputBox.top) < 0.5,
-            sameHeight: Math.abs(buttonBox.height - inputBox.height) < 0.5,
+            centered:
+              Math.abs(
+                buttonBox.top +
+                  buttonBox.height / 2 -
+                  (inputBox.top + inputBox.height / 2)
+              ) < 0.5,
+            fieldFillsSlot: Math.abs(inputBox.width - frameBox.width) < 0.5,
+            insideField:
+              buttonBox.left >= inputBox.left &&
+              buttonBox.right <= inputBox.right &&
+              buttonBox.top >= inputBox.top &&
+              buttonBox.bottom <= inputBox.bottom,
+            atTrailingEdge: inputBox.right - buttonBox.right < 8,
+            textClearsButton: textRight <= buttonBox.left + 0.5,
             textFits: input.scrollWidth <= input.clientWidth,
           };
         }, width);
 
         expect({ width, ...layout }).toEqual({
           width,
-          buttonAfterInput: true,
           buttonHeight: expect.any(Number),
           buttonWidth: expect.any(Number),
-          fitsSlot: true,
-          sameRow: true,
-          sameHeight: true,
+          centered: true,
+          fieldFillsSlot: true,
+          insideField: true,
+          atTrailingEdge: true,
+          textClearsButton: true,
           textFits: true,
         });
         expect(layout?.buttonHeight).toBeGreaterThanOrEqual(24);
