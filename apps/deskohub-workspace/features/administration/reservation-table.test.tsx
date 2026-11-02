@@ -20,7 +20,9 @@ import type { AdministrationReservationSummary } from "./administration.service"
 import { loadFixtureReservations } from "./fixtures";
 import { m } from "./i18n";
 
+const navigation = await import("next/navigation");
 mock.module("next/navigation", () => ({
+  ...navigation,
   useParams: () => ({ locale: "en-US" }),
   useRouter: () => ({
     push: workspaceRouterPush,

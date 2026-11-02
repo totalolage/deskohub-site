@@ -31,7 +31,9 @@ import {
 import { newCondition } from "./audience-filter-editing";
 import type { AudienceEditorData } from "./audience-page-data.server";
 
+const navigation = await import("next/navigation");
 mock.module("next/navigation", () => ({
+  ...navigation,
   useParams: () => ({ locale: "en-US" }),
   useRouter: () => ({
     push: workspaceRouterPush,

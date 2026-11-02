@@ -74,7 +74,11 @@ const fullOrder: Order = {
 };
 
 let order: Order = fullOrder;
+const administrationPageData = await import(
+  "@/features/administration/page-data.server"
+);
 mock.module("@/features/administration/page-data.server", () => ({
+  ...administrationPageData,
   loadAdministrationOrder: () => Promise.resolve(order),
 }));
 

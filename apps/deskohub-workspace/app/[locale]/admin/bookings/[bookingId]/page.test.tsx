@@ -82,7 +82,11 @@ const fullDetail: AdministrationBookingDetail = {
 };
 
 let detail: AdministrationBookingDetail = fullDetail;
+const administrationPageData = await import(
+  "@/features/administration/page-data.server"
+);
 mock.module("@/features/administration/page-data.server", () => ({
+  ...administrationPageData,
   loadAdministrationBooking: () => Promise.resolve(detail),
 }));
 

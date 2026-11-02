@@ -34,7 +34,9 @@ const { act, cleanup, fireEvent, render, waitFor, within } = await import(
 const locale = "en-US";
 const refresh = mock();
 
+const navigation = await import("next/navigation");
 mock.module("next/navigation", () => ({
+  ...navigation,
   useParams: () => ({ locale }),
   useRouter: () => ({ back: mock(), push: mock(), refresh, replace: mock() }),
   unstable_rethrow: () => {},

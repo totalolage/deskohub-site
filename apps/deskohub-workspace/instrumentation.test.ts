@@ -14,10 +14,13 @@ import {
 const registerOTel = mock(
   (_options: Parameters<typeof registerVercelOTel>[0]) => undefined
 );
-mock.module("@vercel/otel", () => ({ registerOTel }));
+const vercelOtel = await import("@vercel/otel");
+mock.module("@vercel/otel", () => ({ ...vercelOtel, registerOTel }));
 
 const setGlobalLoggerProvider = mock((_provider: LoggerProvider) => true);
+const apiLogs = await import("@opentelemetry/api-logs");
 mock.module("@opentelemetry/api-logs", () => ({
+  ...apiLogs,
   logs: { setGlobalLoggerProvider },
 }));
 
@@ -27,7 +30,9 @@ const createPostHogLoggerProvider = mock(
   (_options: Parameters<typeof createRealPostHogLoggerProvider>[0]) =>
     postHogLoggingEnabled ? syntheticLoggerProvider : undefined
 );
+const posthogOtel = await import("@/shared/backend/logging/posthog-otel");
 mock.module("@/shared/backend/logging/posthog-otel", () => ({
+  ...posthogOtel,
   createPostHogLoggerProvider,
 }));
 

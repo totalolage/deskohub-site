@@ -46,7 +46,11 @@ const listedResult: ListResult = {
 };
 
 let result: ListResult = listedResult;
+const administrationPageData = await import(
+  "@/features/administration/page-data.server"
+);
 mock.module("@/features/administration/page-data.server", () => ({
+  ...administrationPageData,
   loadAdministrationOperationsPage: () => ({
     criteria: Promise.resolve(operationListQuery.parse({})),
     result: Promise.resolve(result),

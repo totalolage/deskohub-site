@@ -86,9 +86,13 @@ let isRememberedOfferAvailable = true;
 const isRememberedCoworkOfferAvailable = mock(() =>
   Promise.resolve(isRememberedOfferAvailable)
 );
+const existingCustomer = await import(
+  "@/features/reservation/backend/reservation-existing-customer.server"
+);
 mock.module(
   "@/features/reservation/backend/reservation-existing-customer.server",
   () => ({
+    ...existingCustomer,
     isRememberedCoworkOfferAvailable,
     isRememberedMeetingRoomReservationAvailable: () => Promise.resolve(false),
     loadReservationCheckoutAccount: () =>

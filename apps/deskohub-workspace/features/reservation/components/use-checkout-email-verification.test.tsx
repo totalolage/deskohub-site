@@ -38,7 +38,11 @@ mock.module("@/features/reservation/actions/seal-checkout-contact", () => ({
   sealCheckoutContact,
 }));
 
-mock.module("@/features/account/auth-return", () => ({ startEmailSignIn }));
+const authReturn = await import("@/features/account/auth-return");
+mock.module("@/features/account/auth-return", () => ({
+  ...authReturn,
+  startEmailSignIn,
+}));
 
 // The action resolves as the safe-action hook does: a thrown action runs
 // onError, anything else onSuccess with the sealed data.

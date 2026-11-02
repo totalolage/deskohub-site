@@ -60,7 +60,11 @@ mock.module("@/features/discounts/discount-code-entry.server", () => ({
 }));
 
 type LinkProps = { readonly href: string };
+const flowLayout = await import(
+  "@/features/checkout/components/checkout-flow-layout"
+);
 mock.module("@/features/checkout/components/checkout-flow-layout", () => ({
+  ...flowLayout,
   CheckoutFlowLayout: ({
     children,
     stepLinks,

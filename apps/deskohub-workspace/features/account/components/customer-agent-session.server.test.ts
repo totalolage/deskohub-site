@@ -27,9 +27,15 @@ class FakeCustomerAuthentication extends Context.Service<
   });
 }
 
+const authentication = await import(
+  "@/features/account/backend/customer-authentication.service"
+);
 mock.module(
   "@/features/account/backend/customer-authentication.service",
-  () => ({ CustomerAuthentication: FakeCustomerAuthentication })
+  () => ({
+    ...authentication,
+    CustomerAuthentication: FakeCustomerAuthentication,
+  })
 );
 
 const { readCustomerAgentSession } = await import(

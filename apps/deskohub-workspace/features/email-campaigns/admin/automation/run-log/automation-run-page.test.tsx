@@ -22,10 +22,18 @@ const flow = automationFlowFixture();
 let record: AutomationRunRecord;
 const loadAutomationRun = mock(async () => record);
 
+// The real request-locale module reads the route locale from next/root-params.
+mock.module("next/root-params", () => ({ locale: async () => locale }));
+const requestLocale = await import("@/features/i18n/server/request-locale");
 mock.module("@/features/i18n/server/request-locale", () => ({
+  ...requestLocale,
   getRequestLocale: async () => locale,
 }));
-mock.module("./automation-run-log.server", () => ({ loadAutomationRun }));
+const runLog = await import("./automation-run-log.server");
+mock.module("./automation-run-log.server", () => ({
+  ...runLog,
+  loadAutomationRun,
+}));
 
 registerWorkspaceComponentTestEnv();
 

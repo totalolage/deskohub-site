@@ -38,7 +38,11 @@ class FakeResolver {
   }
 }
 
-mock.module("node:dns/promises", () => ({ Resolver: FakeResolver }));
+const nodeDns = await import("node:dns/promises");
+mock.module("node:dns/promises", () => ({
+  ...nodeDns,
+  Resolver: FakeResolver,
+}));
 
 const { MailDomainDns } = await import("./recipient-domain.service");
 type MailDomainRecordType =

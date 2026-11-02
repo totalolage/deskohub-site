@@ -51,7 +51,11 @@ const fullDetail: OperationDetail = {
 };
 
 let detail: OperationDetail = fullDetail;
+const administrationPageData = await import(
+  "@/features/administration/page-data.server"
+);
 mock.module("@/features/administration/page-data.server", () => ({
+  ...administrationPageData,
   loadAdministrationOperation: () => Promise.resolve(detail),
 }));
 

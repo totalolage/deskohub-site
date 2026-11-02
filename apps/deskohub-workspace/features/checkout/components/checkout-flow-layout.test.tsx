@@ -15,7 +15,9 @@ import {
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 
+const nextLink = await import("next/link");
 mock.module("next/link", () => ({
+  ...nextLink,
   default: ({
     children,
     href,

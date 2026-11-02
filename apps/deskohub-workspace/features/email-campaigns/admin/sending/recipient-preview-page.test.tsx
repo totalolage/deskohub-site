@@ -17,7 +17,11 @@ const campaignId = campaignIdSchema.make("synthetic-campaign");
 let preview: RecipientPreview;
 const loadRecipientPreview = mock(async () => preview);
 
+// The real request-locale module reads the route locale from next/root-params.
+mock.module("next/root-params", () => ({ locale: async () => locale }));
+const requestLocale = await import("@/features/i18n/server/request-locale");
 mock.module("@/features/i18n/server/request-locale", () => ({
+  ...requestLocale,
   getRequestLocale: async () => locale,
 }));
 mock.module("./recipient-preview.server", () => ({ loadRecipientPreview }));

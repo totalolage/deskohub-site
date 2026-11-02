@@ -15,13 +15,17 @@ import {
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 
+const cloudinaryImage = await import("@deskohub/cloudinary-image");
 mock.module("@deskohub/cloudinary-image", () => ({
+  ...cloudinaryImage,
   CloudinaryImage: ({ alt }: { alt: string }) => (
     <span aria-label={alt} role="img" />
   ),
 }));
 
+const lightbox = await import("yet-another-react-lightbox");
 mock.module("yet-another-react-lightbox", () => ({
+  ...lightbox,
   default: ({
     close,
     index,

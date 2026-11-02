@@ -26,7 +26,13 @@ type RetryActionOptions = {
   readonly onTransportError: () => void;
 };
 
-mock.module("./actions", () => ({ retryAdministrationInvoice: mock() }));
+// The real request-locale module reads the route locale from next/root-params.
+mock.module("next/root-params", () => ({ locale: async () => locale }));
+const invoiceActions = await import("./actions");
+mock.module("./actions", () => ({
+  ...invoiceActions,
+  retryAdministrationInvoice: mock(),
+}));
 
 const { act, cleanup, fireEvent, render } = await import(
   "@testing-library/react"

@@ -34,7 +34,9 @@ const back = mock();
 const refresh = mock();
 const replace = mock();
 
+const navigation = await import("next/navigation");
 mock.module("next/navigation", () => ({
+  ...navigation,
   useParams: () => ({ locale }),
   useRouter: () => ({ back, push: mock(), refresh, replace }),
   unstable_rethrow: () => {},

@@ -30,7 +30,9 @@ mock.module("next/navigation", () => ({
     throw new RedirectSignal(location);
   },
 }));
+const nextHeaders = await import("next/headers");
 mock.module("next/headers", () => ({
+  ...nextHeaders,
   headers: () => Promise.resolve(new Headers()),
 }));
 
@@ -45,13 +47,20 @@ let findClient: () => Promise<unknown> = () =>
     client_id: "https://agent.example/client.json",
     client_name: "Example Agent",
   });
+// Loading the real module bootstraps Better Auth against Postgres, so the
+// mock supplies every export itself.
 mock.module("@/features/account/server/auth.server", () => ({
   auth: { api: { getOAuthClientPublic: () => findClient() } },
+  customerMcpResource: "http://localhost:3000/api/mcp",
 }));
 
 let administratorAccess: Effect.Effect<{ readonly kind: string }, Error> =
   Effect.succeed({ kind: "customer" });
+const currentAdministrator = await import(
+  "@/features/administrators/backend/current-administrator"
+);
 mock.module("@/features/administrators/backend/current-administrator", () => ({
+  ...currentAdministrator,
   currentAdministratorAccess: Effect.suspend(() => administratorAccess),
 }));
 mock.module(

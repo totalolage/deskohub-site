@@ -71,11 +71,19 @@ const fullHistory: AdministrationCustomerActivity = {
 let liveProfile: AdminCustomerProfile | null = profile;
 let activity: AdministrationCustomerActivity = fullHistory;
 
+const discountPageData = await import(
+  "@/features/discounts/admin/page-data.server"
+);
 mock.module("@/features/discounts/admin/page-data.server", () => ({
+  ...discountPageData,
   loadOptionalDiscountAdminCustomerPageData: () =>
     Promise.resolve({ notice: undefined, profile: liveProfile }),
 }));
+const administrationPageData = await import(
+  "@/features/administration/page-data.server"
+);
 mock.module("@/features/administration/page-data.server", () => ({
+  ...administrationPageData,
   loadAdministrationCustomerActivity: () => Promise.resolve(activity),
   loadAdministrationCustomerReservationActivity: () =>
     Promise.resolve({ from: "2025-08-25", to: "2026-08-24", dates: [] }),

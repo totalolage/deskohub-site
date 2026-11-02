@@ -31,7 +31,9 @@ mock.module("next/navigation", () => ({
     throw new RedirectSignal(location);
   },
 }));
+const nextHeaders = await import("next/headers");
 mock.module("next/headers", () => ({
+  ...nextHeaders,
   headers: () => Promise.resolve(new Headers()),
 }));
 

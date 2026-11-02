@@ -53,7 +53,9 @@ const forgetPasskeyOnThisBrowser = mock((_accountId: string) => undefined);
 
 const signInAnalytics = await import("@/features/account/sign-in-analytics");
 const passkeyPrompt = await import("@/features/account/passkey-prompt");
+const passkeyClient = await import("@/features/account/passkey-client");
 mock.module("@/features/account/passkey-client", () => ({
+  ...passkeyClient,
   confirmWithPasskey,
   createPasskey,
   deletePasskey,

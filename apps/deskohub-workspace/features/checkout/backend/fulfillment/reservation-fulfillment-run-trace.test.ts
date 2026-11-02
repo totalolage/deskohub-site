@@ -24,7 +24,9 @@ mock.module("server-only", () => ({}));
 // Bun module mocks are process-wide, so pin the deployment this file's runs
 // see instead of relying on test-file ordering.
 let vercelEnv: string | undefined;
+const workspaceEnv = await import("@/env");
 mock.module("@/env", () => ({
+  ...workspaceEnv,
   env: new Proxy(env, {
     get: (target, key) =>
       key === "VERCEL_ENV" ? vercelEnv : Reflect.get(target, key),

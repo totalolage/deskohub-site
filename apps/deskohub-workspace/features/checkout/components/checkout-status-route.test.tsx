@@ -48,7 +48,9 @@ const cookieStore = {
     return { name, value: "access-cookie-value" };
   },
 };
+const nextHeaders = await import("next/headers");
 mock.module("next/headers", () => ({
+  ...nextHeaders,
   cookies: () => Promise.resolve(cookieStore),
   headers: () => Promise.resolve(requestHeaders),
 }));
@@ -154,9 +156,13 @@ mock.module("@/shared/components/route-auto-refresh", () => ({
     <meta data-auto-refresh={String(enabled)} />
   ),
 }));
+const referralSettlement = await import(
+  "@/features/checkout/components/checkout-status-referral-code-settlement"
+);
 mock.module(
   "@/features/checkout/components/checkout-status-referral-code-settlement",
   () => ({
+    ...referralSettlement,
     CheckoutStatusReferralCodeSettlement: ({
       status,
     }: {

@@ -23,9 +23,21 @@ const loadInvoiceAdministrationDetail = mock((_invoiceId: string) =>
   Promise.resolve(detail)
 );
 
-mock.module("./actions", () => ({ retryAdministrationInvoice: mock() }));
-mock.module("./page-data.server", () => ({ loadInvoiceAdministrationDetail }));
+// The real request-locale module reads the route locale from next/root-params.
+mock.module("next/root-params", () => ({ locale: async () => locale }));
+const invoiceActions = await import("./actions");
+mock.module("./actions", () => ({
+  ...invoiceActions,
+  retryAdministrationInvoice: mock(),
+}));
+const invoicePageData = await import("./page-data.server");
+mock.module("./page-data.server", () => ({
+  ...invoicePageData,
+  loadInvoiceAdministrationDetail,
+}));
+const requestLocale = await import("@/features/i18n/server/request-locale");
 mock.module("@/features/i18n/server/request-locale", () => ({
+  ...requestLocale,
   getRequestLocale: () => Promise.resolve(locale),
 }));
 

@@ -7,7 +7,9 @@ import {
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 
+const lightbox = await import("yet-another-react-lightbox");
 mock.module("yet-another-react-lightbox", () => ({
+  ...lightbox,
   default: ({
     index,
     open,
