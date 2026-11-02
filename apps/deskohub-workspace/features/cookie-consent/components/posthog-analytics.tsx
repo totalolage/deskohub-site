@@ -54,6 +54,7 @@ import {
   getPostHogAccountDistinctId,
 } from "../utils/posthog-identity";
 import { createPostHogPageUrl } from "../utils/posthog-url";
+import { loadPostHogSdk } from "./posthog-sdk-load";
 
 // The SDK stays out of the initial bundle and loads only once analytics
 // consent lets it initialize.
@@ -253,16 +254,7 @@ function PostHogClient({
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: loadAttempt re-runs the SDK load after a failed chunk fetch.
   useEffect(() => {
-    if (!analyticsAccepted && !initializedPostHog) {
-      clearPostHogSessionCookies();
-      return;
-    }
-
-    if (!getCurrentAnalyticsConsent()) {
-      reconcilePostHogIdentity();
-      if (!initializedPostHog) clearPostHogSessionCookies();
-      return;
-    }
+    if (settlePostHogWithoutConsent(analyticsAccepted)) return;
 
     if (
       !telemetryHostAllowed ||
@@ -283,18 +275,9 @@ function PostHogClient({
       return;
     }
 
-    let current = true;
-    // A failed chunk load is retried once the browser is back online or the
-    // tab regains focus; events captured meanwhile keep waiting.
-    const retryEvents = ["focus", "online"] as const;
-    const stopRetryListeners = () => {
-      for (const event of retryEvents) {
-        window.removeEventListener(event, retryLoad);
-      }
-    };
-    posthogModule.load().then(
-      ({ default: sdk }) => {
-        if (!current) return;
+    return loadPostHogSdk({
+      load: posthogModule.load,
+      onLoad: ({ default: sdk }) => {
         const client = initializePostHog(sdk, {
           posthogEnvironment,
           posthogHost,
@@ -302,18 +285,8 @@ function PostHogClient({
         });
         if (client) startPostHog(client);
       },
-      () => {
-        if (!current) return;
-        for (const event of retryEvents) {
-          window.addEventListener(event, retryLoad);
-        }
-      }
-    );
-
-    return () => {
-      current = false;
-      stopRetryListeners();
-    };
+      retry: retryLoad,
+    });
   }, [
     analyticsAccepted,
     featureFlagOverrides,
@@ -483,6 +456,22 @@ function discardAnalyticsEventsAfterLeavingAccount(
   lastSettledAnalyticsAccountIdentity = identity;
 }
 
+/**
+ * Settles an SDK load attempt without analytics consent. Returns true when
+ * the SDK must not load or start.
+ */
+function settlePostHogWithoutConsent(analyticsAccepted: boolean) {
+  if (!analyticsAccepted && !initializedPostHog) {
+    clearPostHogSessionCookies();
+    return true;
+  }
+  if (getCurrentAnalyticsConsent()) return false;
+
+  reconcilePostHogIdentity();
+  if (!initializedPostHog) clearPostHogSessionCookies();
+  return true;
+}
+
 function pausePostHogForUnsafeTelemetryHost() {
   analyticsTelemetryHostAllowed = false;
   discardAnalyticsEvents();
@@ -539,6 +528,17 @@ function handlePostHogReady() {
   const identity = getAnalyticsAccountIdentity();
   if (!isPostHogIdentityReady(identity)) return;
 
+  recordReadyAnalyticsAccountIdentity(identity);
+  syncPostHogSessionCookies();
+  clearPostHogInitialPersonProperties(posthog);
+  if (!analyticsTelemetryHostAllowed) return;
+  resumePostHogDelivery(posthog, identity);
+}
+
+/** A new identity or a renewed consent captures the current page again. */
+function recordReadyAnalyticsAccountIdentity(
+  identity: SettledAnalyticsAccountIdentity
+) {
   const identityChanged =
     !lastReadyAnalyticsAccountIdentity ||
     !sameSettledAnalyticsAccountIdentity(
@@ -551,10 +551,12 @@ function handlePostHogReady() {
   }
   lastReadyAnalyticsAccountIdentity = identity;
   hasReadyAnalyticsConsent = true;
+}
 
-  syncPostHogSessionCookies();
-  clearPostHogInitialPersonProperties(posthog);
-  if (!analyticsTelemetryHostAllowed) return;
+function resumePostHogDelivery(
+  posthog: PostHog,
+  identity: SettledAnalyticsAccountIdentity
+) {
   posthog.set_config({
     advanced_disable_feature_flags: false,
     tracing_headers: [window.location.hostname],
