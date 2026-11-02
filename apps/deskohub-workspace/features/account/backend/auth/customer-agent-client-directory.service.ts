@@ -1,4 +1,5 @@
 import { Context, Data, Effect, Layer, Option, Schema } from "effect";
+import { currentRequestHeaders } from "@/shared/backend/workspace-request-context";
 import {
   CustomerAgentAuthorizationError,
   type CustomerAgentClientId,
@@ -79,6 +80,30 @@ interface ICustomerAgentClientDirectory {
   >;
 }
 
+const directoryOver = (
+  authority: CustomerAgentClientAuthority
+): ICustomerAgentClientDirectory => ({
+  find: Effect.fn("CustomerAgentClientDirectory.find")(function* (
+    clientId: string
+  ) {
+    const found = yield* Effect.tryPromise({
+      try: () => authority.findPublicClient(clientId),
+      catch: (cause) =>
+        isProviderRejection(cause)
+          ? new UnknownCustomerAgentClient()
+          : new CustomerAgentAuthorizationError({ reason: "unavailable" }),
+    }).pipe(
+      Effect.map(Option.some),
+      Effect.catchTag("UnknownCustomerAgentClient", () =>
+        Effect.succeed(Option.none<unknown>())
+      )
+    );
+    return Option.flatMap(found, decodePublicClient).pipe(
+      Option.flatMap(toClient)
+    );
+  }),
+});
+
 /**
  * The OAuth clients customers connect as AI agents, as the consent page
  * shows them. Better Auth types never leave this adapter.
@@ -88,27 +113,7 @@ export class CustomerAgentClientDirectory extends Context.Service<
   ICustomerAgentClientDirectory
 >()("@deskohub-workspace/account/CustomerAgentClientDirectory") {
   static fromAuthority = (authority: CustomerAgentClientAuthority) =>
-    Layer.succeed(this, {
-      find: Effect.fn("CustomerAgentClientDirectory.find")(function* (
-        clientId: string
-      ) {
-        const found = yield* Effect.tryPromise({
-          try: () => authority.findPublicClient(clientId),
-          catch: (cause) =>
-            isProviderRejection(cause)
-              ? new UnknownCustomerAgentClient()
-              : new CustomerAgentAuthorizationError({ reason: "unavailable" }),
-        }).pipe(
-          Effect.map(Option.some),
-          Effect.catchTag("UnknownCustomerAgentClient", () =>
-            Effect.succeed(Option.none<unknown>())
-          )
-        );
-        return Option.flatMap(found, decodePublicClient).pipe(
-          Option.flatMap(toClient)
-        );
-      }),
-    });
+    Layer.succeed(this, directoryOver(authority));
 
   /**
    * Reads clients for the server itself, without a customer session, for
@@ -134,16 +139,26 @@ export class CustomerAgentClientDirectory extends Context.Service<
   /** Reads clients for the signed-in customer of the current request. */
   static Default = Layer.unwrap(
     Effect.promise(async () => {
-      const [{ auth }, { headers }] = await Promise.all([
-        import("@/features/account/server/auth.server"),
-        import("next/headers"),
-      ]);
-      return CustomerAgentClientDirectory.fromAuthority({
-        findPublicClient: async (clientId) =>
-          auth.api.getOAuthClientPublic({
-            query: { client_id: clientId },
-            headers: await headers(),
-          }),
+      const { auth } = await import("@/features/account/server/auth.server");
+      const directoryFor = (requestHeaders: Headers) =>
+        directoryOver({
+          findPublicClient: (clientId) =>
+            auth.api.getOAuthClientPublic({
+              query: { client_id: clientId },
+              headers: requestHeaders,
+            }),
+        });
+      return Layer.succeed(CustomerAgentClientDirectory, {
+        find: (clientId) =>
+          currentRequestHeaders.pipe(
+            Effect.mapError(
+              () =>
+                new CustomerAgentAuthorizationError({ reason: "unavailable" })
+            ),
+            Effect.flatMap((requestHeaders) =>
+              directoryFor(requestHeaders).find(clientId)
+            )
+          ),
       });
     })
   );

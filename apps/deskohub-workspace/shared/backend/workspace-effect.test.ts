@@ -6,10 +6,35 @@ import {
   HttpServerResponse,
 } from "effect/unstable/http";
 import { redirect } from "next/navigation";
+import * as nextServer from "next/server";
 import { CENSORED_LOG_VALUE } from "@/shared/utils/log-classification";
+import {
+  POSTHOG_DISTINCT_ID_COOKIE,
+  POSTHOG_SESSION_ID_COOKIE,
+} from "@/shared/utils/posthog-session-cookies";
 import { shareAcrossRequests } from "./share-across-requests";
 
 const emitPostHogLog = mock(() => undefined);
+
+// A consented visitor in Next's request store, which work that serves no
+// visitor must never pick up.
+const ambientHeaders = mock(async () => {
+  const consent = encodeURIComponent(
+    JSON.stringify({ categories: ["necessary", "analytics"] })
+  );
+  return new Headers({
+    cookie: `cc_cookie=${consent}; ${POSTHOG_DISTINCT_ID_COOKIE}=ambient-visitor; ${POSTHOG_SESSION_ID_COOKIE}=ambient-session`,
+  });
+});
+mock.module("next/headers", () => ({ headers: ambientHeaders }));
+
+const afterResponse: (() => unknown)[] = [];
+mock.module("next/server", () => ({
+  ...nextServer,
+  after: (callback: () => unknown) => {
+    afterResponse.push(callback);
+  },
+}));
 
 mock.module("@/instrumentation", () => ({
   postHogLoggerProvider: {
@@ -23,6 +48,7 @@ const {
   defineWorkspaceTask,
   findNextControlFlow,
   runWorkspaceEffect,
+  runWorkspaceEffectAfterResponse,
   runWorkspaceEffectOrElse,
   toWorkspaceWebHandler,
 } = await import("./workspace-effect");
@@ -62,6 +88,58 @@ describe("Workspace Effect execution", () => {
     );
 
     await expect(task()).resolves.toEqual({ category: "unclassified" });
+  });
+
+  test("tasks serve no visitor, even with one in Next's request store", async () => {
+    const { currentVisitorIdentity } = await import(
+      "./workspace-request-context"
+    );
+    ambientHeaders.mockClear();
+    const task = defineWorkspaceTask(
+      "test.task-visitor",
+      () => currentVisitorIdentity
+    );
+
+    await expect(task()).resolves.toEqual({});
+    expect(ambientHeaders).not.toHaveBeenCalled();
+  });
+
+  test("work after the response serves no visitor, even with one in Next's request store", async () => {
+    const { currentVisitorIdentity } = await import(
+      "./workspace-request-context"
+    );
+    ambientHeaders.mockClear();
+    afterResponse.length = 0;
+    const seen: unknown[] = [];
+
+    await Effect.runPromise(
+      runWorkspaceEffectAfterResponse(
+        "test.after-response-visitor",
+        Effect.tap(currentVisitorIdentity, (visitor) =>
+          Effect.sync(() => seen.push(visitor))
+        )
+      )
+    );
+    expect(afterResponse).toHaveLength(1);
+    await afterResponse[0]?.();
+
+    expect(seen).toEqual([{}]);
+    expect(ambientHeaders).not.toHaveBeenCalled();
+  });
+
+  test("a run without a boundary reads the visitor from Next's request store", async () => {
+    const { currentVisitorIdentity } = await import(
+      "./workspace-request-context"
+    );
+    ambientHeaders.mockClear();
+
+    await expect(
+      currentVisitorIdentity.pipe(runWorkspaceEffect("test.page-visitor"))
+    ).resolves.toEqual({
+      distinctId: "ambient-visitor",
+      sessionId: "ambient-session",
+    });
+    expect(ambientHeaders).toHaveBeenCalledTimes(1);
   });
 });
 

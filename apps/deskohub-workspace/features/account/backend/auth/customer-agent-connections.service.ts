@@ -2,6 +2,7 @@ import { Context, Effect, Layer, Option, Schema } from "effect";
 import { administrationAgentScope } from "@/features/account/agent-scopes";
 import type { CustomerAgentConnection } from "@/features/account/customer-agent-connections";
 import { customerAgentConsentScopes } from "@/features/account/customer-agent-routes";
+import { currentRequestHeaders } from "@/shared/backend/workspace-request-context";
 import {
   type CustomerAccountAccessError,
   customerAccountUnavailable,
@@ -42,6 +43,50 @@ interface ICustomerAgentConnections {
   >;
 }
 
+const connectionsOver = (
+  directory: CustomerAgentClientDirectory["Service"],
+  authority: CustomerAgentConsentAuthority
+): ICustomerAgentConnections => ({
+  list: Effect.tryPromise({
+    try: () => authority.listConsents(),
+    catch: connectionsUnavailable,
+  }).pipe(
+    Effect.flatMap((rows) =>
+      decodeConsentRows(rows).pipe(Effect.mapError(connectionsUnavailable))
+    ),
+    Effect.flatMap((rows) =>
+      Effect.forEach(
+        rows,
+        (row) =>
+          directory.find(row.clientId).pipe(
+            // An unreadable client stays listed, unnamed, so the
+            // customer can still disconnect it.
+            Effect.orElseSucceed(() => Option.none()),
+            Effect.map(
+              (client): CustomerAgentConnection => ({
+                id: row.id,
+                name: Option.getOrUndefined(client)?.name,
+                host: Option.getOrUndefined(client)?.host,
+                scopes: customerAgentConsentScopes.filter((scope) =>
+                  row.scopes.includes(scope)
+                ),
+                administration: row.scopes.includes(administrationAgentScope),
+                connectedAt: new Date(row.createdAt).toISOString(),
+              })
+            )
+          ),
+        { concurrency: "unbounded" }
+      )
+    ),
+    Effect.map((connections) =>
+      connections.toSorted((left, right) =>
+        left.connectedAt.localeCompare(right.connectedAt)
+      )
+    ),
+    Effect.withSpan("CustomerAgentConnections.list")
+  ),
+});
+
 /**
  * The AI assistants a customer has let use their account. Each connection
  * is one Better Auth OAuth consent; Better Auth types never leave this
@@ -54,62 +99,29 @@ export class CustomerAgentConnections extends Context.Service<
   static fromAuthority = (authority: CustomerAgentConsentAuthority) =>
     Layer.effect(
       this,
-      Effect.map(CustomerAgentClientDirectory, (directory) => ({
-        list: Effect.tryPromise({
-          try: () => authority.listConsents(),
-          catch: connectionsUnavailable,
-        }).pipe(
-          Effect.flatMap((rows) =>
-            decodeConsentRows(rows).pipe(
-              Effect.mapError(connectionsUnavailable)
-            )
-          ),
-          Effect.flatMap((rows) =>
-            Effect.forEach(
-              rows,
-              (row) =>
-                directory.find(row.clientId).pipe(
-                  // An unreadable client stays listed, unnamed, so the
-                  // customer can still disconnect it.
-                  Effect.orElseSucceed(() => Option.none()),
-                  Effect.map(
-                    (client): CustomerAgentConnection => ({
-                      id: row.id,
-                      name: Option.getOrUndefined(client)?.name,
-                      host: Option.getOrUndefined(client)?.host,
-                      scopes: customerAgentConsentScopes.filter((scope) =>
-                        row.scopes.includes(scope)
-                      ),
-                      administration: row.scopes.includes(
-                        administrationAgentScope
-                      ),
-                      connectedAt: new Date(row.createdAt).toISOString(),
-                    })
-                  )
-                ),
-              { concurrency: "unbounded" }
-            )
-          ),
-          Effect.map((connections) =>
-            connections.toSorted((left, right) =>
-              left.connectedAt.localeCompare(right.connectedAt)
-            )
-          ),
-          Effect.withSpan("CustomerAgentConnections.list")
-        ),
-      }))
+      Effect.map(CustomerAgentClientDirectory, (directory) =>
+        connectionsOver(directory, authority)
+      )
     );
 
   static Default = Layer.unwrap(
     Effect.promise(async () => {
-      const [{ auth }, { headers }] = await Promise.all([
-        import("@/features/account/server/auth.server"),
-        import("next/headers"),
-      ]);
-      return CustomerAgentConnections.fromAuthority({
-        listConsents: async () =>
-          auth.api.getOAuthConsents({ headers: await headers() }),
-      });
+      const { auth } = await import("@/features/account/server/auth.server");
+      return Layer.effect(
+        CustomerAgentConnections,
+        Effect.map(CustomerAgentClientDirectory, (directory) => ({
+          list: currentRequestHeaders.pipe(
+            Effect.mapError(connectionsUnavailable),
+            Effect.flatMap(
+              (requestHeaders) =>
+                connectionsOver(directory, {
+                  listConsents: () =>
+                    auth.api.getOAuthConsents({ headers: requestHeaders }),
+                }).list
+            )
+          ),
+        }))
+      );
     })
   ).pipe(Layer.provide(CustomerAgentClientDirectory.Default));
 }
