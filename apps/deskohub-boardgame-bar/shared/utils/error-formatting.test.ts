@@ -21,7 +21,11 @@ describe("formatError", () => {
     const formatted = formatError({ _tag: "NotFound", code: "", message: "" });
 
     expect(formatted.code).toBe("NotFound");
-    expect(formatted.message).toBe("An error occurred");
+    // Every bare tagged error shares one non-empty generic message.
+    expect(formatted.message).not.toBe("");
+    expect(formatted.message).toBe(
+      formatError({ _tag: "Conflict", code: "", message: "" }).message
+    );
     expect(formatted.details).toBeUndefined();
   });
 

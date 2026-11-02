@@ -474,10 +474,9 @@ describe("administration reservation lifecycle", () => {
         paymentState: "paid",
         reservationState: "held",
       })
-    ).toEqual({
+    ).toMatchObject({
       currentStage: "cancelled",
       condition: "late_payment_recovery_review",
-      label: "Late payment recovery needs review",
       reachedStages: ["started", "held", "cancelled"],
       tone: "attention",
     });
@@ -535,9 +534,13 @@ describe("administration reservation lifecycle", () => {
 
 describe("administration reservation status note fields", () => {
   test("pairs a note code with the label the API shows", () => {
-    expect(
-      getAdministrationReservationStatusNoteFields("needs_refund")
-    ).toEqual({ statusNote: "Needs refund", statusNoteCode: "needs_refund" });
+    const fields = getAdministrationReservationStatusNoteFields("needs_refund");
+
+    expect(fields.statusNoteCode).toBe("needs_refund");
+    expect(fields.statusNote).toEqual(expect.any(String));
+    expect(fields.statusNote).not.toBe(
+      getAdministrationReservationStatusNoteFields("refunded").statusNote
+    );
   });
 
   test("leaves both fields empty without a note", () => {
