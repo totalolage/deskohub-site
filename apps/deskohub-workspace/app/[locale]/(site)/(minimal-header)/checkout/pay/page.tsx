@@ -48,6 +48,8 @@ import {
 } from "@/shared/components/ui/card";
 import { getSearchParam, type SearchParamsRecord } from "@/shared/utils";
 
+type SignedPayState = Effect.Success<ReturnType<typeof openPayState>>;
+
 type LocalizedCheckoutPayPageProps = {
   searchParams: Promise<SearchParamsRecord>;
 };
@@ -83,37 +85,12 @@ export default async function LocalizedCheckoutPayPage({
   ));
 }
 
-async function CheckoutPayContent({
-  locale,
-  searchParams,
-}: {
-  readonly locale: Locale;
-  readonly searchParams: Promise<SearchParamsRecord>;
-}) {
-  await connection();
-  const resolvedSearchParams = await searchParams;
-  const payStateToken = getSearchParam(
-    resolvedSearchParams,
-    payStateTokenQueryParam
-  );
-  const discountCodeRejection = parseDiscountCodeRejection(
-    getSearchParam(resolvedSearchParams, discountCodeErrorQueryParam)
-  );
-  const discountCodeErrorId = getSearchParam(
-    resolvedSearchParams,
-    discountCodeErrorIdQueryParam
-  );
-
-  if (!payStateToken) {
-    return runWithRequestLocale(() => (
-      <InvalidPayState
-        locale={locale}
-        restartPath={getCoworkReservationPath(locale)}
-      />
-    ));
-  }
-
-  const openedPayState = await openPayState(payStateToken).pipe(
+/**
+ * The Pay state behind `payStateToken`, or none with the reservation kind to
+ * restart when the token can still name one.
+ */
+const openCheckoutPayState = (payStateToken: string) =>
+  openPayState(payStateToken).pipe(
     Effect.map((state) => ({
       state,
       restartKind: state.reservation.kind,
@@ -139,24 +116,18 @@ async function CheckoutPayContent({
     ),
     runWorkspaceEffect("checkout.pay.open")
   );
-  const restartPath = Option.fromNullishOr(openedPayState.restartKind).pipe(
-    Option.map((reservationKind) =>
-      getReservationStartPath(locale, reservationKind)
-    ),
-    Option.getOrElse(() => getCoworkReservationPath(locale))
-  );
 
-  if (
-    !openedPayState.state ||
-    !payStateContinuesOn(openedPayState.state, { locale })
-  ) {
-    return runWithRequestLocale(() => (
-      <InvalidPayState locale={locale} restartPath={restartPath} />
-    ));
-  }
+type PayableCheckout = Exclude<
+  Awaited<ReturnType<typeof loadPayableCheckout>>,
+  undefined
+>;
 
-  const state = openedPayState.state;
-  const loadedPayState = await Effect.Do.pipe(
+/**
+ * The held reservation the Pay state still pays for, with what the page needs
+ * alongside it, or none once the state can no longer be paid.
+ */
+const loadPayableCheckout = (state: SignedPayState) =>
+  Effect.Do.pipe(
     Effect.bind("payableReservations", () => PayableReservationService),
     Effect.bind("currentReservation", ({ payableReservations }) =>
       payableReservations.requireCurrent({
@@ -188,21 +159,78 @@ async function CheckoutPayContent({
     runWorkspaceEffect("checkout.pay.load")
   );
 
-  if (!loadedPayState) {
+/** Where a customer with an unusable Pay state starts their order again. */
+const getPayRestartPath = (
+  locale: Locale,
+  restartKind: SignedPayState["reservation"]["kind"] | undefined
+) =>
+  Option.fromNullishOr(restartKind).pipe(
+    Option.map((reservationKind) =>
+      getReservationStartPath(locale, reservationKind)
+    ),
+    Option.getOrElse(() => getCoworkReservationPath(locale))
+  );
+
+async function CheckoutPayContent({
+  locale,
+  searchParams,
+}: {
+  readonly locale: Locale;
+  readonly searchParams: Promise<SearchParamsRecord>;
+}) {
+  await connection();
+  const resolvedSearchParams = await searchParams;
+  const payStateToken = getSearchParam(
+    resolvedSearchParams,
+    payStateTokenQueryParam
+  );
+
+  if (!payStateToken) {
+    return runWithRequestLocale(() => (
+      <InvalidPayState
+        locale={locale}
+        restartPath={getCoworkReservationPath(locale)}
+      />
+    ));
+  }
+
+  const { state, restartKind } = await openCheckoutPayState(payStateToken);
+  const restartPath = getPayRestartPath(locale, restartKind);
+  if (!state || !payStateContinuesOn(state, { locale })) {
     return runWithRequestLocale(() => (
       <InvalidPayState locale={locale} restartPath={restartPath} />
     ));
   }
 
-  const { currentReservation, discountCodeEntryEnabled, freshPayUrl } =
-    loadedPayState;
-  const referralApplied = hasCheckoutReferralAppliedNotice({
-    discounts: state.quote.payment.discounts,
-    dotyposCustomerId: currentReservation.dotyposCustomerId,
-    marker: resolvedSearchParams[checkoutReferralAppliedQueryParam],
-  });
-  const submittedCodeApplication =
-    getSignedPayStateSubmittedCodeApplication(state);
+  const payableCheckout = await loadPayableCheckout(state);
+  if (!payableCheckout) {
+    return runWithRequestLocale(() => (
+      <InvalidPayState locale={locale} restartPath={restartPath} />
+    ));
+  }
+
+  return runWithRequestLocale(() =>
+    renderCheckoutPay({
+      locale,
+      payableCheckout,
+      payStateToken,
+      searchParams: resolvedSearchParams,
+      state,
+    })
+  );
+}
+
+type CheckoutPayRenderInput = {
+  readonly locale: Locale;
+  readonly payableCheckout: PayableCheckout;
+  readonly payStateToken: string;
+  readonly searchParams: SearchParamsRecord;
+  readonly state: SignedPayState;
+};
+
+/** The Pay step for a Pay state whose reservation is still held. */
+function renderCheckoutPay(input: CheckoutPayRenderInput) {
+  const { locale, payableCheckout, payStateToken, state } = input;
   const orderPath = getReservationStartPath(
     locale,
     state.reservation.kind,
@@ -221,7 +249,7 @@ async function CheckoutPayContent({
     contractAt: Temporal.Now.instant(),
   });
 
-  return runWithRequestLocale(() => (
+  return (
     <CheckoutFlowLayout
       activeStepKey="pay"
       locale={locale}
@@ -242,21 +270,8 @@ async function CheckoutPayContent({
       )}
       <CheckoutPayPage
         changedKeys={state.changedKeys}
-        discountCodeForm={
-          <CheckoutDiscountCodeForm
-            appliedAdjustment={submittedCodeApplication?.discount.adjustment}
-            defaultCode={state.requestedDiscountCode ?? state.submittedCode}
-            enabled={
-              discountCodeEntryEnabled && state.submittedCode === undefined
-            }
-            locale={locale}
-            payStateToken={payStateToken}
-            referralApplied={referralApplied}
-            rejection={discountCodeRejection}
-            rejectionId={discountCodeErrorId}
-          />
-        }
-        freshPayUrl={freshPayUrl}
+        discountCodeForm={renderDiscountCodeForm(input)}
+        freshPayUrl={payableCheckout.freshPayUrl}
         earlyPerformanceRequestRequired={earlyPerformanceRequestRequired}
         locale={locale}
         key={earlyPerformanceRequestRequired ? "early-performance" : "standard"}
@@ -265,7 +280,43 @@ async function CheckoutPayContent({
         variant={state.changedKeys ? "pricingChanged" : "pay"}
       />
     </CheckoutFlowLayout>
-  ));
+  );
+}
+
+/**
+ * The discount code form, showing the code the Pay state carries and the
+ * rejection the last submission redirected back with.
+ */
+function renderDiscountCodeForm({
+  locale,
+  payableCheckout,
+  payStateToken,
+  searchParams,
+  state,
+}: CheckoutPayRenderInput) {
+  const submittedCodeApplication =
+    getSignedPayStateSubmittedCodeApplication(state);
+  return (
+    <CheckoutDiscountCodeForm
+      appliedAdjustment={submittedCodeApplication?.discount.adjustment}
+      defaultCode={state.requestedDiscountCode ?? state.submittedCode}
+      enabled={
+        payableCheckout.discountCodeEntryEnabled &&
+        state.submittedCode === undefined
+      }
+      locale={locale}
+      payStateToken={payStateToken}
+      referralApplied={hasCheckoutReferralAppliedNotice({
+        discounts: state.quote.payment.discounts,
+        dotyposCustomerId: payableCheckout.currentReservation.dotyposCustomerId,
+        marker: searchParams[checkoutReferralAppliedQueryParam],
+      })}
+      rejection={parseDiscountCodeRejection(
+        getSearchParam(searchParams, discountCodeErrorQueryParam)
+      )}
+      rejectionId={getSearchParam(searchParams, discountCodeErrorIdQueryParam)}
+    />
+  );
 }
 
 function InvalidPayState({
