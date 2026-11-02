@@ -199,8 +199,13 @@ export type CrapIndex = {
   /** False when the report ran a subset of tests or some tests failed. */
   readonly completeCoverage: boolean;
   readonly businessFunctions: number;
-  readonly counts: Readonly<Record<CoverageEvidence, number>>;
+  /** Evidence behind every business function's score. */
+  readonly functionEvidence: Readonly<Record<CoverageEvidence, number>>;
+  /** Evidence behind the scores of 10 or more. */
+  readonly violationEvidence: Readonly<Record<CoverageEvidence, number>>;
   readonly violations: ReadonlyArray<FunctionCrap>;
+  /** Every function whose score isn't measured, whatever the score. */
+  readonly unmeasured: ReadonlyArray<FunctionCrap>;
 };
 
 export function buildCrapIndex(
@@ -210,19 +215,27 @@ export function buildCrapIndex(
   const violations = scores
     .filter(isViolation)
     .toSorted((left, right) => right.crap - left.crap);
-  const counts = { measured: 0, stale: 0, estimated: 0 };
-  for (const violation of violations) {
-    counts[violation.evidence] += 1;
-  }
   return {
     revision: manifest.revision,
     coverageGeneratedAt: manifest.generatedAt,
     completeCoverage:
       manifest.scope.kind === "complete" && manifest.testExitCode === 0,
     businessFunctions: scores.length,
-    counts,
+    functionEvidence: countEvidence(scores),
+    violationEvidence: countEvidence(violations),
     violations,
+    unmeasured: scores.filter((score) => score.evidence !== "measured"),
   };
+}
+
+function countEvidence(
+  scores: ReadonlyArray<FunctionCrap>
+): Record<CoverageEvidence, number> {
+  const counts = { measured: 0, stale: 0, estimated: 0 };
+  for (const score of scores) {
+    counts[score.evidence] += 1;
+  }
+  return counts;
 }
 
 /** One tab-separated row per score, for grep and spreadsheets. */

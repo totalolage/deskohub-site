@@ -84,14 +84,27 @@ describe("buildCrapIndex", () => {
     ),
   ];
 
-  test("lists functions scoring 10 or more, worst first, by evidence", () => {
+  test("lists functions scoring 10 or more, worst first, and counts the evidence behind every score", () => {
     const index = buildCrapIndex(manifest, scores);
     expect(index.violations.map((score) => score.name)).toEqual([
       "stale",
       "estimated",
       "at",
     ]);
-    expect(index.counts).toEqual({ measured: 1, stale: 1, estimated: 1 });
+    expect(index.violationEvidence).toEqual({
+      measured: 1,
+      stale: 1,
+      estimated: 1,
+    });
+    expect(index.functionEvidence).toEqual({
+      measured: 2,
+      stale: 1,
+      estimated: 1,
+    });
+    expect(index.unmeasured.map((score) => score.name)).toEqual([
+      "stale",
+      "estimated",
+    ]);
     expect(index.businessFunctions).toBe(4);
     expect(index.completeCoverage).toBe(true);
   });

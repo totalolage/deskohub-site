@@ -4,7 +4,9 @@
 //   bun run crap index
 //     Scores every business function against coverage/coverage-final.json
 //     (written by `bun run coverage`) and writes coverage/crap-index.json and
-//     coverage/crap-index.tsv with every function scoring 10 or more.
+//     coverage/crap-index.tsv with every function scoring 10 or more. The JSON
+//     also counts the evidence behind every score and lists the functions
+//     whose scores aren't measured.
 //
 //   bun run crap <path> [<line>|<name>] [--test <test path>]...
 //     Prints the scores of one file's functions, or of the function starting
@@ -63,7 +65,8 @@ async function writeIndex(): Promise<void> {
   process.stdout.write(
     [
       `Coverage of ${index.revision} from ${index.coverageGeneratedAt}${index.completeCoverage ? "" : " (INCOMPLETE: a subset of tests ran or some failed)"}.`,
-      `${index.violations.length} of ${index.businessFunctions} business functions score ${crapLimit} or more: ${index.counts.measured} measured, ${index.counts.stale} stale, ${index.counts.estimated} estimated.`,
+      `${index.businessFunctions} business functions: ${index.functionEvidence.measured} measured, ${index.functionEvidence.stale} stale, ${index.functionEvidence.estimated} estimated.`,
+      `${index.violations.length} score ${crapLimit} or more: ${index.violationEvidence.measured} measured, ${index.violationEvidence.stale} stale, ${index.violationEvidence.estimated} estimated.`,
       `Wrote ${join(coverageDirectory, "crap-index.json")} and crap-index.tsv.`,
       "",
     ].join("\n")
