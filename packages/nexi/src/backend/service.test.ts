@@ -544,6 +544,165 @@ describe("NexiService verifyPaymentOutcome", () => {
   });
 });
 
+describe("NexiService verifyPaymentOutcome evidence", () => {
+  const verify = (
+    order: unknown,
+    input: { readonly currency?: "CZK" | "EUR" } = { currency: "CZK" }
+  ) =>
+    runWithService(
+      Effect.gen(function* () {
+        const nexi = yield* NexiService;
+        return yield* nexi.verifyPaymentOutcome({
+          orderId: nexiOrderId("order-id"),
+          correlationId: nexiCorrelationId("correlation-id"),
+          amount: "5000",
+          securityToken: "security-token",
+          ...input,
+        });
+      }),
+      mockNexiFetch(Response.json(order))
+    );
+
+  test("reports every contradicted payment fact in check order", async () => {
+    const result = await verify({
+      orderStatus: {
+        order: { orderId: "other-order", amount: "5000", currency: "CZK" },
+      },
+      operations: [
+        {
+          operationId: "capture-id",
+          operationType: "CAPTURE",
+          operationResult: "EXECUTED",
+          operationAmount: "4000",
+          operationCurrency: "EUR",
+          securityToken: "other-token",
+        },
+      ],
+    });
+
+    expect(result.status).toBe("failure");
+    expect(result.mismatches).toEqual([
+      "orderId",
+      "amount",
+      "currency",
+      "securityToken",
+    ]);
+    expect(result.provider).toMatchObject({
+      orderId: nexiOrderId("other-order"),
+      operationId: nexiOperationId("capture-id"),
+      amount: "4000",
+      currency: "EUR",
+      orderStatus: "EXECUTED",
+      captureExecuted: true,
+    });
+  });
+
+  test("checks the order's security token only when Nexi reports one", async () => {
+    const pendingOrder = (securityToken: string) => ({
+      securityToken,
+      orderStatus: {
+        lastOperationType: "PENDING",
+        order: { orderId: "order-id", amount: "5000", currency: "CZK" },
+      },
+    });
+
+    const emptyToken = await verify(pendingOrder(""));
+    const otherToken = await verify(pendingOrder("other-token"));
+
+    expect(emptyToken.status).toBe("pending");
+    expect(emptyToken.mismatches).toEqual([]);
+    expect(otherToken.status).toBe("failure");
+    expect(otherToken.mismatches).toEqual(["securityToken"]);
+  });
+
+  test("fails a payment whose last operation type is a failure status in any case", async () => {
+    const result = await verify({
+      orderStatus: {
+        lastOperationType: "denied",
+        order: { orderId: "order-id", amount: "5000", currency: "CZK" },
+      },
+      operations: [],
+    });
+
+    expect(result.status).toBe("failure");
+    expect(result.mismatches).toEqual([]);
+    expect(result.provider.orderStatus).toBe("denied");
+    expect(result.provider.operationId).toBeUndefined();
+    expect(result.provider.captureExecuted).toBe(false);
+  });
+
+  test("reports the failed operation when nothing executed", async () => {
+    const result = await verify({
+      orderStatus: {
+        lastOperationType: "AUTHORIZATION",
+        order: { orderId: "order-id", amount: "5000", currency: "CZK" },
+      },
+      operations: [
+        {
+          operationId: "pending-id",
+          operationType: "AUTHORIZATION",
+          operationResult: "PENDING",
+        },
+        {
+          operationId: "declined-id",
+          operationType: "AUTHORIZATION",
+          operationResult: "DECLINED",
+        },
+      ],
+    });
+
+    expect(result.status).toBe("failure");
+    expect(result.provider.operationId).toBe(nexiOperationId("declined-id"));
+    expect(result.provider.orderStatus).toBe("DECLINED");
+    expect(result.provider.operationCount).toBe(2);
+  });
+
+  test("reads an executed authorization's amount and the response order ID without an order status", async () => {
+    const result = await verify(
+      {
+        orderId: "order-id",
+        securityToken: "other-token",
+        operations: [
+          {
+            operationId: "authorization-id",
+            operationType: "AUTHORIZATION",
+            operationResult: "EXECUTED",
+            amount: { amount: "5000", currency: "EUR" },
+            securityToken: "security-token",
+          },
+        ],
+      },
+      { currency: "EUR" }
+    );
+
+    expect(result.status).toBe("success");
+    expect(result.mismatches).toEqual([]);
+    expect(result.provider).toEqual({
+      orderId: nexiOrderId("order-id"),
+      operationId: nexiOperationId("authorization-id"),
+      operationCount: 1,
+      amount: "5000",
+      currency: "EUR",
+      authorizedAmount: undefined,
+      capturedAmount: undefined,
+      orderStatus: "EXECUTED",
+      captureExecuted: true,
+    });
+  });
+
+  test("keeps the submitted order ID and reports no amount when Nexi reports neither", async () => {
+    const withoutCurrency = await verify({}, {});
+    const withCurrency = await verify({});
+
+    expect(withoutCurrency.provider.orderId).toBe(nexiOrderId("order-id"));
+    expect(withoutCurrency.provider.operationCount).toBe(0);
+    expect(withoutCurrency.provider.amount).toBeUndefined();
+    expect(withoutCurrency.mismatches).toEqual(["orderId", "amount"]);
+    expect(withCurrency.mismatches).toEqual(["orderId", "amount", "currency"]);
+    expect(withCurrency.status).toBe("failure");
+  });
+});
+
 describe("NexiService request retries", () => {
   test("gives up on an unanswered order lookup within its worst-case duration", async () => {
     const fetchMock = mock(
@@ -680,6 +839,46 @@ describe("NexiService administration reads", () => {
     expect(getUrl(fetchMock.mock.calls[0] as FetchCall)).toBe(
       "https://nexi.example.test/api/phoenix-0.0/psp/api/v1/orders/order%23id"
     );
+  });
+
+  test("falls back to the response amount and the submitted order ID without an order status", async () => {
+    const fetchMock = mockNexiFetch(
+      Response.json({
+        amount: { amount: "5000", currency: "CZK" },
+        operations: [
+          {
+            operationId: nexiOperationId("operation-id"),
+            operationAmount: "5000",
+          },
+          {},
+        ],
+      })
+    );
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const nexi = yield* NexiService;
+        return yield* nexi.getOrder({
+          correlationId: nexiCorrelationId("correlation-id"),
+          orderId: nexiOrderId("order-id"),
+        });
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual({
+      orderId: nexiOrderId("order-id"),
+      amount: "5000",
+      currency: "CZK",
+      operations: [
+        {
+          orderId: nexiOrderId("order-id"),
+          operationId: nexiOperationId("operation-id"),
+          amount: "5000",
+        },
+        { orderId: nexiOrderId("order-id") },
+      ],
+    });
   });
 
   test("normalizes provider wall times without fractional seconds", async () => {
