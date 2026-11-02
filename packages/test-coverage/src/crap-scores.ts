@@ -50,7 +50,7 @@ export function isBusinessSource(relativePath: string): boolean {
  * `stale` comes from a report taken against different content; `estimated` is
  * Fallow's static guess for a function the report has no counts for.
  */
-export type CoverageEvidence = "measured" | "stale" | "estimated";
+type CoverageEvidence = "measured" | "stale" | "estimated";
 
 export type FunctionCrap = {
   readonly path: string;
