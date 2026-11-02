@@ -95,6 +95,47 @@ function ReservationDateShortcutLinks({
   );
 }
 
+/** A list's apply button, beside a link clearing every filter once any is set. */
+function AdministrationFilterActions({
+  clearHref,
+  filtered,
+}: {
+  readonly clearHref: AdministrationHref;
+  readonly filtered: boolean;
+}) {
+  const locale = useRouteLocale();
+  return (
+    <fieldset
+      aria-label={m.administrationFilterActions({}, { locale })}
+      className="flex min-w-0 items-center justify-end gap-2 border-0 p-0"
+    >
+      {filtered && (
+        <Button asChild size="md" variant="ghost">
+          <Link href={clearHref}>
+            {m.administrationFilterClear({}, { locale })}
+          </Link>
+        </Button>
+      )}
+      <Button size="md" type="submit">
+        {m.administrationFilterApply({}, { locale })}
+      </Button>
+    </fieldset>
+  );
+}
+
+/** Whether the reservation list narrows anything beyond its default start date. */
+const isReservationListFiltered = (
+  query: ReservationListQuery,
+  defaultFrom: string
+) =>
+  Boolean(
+    query.customerId ||
+      query.from !== defaultFrom ||
+      query.status ||
+      query.to ||
+      query.type
+  );
+
 export function OrdersAdministrationFilterForm({
   query,
 }: {
@@ -422,25 +463,10 @@ export function ReservationsAdministrationFilterForm({
           }
           shortcuts={shortcuts}
         />
-        <fieldset
-          aria-label={m.administrationFilterActions({}, { locale })}
-          className="flex min-w-0 items-center justify-end gap-2 border-0 p-0"
-        >
-          {(query.customerId ||
-            query.from !== defaultFrom ||
-            query.status ||
-            query.to ||
-            query.type) && (
-            <Button asChild size="md" variant="ghost">
-              <Link href={administrationHref("/[locale]/admin/reservations")}>
-                {m.administrationFilterClear({}, { locale })}
-              </Link>
-            </Button>
-          )}
-          <Button size="md" type="submit">
-            {m.administrationFilterApply({}, { locale })}
-          </Button>
-        </fieldset>
+        <AdministrationFilterActions
+          clearHref={administrationHref("/[locale]/admin/reservations")}
+          filtered={isReservationListFiltered(query, defaultFrom)}
+        />
       </div>
     </AdministrationFilterForm>
   );
@@ -536,21 +562,10 @@ export function CustomersAdministrationFilterForm({
           }
           shortcuts={shortcuts}
         />
-        <fieldset
-          aria-label={m.administrationFilterActions({}, { locale })}
-          className="flex min-w-0 items-center justify-end gap-2 border-0 p-0"
-        >
-          {(query.from || query.to || query.marketingConsent) && (
-            <Button asChild size="md" variant="ghost">
-              <Link href={administrationHref("/[locale]/admin/customers")}>
-                {m.administrationFilterClear({}, { locale })}
-              </Link>
-            </Button>
-          )}
-          <Button size="md" type="submit">
-            {m.administrationFilterApply({}, { locale })}
-          </Button>
-        </fieldset>
+        <AdministrationFilterActions
+          clearHref={administrationHref("/[locale]/admin/customers")}
+          filtered={Boolean(query.from || query.to || query.marketingConsent)}
+        />
       </div>
     </AdministrationFilterForm>
   );
