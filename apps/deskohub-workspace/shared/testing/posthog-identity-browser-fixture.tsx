@@ -5,8 +5,8 @@ import { Schema } from "effect";
 import posthog from "posthog-js";
 import { useCallback, useEffect } from "react";
 import { createRoot } from "react-dom/client";
+import { signOutOfAccount } from "@/features/account/account-exit";
 import {
-  beginAnalyticsAccountTransition,
   completeAnalyticsAccountSignOut,
   getAnalyticsAccountIdentity,
   refreshAnalyticsAccountIdentity,
@@ -252,29 +252,9 @@ const removeConsentCookie = () => {
   document.cookie = `${CONSENT_COOKIE_NAME}=; Max-Age=0; Path=/`;
 };
 
-// This control covers the account-domain lifecycle used by SignOutButton, not
-// the button's UI click behavior.
-const signOut = async () => {
-  beginAnalyticsAccountTransition();
-
-  try {
-    const result = await authClient.signOut();
-    if (result.error) {
-      void refreshAnalyticsAccountIdentity({ settleTransition: true }).catch(
-        () => undefined
-      );
-      return false;
-    }
-
-    completeAnalyticsAccountSignOut();
-    return true;
-  } catch {
-    void refreshAnalyticsAccountIdentity({ settleTransition: true }).catch(
-      () => undefined
-    );
-    return false;
-  }
-};
+// This control runs the account sign-out SignOutButton uses, without the
+// button's UI click behavior or page leave.
+const signOut = async () => (await signOutOfAccount()) === "signed-out";
 
 export function PostHogIdentityBrowserFixture() {
   const { isAccepted } = useCookieConsent();

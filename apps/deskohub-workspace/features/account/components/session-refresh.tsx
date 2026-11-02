@@ -8,12 +8,11 @@ import { refreshAnalyticsAccountIdentity } from "@/features/account/analytics-id
  * so every authenticated account view asks the account identity adapter once,
  * letting it refresh the browser cookie and authoritative identity after the
  * server-side refresh age. The page keeps its authoritative server session
- * checks, the response stays unused, and a failed request is swallowed so it
- * never turns into an unhandled rejection.
+ * checks, and the refresh reports its own failure without rejecting.
  */
 export function SessionRefresh() {
   useEffect(() => {
-    void refreshAnalyticsAccountIdentity().catch(() => undefined);
+    void refreshAnalyticsAccountIdentity();
   }, []);
 
   return null;

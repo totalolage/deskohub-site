@@ -1,126 +1,118 @@
 import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { Effect, Result } from "effect";
 
-type CookieOptions = {
-  readonly expires?: Date;
-  readonly httpOnly?: boolean;
-  readonly maxAge?: number;
-  readonly path?: string;
-  readonly sameSite?: string;
-  readonly secure?: boolean;
-};
-
-const cookieValues = new Map<string, string>();
-const cookieStore = {
-  get: mock((name: string) => {
-    const value = cookieValues.get(name);
-    return value === undefined ? undefined : { value };
+const values = new Map<string, string>();
+let writable = true;
+const set = mock(
+  (name: string, value: string, options: { maxAge?: number }) => {
+    if (!writable) throw new Error("Cookie write outside an action or route");
+    if (options.maxAge === 0) values.delete(name);
+    else values.set(name, value);
+  }
+);
+mock.module("next/headers", () => ({
+  cookies: async () => ({
+    get: (name: string) => {
+      const value = values.get(name);
+      return value === undefined ? undefined : { value };
+    },
+    set,
   }),
-  set: mock(
-    (_name: string, _value: string, _options: CookieOptions) => undefined
-  ),
-};
-const { createMarketingManagementCookies, marketingManagementCookieNames } =
-  await import("./marketing-management-cookies.server");
+}));
+const { MarketingManagementCookies, marketingManagementCookieNames } =
+  await import("./marketing-management-cookies.service");
+const run = <A, E>(
+  use: (cookies: MarketingManagementCookies["Service"]) => Effect.Effect<A, E>
+) =>
+  Effect.runPromise(
+    Effect.flatMap(MarketingManagementCookies, use).pipe(
+      Effect.provide(MarketingManagementCookies.Default)
+    )
+  );
+const secure = { httpOnly: true, path: "/", sameSite: "lax", secure: true };
 
-const marketingCookies = createMarketingManagementCookies(cookieStore);
+beforeEach(() => {
+  values.clear();
+  set.mockClear();
+  writable = true;
+});
 
-const commonCookieOptions = {
-  httpOnly: true,
-  path: "/",
-  sameSite: "lax",
-  secure: true,
-} as const;
-
-describe("marketing management cookies", () => {
-  beforeEach(() => {
-    cookieValues.clear();
-    cookieStore.get.mockClear();
-    cookieStore.set.mockClear();
+describe("marketing request cookie adapter", () => {
+  test("switches from session to a ten-minute host-only pending cookie", async () => {
+    values.set(marketingManagementCookieNames.session, "old-session");
+    await run((cookies) => cookies.setPending("pending-token"));
+    expect(await run((cookies) => cookies.read)).toEqual({
+      pending: "pending-token",
+      session: undefined,
+    });
+    expect(set).toHaveBeenLastCalledWith(
+      marketingManagementCookieNames.pending,
+      "pending-token",
+      { ...secure, maxAge: 600 }
+    );
+    expect(set.mock.calls[0]?.[2]).toEqual({ ...secure, maxAge: 0 });
+    expect(marketingManagementCookieNames.pending).toStartWith("__Host-");
+    expect(marketingManagementCookieNames.session).toStartWith("__Host-");
   });
 
-  test("names distinct host-only cookies", () => {
-    const names = Object.values(marketingManagementCookieNames);
-
-    for (const name of names) expect(name).toStartWith("__Host-");
-    expect(new Set(names).size).toBe(names.length);
-  });
-
-  test("reads the pending and session tokens, leaving absent cookies undefined", async () => {
-    expect(await marketingCookies.readMarketingManagementCookies()).toEqual({
+  test("installs the exact session expiry, removes pending and clears both cookies", async () => {
+    const expiresAt = new Date("2030-01-02T03:04:05.678Z");
+    await run((cookies) => cookies.setPending("pending-token"));
+    await run((cookies) =>
+      cookies.setSession({ token: "session-token", expiresAt })
+    );
+    expect(await run((cookies) => cookies.read)).toEqual({
+      pending: undefined,
+      session: "session-token",
+    });
+    expect(set).toHaveBeenLastCalledWith(
+      marketingManagementCookieNames.session,
+      "session-token",
+      { ...secure, expires: expiresAt }
+    );
+    await run((cookies) => cookies.clear);
+    expect(await run((cookies) => cookies.read)).toEqual({
       pending: undefined,
       session: undefined,
     });
+  });
 
-    cookieValues.set(marketingManagementCookieNames.pending, "pending-token");
-    expect(await marketingCookies.readMarketingManagementCookies()).toEqual({
+  test("reads each token independently without writing", async () => {
+    values.set(marketingManagementCookieNames.pending, "pending-token");
+    expect(await run((cookies) => cookies.read)).toEqual({
       pending: "pending-token",
       session: undefined,
     });
-
-    cookieValues.set(marketingManagementCookieNames.session, "session-token");
-    expect(await marketingCookies.readMarketingManagementCookies()).toEqual({
+    values.set(marketingManagementCookieNames.session, "session-token");
+    expect(await run((cookies) => cookies.read)).toEqual({
       pending: "pending-token",
       session: "session-token",
     });
-    expect(cookieStore.set).not.toHaveBeenCalled();
+    expect(set).not.toHaveBeenCalled();
   });
 
-  test("sets a ten-minute pending cookie and clears any session cookie", async () => {
-    await marketingCookies.setPendingMarketingManagementCookie("pending-token");
-
-    expect(cookieStore.set).toHaveBeenNthCalledWith(
-      1,
-      marketingManagementCookieNames.session,
-      "",
-      { ...commonCookieOptions, maxAge: 0 }
-    );
-    expect(cookieStore.set).toHaveBeenNthCalledWith(
-      2,
-      marketingManagementCookieNames.pending,
-      "pending-token",
-      { ...commonCookieOptions, maxAge: 600 }
-    );
-    expect(cookieStore.set.mock.calls[1]?.[2]).not.toHaveProperty("domain");
-  });
-
-  test("sets the supplied session expiry exactly and clears any pending cookie", async () => {
-    const expiresAt = new Date("2030-01-02T03:04:05.678Z");
-
-    await marketingCookies.setMarketingManagementSessionCookie({
-      token: "session-token",
-      expiresAt,
-    });
-
-    expect(cookieStore.set).toHaveBeenNthCalledWith(
-      1,
-      marketingManagementCookieNames.pending,
-      "",
-      { ...commonCookieOptions, maxAge: 0 }
-    );
-    expect(cookieStore.set).toHaveBeenNthCalledWith(
-      2,
-      marketingManagementCookieNames.session,
-      "session-token",
-      { ...commonCookieOptions, expires: expiresAt }
-    );
-    expect(cookieStore.set.mock.calls[1]?.[2]).not.toHaveProperty("domain");
-  });
-  test("clears both cookies", async () => {
-    await marketingCookies.clearMarketingManagementCookies();
-
-    expect(cookieStore.set.mock.calls).toEqual([
-      [
-        marketingManagementCookieNames.pending,
-        "",
-        { ...commonCookieOptions, maxAge: 0 },
-      ],
-      [
-        marketingManagementCookieNames.session,
-        "",
-        { ...commonCookieOptions, maxAge: 0 },
-      ],
+  test("clears both cookies with host-only deletion options", async () => {
+    await run((cookies) => cookies.clear);
+    expect(set.mock.calls).toEqual([
+      [marketingManagementCookieNames.pending, "", { ...secure, maxAge: 0 }],
+      [marketingManagementCookieNames.session, "", { ...secure, maxAge: 0 }],
     ]);
+  });
+
+  test("reads while rendering but reduces a forbidden write to a safe typed failure", async () => {
+    writable = false;
+    expect(await run((cookies) => cookies.read)).toEqual({
+      pending: undefined,
+      session: undefined,
+    });
+    const result = await run((cookies) =>
+      cookies.setPending("pending-token").pipe(Effect.result)
+    );
+    expect(Result.isFailure(result) && result.failure._tag).toBe(
+      "MarketingManagementCookiesUnavailable"
+    );
+    expect(values.size).toBe(0);
   });
 });
