@@ -28,7 +28,7 @@ interface SubmitContactFormInput {
 const isContactField = (
   key: PropertyKey | undefined
 ): key is keyof ContactFormValues =>
-  typeof key === "string" && Object.hasOwn(contactDefaultValues, key);
+  key !== undefined && Object.hasOwn(contactDefaultValues, key);
 
 /** The first failed check per form field, keyed by the issue's top path. */
 const getContactFieldErrors = (issue: Schema.SchemaError["issue"]) => {
