@@ -9,7 +9,7 @@ import { fixtureCampaignId } from "./automation-detail.test-utils";
 export const automationDryRunFixture = (
   overrides: Partial<typeof AutomationDryRun.Encoded> = {}
 ): AutomationDryRun =>
-  Schema.decodeUnknownSync(AutomationDryRun)({
+  Schema.decodeSync(AutomationDryRun)({
     previewId: "preview-1",
     campaignId: fixtureCampaignId,
     draftHash: "hash",
