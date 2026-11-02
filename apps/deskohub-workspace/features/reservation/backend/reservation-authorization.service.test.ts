@@ -2,7 +2,8 @@ import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
+import { Cause, Effect, Layer } from "effect";
 import { CustomerAccountAccessError } from "@/features/account";
 import { CustomerAccountReservationOwnership } from "@/features/account/backend/customer-account-reservation-ownership";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
@@ -28,6 +29,11 @@ import {
 const orderId = workspaceReservationIdSchema.make("reservation-1");
 const otherOrderId = workspaceReservationIdSchema.make("reservation-2");
 const accountCustomerId = "customer-owner";
+const queryFailure = new EffectDrizzleQueryError({
+  query: "select 1",
+  params: [],
+  cause: Cause.die(new Error("connection reset")),
+});
 
 type AuthorizedReservation = Pick<
   WorkspaceReservation,
@@ -43,16 +49,18 @@ const makeReservation = (
 const runAuthorization = async (options: {
   readonly input?: Partial<ReservationAuthorizationInput>;
   readonly owner?: "matches" | "different" | "unlinked" | "unavailable";
-  readonly reservation?: AuthorizedReservation | null;
+  readonly reservation?: AuthorizedReservation | null | "unreadable";
   /** Whether the order is one of the signed-in review account's sandbox orders. */
-  readonly sandboxOrder?: boolean;
+  readonly sandboxOrder?: boolean | "unreadable";
 }) => {
   const findById = mock(() =>
-    Effect.succeed(
-      options.reservation === undefined
-        ? makeReservation()
-        : options.reservation
-    )
+    options.reservation === "unreadable"
+      ? Effect.fail(queryFailure)
+      : Effect.succeed(
+          options.reservation === undefined
+            ? makeReservation()
+            : options.reservation
+        )
   );
   const activeAccountId =
     options.owner === "unavailable"
@@ -97,7 +105,10 @@ const runAuthorization = async (options: {
         }),
         Layer.mock(WorkspaceReservationRepository, { findById }),
         Layer.mock(ReviewSandbox, {
-          isOrderOf: () => Effect.succeed(options.sandboxOrder ?? false),
+          isOrderOf: () =>
+            options.sandboxOrder === "unreadable"
+              ? Effect.fail(queryFailure)
+              : Effect.succeed(options.sandboxOrder ?? false),
         })
       )
     ),
@@ -227,6 +238,16 @@ describe("ReservationAuthorizationService", () => {
     }
   );
 
+  test("denies an account when the reservation can't be read", async () => {
+    const result = await runAuthorization({
+      owner: "matches",
+      reservation: "unreadable",
+    });
+
+    expect(result.authorized).toBe(false);
+    expect(result.resolve).not.toHaveBeenCalled();
+  });
+
   test("allows the status to an author whose account has no linked customer", async () => {
     const result = await runAuthorization({
       owner: "unlinked",
@@ -308,6 +329,15 @@ describe("a review account's sandbox order", () => {
     const result = await runAuthorization({
       reservation: null,
       sandboxOrder: false,
+    });
+
+    expect(result.authorized).toBe(false);
+  });
+
+  test("stays hidden when the sandbox lookup fails", async () => {
+    const result = await runAuthorization({
+      reservation: null,
+      sandboxOrder: "unreadable",
     });
 
     expect(result.authorized).toBe(false);
