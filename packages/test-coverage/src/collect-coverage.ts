@@ -2,9 +2,10 @@
 // coverage/coverage-final.json at the repository root, with
 // coverage/coverage-sources.json recording which source the counts describe.
 // Arguments are passed to `turbo run test`, for example
-// `bun run coverage --filter=@deskohub/dotypos`; such a run is marked partial.
+// `bun run coverage --filter=@deskohub/dotypos`; a run that selects packages
+// is marked partial.
 import { join, resolve } from "node:path";
-import { measureCoverage } from "./coverage-measurement";
+import { measureCoverage, turboTestScope } from "./coverage-measurement";
 
 const repositoryRoot = resolve(import.meta.dir, "../../..");
 const turboArguments = Bun.argv.slice(2);
@@ -17,13 +18,7 @@ const measurement = await measureCoverage({
     turboArguments
   ),
   cwd: repositoryRoot,
-  scope:
-    turboArguments.length === 0
-      ? { kind: "complete" }
-      : {
-          kind: "partial",
-          tests: [`turbo run test ${turboArguments.join(" ")}`],
-        },
+  scope: turboTestScope(turboArguments),
 });
 
 process.stdout.write(

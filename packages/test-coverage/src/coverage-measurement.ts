@@ -20,6 +20,20 @@ import {
 
 const preload = join(import.meta.dir, "coverage-preload.ts");
 
+const turboSelection = /^(?:--filter|-F|--affected)(?:=|$)/;
+
+/**
+ * The scope of `turbo run test` with these arguments: partial when they
+ * select packages, complete when they only change how Turbo runs.
+ */
+export function turboTestScope(
+  turboArguments: ReadonlyArray<string>
+): CoverageScope {
+  return turboArguments.some((argument) => turboSelection.test(argument))
+    ? { kind: "partial", tests: [`turbo run test ${turboArguments.join(" ")}`] }
+    : { kind: "complete" };
+}
+
 export type CoverageMeasurement = {
   readonly reportFile: string;
   readonly loadedFiles: number;
