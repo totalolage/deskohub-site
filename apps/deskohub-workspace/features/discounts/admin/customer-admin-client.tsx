@@ -48,6 +48,17 @@ import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { mutateDiscountAdmin, searchDiscountAdminCustomers } from "./actions";
 import type { DiscountAdminMutation } from "./contracts";
 import { formatDiscountAdminCustomerName } from "./customer-display-name";
+import {
+  type CustomerPromotionCode,
+  type CustomerPromotionCodeMutations,
+  type CustomerPromotionDialogMode,
+  type CustomerPromotionEligibilityCopy,
+  customerPromotionCodeMutations,
+  customerPromotionDialogConfirmation,
+  customerPromotionDialogMode,
+  customerPromotionDialogText,
+  customerPromotionEligibilityCopy,
+} from "./customer-promotion-dialog";
 import type {
   AdminCustomerSearchResult,
   AdminDiscountGroup,
@@ -432,71 +443,6 @@ export function AdminMutationButton({
   );
 }
 
-type CustomerPromotionCode =
-  | { readonly kind: "discount-code"; readonly id: DiscountCodeId }
-  | { readonly kind: "voucher"; readonly id: VoucherId };
-
-const customerPromotionCodeMutations = (
-  promotion: CustomerPromotionCode,
-  customerId: DotyposCustomerId
-) =>
-  promotion.kind === "voucher"
-    ? ({
-        add: {
-          kind: "add-voucher-customer",
-          voucherId: promotion.id,
-          customerId,
-        },
-        remove: {
-          kind: "remove-voucher-customer",
-          voucherId: promotion.id,
-          customerId,
-        },
-        makeUnrestricted: {
-          kind: "make-voucher-unrestricted",
-          voucherId: promotion.id,
-        },
-        delete: { kind: "delete-voucher", id: promotion.id },
-      } satisfies Record<string, DiscountAdminMutation>)
-    : ({
-        add: { kind: "add-code-customer", codeId: promotion.id, customerId },
-        remove: {
-          kind: "remove-code-customer",
-          codeId: promotion.id,
-          customerId,
-        },
-        makeUnrestricted: {
-          kind: "make-code-unrestricted",
-          codeId: promotion.id,
-        },
-        delete: { kind: "delete-code", id: promotion.id },
-      } satisfies Record<string, DiscountAdminMutation>);
-
-const discountCodeEligibilityCopy = {
-  addLabel: m.discountsCodeAddCustomerLabel,
-  removeLabel: m.discountsCodeRemoveCustomerLabel,
-  limitTitle: m.discountsCodeLimitTitle,
-  limitDescription: m.discountsCodeLimitDescription,
-  removeOnlyCustomerDescription: m.discountsCodeRemoveOnlyCustomerDescription,
-  removeDescription: m.discountsCodeRemoveCustomerDescription,
-  addTitle: m.discountsCodeAddCustomerTitle,
-  addDescription: m.discountsCodeAddCustomerDialogDescription,
-  deleteLabel: m.discountsDeleteCode,
-};
-
-const voucherEligibilityCopy = {
-  addLabel: m.discountsVoucherAddCustomerLabel,
-  removeLabel: m.discountsVoucherRemoveCustomerLabel,
-  limitTitle: m.discountsVoucherLimitTitle,
-  limitDescription: m.discountsVoucherLimitDescription,
-  removeOnlyCustomerDescription:
-    m.discountsVoucherRemoveOnlyCustomerDescription,
-  removeDescription: m.discountsVoucherRemoveCustomerDescription,
-  addTitle: m.discountsVoucherAddCustomerTitle,
-  addDescription: m.discountsVoucherAddCustomerDialogDescription,
-  deleteLabel: m.discountsDeleteVoucher,
-};
-
 export function CustomerPromotionCodeAction({
   audienceSize,
   code,
@@ -530,31 +476,19 @@ export function CustomerPromotionCodeAction({
   });
 
   const mutations = customerPromotionCodeMutations(promotion, customerId);
-  const copy =
-    promotion.kind === "voucher"
-      ? voucherEligibilityCopy
-      : discountCodeEligibilityCopy;
+  const copy = customerPromotionEligibilityCopy(promotion.kind);
   const names = { code, customerName };
   const label = (eligible ? copy.removeLabel : copy.addLabel)(names, {
     locale,
   });
   const Icon = eligible ? Minus : Plus;
-  const isOnlyCustomer = eligible && audienceSize === 1;
-  let dialogTitle = copy.limitTitle(names, { locale });
-  let dialogDescription = copy.limitDescription(names, { locale });
-  if (isOnlyCustomer) {
-    dialogTitle = m.discountsRemoveOnlyCustomerTitle({}, { locale });
-    dialogDescription = copy.removeOnlyCustomerDescription(names, { locale });
-  } else if (eligible) {
-    dialogTitle = m.discountsRemoveCustomerTitle({ customerName }, { locale });
-    dialogDescription = copy.removeDescription(names, { locale });
-  } else if (audienceSize > 0) {
-    dialogTitle = copy.addTitle(names, { locale });
-    dialogDescription = copy.addDescription(
-      { ...names, count: audienceSize, total: audienceSize + 1 },
-      { locale }
-    );
-  }
+  const mode = customerPromotionDialogMode(eligible, audienceSize);
+  const dialogText = customerPromotionDialogText(mode, {
+    audienceSize,
+    copy,
+    locale,
+    names,
+  });
 
   return (
     <Dialog
@@ -577,8 +511,8 @@ export function CustomerPromotionCodeAction({
       </DialogTrigger>
       <DialogContent locale={locale}>
         <DialogHeader>
-          <DialogTitle>{dialogTitle}</DialogTitle>
-          <DialogDescription>{dialogDescription}</DialogDescription>
+          <DialogTitle>{dialogText.title}</DialogTitle>
+          <DialogDescription>{dialogText.description}</DialogDescription>
         </DialogHeader>
         {error && (
           <p
@@ -589,67 +523,74 @@ export function CustomerPromotionCodeAction({
           </p>
         )}
         <DialogFooter>
-          {isOnlyCustomer && (
-            <>
-              <Button
-                disabled={isExecuting}
-                onClick={() => execute(mutations.delete)}
-                type="button"
-                variant="secondary"
-              >
-                {copy.deleteLabel({}, { locale })}
-              </Button>
-              <Button
-                disabled={isExecuting}
-                onClick={() => execute(mutations.makeUnrestricted)}
-                tone="burned-orange-ink"
-                type="button"
-              >
-                {m.discountsMakeAvailableToAll({}, { locale })}
-              </Button>
-            </>
-          )}
-          {!isOnlyCustomer && eligible && (
-            <>
-              <DialogClose asChild>
-                <Button type="button" variant="secondary">
-                  {m.discountsCancel({}, { locale })}
-                </Button>
-              </DialogClose>
-              <Button
-                disabled={isExecuting}
-                onClick={() => execute(mutations.remove)}
-                tone="burned-orange-ink"
-                type="button"
-              >
-                {m.discountsRemoveCustomer({}, { locale })}
-              </Button>
-            </>
-          )}
-          {!eligible && (
-            <>
-              <DialogClose asChild>
-                <Button type="button" variant="secondary">
-                  {audienceSize > 0
-                    ? m.discountsCancel({}, { locale })
-                    : m.discountsKeepAvailableToAll({}, { locale })}
-                </Button>
-              </DialogClose>
-              <Button
-                disabled={isExecuting}
-                onClick={() => execute(mutations.add)}
-                tone="burned-orange-ink"
-                type="button"
-              >
-                {audienceSize > 0
-                  ? m.discountsAddCustomer({}, { locale })
-                  : m.discountsLimitToCustomer({}, { locale })}
-              </Button>
-            </>
-          )}
+          <CustomerPromotionDialogActions
+            copy={copy}
+            execute={execute}
+            isExecuting={isExecuting}
+            locale={locale}
+            mode={mode}
+            mutations={mutations}
+          />
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function CustomerPromotionDialogActions({
+  copy,
+  execute,
+  isExecuting,
+  locale,
+  mode,
+  mutations,
+}: {
+  readonly copy: CustomerPromotionEligibilityCopy;
+  readonly execute: (mutation: DiscountAdminMutation) => void;
+  readonly isExecuting: boolean;
+  readonly locale: Locale;
+  readonly mode: CustomerPromotionDialogMode;
+  readonly mutations: CustomerPromotionCodeMutations;
+}) {
+  if (mode === "remove-only-customer") {
+    return (
+      <>
+        <Button
+          disabled={isExecuting}
+          onClick={() => execute(mutations.delete)}
+          type="button"
+          variant="secondary"
+        >
+          {copy.deleteLabel({}, { locale })}
+        </Button>
+        <Button
+          disabled={isExecuting}
+          onClick={() => execute(mutations.makeUnrestricted)}
+          tone="burned-orange-ink"
+          type="button"
+        >
+          {m.discountsMakeAvailableToAll({}, { locale })}
+        </Button>
+      </>
+    );
+  }
+  const confirmation = customerPromotionDialogConfirmation[mode];
+  return (
+    <>
+      <DialogClose asChild>
+        <Button type="button" variant="secondary">
+          {confirmation.cancelLabel({}, { locale })}
+        </Button>
+      </DialogClose>
+      <Button
+        disabled={isExecuting}
+        onClick={() => execute(mutations[confirmation.mutation])}
+        tone="burned-orange-ink"
+        type="button"
+      >
+        {confirmation.confirmLabel({}, { locale })}
+      </Button>
+    </>
   );
 }
 
@@ -701,12 +642,11 @@ function AdminMutationForm<Input extends FieldValues, Values = Input>({
       // Rebase the defaults onto the submitted snapshot while retaining every
       // current value, so dirty state recomputes against the snapshot and an
       // in-flight edit that reverted a field to its original value survives.
-      form.reset(
-        resetOnSuccessTo === "submitted"
-          ? (submittedValues ?? undefined)
-          : undefined,
-        resetOnSuccessTo === "submitted" ? { keepValues: true } : undefined
-      );
+      if (resetOnSuccessTo === "submitted") {
+        form.reset(submittedValues ?? undefined, { keepValues: true });
+      } else {
+        form.reset();
+      }
       router.refresh();
     },
     onError: ({ error }) =>
