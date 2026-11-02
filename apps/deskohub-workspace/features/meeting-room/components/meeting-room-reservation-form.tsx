@@ -1,29 +1,19 @@
 "use client";
 
 import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { useForm } from "react-hook-form";
 import {
-  type AdvertisedPrice,
   getAdvertisedProductItem,
-  isMeetingRoomAdvertisedPrice,
   type PreloadedAdvertisedPrice,
 } from "@/features/checkout/advertised-price";
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
 import { workspaceMeetingRoomCatalog } from "@/features/checkout/product-catalog";
-import {
-  getWorkspaceMeetingRoomDurationLabel,
-  getWorkspaceMeetingRoomDurationTitle,
-} from "@/features/checkout/product-catalog.i18n";
+import { getWorkspaceMeetingRoomDurationLabel } from "@/features/checkout/product-catalog.i18n";
 import type { CanonicalPromotionCode } from "@/features/discounts";
 import { type Locale, m } from "@/features/i18n";
-import {
-  getMeetingRoomEarlySetupAvailability,
-  isMeetingRoomEarlySetupRuledOut,
-  MeetingRoomEarlySetupField,
-} from "@/features/meeting-room/components/meeting-room-early-setup-field";
+import { MeetingRoomEarlySetupField } from "@/features/meeting-room/components/meeting-room-early-setup-field";
 import { MeetingRoomStartTimeOptions } from "@/features/meeting-room/components/meeting-room-start-time-options";
-import { useMeetingRoomStartTimes } from "@/features/meeting-room/components/use-meeting-room-start-times";
 import { ReservationAdvertisedPrice } from "@/features/reservation/components/reservation-advertised-price";
 import { ReservationCheckoutForm } from "@/features/reservation/components/reservation-checkout-form";
 import { ReservationFormDateTimePicker } from "@/features/reservation/components/reservation-date-time-picker";
@@ -34,20 +24,16 @@ import {
   ReservationSubmitFallback,
 } from "@/features/reservation/components/reservation-form-fallback";
 import { ReservationFormLabel } from "@/features/reservation/components/reservation-form-label";
-import { getReservationAdvertisedTotal } from "@/features/reservation/components/reservation-selection-summary";
 import {
   ReservationTypeInput,
   ReservationTypeOption,
   reservationTypeInputLayout,
   reservationTypeOptionLayout,
 } from "@/features/reservation/components/reservation-type-input";
-import { useAdvertisedPrices } from "@/features/reservation/components/use-advertised-price";
-import { useReservationAvailability } from "@/features/reservation/components/use-reservation-availability";
 import {
   useReservationSelectionUrl,
   useWatchedSelection,
 } from "@/features/reservation/components/use-reservation-selection-url";
-import { getMeetingRoomDurationAdvertisedPriceRequests } from "@/features/reservation/meeting-room-advertised-price";
 import {
   getMeetingRoomReservationDefaultValues,
   getMeetingRoomReservationOrder,
@@ -61,7 +47,6 @@ import {
   getMeetingRoomReservationDuration,
   getMeetingRoomReservationDurationKey,
   isMeetingRoomWholeDayReservationDuration,
-  type MeetingRoomReservationDurationKey,
 } from "@/features/reservation/meeting-room-reservation-duration";
 import {
   getEarliestMeetingRoomStartDateTime,
@@ -69,12 +54,7 @@ import {
 } from "@/features/reservation/meeting-room-reservation-time";
 import { meetingRoomSelectionLink } from "@/features/reservation/meeting-room-selection-link";
 import type { ReservationCheckoutCustomerForm } from "@/features/reservation/reservation-existing-customer";
-import {
-  getMeetingRoomSelectionAvailabilityQuery,
-  getMeetingRoomStartTimesQuery,
-  isMeetingRoomAvailable,
-  type PreloadedWorkspaceAvailability,
-} from "@/features/reservation/workspace-availability";
+import type { PreloadedWorkspaceAvailability } from "@/features/reservation/workspace-availability";
 import {
   FormControl,
   FormField,
@@ -83,6 +63,9 @@ import {
 } from "@/shared/components/ui/form";
 import { cn } from "@/shared/utils";
 import { getMeetingRoomReservationSelectionSummary } from "./meeting-room-reservation-selection-summary";
+import { useMeetingRoomAdvertisedPrices } from "./use-meeting-room-advertised-prices";
+import { useMeetingRoomEarlySetup } from "./use-meeting-room-early-setup";
+import { useMeetingRoomSelectionAvailability } from "./use-meeting-room-selection-availability";
 
 type MeetingRoomReservationFormProps = {
   readonly checkoutSessionId?: CheckoutSessionId;
@@ -147,128 +130,46 @@ export function MeetingRoomReservationForm({
       ),
     [selectedDuration, selectedStartDateTime]
   );
-  const availabilityQuery = useMemo(
-    () =>
-      getMeetingRoomSelectionAvailabilityQuery({
-        duration: selectedDurationKey,
-        startDateTime: selectedStartDateTime,
-      }),
-    [selectedDurationKey, selectedStartDateTime]
-  );
-  const availabilityQueryResult = useReservationAvailability(
-    availabilityQuery,
-    { debounceMs: 250, initialAvailability, replacementToken }
-  );
-  const { availability } = availabilityQueryResult;
-  const isSelectedReservationUnavailable = Boolean(
-    selectedInterval && availability && !isMeetingRoomAvailable(availability)
-  );
-  const availabilityMessage = isSelectedReservationUnavailable
-    ? m.reservationMeetingRoomUnavailable({}, { locale })
-    : undefined;
-  const availabilityErrorMessage =
-    availabilityQuery &&
-    availabilityQueryResult.isError &&
-    !availabilityQueryResult.isPending
-      ? m.reservationAvailabilityError({}, { locale })
-      : undefined;
-  // A whole day lists no starts, but its midnight start's entry still says
-  // whether its setup time is free.
-  const startTimesQuery = getMeetingRoomStartTimesQuery({
-    duration: selectedDurationKey,
-    startDateTime: selectedStartDateTime,
-  });
-  const startTimes = useMeetingRoomStartTimes({
-    query: startTimesQuery,
+  const availability = useMeetingRoomSelectionAvailability({
+    initialAvailability,
+    locale,
     replacementToken,
+    selectedInterval,
+    selection: {
+      duration: selectedDurationKey,
+      startDateTime: selectedStartDateTime,
+    },
   });
-  const earlySetupAvailability = getMeetingRoomEarlySetupAvailability({
+  const {
+    availability: earlySetupAvailability,
     startTimes,
-    startsAt: selectedInterval
-      ? Temporal.Instant.from(selectedInterval.startsAt)
-      : undefined,
+    startTimesQuery,
+  } = useMeetingRoomEarlySetup({
+    earlySetup,
+    form,
+    replacementToken,
+    selectedInterval,
+    selection: {
+      duration: selectedDurationKey,
+      startDateTime: selectedStartDateTime,
+    },
   });
-  const isEarlySetupRuledOut = isMeetingRoomEarlySetupRuledOut(
-    earlySetupAvailability
-  );
-
-  // Changing to a start whose setup time is taken drops the setup choice.
-  // Loading or failed starts keep it; submission checks it again.
-  useEffect(() => {
-    if (earlySetup && isEarlySetupRuledOut) {
-      form.setValue("earlySetup", false, { shouldValidate: true });
-    }
-  }, [earlySetup, form, isEarlySetupRuledOut]);
-  const advertisedPriceRequests = useMemo(
-    () =>
-      getMeetingRoomDurationAdvertisedPriceRequests({
-        locale,
-        startDateTime: selectedStartDateTime,
-        submittedCode,
-      }),
-    [locale, selectedStartDateTime, submittedCode]
-  );
-  const advertisedPriceQueryResults = useAdvertisedPrices(
-    advertisedPriceRequests,
-    initialAdvertisedPrices
-  );
-  const advertisedPricesByDuration = new Map<
-    MeetingRoomReservationDurationKey,
-    Extract<AdvertisedPrice, { readonly kind: "meeting-room" }>
-  >();
-
-  for (const [index, queryResult] of advertisedPriceQueryResults.entries()) {
-    const request = advertisedPriceRequests[index];
-    if (
-      request &&
-      !queryResult.isError &&
-      queryResult.data &&
-      isMeetingRoomAdvertisedPrice(queryResult.data)
-    ) {
-      advertisedPricesByDuration.set(
-        getMeetingRoomReservationDurationKey(
-          request.reservation.details.duration
-        ),
-        queryResult.data
-      );
-    }
-  }
-
-  const selectedAdvertisedPriceIndex = advertisedPriceRequests.findIndex(
-    ({ reservation }) =>
-      getMeetingRoomReservationDurationKey(reservation.details.duration) ===
-      selectedDurationKey
-  );
-  const advertisedPriceQueryResult =
-    advertisedPriceQueryResults[selectedAdvertisedPriceIndex];
-  const advertisedPrice =
-    advertisedPricesByDuration.get(selectedDurationKey) ?? null;
+  const {
+    checkoutAdvertisedPrice,
+    pricesByDuration: advertisedPricesByDuration,
+  } = useMeetingRoomAdvertisedPrices({
+    durationKey: selectedDurationKey,
+    initialAdvertisedPrices,
+    locale,
+    startDateTime: selectedStartDateTime,
+    submittedCode,
+  });
 
   return (
     <ReservationCheckoutForm
       checkoutCustomer={checkoutCustomer}
-      advertisedPrice={{
-        token: advertisedPrice?.advertisedPriceToken,
-        isFetching: advertisedPriceQueryResult?.isFetching ?? false,
-        isError: advertisedPriceQueryResult?.isError ?? false,
-        retry: () => void advertisedPriceQueryResult?.refetch(),
-        sale: advertisedPrice
-          ? {
-              discounts: advertisedPrice.quote.payment.discounts,
-              productLabel: getWorkspaceMeetingRoomDurationTitle(
-                selectedDuration,
-                locale
-              ),
-            }
-          : undefined,
-        total: advertisedPrice
-          ? getReservationAdvertisedTotal(advertisedPrice.quote.payment)
-          : undefined,
-      }}
-      availability={{
-        isPending: availabilityQueryResult.isPending,
-        unavailableMessage: availabilityMessage ?? availabilityErrorMessage,
-      }}
+      advertisedPrice={checkoutAdvertisedPrice}
+      availability={availability}
       checkoutSessionId={checkoutSessionId}
       form={form}
       getReservation={getMeetingRoomReservationOrder}
