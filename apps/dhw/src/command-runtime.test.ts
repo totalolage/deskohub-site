@@ -10,13 +10,26 @@ import {
   type WorkspaceAdminOperationReference,
 } from "@deskohub/workspace-admin-api";
 import { BunServices } from "@effect/platform-bun";
-import { Effect, Layer, Option, Redacted, Schema } from "effect";
+import {
+  type Cause,
+  Console,
+  Effect,
+  Layer,
+  Option,
+  Queue,
+  Redacted,
+  Schema,
+  Terminal,
+} from "effect";
 import { Command } from "effect/unstable/cli";
 import { AccessCodeAttemptStore } from "./access-codes/access-code-attempt-store.service";
 import { WorkspaceAdminApiClient } from "./api/workspace-admin-api-client.service";
 import { AuthenticationService } from "./authentication/authentication.service";
 import { dhwCommand } from "./command";
+import { rootCommand, runCommand } from "./command-runtime";
 import { DhwConfig } from "./config/dhw-config.service";
+import { UpdateError, UpdateService } from "./update/update.service";
+import type { AvailableUpdate } from "./update/update-state-store.service";
 
 type Api = WorkspaceAdminApiClient["Service"];
 
@@ -362,5 +375,165 @@ describe("destructive operation confirmation", () => {
     expect(
       destructiveOperations.filter((operation) => !confirmed.has(operation))
     ).toEqual([]);
+  });
+});
+
+describe("automatic update offer after a command", () => {
+  const availableUpdate = {
+    version: "9.9.9",
+    releaseUrl: "https://github.com/example/dhw/releases/tag/dhw-v9.9.9",
+    assetUrl: "https://github.com/example/dhw/releases/download/dhw-v9.9.9/dhw",
+    assetDigest: "sha256:0",
+    assetSize: 1,
+    target: "linux-x64-baseline",
+  } satisfies AvailableUpdate;
+
+  type UpdateOfferRun = {
+    readonly answer?: "n" | "y";
+    readonly check?: Effect.Effect<Option.Option<AvailableUpdate>, UpdateError>;
+    readonly isCi?: boolean;
+    readonly json?: boolean;
+    readonly terminal?: boolean;
+  };
+
+  const probeCommand = rootCommand.pipe(
+    Command.withSubcommands([
+      Command.make("probe", {}, () =>
+        runCommand((json) => Console.log(`ran json=${json}`))
+      ),
+    ])
+  );
+
+  const keyPress = (input: string): Terminal.UserInput => ({
+    input: Option.some(input),
+    key: { name: input, ctrl: false, meta: false, shift: false },
+  });
+
+  /** Sets both standard streams' TTY flags for the duration of one run. */
+  const withTerminal = async <A>(terminal: boolean, run: () => Promise<A>) => {
+    const original = {
+      stdin: Object.getOwnPropertyDescriptor(process.stdin, "isTTY"),
+      stdout: Object.getOwnPropertyDescriptor(process.stdout, "isTTY"),
+    };
+    for (const stream of [process.stdin, process.stdout]) {
+      Object.defineProperty(stream, "isTTY", {
+        configurable: true,
+        value: terminal,
+      });
+    }
+    try {
+      return await run();
+    } finally {
+      for (const [stream, descriptor] of [
+        [process.stdin, original.stdin],
+        [process.stdout, original.stdout],
+      ] as const) {
+        if (descriptor) Object.defineProperty(stream, "isTTY", descriptor);
+        else Reflect.deleteProperty(stream, "isTTY");
+      }
+    }
+  };
+
+  const runProbe = ({
+    answer = "y",
+    check = Effect.succeed(Option.some(availableUpdate)),
+    isCi = false,
+    json = false,
+    terminal = true,
+  }: UpdateOfferRun) => {
+    const events: Array<string> = [];
+    const layer = Layer.mergeAll(
+      Layer.succeed(DhwConfig, {
+        baseUrl: new URL("https://workspace.example.test"),
+        requestHeaders: {},
+        isCi,
+        stateDirectory: `/tmp/dhw-update-offer-test-${crypto.randomUUID()}`,
+        updateChecksDisabled: false,
+      }),
+      Layer.succeed(UpdateService, {
+        check: (force) => {
+          events.push(`check force=${force}`);
+          return check;
+        },
+        install: (update) => {
+          events.push(`install ${update.version}`);
+          return Effect.void;
+        },
+      }),
+      Layer.succeed(
+        Terminal.Terminal,
+        Terminal.make({
+          columns: Effect.succeed(80),
+          rows: Effect.succeed(24),
+          readInput: Effect.gen(function* () {
+            events.push("prompt");
+            const input = yield* Queue.unbounded<
+              Terminal.UserInput,
+              Cause.Done
+            >();
+            yield* Queue.offer(input, keyPress(answer));
+            return input;
+          }),
+          readLine: Effect.succeed(""),
+          display: () => Effect.void,
+        })
+      ),
+      Layer.succeed(Console.Console, {
+        ...globalThis.console,
+        log: (...values: ReadonlyArray<unknown>) => {
+          events.push(`log ${values.join(" ")}`);
+        },
+      } satisfies Console.Console)
+    ).pipe(Layer.provideMerge(BunServices.layer));
+
+    return withTerminal(terminal, () =>
+      Command.runWith(probeCommand, { version: "1.3.0" })([
+        ...(json ? ["--json"] : []),
+        "probe",
+      ]).pipe(Effect.provide(layer), Effect.runPromise)
+    ).then(() => events);
+  };
+
+  test.each<[string, UpdateOfferRun]>([
+    ["under --json", { json: true }],
+    ["in CI", { isCi: true }],
+    ["without a terminal", { terminal: false }],
+  ])("doesn't check for an update %s", async (_, run) => {
+    const events = await runProbe(run);
+
+    expect(events).toEqual([`log ran json=${run.json === true}`]);
+  });
+
+  test("installs the available update when the user accepts", async () => {
+    expect(await runProbe({ answer: "y" })).toEqual([
+      "log ran json=false",
+      "check force=false",
+      "prompt",
+      "install 9.9.9",
+      expect.stringMatching(/^log .*9\.9\.9/),
+    ]);
+  });
+
+  test("keeps the current version when the user declines", async () => {
+    expect(await runProbe({ answer: "n" })).toEqual([
+      "log ran json=false",
+      "check force=false",
+      "prompt",
+    ]);
+  });
+
+  test.each<[string, UpdateOfferRun["check"]]>([
+    ["no update is available", Effect.succeed(Option.none())],
+    [
+      "the update check fails",
+      Effect.fail(
+        new UpdateError({ message: "GitHub is unavailable.", cause: null })
+      ),
+    ],
+  ])("doesn't prompt when %s", async (_, check) => {
+    expect(await runProbe({ check })).toEqual([
+      "log ran json=false",
+      "check force=false",
+    ]);
   });
 });
