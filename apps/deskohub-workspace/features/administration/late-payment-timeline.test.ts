@@ -25,7 +25,7 @@ const recovery = (
   ...overrides,
 });
 
-const timelineShape = ({
+const withoutCopy = ({
   event,
   id,
   occurredAt,
@@ -43,7 +43,7 @@ describe("buildLatePaymentTimeline", () => {
       buildLatePaymentTimeline([
         { eventId: "first", receivedAt: verifiedPaidAt, reservationId },
         { eventId: "second", receivedAt: completedAt, reservationId },
-      ]).map(timelineShape)
+      ]).map(withoutCopy)
     ).toEqual([
       {
         event: { source: "reservation", kind: "late_payment" },
@@ -72,7 +72,7 @@ describe("buildLatePaymentRecoveryTimeline", () => {
   test("shows only the start of a recovery still running", () => {
     expect(
       buildLatePaymentRecoveryTimeline([recovery({ state: "processing" })]).map(
-        timelineShape
+        withoutCopy
       )
     ).toEqual([started]);
   });
@@ -88,7 +88,7 @@ describe("buildLatePaymentRecoveryTimeline", () => {
         recovery({ state, completedAt }),
       ]);
 
-      expect(items.map(timelineShape)).toEqual([
+      expect(items.map(withoutCopy)).toEqual([
         started,
         {
           event: { source: "reservation", kind },
