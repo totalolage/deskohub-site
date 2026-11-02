@@ -65,6 +65,11 @@ import {
 import { formatCount } from "@/shared/utils/number";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { mutateDiscountAdmin } from "./actions";
+import {
+  findCalendarSaleDiscount,
+  getCalendarSaleDiscountLabel,
+  getCalendarStatusLabel,
+} from "./calendar-sale-display";
 import type { DiscountAdminMutation } from "./contracts";
 import type { AdminCalendarSale } from "./discount-administration.service";
 import {
@@ -147,21 +152,6 @@ const getAudienceLabel = (audienceSize: number, locale: Locale) =>
   audienceSize === 0
     ? m.discountsAudienceUnrestricted({}, { locale })
     : m.discountsAudienceCustomerCount({ count: audienceSize }, { locale });
-
-const getCalendarStatusLabel = (status: string, locale: Locale) => {
-  switch (status) {
-    case "confirmed":
-      return m.discountsCalendarStatusConfirmed({}, { locale });
-    case "tentative":
-      return m.discountsCalendarStatusTentative({}, { locale });
-    case "cancelled":
-      return m.discountsCalendarStatusCancelled({}, { locale });
-    case "unknown":
-      return m.discountsCalendarStatusUnknown({}, { locale });
-    default:
-      return status;
-  }
-};
 
 export function DiscountCodesAdminTable({
   codes,
@@ -551,9 +541,11 @@ export function CalendarSalesAdminTable({
       {
         accessorFn: (event) =>
           event.association.kind === "associated"
-            ? (discountsById.get(event.association.discountId)?.labels[
+            ? getCalendarSaleDiscountLabel(
+                event.association,
+                discountsById,
                 locale
-              ] ?? event.association.discountLabel)
+              )
             : event.association.kind,
         id: "association",
         header: m.discountsColumnAssociation({}, { locale }),
@@ -566,10 +558,10 @@ export function CalendarSalesAdminTable({
       },
       {
         accessorFn: (event) => {
-          const discount =
-            event.association.kind === "associated"
-              ? discountsById.get(event.association.discountId)
-              : undefined;
+          const discount = findCalendarSaleDiscount(
+            event.association,
+            discountsById
+          );
           return discount
             ? formatDiscountProductTargets(discount.products, locale)
             : "";
@@ -583,9 +575,7 @@ export function CalendarSalesAdminTable({
   const getRowReference = (event: CalendarSaleTableItem, index: number) =>
     event.eventReference ?? `${event.start}:${event.title}:${index}`;
   const getDiscount = (event: CalendarSaleTableItem) =>
-    event.association.kind === "associated"
-      ? discountsById.get(event.association.discountId)
-      : undefined;
+    findCalendarSaleDiscount(event.association, discountsById);
 
   return (
     <AdministrationDataTable
@@ -671,8 +661,7 @@ function CalendarAssociationBadge({
           {m.discountsCalendarAssociated({}, { locale })}
         </StatusBadge>
         <p className="mt-1 max-w-48 truncate text-xs text-navy-blue/70">
-          {discountsById.get(association.discountId)?.labels[locale] ??
-            association.discountLabel}
+          {getCalendarSaleDiscountLabel(association, discountsById, locale)}
         </p>
       </div>
     );

@@ -466,6 +466,117 @@ describe("discount administration pages", () => {
       );
       expect(timedRow?.textContent).not.toContain("soon");
     });
+
+    test("badges, labels and sorts each sale by its discount association", async () => {
+      const { m } = await import("@/features/administration/i18n");
+      const { formatDiscountProductTargets } = await import(
+        "./product-target-options"
+      );
+      const { SalesAdministrationCollection } = await import("./components");
+      const [discount] = dashboard.discounts;
+      const listedDiscount = {
+        ...discount,
+        labels: { "cs-CZ": "letní sleva", "en-US": "summer discount" },
+      };
+      const unlistedDiscountId =
+        "019c91dd-c560-7e55-b9d8-c95065efd59d" as typeof discount.id;
+      const view = render(
+        <SalesAdministrationCollection
+          dashboard={{
+            ...dashboard,
+            discounts: [listedDiscount],
+            calendar: {
+              ...dashboard.calendar,
+              events: [
+                calendarEvent({
+                  eventReference: undefined,
+                  title: "Listed sale",
+                  association: {
+                    kind: "associated",
+                    discountId: discount.id,
+                    discountLabel: "stale label",
+                  },
+                }),
+                calendarEvent({
+                  eventReference: undefined,
+                  title: "Missing discount sale",
+                  association: {
+                    kind: "missing-discount",
+                    discountId: unlistedDiscountId,
+                  },
+                }),
+                calendarEvent({
+                  eventReference: undefined,
+                  title: "Bare sale",
+                  association: { kind: "missing-description" },
+                }),
+                calendarEvent({
+                  eventReference: undefined,
+                  title: "Invalid sale",
+                  association: { kind: "invalid-description" },
+                }),
+                calendarEvent({
+                  eventReference: undefined,
+                  title: "Unlisted sale",
+                  association: {
+                    kind: "associated",
+                    discountId: unlistedDiscountId,
+                    discountLabel: "autumn discount",
+                  },
+                }),
+              ],
+            },
+          }}
+          locale="en-US"
+        />
+      );
+      const table = view.getByRole("table");
+      const rowText = (title: string) =>
+        within(table)
+          .getAllByRole("row")
+          .find((row) => row.textContent?.includes(title))?.textContent;
+      const message = (format: typeof m.discountsCalendarAssociated) =>
+        format({}, { locale: "en-US" });
+
+      expect(rowText("Listed sale")).toContain(
+        message(m.discountsCalendarAssociated)
+      );
+      expect(rowText("Listed sale")).toContain("summer discount");
+      expect(rowText("Listed sale")).not.toContain("stale label");
+      expect(rowText("Listed sale")).toContain(
+        formatDiscountProductTargets(listedDiscount.products, "en-US")
+      );
+      expect(rowText("Unlisted sale")).toContain("autumn discount");
+      expect(rowText("Missing discount sale")).toContain(
+        message(m.discountsCalendarDiscountNotFound)
+      );
+      expect(rowText("Invalid sale")).toContain(
+        message(m.discountsCalendarInvalidDescription)
+      );
+      expect(rowText("Bare sale")).toContain(
+        message(m.discountsCalendarMissingDiscountId)
+      );
+
+      fireEvent.click(
+        within(table).getByRole("button", {
+          name: message(m.discountsColumnAssociation),
+        })
+      );
+      await waitFor(() =>
+        expect(
+          within(table)
+            .getAllByRole("row")
+            .slice(1)
+            .map((row) => row.querySelector("p")?.textContent)
+        ).toEqual([
+          "Unlisted sale",
+          "Invalid sale",
+          "Bare sale",
+          "Missing discount sale",
+          "Listed sale",
+        ])
+      );
+    });
   });
 
   test("formats code counts and cowork tier targets in the operator's locale", async () => {
