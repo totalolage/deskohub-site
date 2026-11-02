@@ -14,6 +14,35 @@ type CheckoutStatusPreviewPageProps = {
   searchParams: Promise<SearchParamsRecord>;
 };
 
+/** The payment and fulfillment each previewed checkout status stands for. */
+const previewProgress = {
+  pending: { paymentStatus: "pending", fulfillmentStatus: "not_started" },
+  payment_pending_delayed: {
+    paymentStatus: "pending",
+    fulfillmentStatus: "not_started",
+  },
+  paid_waiting_fulfillment: {
+    paymentStatus: "paid",
+    fulfillmentStatus: "processing",
+  },
+  paid_fulfillment_delayed: {
+    paymentStatus: "paid",
+    fulfillmentStatus: "processing",
+  },
+  paid_awaiting_delivery: {
+    paymentStatus: "paid",
+    fulfillmentStatus: "awaiting_delivery",
+  },
+  paid_delivery_delayed: {
+    paymentStatus: "paid",
+    fulfillmentStatus: "awaiting_delivery",
+  },
+  fulfillment_failed: { paymentStatus: "paid", fulfillmentStatus: "failed" },
+} as const satisfies Record<
+  string,
+  Pick<CheckoutStatusViewModel, "paymentStatus" | "fulfillmentStatus">
+>;
+
 const previewStates = [
   "pending",
   "payment_pending_delayed",
@@ -22,7 +51,7 @@ const previewStates = [
   "paid_awaiting_delivery",
   "paid_delivery_delayed",
   "fulfillment_failed",
-] as const;
+] as const satisfies ReadonlyArray<keyof typeof previewProgress>;
 
 const decodePreviewSearchParams = getSearchParamsDecoder(
   Schema.Struct({
@@ -47,21 +76,7 @@ export default async function CheckoutStatusPreviewPage({
     orderId: workspaceReservationIdSchema.make("checkout-status-preview"),
     returnOutcome: "success",
     status: previewState,
-    paymentStatus:
-      previewState === "pending" || previewState === "payment_pending_delayed"
-        ? "pending"
-        : "paid",
-    fulfillmentStatus: (
-      {
-        pending: "not_started",
-        payment_pending_delayed: "not_started",
-        paid_waiting_fulfillment: "processing",
-        paid_fulfillment_delayed: "processing",
-        paid_awaiting_delivery: "awaiting_delivery",
-        paid_delivery_delayed: "awaiting_delivery",
-        fulfillment_failed: "failed",
-      } as const
-    )[previewState],
+    ...previewProgress[previewState],
     supportContactPrefill: {
       name: "Ada Lovelace",
       ...(email !== "hidden" && { email: testEmailAddress("ada") }),
