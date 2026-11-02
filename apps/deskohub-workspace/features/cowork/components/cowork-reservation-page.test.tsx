@@ -1,4 +1,4 @@
-import { beforeEach, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Schema } from "effect";
 import {
@@ -23,6 +23,7 @@ import {
   normalizedReservedDeskCoworkReservationOrderSchema,
 } from "@/features/reservation/cowork-reservation";
 import { defaultReservationBillingSelection } from "@/features/reservation/reservation-billing";
+import type { CustomerLastReservationForKind } from "@/features/reservation/reservation-existing-customer";
 import {
   getCoworkAvailabilityQueries,
   type WorkspaceAvailabilityQuery,
@@ -78,6 +79,20 @@ mock.module(
   "@/features/reservation/backend/workspace-availability-loader",
   () => ({
     preloadPageAvailability: preloadAvailability,
+  })
+);
+
+let isRememberedOfferAvailable = true;
+const isRememberedCoworkOfferAvailable = mock(() =>
+  Promise.resolve(isRememberedOfferAvailable)
+);
+mock.module(
+  "@/features/reservation/backend/reservation-existing-customer.server",
+  () => ({
+    isRememberedCoworkOfferAvailable,
+    isRememberedMeetingRoomReservationAvailable: () => Promise.resolve(false),
+    loadReservationCheckoutAccount: () =>
+      Promise.resolve({ status: "signed-out" }),
   })
 );
 
@@ -530,4 +545,82 @@ test("restores a signed current-tier reserved-desk reservation into the form", a
     everyCoworkPriceRequest("en-US", "2099-08-01")
   );
   expectPreloadedFormAvailability(form);
+});
+
+describe("a linked customer's remembered cowork offer", () => {
+  const linkedAccount = (
+    lastReservation: CustomerLastReservationForKind<"cowork">
+  ) =>
+    ({
+      status: "linked",
+      customer: {
+        contact: { name: "Jan Novak", email: janEmail, phone: "+420777777777" },
+        hasMarketingConsent: false,
+        lastReservation,
+      },
+    }) as const;
+
+  const renderInitialValues = async (
+    lastReservation: CustomerLastReservationForKind<"cowork">
+  ) => {
+    let form: CoworkFormElement | undefined;
+    await stubWorkspaceInstant(async () => {
+      form = (await renderCoworkReservationForm({
+        checkoutAccount: linkedAccount(lastReservation),
+        locale: "en-US",
+        searchParams: {},
+      })) as CoworkFormElement;
+    });
+    return form?.props.initialValues;
+  };
+
+  const reservedDeskWithWorkstation = {
+    kind: "cowork",
+    entryTier: "reserved-desk",
+    coffee: true,
+    monitorOption: "2x27-qhd",
+  } as const;
+
+  test("opens on the remembered offer while it is bookable on the form's date", async () => {
+    isRememberedOfferAvailable = true;
+
+    expect(
+      await renderInitialValues(reservedDeskWithWorkstation)
+    ).toMatchObject({
+      date: "2099-07-30",
+      entryTier: "reserved-desk",
+      monitorOption: "2x27-qhd",
+    });
+    expect(isRememberedCoworkOfferAvailable).toHaveBeenCalledWith(
+      expect.objectContaining({
+        date: "2099-07-30",
+        entryTier: "reserved-desk",
+        monitorOption: "2x27-qhd",
+      })
+    );
+  });
+
+  test("opens on the link's selection once the remembered offer is taken", async () => {
+    isRememberedOfferAvailable = false;
+
+    expect(
+      await renderInitialValues(reservedDeskWithWorkstation)
+    ).toMatchObject({
+      date: "2099-07-30",
+      entryTier: "open-space",
+      coffee: false,
+    });
+    expect(isRememberedCoworkOfferAvailable).toHaveBeenCalledTimes(1);
+  });
+
+  test("skips the availability check when the remembered offer matches the link", async () => {
+    expect(
+      await renderInitialValues({
+        kind: "cowork",
+        entryTier: "open-space",
+        coffee: false,
+      })
+    ).toMatchObject({ entryTier: "open-space", coffee: false });
+    expect(isRememberedCoworkOfferAvailable).not.toHaveBeenCalled();
+  });
 });
