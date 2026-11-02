@@ -93,7 +93,7 @@ export function InteractiveMap({ address }: InteractiveMapProps) {
                 onClick={handleGetDirections}
               >
                 <Navigation className="w-4 h-4 mr-2" />
-                {m["contact.getDirections"]?.() || "Get Directions"}
+                {m["contact.getDirections"]()}
               </Button>
             </div>
           </Popup>
@@ -107,7 +107,7 @@ export function InteractiveMap({ address }: InteractiveMapProps) {
         onClick={handleGetDirections}
       >
         <Navigation className="w-4 h-4 mr-2" />
-        {m["contact.getDirections"]?.() || "Get Directions"}
+        {m["contact.getDirections"]()}
       </Button>
     </div>
   );
