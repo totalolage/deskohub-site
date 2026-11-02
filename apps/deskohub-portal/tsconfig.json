@@ -13,6 +13,7 @@
     "src/**/*.astro",
     "src/**/*.ts",
     "features/**/*.ts",
+    "scripts/**/*.ts",
     "astro.config.ts"
   ]
 }
