@@ -1335,8 +1335,7 @@ export const isInvoicePriceInput = (value: string, exponent: number) =>
   ).test(value);
 
 /** Czech operators type a decimal comma; the price keeps the canonical dot. */
-const normalizeInvoicePriceInput = (value: string) =>
-  value.replace(",", ".");
+const normalizeInvoicePriceInput = (value: string) => value.replace(",", ".");
 
 const invoicePricePattern = (exponent: number) =>
   exponent === 0 ? "[+-]?\\d+" : `[+-]?\\d+(?:\\.\\d{1,${exponent}})?`;
