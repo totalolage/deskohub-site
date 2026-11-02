@@ -105,7 +105,11 @@ const versionCommand = Command.make("version", {}, () =>
         : `dhw ${DHW_VERSION} (${DHW_BUILD_TARGET})`
     )
   )
-).pipe(Command.withDescription("Show CLI version and build target"));
+).pipe(
+  Command.withDescription(
+    "Show CLI version and build target; shared administration contracts ship with this version"
+  )
+);
 
 const apiInfoCommand = Command.make("info", {}, () =>
   runCommand((json) =>
