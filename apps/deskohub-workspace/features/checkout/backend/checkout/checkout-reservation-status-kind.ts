@@ -1,4 +1,4 @@
-import type { LatePaymentRecovery } from "@/db/schema";
+import type { LatePaymentRecovery, PaymentState } from "@/db/schema";
 import type { CheckoutStatusKind } from "@/features/checkout/checkout-status-kind";
 import type { WorkspaceReservation } from "@/features/reservation/backend/workspace-reservation.repository";
 
@@ -14,54 +14,63 @@ export type CheckoutReservationStatusKind = Exclude<
  */
 const paidFulfillmentGracePeriod = { minutes: 10 };
 
+type StatusKindReservation = Pick<
+  WorkspaceReservation,
+  "fulfillmentState" | "paidAt" | "paymentState" | "reservationState"
+>;
+
 export const toCheckoutStatusKind = (
-  reservation: Pick<
-    WorkspaceReservation,
-    "fulfillmentState" | "paidAt" | "paymentState" | "reservationState"
-  >,
+  reservation: StatusKindReservation,
+  now: Temporal.Instant
+): CheckoutReservationStatusKind =>
+  reservation.paymentState === "paid"
+    ? getPaidStatusKind(reservation, now)
+    : unpaidStatusKinds[reservation.paymentState];
+
+const unpaidStatusKinds = {
+  not_started: "created",
+  pending: "pending",
+  failed: "payment_failed",
+  cancelled: "cancelled",
+  expired: "expired",
+} as const satisfies Record<
+  Exclude<PaymentState, "paid">,
+  CheckoutReservationStatusKind
+>;
+
+const getPaidStatusKind = (
+  reservation: StatusKindReservation,
   now: Temporal.Instant
 ): CheckoutReservationStatusKind => {
-  const { paymentState } = reservation;
-  if (paymentState === "paid") {
-    const isOverdue =
-      !!reservation.paidAt &&
-      Temporal.Instant.compare(
-        now,
-        reservation.paidAt.add(paidFulfillmentGracePeriod)
-      ) >= 0;
-    switch (reservation.fulfillmentState) {
-      case "fulfilled":
-        return "fulfilled";
-      case "failed":
-        return "fulfillment_failed";
-      case "awaiting_delivery":
-        if (reservation.reservationState === "confirmed") {
-          return isOverdue ? "paid_delivery_delayed" : "paid_awaiting_delivery";
-        }
-        return isOverdue
-          ? "paid_fulfillment_delayed"
-          : "paid_waiting_fulfillment";
-      case "processing":
-      case "not_started":
-        return isOverdue
-          ? "paid_fulfillment_delayed"
-          : "paid_waiting_fulfillment";
-    }
-  }
-
-  switch (paymentState) {
-    case "not_started":
-      return "created";
-    case "pending":
-      return "pending";
+  const isOverdue = isPaidFulfillmentOverdue(reservation, now);
+  switch (reservation.fulfillmentState) {
+    case "fulfilled":
+      return "fulfilled";
     case "failed":
-      return "payment_failed";
-    case "cancelled":
-      return "cancelled";
-    case "expired":
-      return "expired";
+      return "fulfillment_failed";
+    case "awaiting_delivery":
+      if (reservation.reservationState === "confirmed") {
+        return isOverdue ? "paid_delivery_delayed" : "paid_awaiting_delivery";
+      }
+      return getPaidWaitingStatusKind(isOverdue);
+    case "processing":
+    case "not_started":
+      return getPaidWaitingStatusKind(isOverdue);
   }
 };
+
+const isPaidFulfillmentOverdue = (
+  reservation: Pick<WorkspaceReservation, "paidAt">,
+  now: Temporal.Instant
+) =>
+  !!reservation.paidAt &&
+  Temporal.Instant.compare(
+    now,
+    reservation.paidAt.add(paidFulfillmentGracePeriod)
+  ) >= 0;
+
+const getPaidWaitingStatusKind = (isOverdue: boolean) =>
+  isOverdue ? "paid_fulfillment_delayed" : "paid_waiting_fulfillment";
 
 const latePaymentStatusKinds = {
   pending: "late_payment_checking",
