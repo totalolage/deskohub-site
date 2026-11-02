@@ -57,12 +57,22 @@ import {
   ReservationAccessAdministration,
   ReservationAccessAdministrationError,
 } from "@/features/administration/reservation-access-administration.service";
-import { ReservationAdministrationService } from "@/features/administration/reservation-administration.service";
+import {
+  ReservationAdministrationError,
+  ReservationAdministrationService,
+} from "@/features/administration/reservation-administration.service";
 import {
   AdministratorRoster,
   LegacyAdministratorBackfill,
 } from "@/features/administrators";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
+import {
+  adminCodeClaim,
+  adminCustomerCode,
+  adminCustomerProfile,
+  adminCustomerVoucher,
+  adminVoucherClaim,
+} from "@/features/discounts/admin/customer-admin-fixtures.test-utils";
 import {
   DiscountAdminConflictError,
   DiscountAdministration,
@@ -200,6 +210,7 @@ type AdministrationApiServiceLayers = {
   readonly administration?: Layer.Layer<AdministrationService>;
   readonly discounts?: Layer.Layer<DiscountAdministration>;
   readonly invoices?: Layer.Layer<InvoiceAdministrationService>;
+  readonly reservations?: Layer.Layer<ReservationAdministrationService>;
 };
 
 const callAdministrationApi = <A, E>(
@@ -213,7 +224,7 @@ const callAdministrationApi = <A, E>(
     Effect.provide(UnusedStandaloneAccessCodeAdministration),
     Effect.provide(ClaimEveryCliMutation),
     Effect.provide(services.invoices ?? UnusedInvoiceAdministration),
-    Effect.provide(UnusedReservationAdministration),
+    Effect.provide(services.reservations ?? UnusedReservationAdministration),
     Effect.provide(UnusedReservationProductDetailsBackfill),
     Effect.provide(services.discounts ?? UnusedDiscountAdministration),
     Effect.provide(SessionAdministratorAuthentication),
@@ -1327,6 +1338,167 @@ describe("Workspace Admin API", () => {
       mutation,
       recovery: discountMutationRecovery,
     });
+  });
+});
+
+describe("customer and reservation administration endpoints", () => {
+  const instant = (value: string) => Temporal.Instant.from(value);
+
+  test("returns the customer's discount profile with API timestamps", async () => {
+    const customerId = AdministrationDotyposCustomerId.make("dotypos-customer");
+    const activity = {
+      reservations: [],
+      reservationHistoryTruncated: false,
+      transactions: [],
+      transactionHistoryTruncated: false,
+      stats: {
+        reservationCount: 0,
+        favoriteProduct: null,
+        revenue: [],
+        discountSavings: [],
+      },
+      marketingConsent: null,
+    };
+    const profileRequests: unknown[] = [];
+    const profile = adminCustomerProfile({
+      codes: [
+        adminCustomerCode(),
+        adminCustomerCode({ validFrom: null, validUntil: null }),
+      ],
+      claims: [
+        adminCodeClaim(),
+        adminCodeClaim({
+          state: "released",
+          redeemedAt: instant("2026-08-10T08:10:00Z"),
+          releasedAt: instant("2026-08-10T08:20:00Z"),
+        }),
+      ],
+      vouchers: [
+        adminCustomerVoucher(),
+        adminCustomerVoucher({
+          validFrom: instant("2026-08-01T08:00:00Z"),
+          validUntil: instant("2026-09-01T08:00:00Z"),
+        }),
+      ],
+      voucherClaims: [
+        adminVoucherClaim(),
+        adminVoucherClaim({
+          state: "released",
+          redeemedAt: instant("2026-08-10T08:10:00Z"),
+          releasedAt: instant("2026-08-10T08:20:00Z"),
+        }),
+      ],
+    });
+    const administration = Layer.succeed(AdministrationService, {
+      ...({} as AdministrationService["Service"]),
+      loadCustomerActivity: () => Effect.succeed(activity as never),
+    });
+    const discounts = Layer.succeed(DiscountAdministration, {
+      ...({} as DiscountAdministration["Service"]),
+      loadCustomerProfile: (input) => {
+        profileRequests.push(input);
+        return Effect.succeed(profile);
+      },
+    });
+
+    const result = await callAdministrationApi(
+      (client) => client.getCustomer({ params: { customerId } }),
+      { administration, discounts }
+    );
+
+    expect(profileRequests).toEqual([{ customerId }]);
+    expect(result.activity).toEqual(activity);
+    const datedRange = {
+      validFrom: "2026-08-01T08:00:00Z",
+      validUntil: "2026-09-01T08:00:00Z",
+    };
+    const openRange = { validFrom: null, validUntil: null };
+    const audit = {
+      createdAt: "2026-07-01T08:00:00Z",
+      updatedAt: "2026-07-02T08:00:00Z",
+    };
+    const reservedClaim = {
+      reservationExpiresAt: "2026-08-10T09:00:00Z",
+      reservedAt: "2026-08-10T08:00:00Z",
+      redeemedAt: null,
+      releasedAt: null,
+    };
+    const settledClaim = {
+      ...reservedClaim,
+      redeemedAt: "2026-08-10T08:10:00Z",
+      releasedAt: "2026-08-10T08:20:00Z",
+    };
+    expect(result.profile).toMatchObject({
+      codes: [
+        { code: "SUMMER10", ...datedRange, ...audit },
+        { code: "SUMMER10", ...openRange, ...audit },
+      ],
+      claims: [reservedClaim, settledClaim],
+      vouchers: [
+        { code: "GIFT100", ...openRange, ...audit },
+        { code: "GIFT100", ...datedRange, ...audit },
+      ],
+      voucherClaims: [reservedClaim, settledClaim],
+    });
+  });
+
+  test("maps each reservation cancellation failure to its API error", async () => {
+    const reservationId = AdministrationWorkspaceReservationId.make(
+      "01980000-0000-7000-8000-000000000001"
+    );
+    const failures = [
+      { code: "not_found", reason: "not_found" },
+      { code: "not_cancellable", reason: "invalid_state" },
+      { code: "cancellation_failed", reason: "reservation_unavailable" },
+    ] as const;
+    const cancellations: unknown[] = [];
+    const reservations = Layer.succeed(ReservationAdministrationService, {
+      ...({} as ReservationAdministrationService["Service"]),
+      cancel: (input) => {
+        const failure = failures[cancellations.length];
+        cancellations.push(input);
+        return Effect.fail(
+          new ReservationAdministrationError({
+            code: failure?.code ?? "cancellation_failed",
+            reason: failure?.reason ?? "reservation_unavailable",
+            message: `Synthetic ${failure?.code} failure`,
+          })
+        );
+      },
+    });
+
+    const errors = await callAdministrationApi(
+      (client) =>
+        Effect.forEach(failures, () =>
+          client
+            .cancelReservation({
+              params: { reservationId },
+              payload: {
+                accessGrantUpdatedAt: null,
+                providerCredentialRemoved: false,
+                sendCancellationEmail: true,
+              },
+            })
+            .pipe(Effect.flip)
+        ),
+      { reservations }
+    );
+
+    expect(cancellations).toHaveLength(3);
+    expect(cancellations[0]).toEqual({
+      accessGrantUpdatedAt: null,
+      force: false,
+      providerCredentialRemoved: false,
+      reservationId,
+      sendCancellationEmail: true,
+    });
+    expect(errors[0]).toBeInstanceOf(CliResourceNotFound);
+    expect(errors[0]).toMatchObject({ message: "Synthetic not_found failure" });
+    expect(errors[1]).toBeInstanceOf(CliMutationRejected);
+    expect(errors[1]).toMatchObject({
+      message: "Synthetic not_cancellable failure",
+    });
+    expect(errors[2]).toBeInstanceOf(CliServiceUnavailable);
   });
 });
 
