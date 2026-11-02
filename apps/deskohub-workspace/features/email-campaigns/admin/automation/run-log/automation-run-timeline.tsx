@@ -44,106 +44,130 @@ interface EntryCopy {
   readonly tone: "positive" | "warning" | "neutral";
 }
 
+/** A title with no details, neutral unless the kind reads as good or bad news. */
+const plainCopy = (
+  title: string,
+  tone: EntryCopy["tone"] = "neutral"
+): EntryCopy => ({
+  title,
+  details: [],
+  tone,
+});
+
+type KnownEntryOf<K extends AutomationRunEventKind> =
+  AutomationRunTimelineEntry & {
+    readonly kind: K;
+    readonly detail: AutomationRunEventDetail<K>;
+  };
+
+type KnownEntryWordings = {
+  readonly [K in AutomationRunEventKind]: (
+    entry: KnownEntryOf<K>,
+    context: TimelineContext
+  ) => EntryCopy;
+};
+
+/** How each known kind of entry reads, from its detail. */
+const knownEntryCopy = {
+  started: (_entry, { locale }) =>
+    plainCopy(m.emailAutomationRunsEventStarted({}, { locale })),
+  "condition-passed": (_entry, { locale }) =>
+    plainCopy(
+      m.emailAutomationRunsEventConditionPassed({}, { locale }),
+      "positive"
+    ),
+  "condition-failed": (entry, context) => {
+    const options = { locale: context.locale };
+    return {
+      title: m.emailAutomationRunsEventConditionFailed({}, options),
+      details: describeFailedConditions({
+        failedConditions: entry.detail.failedConditions,
+        flow: context.flow,
+        locale: context.locale,
+        stepId: entry.stepId,
+        wording: context.conditionWording,
+      }).map((clause) =>
+        m.emailAutomationRunsEventConditionFailedClause({ clause }, options)
+      ),
+      tone: "neutral",
+    };
+  },
+  waiting: (entry, { locale }) =>
+    plainCopy(
+      m.emailAutomationRunsEventWaiting(
+        { date: formatAdministrationDateTime(entry.detail.dueAt, locale) },
+        { locale }
+      )
+    ),
+  woke: (_entry, { locale }) =>
+    plainCopy(m.emailAutomationRunsEventWoke({}, { locale })),
+  deferred: (entry, { locale }) =>
+    plainCopy(
+      m.emailAutomationRunsEventDeferred(
+        { date: formatAdministrationDateTime(entry.detail.recheckAt, locale) },
+        { locale }
+      )
+    ),
+  "send-queued": (_entry, { locale }) =>
+    plainCopy(m.emailAutomationRunsEventSendQueued({}, { locale })),
+  sent: (_entry, { locale }) =>
+    plainCopy(m.emailAutomationRunsEventSent({}, { locale }), "positive"),
+  unconfirmed: (_entry, { locale }) => ({
+    title: m.emailAutomationRunsEventUnconfirmed({}, { locale }),
+    details: [m.emailAutomationRunsEventUnconfirmedDetail({}, { locale })],
+    tone: "warning",
+  }),
+  skipped: (entry, { locale }) =>
+    plainCopy(
+      m.emailAutomationRunsOutcomeSkippedBecause(
+        { reason: automationRunSkipReasonLabel(entry.detail.reason, locale) },
+        { locale }
+      )
+    ),
+  failed: (entry, { locale }) =>
+    plainCopy(
+      m.emailAutomationRunsOutcomeFailedBecause(
+        {
+          reason: automationRunFailureReasonLabel(entry.detail.reason, locale),
+        },
+        { locale }
+      ),
+      "warning"
+    ),
+  withdrawn: (_entry, { locale }) => ({
+    title: m.emailAutomationRunsOutcomeWithdrawn({}, { locale }),
+    details: [m.emailAutomationRunsEventWithdrawnDetail({}, { locale })],
+    tone: "neutral",
+  }),
+  archived: (_entry, { locale }) => ({
+    title: m.emailAutomationRunsOutcomeArchived({}, { locale }),
+    details: [m.emailAutomationRunsEventArchivedDetail({}, { locale })],
+    tone: "neutral",
+  }),
+} satisfies KnownEntryWordings;
+
+/** Words an entry with the copy of its own kind. */
+const wordKnownEntry = <K extends AutomationRunEventKind>(
+  entry: KnownEntryOf<K>,
+  context: TimelineContext
+): EntryCopy => {
+  const word: KnownEntryWordings[K] = knownEntryCopy[entry.kind];
+  return word(entry, context);
+};
+
+/** How an entry reads; a kind or detail this page can't read gets a generic title. */
 const entryCopy = (
   entry: AutomationRunTimelineEntry,
   context: TimelineContext
-): EntryCopy => {
-  const { locale } = context;
-  const options = { locale };
-  const plain = (title: string, tone: EntryCopy["tone"] = "neutral") => ({
-    title,
-    details: [],
-    tone,
-  });
-  if (!isKnownEntry(entry)) {
-    return plain(
-      m.emailAutomationRunsEventUnknown({ kind: entry.kind }, options)
-    );
-  }
-  switch (entry.kind) {
-    case "started":
-      return plain(m.emailAutomationRunsEventStarted({}, options));
-    case "condition-passed":
-      return plain(
-        m.emailAutomationRunsEventConditionPassed({}, options),
-        "positive"
-      );
-    case "condition-failed":
-      return {
-        title: m.emailAutomationRunsEventConditionFailed({}, options),
-        details: describeFailedConditions({
-          failedConditions: entry.detail.failedConditions,
-          flow: context.flow,
-          locale,
-          stepId: entry.stepId,
-          wording: context.conditionWording,
-        }).map((clause) =>
-          m.emailAutomationRunsEventConditionFailedClause({ clause }, options)
-        ),
-        tone: "neutral",
-      };
-    case "waiting":
-      return plain(
-        m.emailAutomationRunsEventWaiting(
-          { date: formatAdministrationDateTime(entry.detail.dueAt, locale) },
-          options
+): EntryCopy =>
+  isKnownEntry(entry)
+    ? wordKnownEntry(entry, context)
+    : plainCopy(
+        m.emailAutomationRunsEventUnknown(
+          { kind: entry.kind },
+          { locale: context.locale }
         )
       );
-    case "woke":
-      return plain(m.emailAutomationRunsEventWoke({}, options));
-    case "deferred":
-      return plain(
-        m.emailAutomationRunsEventDeferred(
-          {
-            date: formatAdministrationDateTime(entry.detail.recheckAt, locale),
-          },
-          options
-        )
-      );
-    case "send-queued":
-      return plain(m.emailAutomationRunsEventSendQueued({}, options));
-    case "sent":
-      return plain(m.emailAutomationRunsEventSent({}, options), "positive");
-    case "unconfirmed":
-      return {
-        title: m.emailAutomationRunsEventUnconfirmed({}, options),
-        details: [m.emailAutomationRunsEventUnconfirmedDetail({}, options)],
-        tone: "warning",
-      };
-    case "skipped":
-      return plain(
-        m.emailAutomationRunsOutcomeSkippedBecause(
-          { reason: automationRunSkipReasonLabel(entry.detail.reason, locale) },
-          options
-        )
-      );
-    case "failed":
-      return plain(
-        m.emailAutomationRunsOutcomeFailedBecause(
-          {
-            reason: automationRunFailureReasonLabel(
-              entry.detail.reason,
-              locale
-            ),
-          },
-          options
-        ),
-        "warning"
-      );
-    case "withdrawn":
-      return {
-        title: m.emailAutomationRunsOutcomeWithdrawn({}, options),
-        details: [m.emailAutomationRunsEventWithdrawnDetail({}, options)],
-        tone: "neutral",
-      };
-    case "archived":
-      return {
-        title: m.emailAutomationRunsOutcomeArchived({}, options),
-        details: [m.emailAutomationRunsEventArchivedDetail({}, options)],
-        tone: "neutral",
-      };
-  }
-};
 
 interface TimelineContext {
   readonly flow: AutomationFlow | null;
