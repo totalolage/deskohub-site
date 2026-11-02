@@ -236,6 +236,34 @@ const campaignsCreateCommand = Command.make(
     )
 ).pipe(Command.withDescription("Create a draft campaign"));
 
+type CampaignUpdateField<
+  Key extends keyof AdministrationCampaignUpdateInputType,
+> = Option.Option<NonNullable<AdministrationCampaignUpdateInputType[Key]>>;
+
+/** The update request: only the given changes, with a cleared audience as null. */
+const campaignUpdateInput = ({
+  audience,
+  clearAudience,
+  contentPatch,
+  purpose,
+  template,
+  title,
+}: {
+  readonly audience: CampaignUpdateField<"audienceId">;
+  readonly clearAudience: boolean;
+  readonly contentPatch: CampaignUpdateField<"content">;
+  readonly purpose: CampaignUpdateField<"purpose">;
+  readonly template: CampaignUpdateField<"templateKey">;
+  readonly title: CampaignUpdateField<"title">;
+}): AdministrationCampaignUpdateInputType => ({
+  ...(Option.isSome(title) && { title: title.value }),
+  ...(Option.isSome(purpose) && { purpose: purpose.value }),
+  ...(Option.isSome(template) && { templateKey: template.value }),
+  ...(Option.isSome(audience) && { audienceId: audience.value }),
+  ...(clearAudience && { audienceId: null }),
+  ...(Option.isSome(contentPatch) && { content: contentPatch.value }),
+});
+
 const campaignsUpdateCommand = Command.make(
   "update",
   {
@@ -292,14 +320,14 @@ const campaignsUpdateCommand = Command.make(
           Option.map(title, (value) => requireText("title", value))
         );
         const contentPatch = yield* makeCampaignContentPatch(content);
-        const update: AdministrationCampaignUpdateInputType = {
-          ...(Option.isSome(campaignTitle) && { title: campaignTitle.value }),
-          ...(Option.isSome(purpose) && { purpose: purpose.value }),
-          ...(Option.isSome(template) && { templateKey: template.value }),
-          ...(Option.isSome(audience) && { audienceId: audience.value }),
-          ...(clearAudience && { audienceId: null }),
-          ...(Option.isSome(contentPatch) && { content: contentPatch.value }),
-        };
+        const update = campaignUpdateInput({
+          audience,
+          clearAudience,
+          contentPatch,
+          purpose,
+          template,
+          title: campaignTitle,
+        });
         if (Object.keys(update).length === 0) {
           return yield* new InvalidMutationInputError({
             message:
