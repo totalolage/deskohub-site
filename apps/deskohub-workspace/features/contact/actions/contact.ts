@@ -3,7 +3,10 @@ import "server-only";
 import { Effect, Schema } from "effect";
 import { ContactService } from "@/features/contact/backend/contact.service";
 import type { ContactFormValues } from "@/features/contact/schemas/contact";
-import { createContactSchema } from "@/features/contact/schemas/contact";
+import {
+  contactDefaultValues,
+  createContactSchema,
+} from "@/features/contact/schemas/contact";
 import { type Locale, m } from "@/features/i18n";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
@@ -22,6 +25,12 @@ interface SubmitContactFormInput {
   readonly submittedValues: ContactFormValues;
 }
 
+const isContactField = (
+  key: PropertyKey | undefined
+): key is keyof ContactFormValues =>
+  typeof key === "string" && Object.hasOwn(contactDefaultValues, key);
+
+/** The first failed check per form field, keyed by the issue's top path. */
 const getContactFieldErrors = (issue: Schema.SchemaError["issue"]) => {
   const fieldErrors: ContactFormState["fieldErrors"] = {};
 
@@ -39,21 +48,9 @@ const getContactFieldErrors = (issue: Schema.SchemaError["issue"]) => {
       return;
     }
 
-    if (current._tag !== "Filter") return;
-
-    switch (path[0]) {
-      case "name":
-        fieldErrors.name ??= String(current);
-        break;
-      case "email":
-        fieldErrors.email ??= String(current);
-        break;
-      case "phone":
-        fieldErrors.phone ??= String(current);
-        break;
-      case "message":
-        fieldErrors.message ??= String(current);
-        break;
+    const field = path[0];
+    if (current._tag === "Filter" && isContactField(field)) {
+      fieldErrors[field] ??= String(current);
     }
   };
 
