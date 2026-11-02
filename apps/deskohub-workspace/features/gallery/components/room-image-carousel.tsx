@@ -4,7 +4,7 @@ import { CloudinaryImage } from "@deskohub/cloudinary-image";
 import { motion, type Transition } from "motion/react";
 import Image, { type StaticImageData } from "next/image";
 import { useMemo, useState } from "react";
-import Lightbox, { type SlideImage } from "yet-another-react-lightbox";
+import Lightbox from "yet-another-react-lightbox";
 import "yet-another-react-lightbox/styles.css";
 import {
   useMotionSwipeCarousel,
@@ -13,6 +13,10 @@ import {
 import type { VenuePhoto } from "@/features/gallery/types/venue-photo";
 import { CarouselPositionIndicator } from "@/shared/components/carousel-position-indicator";
 import { cn } from "@/shared/utils";
+import {
+  type RoomImageCarouselFallbackImage,
+  roomCarouselImages,
+} from "./room-image-carousel-images";
 
 type RoomImageCarouselProps = {
   images: readonly VenuePhoto[];
@@ -25,36 +29,6 @@ type RoomImageCarouselProps = {
   stageClassName?: string;
   imageSizes?: string;
 };
-
-type RoomImageCarouselFallbackImage = {
-  alt: string;
-  caption?: string;
-  src: StaticImageData;
-};
-
-type RoomImageCarouselImage =
-  | {
-      alt: string;
-      caption?: string;
-      height: number;
-      id: string;
-      kind: "cloudinary";
-      label: string;
-      source: string;
-      lightbox: SlideImage;
-      width: number;
-    }
-  | {
-      alt: string;
-      caption?: string;
-      height: number;
-      id: string;
-      kind: "static";
-      label: string;
-      source: StaticImageData;
-      lightbox: SlideImage;
-      width: number;
-    };
 
 const slideOffsets = [-1, 0, 1] as const;
 
@@ -86,50 +60,13 @@ export function RoomImageCarousel({
   imageSizes = "(min-width: 768px) 42vw, 100vw",
 }: RoomImageCarouselProps) {
   const [lightboxIndex, setLightboxIndex] = useState(-1);
-  const normalizedFallbackImages =
-    fallbackImages ??
-    (fallbackImage
-      ? [
-          {
-            alt: fallbackImageAlt ?? "",
-            src: fallbackImage,
-          },
-        ]
-      : []);
-  const carouselImages: readonly RoomImageCarouselImage[] =
-    images.length > 0
-      ? images.map((image) => ({
-          alt: image.alt,
-          caption: image.caption,
-          height: image.height,
-          id: image.id,
-          kind: "cloudinary",
-          label: image.caption || image.alt,
-          source: image.publicId,
-          lightbox: image.lightbox,
-          width: image.width,
-        }))
-      : normalizedFallbackImages.map((image, index) => ({
-          alt: image.alt,
-          caption: image.caption,
-          height: image.src.height,
-          id: image.src.src,
-          kind: "static",
-          label:
-            image.caption?.trim() ||
-            image.alt.trim() ||
-            `${openLabel} ${index + 1}`,
-          source: image.src,
-          lightbox: {
-            alt: image.alt,
-            description: image.caption,
-            height: image.src.height,
-            src: image.src.src,
-            title: image.caption,
-            width: image.src.width,
-          },
-          width: image.src.width,
-        }));
+  const carouselImages = roomCarouselImages({
+    images,
+    openLabel,
+    fallbackImages,
+    fallbackImage,
+    fallbackImageAlt,
+  });
   const {
     activeIndex,
     dragControls,
