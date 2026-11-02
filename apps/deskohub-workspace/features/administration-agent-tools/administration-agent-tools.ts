@@ -619,6 +619,58 @@ const previewArguments = ({
     })
   );
 
+/**
+ * Fails when a read tool the preview names doesn't exist, or would need an
+ * argument the previewed tool doesn't take.
+ */
+const assertReadPreviewServed = ({
+  byReference,
+  preview,
+  reference,
+  tool,
+}: {
+  readonly byReference: ReadonlyMap<
+    AdministrationOperationReference,
+    AdministrationOperationTool
+  >;
+  readonly preview: ReadPreview;
+  readonly reference: AdministrationOperationReference;
+  readonly tool: AdministrationOperationTool;
+}) => {
+  const previewTool = byReference.get(reference);
+  if (previewTool === undefined || previewTool.behavior.kind !== "read") {
+    throw new Error(
+      `${tool.reference} previews with ${reference}, which no read tool serves.`
+    );
+  }
+  const missing = [...previewTool.requiredArgumentNames].filter(
+    (name) => !tool.argumentNames.has(previewArgumentSource(preview, name))
+  );
+  if (missing.length > 0) {
+    throw new Error(
+      `${tool.reference} can't preview with ${reference}: it lacks ${missing}.`
+    );
+  }
+};
+
+/** Fails when the tool's preview couldn't run as the contract declares it. */
+const assertPreviewServed = (
+  tool: AdministrationOperationTool,
+  byReference: ReadonlyMap<
+    AdministrationOperationReference,
+    AdministrationOperationTool
+  >
+) => {
+  const preview = tool.behavior.preview;
+  if (preview?._tag === "DryRun" && !tool.argumentNames.has("dryRun")) {
+    throw new Error(`${tool.reference} previews a dry run without dryRun.`);
+  }
+  if (preview?._tag !== "Read") return;
+  for (const reference of preview.operations) {
+    assertReadPreviewServed({ byReference, preview, reference, tool });
+  }
+};
+
 /** Derives one tool per administration operation the contract serves. */
 export const deriveAdministrationOperationTools = <
   Id extends string,
@@ -635,29 +687,7 @@ export const deriveAdministrationOperationTools = <
   });
   const byReference = new Map(tools.map((tool) => [tool.reference, tool]));
   for (const tool of tools) {
-    const preview = tool.behavior.preview;
-    if (preview?._tag === "DryRun" && !tool.argumentNames.has("dryRun")) {
-      throw new Error(`${tool.reference} previews a dry run without dryRun.`);
-    }
-    if (preview?._tag !== "Read") {
-      continue;
-    }
-    for (const reference of preview.operations) {
-      const previewTool = byReference.get(reference);
-      if (previewTool === undefined || previewTool.behavior.kind !== "read") {
-        throw new Error(
-          `${tool.reference} previews with ${reference}, which no read tool serves.`
-        );
-      }
-      const missing = [...previewTool.requiredArgumentNames].filter(
-        (name) => !tool.argumentNames.has(previewArgumentSource(preview, name))
-      );
-      if (missing.length > 0) {
-        throw new Error(
-          `${tool.reference} can't preview with ${reference}: it lacks ${missing}.`
-        );
-      }
-    }
+    assertPreviewServed(tool, byReference);
   }
   return tools;
 };

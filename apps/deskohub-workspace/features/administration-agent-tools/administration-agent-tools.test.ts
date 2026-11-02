@@ -4,11 +4,13 @@ import { describe, expect, test } from "bun:test";
 import {
   AdministrationAuthentication,
   AdministrationOperationBehavior,
+  type AdministrationOperationReference,
   AdministrationOperationVariants,
   administrationOperations,
   CliOnly,
   changeKeyPaths,
   destructiveOperation,
+  dryRunPreview,
   readOperation,
   readPreview,
   WorkspaceAdminApi,
@@ -297,6 +299,62 @@ describe("administration agent tool derivation", () => {
     expect(() => deriveAdministrationOperationTools(api)).toThrow(
       /can't preview/
     );
+  });
+
+  test("refuses a dry-run preview for an operation without dryRun", () => {
+    const api = apiWith(
+      HttpApiGroup.make("administration").add(
+        HttpApiEndpoint.post("deleteThing", "/things/:id/delete", {
+          params: { id: Schema.String },
+          success: Schema.Struct({ id: Schema.String }),
+        }).annotate(
+          AdministrationOperationBehavior,
+          destructiveOperation({ idempotent: true, preview: dryRunPreview })
+        )
+      )
+    );
+
+    expect(() => deriveAdministrationOperationTools(api)).toThrow(
+      /without dryRun/
+    );
+  });
+
+  test("refuses a read preview that no read tool serves", () => {
+    const deleteThing = (preview: AdministrationOperationReference) =>
+      HttpApiEndpoint.post("deleteThing", "/things/:id/delete", {
+        params: { id: Schema.String },
+        success: Schema.Struct({ id: Schema.String }),
+      }).annotate(
+        AdministrationOperationBehavior,
+        destructiveOperation({
+          idempotent: true,
+          preview: readPreview(preview),
+        })
+      );
+    const missing = apiWith(
+      HttpApiGroup.make("administration").add(
+        deleteThing("administration.getThing")
+      )
+    );
+    const destructive = apiWith(
+      HttpApiGroup.make("administration")
+        .add(deleteThing("administration.resetThing"))
+        .add(
+          HttpApiEndpoint.post("resetThing", "/things/:id/reset", {
+            params: { id: Schema.String },
+            success: Schema.Struct({ id: Schema.String }),
+          }).annotate(
+            AdministrationOperationBehavior,
+            destructiveOperation({ idempotent: true })
+          )
+        )
+    );
+
+    for (const api of [missing, destructive]) {
+      expect(() => deriveAdministrationOperationTools(api)).toThrow(
+        /no read tool serves/
+      );
+    }
   });
 
   test("flattens each generic mutation variant into its own tool", () => {
