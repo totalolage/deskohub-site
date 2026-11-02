@@ -43,6 +43,58 @@ const ceremonyFailure = (cause: unknown) =>
     : ({ data: null, error: { code: "PASSKEY_CEREMONY_FAILED" } } as const);
 
 /**
+ * Whether an attempt must resolve as cancelled without starting: its owner
+ * already cancelled it, or it is an autofill while one the customer started
+ * is still running.
+ */
+const cannotStart = (autoFill: boolean, signal: AbortSignal | undefined) =>
+  signal?.aborted || (autoFill && current?.autoFill === false);
+
+/**
+ * The attempt's requests in order: the options, the ceremony, and the
+ * verification. Each step first throws when the attempt was aborted, so a
+ * cancelled attempt sends nothing further.
+ */
+const authenticateWithPasskey = async (
+  autoFill: boolean,
+  attemptSignal: AbortSignal
+): Promise<PasskeySignInResponse> => {
+  const options = await authClient.$fetch<
+    PublicKeyCredentialRequestOptionsJSON,
+    PasskeySignInError
+  >("/passkey/generate-authenticate-options", {
+    method: "GET",
+    signal: attemptSignal,
+    throw: false,
+  });
+  attemptSignal.throwIfAborted();
+  if (!options.data) return options;
+  let assertion: Awaited<ReturnType<typeof getPasskeyAssertion>>;
+  try {
+    assertion = await getPasskeyAssertion(options.data, {
+      conditional: autoFill,
+      signal: attemptSignal,
+    });
+  } catch (cause) {
+    attemptSignal.throwIfAborted();
+    return ceremonyFailure(cause);
+  }
+  attemptSignal.throwIfAborted();
+  const verified = await authClient.$fetch<unknown, PasskeySignInError>(
+    "/passkey/verify-authentication",
+    {
+      method: "POST",
+      body: { response: assertion },
+      signal: attemptSignal,
+      throw: false,
+    }
+  );
+  attemptSignal.throwIfAborted();
+  if (verified.error === null) authClient.$store.notify("$sessionSignal");
+  return verified;
+};
+
+/**
  * Signs in with a passkey, from a button or, with `autoFill`, from the
  * autofill of a `webauthn` field, and resolves the Better Auth `{ data,
  * error }` response the way `signIn.passkey` does.
@@ -63,9 +115,7 @@ export const requestPasskeySignIn = async ({
   readonly autoFill: boolean;
   readonly signal?: AbortSignal;
 }): Promise<PasskeySignInResponse> => {
-  if (signal?.aborted || (autoFill && current?.autoFill === false)) {
-    return cancelled;
-  }
+  if (cannotStart(autoFill, signal)) return cancelled;
   current?.controller.abort();
   const attempt: Attempt = { autoFill, controller: new AbortController() };
   current = attempt;
@@ -73,39 +123,7 @@ export const requestPasskeySignIn = async ({
   const cancel = () => attempt.controller.abort();
   signal?.addEventListener("abort", cancel);
   try {
-    const options = await authClient.$fetch<
-      PublicKeyCredentialRequestOptionsJSON,
-      PasskeySignInError
-    >("/passkey/generate-authenticate-options", {
-      method: "GET",
-      signal: attemptSignal,
-      throw: false,
-    });
-    attemptSignal.throwIfAborted();
-    if (!options.data) return options;
-    let assertion: Awaited<ReturnType<typeof getPasskeyAssertion>>;
-    try {
-      assertion = await getPasskeyAssertion(options.data, {
-        conditional: autoFill,
-        signal: attemptSignal,
-      });
-    } catch (cause) {
-      attemptSignal.throwIfAborted();
-      return ceremonyFailure(cause);
-    }
-    attemptSignal.throwIfAborted();
-    const verified = await authClient.$fetch<unknown, PasskeySignInError>(
-      "/passkey/verify-authentication",
-      {
-        method: "POST",
-        body: { response: assertion },
-        signal: attemptSignal,
-        throw: false,
-      }
-    );
-    attemptSignal.throwIfAborted();
-    if (verified.error === null) authClient.$store.notify("$sessionSignal");
-    return verified;
+    return await authenticateWithPasskey(autoFill, attemptSignal);
   } catch (cause) {
     if (attemptSignal.aborted) return cancelled;
     throw cause;
