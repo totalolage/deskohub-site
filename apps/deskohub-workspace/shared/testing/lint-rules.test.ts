@@ -684,7 +684,8 @@ const rules: { name: string; diagnostic: string; module: string; cases: Row[] }[
       ["permits the browser runner", 'import { NextEffect } from "@deskohub/next-effect";\n', false, browserRunner],
       ["permits the server runner", 'import { NextEffect } from "@deskohub/next-effect";\n', false, "apps/deskohub-workspace/shared/backend/workspace-effect.ts"],
       ["permits the standalone runner", 'import { NextEffect } from "@deskohub/next-effect";\n', false, "apps/deskohub-workspace/shared/backend/standalone-workspace-effect.ts"],
-      ["permits the action boundary", 'import { EffectAction } from "@deskohub/next-effect/effect-action";\n', false, "apps/deskohub-workspace/shared/backend/workspace-action.ts"],
+      ["permits the shared-layer module", 'import { NextEffect } from "@deskohub/next-effect";\n', false, "apps/deskohub-workspace/shared/backend/share-across-requests.ts"],
+      ["rejects the action boundary", 'import { EffectAction } from "@deskohub/next-effect/effect-action";\n', true, "apps/deskohub-workspace/shared/backend/workspace-action.ts"],
     ],
   },
   {

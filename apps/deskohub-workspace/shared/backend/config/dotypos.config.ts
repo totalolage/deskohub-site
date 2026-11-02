@@ -3,9 +3,10 @@ import {
   DotyposRuntimeConfigSchema,
   DotyposService,
 } from "@deskohub/dotypos";
-import { Effect, Layer, Schema, Scope } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { env } from "@/env";
 import { expireCacheTag } from "@/shared/backend/cache-invalidation";
+import { shareAcrossRequests } from "@/shared/backend/share-across-requests";
 import {
   availabilityTags,
   reservationRecordTags,
@@ -51,15 +52,12 @@ export const ReservationWritesExpireSharedReads = Layer.effect(
   })
 );
 
-const configuredDotyposLayer = ReservationWritesExpireSharedReads.pipe(
-  Layer.provide(DotyposService.Live),
-  Layer.provide(WorkspaceDotyposRuntimeConfigLayer)
-);
-const processScope = Scope.makeUnsafe();
-const processMemoMap = Layer.makeMemoMapUnsafe();
-
-export const WorkspaceDotyposLayer = Layer.fromBuild(() =>
-  Layer.buildWithMemoMap(configuredDotyposLayer, processMemoMap, processScope)
+/** One Dotypos adapter, and its token cache, for the whole process. */
+export const WorkspaceDotyposLayer = shareAcrossRequests(
+  ReservationWritesExpireSharedReads.pipe(
+    Layer.provide(DotyposService.Live),
+    Layer.provide(WorkspaceDotyposRuntimeConfigLayer)
+  )
 );
 
 function expiringTags(...tags: readonly string[]) {
