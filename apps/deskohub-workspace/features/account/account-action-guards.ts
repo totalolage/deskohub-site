@@ -1,11 +1,11 @@
 import { Effect } from "effect";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
-import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
+import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
+import { AccountAvatarReleaseGate } from "./backend/account-release-gates";
 import { CustomerAuthentication } from "./backend/customer-authentication.service";
 import { CustomerAccountAccessError } from "./customer-account";
-import { areAccountAvatarsEnabled } from "./server/account-feature-flag.server";
 
 export const requireVerifiedSession = Effect.flatMap(
   CustomerAuthentication,
@@ -46,9 +46,8 @@ const accountActionErrorMessage = (
 
 /** A withheld referral program rejects referral-only account actions. */
 export const requireReferralsEnabled = (locale: Locale) =>
-  ReferralFeatureFlagService.pipe(
-    // The request's one decision, which already fails closed.
-    Effect.flatMap((featureFlag) => featureFlag.isEnabled),
+  // The request's one decision, which already fails closed.
+  ReferralReleaseGate.isOpen.pipe(
     Effect.filterOrFail(
       (enabled) => enabled,
       () =>
@@ -59,10 +58,9 @@ export const requireReferralsEnabled = (locale: Locale) =>
     Effect.asVoid
   );
 
+/** Withheld avatars reject the avatar actions. */
 export const requireAccountAvatarsEnabled = (locale: Locale) =>
-  Effect.tryPromise(areAccountAvatarsEnabled).pipe(
-    // An unreadable avatar flag fails closed: avatars stay unavailable.
-    Effect.orElseSucceed(() => false),
+  AccountAvatarReleaseGate.isOpen.pipe(
     Effect.filterOrFail(
       (enabled) => enabled,
       () =>

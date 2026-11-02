@@ -470,7 +470,7 @@ const writeFixture = async (
         }
       : {}),
     "app/[locale]/layout.tsx": localeLayout(realCookieConsent),
-    "fixture/account-feature-flag.server.ts": fixtureAccountFeatureFlag,
+    "fixture/account-release-gates.server.ts": fixtureAccountFeatureFlag,
     "fixture/account-actions.ts": fixtureAccountActions,
     "fixture/account-draft.tsx": fixtureAccountDraft,
     "fixture/account-page.tsx": fixtureAccountPage,
@@ -483,7 +483,7 @@ const writeFixture = async (
     "fixture/hydration.tsx": fixtureHydration,
     "fixture/marketing-actions.ts": fixtureMarketingActions,
     "fixture/marketing-preferences.server.ts": fixtureMarketingPreferences,
-    "fixture/referral-feature-flag.server.ts": fixtureReferralFeatureFlag,
+    "fixture/referral-release-gate.server.ts": fixtureReferralFeatureFlag,
     "fixture/site-header-config.ts": fixtureSiteHeaderConfig(
       realCookieConsent
         ? 'localePath + "/consent-waypoint"'
@@ -514,8 +514,8 @@ const writeFixture = async (
       moduleResolution: "bundler",
       noEmit: true,
       paths: {
-        "@/features/account/server/account-feature-flag.server": [
-          "./fixture/account-feature-flag.server.ts",
+        "@/features/account/server/account-release-gates.server": [
+          "./fixture/account-release-gates.server.ts",
         ],
         "@/features/account/components/account-page": [
           "./fixture/account-page.tsx",
@@ -534,8 +534,8 @@ const writeFixture = async (
           "./fixture/marketing-preferences.server.ts",
         ],
         "@/features/legal/actions": ["./fixture/marketing-actions.ts"],
-        "@/features/referrals/referral-feature-flag.server": [
-          "./fixture/referral-feature-flag.server.ts",
+        "@/features/referrals/referral-release-gate.server": [
+          "./fixture/referral-release-gate.server.ts",
         ],
         "@/shared/backend/workspace-effect": ["./fixture/workspace-effect.ts"],
         "@/shared/components/site-header-config": [

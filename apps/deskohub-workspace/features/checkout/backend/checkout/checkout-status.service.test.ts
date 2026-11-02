@@ -6,9 +6,9 @@ import { DotyposService } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Duration, Effect, Fiber, Layer, Option } from "effect";
 import { TestClock } from "effect/testing";
-import { SeatingMapFeatureFlagServiceMock } from "@/features/feature-flags/backend/seating-map-feature-flag.service.mock";
 import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
 import { ReservationRecords } from "@/features/reservation/backend/reservation-records";
+import { SeatingMapReleaseGate } from "@/features/reservation/backend/seating-map-release-gate";
 import { ReviewSandboxMock } from "@/features/review-accounts/backend/review-sandbox.service.mock";
 import { LatePaymentVerificationService } from "../payment/late-payment-verification.service";
 import type { ProviderPaymentFinalizationService as ProviderPaymentFinalizationServiceType } from "../payment/provider-payment-finalization.service";
@@ -173,9 +173,7 @@ describe("CheckoutStatusService", () => {
               reviewSandboxLayer,
               dotyposLayer(makeDotypos()),
               noLatePaymentLayer(),
-              SeatingMapFeatureFlagServiceMock({
-                isEnabled: Effect.succeed(true),
-              })
+              SeatingMapReleaseGate.fromDecision(true)
             )
           )
         )
@@ -232,9 +230,7 @@ describe("CheckoutStatusService", () => {
               ReviewSandboxMock({ status: sandboxLookup }),
               dotyposLayer(makeDotypos()),
               noLatePaymentLayer(),
-              SeatingMapFeatureFlagServiceMock({
-                isEnabled: Effect.succeed(true),
-              })
+              SeatingMapReleaseGate.fromDecision(true)
             )
           )
         )
@@ -310,9 +306,7 @@ describe("CheckoutStatusService", () => {
               Layer.mock(LatePaymentVerificationService, {
                 startRecoveryIfSettled,
               }),
-              SeatingMapFeatureFlagServiceMock({
-                isEnabled: Effect.succeed(true),
-              })
+              SeatingMapReleaseGate.fromDecision(true)
             )
           )
         )
@@ -432,9 +426,7 @@ describe("CheckoutStatusService", () => {
                 reviewSandboxLayer,
                 dotyposLayer(dotypos),
                 noLatePaymentLayer(),
-                SeatingMapFeatureFlagServiceMock({
-                  isEnabled: Effect.succeed(seatingMapEnabled),
-                })
+                SeatingMapReleaseGate.fromDecision(seatingMapEnabled)
               )
             )
           )
@@ -646,9 +638,7 @@ describe("CheckoutStatusService", () => {
               reviewSandboxLayer,
               dotyposLayer(dotypos),
               noLatePaymentLayer(),
-              SeatingMapFeatureFlagServiceMock({
-                isEnabled: Effect.succeed(false),
-              })
+              SeatingMapReleaseGate.fromDecision(false)
             )
           )
         )
@@ -757,9 +747,7 @@ describe("CheckoutStatusService", () => {
               reviewSandboxLayer,
               dotyposLayer(dotypos),
               noLatePaymentLayer(),
-              SeatingMapFeatureFlagServiceMock({
-                isEnabled: Effect.succeed(true),
-              })
+              SeatingMapReleaseGate.fromDecision(true)
             )
           )
         )
@@ -895,9 +883,7 @@ describe("CheckoutStatusService", () => {
                 reviewSandboxLayer,
                 dotyposLayer(dotypos),
                 noLatePaymentLayer(),
-                SeatingMapFeatureFlagServiceMock({
-                  isEnabled: Effect.succeed(false),
-                })
+                SeatingMapReleaseGate.fromDecision(false)
               )
             )
           )
@@ -1018,9 +1004,7 @@ describe("CheckoutStatusService", () => {
                 reviewSandboxLayer,
                 dotyposLayer(dotypos),
                 noLatePaymentLayer(),
-                SeatingMapFeatureFlagServiceMock({
-                  isEnabled: Effect.succeed(false),
-                })
+                SeatingMapReleaseGate.fromDecision(false)
               )
             )
           )
@@ -1231,9 +1215,7 @@ describe("CheckoutStatusService", () => {
               reviewSandboxLayer,
               dotyposLayer(makeDotypos({ getReservationWithoutCustomer })),
               noLatePaymentLayer(),
-              SeatingMapFeatureFlagServiceMock({
-                isEnabled: Effect.succeed(true),
-              })
+              SeatingMapReleaseGate.fromDecision(true)
             )
           )
         )
@@ -1309,9 +1291,7 @@ describe("CheckoutStatusService", () => {
                 })
               ),
               noLatePaymentLayer(),
-              SeatingMapFeatureFlagServiceMock({
-                isEnabled: Effect.succeed(true),
-              })
+              SeatingMapReleaseGate.fromDecision(true)
             )
           )
         )
@@ -1397,9 +1377,7 @@ describe("CheckoutStatusService retry selection", () => {
                   Effect.succeed("not_applicable" as const)
                 ),
               }),
-              SeatingMapFeatureFlagServiceMock({
-                isEnabled: Effect.succeed(false),
-              })
+              SeatingMapReleaseGate.fromDecision(false)
             )
           )
         )

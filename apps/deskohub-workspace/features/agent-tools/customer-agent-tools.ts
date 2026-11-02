@@ -2,8 +2,8 @@ import { Layer } from "effect";
 import { CustomerReservationHistoryService } from "@/features/account";
 import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import { CheckoutStatusService } from "@/features/checkout/backend/checkout/checkout-status.service";
-import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
-import { ReferralFeatureFlagRequest } from "@/features/referrals/referral-feature-flag.server";
+import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
+import { ReferralReleaseGateRequest } from "@/features/referrals/referral-release-gate.server";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import { SharedAvailabilityInventoryLive } from "@/features/reservation/backend/availability-inventory-cache.server";
 import { payStatePreparationServices } from "@/features/reservation/backend/pay-state-preparation-services";
@@ -24,9 +24,9 @@ export const CustomerAgentToolsLive = Layer.mergeAll(
   WorkspaceAvailabilityService.Live,
   SharedAvailabilityInventoryLive,
   CheckoutPricingService.Live.pipe(
-    Layer.provideMerge(ReferralFeatureFlagRequest)
+    Layer.provideMerge(ReferralReleaseGateRequest)
   ),
-  OfficeReservationFeatureFlagService.Live,
+  OfficeReleaseGate.Live,
   payStatePreparationServices,
   RememberedReferral.none,
   WorkspaceReservationRepository.Live,

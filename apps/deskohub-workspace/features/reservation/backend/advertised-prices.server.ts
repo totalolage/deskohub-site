@@ -8,8 +8,8 @@ import {
 } from "@/features/checkout/advertised-price";
 import { buildAdvertisedPrice } from "@/features/checkout/backend/checkout/advertised-price.server";
 import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
-import { OfficeReservationFeatureFlagRenderLayer } from "@/features/office/backend/office-reservation-feature-flag.server";
-import { ReferralFeatureFlagRequest } from "@/features/referrals/referral-feature-flag.server";
+import { OfficeReleaseGateRequest } from "@/features/office/backend/office-release-gate.server";
+import { ReferralReleaseGateRequest } from "@/features/referrals/referral-release-gate.server";
 import { pagePreload } from "./page-preload";
 
 export const loadAdvertisedPrices = Effect.fn(
@@ -24,7 +24,7 @@ export const loadAdvertisedPrices = Effect.fn(
   const results = yield* Effect.all(
     uniqueRequests.map((request) =>
       buildAdvertisedPrice(request).pipe(
-        Effect.provide(OfficeReservationFeatureFlagRenderLayer),
+        Effect.provide(OfficeReleaseGateRequest),
         Effect.exit,
         Effect.flatMap(
           Exit.match({
@@ -59,7 +59,7 @@ export const preloadPageAdvertisedPrices = (
   loadAdvertisedPrices(requests).pipe(
     Effect.provide(
       CheckoutPricingService.Live.pipe(
-        Layer.provideMerge(ReferralFeatureFlagRequest)
+        Layer.provideMerge(ReferralReleaseGateRequest)
       )
     ),
     Effect.scoped,

@@ -11,13 +11,10 @@ import {
   type WorkspaceTableMap,
 } from "@/features/checkout/workspace-table-map";
 import {
-  SeatingMapFeatureFlagService,
-  WorkspaceFeatureFlagService,
-} from "@/features/feature-flags/backend";
-import {
   type BookedReservation,
   decodeBookedReservation,
 } from "@/features/reservation/backend/booked-reservation";
+import { SeatingMapReleaseGate } from "@/features/reservation/backend/seating-map-release-gate";
 import {
   type WorkspaceReservation,
   WorkspaceReservationRepository,
@@ -94,7 +91,7 @@ export class WorkspaceReservationService extends Context.Service<
     Effect.gen(function* () {
       const reservations = yield* WorkspaceReservationRepository;
       const dotypos = yield* DotyposService;
-      const seatingMapFeatureFlag = yield* SeatingMapFeatureFlagService;
+      const seatingMap = yield* SeatingMapReleaseGate;
 
       const loadReservation = Effect.fn("workspaceReservation.load")(function* (
         id: WorkspaceReservationId
@@ -193,7 +190,7 @@ export class WorkspaceReservationService extends Context.Service<
             reservation.reservationDetails.entryTier === "open-space"
               ? yield* getOpenSpaceTableNames(tables)
               : undefined;
-          const seatingMapEnabled = yield* seatingMapFeatureFlag.isEnabled;
+          const seatingMapEnabled = yield* seatingMap.isOpen;
           const tableMap = seatingMapEnabled
             ? getWorkspaceTableMap(
                 dotyposReservationDetails.reservation,
@@ -284,11 +281,7 @@ export class WorkspaceReservationService extends Context.Service<
     Layer.provide(WorkspaceReservationRepository.Default),
     Layer.provide(WorkspaceDatabase.Default),
     Layer.provide(WorkspaceDotyposLayer),
-    Layer.provide(
-      SeatingMapFeatureFlagService.Default.pipe(
-        Layer.provide(WorkspaceFeatureFlagService.Default)
-      )
-    )
+    Layer.provide(SeatingMapReleaseGate.Live)
   );
 }
 

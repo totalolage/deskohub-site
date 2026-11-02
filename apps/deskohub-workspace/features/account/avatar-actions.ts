@@ -2,13 +2,14 @@
 
 import type { CloudinaryConfigError } from "@deskohub/cloudinary";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { Effect, type Schema } from "effect";
+import { Effect, Layer, type Schema } from "effect";
 import { revalidatePath } from "next/cache";
 import {
   accountActionError,
   requireAccountAvatarsEnabled,
   requireVerifiedSession,
 } from "@/features/account/account-action-guards";
+import { AccountAvatarReleaseGate } from "@/features/account/backend/account-release-gates";
 import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import {
@@ -151,7 +152,12 @@ const uploadAvatarMutation = Effect.fn(
   (effect, _file, locale) =>
     effect.pipe(
       Effect.mapError(mapAvatarActionError(locale)),
-      Effect.provide(CustomerAuthentication.Default)
+      Effect.provide(
+        Layer.mergeAll(
+          CustomerAuthentication.Default,
+          AccountAvatarReleaseGate.Live
+        )
+      )
     )
 );
 
@@ -186,7 +192,12 @@ const removeAvatarMutation = Effect.fn(
   (effect, _input, locale) =>
     effect.pipe(
       Effect.mapError(mapAvatarActionError(locale)),
-      Effect.provide(CustomerAuthentication.Default)
+      Effect.provide(
+        Layer.mergeAll(
+          CustomerAuthentication.Default,
+          AccountAvatarReleaseGate.Live
+        )
+      )
     )
 );
 

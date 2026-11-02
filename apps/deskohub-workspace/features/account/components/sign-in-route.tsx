@@ -7,7 +7,7 @@ import {
   signInPurposeParam,
   signInReturnParam,
 } from "@/features/account/routes";
-import { arePasskeysEnabled } from "@/features/account/server/account-feature-flag.server";
+import { arePasskeysEnabled } from "@/features/account/server/account-release-gates.server";
 import type { Locale } from "@/features/i18n";
 import { parseSameOriginPath } from "@/shared/utils/same-origin-path";
 import {

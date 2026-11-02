@@ -9,8 +9,8 @@ import {
 } from "@/features/checkout/public-offerings";
 import { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend";
 import type { Locale } from "@/features/i18n";
-import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
-import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
+import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
+import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { readSharedSnapshot } from "@/shared/backend/shared-snapshot";
 import { runWorkspaceEffectOrElse } from "@/shared/backend/workspace-effect";
 
@@ -72,7 +72,7 @@ const decideSharedReleases = Effect.gen(function* () {
 // Referral discounts belong to a signed-in customer, never to an anonymous
 // advertised price.
 const withoutReferrals = Layer.provideMerge(
-  ReferralFeatureFlagService.fromDecision(false)
+  ReferralReleaseGate.fromDecision(false)
 );
 
 const loadSharedOfferings = Effect.fn("pricing.loadSharedOfferings")(function* (
@@ -86,9 +86,7 @@ const loadSharedOfferings = Effect.fn("pricing.loadSharedOfferings")(function* (
         CheckoutPricingService.withDiscountReleaseGates(
           discountReleaseGates
         ).pipe(withoutReferrals),
-        Layer.succeed(OfficeReservationFeatureFlagService, {
-          isEnabled: Effect.succeed(officeOpen),
-        })
+        OfficeReleaseGate.fromDecision(officeOpen)
       )
     )
   );
@@ -139,7 +137,7 @@ export async function loadSharedPriceList(
 
 const VisitorPriceListLive = Layer.mergeAll(
   CheckoutPricingService.Live.pipe(withoutReferrals),
-  OfficeReservationFeatureFlagService.Live
+  OfficeReleaseGate.Live
 );
 
 /**
