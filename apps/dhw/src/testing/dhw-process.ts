@@ -21,6 +21,7 @@ export const dhwFromSource = [
  * Lets a `bun run coverage` run instrument the child: the coverage preload
  * arrives through BUN_OPTIONS, and the child dumps its counters on exit when
  * NODE_ENV is test. Empty outside a coverage run, so isolation is unchanged.
+ * Only runs from source get it: a compiled executable can't load the preload.
  */
 function coverageRunEnvironment(): Record<string, string> {
   const runDirectory = process.env.DESKOHUB_COVERAGE_RUN_DIR;
@@ -104,7 +105,7 @@ export const runDhw = async (
             ? {}
             : { DHW_BASE: options.workspace }),
           ...testNetworkEnvironment(`http://127.0.0.1:${trap.port}`),
-          ...coverageRunEnvironment(),
+          ...(options.executable === undefined ? coverageRunEnvironment() : {}),
         },
         stdin: "ignore",
         stdout: "pipe",
