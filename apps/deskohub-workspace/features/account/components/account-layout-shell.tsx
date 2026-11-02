@@ -24,6 +24,7 @@ import {
 } from "@/features/account/routes";
 import {
   type AccountSection,
+  type AccountSectionRelease,
   defaultAccountSection,
   flagGatedAccountSections,
   isAccountSectionReleased,
@@ -93,6 +94,39 @@ function AccountHelp({ locale }: { readonly locale: Locale }) {
   );
 }
 
+/**
+ * The section a path opens. The page is not found at a withheld section's
+ * path; the shell still never opens one.
+ */
+const openedAccountSection = (
+  pathnameSection: AccountSection | undefined,
+  release: AccountSectionRelease
+): AccountSection =>
+  pathnameSection !== undefined &&
+  isAccountSectionReleased(pathnameSection, release)
+    ? pathnameSection
+    : defaultAccountSection;
+
+/**
+ * The page metadata keeps titling the section the page was loaded at, also
+ * after an in-place switch and when Back restores a switched path, so the
+ * title follows the path's section as a reload of it would.
+ */
+const reloadedAccountPageTitle = (
+  locale: Locale,
+  routeKey: string,
+  pathnameSection: AccountSection | undefined,
+  routeSection: AccountSection
+) =>
+  pathnameSection === undefined ||
+  pathnameSection === "legal" ||
+  pathnameSection !== routeSection
+    ? undefined
+    : getAccountPageTitle(
+        locale,
+        isAccountPathname(locale, routeKey) ? undefined : pathnameSection
+      );
+
 export function AccountLayoutShell({
   children,
   locale,
@@ -106,16 +140,10 @@ export function AccountLayoutShell({
   const routeKey = pathname ?? "";
   const isDeletedPathname = /\/account\/deleted\/*$/.test(routeKey);
   const pathnameSection = findAccountSectionOfPathname(locale, routeKey);
-  // The page is not found at a withheld section's path; the shell still
-  // never opens one.
-  const routeSection =
-    pathnameSection !== undefined &&
-    isAccountSectionReleased(pathnameSection, {
-      passkeysEnabled,
-      referralsEnabled,
-    })
-      ? pathnameSection
-      : defaultAccountSection;
+  const routeSection = openedAccountSection(pathnameSection, {
+    passkeysEnabled,
+    referralsEnabled,
+  });
   const isLegalPathname = routeSection === "legal";
   const [localNavigation, setLocalNavigation] = useState(() => ({
     activeSection: routeSection,
@@ -134,18 +162,12 @@ export function AccountLayoutShell({
     localNavigation.routeKey === routeKey
       ? localNavigation.activeSection
       : routeSection;
-  // The page metadata keeps titling the section the page was loaded at, also
-  // after an in-place switch and when Back restores a switched path, so the
-  // title follows the path's section as a reload of it would.
-  const pageTitle =
-    pathnameSection === undefined ||
-    pathnameSection === "legal" ||
-    pathnameSection !== routeSection
-      ? undefined
-      : getAccountPageTitle(
-          locale,
-          isAccountPathname(locale, routeKey) ? undefined : pathnameSection
-        );
+  const pageTitle = reloadedAccountPageTitle(
+    locale,
+    routeKey,
+    pathnameSection,
+    routeSection
+  );
   useEffect(() => {
     if (pageTitle !== undefined) document.title = pageTitle;
   }, [pageTitle]);
