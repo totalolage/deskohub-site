@@ -468,11 +468,11 @@ describe("LatePaymentRecoveryService.recover original hold reuse", () => {
         "call dotypos.listActiveReservationsOverlapping(startDate=<Date>, endDate=<Date>)",
         "call availability.ensureAvailable(kind=cowork, date=2099-01-01, entryTier=basic, monitorOption=undefined)",
         "span createWorkspaceDotyposReservation",
-        "Info Workspace Dotypos reservation creation input received {date,entryTier,input,locale,paymentOrderId,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation input received {date,entryTier,input,locale,paymentOrderId,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "span normalizeReservationIntervalFields",
         "call tableAssignments.assignTableId(kind=cowork, entryTier=basic, coffee=true, date=2099-01-01)",
-        "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
-        "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         
       "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Deskohub workspace post-payment reservation
       Payment order: reservation-id
@@ -481,7 +481,7 @@ describe("LatePaymentRecoveryService.recover original hold reuse", () => {
       Coffee: yes
       Price: CZK 340)"
       ,
-        "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "call recoveries.completeWithReplacement(paymentAttemptId=attempt-id, workspaceReservationId=reservation-id, recoveredDotyposReservationId=replacement-id, reservationState=confirmed, completedAt=<Instant>)",
         "call recoveries.findByPaymentAttemptId(attempt-id)",
         "call fulfillment.run(reservation-id)",
@@ -710,11 +710,11 @@ describe("LatePaymentRecoveryService.recover original hold release", () => {
         "call dotypos.listActiveReservationsOverlapping(startDate=<Date>, endDate=<Date>)",
         "call availability.ensureAvailable(kind=cowork, date=2099-01-01, entryTier=basic, monitorOption=undefined)",
         "span createWorkspaceDotyposReservation",
-        "Info Workspace Dotypos reservation creation input received {date,entryTier,input,locale,paymentOrderId,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation input received {date,entryTier,input,locale,paymentOrderId,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "span normalizeReservationIntervalFields",
         "call tableAssignments.assignTableId(kind=cowork, entryTier=basic, coffee=true, date=2099-01-01)",
-        "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
-        "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         
       "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Deskohub workspace post-payment reservation
       Payment order: reservation-id
@@ -723,7 +723,7 @@ describe("LatePaymentRecoveryService.recover original hold release", () => {
       Coffee: yes
       Price: CZK 340)"
       ,
-        "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "call recoveries.completeWithReplacement(paymentAttemptId=attempt-id, workspaceReservationId=reservation-id, recoveredDotyposReservationId=replacement-id, reservationState=confirmed, completedAt=<Instant>)",
         "call recoveries.findByPaymentAttemptId(attempt-id)",
         "call fulfillment.run(reservation-id)",
@@ -804,11 +804,11 @@ describe("LatePaymentRecoveryService.recover original hold release", () => {
         "call dotypos.listActiveReservationsOverlapping(startDate=<Date>, endDate=<Date>)",
         "call availability.ensureAvailable(kind=cowork, date=2099-01-01, entryTier=basic, monitorOption=undefined)",
         "span createWorkspaceDotyposReservation",
-        "Info Workspace Dotypos reservation creation input received {date,entryTier,input,locale,paymentOrderId,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation input received {date,entryTier,input,locale,paymentOrderId,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "span normalizeReservationIntervalFields",
         "call tableAssignments.assignTableId(kind=cowork, entryTier=basic, coffee=true, date=2099-01-01)",
-        "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
-        "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         
       "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Deskohub workspace post-payment reservation
       Payment order: reservation-id
@@ -817,7 +817,7 @@ describe("LatePaymentRecoveryService.recover original hold release", () => {
       Coffee: yes
       Price: CZK 340)"
       ,
-        "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "call recoveries.completeWithReplacement(paymentAttemptId=attempt-id, workspaceReservationId=reservation-id, recoveredDotyposReservationId=replacement-id, reservationState=confirmed, completedAt=<Instant>)",
         "call recoveries.findByPaymentAttemptId(attempt-id)",
         "call fulfillment.run(reservation-id)",
@@ -914,11 +914,11 @@ describe("LatePaymentRecoveryService.recover original hold release", () => {
         "call dotypos.listActiveReservationsOverlapping(startDate=<Date>, endDate=<Date>)",
         "call availability.ensureAvailable(kind=cowork, date=2099-01-01, entryTier=basic, monitorOption=undefined)",
         "span createWorkspaceDotyposReservation",
-        "Info Workspace Dotypos reservation creation input received {date,entryTier,input,locale,paymentOrderId,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation input received {date,entryTier,input,locale,paymentOrderId,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "span normalizeReservationIntervalFields",
         "call tableAssignments.assignTableId(kind=cowork, entryTier=basic, coffee=true, date=2099-01-01)",
-        "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
-        "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         
       "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Deskohub workspace post-payment reservation
       Payment order: reservation-id
@@ -927,7 +927,7 @@ describe("LatePaymentRecoveryService.recover original hold release", () => {
       Coffee: yes
       Price: CZK 340)"
       ,
-        "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "call recoveries.completeWithReplacement(paymentAttemptId=attempt-id, workspaceReservationId=reservation-id, recoveredDotyposReservationId=replacement-id, reservationState=confirmed, completedAt=<Instant>)",
         "call recoveries.findByPaymentAttemptId(attempt-id)",
         "call fulfillment.run(reservation-id)",
@@ -996,11 +996,11 @@ describe("LatePaymentRecoveryService.recover original hold release", () => {
         "call dotypos.listActiveReservationsOverlapping(startDate=<Date>, endDate=<Date>)",
         "call availability.ensureAvailable(kind=cowork, date=2099-01-01, entryTier=basic, monitorOption=undefined)",
         "span createWorkspaceDotyposReservation",
-        "Info Workspace Dotypos reservation creation input received {date,entryTier,input,locale,paymentOrderId,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation input received {date,entryTier,input,locale,paymentOrderId,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "span normalizeReservationIntervalFields",
         "call tableAssignments.assignTableId(kind=cowork, entryTier=basic, coffee=true, date=2099-01-01)",
-        "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
-        "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         
       "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Deskohub workspace post-payment reservation
       Payment order: reservation-id
@@ -1009,7 +1009,7 @@ describe("LatePaymentRecoveryService.recover original hold release", () => {
       Coffee: yes
       Price: CZK 340)"
       ,
-        "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "call recoveries.completeWithReplacement(paymentAttemptId=attempt-id, workspaceReservationId=reservation-id, recoveredDotyposReservationId=replacement-id, reservationState=confirmed, completedAt=<Instant>)",
         "call recoveries.findByPaymentAttemptId(attempt-id)",
         "call fulfillment.run(reservation-id)",
@@ -1103,11 +1103,11 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
         "call dotypos.listActiveReservationsOverlapping(startDate=<Date>, endDate=<Date>)",
         "call availability.ensureAvailable(kind=cowork, date=2099-01-01, entryTier=basic, monitorOption=undefined)",
         "span createWorkspaceDotyposReservation",
-        "Info Workspace Dotypos reservation creation input received {date,entryTier,input,locale,paymentOrderId,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation input received {date,entryTier,input,locale,paymentOrderId,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "span normalizeReservationIntervalFields",
         "call tableAssignments.assignTableId(kind=cowork, entryTier=basic, coffee=true, date=2099-01-01)",
-        "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
-        "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         
       "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Deskohub workspace post-payment reservation
       Payment order: reservation-id
@@ -1116,7 +1116,7 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
       Coffee: yes
       Price: CZK 340)"
       ,
-        "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "call recoveries.completeWithReplacement(paymentAttemptId=attempt-id, workspaceReservationId=reservation-id, recoveredDotyposReservationId=replacement-id, reservationState=confirmed, completedAt=<Instant>)",
         "call recoveries.findByPaymentAttemptId(attempt-id)",
         "call fulfillment.run(reservation-id)",
@@ -1557,10 +1557,10 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
         "call dotypos.listActiveReservationsOverlapping(startDate=<Date>, endDate=<Date>)",
         "call availability.ensureAvailable(kind=cowork, date=2099-01-01, entryTier=basic, monitorOption=undefined)",
         "span createWorkspaceDotyposReservation",
-        "Info Workspace Dotypos reservation creation input received {date,entryTier,input,locale,paymentOrderId,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation input received {date,entryTier,input,locale,paymentOrderId,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "span normalizeReservationIntervalFields",
         "call tableAssignments.assignTableId(kind=cowork, entryTier=basic, coffee=true, date=2099-01-01)",
-        "Error Workspace Dotypos reservation creation failed (cause=<TableAssignmentUnavailableError>) {date,entryTier,locale,paymentOrderId,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Error Workspace Dotypos reservation creation failed (cause=<TableAssignmentUnavailableError>) {date,entryTier,locale,paymentOrderId,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "call recoveries.requireRefund(paymentAttemptId=attempt-id, workspaceReservationId=reservation-id, failureCode=late_payment_reservation_unavailable, completedAt=<Instant>)",
       ]
     `);
@@ -1591,11 +1591,11 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
         "call dotypos.listActiveReservationsOverlapping(startDate=<Date>, endDate=<Date>)",
         "call availability.ensureAvailable(kind=cowork, date=2099-01-01, entryTier=basic, monitorOption=undefined)",
         "span createWorkspaceDotyposReservation",
-        "Info Workspace Dotypos reservation creation input received {date,entryTier,input,locale,paymentOrderId,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation input received {date,entryTier,input,locale,paymentOrderId,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "span normalizeReservationIntervalFields",
         "call tableAssignments.assignTableId(kind=cowork, entryTier=basic, coffee=true, date=2099-01-01)",
-        "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
-        "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         
       "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Deskohub workspace post-payment reservation
       Payment order: reservation-id
@@ -1604,7 +1604,7 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
       Coffee: yes
       Price: CZK 340)"
       ,
-        "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "call recoveries.requireReview(paymentAttemptId=attempt-id, workspaceReservationId=reservation-id, failureCode=late_payment_replacement_id_missing, completedAt=<Instant>)",
       ]
     `);
@@ -1638,11 +1638,11 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
         "call dotypos.listActiveReservationsOverlapping(startDate=<Date>, endDate=<Date>)",
         "call availability.ensureAvailable(kind=cowork, date=2099-01-01, entryTier=basic, monitorOption=undefined)",
         "span createWorkspaceDotyposReservation",
-        "Info Workspace Dotypos reservation creation input received {date,entryTier,input,locale,paymentOrderId,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation input received {date,entryTier,input,locale,paymentOrderId,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "span normalizeReservationIntervalFields",
         "call tableAssignments.assignTableId(kind=cowork, entryTier=basic, coffee=true, date=2099-01-01)",
-        "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
-        "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         
       "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Deskohub workspace post-payment reservation
       Payment order: reservation-id
@@ -1651,7 +1651,7 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
       Coffee: yes
       Price: CZK 340)"
       ,
-        "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "call recoveries.completeWithReplacement(paymentAttemptId=attempt-id, workspaceReservationId=reservation-id, recoveredDotyposReservationId=replacement-id, reservationState=confirmed, completedAt=<Instant>)",
         "call recoveries.hasNewerActiveReservation(reservation-id)",
         "call dotypos.cancelReservation(replacement-id)",
@@ -1688,11 +1688,11 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
         "call dotypos.listActiveReservationsOverlapping(startDate=<Date>, endDate=<Date>)",
         "call availability.ensureAvailable(kind=cowork, date=2099-01-01, entryTier=basic, monitorOption=undefined)",
         "span createWorkspaceDotyposReservation",
-        "Info Workspace Dotypos reservation creation input received {date,entryTier,input,locale,paymentOrderId,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation input received {date,entryTier,input,locale,paymentOrderId,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "span normalizeReservationIntervalFields",
         "call tableAssignments.assignTableId(kind=cowork, entryTier=basic, coffee=true, date=2099-01-01)",
-        "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
-        "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         
       "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Deskohub workspace post-payment reservation
       Payment order: reservation-id
@@ -1701,7 +1701,7 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
       Coffee: yes
       Price: CZK 340)"
       ,
-        "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "call recoveries.completeWithReplacement(paymentAttemptId=attempt-id, workspaceReservationId=reservation-id, recoveredDotyposReservationId=replacement-id, reservationState=confirmed, completedAt=<Instant>)",
         "call recoveries.hasNewerActiveReservation(reservation-id)",
       ]
@@ -1735,11 +1735,11 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
         "call dotypos.listActiveReservationsOverlapping(startDate=<Date>, endDate=<Date>)",
         "call availability.ensureAvailable(kind=cowork, date=2099-01-01, entryTier=basic, monitorOption=undefined)",
         "span createWorkspaceDotyposReservation",
-        "Info Workspace Dotypos reservation creation input received {date,entryTier,input,locale,paymentOrderId,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation input received {date,entryTier,input,locale,paymentOrderId,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "span normalizeReservationIntervalFields",
         "call tableAssignments.assignTableId(kind=cowork, entryTier=basic, coffee=true, date=2099-01-01)",
-        "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
-        "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         
       "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Deskohub workspace post-payment reservation
       Payment order: reservation-id
@@ -1748,7 +1748,7 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
       Coffee: yes
       Price: CZK 340)"
       ,
-        "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} @createWorkspaceDotyposReservation",
+        "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "call recoveries.completeWithReplacement(paymentAttemptId=attempt-id, workspaceReservationId=reservation-id, recoveredDotyposReservationId=replacement-id, reservationState=confirmed, completedAt=<Instant>)",
         "call dotypos.cancelReservation(replacement-id)",
         "call recoveries.requireRefund(paymentAttemptId=attempt-id, workspaceReservationId=reservation-id, failureCode=late_payment_discount_unavailable, completedAt=<Instant>)",

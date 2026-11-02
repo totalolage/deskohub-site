@@ -265,12 +265,12 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Error Payment finalization reservation lookup failed (orderId=reservation-id, cause=<Error>) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization returned not_found {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization completed (result=not_found) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Error Payment finalization reservation lookup failed (orderId=reservation-id, cause=<Error>) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization returned not_found {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization completed (result=not_found) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -284,11 +284,11 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization returned not_found {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization completed (result=not_found) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization returned not_found {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization completed (result=not_found) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -310,11 +310,11 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization returned not_found {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization completed (result=not_found) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization returned not_found {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization completed (result=not_found) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -331,18 +331,18 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call nexi.verifyPaymentOutcome(orderId=provider-order-id, correlationId=correlation-id, amount=35000, currency=EUR, securityToken=security-token, deadline=undefined)",
-        "Error Nexi payment outcome verification failed (orderId=reservation-id, paymentAttemptId=attempt-id, providerOrderId=provider-order-id, cause=<Error>) {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Warn Payment finalization returned provider_verification_failed {attempt,currency,input,paymentAttemptId,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization completed (result=provider_verification_failed) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Error Nexi payment outcome verification failed (orderId=reservation-id, paymentAttemptId=attempt-id, providerOrderId=provider-order-id, cause=<Error>) {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Warn Payment finalization returned provider_verification_failed {attempt,currency,input,paymentAttemptId,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization completed (result=provider_verification_failed) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -358,14 +358,14 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Warn Payment finalization enqueueing fulfillment for already-paid reservation {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Warn Payment finalization enqueueing fulfillment for already-paid reservation {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "span providerPaymentFinalization.enqueueFulfillment",
         "call paidFulfillmentQueue.enqueue(orderId=reservation-id)",
-        "Info Payment finalization fulfillment enqueued {input,paymentAttemptId,reservation} @providerPaymentFinalization.enqueueFulfillment",
-        "Info Provider payment finalization completed (result=paid) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization fulfillment enqueued {input,paymentAttemptId,reservation} in providerPaymentFinalization.enqueueFulfillment",
+        "Info Provider payment finalization completed (result=paid) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -381,14 +381,14 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Warn Payment finalization enqueueing fulfillment for already-paid reservation {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Warn Payment finalization enqueueing fulfillment for already-paid reservation {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "span providerPaymentFinalization.enqueueFulfillment",
         "call paidFulfillmentQueue.enqueue(orderId=reservation-id)",
-        "Info Payment finalization fulfillment enqueued {input,paymentAttemptId,reservation} @providerPaymentFinalization.enqueueFulfillment",
-        "Info Provider payment finalization completed (result=paid) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization fulfillment enqueued {input,paymentAttemptId,reservation} in providerPaymentFinalization.enqueueFulfillment",
+        "Info Provider payment finalization completed (result=paid) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -405,15 +405,15 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Warn Payment finalization enqueueing fulfillment for already-paid reservation {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Warn Payment finalization enqueueing fulfillment for already-paid reservation {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "span providerPaymentFinalization.enqueueFulfillment",
         "call paidFulfillmentQueue.enqueue(orderId=reservation-id)",
-        "Error Paid order fulfillment could not be enqueued; fulfilling inline (orderId=reservation-id, cause=<PaidFulfillmentQueueError>) {input,paymentAttemptId,reservation} @providerPaymentFinalization.enqueueFulfillment",
+        "Error Paid order fulfillment could not be enqueued; fulfilling inline (orderId=reservation-id, cause=<PaidFulfillmentQueueError>) {input,paymentAttemptId,reservation} in providerPaymentFinalization.enqueueFulfillment",
         "call fulfillment.run(reservation-id)",
-        "Info Provider payment finalization completed (result=paid) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization completed (result=paid) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -431,16 +431,16 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Warn Payment finalization enqueueing fulfillment for already-paid reservation {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Warn Payment finalization enqueueing fulfillment for already-paid reservation {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "span providerPaymentFinalization.enqueueFulfillment",
         "call paidFulfillmentQueue.enqueue(orderId=reservation-id)",
-        "Error Paid order fulfillment could not be enqueued; fulfilling inline (orderId=reservation-id, cause=<PaidFulfillmentQueueError>) {input,paymentAttemptId,reservation} @providerPaymentFinalization.enqueueFulfillment",
+        "Error Paid order fulfillment could not be enqueued; fulfilling inline (orderId=reservation-id, cause=<PaidFulfillmentQueueError>) {input,paymentAttemptId,reservation} in providerPaymentFinalization.enqueueFulfillment",
         "call fulfillment.run(reservation-id)",
-        "Fatal Paid order fulfillment failed during finalization (orderId=reservation-id, cause=<Error>) {input,paymentAttemptId,reservation} @providerPaymentFinalization.enqueueFulfillment",
-        "Info Provider payment finalization completed (result=paid) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Fatal Paid order fulfillment failed during finalization (orderId=reservation-id, cause=<Error>) {input,paymentAttemptId,reservation} in providerPaymentFinalization.enqueueFulfillment",
+        "Info Provider payment finalization completed (result=paid) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -458,11 +458,11 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization returned paid for fulfilled reservation {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization completed (result=paid) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization returned paid for fulfilled reservation {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization completed (result=paid) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -478,11 +478,11 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization returned paid for fulfilled reservation {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization completed (result=paid) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization returned paid for fulfilled reservation {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization completed (result=paid) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -498,11 +498,11 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization returned not_pending {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization completed (result=not_pending) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization returned not_pending {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization completed (result=not_pending) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -520,11 +520,11 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization returned not_pending {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization completed (result=not_pending) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization returned not_pending {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization completed (result=not_pending) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -540,14 +540,14 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Error Payment finalization attempt lookup failed (orderId=reservation-id, paymentAttemptId=attempt-id, cause=<Error>) {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Warn Payment finalization returned not_verifiable {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization completed (result=not_verifiable) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Error Payment finalization attempt lookup failed (orderId=reservation-id, paymentAttemptId=attempt-id, cause=<Error>) {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Warn Payment finalization returned not_verifiable {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization completed (result=not_verifiable) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -561,13 +561,13 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Warn Payment finalization returned not_verifiable {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization completed (result=not_verifiable) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Warn Payment finalization returned not_verifiable {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization completed (result=not_verifiable) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -585,13 +585,13 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Warn Payment finalization returned not_verifiable {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization completed (result=not_verifiable) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Warn Payment finalization returned not_verifiable {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization completed (result=not_verifiable) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -609,13 +609,13 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Warn Payment finalization returned not_verifiable {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization completed (result=not_verifiable) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Warn Payment finalization returned not_verifiable {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization completed (result=not_verifiable) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -636,15 +636,15 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Error Payment finalization currency decode failed (input=<Object>, reservation=<Object>, attempt=<Object>, cause=<SchemaError>) {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Warn Payment finalization returned not_verifiable {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization completed (result=not_verifiable) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Error Payment finalization currency decode failed (input=<Object>, reservation=<Object>, attempt=<Object>, cause=<SchemaError>) {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Warn Payment finalization returned not_verifiable {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization completed (result=not_verifiable) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -668,18 +668,18 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call nexi.verifyPaymentOutcome(orderId=provider-order-id, correlationId=correlation-id, amount=35000, currency=EUR, securityToken=security-token, deadline=15 seconds)",
-        "Error Nexi payment outcome verification failed (orderId=reservation-id, paymentAttemptId=attempt-id, providerOrderId=provider-order-id, cause=<NetworkError>) {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Warn Payment finalization returned provider_verification_failed {attempt,currency,input,paymentAttemptId,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization completed (result=provider_verification_failed) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Error Nexi payment outcome verification failed (orderId=reservation-id, paymentAttemptId=attempt-id, providerOrderId=provider-order-id, cause=<NetworkError>) {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Warn Payment finalization returned provider_verification_failed {attempt,currency,input,paymentAttemptId,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization completed (result=provider_verification_failed) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -699,17 +699,17 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call nexi.verifyPaymentOutcome(orderId=provider-order-id, correlationId=correlation-id, amount=35000, currency=EUR, securityToken=security-token, deadline=undefined)",
-        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Warn Payment finalization returned verification_mismatch {attempt,currency,input,paymentAttemptId,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization completed (result=verification_mismatch) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Warn Payment finalization returned verification_mismatch {attempt,currency,input,paymentAttemptId,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization completed (result=verification_mismatch) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -727,25 +727,25 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call nexi.verifyPaymentOutcome(orderId=provider-order-id, correlationId=correlation-id, amount=35000, currency=EUR, securityToken=security-token, deadline=undefined)",
-        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization mark paid started {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization mark paid started {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentLifecycle.markPaid(id=attempt-id, workspaceReservationId=reservation-id, webhookEventId=undefined, providerOperationId=operation-id, providerStatus=EXECUTED, paidAt=<Instant>)",
         "span posthog.captureLifecycleEvent",
         "call posthog.capture(distinctId=reservation-id, event=payment completed, properties=<Object>, timestamp=<Instant>, uuid=attempt-id:payment completed)",
-        "Debug Payment finalization mark paid completed {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization mark paid completed {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
         "span providerPaymentFinalization.enqueueFulfillment",
         "call paidFulfillmentQueue.enqueue(orderId=reservation-id)",
-        "Info Payment finalization fulfillment enqueued {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.enqueueFulfillment",
-        "Info Provider payment finalization completed (result=paid) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization fulfillment enqueued {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.enqueueFulfillment",
+        "Info Provider payment finalization completed (result=paid) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -761,25 +761,25 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call nexi.verifyPaymentOutcome(orderId=provider-order-id, correlationId=correlation-id, amount=35000, currency=EUR, securityToken=security-token, deadline=15 seconds)",
-        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization mark paid started {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization mark paid started {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentLifecycle.markPaid(id=attempt-id, workspaceReservationId=reservation-id, webhookEventId=webhook-event-id, providerOperationId=operation-id, providerStatus=EXECUTED, paidAt=<Instant>)",
         "span posthog.captureLifecycleEvent",
         "call posthog.capture(distinctId=reservation-id, event=payment completed, properties=<Object>, timestamp=<Instant>, uuid=attempt-id:payment completed)",
-        "Debug Payment finalization mark paid completed {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization mark paid completed {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
         "span providerPaymentFinalization.enqueueFulfillment",
         "call paidFulfillmentQueue.enqueue(orderId=reservation-id)",
-        "Info Payment finalization fulfillment enqueued {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.enqueueFulfillment",
-        "Info Provider payment finalization completed (result=paid) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization fulfillment enqueued {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.enqueueFulfillment",
+        "Info Provider payment finalization completed (result=paid) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -799,25 +799,25 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call nexi.verifyPaymentOutcome(orderId=provider-order-id, correlationId=correlation-id, amount=35000, currency=EUR, securityToken=security-token, deadline=undefined)",
-        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization mark paid started {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization mark paid started {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentLifecycle.markPaid(id=attempt-id, workspaceReservationId=reservation-id, webhookEventId=undefined, providerOperationId=operation-id, providerStatus=capture_executed, paidAt=<Instant>)",
         "span posthog.captureLifecycleEvent",
         "call posthog.capture(distinctId=reservation-id, event=payment completed, properties=<Object>, timestamp=<Instant>, uuid=attempt-id:payment completed)",
-        "Debug Payment finalization mark paid completed {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization mark paid completed {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
         "span providerPaymentFinalization.enqueueFulfillment",
         "call paidFulfillmentQueue.enqueue(orderId=reservation-id)",
-        "Info Payment finalization fulfillment enqueued {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.enqueueFulfillment",
-        "Info Provider payment finalization completed (result=paid) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization fulfillment enqueued {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.enqueueFulfillment",
+        "Info Provider payment finalization completed (result=paid) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -835,23 +835,23 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call nexi.verifyPaymentOutcome(orderId=provider-order-id, correlationId=correlation-id, amount=35000, currency=EUR, securityToken=security-token, deadline=undefined)",
-        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization mark paid started {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization mark paid started {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentLifecycle.markPaid(id=attempt-id, workspaceReservationId=reservation-id, webhookEventId=undefined, providerOperationId=operation-id, providerStatus=EXECUTED, paidAt=<Instant>)",
-        "Debug Payment finalization mark paid completed {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization mark paid completed {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
         "span providerPaymentFinalization.enqueueFulfillment",
         "call paidFulfillmentQueue.enqueue(orderId=reservation-id)",
-        "Info Payment finalization fulfillment enqueued {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.enqueueFulfillment",
-        "Info Provider payment finalization completed (result=paid) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization fulfillment enqueued {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.enqueueFulfillment",
+        "Info Provider payment finalization completed (result=paid) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -867,20 +867,20 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call nexi.verifyPaymentOutcome(orderId=provider-order-id, correlationId=correlation-id, amount=35000, currency=EUR, securityToken=security-token, deadline=undefined)",
-        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization mark paid started {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization mark paid started {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentLifecycle.markPaid(id=attempt-id, workspaceReservationId=reservation-id, webhookEventId=undefined, providerOperationId=operation-id, providerStatus=EXECUTED, paidAt=<Instant>)",
-        "Warn Payment finalization mark paid returned not_pending (cause=<PaymentLifecycleStateError>) {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization completed (result=not_pending) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Warn Payment finalization mark paid returned not_pending (cause=<PaymentLifecycleStateError>) {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization completed (result=not_pending) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -896,17 +896,17 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call nexi.verifyPaymentOutcome(orderId=provider-order-id, correlationId=correlation-id, amount=35000, currency=EUR, securityToken=security-token, deadline=undefined)",
-        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization mark paid started {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization mark paid started {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentLifecycle.markPaid(id=attempt-id, workspaceReservationId=reservation-id, webhookEventId=undefined, providerOperationId=operation-id, providerStatus=EXECUTED, paidAt=<Instant>)",
       ]
     `);
@@ -924,22 +924,22 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call nexi.verifyPaymentOutcome(orderId=provider-order-id, correlationId=correlation-id, amount=35000, currency=EUR, securityToken=security-token, deadline=undefined)",
-        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization mark terminal started {attempt,currency,failureKind,input,paymentAttemptId,providerMetadata,reservation,terminalState,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization mark terminal started {attempt,currency,failureKind,input,paymentAttemptId,providerMetadata,reservation,terminalState,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentLifecycle.markTerminal(id=attempt-id, workspaceReservationId=reservation-id, state=failed, failureCode=nexi_payment_failed, webhookEventId=webhook-event-id, providerOperationId=operation-id, providerStatus=DECLINED)",
         "span posthog.captureLifecycleEvent",
         "call posthog.capture(distinctId=reservation-id, event=payment failed, properties=<Object>, timestamp=<Instant>, uuid=attempt-id:payment failed)",
-        "Debug Payment finalization mark terminal completed {attempt,currency,failureKind,input,paymentAttemptId,providerMetadata,reservation,terminalState,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization completed (result=terminal) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization mark terminal completed {attempt,currency,failureKind,input,paymentAttemptId,providerMetadata,reservation,terminalState,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization completed (result=terminal) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -962,22 +962,22 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call nexi.verifyPaymentOutcome(orderId=provider-order-id, correlationId=correlation-id, amount=35000, currency=EUR, securityToken=security-token, deadline=undefined)",
-        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization mark terminal started {attempt,currency,failureKind,input,paymentAttemptId,providerMetadata,reservation,terminalState,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization mark terminal started {attempt,currency,failureKind,input,paymentAttemptId,providerMetadata,reservation,terminalState,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentLifecycle.markTerminal(id=attempt-id, workspaceReservationId=reservation-id, state=cancelled, failureCode=nexi_payment_failed, webhookEventId=undefined, providerOperationId=operation-id, providerStatus=CANCELED)",
         "span posthog.captureLifecycleEvent",
         "call posthog.capture(distinctId=reservation-id, event=payment abandoned, properties=<Object>, timestamp=<Instant>, uuid=attempt-id:payment abandoned)",
-        "Debug Payment finalization mark terminal completed {attempt,currency,failureKind,input,paymentAttemptId,providerMetadata,reservation,terminalState,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization completed (result=terminal) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization mark terminal completed {attempt,currency,failureKind,input,paymentAttemptId,providerMetadata,reservation,terminalState,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization completed (result=terminal) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -1000,22 +1000,22 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call nexi.verifyPaymentOutcome(orderId=provider-order-id, correlationId=correlation-id, amount=35000, currency=EUR, securityToken=security-token, deadline=undefined)",
-        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization mark terminal started {attempt,currency,failureKind,input,paymentAttemptId,providerMetadata,reservation,terminalState,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization mark terminal started {attempt,currency,failureKind,input,paymentAttemptId,providerMetadata,reservation,terminalState,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentLifecycle.markTerminal(id=attempt-id, workspaceReservationId=reservation-id, state=expired, failureCode=nexi_payment_failed, webhookEventId=undefined, providerOperationId=operation-id, providerStatus=EXPIRED)",
         "span posthog.captureLifecycleEvent",
         "call posthog.capture(distinctId=reservation-id, event=payment abandoned, properties=<Object>, timestamp=<Instant>, uuid=attempt-id:payment abandoned)",
-        "Debug Payment finalization mark terminal completed {attempt,currency,failureKind,input,paymentAttemptId,providerMetadata,reservation,terminalState,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization completed (result=terminal) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization mark terminal completed {attempt,currency,failureKind,input,paymentAttemptId,providerMetadata,reservation,terminalState,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization completed (result=terminal) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -1034,20 +1034,20 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call nexi.verifyPaymentOutcome(orderId=provider-order-id, correlationId=correlation-id, amount=35000, currency=EUR, securityToken=security-token, deadline=undefined)",
-        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization mark terminal started {attempt,currency,failureKind,input,paymentAttemptId,providerMetadata,reservation,terminalState,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization mark terminal started {attempt,currency,failureKind,input,paymentAttemptId,providerMetadata,reservation,terminalState,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentLifecycle.markTerminal(id=attempt-id, workspaceReservationId=reservation-id, state=failed, failureCode=nexi_payment_failed, webhookEventId=undefined, providerOperationId=operation-id, providerStatus=DECLINED)",
-        "Debug Payment finalization mark terminal completed {attempt,currency,failureKind,input,paymentAttemptId,providerMetadata,reservation,terminalState,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization completed (result=terminal) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization mark terminal completed {attempt,currency,failureKind,input,paymentAttemptId,providerMetadata,reservation,terminalState,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization completed (result=terminal) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -1064,20 +1064,20 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call nexi.verifyPaymentOutcome(orderId=provider-order-id, correlationId=correlation-id, amount=35000, currency=EUR, securityToken=security-token, deadline=undefined)",
-        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization mark terminal started {attempt,currency,failureKind,input,paymentAttemptId,providerMetadata,reservation,terminalState,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization mark terminal started {attempt,currency,failureKind,input,paymentAttemptId,providerMetadata,reservation,terminalState,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentLifecycle.markTerminal(id=attempt-id, workspaceReservationId=reservation-id, state=failed, failureCode=nexi_payment_failed, webhookEventId=undefined, providerOperationId=operation-id, providerStatus=DECLINED)",
-        "Warn Payment finalization mark terminal returned not_pending (cause=<PaymentLifecycleStateError>) {attempt,currency,failureKind,input,paymentAttemptId,providerMetadata,reservation,terminalState,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization completed (result=not_pending) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Warn Payment finalization mark terminal returned not_pending (cause=<PaymentLifecycleStateError>) {attempt,currency,failureKind,input,paymentAttemptId,providerMetadata,reservation,terminalState,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization completed (result=not_pending) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -1094,17 +1094,17 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call nexi.verifyPaymentOutcome(orderId=provider-order-id, correlationId=correlation-id, amount=35000, currency=EUR, securityToken=security-token, deadline=undefined)",
-        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization mark terminal started {attempt,currency,failureKind,input,paymentAttemptId,providerMetadata,reservation,terminalState,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization mark terminal started {attempt,currency,failureKind,input,paymentAttemptId,providerMetadata,reservation,terminalState,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentLifecycle.markTerminal(id=attempt-id, workspaceReservationId=reservation-id, state=failed, failureCode=nexi_payment_failed, webhookEventId=undefined, providerOperationId=operation-id, providerStatus=DECLINED)",
       ]
     `);
@@ -1122,18 +1122,18 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call nexi.verifyPaymentOutcome(orderId=provider-order-id, correlationId=correlation-id, amount=35000, currency=EUR, securityToken=security-token, deadline=undefined)",
-        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization returned pending {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization completed (result=pending) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization returned pending {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization completed (result=pending) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -1153,18 +1153,18 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call nexi.verifyPaymentOutcome(orderId=provider-order-id, correlationId=correlation-id, amount=35000, currency=EUR, securityToken=security-token, deadline=undefined)",
-        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization returned pending {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization completed (result=pending) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization returned pending {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization completed (result=pending) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -1188,18 +1188,18 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call nexi.verifyPaymentOutcome(orderId=provider-order-id, correlationId=correlation-id, amount=35000, currency=EUR, securityToken=security-token, deadline=undefined)",
-        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization resolved empty provider order (result=deferred) {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization completed (result=<ProviderPaymentDeferral>) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization resolved empty provider order (result=deferred) {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization completed (result=<ProviderPaymentDeferral>) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -1220,18 +1220,18 @@ describe("ProviderPaymentFinalizationService.finalizePendingProviderPayment trac
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization currency decoded {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification started {attempt,currency,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call nexi.verifyPaymentOutcome(orderId=provider-order-id, correlationId=correlation-id, amount=35000, currency=EUR, securityToken=security-token, deadline=undefined)",
-        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Payment finalization resolved empty provider order (result=abandoned) {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} @providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization completed (result=abandoned) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization provider verification completed {attempt,currency,input,paymentAttemptId,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization provider metadata resolved {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization resolved empty provider order (result=abandoned) {attempt,currency,input,paymentAttemptId,providerMetadata,reservation,verification} in providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization completed (result=abandoned) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -1245,14 +1245,14 @@ describe("ProviderPaymentFinalizationService unattached provider session trace",
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "span providerPaymentFinalization.resolveUnattachedProviderSession",
-        "Warn Payment finalization left an unattached provider session for hold cleanup {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.resolveUnattachedProviderSession",
-        "Info Provider payment finalization completed (result=not_verifiable) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Warn Payment finalization left an unattached provider session for hold cleanup {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.resolveUnattachedProviderSession",
+        "Info Provider payment finalization completed (result=not_verifiable) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -1270,14 +1270,14 @@ describe("ProviderPaymentFinalizationService unattached provider session trace",
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "span providerPaymentFinalization.resolveUnattachedProviderSession",
-        "Info Payment finalization deferred an unattached provider session {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.resolveUnattachedProviderSession",
-        "Info Provider payment finalization completed (result=<ProviderPaymentDeferral>) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization deferred an unattached provider session {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.resolveUnattachedProviderSession",
+        "Info Provider payment finalization completed (result=<ProviderPaymentDeferral>) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -1302,18 +1302,18 @@ describe("ProviderPaymentFinalizationService unattached provider session trace",
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "span providerPaymentFinalization.resolveUnattachedProviderSession",
         "call nexi.getOrder(orderId=provider-order-id, correlationId=correlation-id)",
         "call paymentLifecycle.markTerminal(id=attempt-id, workspaceReservationId=reservation-id, state=failed, failureCode=nexi_hpp_create_unconfirmed, providerStatus=hpp_create_unconfirmed, fromAttemptStates=<Array>)",
         "span posthog.captureLifecycleEvent",
         "call posthog.capture(distinctId=reservation-id, event=payment failed, properties=<Object>, timestamp=<Instant>, uuid=attempt-id:payment failed)",
-        "Info Payment finalization failed an unattached provider session (providerOrderFound=false) {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.resolveUnattachedProviderSession",
-        "Info Provider payment finalization completed (result=terminal) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization failed an unattached provider session (providerOrderFound=false) {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.resolveUnattachedProviderSession",
+        "Info Provider payment finalization completed (result=terminal) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -1332,16 +1332,16 @@ describe("ProviderPaymentFinalizationService unattached provider session trace",
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "span providerPaymentFinalization.resolveUnattachedProviderSession",
         "call nexi.getOrder(orderId=provider-order-id, correlationId=correlation-id)",
         "call paymentLifecycle.markTerminal(id=attempt-id, workspaceReservationId=reservation-id, state=failed, failureCode=nexi_hpp_create_unconfirmed, providerStatus=hpp_create_unconfirmed, fromAttemptStates=<Array>)",
-        "Info Payment finalization failed an unattached provider session (providerOrderFound=true) {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.resolveUnattachedProviderSession",
-        "Info Provider payment finalization completed (result=terminal) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Payment finalization failed an unattached provider session (providerOrderFound=true) {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.resolveUnattachedProviderSession",
+        "Info Provider payment finalization completed (result=terminal) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -1363,15 +1363,15 @@ describe("ProviderPaymentFinalizationService unattached provider session trace",
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "span providerPaymentFinalization.resolveUnattachedProviderSession",
         "call nexi.getOrder(orderId=provider-order-id, correlationId=correlation-id)",
-        "Error Unattached provider session has payment activity and needs operator review {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.resolveUnattachedProviderSession",
-        "Info Provider payment finalization completed (result=not_verifiable) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Error Unattached provider session has payment activity and needs operator review {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.resolveUnattachedProviderSession",
+        "Info Provider payment finalization completed (result=not_verifiable) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -1396,15 +1396,15 @@ describe("ProviderPaymentFinalizationService unattached provider session trace",
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "span providerPaymentFinalization.resolveUnattachedProviderSession",
         "call nexi.getOrder(orderId=provider-order-id, correlationId=correlation-id)",
-        "Error Unattached provider session order lookup failed (cause=<ExternalAPIError>) {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.resolveUnattachedProviderSession",
-        "Info Provider payment finalization completed (result=provider_verification_failed) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Error Unattached provider session order lookup failed (cause=<ExternalAPIError>) {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.resolveUnattachedProviderSession",
+        "Info Provider payment finalization completed (result=provider_verification_failed) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });
@@ -1421,16 +1421,16 @@ describe("ProviderPaymentFinalizationService unattached provider session trace",
     expect(trace).toMatchInlineSnapshot(`
       [
         "span providerPaymentFinalization.finalizePendingProviderPayment",
-        "Info Provider payment finalization started {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Info Provider payment finalization started {input} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call reservations.findById(reservation-id)",
-        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization reservation lookup completed {input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "call paymentAttempts.findById(attempt-id)",
-        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Debug Payment finalization attempt lookup completed {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.finalizePendingProviderPayment",
         "span providerPaymentFinalization.resolveUnattachedProviderSession",
         "call nexi.getOrder(orderId=provider-order-id, correlationId=correlation-id)",
         "call paymentLifecycle.markTerminal(id=attempt-id, workspaceReservationId=reservation-id, state=failed, failureCode=nexi_hpp_create_unconfirmed, providerStatus=hpp_create_unconfirmed, fromAttemptStates=<Array>)",
-        "Warn Unattached provider session changed before it could fail (cause=<PaymentLifecycleStateError>) {attempt,input,paymentAttemptId,reservation} @providerPaymentFinalization.resolveUnattachedProviderSession",
-        "Info Provider payment finalization completed (result=not_pending) {input} @providerPaymentFinalization.finalizePendingProviderPayment",
+        "Warn Unattached provider session changed before it could fail (cause=<PaymentLifecycleStateError>) {attempt,input,paymentAttemptId,reservation} in providerPaymentFinalization.resolveUnattachedProviderSession",
+        "Info Provider payment finalization completed (result=not_pending) {input} in providerPaymentFinalization.finalizePendingProviderPayment",
       ]
     `);
   });

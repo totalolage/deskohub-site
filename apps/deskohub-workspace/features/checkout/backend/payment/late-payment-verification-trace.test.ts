@@ -170,7 +170,7 @@ describe("LatePaymentVerificationService.startRecoveryIfSettled trace", () => {
       [
         "span latePaymentVerification.startRecoveryIfSettled",
         "call reservations.findById(reservation-id)",
-        "Error Late-payment verification failed (cause=<Error>) {orderId} @latePaymentVerification.startRecoveryIfSettled",
+        "Error Late-payment verification failed (cause=<Error>) {orderId} in latePaymentVerification.startRecoveryIfSettled",
       ]
     `);
   });
@@ -332,7 +332,7 @@ describe("LatePaymentVerificationService.startRecoveryIfSettled trace", () => {
         "call reservations.findById(reservation-id)",
         "call recoveries.findByPaymentAttemptId(attempt-id)",
         "call recoveryQueue.enqueue(paymentAttemptId=attempt-id)",
-        "Error Late-payment verification failed (cause=<Error>) {orderId} @latePaymentVerification.startRecoveryIfSettled",
+        "Error Late-payment verification failed (cause=<Error>) {orderId} in latePaymentVerification.startRecoveryIfSettled",
       ]
     `);
   });
@@ -432,7 +432,7 @@ describe("LatePaymentVerificationService.startRecoveryIfSettled trace", () => {
         "call reservations.findById(reservation-id)",
         "call recoveries.findByPaymentAttemptId(attempt-id)",
         "call paymentAttempts.findById(attempt-id)",
-        "Error Late-payment verification failed (cause=<SchemaError>) {orderId} @latePaymentVerification.startRecoveryIfSettled",
+        "Error Late-payment verification failed (cause=<SchemaError>) {orderId} in latePaymentVerification.startRecoveryIfSettled",
       ]
     `);
   });
@@ -453,7 +453,7 @@ describe("LatePaymentVerificationService.startRecoveryIfSettled trace", () => {
         "call recoveries.findByPaymentAttemptId(attempt-id)",
         "call paymentAttempts.findById(attempt-id)",
         "call nexi.verifyPaymentOutcome(orderId=provider-order-id, correlationId=correlation-id, amount=29000, currency=EUR, securityToken=security-token, deadline=5 seconds)",
-        "Warn Late-payment verification provider lookup failed (cause=<Error>) {orderId} @latePaymentVerification.startRecoveryIfSettled",
+        "Warn Late-payment verification provider lookup failed (cause=<Error>) {orderId} in latePaymentVerification.startRecoveryIfSettled",
       ]
     `);
   });
@@ -475,7 +475,7 @@ describe("LatePaymentVerificationService.startRecoveryIfSettled trace", () => {
         "call recoveries.findByPaymentAttemptId(attempt-id)",
         "call paymentAttempts.findById(attempt-id)",
         "call nexi.verifyPaymentOutcome(orderId=provider-order-id, correlationId=correlation-id, amount=29000, currency=EUR, securityToken=security-token, deadline=undefined)",
-        "Warn Late-payment verification provider facts mismatch (mismatches=<Array>) {orderId} @latePaymentVerification.startRecoveryIfSettled",
+        "Warn Late-payment verification provider facts mismatch (mismatches=<Array>) {orderId} in latePaymentVerification.startRecoveryIfSettled",
       ]
     `);
   });
@@ -513,7 +513,7 @@ describe("LatePaymentVerificationService.startRecoveryIfSettled trace", () => {
         "call recoveries.findByPaymentAttemptId(attempt-id)",
         "call paymentAttempts.findById(attempt-id)",
         "call nexi.verifyPaymentOutcome(orderId=provider-order-id, correlationId=correlation-id, amount=29000, currency=EUR, securityToken=security-token, deadline=5 seconds)",
-        "Warn Nexi payment settled after the local payment attempt became terminal {orderId} @latePaymentVerification.startRecoveryIfSettled",
+        "Warn Nexi payment settled after the local payment attempt became terminal {orderId} in latePaymentVerification.startRecoveryIfSettled",
         "call recoveries.start(paymentAttemptId=attempt-id, workspaceReservationId=reservation-id, providerOperationId=operation-id, providerStatus=EXECUTED, verifiedPaidAt=<Instant>)",
         "call recoveryQueue.enqueue(paymentAttemptId=attempt-id)",
       ]
@@ -538,9 +538,9 @@ describe("LatePaymentVerificationService.startRecoveryIfSettled trace", () => {
         "call recoveries.findByPaymentAttemptId(attempt-id)",
         "call paymentAttempts.findById(attempt-id)",
         "call nexi.verifyPaymentOutcome(orderId=provider-order-id, correlationId=correlation-id, amount=29000, currency=EUR, securityToken=security-token, deadline=undefined)",
-        "Warn Nexi payment settled after the local payment attempt became terminal {orderId} @latePaymentVerification.startRecoveryIfSettled",
+        "Warn Nexi payment settled after the local payment attempt became terminal {orderId} in latePaymentVerification.startRecoveryIfSettled",
         "call recoveries.start(paymentAttemptId=attempt-id, workspaceReservationId=reservation-id, providerOperationId=operation-id, providerStatus=EXECUTED, verifiedPaidAt=<Instant>)",
-        "Error Late-payment verification failed (cause=<Error>) {orderId} @latePaymentVerification.startRecoveryIfSettled",
+        "Error Late-payment verification failed (cause=<Error>) {orderId} in latePaymentVerification.startRecoveryIfSettled",
       ]
     `);
   });

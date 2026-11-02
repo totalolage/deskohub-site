@@ -36,11 +36,11 @@ describe("recordEffectTrace", () => {
     expect(exit).toEqual(Exit.succeed("marked"));
     expect(trace.entries).toEqual([
       "span probe.outer",
-      "Debug started {} @probe.outer",
+      "Debug started {} in probe.outer",
       "call ledger.find(order-id; 2)",
       "call ledger.mark(id=order-id, at=<Date>)",
-      "Warn marked (reason=stale, cause=<ProbeError>, count=1) {orderId} @probe.outer",
-      "Error plain (<Array>) (7) {} @probe.outer",
+      "Warn marked (reason=stale, cause=<ProbeError>, count=1) {orderId} in probe.outer",
+      "Error plain (<Array>) (7) {} in probe.outer",
     ]);
   });
 
@@ -57,6 +57,6 @@ describe("recordEffectTrace", () => {
     );
 
     expect(exit).toEqual(Exit.fail("failed"));
-    expect(trace.entries).toEqual(["Info before failure {} @-"]);
+    expect(trace.entries).toEqual(["Info before failure {} in -"]);
   });
 });

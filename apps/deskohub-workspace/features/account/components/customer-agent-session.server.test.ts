@@ -1,4 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Context, Effect, Layer } from "effect";
 import type { CustomerAccountSession } from "@/features/account/backend/customer-authentication.service";
 import {
@@ -38,7 +39,7 @@ const { readCustomerAgentSession } = await import(
 const session = (deletionRequested: boolean): CustomerAccountSession =>
   ({
     accountId: "account-synthetic-1" as CustomerAccountId,
-    email: "synthetic.customer@example.invalid",
+    email: testEmailAddress("synthetic.customer"),
     deletionRequested,
   }) as CustomerAccountSession;
 

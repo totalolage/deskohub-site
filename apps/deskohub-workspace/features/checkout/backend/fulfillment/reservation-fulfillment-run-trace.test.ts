@@ -258,8 +258,8 @@ describe("ReservationFulfillment.run trace", () => {
     expect(trace).toMatchInlineSnapshot(`
       [
         "span workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Debug Paid fulfillment reservation lookup started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation lookup started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservations.findById(reservation-id)",
       ]
     `);
@@ -277,11 +277,11 @@ describe("ReservationFulfillment.run trace", () => {
     expect(await expectSkipped(null)).toMatchInlineSnapshot(`
       [
         "span workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Debug Paid fulfillment reservation lookup started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation lookup started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservations.findById(reservation-id)",
-        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Warn Paid fulfillment skipped: reservation missing (reason=reservation_missing) {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Warn Paid fulfillment skipped: reservation missing (reason=reservation_missing) {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
       ]
     `);
   });
@@ -292,11 +292,11 @@ describe("ReservationFulfillment.run trace", () => {
     ).toMatchInlineSnapshot(`
       [
         "span workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Debug Paid fulfillment reservation lookup started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation lookup started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservations.findById(reservation-id)",
-        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Warn Paid fulfillment skipped: reservation not paid (reason=reservation_not_paid) {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Warn Paid fulfillment skipped: reservation not paid (reason=reservation_not_paid) {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
       ]
     `);
   });
@@ -311,11 +311,11 @@ describe("ReservationFulfillment.run trace", () => {
     ).toMatchInlineSnapshot(`
       [
         "span workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Debug Paid fulfillment reservation lookup started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation lookup started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservations.findById(reservation-id)",
-        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment skipped: awaiting customer email delivery (reason=awaiting_customer_email_delivery) {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment skipped: awaiting customer email delivery (reason=awaiting_customer_email_delivery) {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
       ]
     `);
   });
@@ -330,11 +330,11 @@ describe("ReservationFulfillment.run trace", () => {
     ).toMatchInlineSnapshot(`
       [
         "span workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Debug Paid fulfillment reservation lookup started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation lookup started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservations.findById(reservation-id)",
-        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment skipped: already processing (reason=already_processing) {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment skipped: already processing (reason=already_processing) {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
       ]
     `);
   });
@@ -362,11 +362,11 @@ describe("ReservationFulfillment.run trace", () => {
     ).toMatchInlineSnapshot(`
       [
         "span workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Debug Paid fulfillment reservation lookup started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation lookup started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservations.findById(reservation-id)",
-        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid access fulfillment already completed; retrying invoice processing (reason=already_fulfilled) {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid access fulfillment already completed; retrying invoice processing (reason=already_fulfilled) {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "span workspacePaidFulfillment.processReservationInvoice",
         "call invoices.processByPaymentAttemptId(paymentAttemptId=payment-attempt-id)",
       ]
@@ -377,13 +377,13 @@ describe("ReservationFulfillment.run trace", () => {
     expect(await expectInvoiceRetried(null)).toMatchInlineSnapshot(`
       [
         "span workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Debug Paid fulfillment reservation lookup started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation lookup started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservations.findById(reservation-id)",
-        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid access fulfillment already completed; retrying invoice processing (reason=already_fulfilled) {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid access fulfillment already completed; retrying invoice processing (reason=already_fulfilled) {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "span workspacePaidFulfillment.processReservationInvoice",
-        "Warn Reservation invoice processing skipped: payment attempt missing (orderId=reservation-id) {input,orderId,reservation} @workspacePaidFulfillment.processReservationInvoice",
+        "Warn Reservation invoice processing skipped: payment attempt missing (orderId=reservation-id) {input,orderId,reservation} in workspacePaidFulfillment.processReservationInvoice",
       ]
     `);
   });
@@ -400,14 +400,14 @@ describe("ReservationFulfillment.run trace", () => {
     expect(trace).toMatchInlineSnapshot(`
       [
         "span workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Debug Paid fulfillment reservation lookup started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation lookup started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservations.findById(reservation-id)",
-        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid access fulfillment already completed; retrying invoice processing (reason=already_fulfilled) {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid access fulfillment already completed; retrying invoice processing (reason=already_fulfilled) {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "span workspacePaidFulfillment.processReservationInvoice",
         "call invoices.processByPaymentAttemptId(paymentAttemptId=payment-attempt-id)",
-        "Fatal Reservation invoice processing failed (orderId=reservation-id, cause=<Error>) {input,orderId,reservation} @workspacePaidFulfillment.processReservationInvoice",
+        "Fatal Reservation invoice processing failed (orderId=reservation-id, cause=<Error>) {input,orderId,reservation} in workspacePaidFulfillment.processReservationInvoice",
       ]
     `);
   });
@@ -428,14 +428,14 @@ describe("ReservationFulfillment.run trace", () => {
     expect(trace).toMatchInlineSnapshot(`
       [
         "span workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Debug Paid fulfillment reservation lookup started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation lookup started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservations.findById(reservation-id)",
-        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Warn Paid fulfillment retrying stale processing reservation (reason=stale_processing, staleProcessingBefore=<Instant>) {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Warn Paid fulfillment retrying stale processing reservation (reason=stale_processing, staleProcessingBefore=<Instant>) {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call ledger.claimPaidFulfillment(id=reservation-id, staleProcessingBefore=<Instant>)",
-        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Warn Paid fulfillment skipped: claim returned no reservation (reason=claim_returned_no_reservation) {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Warn Paid fulfillment skipped: claim returned no reservation (reason=claim_returned_no_reservation) {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
       ]
     `);
   });
@@ -450,10 +450,10 @@ describe("ReservationFulfillment.run trace", () => {
     expect(trace).toMatchInlineSnapshot(`
       [
         "span workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Debug Paid fulfillment reservation lookup started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation lookup started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservations.findById(reservation-id)",
-        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call ledger.claimPaidFulfillment(id=reservation-id, staleProcessingBefore=<Instant>)",
       ]
     `);
@@ -480,21 +480,21 @@ describe("ReservationFulfillment.run trace", () => {
     ).toMatchInlineSnapshot(`
       [
         "span workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Debug Paid fulfillment reservation lookup started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation lookup started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservations.findById(reservation-id)",
-        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call ledger.claimPaidFulfillment(id=reservation-id, staleProcessingBefore=<Instant>)",
-        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Warn Paid fulfillment failed: missing Dotypos reservation hold (reason=missing_dotypos_reservation_id) {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Warn Paid fulfillment failed: missing Dotypos reservation hold (reason=missing_dotypos_reservation_id) {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "span workspacePaidFulfillment.fail",
-        "Info Paid fulfillment failure handling started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
-        "Info Paid fulfillment failure marker started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure handling started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure marker started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
         "call ledger.markFulfillmentFailed(id=reservation-id, failureCode=dotypos_reservation_unfulfillable, failedAt=<Instant>)",
-        "Error Paid fulfillment failure marker failed (orderId=reservation-id, failureCode=dotypos_reservation_unfulfillable, cause=<Error>) {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
-        "Info Paid fulfillment failure marker completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
-        "Fatal Paid fulfillment failure handling completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
+        "Error Paid fulfillment failure marker failed (orderId=reservation-id, failureCode=dotypos_reservation_unfulfillable, cause=<Error>) {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure marker completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
+        "Fatal Paid fulfillment failure handling completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
       ]
     `);
   });
@@ -508,20 +508,20 @@ describe("ReservationFulfillment.run trace", () => {
     ).toMatchInlineSnapshot(`
       [
         "span workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Debug Paid fulfillment reservation lookup started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation lookup started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservations.findById(reservation-id)",
-        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call ledger.claimPaidFulfillment(id=reservation-id, staleProcessingBefore=<Instant>)",
-        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Warn Paid fulfillment failed: reservation no longer confirmable (reason=reservation_no_longer_confirmable) {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Warn Paid fulfillment failed: reservation no longer confirmable (reason=reservation_no_longer_confirmable) {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "span workspacePaidFulfillment.fail",
-        "Info Paid fulfillment failure handling started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
-        "Info Paid fulfillment failure marker started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure handling started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure marker started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
         "call ledger.markFulfillmentFailed(id=reservation-id, failureCode=dotypos_reservation_unfulfillable, failedAt=<Instant>)",
-        "Info Paid fulfillment failure marker completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
-        "Fatal Paid fulfillment failure handling completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure marker completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
+        "Fatal Paid fulfillment failure handling completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
       ]
     `);
   });
@@ -555,22 +555,22 @@ describe("ReservationFulfillment.run trace", () => {
     ).toMatchInlineSnapshot(`
       [
         "span workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Debug Paid fulfillment reservation lookup started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation lookup started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservations.findById(reservation-id)",
-        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call ledger.claimPaidFulfillment(id=reservation-id, staleProcessingBefore=<Instant>)",
-        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Dotypos paid reservation confirmation started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Dotypos paid reservation confirmation started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call dotypos.confirmReservation(dotypos-reservation-id)",
-        "Error Dotypos paid reservation confirmation failed (claimed=<Object>, cause=<DotyposUnavailable>) {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Error Dotypos paid reservation confirmation failed (claimed=<Object>, cause=<DotyposUnavailable>) {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "span workspacePaidFulfillment.fail",
-        "Info Paid fulfillment failure handling started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
-        "Info Paid fulfillment failure marker started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure handling started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure marker started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
         "call ledger.markFulfillmentFailed(id=reservation-id, failureCode=dotypos_reservation_failed, failedAt=<Instant>)",
-        "Info Paid fulfillment failure marker completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
-        "Fatal Paid fulfillment failure handling completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure marker completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
+        "Fatal Paid fulfillment failure handling completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
       ]
     `);
   });
@@ -586,22 +586,22 @@ describe("ReservationFulfillment.run trace", () => {
     ).toMatchInlineSnapshot(`
       [
         "span workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Debug Paid fulfillment reservation lookup started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation lookup started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservations.findById(reservation-id)",
-        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call ledger.claimPaidFulfillment(id=reservation-id, staleProcessingBefore=<Instant>)",
-        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Dotypos paid reservation confirmation started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Dotypos paid reservation confirmation started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call dotypos.confirmReservation(dotypos-reservation-id)",
-        "Error Dotypos paid reservation confirmation failed (claimed=<Object>, cause=<DotyposRejected>) {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Error Dotypos paid reservation confirmation failed (claimed=<Object>, cause=<DotyposRejected>) {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "span workspacePaidFulfillment.fail",
-        "Info Paid fulfillment failure handling started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
-        "Info Paid fulfillment failure marker started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure handling started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure marker started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
         "call ledger.markFulfillmentFailed(id=reservation-id, failureCode=dotypos_reservation_failed, failedAt=<Instant>)",
-        "Info Paid fulfillment failure marker completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
-        "Fatal Paid fulfillment failure handling completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure marker completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
+        "Fatal Paid fulfillment failure handling completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
       ]
     `);
   });
@@ -617,22 +617,22 @@ describe("ReservationFulfillment.run trace", () => {
     ).toMatchInlineSnapshot(`
       [
         "span workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Debug Paid fulfillment reservation lookup started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation lookup started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservations.findById(reservation-id)",
-        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call ledger.claimPaidFulfillment(id=reservation-id, staleProcessingBefore=<Instant>)",
-        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Dotypos paid reservation confirmation started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Dotypos paid reservation confirmation started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call dotypos.confirmReservation(dotypos-reservation-id)",
-        "Error Dotypos paid reservation confirmation failed (claimed=<Object>, cause=<DotyposUncertain>) {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Error Dotypos paid reservation confirmation failed (claimed=<Object>, cause=<DotyposUncertain>) {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "span workspacePaidFulfillment.fail",
-        "Info Paid fulfillment failure handling started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
-        "Info Paid fulfillment failure marker started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure handling started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure marker started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
         "call ledger.markFulfillmentFailed(id=reservation-id, failureCode=dotypos_reservation_failed, failedAt=<Instant>)",
-        "Info Paid fulfillment failure marker completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
-        "Fatal Paid fulfillment failure handling completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure marker completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
+        "Fatal Paid fulfillment failure handling completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
       ]
     `);
   });
@@ -645,22 +645,22 @@ describe("ReservationFulfillment.run trace", () => {
     ).toMatchInlineSnapshot(`
       [
         "span workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Debug Paid fulfillment reservation lookup started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation lookup started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservations.findById(reservation-id)",
-        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call ledger.claimPaidFulfillment(id=reservation-id, staleProcessingBefore=<Instant>)",
-        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Dotypos paid reservation confirmation started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Dotypos paid reservation confirmation started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call dotypos.confirmReservation(dotypos-reservation-id)",
-        "Error Dotypos paid reservation confirmation failed (claimed=<Object>, cause=<DotyposVersionConflict>) {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Error Dotypos paid reservation confirmation failed (claimed=<Object>, cause=<DotyposVersionConflict>) {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "span workspacePaidFulfillment.fail",
-        "Info Paid fulfillment failure handling started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
-        "Info Paid fulfillment failure marker started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure handling started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure marker started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
         "call ledger.markFulfillmentFailed(id=reservation-id, failureCode=dotypos_reservation_failed, failedAt=<Instant>)",
-        "Info Paid fulfillment failure marker completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
-        "Fatal Paid fulfillment failure handling completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure marker completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
+        "Fatal Paid fulfillment failure handling completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
       ]
     `);
   });
@@ -685,25 +685,25 @@ describe("ReservationFulfillment.run trace", () => {
     expect(trace).toMatchInlineSnapshot(`
       [
         "span workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Debug Paid fulfillment reservation lookup started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation lookup started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservations.findById(reservation-id)",
-        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call ledger.claimPaidFulfillment(id=reservation-id, staleProcessingBefore=<Instant>)",
-        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Dotypos paid reservation confirmation started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Dotypos paid reservation confirmation started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call dotypos.confirmReservation(dotypos-reservation-id)",
-        "Info Dotypos paid reservation confirmation succeeded {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment reservation confirmed marker started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Dotypos paid reservation confirmation succeeded {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment reservation confirmed marker started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservations.markReservationConfirmed(id=reservation-id, confirmedAt=<Instant>)",
-        "Error Paid fulfillment reservation confirmed marker failed (claimed=<Object>, cause=<Error>) {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Error Paid fulfillment reservation confirmed marker failed (claimed=<Object>, cause=<Error>) {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "span workspacePaidFulfillment.fail",
-        "Info Paid fulfillment failure handling started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
-        "Info Paid fulfillment failure marker started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure handling started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure marker started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
         "call ledger.markFulfillmentFailed(id=reservation-id, failureCode=fulfillment_completion_failed, failedAt=<Instant>)",
-        "Info Paid fulfillment failure marker completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
-        "Fatal Paid fulfillment failure handling completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure marker completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
+        "Fatal Paid fulfillment failure handling completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
       ]
     `);
   });
@@ -727,30 +727,30 @@ describe("ReservationFulfillment.run trace", () => {
     expect(trace).toMatchInlineSnapshot(`
       [
         "span workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Debug Paid fulfillment reservation lookup started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation lookup started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservations.findById(reservation-id)",
-        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call ledger.claimPaidFulfillment(id=reservation-id, staleProcessingBefore=<Instant>)",
-        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Dotypos paid reservation confirmation started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Dotypos paid reservation confirmation started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call dotypos.confirmReservation(dotypos-reservation-id)",
-        "Info Dotypos paid reservation confirmation succeeded {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment reservation confirmed marker started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Dotypos paid reservation confirmation succeeded {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment reservation confirmed marker started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservations.markReservationConfirmed(id=reservation-id, confirmedAt=<Instant>)",
-        "Info Paid fulfillment reservation confirmed marker succeeded {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment reservation confirmed marker succeeded {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "span posthog.captureLifecycleEvent",
         "call posthog.capture(distinctId=reservation-id, event=reservation completed, properties=<Object>, timestamp=<Instant>, uuid=reservation-id:reservation completed)",
-        "Info Paid reservation email flow started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid reservation email flow started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservationService.getReservation(reservation-id)",
-        "Error Workspace paid reservation email flow failed (workspaceReservationId=reservation-id, dotyposCustomerId=dotypos-customer-id, cause=<Error>) {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Error Workspace paid reservation email flow failed (workspaceReservationId=reservation-id, dotyposCustomerId=dotypos-customer-id, cause=<Error>) {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "span workspacePaidFulfillment.fail",
-        "Info Paid fulfillment failure handling started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
-        "Info Paid fulfillment failure marker started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure handling started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure marker started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
         "call ledger.markFulfillmentFailed(id=reservation-id, failureCode=dotypos_reservation_failed, failedAt=<Instant>)",
-        "Info Paid fulfillment failure marker completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
-        "Fatal Paid fulfillment failure handling completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure marker completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
+        "Fatal Paid fulfillment failure handling completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
       ]
     `);
   });
@@ -777,22 +777,22 @@ describe("ReservationFulfillment.run trace", () => {
     expect(trace).toMatchInlineSnapshot(`
       [
         "span workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Debug Paid fulfillment reservation lookup started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation lookup started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservations.findById(reservation-id)",
-        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call ledger.claimPaidFulfillment(id=reservation-id, staleProcessingBefore=<Instant>)",
-        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid reservation email flow started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid reservation email flow started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservationService.getReservation(reservation-id)",
         "call accessCodes.resolveCustomerAccessCode(reservationId=reservation-id, dotyposReservationId=dotypos-reservation-id, reservedFrom=<Instant>, reservedUntil=<Instant>)",
         "span workspacePaidFulfillment.fail",
-        "Info Paid fulfillment failure handling started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
-        "Info Paid fulfillment failure marker started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure handling started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure marker started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
         "call ledger.markFulfillmentFailed(id=reservation-id, failureCode=fulfillment_access_failed, failedAt=<Instant>)",
-        "Info Paid fulfillment failure marker completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
-        "Fatal Paid fulfillment failure handling completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure marker completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
+        "Fatal Paid fulfillment failure handling completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
       ]
     `);
   });
@@ -808,14 +808,14 @@ describe("ReservationFulfillment.run trace", () => {
     expect(trace).toMatchInlineSnapshot(`
       [
         "span workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Debug Paid fulfillment reservation lookup started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation lookup started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservations.findById(reservation-id)",
-        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call ledger.claimPaidFulfillment(id=reservation-id, staleProcessingBefore=<Instant>)",
-        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid reservation email flow started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid reservation email flow started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservationService.getReservation(reservation-id)",
         "call accessCodes.resolveCustomerAccessCode(reservationId=reservation-id, dotyposReservationId=dotypos-reservation-id, reservedFrom=<Instant>, reservedUntil=<Instant>)",
         "call emailLocale.byDotyposCustomer(dotypos-customer-id)",
@@ -851,23 +851,23 @@ describe("ReservationFulfillment.run trace", () => {
     expect(trace).toMatchInlineSnapshot(`
       [
         "span workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Debug Paid fulfillment reservation lookup started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation lookup started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservations.findById(reservation-id)",
-        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call ledger.claimPaidFulfillment(id=reservation-id, staleProcessingBefore=<Instant>)",
-        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid reservation email flow started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid reservation email flow started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservationService.getReservation(reservation-id)",
         "call accessCodes.resolveCustomerAccessCode(reservationId=reservation-id, dotyposReservationId=dotypos-reservation-id, reservedFrom=<Instant>, reservedUntil=<Instant>)",
         "call emails.sendPaidReservationEmails(reservation=<Object>, customerEmailLocale=en-US, author=null, customerEmailIdempotencyKey=workspace-paid-reservation-access-recovery-cde0dff88b3036e45f0faa1990fda8caa6b1dcf7b54f900a0dcb6d28f7bad31b)",
         "span workspacePaidFulfillment.fail",
-        "Info Paid fulfillment failure handling started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
-        "Info Paid fulfillment failure marker started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure handling started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure marker started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
         "call ledger.markFulfillmentFailed(id=reservation-id, failureCode=fulfillment_email_failed, failedAt=<Instant>)",
-        "Info Paid fulfillment failure marker completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
-        "Fatal Paid fulfillment failure handling completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure marker completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
+        "Fatal Paid fulfillment failure handling completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
       ]
     `);
   });
@@ -879,14 +879,14 @@ describe("ReservationFulfillment.run trace", () => {
     expect(trace).toMatchInlineSnapshot(`
       [
         "span workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Debug Paid fulfillment reservation lookup started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation lookup started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservations.findById(reservation-id)",
-        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call ledger.claimPaidFulfillment(id=reservation-id, staleProcessingBefore=<Instant>)",
-        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid reservation email flow started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid reservation email flow started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservationService.getReservation(reservation-id)",
         "call accessCodes.resolveCustomerAccessCode(reservationId=reservation-id, dotyposReservationId=dotypos-reservation-id, reservedFrom=<Instant>, reservedUntil=<Instant>)",
         "call emailLocale.byDotyposCustomer(dotypos-customer-id)",
@@ -894,11 +894,11 @@ describe("ReservationFulfillment.run trace", () => {
         "span workspacePaidFulfillment.describeReservationAuthor",
         "call authors.describe(<Array>)",
         "call emails.sendPaidReservationEmails(reservation=<Object>, customerEmailLocale=cs-CZ, author=null, customerEmailIdempotencyKey=workspace-paid-reservation-access-reservation-id)",
-        "Info Paid reservation email flow succeeded {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid reservation email flow succeeded {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call ledger.markFulfilled(id=reservation-id, fulfilledAt=<Instant>, customerEmailDeliveryId=resend-delivery-id)",
         "span workspacePaidFulfillment.processReservationInvoice",
         "call invoices.processByPaymentAttemptId(paymentAttemptId=payment-attempt-id)",
-        "Info Paid fulfillment completed after email provider acceptance (acceptedByConsole=false) {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment completed after email provider acceptance (acceptedByConsole=false) {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
       ]
     `);
   });
@@ -915,14 +915,14 @@ describe("ReservationFulfillment.run trace", () => {
     expect(trace).toMatchInlineSnapshot(`
       [
         "span workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Debug Paid fulfillment reservation lookup started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation lookup started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservations.findById(reservation-id)",
-        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call ledger.claimPaidFulfillment(id=reservation-id, staleProcessingBefore=<Instant>)",
-        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid reservation email flow started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid reservation email flow started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservationService.getReservation(reservation-id)",
         "call accessCodes.resolveCustomerAccessCode(reservationId=reservation-id, dotyposReservationId=dotypos-reservation-id, reservedFrom=<Instant>, reservedUntil=<Instant>)",
         "call emailLocale.byDotyposCustomer(dotypos-customer-id)",
@@ -930,11 +930,11 @@ describe("ReservationFulfillment.run trace", () => {
         "span workspacePaidFulfillment.describeReservationAuthor",
         "call authors.describe(<Array>)",
         "call emails.sendPaidReservationEmails(reservation=<Object>, customerEmailLocale=cs-CZ, author=null, customerEmailIdempotencyKey=workspace-paid-reservation-access-reservation-id)",
-        "Info Paid reservation email flow succeeded {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid reservation email flow succeeded {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call ledger.markFulfilled(id=reservation-id, fulfilledAt=<Instant>, customerEmailDeliveryId=console-delivery-id)",
         "span workspacePaidFulfillment.processReservationInvoice",
         "call invoices.processByPaymentAttemptId(paymentAttemptId=payment-attempt-id)",
-        "Info Paid fulfillment completed after email provider acceptance (acceptedByConsole=true) {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment completed after email provider acceptance (acceptedByConsole=true) {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
       ]
     `);
   });
@@ -956,14 +956,14 @@ describe("ReservationFulfillment.run trace", () => {
     expect(trace).toMatchInlineSnapshot(`
       [
         "span workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Debug Paid fulfillment reservation lookup started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation lookup started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservations.findById(reservation-id)",
-        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call ledger.claimPaidFulfillment(id=reservation-id, staleProcessingBefore=<Instant>)",
-        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid reservation email flow started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid reservation email flow started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservationService.getReservation(reservation-id)",
         "call accessCodes.resolveCustomerAccessCode(reservationId=reservation-id, dotyposReservationId=dotypos-reservation-id, reservedFrom=<Instant>, reservedUntil=<Instant>)",
         "call emailLocale.byDotyposCustomer(dotypos-customer-id)",
@@ -971,10 +971,10 @@ describe("ReservationFulfillment.run trace", () => {
         "span workspacePaidFulfillment.describeReservationAuthor",
         "call authors.describe(<Array>)",
         "call emails.sendPaidReservationEmails(reservation=<Object>, customerEmailLocale=cs-CZ, author=null, customerEmailIdempotencyKey=workspace-paid-reservation-access-reservation-id)",
-        "Info Paid reservation email flow succeeded {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment recorded accepted customer email delivery {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid reservation email flow succeeded {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment recorded accepted customer email delivery {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call ledger.markAwaitingCustomerEmailDelivery(id=reservation-id, customerEmailDeliveryId=resend-delivery-id, expectedActiveCustomerEmailDeliveryId=null)",
-        "Info Paid fulfillment is awaiting Resend delivery webhook {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment is awaiting Resend delivery webhook {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
       ]
     `);
   });
@@ -995,14 +995,14 @@ describe("ReservationFulfillment.run trace", () => {
     expect(trace).toMatchInlineSnapshot(`
       [
         "span workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Debug Paid fulfillment reservation lookup started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation lookup started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservations.findById(reservation-id)",
-        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call ledger.claimPaidFulfillment(id=reservation-id, staleProcessingBefore=<Instant>)",
-        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid reservation email flow started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid reservation email flow started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservationService.getReservation(reservation-id)",
         "call accessCodes.resolveCustomerAccessCode(reservationId=reservation-id, dotyposReservationId=dotypos-reservation-id, reservedFrom=<Instant>, reservedUntil=<Instant>)",
         "call emailLocale.byDotyposCustomer(dotypos-customer-id)",
@@ -1010,11 +1010,11 @@ describe("ReservationFulfillment.run trace", () => {
         "span workspacePaidFulfillment.describeReservationAuthor",
         "call authors.describe(<Array>)",
         "call emails.sendPaidReservationEmails(reservation=<Object>, customerEmailLocale=cs-CZ, author=null, customerEmailIdempotencyKey=workspace-paid-reservation-access-reservation-id)",
-        "Info Paid reservation email flow succeeded {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment recorded accepted customer email delivery {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid reservation email flow succeeded {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment recorded accepted customer email delivery {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call ledger.markAwaitingCustomerEmailDelivery(id=reservation-id, customerEmailDeliveryId=resend-delivery-id, expectedActiveCustomerEmailDeliveryId=null)",
-        "Warn Paid fulfillment delivery recording superseded by a newer delivery generation (orderId=reservation-id) {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment is awaiting Resend delivery webhook {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Warn Paid fulfillment delivery recording superseded by a newer delivery generation (orderId=reservation-id) {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment is awaiting Resend delivery webhook {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
       ]
     `);
   });
@@ -1028,14 +1028,14 @@ describe("ReservationFulfillment.run trace", () => {
     expect(trace).toMatchInlineSnapshot(`
       [
         "span workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Debug Paid fulfillment reservation lookup started {input,orderId} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation lookup started {input,orderId} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservations.findById(reservation-id)",
-        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment reservation loaded {input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call ledger.claimPaidFulfillment(id=reservation-id, staleProcessingBefore=<Instant>)",
-        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid reservation email flow started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Debug Paid fulfillment claim completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment claim succeeded {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid reservation email flow started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call reservationService.getReservation(reservation-id)",
         "call accessCodes.resolveCustomerAccessCode(reservationId=reservation-id, dotyposReservationId=dotypos-reservation-id, reservedFrom=<Instant>, reservedUntil=<Instant>)",
         "call emailLocale.byDotyposCustomer(dotypos-customer-id)",
@@ -1043,15 +1043,15 @@ describe("ReservationFulfillment.run trace", () => {
         "span workspacePaidFulfillment.describeReservationAuthor",
         "call authors.describe(<Array>)",
         "call emails.sendPaidReservationEmails(reservation=<Object>, customerEmailLocale=cs-CZ, author=null, customerEmailIdempotencyKey=workspace-paid-reservation-access-reservation-id)",
-        "Info Paid reservation email flow succeeded {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
-        "Info Paid fulfillment recorded accepted customer email delivery {claimed,input,orderId,reservation} @workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid reservation email flow succeeded {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
+        "Info Paid fulfillment recorded accepted customer email delivery {claimed,input,orderId,reservation} in workspacePaidFulfillment.fulfillPaidOrder",
         "call ledger.markAwaitingCustomerEmailDelivery(id=reservation-id, customerEmailDeliveryId=resend-delivery-id, expectedActiveCustomerEmailDeliveryId=null)",
         "span workspacePaidFulfillment.fail",
-        "Info Paid fulfillment failure handling started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
-        "Info Paid fulfillment failure marker started {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure handling started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure marker started {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
         "call ledger.markFulfillmentFailed(id=reservation-id, failureCode=fulfillment_completion_failed, failedAt=<Instant>)",
-        "Info Paid fulfillment failure marker completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
-        "Fatal Paid fulfillment failure handling completed {claimed,input,orderId,reservation} @workspacePaidFulfillment.fail",
+        "Info Paid fulfillment failure marker completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
+        "Fatal Paid fulfillment failure handling completed {claimed,input,orderId,reservation} in workspacePaidFulfillment.fail",
       ]
     `);
   });
@@ -1114,7 +1114,7 @@ describe("ReservationFulfillment.recordDelivery trace", () => {
       [
         "span reservationFulfillment.recordDelivery",
         "call ledger.findByActiveCustomerEmailDeliveryId(resend-delivery-id)",
-        "Warn Resend webhook arrived before the customer delivery was attached (workspaceReservationId=reservation-id) {} @reservationFulfillment.recordDelivery",
+        "Warn Resend webhook arrived before the customer delivery was attached (workspaceReservationId=reservation-id) {} in reservationFulfillment.recordDelivery",
       ]
     `);
   });
@@ -1130,7 +1130,7 @@ describe("ReservationFulfillment.recordDelivery trace", () => {
       [
         "span reservationFulfillment.recordDelivery",
         "call ledger.findByActiveCustomerEmailDeliveryId(resend-delivery-id)",
-        "Warn Resend webhook referenced an unknown customer email delivery {} @reservationFulfillment.recordDelivery",
+        "Warn Resend webhook referenced an unknown customer email delivery {} in reservationFulfillment.recordDelivery",
       ]
     `);
   });
@@ -1161,7 +1161,7 @@ describe("ReservationFulfillment.recordDelivery trace", () => {
       [
         "span reservationFulfillment.recordDelivery",
         "call ledger.findByActiveCustomerEmailDeliveryId(resend-delivery-id)",
-        "Warn Resend webhook reservation tag did not match the active delivery (workspaceReservationId=other-reservation-id) {} @reservationFulfillment.recordDelivery",
+        "Warn Resend webhook reservation tag did not match the active delivery (workspaceReservationId=other-reservation-id) {} in reservationFulfillment.recordDelivery",
       ]
     `);
   });
@@ -1204,7 +1204,7 @@ describe("ReservationFulfillment.recordDelivery trace", () => {
         "span reservationFulfillment.recordDelivery",
         "call ledger.findByActiveCustomerEmailDeliveryId(resend-delivery-id)",
         "span resendWebhook.processReservationInvoice",
-        "Warn Reservation invoice processing skipped: payment attempt missing (workspaceReservationId=reservation-id) {} @resendWebhook.processReservationInvoice",
+        "Warn Reservation invoice processing skipped: payment attempt missing (workspaceReservationId=reservation-id) {} in resendWebhook.processReservationInvoice",
       ]
     `);
   });
@@ -1246,7 +1246,7 @@ describe("ReservationFulfillment.recordDelivery trace", () => {
       [
         "span reservationFulfillment.recordDelivery",
         "call ledger.findByActiveCustomerEmailDeliveryId(resend-delivery-id)",
-        "Info Resend delivery success ignored: reservation already failed (workspaceReservationId=reservation-id, fulfillmentFailureCode=fulfillment_access_failed) {} @reservationFulfillment.recordDelivery",
+        "Info Resend delivery success ignored: reservation already failed (workspaceReservationId=reservation-id, fulfillmentFailureCode=fulfillment_access_failed) {} in reservationFulfillment.recordDelivery",
       ]
     `);
   });
@@ -1290,7 +1290,7 @@ describe("ReservationFulfillment.recordDelivery trace", () => {
         "span reservationFulfillment.recordDelivery",
         "call ledger.findByActiveCustomerEmailDeliveryId(resend-delivery-id)",
         "call ledger.markCustomerEmailDeliveryFulfilled(customerEmailDeliveryId=resend-delivery-id, fulfilledAt=<Instant>)",
-        "Info Resend delivery success ignored: reservation delivery state is newer or changed concurrently (workspaceReservationId=reservation-id, fulfillmentState=awaiting_delivery) {} @reservationFulfillment.recordDelivery",
+        "Info Resend delivery success ignored: reservation delivery state is newer or changed concurrently (workspaceReservationId=reservation-id, fulfillmentState=awaiting_delivery) {} in reservationFulfillment.recordDelivery",
       ]
     `);
   });
@@ -1350,7 +1350,7 @@ describe("ReservationFulfillment.recordDelivery trace", () => {
         "span reservationFulfillment.recordDelivery",
         "call ledger.findByActiveCustomerEmailDeliveryId(resend-delivery-id)",
         "call ledger.markCustomerEmailDeliveryFailed(customerEmailDeliveryId=resend-delivery-id, failureCode=fulfillment_email_failed, failedAt=<Instant>)",
-        "Info Resend delivery failure ignored: reservation delivery state is newer or changed concurrently (workspaceReservationId=reservation-id, fulfillmentState=awaiting_delivery) {} @reservationFulfillment.recordDelivery",
+        "Info Resend delivery failure ignored: reservation delivery state is newer or changed concurrently (workspaceReservationId=reservation-id, fulfillmentState=awaiting_delivery) {} in reservationFulfillment.recordDelivery",
       ]
     `);
   });

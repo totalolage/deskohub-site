@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer } from "effect";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -96,7 +97,7 @@ describe("CustomerAccountDeletedPage", () => {
   test("sends a visitor with a live session to the account", async () => {
     currentUser = Effect.succeed({
       accountId: "account-synthetic-1" as CustomerAccountId,
-      email: "synthetic.customer@example.invalid",
+      email: testEmailAddress("synthetic.customer"),
       deletionRequested: false,
     } as CustomerAccountSession);
 

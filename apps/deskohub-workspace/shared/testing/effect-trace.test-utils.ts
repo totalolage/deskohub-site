@@ -88,7 +88,7 @@ export const startEffectTrace = (): EffectTrace => {
 /**
  * Runs an effect with every log level enabled, recording into `trace` each
  * span start (`span <name>`) and each log entry as
- * `<level> <message> (<fields>) {<annotation keys>} @<current span>`.
+ * `<level> <message> (<fields>) {<annotation keys>} in <current span>`.
  * Field and annotation values that aren't primitives render as their
  * constructor name, so times and errors don't make the trace unstable.
  */
@@ -114,7 +114,7 @@ export const recordEffectTrace = <A, E, R>(
       Array.isArray(message) ? message : [message]
     ) as ReadonlyArray<TraceValue>;
     trace.entries.push(
-      `${logLevel} ${describeLogMessage(parts)} {${annotations}} @${describeSpan(fiber.currentSpan)}`
+      `${logLevel} ${describeLogMessage(parts)} {${annotations}} in ${describeSpan(fiber.currentSpan)}`
     );
   });
 
