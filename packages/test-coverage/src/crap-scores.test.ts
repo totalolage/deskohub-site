@@ -17,6 +17,11 @@ test.each([
   ["apps/deskohub-workspace/shared/testing/workspace-test-env.ts", false],
   ["apps/deskohub-workspace/shared/lock-waiters.test-utils.ts", false],
   ["apps/deskohub-workspace/scripts/production-release.ts", false],
+  [
+    "apps/deskohub-workspace/shared/browser/image-downscaling.browser-harness.ts",
+    false,
+  ],
+  ["apps/deskohub-workspace/features/administration/fixtures.ts", false],
   ["scripts/generate-effect-openapi-client.ts", false],
   ["packages/dotypos/src/generated/client.ts", false],
   ["packages/posthog/src/generated/effect.gen.ts", false],

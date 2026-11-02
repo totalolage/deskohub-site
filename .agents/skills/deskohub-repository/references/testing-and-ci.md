@@ -31,7 +31,7 @@ Business functions must score below 10 on CRAP (`cyclomatic² × (1 − coverage
 - `bun run crap index` scores every business function against `coverage/coverage-final.json` and writes `coverage/crap-index.json` and `coverage/crap-index.tsv` with each function scoring 10 or more. Run `bun run coverage` first; the index says when that run was partial or had failing tests.
 - `bun run crap <path> [<line>|<name>] [--test <test path>]...` prints one file's scores, or one function's. With `--test` it first runs only those test files (one package's) with coverage, so the score describes the current source, but the coverage is a lower bound. It exits 1 when a printed function scores 10 or more or isn't measured.
 - Each score's evidence is `measured` (Istanbul counts for the file's current content), `stale` (the file changed since the coverage run), or `estimated` (Fallow's static guess where the report has no counts). Only `measured` scores count.
-- Business code excludes tests and their helpers, `e2e/`, `testing/`, `scripts/`, generated code, build configuration, and the test tooling packages; `packages/test-coverage/src/crap-scores.ts` holds the list.
+- Business code excludes tests and their helpers (including `*.browser-harness.*` page entries and `fixtures` modules), `e2e/`, `testing/`, `scripts/`, generated code, build configuration, and the test tooling packages; `packages/test-coverage/src/crap-scores.ts` holds the list.
 - Lower a score by splitting a function along its real responsibilities or by testing untested behavior. Don't suppress Fallow, widen the exclusions, or add tests that execute code without asserting its behavior.
 
 ## Test email addresses
