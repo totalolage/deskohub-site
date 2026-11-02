@@ -1323,97 +1323,147 @@ describe("CheckoutStatusService", () => {
     expect(status.summary).toBeUndefined();
   });
 });
-test("keeps the table placement but omits the summary when the Dotypos reservation time is unreadable", async () => {
-  const { CheckoutStatusService } = await import("./checkout-status.service");
-  const { ProviderPaymentFinalizationService } = await import(
-    "../payment/provider-payment-finalization.service"
-  );
-  const { WorkspaceReservationRepository } = await import(
-    "@/features/reservation/backend/workspace-reservation.repository"
-  );
-  const { PaymentAttemptRepository } = await import(
-    "../repositories/payment-attempt.repository"
-  );
+describe("CheckoutStatusService summary reconstruction", () => {
+  const loadReconstructedStatus = async (input: {
+    readonly reservation: ReturnType<typeof makeReservation>;
+    readonly attempt: ReturnType<typeof makePaymentAttempt>;
+    readonly dotypos: ReturnType<typeof makeDotypos>;
+  }) => {
+    const { CheckoutStatusService } = await import("./checkout-status.service");
+    const { ProviderPaymentFinalizationService } = await import(
+      "../payment/provider-payment-finalization.service"
+    );
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const { PaymentAttemptRepository } = await import(
+      "../repositories/payment-attempt.repository"
+    );
 
-  const tables = [
-    {
-      id: "reserved-desk-7",
-      name: "Desk 7",
-      seats: "1",
-      tags: ["cowork:reserved-desk"],
-    },
-  ];
-  const status = await Effect.gen(function* () {
-    const service = yield* CheckoutStatusService;
-    return yield* service.getStatus({
-      orderId: "reservation-provider-return",
-      returnOutcome: "success",
-    });
-  }).pipe(
-    Effect.provide(
-      CheckoutStatusService.Default.pipe(
-        Layer.provide(
-          Layer.mergeAll(
-            Layer.mock(ProviderPaymentFinalizationService, {
-              finalizePendingProviderPayment: mock(() =>
-                Effect.die("not used")
-              ),
-            }),
-            Layer.mock(WorkspaceReservationRepository, {
-              findById: mock(() =>
-                Effect.succeed(
-                  makeReservation({
-                    paymentState: "paid",
-                    fulfillmentState: "fulfilled",
-                    reservationDetails: {
-                      kind: "cowork",
-                      entryTier: "reserved-desk",
-                      coffee: true,
-                      monitorOption: "2x27-qhd",
-                    },
-                  })
-                )
-              ),
-            }),
-            Layer.mock(PaymentAttemptRepository, {
-              findDisplayableForReservation: mock(() =>
-                Effect.succeed(makePaymentAttempt())
-              ),
-            }),
-            reviewSandboxLayer,
-            dotyposLayer(
-              makeDotypos({
-                getReservationWithoutCustomer: mock(() =>
-                  Effect.succeed({
-                    id: "dotypos-reservation-id",
-                    _customerId: "customer-id",
-                    _tableId: "reserved-desk-7",
-                    startDate: "not a date",
-                    endDate: "2026-06-21T00:00:00.000+02:00",
-                    seats: "1",
-                    status: "CONFIRMED",
-                  })
+    return Effect.gen(function* () {
+      const service = yield* CheckoutStatusService;
+      return yield* service.getStatus({
+        orderId: "reservation-provider-return",
+        returnOutcome: "success",
+        includeSupportContact: false,
+      });
+    }).pipe(
+      Effect.provide(
+        CheckoutStatusService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(ProviderPaymentFinalizationService, {
+                finalizePendingProviderPayment: mock(() =>
+                  Effect.die("not used")
                 ),
-                getTables: mock(() => Effect.succeed(tables)),
+              }),
+              Layer.mock(WorkspaceReservationRepository, {
+                findById: mock(() => Effect.succeed(input.reservation)),
+              }),
+              Layer.mock(PaymentAttemptRepository, {
+                findDisplayableForReservation: mock(() =>
+                  Effect.succeed(input.attempt)
+                ),
+              }),
+              reviewSandboxLayer,
+              dotyposLayer(input.dotypos),
+              noLatePaymentLayer(),
+              SeatingMapFeatureFlagServiceMock({
+                isEnabled: Effect.succeed(true),
               })
-            ),
-            noLatePaymentLayer(),
-            SeatingMapFeatureFlagServiceMock({
-              isEnabled: Effect.succeed(true),
-            })
+            )
           )
         )
-      )
-    ),
-    Effect.runPromise
-  );
-
-  expect(status).toMatchObject({
-    status: "fulfilled",
+      ),
+      Effect.runPromise
+    );
+  };
+  const reservedDeskDetails = {
     kind: "cowork",
-    table: { mode: "assigned", name: "Desk 7" },
+    entryTier: "reserved-desk",
+    coffee: true,
+    monitorOption: "2x27-qhd",
+  } as const;
+
+  test("keeps the table placement but omits the summary when the Dotypos reservation time is unreadable", async () => {
+    const tables = [
+      {
+        id: "reserved-desk-7",
+        name: "Desk 7",
+        seats: "1",
+        tags: ["cowork:reserved-desk"],
+      },
+    ];
+    const status = await loadReconstructedStatus({
+      reservation: makeReservation({
+        paymentState: "paid",
+        fulfillmentState: "fulfilled",
+        reservationDetails: reservedDeskDetails,
+      }),
+      attempt: makePaymentAttempt(),
+      dotypos: makeDotypos({
+        getReservationWithoutCustomer: mock(() =>
+          Effect.succeed({
+            id: "dotypos-reservation-id",
+            _customerId: "customer-id",
+            _tableId: "reserved-desk-7",
+            startDate: "not a date",
+            endDate: "2026-06-21T00:00:00.000+02:00",
+            seats: "1",
+            status: "CONFIRMED",
+          })
+        ),
+        getTables: mock(() => Effect.succeed(tables)),
+      }),
+    });
+
+    expect(status).toMatchObject({
+      status: "fulfilled",
+      kind: "cowork",
+      table: { mode: "assigned", name: "Desk 7" },
+    });
+    expect(status.summary).toBeUndefined();
   });
-  expect(status.summary).toBeUndefined();
+
+  test("omits the summary without reading Dotypos when the order has no Dotypos reservation", async () => {
+    const dotypos = makeDotypos();
+    const status = await loadReconstructedStatus({
+      reservation: makeReservation({
+        paymentState: "paid",
+        fulfillmentState: "fulfilled",
+        dotyposReservationId: null,
+      }),
+      attempt: makePaymentAttempt(),
+      dotypos,
+    });
+
+    expect(status).toMatchObject({ status: "fulfilled", kind: "cowork" });
+    expect(status.summary).toBeUndefined();
+    expect(dotypos.getReservationWithoutCustomer).not.toHaveBeenCalled();
+  });
+
+  test("reads the Dotypos reservation after the attempt for an ended payment whose active attempt is still usable", async () => {
+    const dotypos = makeDotypos();
+    const status = await loadReconstructedStatus({
+      reservation: makeReservation({
+        paymentState: "expired",
+        reservationDetails: reservedDeskDetails,
+      }),
+      attempt: makePaymentAttempt({ state: "created" }),
+      dotypos,
+    });
+
+    expect(status).toMatchObject({
+      status: "expired",
+      kind: "cowork",
+      summary: {
+        entryTier: "reserved-desk",
+        price: { value: 55_000, exponent: 2, currency: "CZK" },
+      },
+    });
+    // The summary and the retry selection each read the reservation.
+    expect(dotypos.getReservationWithoutCustomer).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("CheckoutStatusService retry selection", () => {
