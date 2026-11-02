@@ -515,6 +515,9 @@
     "packages/reservation": {
       "name": "@deskohub/reservation",
       "version": "0.1.0",
+      "devDependencies": {
+        "typescript": "npm:@typescript/typescript6@6.0.2",
+      },
     },
     "packages/secret-comparison": {
       "name": "@deskohub/secret-comparison",
