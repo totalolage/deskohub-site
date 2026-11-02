@@ -1,8 +1,8 @@
-import { Option } from "effect";
-import { cookies } from "next/headers";
+import { Effect, Option } from "effect";
 import { NextResponse } from "next/server";
 import { getLocalizedParamsDecoder } from "@/features/i18n/server/route-params";
-import { createMarketingManagementCookies } from "@/features/legal/backend/marketing-management-cookies.server";
+import { MarketingManagementCookies } from "@/features/legal";
+import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 
 type MarketingPreferencesAccessRouteContext = {
   readonly params: Promise<{ readonly locale: string }>;
@@ -51,10 +51,15 @@ export async function GET(
 
   const tokenValues = new URL(request.url).searchParams.getAll("token");
   const rawToken = tokenValues.length === 1 ? tokenValues[0] : undefined;
-  const cookieStore = await cookies();
-  const marketingCookies = createMarketingManagementCookies(cookieStore);
-  await marketingCookies.setPendingMarketingManagementCookie(
-    isCanonicalMarketingToken(rawToken) ? rawToken : "invalid"
+  await Effect.flatMap(MarketingManagementCookies, (marketingCookies) =>
+    marketingCookies.setPending(
+      isCanonicalMarketingToken(rawToken) ? rawToken : "invalid"
+    )
+  ).pipe(
+    Effect.provide(MarketingManagementCookies.Default),
+    runWorkspaceEffect("legal.marketing-preferences.access", {
+      boundary: "route",
+    })
   );
 
   return redirectToLegal(request, locale);
