@@ -195,24 +195,28 @@ const redactUrlSearchParams = (url: URL): void => {
   }
 };
 
-const censorUrlString = (value: string) => {
-  const absoluteUrl = URL.parse(value);
+const censorAbsoluteUrl = (url: URL, value: string) => {
+  if (url.protocol !== "http:" && url.protocol !== "https:") return value;
 
-  if (absoluteUrl) {
-    if (absoluteUrl.protocol !== "http:" && absoluteUrl.protocol !== "https:") {
-      return value;
-    }
+  redactUrlSearchParams(url);
+  return url.toString();
+};
 
-    redactUrlSearchParams(absoluteUrl);
-    return absoluteUrl.toString();
+// Writes a censored relative URL back in the form it was logged in:
+// protocol-relative, query-only, path-relative or bare.
+const formatRelativeUrl = (url: URL, value: string) => {
+  const searchAndHash = `${url.search}${url.hash}`;
+  if (value.startsWith("//")) {
+    return `//${url.host}${url.pathname}${searchAndHash}`;
   }
+  if (value.startsWith("?")) return searchAndHash;
+  if (value.startsWith("/")) return `${url.pathname}${searchAndHash}`;
+  return `${url.pathname.slice(1)}${searchAndHash}`;
+};
 
-  const isQueryOnlyRelativeUrl = value.startsWith("?");
-  const isPathRelativeUrl = value.startsWith("/");
-  const isBareRelativeUrlWithQuery = value.includes("?");
-
+const censorRelativeUrl = (value: string) => {
   if (
-    !(isPathRelativeUrl || isQueryOnlyRelativeUrl || isBareRelativeUrlWithQuery)
+    !(value.startsWith("/") || value.startsWith("?") || value.includes("?"))
   ) {
     return value;
   }
@@ -221,18 +225,14 @@ const censorUrlString = (value: string) => {
   if (!relativeUrl) return value;
 
   redactUrlSearchParams(relativeUrl);
+  return formatRelativeUrl(relativeUrl, value);
+};
 
-  if (value.startsWith("//")) {
-    return `//${relativeUrl.host}${relativeUrl.pathname}${relativeUrl.search}${relativeUrl.hash}`;
-  }
-
-  if (!(isPathRelativeUrl || isQueryOnlyRelativeUrl)) {
-    return `${relativeUrl.pathname.slice(1)}${relativeUrl.search}${relativeUrl.hash}`;
-  }
-
-  return isQueryOnlyRelativeUrl
-    ? `${relativeUrl.search}${relativeUrl.hash}`
-    : `${relativeUrl.pathname}${relativeUrl.search}${relativeUrl.hash}`;
+const censorUrlString = (value: string) => {
+  const absoluteUrl = URL.parse(value);
+  return absoluteUrl
+    ? censorAbsoluteUrl(absoluteUrl, value)
+    : censorRelativeUrl(value);
 };
 
 const censorStackFrameSource = (source: string): string | undefined => {
@@ -250,24 +250,48 @@ const censorStackFrameSource = (source: string): string | undefined => {
   return isProtocolRelative ? `//${url.host}${url.pathname}` : url.toString();
 };
 
-const censorStackTrace = (stack: string, message: string): string => {
+// Where a stack's frames start: right after the logged message, or after a
+// first line with no message marker when the message is empty or frames
+// follow. -1 when the stack's first line can't be matched to the message.
+const findStackFramesStart = (stack: string, message: string): number => {
   const messageMarker = stack.indexOf(": ");
-  const firstLineEnd = stack.indexOf("\n");
-  let framesStart = -1;
-  if (message === "" && messageMarker < 0) {
-    framesStart = firstLineEnd;
-  } else if (
-    messageMarker >= 0 &&
-    stack.startsWith(message, messageMarker + 2)
-  ) {
-    framesStart = messageMarker + 2 + message.length;
-  } else if (
-    messageMarker < 0 &&
-    firstLineEnd >= 0 &&
-    /^[\t ]*at[\t ]/.test(stack.slice(firstLineEnd + 1))
-  ) {
-    framesStart = firstLineEnd;
+  if (messageMarker >= 0) {
+    return stack.startsWith(message, messageMarker + 2)
+      ? messageMarker + 2 + message.length
+      : -1;
   }
+
+  const firstLineEnd = stack.indexOf("\n");
+  return message === "" ||
+    (firstLineEnd >= 0 && /^[\t ]*at[\t ]/.test(stack.slice(firstLineEnd + 1)))
+    ? firstLineEnd
+    : -1;
+};
+
+// A stack frame line kept as its censored source location alone, or nothing
+// for a frame without a known source.
+const censorStackFrame = (line: string): readonly string[] => {
+  const frame = /^\s*at(?:\s+.*\s+\()?(.+):(\d+):(\d+)\)?$/.exec(line);
+  if (!frame) return [];
+  const source = frame[1]?.trim();
+  const lineNumber = frame[2];
+  const columnNumber = frame[3];
+  if (!(source && lineNumber && columnNumber)) return [];
+  if (
+    !/^(?:\/|[A-Za-z]:[\\/]|(?:https?|file|node|bun|webpack|turbopack):)/.test(
+      source
+    )
+  ) {
+    return [];
+  }
+  const censoredSource = censorStackFrameSource(source);
+  return censoredSource
+    ? [`    at ${censoredSource}:${lineNumber}:${columnNumber}`]
+    : [];
+};
+
+const censorStackTrace = (stack: string, message: string): string => {
+  const framesStart = findStackFramesStart(stack, message);
   if (framesStart < 0 || stack[framesStart] !== "\n") {
     return CENSORED_LOG_VALUE;
   }
@@ -275,25 +299,7 @@ const censorStackTrace = (stack: string, message: string): string => {
   const frames = stack
     .slice(framesStart + 1)
     .split("\n")
-    .flatMap((line) => {
-      const frame = /^\s*at(?:\s+.*\s+\()?(.+):(\d+):(\d+)\)?$/.exec(line);
-      if (!frame) return [];
-      const source = frame[1]?.trim();
-      const lineNumber = frame[2];
-      const columnNumber = frame[3];
-      if (!(source && lineNumber && columnNumber)) return [];
-      if (
-        !/^(?:\/|[A-Za-z]:[\\/]|(?:https?|file|node|bun|webpack|turbopack):)/.test(
-          source
-        )
-      ) {
-        return [];
-      }
-      const censoredSource = censorStackFrameSource(source);
-      return censoredSource
-        ? [`    at ${censoredSource}:${lineNumber}:${columnNumber}`]
-        : [];
-    });
+    .flatMap(censorStackFrame);
 
   return frames.length === 0
     ? CENSORED_LOG_VALUE
@@ -377,168 +383,218 @@ const censorLogRecordValue = <T>(
   return censorLogValueInternal(value, seen);
 };
 
-const censorLogValueInternal = <T>(
-  value: T,
-  seen: WeakMap<object, unknown>
+type LogValueCensorship = WeakMap<object, unknown>;
+
+// Censors an object once per logged value: a shared or cyclic reference gets
+// the result already started for it, so the censored value keeps its shape.
+const censorOnce = <Input extends object, Censored extends object>(
+  value: Input,
+  seen: LogValueCensorship,
+  start: () => Censored,
+  fill: (result: Censored) => void
 ): unknown => {
-  if (Array.isArray(value)) {
-    const existing = seen.get(value);
-    if (existing) return existing;
-
-    const result: unknown[] = [];
-    seen.set(value, result);
-
-    for (let index = 0; index < value.length; index += 1) {
-      if (index in value) {
-        result[index] = censorLogValueInternal(value[index], seen);
-      }
-    }
-
-    return result;
-  }
-
-  if (isMap(value)) {
-    const existing = seen.get(value);
-    if (existing) return existing;
-
-    const result = new Map<unknown, unknown>();
-    seen.set(value, result);
-
-    for (const [key, nestedValue] of value) {
-      result.set(
-        key,
-        Predicate.isString(key)
-          ? censorLogRecordValue(key, nestedValue, seen)
-          : censorLogValueInternal(nestedValue, seen)
-      );
-    }
-
-    return result;
-  }
-
-  if (isHeaders(value)) {
-    const existing = seen.get(value);
-    if (existing) return existing;
-
-    const result = new Headers();
-    seen.set(value, result);
-
-    value.forEach((nestedValue, key) => {
-      result.set(
-        key,
-        isSensitiveLogRecordKey(key)
-          ? CENSORED_LOG_VALUE
-          : String(censorLogValueInternal(nestedValue, seen))
-      );
-    });
-
-    return result;
-  }
-
-  if (isURLSearchParams(value)) {
-    const existing = seen.get(value);
-    if (existing) return existing;
-
-    const result = new URLSearchParams();
-    seen.set(value, result);
-
-    value.forEach((nestedValue, key) => {
-      result.append(
-        key,
-        isSensitiveLogRecordKey(key)
-          ? CENSORED_LOG_VALUE
-          : String(censorLogValueInternal(nestedValue, seen))
-      );
-    });
-
-    return result;
-  }
-
-  if (Predicate.isString(value)) return censorUrlString(value);
-
-  if (Cause.isCause(value)) return censorCauseInternal(value, seen);
-
-  if (isEffectDrizzleQueryError(value)) {
-    const existing = seen.get(value);
-    if (existing) return existing;
-
-    const result: MutableLogAnnotations = {
-      _tag: value._tag,
-      query: value.query,
-    };
-    seen.set(value, result);
-    result.params = censorQueryParamsInternal(value.query, value.params, seen);
-    result.cause = censorErrorCauseInternal(value.cause, seen);
-    return result;
-  }
-
-  if (isNativeError(value)) {
-    const existing = seen.get(value);
-    if (existing) return existing;
-
-    const result: MutableLogAnnotations = {
-      // Any code can set `name`, so it passes the same filter as `_tag`.
-      errorType: censorErrorClassificationValue(value.name),
-      message: CENSORED_LOG_VALUE,
-    };
-    seen.set(value, result);
-
-    for (const key of errorClassificationKeys) {
-      const property = Object.getOwnPropertyDescriptor(value, key);
-      if (property && "value" in property) {
-        result[key] = censorErrorClassificationValue(property.value);
-      }
-    }
-
-    const stack = Object.getOwnPropertyDescriptor(value, "stack");
-    if (stack && "value" in stack && Predicate.isString(stack.value)) {
-      result.stack = censorStackTrace(stack.value, value.message);
-    }
-
-    if ("cause" in value) {
-      result.cause = censorErrorCauseInternal(value.cause, seen);
-    }
-
-    const errors = Object.getOwnPropertyDescriptor(value, "errors");
-    if (errors && "value" in errors && Array.isArray(errors.value)) {
-      result.errors = errors.value.map((error) =>
-        isStructuredErrorCause(error)
-          ? censorLogValueInternal(error, seen)
-          : CENSORED_LOG_VALUE
-      );
-    }
-
-    return result;
-  }
-
-  if (!isPlainObject(value)) return value;
-
   const existing = seen.get(value);
   if (existing) return existing;
 
-  const result: MutableLogAnnotations = {};
+  const result = start();
   seen.set(value, result);
-  const databaseQuery = Predicate.isString(value.query)
-    ? value.query
-    : undefined;
-  let stackMessage: string | undefined;
-  if (Predicate.isString(value["exception.message"])) {
-    stackMessage = value["exception.message"];
-  } else if (Predicate.isString(value.message)) {
-    stackMessage = value.message;
-  }
-
-  for (const [key, nestedValue] of Object.entries(value)) {
-    result[key] = censorLogRecordValue(
-      key,
-      nestedValue,
-      seen,
-      databaseQuery,
-      stackMessage
-    );
-  }
-
+  fill(result);
   return result;
+};
+
+const censorArray = (value: readonly unknown[], seen: LogValueCensorship) =>
+  censorOnce(
+    value,
+    seen,
+    (): unknown[] => [],
+    (result) => {
+      for (let index = 0; index < value.length; index += 1) {
+        if (index in value) {
+          result[index] = censorLogValueInternal(value[index], seen);
+        }
+      }
+    }
+  );
+
+const censorMap = (value: Map<unknown, unknown>, seen: LogValueCensorship) =>
+  censorOnce(
+    value,
+    seen,
+    () => new Map<unknown, unknown>(),
+    (result) => {
+      for (const [key, nestedValue] of value) {
+        result.set(
+          key,
+          Predicate.isString(key)
+            ? censorLogRecordValue(key, nestedValue, seen)
+            : censorLogValueInternal(nestedValue, seen)
+        );
+      }
+    }
+  );
+
+// A header or search parameter value, censored whole under a sensitive key.
+const censorKeyedText = (
+  key: string,
+  value: string,
+  seen: LogValueCensorship
+) =>
+  isSensitiveLogRecordKey(key)
+    ? CENSORED_LOG_VALUE
+    : String(censorLogValueInternal(value, seen));
+
+const censorHeaders = (value: Headers, seen: LogValueCensorship) =>
+  censorOnce(
+    value,
+    seen,
+    () => new Headers(),
+    (result) => {
+      value.forEach((nestedValue, key) => {
+        result.set(key, censorKeyedText(key, nestedValue, seen));
+      });
+    }
+  );
+
+const censorSearchParams = (value: URLSearchParams, seen: LogValueCensorship) =>
+  censorOnce(
+    value,
+    seen,
+    () => new URLSearchParams(),
+    (result) => {
+      value.forEach((nestedValue, key) => {
+        result.append(key, censorKeyedText(key, nestedValue, seen));
+      });
+    }
+  );
+
+const censorDrizzleQueryError = (
+  value: EffectDrizzleQueryError,
+  seen: LogValueCensorship
+) =>
+  censorOnce(
+    value,
+    seen,
+    (): MutableLogAnnotations => ({ _tag: value._tag, query: value.query }),
+    (result) => {
+      result.params = censorQueryParamsInternal(
+        value.query,
+        value.params,
+        seen
+      );
+      result.cause = censorErrorCauseInternal(value.cause, seen);
+    }
+  );
+
+// An error's own data property: an accessor could compute anything.
+const findOwnDataProperty = (value: Error, key: string) => {
+  const property = Object.getOwnPropertyDescriptor(value, key);
+  return property && "value" in property ? property : undefined;
+};
+
+const censorErrorClassification = (
+  value: Error,
+  result: MutableLogAnnotations
+) => {
+  for (const key of errorClassificationKeys) {
+    const property = findOwnDataProperty(value, key);
+    if (property) result[key] = censorErrorClassificationValue(property.value);
+  }
+};
+
+// An aggregate error's errors, keeping only structured ones.
+const censorAggregatedErrors = (
+  errors: readonly unknown[],
+  seen: LogValueCensorship
+) =>
+  errors.map((error) =>
+    isStructuredErrorCause(error)
+      ? censorLogValueInternal(error, seen)
+      : CENSORED_LOG_VALUE
+  );
+
+const censorNativeError = (value: Error, seen: LogValueCensorship) =>
+  censorOnce(
+    value,
+    seen,
+    (): MutableLogAnnotations => ({
+      // Any code can set `name`, so it passes the same filter as `_tag`.
+      errorType: censorErrorClassificationValue(value.name),
+      message: CENSORED_LOG_VALUE,
+    }),
+    (result) => {
+      censorErrorClassification(value, result);
+
+      const stack = findOwnDataProperty(value, "stack");
+      if (stack && Predicate.isString(stack.value)) {
+        result.stack = censorStackTrace(stack.value, value.message);
+      }
+
+      if ("cause" in value) {
+        result.cause = censorErrorCauseInternal(value.cause, seen);
+      }
+
+      const errors = findOwnDataProperty(value, "errors");
+      if (errors && Array.isArray(errors.value)) {
+        result.errors = censorAggregatedErrors(errors.value, seen);
+      }
+    }
+  );
+
+// The message a record's stack trace starts with: its exception message, or
+// else its message.
+const findRecordStackMessage = (value: LogAnnotations) => {
+  if (Predicate.isString(value["exception.message"])) {
+    return value["exception.message"];
+  }
+  return Predicate.isString(value.message) ? value.message : undefined;
+};
+
+const censorRecord = (value: LogAnnotations, seen: LogValueCensorship) =>
+  censorOnce(
+    value,
+    seen,
+    (): MutableLogAnnotations => ({}),
+    (result) => {
+      const databaseQuery = Predicate.isString(value.query)
+        ? value.query
+        : undefined;
+      const stackMessage = findRecordStackMessage(value);
+
+      for (const [key, nestedValue] of Object.entries(value)) {
+        result[key] = censorLogRecordValue(
+          key,
+          nestedValue,
+          seen,
+          databaseQuery,
+          stackMessage
+        );
+      }
+    }
+  );
+
+// Strings, causes, errors and records; any other value is kept as it is.
+const censorLogValueOutsideCollections = <T>(
+  value: T,
+  seen: LogValueCensorship
+): unknown => {
+  if (Predicate.isString(value)) return censorUrlString(value);
+  if (Cause.isCause(value)) return censorCauseInternal(value, seen);
+  if (isEffectDrizzleQueryError(value)) {
+    return censorDrizzleQueryError(value, seen);
+  }
+  if (isNativeError(value)) return censorNativeError(value, seen);
+  return isPlainObject(value) ? censorRecord(value, seen) : value;
+};
+
+const censorLogValueInternal = <T>(
+  value: T,
+  seen: LogValueCensorship
+): unknown => {
+  if (Array.isArray(value)) return censorArray(value, seen);
+  if (isMap(value)) return censorMap(value, seen);
+  if (isHeaders(value)) return censorHeaders(value, seen);
+  if (isURLSearchParams(value)) return censorSearchParams(value, seen);
+  return censorLogValueOutsideCollections(value, seen);
 };
 
 export const censorLogValue = <T>(value: T): unknown =>

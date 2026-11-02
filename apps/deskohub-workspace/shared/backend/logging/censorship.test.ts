@@ -1,7 +1,8 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { runInNewContext } from "node:vm";
 import { DotyposUnavailable } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
+import { SeverityNumber } from "@opentelemetry/api-logs";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import {
   InMemoryLogRecordExporter,
@@ -1057,6 +1058,36 @@ describe("createCensoredOtelLogger", () => {
     await provider.shutdown();
   });
 
+  test.each([
+    ["Fatal", SeverityNumber.FATAL, "fatal"],
+    ["Error", SeverityNumber.ERROR, "error"],
+    ["Warn", SeverityNumber.WARN, "warn"],
+    ["Info", SeverityNumber.INFO, "info"],
+    ["Debug", SeverityNumber.DEBUG, "debug"],
+    ["Trace", SeverityNumber.TRACE, "trace"],
+  ] as const)(
+    "emits a %s log with its OTel severity",
+    async (level, severityNumber, severityText) => {
+      const exporter = new InMemoryLogRecordExporter();
+      const provider = new LoggerProvider({
+        processors: [new SimpleLogRecordProcessor({ exporter })],
+      });
+
+      await Effect.runPromise(
+        Effect.logWithLevel(level)("safe message").pipe(
+          Effect.provideService(References.MinimumLogLevel, "All"),
+          Effect.provide(Logger.layer([createCensoredOtelLogger(provider)]))
+        )
+      );
+      await provider.forceFlush();
+
+      const [record] = exporter.getFinishedLogRecords();
+      expect(record?.severityNumber).toBe(severityNumber);
+      expect(record?.severityText).toBe(severityText);
+      await provider.shutdown();
+    }
+  );
+
   test("serializes structured and unserializable OTel attributes", async () => {
     const exporter = new InMemoryLogRecordExporter();
     const provider = new LoggerProvider({
@@ -1110,6 +1141,28 @@ describe("createCensoredOtelLogger", () => {
 });
 
 describe("createCensoredOtelSpanExporter", () => {
+  test("flushes through the wrapped exporter when it can flush", async () => {
+    const forceFlush = mock(() => Promise.resolve());
+    const exporter = createCensoredOtelSpanExporter({
+      export: () => undefined,
+      forceFlush,
+      shutdown: () => Promise.resolve(),
+    });
+
+    await exporter.forceFlush?.();
+
+    expect(forceFlush).toHaveBeenCalledTimes(1);
+  });
+
+  test("flushes at once when the wrapped exporter can't flush", async () => {
+    const exporter = createCensoredOtelSpanExporter({
+      export: () => undefined,
+      shutdown: () => Promise.resolve(),
+    });
+
+    expect(await exporter.forceFlush?.()).toBeUndefined();
+  });
+
   test("applies the shared telemetry censorship policy to span data", async () => {
     const exporter = new InMemorySpanExporter();
     const privateValue = testEmailAddress("private");
