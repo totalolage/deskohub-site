@@ -213,24 +213,32 @@ type ProfileSource = {
     | undefined;
 };
 
+/** An optional contract value as the text its form input edits. */
+const formText = (value: string | null | undefined): string => value ?? "";
+
 const toProfileFormValues = (
   profile: ProfileSource | null | undefined,
   referralCode = ""
-): ProfileFormValues => ({
-  addressLine1: profile?.billing?.addressLine1 ?? "",
-  addressLine2: profile?.billing?.addressLine2 ?? "",
-  billingKind: profile?.billing?.kind ?? "hidden",
-  city: profile?.billing?.city ?? "",
-  companyName: profile?.billing?.companyName ?? "",
-  companyId: profile?.billing?.companyId ?? "",
-  country: profile?.billing?.country ?? "",
-  firstName: profile?.firstName ?? "",
-  lastName: profile?.lastName ?? "",
-  phone: profile?.phone ?? "",
-  referralCode,
-  vatId: profile?.billing?.vatId ?? "",
-  zip: profile?.billing?.zip ?? "",
-});
+): ProfileFormValues => {
+  const source: Partial<ProfileSource> = profile ?? {};
+  const billing: Partial<NonNullable<ProfileSource["billing"]>> =
+    source.billing ?? {};
+  return {
+    addressLine1: formText(billing.addressLine1),
+    addressLine2: formText(billing.addressLine2),
+    billingKind: billing.kind ?? "hidden",
+    city: formText(billing.city),
+    companyName: formText(billing.companyName),
+    companyId: formText(billing.companyId),
+    country: formText(billing.country),
+    firstName: formText(source.firstName),
+    lastName: formText(source.lastName),
+    phone: formText(source.phone),
+    referralCode,
+    vatId: formText(billing.vatId),
+    zip: formText(billing.zip),
+  };
+};
 
 export const profileFormDefaults = (
   profile?: CustomerProfile | null,
