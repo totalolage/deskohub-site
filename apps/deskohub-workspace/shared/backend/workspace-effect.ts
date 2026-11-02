@@ -303,14 +303,6 @@ const flushTelemetry = flushPostHogLogs({
   Effect.ignoreCause({ log: "Warn", message: "PostHog log flush failed" })
 );
 
-/**
- * The memo map web handlers build with. It reads the runtime's memo map but
- * keeps its own builds, so a run that provides a Layer a handler built still
- * builds that Layer for itself. Handlers share it, so a Layer object two
- * handlers both use is built once for both.
- */
-const workspaceWebHandlerMemoMap = Layer.forkMemoMapUnsafe(workspaceMemoMap);
-
 // Built into the runtime's memo map whether a run or a handler needs it
 // first, so both log and trace through one instance.
 const SharedWorkspaceObservabilityLive = Layer.fromBuild((_, scope) =>
@@ -321,9 +313,12 @@ const SharedWorkspaceObservabilityLive = Layer.fromBuild((_, scope) =>
  * Serves an Effect HTTP API to web `Request`s with the Workspace's censoring
  * logger and tracer and Node's HTTP services. The API runs outside the
  * Workspace runtime, with the runtime's observability instance: its layer
- * builds once, on the first request, and like the runtime is never disposed.
- * Each handler has its own router, so its routes and global middleware serve
- * only its requests. What a handler builds stays out of Workspace runs. Effect's
+ * builds once, on the first request, and like the runtime is never disposed;
+ * a failed build stays cached. Each handler builds with its own fork of the
+ * runtime's memo map, so its router, routes, and global middleware serve only
+ * its requests, even when another handler uses the same Layer objects, and
+ * what it builds stays out of Workspace runs and other handlers. Share a
+ * capability across handlers and runs with `shareAcrossRequests`. Effect's
  * own request logger is off; log a failure's cause before mapping it to a
  * cause-less public error.
  */
@@ -337,12 +332,15 @@ export const toWorkspaceWebHandler = <A, E>(
 ): ((request: Request) => Promise<Response>) => {
   const { handler } = HttpRouter.toWebHandler(
     Layer.merge(api, SharedWorkspaceObservabilityLive).pipe(
-      // Overrides the router `HttpRouter.toWebHandler` provides, which the
-      // memo map would hand every handler.
-      Layer.provideMerge(Layer.fresh(HttpRouter.layer)),
       Layer.provide(NodeHttpServer.layerHttpServices)
     ),
-    { disableLogger: true, memoMap: workspaceWebHandlerMemoMap }
+    {
+      disableLogger: true,
+      // A Layer that registers routes or middleware memoizes with the router
+      // it was built for, so a memo map handlers shared would leave a later
+      // handler's router without them.
+      memoMap: Layer.forkMemoMapUnsafe(workspaceMemoMap),
+    }
   );
   return (request) => handler(request);
 };

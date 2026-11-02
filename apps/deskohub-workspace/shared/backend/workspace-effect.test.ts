@@ -7,6 +7,7 @@ import {
 } from "effect/unstable/http";
 import { redirect } from "next/navigation";
 import { CENSORED_LOG_VALUE } from "@/shared/utils/log-classification";
+import { shareAcrossRequests } from "./share-across-requests";
 
 const emitPostHogLog = mock(() => undefined);
 
@@ -580,5 +581,119 @@ describe("toWorkspaceWebHandler", () => {
       ["/second", 404, null, null],
       ["/first", 404, null, null],
     ]);
+  });
+
+  test("serves a route Layer several handlers share from each of them", async () => {
+    const answering = HttpRouter.add(
+      "GET",
+      "/shared",
+      Effect.map(RequestCaller, (caller) =>
+        HttpServerResponse.text(`answered ${caller.name}`)
+      )
+    ).pipe(Layer.provide(CallerFromRequest));
+    const first = toWorkspaceWebHandler(answering);
+    const second = toWorkspaceWebHandler(answering);
+
+    // The first handler builds the shared route Layer before the second.
+    const firstAnswer = await first(request("/shared", "ada"));
+    const requests = [
+      [second, "bea"],
+      [first, "cyd"],
+      [second, "dov"],
+    ] as const;
+    const answers = await Promise.all(
+      requests.map(async ([handle, caller]) => {
+        const response = await handle(request("/shared", caller));
+        return [response.status, await response.text()];
+      })
+    );
+
+    expect([firstAnswer.status, await firstAnswer.text()]).toEqual([
+      200,
+      "answered ada",
+    ]);
+    expect(answers).toEqual([
+      [200, "answered bea"],
+      [200, "answered cyd"],
+      [200, "answered dov"],
+    ]);
+  });
+
+  test("builds a Layer two handlers use once per handler, and a shared Layer once for handlers and runs", async () => {
+    let ownBuilds = 0;
+    let sharedBuilds = 0;
+    class Own extends Context.Service<Own, { readonly id: number }>()(
+      "test/Own"
+    ) {
+      static Live = Layer.sync(this, () => {
+        ownBuilds += 1;
+        return { id: ownBuilds };
+      });
+    }
+    class Shared extends Context.Service<Shared, { readonly id: number }>()(
+      "test/Shared"
+    ) {
+      static Live = shareAcrossRequests(
+        Layer.sync(this, () => {
+          sharedBuilds += 1;
+          return { id: sharedBuilds };
+        })
+      );
+    }
+    const serving = HttpRouter.add(
+      "GET",
+      "/instances",
+      Effect.gen(function* () {
+        const own = yield* Own;
+        const shared = yield* Shared;
+        return HttpServerResponse.jsonUnsafe({
+          own: own.id,
+          shared: shared.id,
+        });
+      })
+    ).pipe(HttpRouter.provideRequest(Layer.merge(Own.Live, Shared.Live)));
+    const first = toWorkspaceWebHandler(serving);
+    const second = toWorkspaceWebHandler(serving);
+    const served = async (handle: typeof first, caller: string) =>
+      (await handle(request("/instances", caller))).json();
+
+    expect(await served(first, "ada")).toEqual({ own: 1, shared: 1 });
+    expect(await served(second, "bea")).toEqual({ own: 2, shared: 1 });
+    expect(await served(first, "cyd")).toEqual({ own: 1, shared: 1 });
+    expect(
+      await Effect.map(Shared, ({ id }) => id).pipe(
+        Effect.provide(Shared.Live),
+        runWorkspaceEffect("test.shared-instance")
+      )
+    ).toBe(1);
+    expect([ownBuilds, sharedBuilds]).toEqual([2, 1]);
+  });
+
+  test("keeps a failed build for its handler without failing another handler's build", async () => {
+    let builds = 0;
+    const Unavailable = Layer.effectDiscard(
+      Effect.suspend(() => {
+        builds += 1;
+        return Effect.fail(new Error(`build ${builds} failed`));
+      })
+    );
+    const serving = Layer.merge(
+      HttpRouter.add("GET", "/unavailable", HttpServerResponse.empty()),
+      Unavailable
+    );
+    const first = toWorkspaceWebHandler(serving);
+    const second = toWorkspaceWebHandler(serving);
+
+    await expect(first(request("/unavailable", "ada"))).rejects.toThrow(
+      "build 1 failed"
+    );
+    await expect(first(request("/unavailable", "bea"))).rejects.toThrow(
+      "build 1 failed"
+    );
+    expect(builds).toBe(1);
+    await expect(second(request("/unavailable", "cyd"))).rejects.toThrow(
+      "build 2 failed"
+    );
+    expect(builds).toBe(2);
   });
 });
