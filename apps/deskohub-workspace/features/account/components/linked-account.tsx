@@ -1,7 +1,10 @@
 "use client";
 
 import { type ReactNode, useEffect } from "react";
-import { useAccountLayout } from "@/features/account/components/account-layout-shell";
+import {
+  type AccountLayoutContextValue,
+  useAccountLayout,
+} from "@/features/account/components/account-layout-shell";
 import { CustomerAgentConnectionsSection } from "@/features/account/components/customer-agent-connections/customer-agent-connections-section";
 import { DeleteAccountCard } from "@/features/account/components/delete-account-card";
 import { SignInSecuritySection } from "@/features/account/components/passkeys/sign-in-security-section";
@@ -47,6 +50,47 @@ type LinkedAccountProps = {
   readonly assistants?: readonly CustomerAgentConnection[] | null;
 };
 
+/**
+ * Publishes the earned referral discount as the navigation badge while the
+ * referral program is released and the discount is above zero.
+ */
+function usePublishedReferralBadge({
+  locale,
+  referrals,
+  referralsEnabled,
+  setReferralBadge,
+}: {
+  readonly locale: Locale;
+  readonly referrals: ReferralAccountOverview | undefined;
+  readonly referralsEnabled: boolean;
+  readonly setReferralBadge: AccountLayoutContextValue["setReferralBadge"];
+}) {
+  const referralDiscount = referralsEnabled
+    ? referrals?.summary.discount
+    : undefined;
+  const showReferralBadge =
+    referralDiscount !== undefined && referralDiscount !== "0";
+  const referralBadgeText = showReferralBadge
+    ? formatReferralDiscountReduction(referralDiscount, locale)
+    : undefined;
+  const referralBadgeLabel = showReferralBadge
+    ? m.accountReferralsNavigationBadgeLabel(
+        { discount: formatReferralDiscount(referralDiscount, locale) },
+        { locale }
+      )
+    : undefined;
+
+  // Depend on the strings, not a badge object, so publishing it cannot loop.
+  useEffect(() => {
+    setReferralBadge(
+      referralBadgeText === undefined || referralBadgeLabel === undefined
+        ? undefined
+        : { text: referralBadgeText, label: referralBadgeLabel }
+    );
+    return () => setReferralBadge(undefined);
+  }, [referralBadgeLabel, referralBadgeText, setReferralBadge]);
+}
+
 export function LinkedAccount({
   assistants,
   avatarPresentation,
@@ -69,35 +113,17 @@ export function LinkedAccount({
   const profileSection = activeSection === "billing" ? "billing" : "profile";
   const accountPasskeys = useAccountPasskeys(passkeys);
 
-  const referralDiscount = referralsEnabled
-    ? referrals?.summary.discount
-    : undefined;
-  const showReferralBadge =
-    referralDiscount !== undefined && referralDiscount !== "0";
-  const referralBadgeText = showReferralBadge
-    ? formatReferralDiscountReduction(referralDiscount, locale)
-    : undefined;
-  const referralBadgeLabel = showReferralBadge
-    ? m.accountReferralsNavigationBadgeLabel(
-        { discount: formatReferralDiscount(referralDiscount, locale) },
-        { locale }
-      )
-    : undefined;
+  usePublishedReferralBadge({
+    locale,
+    referrals,
+    referralsEnabled,
+    setReferralBadge,
+  });
 
   useEffect(() => {
     setReservationCount(reservationCount);
     return () => setReservationCount(undefined);
   }, [reservationCount, setReservationCount]);
-
-  // Depend on the strings, not a badge object, so publishing it cannot loop.
-  useEffect(() => {
-    setReferralBadge(
-      referralBadgeText === undefined || referralBadgeLabel === undefined
-        ? undefined
-        : { text: referralBadgeText, label: referralBadgeLabel }
-    );
-    return () => setReferralBadge(undefined);
-  }, [referralBadgeLabel, referralBadgeText, setReferralBadge]);
 
   return (
     <>
