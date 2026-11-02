@@ -15,11 +15,13 @@ import { CheckoutPricingServiceMock } from "@/features/checkout/backend/checkout
 import {
   buildSignedPayState,
   openPayState,
+  PayStateTokenError,
   payStateTokenQueryParam,
   sealPayState,
 } from "@/features/checkout/backend/checkout/pay-state";
 import { PayableReservationUnavailableError } from "@/features/checkout/backend/checkout/payable-reservation.service";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
+import type { CheckoutSummaryChangedKeys } from "@/features/checkout/checkout-summary";
 import {
   DiscountAffirmationUnavailableError,
   discountIdSchema,
@@ -30,7 +32,9 @@ import {
   type CanonicalPromotionCode,
   canonicalPromotionCodeSchema,
 } from "@/features/discounts/contracts";
+import type { Locale } from "@/features/i18n";
 import type { ReferralService as ReferralServiceTag } from "@/features/referrals";
+import { ReferralError } from "@/features/referrals/contracts";
 import { WithheldReferralService } from "@/features/referrals/referral.service.mock";
 import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
@@ -64,16 +68,25 @@ const submittedCodeDiscountId =
 
 const makePayStateToken = async (input?: {
   readonly requestedDiscountCode?: CanonicalPromotionCode;
+  readonly locale?: Locale;
+  readonly changedKeys?: CheckoutSummaryChangedKeys;
+  /** A code the signed state already applied. */
+  readonly submittedCode?: CanonicalPromotionCode;
 }) => {
   const state = await Effect.runPromise(
     buildSignedPayState({
-      locale: "en-US",
+      locale: input?.locale ?? "en-US",
       reservation,
       quote,
       orderId: "reservation-id",
       bookedAt: payStateBookedAt,
       checkoutSessionId,
       requestedDiscountCode: input?.requestedDiscountCode,
+      changedKeys: input?.changedKeys,
+      ...(input?.submittedCode && {
+        submittedCode: input.submittedCode,
+        submittedCodeDiscountId,
+      }),
     })
   );
 
@@ -85,6 +98,10 @@ type SubmissionInput = {
   readonly applyDiscountCode?: ReturnType<typeof mock>;
   readonly acceptCode?: ReturnType<typeof mock>;
   readonly codeKind?: "referral" | "other";
+  /** Replaces the code-kind lookup's result. */
+  readonly lookupCodeKind?: ReturnType<typeof mock>;
+  /** The Dotypos customer the payable reservation stores. */
+  readonly dotyposCustomerId?: string;
   /** Replaces the mocked code-kind lookup. */
   readonly referralService?: Layer.Layer<ReferralServiceTag>;
   readonly payStateToken?: string;
@@ -119,7 +136,7 @@ const prepareSubmission = async (input?: SubmissionInput) => {
   let payableReservationReadCount = 0;
   const getReservation = () => ({
     id: "reservation-id",
-    dotyposCustomerId: "customer-id",
+    dotyposCustomerId: input?.dotyposCustomerId ?? "customer-id",
     activePaymentAttemptId:
       payableReservationReadCount > 1
         ? (input?.activePaymentAttemptIdAfterPricing ??
@@ -154,9 +171,9 @@ const prepareSubmission = async (input?: SubmissionInput) => {
         quote,
       })
     );
-  const lookupCodeKind = mock(() =>
-    Effect.succeed({ kind: input?.codeKind ?? "other" } as const)
-  );
+  const lookupCodeKind =
+    input?.lookupCodeKind ??
+    mock(() => Effect.succeed({ kind: input?.codeKind ?? "other" } as const));
   const acceptCode =
     input?.acceptCode ??
     mock(() =>
@@ -800,5 +817,112 @@ describe("applyDiscountCodeToPayState", () => {
     expect(scenario.result).toEqual({ status: "unavailable" });
     expect(scenario.applyDiscountCode).toHaveBeenCalledTimes(1);
     expect(scenario.requireCurrent).toHaveBeenCalledTimes(2);
+  });
+
+  test("fails a pay state signed for another language without checking the code", async () => {
+    const { effect, lookupCodeKind, requireCurrent } = await prepareSubmission({
+      payStateToken: await makePayStateToken({ locale: "cs-CZ" }),
+    });
+
+    const error = await Effect.runPromise(Effect.flip(effect));
+
+    expect(error).toBeInstanceOf(PayStateTokenError);
+    expect(error).toMatchObject({ code: "invalid-token" });
+    expect(lookupCodeKind).not.toHaveBeenCalled();
+    expect(requireCurrent).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    [
+      "changed keys",
+      {
+        changedKeys: {
+          sectionKeys: ["total"],
+          itemKeys: ["total:final"],
+        },
+      },
+    ],
+    [
+      "an applied code",
+      { submittedCode: canonicalPromotionCodeSchema.make("SAVE10") },
+    ],
+  ] as const)(
+    "returns unavailable without checking the code when the pay state carries %s",
+    async (_, payState) => {
+      const scenario = await runSubmission({
+        payStateToken: await makePayStateToken(payState),
+      });
+
+      expect(scenario.result).toStrictEqual({
+        status: "unavailable",
+        freshPayUrl: undefined,
+      });
+      expect(scenario.lookupCodeKind).not.toHaveBeenCalled();
+      expect(scenario.applyDiscountCode).not.toHaveBeenCalled();
+    }
+  );
+
+  test("returns a referral's own pricing_changed replacement as is", async () => {
+    const changed = {
+      status: "pricing_changed" as const,
+      freshPayUrl: "/en-US/checkout/pay?payState=changed",
+    };
+    const scenario = await runSubmission({
+      submittedCode: "RFL12345",
+      codeKind: "referral",
+      rememberedReferralCode: "RFLSHARED",
+      acceptCode: mock(() => Effect.succeed(changed)),
+    });
+
+    expect(scenario.result).toBe(changed);
+    expect(scenario.rememberedReferralCookie.value).toBe("RFLSHARED");
+    expect(scenario.requireCurrent).not.toHaveBeenCalled();
+  });
+
+  test("keeps a referral code in the box as unavailable when pricing changed without a replacement", async () => {
+    const scenario = await runSubmission({
+      submittedCode: "RFL12345",
+      codeKind: "referral",
+      acceptCode: mock(() =>
+        Effect.succeed({ status: "pricing_changed" as const })
+      ),
+    });
+
+    expect(scenario.result.status).toBe("unavailable");
+    const freshUrl = new URL(
+      ("freshPayUrl" in scenario.result && scenario.result.freshPayUrl) || "",
+      "https://deskohub.test"
+    );
+    expect(freshUrl.searchParams.get("discountCodeError")).toBe("unavailable");
+    const freshState = await Effect.runPromise(
+      openPayState(freshUrl.searchParams.get(payStateTokenQueryParam) ?? "")
+    );
+    expect(freshState.requestedDiscountCode).toBe("RFL12345");
+  });
+
+  test("returns unavailable when the referral registry can't classify the code", async () => {
+    const scenario = await runSubmission({
+      lookupCodeKind: mock(() =>
+        Effect.fail(new ReferralError({ reason: "unavailable" }))
+      ),
+    });
+
+    expect(scenario.result).toStrictEqual({
+      status: "unavailable",
+      freshPayUrl: undefined,
+    });
+    expect(scenario.acceptCode).not.toHaveBeenCalled();
+    expect(scenario.applyDiscountCode).not.toHaveBeenCalled();
+  });
+
+  test("returns unavailable without pricing when the stored customer identity is invalid", async () => {
+    const scenario = await runSubmission({ dotyposCustomerId: "" });
+
+    expect(scenario.result).toStrictEqual({
+      status: "unavailable",
+      freshPayUrl: undefined,
+    });
+    expect(scenario.requireCurrent).toHaveBeenCalledTimes(1);
+    expect(scenario.applyDiscountCode).not.toHaveBeenCalled();
   });
 });
