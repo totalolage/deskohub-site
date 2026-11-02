@@ -40,20 +40,30 @@ export const deploymentResendRequestTimeouts = Effect.gen(function* () {
     : resendRequestTimeouts.nonProduction;
 }).pipe(Effect.orDie);
 
-const toResendTags = (message: EmailMessage) => {
-  const tags: { name: string; value: string }[] = [];
+type ResendTag = { name: string; value: string };
 
-  for (const tag of message.tags ?? []) {
-    if (resendTagPattern.test(tag)) {
-      tags.push({ name: "category", value: tag });
-    }
-  }
+/** The message's categories Resend can carry, each as a `category` tag. */
+const toResendCategoryTags = (categories: EmailMessage["tags"]) =>
+  (categories ?? [])
+    .filter((category) => resendTagPattern.test(category))
+    .map((category): ResendTag => ({ name: "category", value: category }));
 
-  for (const [name, value] of Object.entries(message.metadata ?? {})) {
+/** The message's string metadata whose name and value Resend can carry. */
+const toResendMetadataTags = (metadata: EmailMessage["metadata"]) => {
+  const tags: ResendTag[] = [];
+  for (const [name, value] of Object.entries(metadata ?? {})) {
     if (typeof value !== "string") continue;
     if (!resendTagPattern.test(name) || !resendTagPattern.test(value)) continue;
     tags.push({ name, value });
   }
+  return tags;
+};
+
+const toResendTags = (message: EmailMessage) => {
+  const tags = [
+    ...toResendCategoryTags(message.tags),
+    ...toResendMetadataTags(message.metadata),
+  ];
 
   return tags.length > 0 ? tags : undefined;
 };
