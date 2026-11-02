@@ -162,78 +162,90 @@ export const mapNexiClientError = (
   operation: string
 ): ExternalAPIError | NetworkError => {
   if (isNetworkError(error)) return error;
-
-  if (Schema.isSchemaError(error)) {
-    return new ExternalAPIError({
-      service: "Nexi",
-      operation,
-      message: "Nexi returned an invalid response.",
-    });
-  }
-
+  if (Schema.isSchemaError(error)) return toInvalidResponseError(operation);
   if (HttpClientError.isHttpClientError(error)) {
-    const reason = error.reason;
-    if (
-      Predicate.isTagged(reason, "TransportError") ||
-      Predicate.isTagged(reason, "InvalidUrlError")
-    ) {
-      return new NetworkError({
-        message: "Failed to connect to Nexi",
-        url: error.request.url,
-        cause: error,
-      });
-    }
-
-    const providerError = parseProviderError(
-      "description" in reason ? reason.description : undefined
-    );
-    return toExternalApiError({
-      operation,
-      providerError,
-      statusCode: error.response?.status,
-      cause: providerError?.errors ?? providerError?.error ?? reason.cause,
-      message:
-        providerError?.message ?? providerError?.errors?.[0]?.description,
-    });
+    return mapHttpClientError(error, operation);
   }
-
   if (isGeneratedClientError(error)) {
-    const providerError = parseProviderError(error.cause);
-    return toExternalApiError({
-      operation,
-      providerError,
-      statusCode: error.response.status,
-      cause: providerError?.errors ?? providerError?.error ?? error.cause,
-      message:
-        providerError?.message ?? providerError?.errors?.[0]?.description,
+    return mapGeneratedClientError(error, operation);
+  }
+  if (isConnectionFailure(error)) {
+    return new NetworkError({
+      message: "Failed to connect to Nexi",
+      cause: error,
     });
   }
 
-  if (Predicate.isError(error)) {
-    if (
-      error.name === "AbortError" ||
-      error.message.includes("fetch") ||
-      error.message.includes("ECONNREFUSED")
-    ) {
-      return new NetworkError({
-        message: "Failed to connect to Nexi",
-        cause: error,
-      });
-    }
+  return mapUnclassifiedError(error, operation);
+};
+
+const toInvalidResponseError = (operation: string) =>
+  new ExternalAPIError({
+    service: "Nexi",
+    operation,
+    message: "Nexi returned an invalid response.",
+  });
+
+/**
+ * A transport or URL failure never reached Nexi; any other HTTP client
+ * failure carries the provider's error body in its description.
+ */
+const mapHttpClientError = (
+  error: HttpClientError.HttpClientError,
+  operation: string
+) => {
+  const reason = error.reason;
+  if (
+    Predicate.isTagged(reason, "TransportError") ||
+    Predicate.isTagged(reason, "InvalidUrlError")
+  ) {
+    return new NetworkError({
+      message: "Failed to connect to Nexi",
+      url: error.request.url,
+      cause: error,
+    });
   }
 
-  // Every field of the provider error body is optional, so only a plain
-  // payload counts; an unexpected Error is not a provider response.
+  return toProviderApiError({
+    operation,
+    providerError: parseProviderError(
+      "description" in reason ? reason.description : undefined
+    ),
+    statusCode: error.response?.status,
+    fallbackCause: reason.cause,
+  });
+};
+
+const mapGeneratedClientError = (
+  error: GeneratedClientError,
+  operation: string
+) =>
+  toProviderApiError({
+    operation,
+    providerError: parseProviderError(error.cause),
+    statusCode: error.response.status,
+    fallbackCause: error.cause,
+  });
+
+/** An aborted request or a failed fetch or connection. */
+const isConnectionFailure = (error: unknown): error is Error =>
+  Predicate.isError(error) &&
+  (error.name === "AbortError" ||
+    error.message.includes("fetch") ||
+    error.message.includes("ECONNREFUSED"));
+
+// Every field of the provider error body is optional, so only a plain
+// payload counts; an unexpected Error is not a provider response.
+const mapUnclassifiedError = (error: unknown, operation: string) => {
   const providerError = Predicate.isError(error)
     ? undefined
     : parseProviderError(error);
   if (providerError) {
-    return toExternalApiError({
+    return toProviderApiError({
       operation,
       providerError,
       statusCode: providerError.status ?? 500,
-      cause: providerError.errors ?? providerError.error,
-      message: providerError.message ?? providerError.errors?.[0]?.description,
+      fallbackCause: undefined,
     });
   }
 
@@ -243,6 +255,35 @@ export const mapNexiClientError = (
     cause: error,
   });
 };
+
+/** The provider's errors, else its error code, else the fallback cause. */
+const getProviderErrorCause = (
+  providerError: ErrorResponse | undefined,
+  fallbackCause: unknown
+) => providerError?.errors ?? providerError?.error ?? fallbackCause;
+
+/** The provider's message, else its first error's description. */
+const getProviderErrorMessage = (providerError: ErrorResponse | undefined) =>
+  providerError?.message ?? providerError?.errors?.[0]?.description;
+
+const toProviderApiError = ({
+  operation,
+  providerError,
+  statusCode,
+  fallbackCause,
+}: {
+  operation: string;
+  providerError: ErrorResponse | undefined;
+  statusCode: number | undefined;
+  fallbackCause: unknown;
+}) =>
+  toExternalApiError({
+    operation,
+    providerError,
+    statusCode,
+    cause: getProviderErrorCause(providerError, fallbackCause),
+    message: getProviderErrorMessage(providerError),
+  });
 
 const parseProviderError = (error: unknown): ErrorResponse | undefined => {
   const decoded = Schema.decodeUnknownOption(ErrorResponse)(error);
