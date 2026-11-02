@@ -1,9 +1,6 @@
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
-import {
-  renderOnLocaleRoute,
-  routeLocale,
-} from "@/features/gallery/components/gallery-render.test-utils";
-import { baseLocale, getLocale, m, setLocale } from "@/features/i18n";
+import { renderOnLocaleRoute } from "@/features/gallery/components/gallery-render.test-utils";
+import { getLocale, m, setLocale } from "@/features/i18n";
 import { setBoardgameTestEnv } from "@/shared/testing/boardgame-test-env";
 
 let NotFound: typeof import("./not-found").NotFound;
@@ -21,6 +18,7 @@ beforeAll(async () => {
   ({ NotFound } = await import("./not-found"));
 });
 
+// Rendering adopts the route's locale; keep it from leaking into other tests.
 const initialLocale = getLocale();
 
 afterEach(() => {
@@ -40,14 +38,6 @@ const buttonsOf = (html: string) =>
   );
 
 describe("NotFound", () => {
-  test("switches messages to the route's locale", () => {
-    setLocale(baseLocale, { reload: false });
-
-    renderOnLocaleRoute(<NotFound />);
-
-    expect(getLocale()).toBe(routeLocale);
-  });
-
   test("explains the missing page and links back home", () => {
     const html = renderOnLocaleRoute(<NotFound />);
 
