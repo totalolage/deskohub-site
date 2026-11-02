@@ -1171,3 +1171,350 @@ describe("createCensoredOtelSpanExporter", () => {
     await provider.shutdown();
   });
 });
+
+describe("censorLogValue structure", () => {
+  const censoredParam = encodeURIComponent(CENSORED_LOG_VALUE);
+
+  test("keeps array holes and censors a shared array once", () => {
+    const shared = ["/pay?token=secret"];
+    const sparse: unknown[] = [];
+    sparse[0] = shared;
+    sparse[2] = shared;
+
+    const censored = censorLogValue(sparse) as unknown[];
+
+    expect(censored).toHaveLength(3);
+    expect(1 in censored).toBe(false);
+    expect(censored[0]).toEqual([`/pay?token=${censoredParam}`]);
+    expect(censored[2]).toBe(censored[0]);
+  });
+
+  test("censors Map values by string keys only and keeps a Map cycle", () => {
+    const objectKey = { token: "kept-as-key" };
+    const input = new Map<unknown, unknown>([
+      ["token", "secret"],
+      [7, { token: "secret" }],
+      [objectKey, "visible"],
+    ]);
+    input.set("self", input);
+
+    const censored = censorLogValue(input) as Map<unknown, unknown>;
+
+    expect(censored.get("token")).toBe(CENSORED_LOG_VALUE);
+    expect(censored.get(7)).toEqual({ token: CENSORED_LOG_VALUE });
+    expect(censored.get(objectKey)).toBe("visible");
+    expect(censored.get("self")).toBe(censored);
+  });
+
+  test("censors shared Headers and URLSearchParams once each", () => {
+    const headers = new Headers({ cookie: "secret", accept: "text/html" });
+    const search = new URLSearchParams({ token: "secret", page: "2" });
+
+    const censored = censorLogValue({
+      first: [headers, search],
+      second: [headers, search],
+    }) as Record<"first" | "second", readonly [Headers, URLSearchParams]>;
+
+    expect(censored.second[0]).toBe(censored.first[0]);
+    expect(censored.second[1]).toBe(censored.first[1]);
+    expect(censored.first[0].get("cookie")).toBe(CENSORED_LOG_VALUE);
+    expect(censored.first[0].get("accept")).toBe("text/html");
+    expect(censored.first[1].toString()).toBe(`token=${censoredParam}&page=2`);
+  });
+
+  test("passes primitives and non-plain objects through unchanged", () => {
+    const date = new Date(0);
+    const custom = new CustomValue("kept by reference");
+    const callback = () => "secret";
+    const symbol = Symbol("secret");
+
+    expect(censorLogValue(date)).toBe(date);
+    expect(censorLogValue(custom)).toBe(custom);
+    expect(censorLogValue(callback)).toBe(callback);
+    expect(censorLogValue(symbol)).toBe(symbol);
+    expect(censorLogValue(12n)).toBe(12n);
+    expect(censorLogValue(Number.NaN)).toBeNaN();
+    expect(censorLogValue(true)).toBe(true);
+    expect(censorLogValue(null)).toBeNull();
+    expect(censorLogValue(undefined)).toBeUndefined();
+  });
+
+  test("censors a null-prototype object like a plain one", () => {
+    const input = Object.assign(Object.create(null) as object, {
+      token: "secret",
+      visible: "/pay?secret=1",
+    });
+
+    expect(censorLogValue(input)).toEqual({
+      token: CENSORED_LOG_VALUE,
+      visible: `/pay?secret=${censoredParam}`,
+    });
+  });
+
+  test("censors a plain object's params by its own query", () => {
+    expect(
+      censorLogValue({
+        query: "select $1, /* deskohub:sensitive */ $2",
+        params: ["visible", "private"],
+      })
+    ).toEqual({
+      query: "select $1, /* deskohub:sensitive */ $2",
+      params: ["visible", CENSORED_LOG_VALUE],
+    });
+    expect(censorLogValue({ query: 7, params: ["visible", "kept"] })).toEqual({
+      query: 7,
+      params: ["visible", "kept"],
+    });
+    expect(censorLogValue({ params: { token: "secret" } })).toEqual({
+      params: { token: CENSORED_LOG_VALUE },
+    });
+  });
+
+  test("censors a shared params array once", () => {
+    const params = ["visible"];
+
+    const censored = censorLogValue({
+      first: { params },
+      second: { params },
+    }) as Record<"first" | "second", { readonly params: unknown }>;
+
+    expect(censored.second.params).toBe(censored.first.params);
+  });
+
+  test("keeps only structured or plain causes", () => {
+    expect(censorLogValue({ cause: "private text" })).toEqual({
+      cause: CENSORED_LOG_VALUE,
+    });
+    expect(censorLogValue({ cause: { token: "secret", step: "a" } })).toEqual({
+      cause: { token: CENSORED_LOG_VALUE, step: "a" },
+    });
+    expect(censorLogValue({ cause: new CustomValue("secret") })).toEqual({
+      cause: CENSORED_LOG_VALUE,
+    });
+  });
+
+  test("reads a record's stack against its exception message first", () => {
+    const frame = "    at run (/srv/app.js:1:2)";
+    const keptFrame = "    at /srv/app.js:1:2";
+
+    expect(
+      censorLogValue({
+        "exception.message": "outer",
+        message: "inner",
+        "exception.stacktrace": `Error: outer\n${frame}`,
+      })
+    ).toEqual({
+      "exception.message": CENSORED_LOG_VALUE,
+      message: CENSORED_LOG_VALUE,
+      "exception.stacktrace": `${CENSORED_LOG_VALUE}\n${keptFrame}`,
+    });
+    expect(
+      censorLogValue({ message: "inner", Stack: `Error: inner\n${frame}` })
+    ).toEqual({
+      message: CENSORED_LOG_VALUE,
+      Stack: `${CENSORED_LOG_VALUE}\n${keptFrame}`,
+    });
+    expect(censorLogValue({ message: 7, stack: `Error: 7\n${frame}` })).toEqual(
+      { message: CENSORED_LOG_VALUE, stack: CENSORED_LOG_VALUE }
+    );
+    expect(censorLogValue({ message: "inner", stacktrace: 7 })).toEqual({
+      message: CENSORED_LOG_VALUE,
+      stacktrace: CENSORED_LOG_VALUE,
+    });
+  });
+
+  test("censors a shared or cyclic error once", () => {
+    const error = new Error("private") as Error & { self?: unknown };
+    error.cause = error;
+
+    const censored = censorLogValue([error, error]) as Array<{
+      readonly cause: unknown;
+    }>;
+
+    expect(censored[1]).toBe(censored[0]);
+    expect(censored[0]?.cause).toBe(censored[0]);
+  });
+
+  test("reads only an error's own data properties", () => {
+    const error = new Error("private");
+    Object.defineProperty(error, "code", { get: () => "ACCESSOR" });
+    Object.defineProperty(error, "status", { value: 503 });
+    Object.defineProperty(error, "stack", { get: () => "Error: private" });
+    Object.defineProperty(error, "errors", { get: () => [new Error("x")] });
+
+    expect(censorLogValue(error)).toEqual({
+      errorType: "Error",
+      message: CENSORED_LOG_VALUE,
+      status: 503,
+    });
+  });
+
+  test("drops a non-string error stack and keeps a missing cause out", () => {
+    const error = new Error("private");
+    Object.defineProperty(error, "stack", { value: 7 });
+
+    const censored = censorLogValue(error);
+
+    expect(censored).toEqual({
+      errorType: "Error",
+      message: CENSORED_LOG_VALUE,
+    });
+    expect(Object.keys(censored as object)).toEqual(["errorType", "message"]);
+  });
+
+  test("keeps an aggregate error's structured errors only", () => {
+    const error = new AggregateError(
+      [new TypeError("first"), { token: "secret" }, "text"],
+      "private"
+    );
+    Object.defineProperty(error, "stack", { value: undefined });
+
+    expect(censorLogValue(error)).toEqual({
+      errorType: "AggregateError",
+      message: CENSORED_LOG_VALUE,
+      errors: [
+        {
+          errorType: "TypeError",
+          message: CENSORED_LOG_VALUE,
+          stack: expect.any(String),
+        },
+        CENSORED_LOG_VALUE,
+        CENSORED_LOG_VALUE,
+      ],
+    });
+  });
+
+  test("ignores a non-array errors property", () => {
+    const error = new Error("private");
+    Object.defineProperty(error, "stack", { value: undefined });
+    Object.defineProperty(error, "errors", { value: "not a list" });
+
+    expect(censorLogValue(error)).toEqual({
+      errorType: "Error",
+      message: CENSORED_LOG_VALUE,
+    });
+  });
+
+  test("censors a shared Drizzle query error once", () => {
+    const error = new EffectDrizzleQueryError({
+      query: "select $1",
+      params: ["visible"],
+      cause: new Error("private"),
+    });
+
+    const censored = censorLogValue([error, error]) as unknown[];
+
+    expect(censored[1]).toBe(censored[0]);
+    expect(censored[0]).toMatchObject({
+      _tag: "EffectDrizzleQueryError",
+      query: "select $1",
+      params: ["visible"],
+    });
+  });
+});
+
+describe("censorLogValue URL strings", () => {
+  const censoredParam = encodeURIComponent(CENSORED_LOG_VALUE);
+
+  test.each([
+    [
+      "an absolute HTTPS URL",
+      "https://example.com/a?token=x&page=1#top",
+      `https://example.com/a?token=${censoredParam}&page=1#top`,
+    ],
+    [
+      "an absolute HTTP URL",
+      "http://example.com/?secret=x",
+      `http://example.com/?secret=${censoredParam}`,
+    ],
+    ["a mailto URL", "mailto:someone?subject=x", "mailto:someone?subject=x"],
+    [
+      "a query-only URL",
+      "?state=x&page=1#top",
+      `?state=${censoredParam}&page=1#top`,
+    ],
+    ["a path-relative URL without a query", "/a/b#top", "/a/b#top"],
+    [
+      "a protocol-relative URL without a query",
+      "//example.com/a",
+      "//example.com/a",
+    ],
+    [
+      "a bare relative URL with a query",
+      "a/b?filter=x",
+      `a/b?filter=${censoredParam}`,
+    ],
+    ["a bare word", "just-text", "just-text"],
+    ["an unparseable relative URL", "//[bad?token=x", "//[bad?token=x"],
+  ])("handles %s", (_case, input, output) => {
+    expect(censorLogValue(input)).toBe(output);
+  });
+});
+
+describe("censorLogValue stack traces", () => {
+  const stackOf = (message: string, stack: string) =>
+    (censorLogValue({ message, stack }) as { readonly stack: unknown }).stack;
+
+  test("keeps frames after an empty message with no message marker", () => {
+    expect(stackOf("", "Error\n    at run (/srv/app.js:1:2)")).toBe(
+      `${CENSORED_LOG_VALUE}\n    at /srv/app.js:1:2`
+    );
+  });
+
+  test("keeps frames after a first line without a message marker", () => {
+    expect(stackOf("other", "Boom\n    at run (/srv/app.js:1:2)")).toBe(
+      `${CENSORED_LOG_VALUE}\n    at /srv/app.js:1:2`
+    );
+  });
+
+  test("censors a stack whose first line is not followed by frames", () => {
+    expect(stackOf("other", "Boom\nmore text")).toBe(CENSORED_LOG_VALUE);
+    expect(stackOf("other", "Boom")).toBe(CENSORED_LOG_VALUE);
+  });
+
+  test("censors a stack whose message does not match", () => {
+    expect(stackOf("other", "Error: private\n    at /srv/app.js:1:2")).toBe(
+      CENSORED_LOG_VALUE
+    );
+  });
+
+  test("censors a stack whose message runs past the first line", () => {
+    expect(stackOf("private", "Error: private text\n    at /a.js:1:2")).toBe(
+      CENSORED_LOG_VALUE
+    );
+  });
+
+  test("keeps only frames with a known source location", () => {
+    const stack = [
+      "Error: private",
+      "    at /srv/app.js:1:2",
+      "    at C:\\app\\main.js:3:4",
+      "    at run (file:///srv/app.js?v=1:5:6)",
+      "    at node:internal/process:7:8",
+      "    at webpack:///./src/a.js:9:10",
+      "    at https://user:pw@example.com/a.js#x:11:12",
+      "    at anonymous (native)",
+      "    at relative/path.js:13:14",
+      "    at http://[bad/a.js:15:16",
+      "not a frame",
+    ].join("\n");
+
+    expect(stackOf("private", stack)).toBe(
+      [
+        CENSORED_LOG_VALUE,
+        "    at /srv/app.js:1:2",
+        "    at C:\\app\\main.js:3:4",
+        "    at file:///srv/app.js:5:6",
+        "    at node:internal/process:7:8",
+        "    at webpack:///src/a.js:9:10",
+        "    at https://example.com/a.js:11:12",
+      ].join("\n")
+    );
+  });
+
+  test("censors a stack with no kept frames to the marker alone", () => {
+    expect(
+      stackOf("private", "Error: private\n    at anonymous (native)")
+    ).toBe(CENSORED_LOG_VALUE);
+  });
+});
