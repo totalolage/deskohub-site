@@ -326,6 +326,49 @@ describe("censorLogValue", () => {
     expect(censored.self).toBe(censored);
   });
 
+  // Nesting costs heap rather than call stack, so a deeply nested request or
+  // webhook payload still gets censored instead of overflowing the stack.
+  const supportedNestingDepth = 5000;
+
+  test("censors records nested thousands of levels deep", () => {
+    type NestedRecord = {
+      readonly token: string;
+      readonly next?: NestedRecord;
+    };
+    let input: NestedRecord = { token: "secret-token" };
+    for (let level = 1; level < supportedNestingDepth; level += 1) {
+      input = { token: "secret-token", next: input };
+    }
+
+    let censored = censorLogValue(input) as NestedRecord;
+    let levels = 1;
+    while (censored.next) {
+      expect(censored.token).toBe(CENSORED_LOG_VALUE);
+      censored = censored.next;
+      levels += 1;
+    }
+
+    expect(levels).toBe(supportedNestingDepth);
+    expect(censored).toEqual({ token: CENSORED_LOG_VALUE });
+  });
+
+  test("censors arrays nested thousands of levels deep", () => {
+    let input: unknown = { token: "secret-token" };
+    for (let level = 0; level < supportedNestingDepth; level += 1) {
+      input = [input];
+    }
+
+    let censored = censorLogValue(input);
+    let levels = 0;
+    while (Array.isArray(censored)) {
+      censored = censored[0];
+      levels += 1;
+    }
+
+    expect(levels).toBe(supportedNestingDepth);
+    expect(censored).toEqual({ token: CENSORED_LOG_VALUE });
+  });
+
   test("redacts sensitive fields inside query params without hiding safe values", () => {
     const input = {
       params: ["visible", { email: privateEmail, sessionDuration: 123 }],
