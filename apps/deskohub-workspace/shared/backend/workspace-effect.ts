@@ -282,9 +282,8 @@ const WorkspaceObservabilityLive = Layer.merge(
 );
 
 /**
- * Process-wide memo map for Workspace runtimes. Runtimes that build their
- * layers with it reuse layers another runtime has already built, such as
- * `WorkspaceObservabilityLive`.
+ * Process-wide memo map of the Workspace runtime. Each run forks it, so a run
+ * reuses what the runtime built, such as `WorkspaceObservabilityLive`.
  */
 const workspaceMemoMap = Layer.makeMemoMapUnsafe();
 
@@ -305,13 +304,28 @@ const flushTelemetry = flushPostHogLogs({
 );
 
 /**
+ * The memo map web handlers build with. It reads the runtime's memo map but
+ * keeps its own builds, so a run that provides a Layer a handler built still
+ * builds that Layer for itself. Handlers share it, so a Layer object two
+ * handlers both use is built once for both.
+ */
+const workspaceWebHandlerMemoMap = Layer.forkMemoMapUnsafe(workspaceMemoMap);
+
+// Built into the runtime's memo map whether a run or a handler needs it
+// first, so both log and trace through one instance.
+const SharedWorkspaceObservabilityLive = Layer.fromBuild((_, scope) =>
+  Layer.buildWithMemoMap(WorkspaceObservabilityLive, workspaceMemoMap, scope)
+);
+
+/**
  * Serves an Effect HTTP API to web `Request`s with the Workspace's censoring
  * logger and tracer and Node's HTTP services. The API runs outside the
- * Workspace runtime: its layer builds once, on the first request, with the
- * runtime's memo map, so it reuses the observability instance the runtime
- * already built. Like the runtime, it is never disposed. Effect's own request
- * logger is off; log a failure's cause before mapping it to a cause-less
- * public error.
+ * Workspace runtime, with the runtime's observability instance: its layer
+ * builds once, on the first request, and like the runtime is never disposed.
+ * Each handler has its own router, so its routes and global middleware serve
+ * only its requests. What a handler builds stays out of Workspace runs. Effect's
+ * own request logger is off; log a failure's cause before mapping it to a
+ * cause-less public error.
  */
 export const toWorkspaceWebHandler = <A, E>(
   api: Layer.Layer<
@@ -322,10 +336,13 @@ export const toWorkspaceWebHandler = <A, E>(
   >
 ): ((request: Request) => Promise<Response>) => {
   const { handler } = HttpRouter.toWebHandler(
-    Layer.merge(api, WorkspaceObservabilityLive).pipe(
+    Layer.merge(api, SharedWorkspaceObservabilityLive).pipe(
+      // Overrides the router `HttpRouter.toWebHandler` provides, which the
+      // memo map would hand every handler.
+      Layer.provideMerge(Layer.fresh(HttpRouter.layer)),
       Layer.provide(NodeHttpServer.layerHttpServices)
     ),
-    { disableLogger: true, memoMap: workspaceMemoMap }
+    { disableLogger: true, memoMap: workspaceWebHandlerMemoMap }
   );
   return (request) => handler(request);
 };
