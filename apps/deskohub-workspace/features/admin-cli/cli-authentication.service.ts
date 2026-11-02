@@ -603,7 +603,7 @@ const toSessionExpiry = (
   });
 
 const toSessionStatus = (
-  row: CliSessionRow,
+  row: Pick<CliSessionRow, "expiresAt" | "revokedAt">,
   now: Temporal.Instant
 ): CliSessionAdministrationItem["status"] => {
   if (row.revokedAt) return "revoked";
@@ -643,15 +643,26 @@ const toAuthenticationStatus = (
 ): CliAuthenticationStatusType => {
   const { request, revokedAt, sessionExpiresAt } = result;
   if (request.sessionId) {
-    if (revokedAt) return { authStatus: "revoked" };
-    if (
-      sessionExpiresAt &&
-      Temporal.Instant.compare(now, sessionExpiresAt) >= 0
-    ) {
-      return { authStatus: "expired" };
-    }
-    return { authStatus: "granted" };
+    const sessionStatus = toSessionStatus(
+      { expiresAt: sessionExpiresAt, revokedAt },
+      now
+    );
+    return { authStatus: exchangedAuthenticationStatus[sessionStatus] };
   }
+  return toUnexchangedAuthenticationStatus(request, now);
+};
+
+// A request whose grant was exchanged reports the lifecycle of its session.
+const exchangedAuthenticationStatus = {
+  active: "granted",
+  expired: "expired",
+  revoked: "revoked",
+} as const;
+
+const toUnexchangedAuthenticationStatus = (
+  request: CliAuthenticationRequestRow,
+  now: Temporal.Instant
+): CliAuthenticationStatusType => {
   if (
     !request.approvedAt &&
     Temporal.Instant.compare(now, request.expiresAt) < 0
@@ -661,6 +672,14 @@ const toAuthenticationStatus = (
       expiresAt: toIsoString(request.expiresAt),
     };
   }
+  return toApprovedGrantStatus(request, now) ?? { authStatus: "expired" };
+};
+
+/** The approved status while the request's grant token can be exchanged. */
+const toApprovedGrantStatus = (
+  request: CliAuthenticationRequestRow,
+  now: Temporal.Instant
+) => {
   const grantToken = Option.getOrUndefined(
     Schema.decodeUnknownOption(CliGrantToken)(request.grantToken)
   );
@@ -674,9 +693,9 @@ const toAuthenticationStatus = (
       authStatus: "approved",
       grantToken,
       expiresAt: toIsoString(request.grantExpiresAt),
-    };
+    } as const;
   }
-  return { authStatus: "expired" };
+  return undefined;
 };
 
 const toApprovalRequest = (
