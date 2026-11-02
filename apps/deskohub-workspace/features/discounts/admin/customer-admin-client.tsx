@@ -47,6 +47,7 @@ import { Label } from "@/shared/components/ui/label";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { mutateDiscountAdmin, searchDiscountAdminCustomers } from "./actions";
 import type { DiscountAdminMutation } from "./contracts";
+import { formatDiscountAdminCustomerContact } from "./customer-contact";
 import { formatDiscountAdminCustomerName } from "./customer-display-name";
 import {
   type CustomerPromotionCode,
@@ -217,10 +218,7 @@ export function CustomerSearch({
                         {formatDiscountAdminCustomerName(customer, locale)}
                       </p>
                       <p className="mt-1 text-sm text-navy-blue/65">
-                        {[customer.email, customer.phone]
-                          .filter(Boolean)
-                          .join(" · ") ||
-                          m.discountsCustomerNoContactDetails({}, { locale })}
+                        {formatDiscountAdminCustomerContact(customer, locale)}
                       </p>
                     </div>
                     <Button asChild size="sm" variant="secondary">
