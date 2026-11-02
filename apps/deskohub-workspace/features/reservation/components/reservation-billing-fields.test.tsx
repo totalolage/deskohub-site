@@ -1,12 +1,4 @@
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  describe,
-  expect,
-  test,
-} from "bun:test";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { useForm, useWatch } from "react-hook-form";
 import {
   defaultReservationBillingSelection,
@@ -17,7 +9,13 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
-import { ReservationBillingFields } from "./reservation-billing-fields";
+
+// React DOM detects input events when it loads, so the DOM must exist first.
+registerWorkspaceComponentTestEnv();
+const { cleanup, fireEvent, render } = await import("@testing-library/react");
+const { ReservationBillingFields } = await import(
+  "./reservation-billing-fields"
+);
 
 const Harness = () => {
   const form = useForm<{ billing: ReservationBillingSelectionInput }>({
@@ -34,7 +32,6 @@ const Harness = () => {
 };
 
 describe("ReservationBillingFields", () => {
-  beforeAll(registerWorkspaceComponentTestEnv);
   afterEach(cleanup);
   afterAll(unregisterWorkspaceComponentTestEnv);
 
@@ -77,6 +74,30 @@ describe("ReservationBillingFields", () => {
     expect((createInvoice as HTMLButtonElement).disabled).toBe(true);
     expect(view.getByTestId("billing-value").textContent).not.toContain(
       "Private street 1"
+    );
+  });
+
+  test("leaves a blank optional field out and keeps a required one as typed", () => {
+    const view = render(<Harness />);
+    const billing = () =>
+      JSON.parse(view.getByTestId("billing-value").textContent ?? "{}");
+    const type = (label: string, value: string) =>
+      fireEvent.change(view.getByLabelText(new RegExp(`^${label}`)), {
+        target: { value },
+      });
+
+    fireEvent.click(view.getByRole("switch", { name: "Business use" }));
+    type("VAT ID", "CZ12345678");
+    type("Legal company name", "  ");
+    expect(billing().buyer).toMatchObject({
+      legalName: "  ",
+      vatId: "CZ12345678",
+    });
+
+    type("VAT ID", "   ");
+    expect(billing().buyer).not.toHaveProperty("vatId");
+    expect((view.getByLabelText(/^VAT ID/) as HTMLInputElement).required).toBe(
+      false
     );
   });
 });
