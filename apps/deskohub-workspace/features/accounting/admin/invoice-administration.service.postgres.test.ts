@@ -11,7 +11,7 @@ import {
   AdministrationInvoiceCreateInput,
   type AdministrationInvoiceCreateInputType,
 } from "@deskohub/workspace-admin-api";
-import { Deferred, Effect, Fiber, Layer, Schema } from "effect";
+import { Deferred, Effect, Fiber, Layer, Option, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceLocks } from "@/db/workspace-locks";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
@@ -277,6 +277,204 @@ describe.skipIf(!testDatabase)(
 
       expect(results).toHaveLength(2);
       expect(createCustomer).toHaveBeenCalledTimes(1);
+    });
+
+    describe("creation claims", () => {
+      const document = makeTestManualInvoiceDocument("cs-CZ", "1000");
+      const storedInvoice = (dotyposCustomerId: string): Invoice => ({
+        id: invoiceIdSchema.make(input.invoiceId),
+        workspaceReservationId: null,
+        paymentAttemptId: null,
+        dotyposCustomerId,
+        invoiceNumber: document.invoiceNumber,
+        issuedAt: Temporal.Instant.from(document.issuedAt),
+        document,
+      });
+      const existingCustomerInput = Schema.decodeUnknownSync(
+        AdministrationInvoiceCreateInput
+      )({
+        ...input,
+        customer: {
+          kind: "existing",
+          customerId: "dotypos-customer-selected",
+          details: input.customer.details,
+        },
+      });
+
+      const claimLayer = (
+        claim: "claimed" | "completed" | "in-progress" | "mismatch",
+        stored: Invoice | null
+      ) => {
+        const calls = {
+          findById: mock(() => Effect.succeed(stored)),
+          issueManual: mock(
+            (
+              invoiceInput: Parameters<
+                InvoiceRepository["Service"]["issueManual"]
+              >[0]
+            ) =>
+              Effect.succeed({
+                invoice: storedInvoice(invoiceInput.dotyposCustomerId),
+                changed: stored === null,
+              } as ManualInvoiceIssuance)
+          ),
+          complete: mock(() => Effect.void),
+          getCustomer: mock(() =>
+            Effect.succeed(
+              Option.some({ id: "dotypos-customer-selected" } as never)
+            )
+          ),
+          updateCustomerDetails: mock(() =>
+            Effect.succeed({ id: "dotypos-customer-selected" } as never)
+          ),
+          createCustomer: mock(() =>
+            Effect.succeed({ id: "dotypos-customer-created" } as never)
+          ),
+        };
+        const layer = InvoiceAdministrationService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(DotyposService, {
+                findCustomer: () =>
+                  Effect.succeed(FindCustomerResult.NotFound({ matches: [] })),
+                getCustomer: calls.getCustomer,
+                updateCustomerDetails: calls.updateCustomerDetails,
+                createCustomer: calls.createCustomer,
+              }),
+              Layer.mock(InvoiceRepository, {
+                findById: calls.findById,
+                issueManual: calls.issueManual,
+              }),
+              deliveryLedger(),
+              Layer.mock(InvoiceEmailDeliveryService, {
+                deliverByInvoiceId: () =>
+                  Effect.succeed({
+                    status: "delivered",
+                    changed: false,
+                  } satisfies InvoiceEmailDeliveryResult),
+              }),
+              Layer.mock(ManualInvoiceCreationRequests, {
+                claim: () => Effect.succeed({ kind: claim } as const),
+                complete: calls.complete,
+              } as never),
+              testDatabase!.layer
+            )
+          )
+        );
+        return { calls, layer };
+      };
+
+      const createWith = (
+        layer: ReturnType<typeof claimLayer>["layer"],
+        invoice: AdministrationInvoiceCreateInputType = input
+      ) =>
+        Effect.gen(function* () {
+          const service = yield* InvoiceAdministrationService;
+          return yield* create(service, invoice);
+        }).pipe(Effect.provide(layer), Effect.flip, Effect.runPromise);
+
+      test("refuses a reused invoice id before reading the invoice", async () => {
+        const { calls, layer } = claimLayer("mismatch", null);
+
+        const error = await createWith(layer);
+
+        expect(error).toMatchObject({
+          _tag: "InvoiceAdministrationCustomerError",
+          reason: "invoice-id-reused",
+        });
+        expect(calls.findById).not.toHaveBeenCalled();
+        expect(calls.issueManual).not.toHaveBeenCalled();
+      });
+
+      test("asks to retry while the same invoice is still being created", async () => {
+        const { calls, layer } = claimLayer("in-progress", null);
+
+        const error = await createWith(layer);
+
+        expect(error).toMatchObject({
+          _tag: "InvoiceAdministrationInProgressError",
+          invoiceId: input.invoiceId,
+        });
+        expect(calls.findById).not.toHaveBeenCalled();
+        expect(calls.issueManual).not.toHaveBeenCalled();
+      });
+
+      test("fails a completed request whose invoice is gone", async () => {
+        const { calls, layer } = claimLayer("completed", null);
+
+        const error = await createWith(layer);
+
+        expect(error).toMatchObject({
+          _tag: "ManualInvoiceCreationRequestError",
+        });
+        expect(calls.issueManual).not.toHaveBeenCalled();
+        expect(calls.complete).not.toHaveBeenCalled();
+      });
+
+      test("reissues a completed request to the stored invoice's customer without resolving one", async () => {
+        const { calls, layer } = claimLayer(
+          "completed",
+          storedInvoice("dotypos-customer-stored")
+        );
+
+        const result = await Effect.gen(function* () {
+          const service = yield* InvoiceAdministrationService;
+          return yield* create(service, input);
+        }).pipe(Effect.provide(layer), Effect.runPromise);
+
+        expect(result).toMatchObject({
+          invoiceId: input.invoiceId,
+          changed: false,
+        });
+        expect(calls.issueManual).toHaveBeenCalledWith(
+          expect.objectContaining({
+            dotyposCustomerId: "dotypos-customer-stored",
+          })
+        );
+        expect(calls.createCustomer).not.toHaveBeenCalled();
+        expect(calls.getCustomer).not.toHaveBeenCalled();
+        expect(calls.complete).not.toHaveBeenCalled();
+      });
+
+      test("reissues a completed request to the customer it selects", async () => {
+        const { calls, layer } = claimLayer(
+          "completed",
+          storedInvoice("dotypos-customer-stored")
+        );
+
+        await Effect.gen(function* () {
+          const service = yield* InvoiceAdministrationService;
+          return yield* create(service, existingCustomerInput);
+        }).pipe(Effect.provide(layer), Effect.runPromise);
+
+        expect(calls.issueManual).toHaveBeenCalledWith(
+          expect.objectContaining({
+            dotyposCustomerId: "dotypos-customer-selected",
+          })
+        );
+        expect(calls.getCustomer).not.toHaveBeenCalled();
+        expect(calls.updateCustomerDetails).not.toHaveBeenCalled();
+      });
+
+      test("issues a claimed request to its selected existing customer and completes the claim", async () => {
+        const { calls, layer } = claimLayer("claimed", null);
+
+        const result = await Effect.gen(function* () {
+          const service = yield* InvoiceAdministrationService;
+          return yield* create(service, existingCustomerInput);
+        }).pipe(Effect.provide(layer), Effect.runPromise);
+
+        expect(result).toMatchObject({ changed: true });
+        expect(calls.getCustomer).toHaveBeenCalledTimes(1);
+        expect(calls.updateCustomerDetails).toHaveBeenCalledTimes(1);
+        expect(calls.createCustomer).not.toHaveBeenCalled();
+        expect(calls.issueManual).toHaveBeenCalledWith(
+          expect.objectContaining({
+            dotyposCustomerId: "dotypos-customer-selected",
+          })
+        );
+        expect(calls.complete).toHaveBeenCalledTimes(1);
+      });
     });
 
     test("the creation lock serializes creation per invoice ID", async () => {

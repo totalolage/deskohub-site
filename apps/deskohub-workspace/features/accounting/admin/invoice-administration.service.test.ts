@@ -19,7 +19,10 @@ import {
   type InvoiceDeliverySummary,
   InvoiceEmailDeliveryRepository,
 } from "../backend/invoice-email-delivery.repository";
-import { InvoiceEmailDeliveryService } from "../backend/invoice-email-delivery.service";
+import {
+  type InvoiceEmailDeliveryResult,
+  InvoiceEmailDeliveryService,
+} from "../backend/invoice-email-delivery.service";
 import {
   type InvoiceAdministrationListItem,
   InvoiceAdministrationService,
@@ -176,6 +179,180 @@ describe("InvoiceAdministrationService", () => {
       { displayName: "Unnamed customer", hasName: false },
       { displayName: email, hasName: true },
     ]);
+  });
+
+  test("projects searched customers' billing details and skips deleted or id-less ones", async () => {
+    const businessEmail = testEmailAddress("business-search");
+    const personEmail = testEmailAddress("person-search");
+    const layer = InvoiceAdministrationService.Default.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(DotyposService, {
+            searchCustomers: () =>
+              Effect.succeed([
+                {
+                  id: "dotypos-customer-business",
+                  companyName: " Synthetic s.r.o. ",
+                  companyId: " 12345678 ",
+                  vatId: " CZ12345678 ",
+                  firstName: " Ada ",
+                  email: ` ${businessEmail} `,
+                  phone: " +420 777 000 000 ",
+                  addressLine1: " Test street 1 ",
+                  addressLine2: " Floor 2 ",
+                  city: " Prague ",
+                  zip: " 100 00 ",
+                  country: " sk ",
+                },
+                {
+                  id: "dotypos-customer-person",
+                  firstName: "Grace",
+                  lastName: "Hopper",
+                  email: personEmail,
+                  phone: "  ",
+                  addressLine2: " ",
+                  vatId: "CZ0",
+                },
+                { id: "dotypos-customer-deleted", deleted: true },
+                { companyName: "No id" },
+              ] as never),
+          }),
+          Layer.mock(InvoiceRepository, {}),
+          Layer.mock(InvoiceEmailDeliveryRepository, {}),
+          Layer.mock(InvoiceEmailDeliveryService, {}),
+          Layer.mock(ManualInvoiceCreationRequests, {}),
+          Layer.mock(WorkspaceDatabase, {})
+        )
+      )
+    );
+
+    const customers = await Effect.gen(function* () {
+      const service = yield* InvoiceAdministrationService;
+      return yield* service.searchCustomers("synthetic");
+    }).pipe(Effect.provide(layer), Effect.runPromise);
+
+    expect(customers).toEqual([
+      {
+        id: "dotypos-customer-business",
+        displayName: "Synthetic s.r.o.",
+        hasName: true,
+        email: businessEmail,
+        details: {
+          kind: "business",
+          companyName: "Synthetic s.r.o.",
+          companyId: "12345678",
+          vatId: "CZ12345678",
+          email: businessEmail,
+          phone: "+420 777 000 000",
+          firstName: "Ada",
+          lastName: undefined,
+          address: {
+            line1: "Test street 1",
+            line2: "Floor 2",
+            city: "Prague",
+            postalCode: "100 00",
+            country: "SK",
+          },
+        },
+      },
+      {
+        id: "dotypos-customer-person",
+        displayName: "Grace Hopper",
+        hasName: true,
+        email: personEmail,
+        details: {
+          kind: "person",
+          firstName: "Grace",
+          lastName: "Hopper",
+          email: personEmail,
+          address: {
+            line1: "",
+            city: "",
+            postalCode: "",
+            country: "CZ",
+          },
+        },
+      },
+    ]);
+  });
+
+  describe("retrying an invoice's email delivery", () => {
+    const stored = makeTestManualInvoiceDocument("en-US");
+    const invoice = {
+      id: stored.invoiceId,
+      workspaceReservationId: null,
+      paymentAttemptId: null,
+      dotyposCustomerId: stored.dotyposCustomerId,
+      invoiceNumber: stored.invoiceNumber,
+      issuedAt: Temporal.Instant.from(stored.issuedAt),
+      document: stored,
+    } satisfies Invoice;
+
+    const retryWith = (
+      found: Invoice | null,
+      delivery: InvoiceEmailDeliveryResult,
+      summary: InvoiceDeliverySummary = deliveredEverywhere
+    ) => {
+      const deliverByInvoiceId = mock(() => Effect.succeed(delivery));
+      const layer = InvoiceAdministrationService.Default.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.mock(DotyposService, {}),
+            Layer.mock(InvoiceRepository, {
+              findById: () => Effect.succeed(found),
+            }),
+            deliveryLedger(() => summary),
+            Layer.mock(InvoiceEmailDeliveryService, { deliverByInvoiceId }),
+            Layer.mock(ManualInvoiceCreationRequests, {}),
+            Layer.mock(WorkspaceDatabase, {})
+          )
+        )
+      );
+      const run = Effect.gen(function* () {
+        const service = yield* InvoiceAdministrationService;
+        return yield* service.retry(invoice.id);
+      }).pipe(Effect.provide(layer));
+      return { deliverByInvoiceId, run };
+    };
+
+    test("reports a delivery that sent something and the remaining attention", async () => {
+      const { deliverByInvoiceId, run } = retryWith(
+        invoice,
+        { status: "delivered", changed: true },
+        { customer: "accepted", internal: "failed", needsAttention: true }
+      );
+
+      expect(await Effect.runPromise(run)).toEqual({
+        invoiceId: AdministrationInvoiceId.make(invoice.id),
+        changed: true,
+        needsAttention: true,
+      });
+      expect(deliverByInvoiceId).toHaveBeenCalledWith({
+        invoiceId: invoice.id,
+      });
+    });
+
+    test("reports no change when the delivery found nothing to send", async () => {
+      const { run } = retryWith(invoice, { status: "not_issued" });
+
+      expect(await Effect.runPromise(run)).toMatchObject({
+        changed: false,
+        needsAttention: false,
+      });
+    });
+
+    test("fails as not found without delivering for an unknown invoice", async () => {
+      const { deliverByInvoiceId, run } = retryWith(null, {
+        status: "delivered",
+        changed: true,
+      });
+
+      expect(await Effect.runPromise(Effect.flip(run))).toMatchObject({
+        _tag: "InvoiceAdministrationNotFoundError",
+        invoiceId: invoice.id,
+      });
+      expect(deliverByInvoiceId).not.toHaveBeenCalled();
+    });
   });
 
   test("renders a PDF preview without touching providers or persistence", async () => {
