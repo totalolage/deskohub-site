@@ -185,7 +185,7 @@ const assertKnownFiles = async (path: string, owners: readonly string[]) => {
 const addIds = (target: Set<string>, value: unknown) => {
   if (
     !Array.isArray(value) ||
-    !value.every((id) => typeof id === "string" && id.length > 0)
+    !value.every((id): id is string => typeof id === "string" && id.length > 0)
   ) {
     throw new Error("Unknown journal owner identity");
   }

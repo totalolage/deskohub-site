@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -76,4 +76,27 @@ test("unknown owner/case/run/interval and missing pre-create coverage are reject
     expect(() => parse(value)).toThrow();
   }
   expect(parse([intent("valid")])).toHaveLength(1);
+});
+
+test("malformed persisted intent identities cannot be overwritten", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "reservation-intent-"));
+  const path = join(directory, "account-lane.json");
+  try {
+    for (const entry of [null, "unknown", {}, { id: 1 }]) {
+      const contents = JSON.stringify({ reservationIntents: [entry] });
+      await writeFile(path, contents, { mode: 0o600 });
+      const failure = await writeReservationJournal(
+        path,
+        {},
+        intent("next")
+      ).then(
+        () => undefined,
+        (cause: unknown) => cause
+      );
+      expect(failure).toBeInstanceOf(Error);
+      expect(await readFile(path, "utf8")).toBe(contents);
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });

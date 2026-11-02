@@ -24,7 +24,17 @@ export const writeReservationJournal = (
   const write = previous.then(async () => {
     const existing = await readReservationJournal(path);
     const intents = existing?.reservationIntents ?? [];
-    if (!Array.isArray(intents)) throw new Error("Invalid reservation intents");
+    if (
+      !Array.isArray(intents) ||
+      !intents.every(
+        (entry): entry is { readonly id: string } =>
+          typeof entry === "object" &&
+          entry !== null &&
+          "id" in entry &&
+          typeof entry.id === "string"
+      )
+    )
+      throw new Error("Invalid reservation intents");
     await writeJsonAtomically(path, {
       ...existing,
       ...value,

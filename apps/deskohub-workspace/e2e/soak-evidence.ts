@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { Clock, Effect } from "effect";
 import { getDatasourceConfig } from "./config";
 import type { E2EEnvironment } from "./e2e-env";
-import { tryWorkspaceE2EPromise } from "./errors";
+import { tryWorkspaceE2EPromise, workspaceE2EError } from "./errors";
 import { E2EDatabase } from "./integrations/database.service";
 import { getDotyposLayer } from "./integrations/dotypos";
 import {
@@ -41,7 +41,7 @@ export const captureSoakEvidence = Effect.fn("E2E.captureSoakEvidence")(
     );
     const capturedAt = nativeTimestamp(yield* Clock.currentTimeNanos);
     if (capturedAt < native.completedAt) {
-      return yield* Effect.fail(new Error("Evidence clock ordering failed"));
+      return yield* workspaceE2EError("Evidence clock ordering failed");
     }
     const receipt = makeSoakReceipt({
       environment,
