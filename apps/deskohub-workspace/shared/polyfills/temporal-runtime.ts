@@ -159,13 +159,16 @@ function isFunction(value: unknown): value is (...args: never[]) => unknown {
 
 type TemporalNamespaceApis = TemporalApis[string];
 
+/** A namespace of the host's Temporal global, which may be missing or partial. */
+// biome-ignore lint/plugin: a namespace of a host global that may be partial.
+type HostTemporalNamespace = Record<string, unknown> | undefined;
+
 /**
  * Whether a namespace with instance members is a constructor, as a class
  * must be. `Reflect.construct` throws if it isn't, without calling it.
  */
 function isConstructibleWhereClass(
-  // biome-ignore lint/plugin: a namespace of a host global that may be partial.
-  namespace: Record<string, unknown> | undefined,
+  namespace: HostTemporalNamespace,
   members: TemporalNamespaceApis
 ): boolean {
   if (members.methods === undefined && members.getters === undefined) {
@@ -178,8 +181,7 @@ function isConstructibleWhereClass(
 
 /** Whether every static member of a namespace is a function. */
 function hasStaticFunctions(
-  // biome-ignore lint/plugin: a namespace of a host global that may be partial.
-  namespace: Record<string, unknown> | undefined,
+  namespace: HostTemporalNamespace,
   members: TemporalNamespaceApis
 ): boolean {
   return (members.static ?? []).every((member) =>
@@ -194,8 +196,7 @@ function hasStaticFunctions(
  * `Object.prototype`'s `toString` doesn't count.
  */
 function hasInstanceFunctions(
-  // biome-ignore lint/plugin: a namespace of a host global that may be partial.
-  namespace: Record<string, unknown> | undefined,
+  namespace: HostTemporalNamespace,
   members: TemporalNamespaceApis
 ): boolean {
   const prototype = Object(namespace?.prototype);
@@ -247,8 +248,7 @@ export function isTemporalComplete(
   timeZone: string
 ): boolean {
   try {
-    // biome-ignore lint/plugin: the namespaces of a host global that may be partial.
-    const namespaces = temporal as Record<string, Record<string, unknown>>;
+    const namespaces = temporal as Record<string, HostTemporalNamespace>;
     return (
       Object.entries(apis).every(([name, members]) => {
         const namespace = namespaces[name];
