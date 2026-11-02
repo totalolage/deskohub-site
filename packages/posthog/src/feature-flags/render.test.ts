@@ -32,6 +32,34 @@ describe("renderPostHogFeatureFlagContract", () => {
     expect(contract).toContain("readonly payload: string | undefined | {");
   });
 
+  test("renders empty, nested, null and too-deep payload structures", async () => {
+    const tooDeep = '{"a":{"b":{"c":{"d":{"e":{"f":{"g":{"h":1}}}}}}}}';
+    const contract = await Effect.runPromise(
+      renderPostHogFeatureFlagContract([
+        {
+          key: "shapes",
+          payloads: {
+            empty: '{"list":[],"settings":{}}',
+            nested: '{"rooms":[{"open":null,"seats":2}]}',
+          },
+          variants: ["empty", "nested"],
+        },
+        { key: "too_deep", payloads: { deep: tooDeep }, variants: ["deep"] },
+        { key: "unparsed", payloads: { raw: [1, "two"] }, variants: ["raw"] },
+      ])
+    );
+
+    expect(contract).toContain(
+      'readonly payload: undefined | { readonly "list": readonly (unknown)[]; readonly "settings": Readonly<Record<string, never>>; } | { readonly "rooms": readonly ({ readonly "open": null; readonly "seats": number; })[]; };'
+    );
+    expect(contract).toContain(
+      'readonly payload: undefined | { readonly "a": { readonly "b": { readonly "c": { readonly "d": { readonly "e": { readonly "f": { readonly "g": unknown; }; }; }; }; }; }; };'
+    );
+    expect(contract).toContain(
+      "readonly payload: readonly (number | string)[] | undefined;"
+    );
+  });
+
   test("never copies configured payload values into generated source", async () => {
     const contract = await Effect.runPromise(
       renderPostHogFeatureFlagContract([
