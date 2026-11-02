@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Schema } from "effect";
 import type { EmailCustomerField } from "./email-customer-selection";
 import { emailValueSnapshotForDefinition } from "./email-value-snapshot";
@@ -92,8 +93,8 @@ describe("emailValueSnapshotForDefinition", () => {
       } satisfies EmailCustomerField,
     });
 
-    expect(accepts(current, resolved("customer@example.invalid"))).toBe(true);
-    expect(accepts(frozen, resolved("customer@example.invalid"))).toBe(false);
+    expect(accepts(current, resolved(testEmailAddress("customer")))).toBe(true);
+    expect(accepts(frozen, resolved(testEmailAddress("customer")))).toBe(false);
   });
 
   test("rejects every value of a customer source that left the catalogue", () => {
