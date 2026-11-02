@@ -34,7 +34,7 @@ const getRequestDurationKey = ({
   getMeetingRoomReservationDurationKey(reservation.details.duration);
 
 /** Each duration option's settled meeting-room price, keyed by duration. */
-export const getAdvertisedPricesByDuration = (
+const getAdvertisedPricesByDuration = (
   requests: ReadonlyArray<MeetingRoomAdvertisedPriceRequest>,
   queryResults: ReadonlyArray<AdvertisedPriceQueryResult>
 ) => {
@@ -59,7 +59,7 @@ export const getAdvertisedPricesByDuration = (
 };
 
 /** The selected duration's price state the checkout form submits and shows. */
-export const getMeetingRoomCheckoutAdvertisedPrice = ({
+const getMeetingRoomCheckoutAdvertisedPrice = ({
   advertisedPrice,
   durationKey,
   locale,

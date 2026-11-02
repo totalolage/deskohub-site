@@ -17,7 +17,7 @@ type AvailabilityQueryResult = ReturnType<typeof useReservationAvailability>;
  * The message that blocks checkout: the room is taken for the selected
  * interval, or, once nothing loads any more, its availability failed.
  */
-export const getMeetingRoomUnavailableMessage = ({
+const getMeetingRoomUnavailableMessage = ({
   hasQuery,
   locale,
   queryResult: { availability, isError, isPending },
