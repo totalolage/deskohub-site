@@ -811,6 +811,124 @@ describe("CloudinaryService destroys", () => {
   });
 });
 
+describe("CloudinaryService prefix delete page decoding", () => {
+  const accountPrefix = () => cloudinaryPublicId("avatars/staging/account/");
+  const deleteByPrefix = async (page: unknown) => {
+    queuedPrefixDeleteResults = [page];
+    const service = await makeService();
+    return Effect.runPromise(
+      service
+        .deleteResourcesByPublicIdPrefix(accountPrefix())
+        .pipe(Effect.result)
+    );
+  };
+
+  test.each([
+    ["a null response", null],
+    ["a text response", "deleted"],
+    ["an array response", []],
+    ["a missing deleted map", { partial: false }],
+    ["a null deleted map", { deleted: null, partial: false }],
+    ["an array deleted map", { deleted: [], partial: false }],
+    ["a missing partial flag", { deleted: {} }],
+    ["a pending deletion", { deleted: { one: "pending" }, partial: false }],
+    [
+      "a partial page without a cursor",
+      { deleted: { one: "deleted" }, partial: true },
+    ],
+    [
+      "a partial page with an empty cursor",
+      { deleted: {}, partial: true, next_cursor: "" },
+    ],
+    [
+      "a partial page with a numeric cursor",
+      { deleted: {}, partial: true, next_cursor: 2 },
+    ],
+    [
+      "a final page with a null cursor",
+      { deleted: {}, partial: false, next_cursor: null },
+    ],
+  ])("leaves the sweep uncertain on %s without retrying", async (_, page) => {
+    const result = await deleteByPrefix(page);
+
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure._tag).toBe("CloudinaryPrefixDeleteError");
+      expect(result.failure.outcome).toBe("uncertain");
+      expect(result.failure.httpCode).toBeUndefined();
+    }
+    expect(prefixDeleteCalls).toHaveLength(1);
+  });
+
+  test("accepts a final page of deleted and already missing assets", async () => {
+    const result = await deleteByPrefix({
+      deleted: { one: "deleted", two: "not found" },
+      partial: false,
+    });
+
+    expect(result._tag).toBe("Success");
+    expect(prefixDeleteCalls).toHaveLength(1);
+  });
+});
+
+describe("CloudinaryService rename failure classification", () => {
+  const renameRejectedWith = async (rejection: unknown) => {
+    queuedRenameResults = [{ throw: rejection }];
+    const service = await makeService();
+    return Effect.runPromise(
+      service
+        .renameAsset(
+          cloudinaryPublicId("avatars/staged/abc123"),
+          galleryImagePublicId
+        )
+        .pipe(Effect.result)
+    );
+  };
+
+  test.each([
+    ["a 409 conflict", { http_code: 409 }, "target-exists", 409],
+    [
+      "an upper-case existing-target message",
+      { http_code: 400, message: "Public ID Already Exists" },
+      "target-exists",
+      400,
+    ],
+    [
+      "a nested existing-target message",
+      { error: { http_code: 400, message: "Resource already exists" } },
+      "target-exists",
+      400,
+    ],
+    [
+      "a 404 for the source",
+      { http_code: 404, message: "Resource not found" },
+      "source-missing",
+      404,
+    ],
+    ["another 4xx failure", { http_code: 400 }, "failed", 400],
+    ["a non-text message", { message: 42 }, "failed", undefined],
+    ["a primitive rejection", "rename failed", "failed", undefined],
+    ["a null rejection", null, "failed", undefined],
+  ])(
+    "classifies %s without retrying",
+    async (_, rejection, reason, httpCode) => {
+      const result = await renameRejectedWith(rejection);
+
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        expect(result.failure).toMatchObject({
+          _tag: "CloudinaryRenameError",
+          fromPublicId: "avatars/staged/abc123",
+          toPublicId: "gallery/image",
+          reason,
+          httpCode,
+        });
+      }
+      expect(renameAttempts).toBe(1);
+    }
+  );
+});
+
 describe("CloudinaryService renames", () => {
   test("renames an asset without overwrite by default", async () => {
     queuedRenameResults = [asset];
