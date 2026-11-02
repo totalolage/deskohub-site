@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
+import { testEmailAddress } from "@deskohub/test-email";
 import { CliAccessToken, CliSessionId } from "@deskohub/workspace-admin-api";
 import { BunServices } from "@effect/platform-bun";
 import { Console, Effect, Layer, Option, Redacted, Schema } from "effect";
@@ -645,7 +646,7 @@ describe("dhw invoices", () => {
 describe("dhw customers", () => {
   const withEmail = {
     displayName: "Email Customer",
-    email: "customer@example.test",
+    email: testEmailAddress("customer"),
     phone: "+420 600 000 001",
   };
   const withPhone = {
@@ -687,7 +688,7 @@ describe("dhw customers", () => {
     expect(text.calls).toEqual([["listCustomers", {}]]);
     expect(text.output).toEqual([
       "Customers: 2 total · page 1/3",
-      "customer-1\tEmail Customer\tcustomer@example.test\t1 reservations\t2026-08-10T09:00:00Z",
+      `customer-1\tEmail Customer\t${withEmail.email}\t1 reservations\t2026-08-10T09:00:00Z`,
       "customer-2\tPhone Customer\t+420 600 000 002\t2 reservations\t2026-08-10T09:00:00Z",
       "customer-3\tQuiet Customer\tNo contact details\t3 reservations\t2026-08-10T09:00:00Z",
       "customer-4\tDetails unavailable\tNo contact details\t4 reservations\t2026-08-10T09:00:00Z",
@@ -725,12 +726,12 @@ describe("dhw customers", () => {
     expect(json.output).toEqual([JSON.stringify(ambiguous)]);
     expect(text.output).toEqual([
       "Multiple customers matched:",
-      "customer-1\tEmail Customer\tcustomer@example.test",
+      `customer-1\tEmail Customer\t${withEmail.email}`,
       "customer-2\tPhone Customer\t+420 600 000 002",
       "customer-3\tQuiet Customer\tNo contact details",
     ]);
     expect(exact.output).toEqual([
-      "customer-1\tEmail Customer\tcustomer@example.test",
+      `customer-1\tEmail Customer\t${withEmail.email}`,
     ]);
     expect(none.output).toEqual(["No customer matched."]);
   });
@@ -766,7 +767,7 @@ describe("dhw customers", () => {
     expect(json.calls).toEqual([["getCustomer", "customer-1"]]);
     expect(json.output).toEqual([JSON.stringify(detail(withEmail))]);
     expect(email.output).toEqual([
-      "customer-1\tEmail Customer\tcustomer@example.test",
+      `customer-1\tEmail Customer\t${withEmail.email}`,
       "4 reservations · 2 discount codes · 1 code claims",
       "Favorite product: Cowork",
     ]);
