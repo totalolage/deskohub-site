@@ -31,10 +31,7 @@ import type {
   StoredDiscountId,
   VoucherId,
 } from "@/features/discounts/persistence-contracts";
-import {
-  getWorkspaceProductTargetKey,
-  type WorkspaceProductTarget,
-} from "@/features/discounts/product-target";
+import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
 import { generatePromotionCode } from "@/features/discounts/promotion-code";
 import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
@@ -53,15 +50,10 @@ import {
 import { Input } from "@/shared/components/ui/input";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
 import {
-  defaultWorkspaceCurrencyCode,
   findWorkspaceCurrencyDefinition,
   workspaceCurrencyDefinitions,
 } from "@/shared/money/currencies";
 import { formatMoney, type Money } from "@/shared/money/money";
-import {
-  temporalInstantToLocalDateTimeString,
-  workspaceSiteConstants,
-} from "@/shared/utils";
 import { formatCount } from "@/shared/utils/number";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { mutateDiscountAdmin } from "./actions";
@@ -72,6 +64,11 @@ import {
 } from "./calendar-sale-display";
 import type { DiscountAdminMutation } from "./contracts";
 import type { AdminCalendarSale } from "./discount-administration.service";
+import {
+  discountCodeFormDefaults,
+  discountDefinitionFormDefaults,
+  voucherFormDefaults,
+} from "./form-defaults";
 import {
   toCreateDiscountCodeInput,
   toCreateDiscountInput,
@@ -87,6 +84,10 @@ import {
   type DiscountDefinitionFormValues,
   type VoucherFormValues,
 } from "./form-schemas";
+import {
+  type MutationFormFeedback,
+  reconcileMutationFormFeedback,
+} from "./mutation-form-feedback";
 import {
   discountProductTargetOptions,
   formatDiscountProductTargets,
@@ -930,12 +931,9 @@ function MutationForm<Input extends FieldValues, Values = Input>({
 }) {
   const router = useRouter();
   const locale = useRouteLocale();
-  const [feedback, setFeedback] = useState<{
-    readonly kind: "error" | "success";
-    readonly message: string;
-    /** The form values this feedback was shown with; unset until it renders. */
-    readonly formValues?: Input;
-  } | null>(null);
+  const [feedback, setFeedback] = useState<MutationFormFeedback<Input> | null>(
+    null
+  );
   const form = useForm<Input, unknown, Values>({
     defaultValues,
     mode: "onSubmit",
@@ -949,11 +947,11 @@ function MutationForm<Input extends FieldValues, Values = Input>({
     control: form.control,
     compute: (values) => values,
   });
-  // New feedback adopts the values it first renders with, which already
-  // include a success reset; any later edit to those values clears it.
-  if (feedback && feedback.formValues !== formValues) {
-    setFeedback(feedback.formValues ? null : { ...feedback, formValues });
-  }
+  const reconciledFeedback = reconcileMutationFormFeedback(
+    feedback,
+    formValues
+  );
+  if (reconciledFeedback !== feedback) setFeedback(reconciledFeedback);
   // Snapshot taken at submit entry so the success reset cannot absorb values
   // edited while the request is in flight.
   const submittedValuesRef = useRef<Input | null>(null);
@@ -1618,71 +1616,6 @@ function VoucherCreditFields(_props: { readonly credit?: Money | null }) {
     </fieldset>
   );
 }
-
-const discountDefinitionFormDefaults = (
-  discount?: DiscountTableItem
-): DiscountDefinitionFormValues => ({
-  labelEn: discount?.labels["en-US"] ?? "",
-  labelCs: discount?.labels["cs-CZ"] ?? "",
-  adjustmentKind: discount?.adjustment.kind ?? "percentage",
-  percentage:
-    discount?.adjustment.kind === "percentage"
-      ? String(discount.adjustment.basisPoints / 100)
-      : "10",
-  fixedAmountValue:
-    discount?.adjustment.kind === "fixed"
-      ? String(discount.adjustment.amount.value)
-      : "10000",
-  fixedAmountCurrency:
-    discount?.adjustment.kind === "fixed"
-      ? discount.adjustment.amount.currency
-      : defaultWorkspaceCurrencyCode,
-  products: discount?.products.map(getWorkspaceProductTargetKey) ?? [],
-});
-
-const discountCodeFormDefaults = (
-  code?: DiscountCodeTableItem
-): DiscountCodeFormValues => ({
-  discountId: code?.discountId ?? "",
-  ...discountCodeConfigurationFormDefaults(code),
-});
-
-const discountCodeConfigurationFormDefaults = (
-  item?: DiscountCodeTableItem | VoucherTableItem
-): DiscountCodeConfigurationFormValues => ({
-  code: item?.code ?? "",
-  enabled: item?.enabled ?? true,
-  validFrom: toDateTimeInputValue(item?.validFrom),
-  validUntil: toDateTimeInputValue(item?.validUntil),
-  maxUses:
-    item && "maxUses" in item && item.maxUses !== null
-      ? String(item.maxUses)
-      : "",
-  maxUsesPerCustomer:
-    item && "maxUsesPerCustomer" in item && item.maxUsesPerCustomer !== null
-      ? String(item.maxUsesPerCustomer)
-      : "",
-});
-
-const voucherFormDefaults = (
-  voucher?: VoucherTableItem
-): VoucherFormValues => ({
-  voucherValue: voucher ? String(voucher.issuedCredit.value) : "10000",
-  voucherCurrency:
-    voucher?.issuedCredit.currency ?? defaultWorkspaceCurrencyCode,
-  code: voucher?.code ?? "",
-  enabled: voucher?.enabled ?? true,
-  validFrom: toDateTimeInputValue(voucher?.validFrom),
-  validUntil: toDateTimeInputValue(voucher?.validUntil),
-});
-
-const toDateTimeInputValue = (value: string | null | undefined) =>
-  value
-    ? temporalInstantToLocalDateTimeString({
-        instant: Temporal.Instant.from(value),
-        timeZone: workspaceSiteConstants.location.timeZone,
-      })
-    : "";
 
 const fieldId = (name: string, id?: string) => (id ? `${name}-${id}` : name);
 

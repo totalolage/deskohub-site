@@ -37,6 +37,7 @@ const { act, cleanup, fireEvent, render, waitFor, within } = await import(
 const refresh = mock();
 const back = mock();
 const replace = mock();
+const push = mock();
 const emptyReservationActivity = {
   from: "2025-08-25",
   to: "2026-08-24",
@@ -49,6 +50,7 @@ mock.module("next/navigation", () => ({
     back,
     refresh,
     replace,
+    push,
   }),
   // The administration's export control runs browser Effects, whose runner
   // rethrows only Next control flow, which these tests never raise.
@@ -224,6 +226,7 @@ describe("discount administration pages", () => {
     back.mockClear();
     refresh.mockClear();
     replace.mockClear();
+    push.mockClear();
     workspaceUseAction.mockReset();
     workspaceUseAction.mockReturnValue({
       execute: mock(),
@@ -1719,6 +1722,118 @@ describe("discount administration pages", () => {
 
     fireEvent.input(labelEn(), { target: { value: "Summer promo" } });
     expect(view.queryByRole("status")).toBeNull();
+  });
+
+  describe("deleting", () => {
+    const originalConfirm = globalThis.confirm;
+    const confirmDeletion = mock(() => true);
+
+    beforeEach(() => {
+      confirmDeletion.mockReset();
+      confirmDeletion.mockReturnValue(true);
+      globalThis.confirm = confirmDeletion;
+    });
+
+    afterEach(() => {
+      globalThis.confirm = originalConfirm;
+    });
+
+    const voucher: VoucherTableItem = {
+      id: "019c91dd-c560-7e55-b9d8-c95065efd58d" as VoucherTableItem["id"],
+      code: "GIFT100",
+      issuedCredit: { value: 10_000, exponent: 2, currency: "CZK" },
+      remainingCredit: { value: 10_000, exponent: 2, currency: "CZK" },
+      enabled: true,
+      validFrom: null,
+      validUntil: null,
+      audienceSize: 0,
+      reservedUses: 0,
+      redeemedUses: 0,
+    };
+
+    test("deletes a voucher only after confirmation and then leaves for the redirect", async () => {
+      const captured = captureWorkspaceActions();
+      const { m } = await import("@/features/administration/i18n");
+      const { VoucherEditor } = await import("./admin-tables");
+      const view = render(
+        <VoucherEditor
+          deletable
+          deleteRedirect="/admin/vouchers"
+          voucher={voucher}
+        />
+      );
+      const deleteButton = view.getByRole("button", {
+        name: m.discountsDeleteItemLabel(
+          { name: "GIFT100" },
+          { locale: "en-US" }
+        ),
+      });
+      const { execute, options } = captured("delete-voucher");
+
+      confirmDeletion.mockReturnValue(false);
+      fireEvent.click(deleteButton);
+      expect(confirmDeletion).toHaveBeenCalledTimes(1);
+      expect(execute).not.toHaveBeenCalled();
+
+      confirmDeletion.mockReturnValue(true);
+      fireEvent.click(deleteButton);
+      expect(execute).toHaveBeenCalledWith({
+        kind: "delete-voucher",
+        id: voucher.id,
+      });
+
+      // A settled request without a result changes nothing.
+      act(() => options.onSuccess({}));
+      expect(push).not.toHaveBeenCalled();
+      expect(refresh).not.toHaveBeenCalled();
+
+      act(() => options.onSuccess({ data: { notice: "Voucher deleted." } }));
+      expect(push).toHaveBeenCalledWith("/en-US/admin/vouchers");
+      expect(refresh).toHaveBeenCalledTimes(1);
+    });
+
+    test("shows why a delete failed and clears it on the next attempt", async () => {
+      const captured = captureWorkspaceActions();
+      const { m } = await import("@/features/administration/i18n");
+      const { CodesAdministrationCollection } = await import("./components");
+      const view = render(
+        <CodesAdministrationCollection dashboard={dashboard} locale="en-US" />
+      );
+      const deleteButton = view.getByRole("button", {
+        name: m.discountsDeleteItemLabel(
+          { name: "SUMMER10" },
+          { locale: "en-US" }
+        ),
+      });
+
+      fireEvent.click(deleteButton);
+      const { execute, options } = captured("delete-code");
+      expect(execute).toHaveBeenCalledWith({
+        kind: "delete-code",
+        id: dashboard.codes[0]?.id,
+      });
+
+      act(() => options.onError({ error: { serverError: "Code is in use." } }));
+      expect(view.getByRole("alert").textContent).toBe("Code is in use.");
+
+      act(() => options.onError({ error: {} }));
+      expect(view.getByRole("alert").textContent).toBe(
+        m.discountsDeleteFailed({}, { locale: "en-US" })
+      );
+
+      act(() => options.onTransportError());
+      expect(view.getByRole("alert").textContent).toBe(
+        m.discountsDeleteFailedRetry({}, { locale: "en-US" })
+      );
+
+      fireEvent.click(deleteButton);
+      expect(view.queryByRole("alert")).toBeNull();
+
+      // Without a redirect, a deleted row only refreshes the list.
+      act(() => options.onSuccess({ data: { notice: "Code deleted." } }));
+      expect(refresh).toHaveBeenCalledTimes(1);
+      expect(push).not.toHaveBeenCalled();
+    });
   });
 
   test("rejects a carried-over currency outside the catalog with the action's validation banner", async () => {
