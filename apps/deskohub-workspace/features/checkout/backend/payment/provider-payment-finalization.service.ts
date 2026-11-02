@@ -53,6 +53,10 @@ import {
   type PaymentLifecycleRepositoryError,
 } from "../repositories/payment-lifecycle.repository";
 import { getNexiCurrencyOverride } from "./nexi-currency";
+import {
+  isVerifiableNexiPaymentAttempt,
+  type VerifiableNexiPaymentAttempt,
+} from "./verifiable-nexi-payment-attempt";
 
 /**
  * An operation-free provider order, or an unattached session, still inside
@@ -589,7 +593,7 @@ function makeProviderPaymentFinalizationServiceLayer(
                 checkedAt: input.abandonmentCheckedAt,
               });
             }
-            if (!isVerifiableNexiAttempt(attempt)) {
+            if (!isVerifiableNexiPaymentAttempt(attempt)) {
               yield* Effect.logWarning(
                 "Payment finalization returned not_verifiable"
               );
@@ -621,11 +625,6 @@ function makeProviderPaymentFinalizationServiceLayer(
 type ProviderPaymentFinalizationInput = Parameters<
   IProviderPaymentFinalizationService["finalizePendingProviderPayment"]
 >[0];
-
-/** A Nexi attempt with an attached hosted payment session to verify. */
-type VerifiableNexiPaymentAttempt = NexiPaymentAttempt & {
-  readonly securityToken: string;
-};
 
 interface VerifiableAttemptFinalization {
   readonly input: ProviderPaymentFinalizationInput;
@@ -663,13 +662,6 @@ const isUnattachedProviderSession = (
 ): attempt is NexiPaymentAttempt => {
   if (!attempt || !isNexiPaymentAttempt(attempt)) return false;
   return attempt.state === "created" && !attempt.securityToken;
-};
-
-const isVerifiableNexiAttempt = (
-  attempt: PaymentAttempt | null
-): attempt is VerifiableNexiPaymentAttempt => {
-  if (!attempt || !isNexiPaymentAttempt(attempt)) return false;
-  return Boolean(attempt.securityToken);
 };
 
 // Nexi documents 404 as "Order not found" for GET /orders/{orderId}.
