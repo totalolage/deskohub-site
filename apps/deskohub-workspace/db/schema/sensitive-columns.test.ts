@@ -45,6 +45,11 @@ const sensitiveColumnsWithoutTelltaleNames = [
   // Bearer discount, voucher, and referral codes customers type in.
   "public.promotion_codes.code",
   "public.discount_codes.code",
+  // Frozen generated values and issuance credentials must never enter query logs.
+  "public.email_value_snapshots.value",
+  "public.email_discount_issuances.parameters",
+  "public.email_discount_issuances.code",
+  "public.email_discount_issuances.expires_at",
   // Magic-link and verification tokens, keyed by the login email.
   "auth.verification.identifier",
   "auth.verification.value",
@@ -56,7 +61,25 @@ const sensitiveColumnsWithoutTelltaleNames = [
   "auth.oauth_refresh_token.rotation_replay_response",
 ];
 
+const sensitiveColumnSqlTypes = new Map([
+  ["public.email_discount_issuances.expires_at", "timestamp with time zone"],
+]);
+
 const nonSensitiveColumns = new Map([
+  [
+    "public.email_campaign_automation_versions.email_id",
+    "reusable email identity",
+  ],
+  [
+    "public.email_campaign_sends.frozen_email_version_id",
+    "published email version identity",
+  ],
+  ["public.email_campaigns.email_id", "reusable email identity"],
+  [
+    "public.email_preparations.email_version_id",
+    "published email version identity",
+  ],
+  ["public.email_versions.email_id", "reusable email identity"],
   [
     "public.workspace_reservations.active_customer_email_delivery_id",
     "email provider delivery ID",
@@ -97,15 +120,16 @@ describe("sensitive schema columns", () => {
     for (const id of [
       ...sensitiveColumnsWithoutTelltaleNames,
       ...nonSensitiveColumns.keys(),
+      ...sensitiveColumnSqlTypes.keys(),
     ]) {
       expect(columnIds).toContain(id);
     }
   });
 
-  test("keeps sensitive columns plain text in the database", () => {
+  test("keeps sensitive columns in their declared database types", () => {
     expect(sensitiveColumns.length).toBeGreaterThan(0);
-    for (const { sqlType } of sensitiveColumns) {
-      expect(sqlType).toBe("text");
+    for (const { id, sqlType } of sensitiveColumns) {
+      expect(sqlType).toBe(sensitiveColumnSqlTypes.get(id) ?? "text");
     }
   });
 });
