@@ -245,14 +245,46 @@ export const requiredEmailValueNames = (
     .map((definition) => definition.name);
 };
 
+type EmailValueDefinitions = ReadonlyMap<EmailValueName, EmailValueDefinition>;
+type EmailValuedComponent = Extract<EmailBodyComponent, { value: unknown }>;
+type EmailCustomerComponent = Exclude<EmailValuedComponent, { _tag: "Offer" }>;
+
+/**
+ * Every reason the document can't be published, in a stable order: document
+ * identity, languages, value sources, each translation, then each valued
+ * component.
+ */
 export const emailPublicationProblems = (
   document: EmailDocument,
   currentLocales: readonly string[]
 ): readonly string[] => {
-  const problems: string[] = [];
-  const definitions = new Map(
+  const definitions: EmailValueDefinitions = new Map(
     document.values.map((definition) => [definition.name, definition])
   );
+  return [
+    ...documentIdentityProblems(document, definitions),
+    ...currentLocales
+      .filter((locale) => !Object.hasOwn(document.translations, locale))
+      .map((locale) => `Missing language: ${locale}.`),
+    ...document.values
+      .filter(invalidCustomerSelection)
+      .map((definition) => `Invalid customer selection: ${definition.name}.`),
+    ...Object.entries(document.translations).flatMap(([locale, translation]) =>
+      translationProblems(document.structure, definitions, locale, translation)
+    ),
+    ...document.structure.flatMap((component) =>
+      "value" in component
+        ? valuedComponentProblems(component, definitions)
+        : []
+    ),
+  ];
+};
+
+function documentIdentityProblems(
+  document: EmailDocument,
+  definitions: EmailValueDefinitions
+): readonly string[] {
+  const problems: string[] = [];
   if (definitions.size !== document.values.length)
     problems.push("Duplicate value names.");
   if (
@@ -261,114 +293,168 @@ export const emailPublicationProblems = (
   )
     problems.push("Duplicate component ids.");
   if (document.structure.length === 0) problems.push("Body is empty.");
-  for (const locale of currentLocales)
-    if (!Object.hasOwn(document.translations, locale))
-      problems.push(`Missing language: ${locale}.`);
-  for (const definition of document.values)
-    if (
-      definition.source.kind === "customer" &&
-      inspectEmailCustomerSelection(definition.source) instanceof
-        EmailCustomerSelectionInvalid
-    )
-      problems.push(`Invalid customer selection: ${definition.name}.`);
-  for (const [locale, translation] of Object.entries(document.translations)) {
-    if (
-      !translation.subject.length ||
-      translation.subject.every(
-        (part) => part._tag === "Text" && !part.text.trim()
-      )
-    )
-      problems.push(`Empty subject: ${locale}.`);
-    for (const textKey of componentTextKeys(document.structure)) {
-      if (!Object.hasOwn(translation.texts, textKey))
-        problems.push(`Missing text ${textKey}: ${locale}.`);
-      const decorative = !componentTextKeys(
-        document.structure.filter((component) => component._tag !== "Image")
-      ).includes(textKey);
-      if (
-        !decorative &&
-        !(translation.texts[textKey] ?? []).some(
-          (part) => part._tag === "Value" || part.text.trim().length > 0
-        )
-      )
-        problems.push(`Empty text ${textKey}: ${locale}.`);
-    }
-    for (const part of translatedParts(document.structure, translation)) {
-      if (
-        part._tag === "Value" &&
-        !validScalarReference(definitions.get(part.name), part.field)
-      )
-        problems.push(`Invalid scalar value ${part.name}: ${locale}.`);
-    }
-  }
-  for (const component of document.structure) {
-    if (!("value" in component)) continue;
-    const definition = definitions.get(component.value);
-    if (!definition) {
-      problems.push(`Unknown value: ${component.value}.`);
-      continue;
-    }
-    if (component._tag === "Offer") {
-      if (definition.source.kind !== "discount")
-        problems.push(`Offer requires a discount: ${component.value}.`);
-      continue;
-    }
-    if (definition.source.kind !== "customer") {
-      problems.push(
-        `Structured component requires customer data: ${component.value}.`
-      );
-      continue;
-    }
-    const source = definition.source;
-    const selected = emailCustomerFieldAtPath(
-      emailCustomerFieldCatalogue,
-      source.path
-    );
-    if (
-      !selected ||
-      (component._tag === "Record" && selected.kind !== "record") ||
-      (component._tag === "List" && selected.kind !== "list")
-    ) {
-      problems.push(`Wrong component value shape: ${component.value}.`);
-      continue;
-    }
-    const item = selected.kind === "list" ? selected.element : selected;
-    if (component._tag === "List") {
-      if (
-        component.sort &&
-        (!isEmailCustomerScalar(
-          emailCustomerFieldAtPath(item, component.sort.path)
-        ) ||
-          (item.kind === "record" &&
-            !source.fields?.some((field) =>
-              samePath(field, component.sort?.path ?? [])
-            )))
-      )
-        problems.push(`Unselected list sort field: ${component.value}.`);
-      if (
-        component.limit !== undefined &&
-        source.limit !== undefined &&
-        component.limit > source.limit
-      )
-        problems.push(
-          `List component limit exceeds selected source: ${component.value}.`
-        );
-    }
-    if (item.kind === "record" && !component.fields?.length)
-      problems.push(`Record fields required: ${component.value}.`);
-    if (
-      component.fields?.some(
-        ({ field }) =>
-          !isEmailCustomerScalar(emailCustomerFieldAtPath(item, field)) ||
-          !source.fields?.some((selectedField) =>
-            samePath(field, selectedField)
-          )
-      )
-    )
-      problems.push(`Unselected component field: ${component.value}.`);
-  }
   return problems;
-};
+}
+
+function invalidCustomerSelection(definition: EmailValueDefinition): boolean {
+  return (
+    definition.source.kind === "customer" &&
+    inspectEmailCustomerSelection(definition.source) instanceof
+      EmailCustomerSelectionInvalid
+  );
+}
+
+function translationProblems(
+  structure: readonly EmailBodyComponent[],
+  definitions: EmailValueDefinitions,
+  locale: string,
+  translation: EmailTranslation
+): readonly string[] {
+  const spokenTextKeys = componentTextKeys(
+    structure.filter((component) => component._tag !== "Image")
+  );
+  return [
+    ...(blankInline(translation.subject) ? [`Empty subject: ${locale}.`] : []),
+    ...componentTextKeys(structure).flatMap((textKey) =>
+      textKeyProblems(
+        textKey,
+        spokenTextKeys.includes(textKey),
+        locale,
+        translation
+      )
+    ),
+    ...translatedParts(structure, translation).flatMap((part) =>
+      part._tag === "Value" &&
+      !validScalarReference(definitions.get(part.name), part.field)
+        ? [`Invalid scalar value ${part.name}: ${locale}.`]
+        : []
+    ),
+  ];
+}
+
+function blankInline(parts: readonly EmailInlinePart[]): boolean {
+  return (
+    !parts.length ||
+    parts.every((part) => part._tag === "Text" && !part.text.trim())
+  );
+}
+
+/** Decorative texts, such as an image's alt text, may be empty. */
+function textKeyProblems(
+  textKey: string,
+  spoken: boolean,
+  locale: string,
+  translation: EmailTranslation
+): readonly string[] {
+  const problems: string[] = [];
+  if (!Object.hasOwn(translation.texts, textKey))
+    problems.push(`Missing text ${textKey}: ${locale}.`);
+  if (
+    spoken &&
+    !(translation.texts[textKey] ?? []).some(
+      (part) => part._tag === "Value" || part.text.trim().length > 0
+    )
+  )
+    problems.push(`Empty text ${textKey}: ${locale}.`);
+  return problems;
+}
+
+/** An Offer needs a discount; Records and Lists need a matching customer shape. */
+function valuedComponentProblems(
+  component: EmailValuedComponent,
+  definitions: EmailValueDefinitions
+): readonly string[] {
+  const definition = definitions.get(component.value);
+  if (!definition) return [`Unknown value: ${component.value}.`];
+  if (component._tag === "Offer")
+    return definition.source.kind === "discount"
+      ? []
+      : [`Offer requires a discount: ${component.value}.`];
+  if (definition.source.kind !== "customer")
+    return [`Structured component requires customer data: ${component.value}.`];
+  return customerComponentProblems(component, definition.source);
+}
+
+function customerComponentProblems(
+  component: EmailCustomerComponent,
+  source: EmailCustomerSelection
+): readonly string[] {
+  const selected = emailCustomerFieldAtPath(
+    emailCustomerFieldCatalogue,
+    source.path
+  );
+  if (
+    !selected ||
+    selected.kind !== (component._tag === "Record" ? "record" : "list")
+  )
+    return [`Wrong component value shape: ${component.value}.`];
+  const item = selected.kind === "list" ? selected.element : selected;
+  return [
+    ...(component._tag === "List"
+      ? listBoundProblems(component, source, item)
+      : []),
+    ...componentFieldProblems(component, source, item),
+  ];
+}
+
+function listBoundProblems(
+  component: Extract<EmailBodyComponent, { _tag: "List" }>,
+  source: EmailCustomerSelection,
+  item: EmailCustomerField
+): readonly string[] {
+  const problems: string[] = [];
+  if (component.sort && !selectedSortField(component.sort.path, source, item))
+    problems.push(`Unselected list sort field: ${component.value}.`);
+  if (
+    component.limit !== undefined &&
+    source.limit !== undefined &&
+    component.limit > source.limit
+  )
+    problems.push(
+      `List component limit exceeds selected source: ${component.value}.`
+    );
+  return problems;
+}
+
+/** A list sorts by a scalar, which a list of records must also select. */
+function selectedSortField(
+  path: readonly string[],
+  source: EmailCustomerSelection,
+  item: EmailCustomerField
+): boolean {
+  return (
+    isEmailCustomerScalar(emailCustomerFieldAtPath(item, path)) &&
+    (item.kind !== "record" || selectedSourceField(source, path))
+  );
+}
+
+function componentFieldProblems(
+  component: EmailCustomerComponent,
+  source: EmailCustomerSelection,
+  item: EmailCustomerField
+): readonly string[] {
+  const problems: string[] = [];
+  if (item.kind === "record" && !component.fields?.length)
+    problems.push(`Record fields required: ${component.value}.`);
+  if (
+    component.fields?.some(
+      ({ field }) =>
+        !isEmailCustomerScalar(emailCustomerFieldAtPath(item, field)) ||
+        !selectedSourceField(source, field)
+    )
+  )
+    problems.push(`Unselected component field: ${component.value}.`);
+  return problems;
+}
+
+function selectedSourceField(
+  source: EmailCustomerSelection,
+  path: readonly string[]
+): boolean {
+  return Boolean(
+    source.fields?.some((selectedField) => samePath(path, selectedField))
+  );
+}
 
 function samePath(left: readonly string[], right: readonly string[]): boolean {
   return (
@@ -383,22 +469,31 @@ function validScalarReference(
 ): boolean {
   if (!definition) return false;
   if (definition.source.kind === "discount")
-    return (
-      field?.length === 1 && (field[0] === "code" || field[0] === "expiresAt")
-    );
+    return validDiscountReference(field);
+  return validCustomerReference(definition.source, field);
+}
+
+/** A discount exposes only its generated code and expiry. */
+function validDiscountReference(field: readonly string[] | undefined): boolean {
+  return (
+    field?.length === 1 && (field[0] === "code" || field[0] === "expiresAt")
+  );
+}
+
+/** A scalar selection, or a selected scalar field of a record selection. */
+function validCustomerReference(
+  source: EmailCustomerSelection,
+  field: readonly string[] | undefined
+): boolean {
   const selected = emailCustomerFieldAtPath(
     emailCustomerFieldCatalogue,
-    definition.source.path
+    source.path
   );
   if (!field) return isEmailCustomerScalar(selected);
   return (
     selected?.kind === "record" &&
     isEmailCustomerScalar(emailCustomerFieldAtPath(selected, field)) &&
-    Boolean(
-      definition.source.fields?.some((selectedField) =>
-        samePath(field, selectedField)
-      )
-    )
+    selectedSourceField(source, field)
   );
 }
 
