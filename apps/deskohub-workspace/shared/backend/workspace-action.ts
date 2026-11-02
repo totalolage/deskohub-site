@@ -9,7 +9,6 @@ import {
   References,
   Result,
 } from "effect";
-import { headers } from "next/headers";
 import type {
   FlattenedValidationErrors,
   SafeActionResult,
@@ -27,7 +26,7 @@ import {
   continueActiveTrace,
 } from "./observability/trace-correlation";
 import { runStandaloneWorkspaceEffect } from "./standalone-workspace-effect";
-import { RequestHeadersError } from "./utils/request-headers";
+import { getRequestHeaders } from "./utils/request-headers";
 import {
   findNextControlFlow,
   runWorkspaceEffect,
@@ -279,7 +278,9 @@ const prepareWorkspaceAction = <
         logged ? Effect.void : logActionFailure(cause)
       );
 
-    return yield* readActionHeaders.pipe(
+    // The action's boundary captures its request's headers from Next's store.
+    return yield* getRequestHeaders.pipe(
+      Effect.orDie,
       Effect.flatMap((requestHeaders) =>
         handled.pipe(
           // Logged inside the request context to keep its annotations.
@@ -351,15 +352,6 @@ const getWorkspaceActionContext = <S extends StandardSchemaV1>(
   clientInput: args.clientInput,
   locale: args.ctx.locale,
 });
-
-const readActionHeaders = Effect.tryPromise({
-  try: () => headers(),
-  catch: (cause) =>
-    new RequestHeadersError({
-      message: "Could not load the current request headers.",
-      cause,
-    }),
-}).pipe(Effect.orDie);
 
 const handleWorkspaceActionValidationFailure = async <
   S extends StandardSchemaV1,

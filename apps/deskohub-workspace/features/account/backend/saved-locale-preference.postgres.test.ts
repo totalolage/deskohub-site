@@ -129,8 +129,9 @@ describe.skipIf(!testDatabase)(
             CustomerAuthentication.fromEnvironment({
               readBetterAuthSecretsRaw: () => env.BETTER_AUTH_SECRETS,
               readCurrentSession: makeAuthoritySessionRead({
-                readRequestHeaders: async () =>
-                  new Headers({ host: HOST, cookie }),
+                requestHeaders: Effect.sync(
+                  () => new Headers({ host: HOST, cookie })
+                ),
                 loadAuthority: async () => ({ auth }),
               }),
             })

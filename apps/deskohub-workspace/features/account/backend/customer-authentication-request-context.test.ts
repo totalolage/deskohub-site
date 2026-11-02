@@ -1,5 +1,6 @@
 import { expect, mock, test } from "bun:test";
-import { Effect, Logger } from "effect";
+import { Cause, Effect, Exit, Logger } from "effect";
+import { notFound } from "next/navigation";
 import { withWorkspaceRequestContext } from "@/shared/backend/workspace-request-context";
 
 const ambientHeaders = mock(() => {
@@ -101,4 +102,42 @@ test("an RSC read without captured headers fails closed when the request store i
       },
     ],
   ]);
+});
+
+test("an RSC read lets Next.js control flow from the request store propagate", async () => {
+  const { CustomerAuthentication } = await import(
+    "./customer-authentication.service"
+  );
+  let navigation: unknown;
+  try {
+    notFound();
+  } catch (thrown) {
+    navigation = thrown;
+  }
+  ambientHeaders.mockImplementationOnce(() => {
+    throw navigation;
+  });
+  const warnings: unknown[] = [];
+  const exit = await Effect.runPromiseExit(
+    Effect.flatMap(
+      CustomerAuthentication,
+      (authentication) => authentication.currentUser
+    ).pipe(
+      Effect.provide(CustomerAuthentication.Default),
+      Effect.provide(
+        Logger.layer([
+          Logger.make((options) => {
+            warnings.push(options.message);
+          }),
+        ])
+      )
+    )
+  );
+
+  expect(Exit.isFailure(exit)).toBe(true);
+  if (Exit.isFailure(exit)) {
+    expect(Cause.hasFails(exit.cause)).toBe(false);
+    expect(Cause.squash(exit.cause)).toBe(navigation);
+  }
+  expect(warnings).toEqual([]);
 });
