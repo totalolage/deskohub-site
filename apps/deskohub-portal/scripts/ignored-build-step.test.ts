@@ -421,11 +421,35 @@ describe("portal ignored build step", () => {
 });
 
 describe("portal ignored build step configuration", () => {
-  test("Vercel runs the step from the portal directory", () => {
-    const vercel = JSON.parse(
+  test("the configured command decides from the portal directory", () => {
+    const { ignoreCommand } = JSON.parse(
       readFileSync(join(portalDirectory, "vercel.json"), "utf8")
     );
-    expect(vercel.ignoreCommand).toBe("bash scripts/ignored-build-step.sh");
+    const root = createRepository();
+    writeFiles(root, {
+      "apps/deskohub-portal/scripts/ignored-build-step.sh": readFileSync(
+        script,
+        "utf8"
+      ),
+    });
+    const configuredDecision = (files: Record<string, string>) => {
+      const previous = commit(root, "base");
+      writeFiles(root, files);
+      const current = commit(root);
+      return Bun.spawnSync(["bash", "-c", ignoreCommand], {
+        cwd: join(root, "apps/deskohub-portal"),
+        env: {
+          ...gitEnvironment,
+          VERCEL_GIT_COMMIT_SHA: current,
+          VERCEL_GIT_PREVIOUS_SHA: previous,
+        },
+      }).exitCode;
+    };
+
+    expect(configuredDecision({ ".agents/note.md": "note\n" })).toBe(SKIP);
+    expect(
+      configuredDecision({ "apps/deskohub-portal/src/pages/index.astro": "x\n" })
+    ).toBe(BUILD);
   });
 
   // The step treats other apps' and packages' sources as unrelated. Adding a

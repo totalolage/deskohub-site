@@ -69,7 +69,8 @@ git -C "$root" merge-base --is-ancestor "$previous" "$current" 2>/dev/null ||
 changes="$(mktemp)" || build "cannot create a temporary file"
 trap 'rm -f "$changes"' EXIT
 git -C "$root" -c core.quotePath=false diff --no-relative --no-renames \
-  --no-ext-diff --name-only -z "$previous" "$current" >"$changes" ||
+  --no-ext-diff --ignore-submodules=none --name-only -z \
+  "$previous" "$current" >"$changes" ||
   build "git diff failed"
 [ -s "$changes" ] || build "no file changes since $previous"
 
