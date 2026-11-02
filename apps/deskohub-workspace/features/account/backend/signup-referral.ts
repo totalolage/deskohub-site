@@ -119,46 +119,69 @@ const classifyRejection = (
 export const recordSignupReferral = Effect.fn("account.recordSignupReferral")(
   function* (account: LinkedCustomerAccount) {
     const intents = yield* ReferralSignupIntentRepository;
-    const referrals = yield* ReferralService;
     const intent = yield* intents.find(account.accountId);
     if (!intent || intent.acknowledged) return undefined;
     if (intent.outcome !== null) return toOutcome(intent.outcome);
 
-    const acceptance = yield* referrals
-      .acceptReferral({
-        code: intent.code,
-        customerAccountId: account.accountId,
-        dotyposCustomerId: account.dotyposCustomerId,
-      })
-      .pipe(Effect.result);
-    const outcome: ProfileCompletionReferralOutcome = Result.isSuccess(
-      acceptance
-    )
-      ? applied
-      : yield* classifyRejection(acceptance.failure, intent.code);
-    yield* Effect.logInfo("Referral signup intent checked").pipe(
-      Effect.annotateLogs({
-        code: "account.signup-referral",
-        outcome: outcome.status,
-        ...(Result.isFailure(acceptance) && {
-          reason: acceptance.failure.reason,
-        }),
-      })
-    );
+    const outcome = yield* checkSignupReferral(account, intent);
     if (outcome.status === "pending") return outcome;
-
-    const settled = yield* intents.settle(
-      account.accountId,
-      intent.promotionCodeId,
-      toStoredOutcome(outcome)
-    );
-    if (settled) return outcome;
-    const winner = yield* intents.find(account.accountId);
-    return winner?.outcome && !winner.acknowledged
-      ? toOutcome(winner.outcome)
-      : undefined;
+    return yield* settleSignupReferral(account, intent, outcome);
   }
 );
+
+type StoredSignupIntent = NonNullable<
+  Effect.Success<ReturnType<ReferralSignupIntentRepository["Service"]["find"]>>
+>;
+
+/** Retries the stored code's acceptance and logs what it found. */
+const checkSignupReferral = Effect.fnUntraced(function* (
+  account: LinkedCustomerAccount,
+  intent: StoredSignupIntent
+) {
+  const referrals = yield* ReferralService;
+  const acceptance = yield* referrals
+    .acceptReferral({
+      code: intent.code,
+      customerAccountId: account.accountId,
+      dotyposCustomerId: account.dotyposCustomerId,
+    })
+    .pipe(Effect.result);
+  const outcome: ProfileCompletionReferralOutcome = Result.isSuccess(acceptance)
+    ? applied
+    : yield* classifyRejection(acceptance.failure, intent.code);
+  yield* Effect.logInfo("Referral signup intent checked").pipe(
+    Effect.annotateLogs({
+      code: "account.signup-referral",
+      outcome: outcome.status,
+      ...(Result.isFailure(acceptance) && {
+        reason: acceptance.failure.reason,
+      }),
+    })
+  );
+  return outcome;
+});
+
+/**
+ * Records a definitive outcome once; a load that loses the race reports the
+ * stored winner unless it was acknowledged meanwhile.
+ */
+const settleSignupReferral = Effect.fnUntraced(function* (
+  account: LinkedCustomerAccount,
+  intent: ReferralSignupIntent,
+  outcome: Exclude<ProfileCompletionReferralOutcome, { status: "pending" }>
+) {
+  const intents = yield* ReferralSignupIntentRepository;
+  const settled = yield* intents.settle(
+    account.accountId,
+    intent.promotionCodeId,
+    toStoredOutcome(outcome)
+  );
+  if (settled) return outcome;
+  const winner = yield* intents.find(account.accountId);
+  return winner?.outcome && !winner.acknowledged
+    ? toOutcome(winner.outcome)
+    : undefined;
+});
 
 /** Hides the account's settled completion-code outcome for good. */
 export const acknowledgeSignupReferral = Effect.fn(
