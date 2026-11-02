@@ -13,23 +13,25 @@ import { cloudinaryTags } from "@/shared/utils/cache-tags";
 
 const appliedTags: string[] = [];
 
-setBoardgameTestEnv();
-const nextCache = await import("next/cache");
-mock.module("next/cache", () => ({
-  ...nextCache,
-  cacheTag: (...tags: string[]) => {
-    appliedTags.push(...tags);
-  },
-}));
-
 let generateBlurDataUrlCached: typeof import("./generate-blur-data-url").generateBlurDataUrlCached;
 
 beforeAll(async () => {
+  setBoardgameTestEnv();
+  const nextCache = await import("next/cache");
+  mock.module("next/cache", () => ({
+    ...nextCache,
+    cacheTag: (...tags: string[]) => {
+      appliedTags.push(...tags);
+    },
+  }));
   ({ generateBlurDataUrlCached } = await import("./generate-blur-data-url"));
 });
 
 const asset = { public_id: "bar/tables/window" } as CloudinaryAsset;
 
+let restoreFetch: (() => void) | undefined;
+
+/** Answers every fetch with `response` and records the requested URLs. */
 const respondWith = (response: Response) => {
   const requested: string[] = [];
   const fetchSpy = spyOn(globalThis, "fetch").mockImplementation((async (
@@ -38,10 +40,9 @@ const respondWith = (response: Response) => {
     requested.push(String(input));
     return response;
   }) as typeof fetch);
-  return { requested, fetchSpy };
+  restoreFetch = () => fetchSpy.mockRestore();
+  return requested;
 };
-
-let restoreFetch: (() => void) | undefined;
 
 afterEach(() => {
   restoreFetch?.();
@@ -50,12 +51,11 @@ afterEach(() => {
 
 describe("generateBlurDataUrlCached", () => {
   test("tags the cache entry with the image and embeds its tiny webp rendition", async () => {
-    const { requested, fetchSpy } = respondWith(
+    const requested = respondWith(
       new Response(new Uint8Array([1, 2, 3]), {
         headers: { "content-type": "image/png" },
       })
     );
-    restoreFetch = () => fetchSpy.mockRestore();
 
     expect(await generateBlurDataUrlCached(asset)).toBe(
       "data:image/png;base64,AQID"
@@ -71,8 +71,7 @@ describe("generateBlurDataUrlCached", () => {
   test("labels the image as webp when the response has no content type", async () => {
     const response = new Response(new Uint8Array([1, 2, 3]));
     response.headers.delete("content-type");
-    const { fetchSpy } = respondWith(response);
-    restoreFetch = () => fetchSpy.mockRestore();
+    respondWith(response);
 
     expect(await generateBlurDataUrlCached(asset)).toBe(
       "data:image/webp;base64,AQID"
@@ -80,10 +79,7 @@ describe("generateBlurDataUrlCached", () => {
   });
 
   test("fails when the tiny rendition cannot be loaded", async () => {
-    const { fetchSpy } = respondWith(
-      new Response(null, { status: 404, statusText: "Not Found" })
-    );
-    restoreFetch = () => fetchSpy.mockRestore();
+    respondWith(new Response(null, { status: 404, statusText: "Not Found" }));
 
     await expect(generateBlurDataUrlCached(asset)).rejects.toThrow("Not Found");
   });
