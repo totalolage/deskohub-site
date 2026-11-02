@@ -17,6 +17,23 @@ export const dhwFromSource = [
   sourceEntrypoint,
 ];
 
+/**
+ * Lets a `bun run coverage` run instrument the child: the coverage preload
+ * arrives through BUN_OPTIONS, and the child dumps its counters on exit when
+ * NODE_ENV is test. Empty outside a coverage run, so isolation is unchanged.
+ */
+function coverageRunEnvironment(): Record<string, string> {
+  const runDirectory = process.env.DESKOHUB_COVERAGE_RUN_DIR;
+  if (runDirectory === undefined || runDirectory === "") {
+    return {};
+  }
+  return {
+    DESKOHUB_COVERAGE_RUN_DIR: runDirectory,
+    BUN_OPTIONS: process.env.BUN_OPTIONS ?? "",
+    NODE_ENV: "test",
+  };
+}
+
 /** A run from source starts slowly on a busy machine. */
 export const dhwRunTimeout = 60_000;
 
@@ -87,6 +104,7 @@ export const runDhw = async (
             ? {}
             : { DHW_BASE: options.workspace }),
           ...testNetworkEnvironment(`http://127.0.0.1:${trap.port}`),
+          ...coverageRunEnvironment(),
         },
         stdin: "ignore",
         stdout: "pipe",
