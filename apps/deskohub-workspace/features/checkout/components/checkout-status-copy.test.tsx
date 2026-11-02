@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -135,7 +136,7 @@ const expectedCopy = {
 
 const locales = ["cs-CZ", "en-US"] as const satisfies readonly Locale[];
 const reservationKinds = ["cowork", "meeting-room", "office"] as const;
-const recipient = "ada@example.test";
+const recipient = testEmailAddress("ada");
 
 const reservationStatus = (
   status: Exclude<CheckoutStatusKind, "not_found">,

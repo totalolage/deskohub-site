@@ -1,20 +1,21 @@
 import { describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { normalizeCampaignLinkHref } from "./campaign-link-href";
+
+const address = testEmailAddress("team");
 
 describe("normalizeCampaignLinkHref", () => {
   test("keeps a complete https: or mailto: link as typed, trimmed", () => {
     expect(
       normalizeCampaignLinkHref("  https://workspace.deskohub.cz/faq ")
     ).toBe("https://workspace.deskohub.cz/faq");
-    expect(normalizeCampaignLinkHref("mailto:team@deskohub.test")).toBe(
-      "mailto:team@deskohub.test"
+    expect(normalizeCampaignLinkHref(`mailto:${address}`)).toBe(
+      `mailto:${address}`
     );
   });
 
   test("turns a bare email address into a mailto: link", () => {
-    expect(normalizeCampaignLinkHref(" team@deskohub.test ")).toBe(
-      "mailto:team@deskohub.test"
-    );
+    expect(normalizeCampaignLinkHref(` ${address} `)).toBe(`mailto:${address}`);
   });
 
   test("turns a bare host or path into an https: link", () => {

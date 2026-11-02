@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { createElement } from "react";
 import { legalNodeToPhrasing } from "./legal-node-phrasing";
 
 const text = (value: string) => ({ type: "text", value });
+const mailto = `mailto:${testEmailAddress("info")}`;
 
 describe("legalNodeToPhrasing", () => {
   test.each([
@@ -50,14 +52,14 @@ describe("legalNodeToPhrasing", () => {
     ]);
     expect(
       legalNodeToPhrasing(
-        <a href="mailto:info@example.test">
+        <a href={mailto}>
           <strong>mail</strong> us
         </a>
       )
     ).toEqual([
       {
         type: "link",
-        url: "mailto:info@example.test",
+        url: mailto,
         children: [text("mail"), text(" us")],
       },
     ]);

@@ -300,7 +300,7 @@ describe("GoogleCalendarWorkspaceLimitationsService", () => {
   test("falls back to the iCalendar UID and drops a blank summary", async () => {
     const limitations = await runWithEvents([
       {
-        iCalUID: "ical-event@google.com",
+        iCalUID: "ical-event-uid",
         status: "confirmed",
         summary: "   ",
         description: "  [WORKSPACE:FULL]  ",
@@ -311,7 +311,7 @@ describe("GoogleCalendarWorkspaceLimitationsService", () => {
     expect(limitations).toEqual([
       WorkspaceCalendarLimitation.FullyOccupied({
         date: "2026-06-10",
-        sourceEventId: "ical-event@google.com",
+        sourceEventId: "ical-event-uid",
       }),
     ]);
   });
@@ -320,7 +320,7 @@ describe("GoogleCalendarWorkspaceLimitationsService", () => {
     const limitations = await runWithEvents([
       {
         id: "event-id",
-        iCalUID: "ical-event@google.com",
+        iCalUID: "ical-event-uid",
         status: "confirmed",
         summary: "  Closed  ",
         description: "[workspace:full]",

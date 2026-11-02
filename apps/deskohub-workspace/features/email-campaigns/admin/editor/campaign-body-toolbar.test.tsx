@@ -1,4 +1,5 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { m } from "@/features/administration/i18n";
 import {
   registerWorkspaceComponentTestEnv,
@@ -226,15 +227,16 @@ describe("CampaignBodyToolbar", () => {
     const popover = await openLink(rendered);
 
     expect(linkField(popover).value).toBe("");
-    await enterLink(popover, "team@deskohub.test");
+    const address = testEmailAddress("team");
+    await enterLink(popover, address);
 
     expect(firstBlock(rendered)?.content?.at(-1)).toEqual({
       type: "text",
-      text: "team@deskohub.test",
+      text: address,
       marks: [
         {
           type: "link",
-          attrs: expect.objectContaining({ href: "mailto:team@deskohub.test" }),
+          attrs: expect.objectContaining({ href: `mailto:${address}` }),
         },
       ],
     });
