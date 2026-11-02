@@ -314,6 +314,160 @@ describe("discount administration pages", () => {
     ).toBeDefined();
   });
 
+  describe("vouchers collection", () => {
+    const voucher: DiscountAdminDashboard["vouchers"][number] = {
+      id: "019c91dd-c560-7e55-b9d8-c95065efd56d" as VoucherTableItem["id"],
+      code: "GIFT100",
+      issuedCredit: { value: 10_000, exponent: 2, currency: "CZK" },
+      remainingCredit: { value: 5000, exponent: 2, currency: "CZK" },
+      enabled: true,
+      validFrom: Temporal.Instant.from("2026-08-01T08:00:00Z"),
+      validUntil: Temporal.Instant.from("2026-09-01T08:00:00Z"),
+      audienceSize: 0,
+      reservedUses: 0,
+      redeemedUses: 0,
+      releasedUses: 0,
+      createdAt: Temporal.Instant.from("2026-07-01T08:00:00Z"),
+      updatedAt: Temporal.Instant.from("2026-07-02T08:00:00Z"),
+    };
+    const validityInputs = (container: HTMLElement) =>
+      ["validFrom", "validUntil"].map(
+        (name) =>
+          (container.querySelector(`input[name="${name}"]`) as HTMLInputElement)
+            .value
+      );
+
+    test("shows the empty state instead of a table without vouchers", async () => {
+      const { VouchersAdministrationCollection } = await import("./components");
+      const view = render(
+        <VouchersAdministrationCollection
+          dashboard={dashboard}
+          locale="en-US"
+        />
+      );
+
+      expect(view.queryByRole("table")).toBeNull();
+      expect(view.getByRole("heading", { level: 2 })).toBeDefined();
+    });
+
+    test("hands each voucher's validity window to its editor in Prague time", async () => {
+      const { VouchersAdministrationCollection } = await import("./components");
+      const view = render(
+        <VouchersAdministrationCollection
+          dashboard={{
+            ...dashboard,
+            vouchers: [
+              voucher,
+              {
+                ...voucher,
+                id: "019c91dd-c560-7e55-b9d8-c95065efd57d" as VoucherTableItem["id"],
+                code: "OPEN200",
+                validFrom: null,
+                validUntil: null,
+              },
+            ],
+          }}
+          locale="en-US"
+        />
+      );
+      const table = view.getByRole("table");
+      expect(within(table).getAllByRole("row")).toHaveLength(3);
+
+      const { m } = await import("@/features/administration/i18n");
+      const editButton = (name: string) =>
+        within(table).getByRole("button", {
+          name: m.discountsEditItemLabel({ name }, { locale: "en-US" }),
+        });
+
+      fireEvent.click(editButton("GIFT100"));
+      expect(validityInputs(view.container)).toEqual([
+        "2026-08-01T10:00",
+        "2026-09-01T10:00",
+      ]);
+
+      fireEvent.click(editButton("OPEN200"));
+      expect(validityInputs(view.container)).toEqual(["", ""]);
+    });
+  });
+
+  describe("calendar sales collection", () => {
+    const [associatedEvent] = dashboard.calendar.events;
+    const calendarEvent = (
+      overrides: Partial<DiscountAdminDashboard["calendar"]["events"][number]>
+    ) => ({ ...associatedEvent, ...overrides });
+
+    test("warns instead of listing sales when the calendar is unavailable", async () => {
+      const { SalesAdministrationCollection } = await import("./components");
+      const view = render(
+        <SalesAdministrationCollection
+          dashboard={{
+            ...dashboard,
+            calendar: { ...dashboard.calendar, unavailable: true },
+          }}
+          locale="en-US"
+        />
+      );
+
+      expect(view.queryByRole("table")).toBeNull();
+      expect(view.getByRole("link").getAttribute("href")).toBe(
+        dashboard.calendar.calendarUrl
+      );
+    });
+
+    test("shows the empty state without calendar sales", async () => {
+      const { SalesAdministrationCollection } = await import("./components");
+      const view = render(
+        <SalesAdministrationCollection
+          dashboard={{
+            ...dashboard,
+            calendar: { ...dashboard.calendar, events: [] },
+          }}
+          locale="en-US"
+        />
+      );
+
+      expect(view.queryByRole("table")).toBeNull();
+      expect(view.queryByRole("alert")).toBeNull();
+    });
+
+    test("formats all-day, timed and unreadable sale dates on the server", async () => {
+      const { formatAdministrationDateTime, formatAdministrationPlainDate } =
+        await import("@/features/administration/formatters");
+      const { SalesAdministrationCollection } = await import("./components");
+      const view = render(
+        <SalesAdministrationCollection
+          dashboard={{
+            ...dashboard,
+            calendar: {
+              ...dashboard.calendar,
+              events: [
+                calendarEvent({ start: "2026-08-01", end: "2026-08-02" }),
+                calendarEvent({
+                  eventReference: undefined,
+                  title: "Timed sale",
+                  start: "2026-08-03T08:00:00Z",
+                  end: "soon",
+                }),
+              ],
+            },
+          }}
+          locale="cs-CZ"
+        />
+      );
+      const [, allDayRow, timedRow] = within(
+        view.getByRole("table")
+      ).getAllByRole("row");
+
+      expect(allDayRow?.textContent).toContain(
+        `${formatAdministrationPlainDate("2026-08-01", "cs-CZ")} → ${formatAdministrationPlainDate("2026-08-02", "cs-CZ")}`
+      );
+      expect(timedRow?.textContent).toContain(
+        `${formatAdministrationDateTime("2026-08-03T08:00:00Z", "cs-CZ")} → `
+      );
+      expect(timedRow?.textContent).not.toContain("soon");
+    });
+  });
+
   test("formats code counts and cowork tier targets in the operator's locale", async () => {
     const { RouteLocaleProvider } = await import(
       "@/features/i18n/route-locale"
