@@ -50,6 +50,33 @@ export class PayableReservationService extends Context.Service<
       const reservations = yield* WorkspaceReservationRepository;
       const dotypos = yield* DotyposService;
 
+      /** The order, when it is the current reservation of this checkout session. */
+      const findSessionReservation = Effect.fnUntraced(function* (input: {
+        readonly orderId: WorkspaceReservationId;
+        readonly checkoutSessionId: CheckoutSessionId;
+      }) {
+        const checkoutSessionKeys = yield* deriveCheckoutSessionKeys(
+          input.checkoutSessionId
+        );
+        const reservation = yield* reservations.findById(input.orderId);
+        if (!reservation) {
+          return yield* unavailable(input, "missing_reservation");
+        }
+        if (
+          !checkoutSessionKeys.accepted.includes(reservation.checkoutSessionKey)
+        ) {
+          return yield* unavailable(input, "not_current");
+        }
+
+        const current = yield* reservations.findCurrentByCheckoutSessionKey(
+          reservation.checkoutSessionKey
+        );
+        if (current?.id !== reservation.id) {
+          return yield* unavailable(input, "not_current");
+        }
+        return reservation;
+      });
+
       return PayableReservationService.of({
         requireCurrent: Effect.fn("payableReservation.requireCurrent")(
           function* (input) {
@@ -57,41 +84,13 @@ export class PayableReservationService extends Context.Service<
               return yield* unavailable(input, "missing_checkout_session");
             }
 
-            const checkoutSessionKeys = yield* deriveCheckoutSessionKeys(
-              input.checkoutSessionId
-            );
-            const reservation = yield* reservations.findById(input.orderId);
-            if (!reservation) {
-              return yield* unavailable(input, "missing_reservation");
-            }
-            if (
-              !checkoutSessionKeys.accepted.includes(
-                reservation.checkoutSessionKey
-              )
-            ) {
-              return yield* unavailable(input, "not_current");
-            }
+            const reservation = yield* findSessionReservation({
+              orderId: input.orderId,
+              checkoutSessionId: input.checkoutSessionId,
+            });
 
-            const current = yield* reservations.findCurrentByCheckoutSessionKey(
-              reservation.checkoutSessionKey
-            );
-            if (current?.id !== reservation.id) {
-              return yield* unavailable(input, "not_current");
-            }
-
-            if (reservation.reservationState !== "held") {
-              return yield* unavailable(input, "not_held");
-            }
-
-            if (
-              reservation.reservationHoldExpiresAt &&
-              Temporal.Instant.compare(
-                reservation.reservationHoldExpiresAt,
-                Temporal.Now.instant()
-              ) <= 0
-            ) {
-              return yield* unavailable(input, "expired");
-            }
+            const holdRefusal = getHoldRefusal(reservation);
+            if (holdRefusal) return yield* unavailable(input, holdRefusal);
 
             if (!reservation.dotyposReservationId) {
               return yield* unavailable(input, "missing_dotypos_reservation");
@@ -125,3 +124,23 @@ const unavailable = (
     orderId: input.orderId,
     reason,
   });
+
+/** Why the reservation no longer holds its booking, if it doesn't. */
+const getHoldRefusal = (
+  reservation: Pick<
+    WorkspaceReservation,
+    "reservationState" | "reservationHoldExpiresAt"
+  >
+): PayableReservationUnavailableError["reason"] | undefined => {
+  if (reservation.reservationState !== "held") return "not_held";
+  if (
+    reservation.reservationHoldExpiresAt &&
+    Temporal.Instant.compare(
+      reservation.reservationHoldExpiresAt,
+      Temporal.Now.instant()
+    ) <= 0
+  ) {
+    return "expired";
+  }
+  return undefined;
+};
