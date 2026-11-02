@@ -236,11 +236,11 @@ const getSlideRole = (isCurrent: boolean, baseOffset: number): SlideRole => {
   return Math.abs(baseOffset) === 1 ? "side" : "hidden";
 };
 
-const slideCursorClassNames: Record<SlideRole, string> = {
+const slideCursorClassNames = {
   current: "cursor-zoom-in",
   side: "cursor-pointer",
   hidden: "pointer-events-none",
-};
+} satisfies Record<SlideRole, string>;
 
 /** Hover and press feedback, only on a side slide and only with motion. */
 const getSlideFeedback = (
