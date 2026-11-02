@@ -4,6 +4,22 @@ type EnvironmentConfig = {
   hostname?: string;
 };
 
+const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1"]);
+const PRIVATE_NETWORK_PREFIXES = ["192.168.", "10."];
+
+/** Whether `hostname` is this machine or an address on a private network. */
+export function isLocalHostname(hostname: string | undefined): boolean {
+  if (hostname === undefined) return false;
+  return (
+    LOCAL_HOSTNAMES.has(hostname) ||
+    PRIVATE_NETWORK_PREFIXES.some((prefix) => hostname.startsWith(prefix))
+  );
+}
+
+function browserHostname(): string | undefined {
+  return typeof window !== "undefined" ? window.location.hostname : undefined;
+}
+
 export function isDev(config: EnvironmentConfig = {}): boolean {
   const nodeEnv = config.nodeEnv ?? process.env.NODE_ENV;
   if (nodeEnv === "development") return true;
@@ -11,16 +27,5 @@ export function isDev(config: EnvironmentConfig = {}): boolean {
   const vercelEnv = config.vercelEnv ?? process.env.NEXT_PUBLIC_VERCEL_ENV;
   if (vercelEnv === "development") return true;
 
-  const hostname =
-    config.hostname ??
-    (typeof window !== "undefined" ? window.location.hostname : undefined);
-
-  const isLocalhost =
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname?.startsWith("192.168.") ||
-    hostname?.startsWith("10.");
-  if (isLocalhost) return true;
-
-  return false;
+  return isLocalHostname(config.hostname ?? browserHostname());
 }
