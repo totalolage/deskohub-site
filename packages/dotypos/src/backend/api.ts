@@ -179,51 +179,18 @@ export const toDotyposWireFailure = (
   if (error instanceof DotyposWireFailure) return error;
 
   if (HttpClientError.isHttpClientError(error)) {
-    const reason = error.reason;
-    if (
-      Predicate.isTagged(reason, "TransportError") ||
-      Predicate.isTagged(reason, "InvalidUrlError")
-    ) {
-      return new DotyposWireFailure({
-        outcome: { kind: "transport" },
-        fromAccessToken,
-        cause: error,
-      });
-    }
-
-    const providerErrorInput = Predicate.hasProperty(reason, "description")
-      ? reason.description
-      : undefined;
-    return statusFailure({
-      providerError: parseProviderError(
-        Predicate.isString(providerErrorInput) ||
-          Schema.is(ErrorResponse)(providerErrorInput)
-          ? providerErrorInput
-          : undefined
-      ),
-      status: error.response?.status,
-      fromAccessToken,
-    });
+    return httpClientWireFailure(error, fromAccessToken);
   }
 
   if (isGeneratedClientError(error)) {
     return statusFailure({
-      providerError: parseProviderError(
-        Predicate.isString(error.cause) || Schema.is(ErrorResponse)(error.cause)
-          ? error.cause
-          : undefined
-      ),
+      providerError: parseProviderError(asProviderErrorInput(error.cause)),
       status: error.response.status,
       fromAccessToken,
     });
   }
 
-  if (
-    Predicate.isError(error) &&
-    (error.name === "AbortError" ||
-      error.message.includes("fetch") ||
-      error.message.includes("ECONNREFUSED"))
-  ) {
+  if (isTransportException(error)) {
     return new DotyposWireFailure({
       outcome: { kind: "transport" },
       fromAccessToken,
@@ -231,11 +198,7 @@ export const toDotyposWireFailure = (
     });
   }
 
-  const providerError = parseProviderError(
-    Predicate.isString(error) || Schema.is(ErrorResponse)(error)
-      ? error
-      : undefined
-  );
+  const providerError = parseProviderError(asProviderErrorInput(error));
   if (providerError) {
     return statusFailure({
       providerError,
@@ -250,6 +213,48 @@ export const toDotyposWireFailure = (
     cause: error,
   });
 };
+
+const httpClientWireFailure = (
+  error: HttpClientError.HttpClientError,
+  fromAccessToken: boolean
+): DotyposWireFailure => {
+  const reason = error.reason;
+  if (
+    Predicate.isTagged(reason, "TransportError") ||
+    Predicate.isTagged(reason, "InvalidUrlError")
+  ) {
+    return new DotyposWireFailure({
+      outcome: { kind: "transport" },
+      fromAccessToken,
+      cause: error,
+    });
+  }
+
+  return statusFailure({
+    providerError: parseProviderError(
+      asProviderErrorInput(
+        Predicate.hasProperty(reason, "description")
+          ? reason.description
+          : undefined
+      )
+    ),
+    status: error.response?.status,
+    fromAccessToken,
+  });
+};
+
+/** A thrown error that means the request never got an answer. */
+const isTransportException = (error: unknown) =>
+  Predicate.isError(error) &&
+  (error.name === "AbortError" ||
+    error.message.includes("fetch") ||
+    error.message.includes("ECONNREFUSED"));
+
+/** Keeps a value only if it can carry a Dotypos error body. */
+const asProviderErrorInput = (value: unknown): ProviderErrorInput =>
+  Predicate.isString(value) || Schema.is(ErrorResponse)(value)
+    ? value
+    : undefined;
 
 const parseProviderError = (error: ProviderErrorInput) => {
   if (!error) return undefined;
