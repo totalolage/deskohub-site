@@ -32,9 +32,9 @@ const temporaryDirectory = () => {
 };
 
 const gitEnvironment = {
-  GIT_AUTHOR_EMAIL: "test@example.com",
+  GIT_AUTHOR_EMAIL: "ignored-build-step-test",
   GIT_AUTHOR_NAME: "Test",
-  GIT_COMMITTER_EMAIL: "test@example.com",
+  GIT_COMMITTER_EMAIL: "ignored-build-step-test",
   GIT_COMMITTER_NAME: "Test",
   GIT_CONFIG_GLOBAL: "/dev/null",
   GIT_CONFIG_NOSYSTEM: "1",
