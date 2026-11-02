@@ -812,8 +812,8 @@ describe("dhw discounts, codes, vouchers, and sales", () => {
     },
     {
       id: "discount-3",
-      labels: { "en-US": "Unpriced", "cs-CZ": "Bez ceny" },
-      adjustment: { kind: "fixed", amount: null },
+      labels: { "en-US": "Small", "cs-CZ": "Malá" },
+      adjustment: { kind: "fixed", amount: money(9950) },
       products: [{ kind: "office" }],
       codeCount: 1,
     },
@@ -850,8 +850,8 @@ describe("dhw discounts, codes, vouchers, and sales", () => {
   const spentVoucher = {
     id: "voucher-2",
     code: "SPENT",
-    issuedCredit: null,
-    remainingCredit: null,
+    issuedCredit: money(20_000),
+    remainingCredit: money(0),
     enabled: false,
     validFrom: null,
     validUntil: null,
@@ -934,7 +934,7 @@ describe("dhw discounts, codes, vouchers, and sales", () => {
       "Discounts: 3",
       "discount-1\tSummer\t12.5%\tcowork:day,cowork\t2 codes",
       "discount-2\tFixed\t150 CZK\tmeeting-room,office\t0 codes",
-      "discount-3\tUnpriced\tAmount unavailable\toffice\t1 codes",
+      "discount-3\tSmall\t99.5 CZK\toffice\t1 codes",
     ]);
   });
 
@@ -1006,7 +1006,7 @@ describe("dhw discounts, codes, vouchers, and sales", () => {
     expect(text.output).toEqual([
       "Vouchers: 2",
       "voucher-1\tGIFT\t500 CZK\t125.5 CZK\tEnabled",
-      "voucher-2\tSPENT\tAmount unavailable\tAmount unavailable\tDisabled",
+      "voucher-2\tSPENT\t200 CZK\t0 CZK\tDisabled",
     ]);
   });
 
@@ -1035,7 +1035,7 @@ describe("dhw discounts, codes, vouchers, and sales", () => {
       ...claimRows,
     ]);
     expect(spent.output).toEqual([
-      "voucher-2\tSPENT\tAmount unavailable issued\tAmount unavailable remaining\tDisabled",
+      "voucher-2\tSPENT\t200 CZK issued\t0 CZK remaining\tDisabled",
       "Validity\tNo start\tNo end",
       "Audience\tUnrestricted",
       "Claims\t0",
