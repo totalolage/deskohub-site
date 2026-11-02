@@ -259,3 +259,134 @@ describe("calendar parts", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 });
+
+describe("part values", () => {
+  const group = (
+    view: ReturnType<typeof renderEditor>["view"],
+    part: keyof CalendarExpression
+  ) => within(view.getByRole("group", { name: partName(part) }));
+  const press = (button: HTMLElement) =>
+    act(() => {
+      fireEvent.click(button);
+    });
+
+  test("add a weekday", () => {
+    const { view, onChange } = renderEditor({ weekdays: ["monday"] });
+
+    press(group(view, "weekdays").getByRole("button", { name: "Tue" }));
+
+    expect(onChange.mock.calls).toEqual([
+      [{ weekdays: ["monday", "tuesday"] }],
+    ]);
+  });
+
+  test("add the last day of the month", () => {
+    const { view, onChange } = renderEditor({ daysOfMonth: [1] });
+    const days = group(view, "daysOfMonth");
+
+    expect(days.getAllByRole("button")).toHaveLength(32);
+    press(
+      days.getByRole("button", {
+        name: m.emailAutomationFlowCalendarLastDay({}, { locale }),
+      })
+    );
+
+    expect(onChange.mock.calls).toEqual([[{ daysOfMonth: [1, "last"] }]]);
+  });
+
+  test("add a month", () => {
+    const { view, onChange } = renderEditor({ months: [1] });
+    const months = group(view, "months");
+
+    expect(months.getAllByRole("button")).toHaveLength(12);
+    press(months.getByRole("button", { name: "Feb" }));
+
+    expect(onChange.mock.calls).toEqual([[{ months: [1, 2] }]]);
+  });
+
+  test("add the next unused weekday occurrence", () => {
+    const { view, onChange } = renderEditor({
+      weekdayOccurrences: [{ occurrence: 1, weekday: "monday" }],
+    });
+
+    press(
+      view.getByRole("button", {
+        name: m.emailAutomationFlowCalendarOccurrenceAdd({}, { locale }),
+      })
+    );
+
+    expect(onChange.mock.calls).toEqual([
+      [
+        {
+          weekdayOccurrences: [
+            { occurrence: 1, weekday: "monday" },
+            { occurrence: 1, weekday: "tuesday" },
+          ],
+        },
+      ],
+    ]);
+  });
+
+  test("add a typed week in order", () => {
+    const { view, onChange } = renderEditor({ weeksOfYear: [30] });
+
+    act(() => {
+      fireEvent.change(
+        view.getByRole("spinbutton", {
+          name: m.emailAutomationFlowCalendarWeekOther({}, { locale }),
+        }),
+        { target: { value: "23" } }
+      );
+    });
+    press(
+      view.getByRole("button", {
+        name: m.emailAutomationFlowCalendarWeekAdd({}, { locale }),
+      })
+    );
+
+    expect(onChange.mock.calls).toEqual([[{ weeksOfYear: [23, 30] }]]);
+  });
+
+  test("remove a week while another remains", () => {
+    const { view, onChange } = renderEditor({ weeksOfYear: [23, 30] });
+    const removeWeek = (week: number) =>
+      view.getByRole("button", {
+        name: m.emailAutomationFlowCalendarRemoveValue(
+          {
+            value: m.emailAutomationFlowCalendarWeekValue({ week }, { locale }),
+          },
+          { locale }
+        ),
+      });
+
+    press(removeWeek(23));
+
+    expect(onChange.mock.calls).toEqual([[{ weeksOfYear: [30] }]]);
+  });
+
+  test("switch a part to another in its place, with its starting value", async () => {
+    const { view, onChange } = renderEditor({ hours: [9], months: [3] });
+
+    const [hoursPart] = view.getAllByRole("combobox", {
+      name: m.emailAutomationFlowCalendarPartLabel({}, { locale }),
+    });
+    await act(async () => {
+      fireEvent.keyDown(hoursPart as HTMLElement, { key: "Enter" });
+    });
+    const weekdays = await view.findByRole("option", {
+      name: partName("weekdays"),
+    });
+    await act(async () => {
+      weekdays.focus();
+    });
+    await act(async () => {
+      fireEvent.keyDown(weekdays, { key: "Enter" });
+    });
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    const [next] = onChange.mock.calls[0] ?? [];
+    expect(Object.keys(next ?? {})).toEqual(["weekdays", "months"]);
+    expect(next?.months).toEqual([3]);
+    expect(next?.weekdays).toHaveLength(1);
+  });
+});
