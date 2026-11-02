@@ -1,6 +1,7 @@
 import {
   type DotyposReservationId,
   DotyposService,
+  type DotyposTable,
   getCustomerDisplayName,
 } from "@deskohub/dotypos";
 import type { Customer } from "@deskohub/dotypos/generated";
@@ -24,6 +25,7 @@ import {
   type BookedReservation,
   decodeBookedReservation,
 } from "@/features/reservation/backend/booked-reservation";
+import type { ReservationRecord } from "@/features/reservation/backend/reservation-record";
 import { ReservationRecords } from "@/features/reservation/backend/reservation-records";
 import {
   type CustomerReservationTable,
@@ -294,6 +296,84 @@ const getEmptyCheckoutStatusReservation = (
     })
   );
 
+/** Where the reservation sits: its table and, once released, the seating map. */
+const placeStatusReservationTable = Effect.fnUntraced(function* (input: {
+  readonly reservation: WorkspaceReservation;
+  readonly dotyposReservation: ReservationRecord;
+  readonly tables: readonly DotyposTable[];
+  readonly seatingMapEnabled: boolean;
+}) {
+  const { reservation, dotyposReservation, tables } = input;
+  const openSpaceTableNames =
+    reservation.reservationDetails.kind === "cowork" &&
+    reservation.reservationDetails.entryTier === "open-space"
+      ? yield* getOpenSpaceTableNames(tables)
+      : undefined;
+  const table = getCustomerReservationTable({
+    reservationDetails: reservation.reservationDetails,
+    tableName: getReservationTableName(dotyposReservation, tables),
+    openSpaceTableNames,
+  });
+  const tableMap = input.seatingMapEnabled
+    ? getWorkspaceTableMap(dotyposReservation, tables)
+    : undefined;
+  return { table, tableMap };
+});
+
+/** The family's summary of the booked time and the paid attempt's amount. */
+const toStatusReservation = ({
+  reservation,
+  booked,
+  timing,
+  attempt,
+}: {
+  readonly reservation: WorkspaceReservation;
+  readonly booked: Pick<BookedReservation, "seats" | "setupStart">;
+  readonly timing: Effect.Success<
+    ReturnType<typeof getDotyposReservationTiming>
+  >;
+  readonly attempt: Pick<PaymentAttempt, "amount">;
+}): CheckoutStatusReservationReconstruction =>
+  Match.value(reservation.reservationDetails).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      cowork: (details) => ({
+        kind: "cowork" as const,
+        summary: {
+          ...details,
+          ...timing,
+          price: attempt.amount,
+        },
+      }),
+      "meeting-room": (details) => ({
+        kind: "meeting-room" as const,
+        summary: {
+          ...details,
+          ...timing,
+          ...Option.match(booked.setupStart, {
+            onNone: () => ({}),
+            onSome: (setupFrom) => ({ setupFrom }),
+          }),
+          price: attempt.amount,
+        },
+      }),
+      office: (details) => {
+        // Unreadable Dotypos seats leave the office summary out.
+        if (Option.isNone(booked.seats)) return { kind: "office" as const };
+        const seats = booked.seats.value;
+
+        return {
+          kind: "office" as const,
+          summary: {
+            ...details,
+            ...timing,
+            price: attempt.amount,
+            seats,
+          },
+        };
+      },
+    })
+  );
+
 const summaryTimeout = "8 seconds";
 
 /**
@@ -316,6 +396,42 @@ const implementation = Effect.gen(function* () {
   const inventory = yield* AdvisoryAvailabilityInventory;
   const finalization = yield* ProviderPaymentFinalizationService;
   const seatingMapFeatureFlag = yield* SeatingMapFeatureFlagService;
+
+  /**
+   * Loads what the summary needs at once: the displayable payment attempt, the
+   * Dotypos reservation when the attempt is likely usable, the table
+   * inventory, and the seating-map release.
+   */
+  const loadSummarySources = (input: {
+    readonly reservation: WorkspaceReservation;
+    readonly loadDotyposReservation: Effect.Effect<
+      ReservationRecord | undefined
+    >;
+    readonly prefetchDotyposReservation: boolean;
+  }) =>
+    Effect.all(
+      [
+        paymentAttempts.findDisplayableForReservation({
+          workspaceReservationId: input.reservation.id,
+          activePaymentAttemptId:
+            input.reservation.activePaymentAttemptId ?? undefined,
+          paymentState: input.reservation.paymentState,
+        }),
+        input.prefetchDotyposReservation
+          ? input.loadDotyposReservation
+          : Effect.void,
+        inventory.tables.pipe(
+          Effect.tapError((cause) =>
+            Effect.logWarning("Checkout status tables load failed", {
+              cause,
+            })
+          ),
+          Effect.orElseSucceed(() => [])
+        ),
+        seatingMapFeatureFlag.isEnabled,
+      ],
+      { concurrency: "inherit" }
+    );
 
   const reconstructSummary = Effect.fn(
     "CheckoutStatusService.reconstructSummary"
@@ -350,27 +466,11 @@ const implementation = Effect.gen(function* () {
         isSummaryLikelyDisplayable(reservation);
 
       const [attempt, prefetchedDotyposReservation, tables, seatingMapEnabled] =
-        yield* Effect.all(
-          [
-            paymentAttempts.findDisplayableForReservation({
-              workspaceReservationId: reservation.id,
-              activePaymentAttemptId:
-                reservation.activePaymentAttemptId ?? undefined,
-              paymentState: reservation.paymentState,
-            }),
-            prefetchDotyposReservation ? loadDotyposReservation : Effect.void,
-            inventory.tables.pipe(
-              Effect.tapError((cause) =>
-                Effect.logWarning("Checkout status tables load failed", {
-                  cause,
-                })
-              ),
-              Effect.orElseSucceed(() => [])
-            ),
-            seatingMapFeatureFlag.isEnabled,
-          ],
-          { concurrency: "inherit" }
-        );
+        yield* loadSummarySources({
+          reservation,
+          loadDotyposReservation,
+          prefetchDotyposReservation,
+        });
       yield* Effect.logDebug(
         "Checkout status summary attempt lookup completed"
       );
@@ -407,19 +507,12 @@ const implementation = Effect.gen(function* () {
         "Checkout status summary Dotypos reservation loaded"
       );
 
-      const openSpaceTableNames =
-        reservation.reservationDetails.kind === "cowork" &&
-        reservation.reservationDetails.entryTier === "open-space"
-          ? yield* getOpenSpaceTableNames(tables)
-          : undefined;
-      const table = getCustomerReservationTable({
-        reservationDetails: reservation.reservationDetails,
-        tableName: getReservationTableName(dotyposReservation, tables),
-        openSpaceTableNames,
+      const { table, tableMap } = yield* placeStatusReservationTable({
+        reservation,
+        dotyposReservation,
+        tables,
+        seatingMapEnabled,
       });
-      const tableMap = seatingMapEnabled
-        ? getWorkspaceTableMap(dotyposReservation, tables)
-        : undefined;
 
       const booked = decodeBookedReservation(
         dotyposReservation,
@@ -448,47 +541,12 @@ const implementation = Effect.gen(function* () {
         return reconstruction;
       }
 
-      const statusReservation = Match.value(
-        reservation.reservationDetails
-      ).pipe(
-        Match.discriminatorsExhaustive("kind")({
-          cowork: (details) => ({
-            kind: "cowork" as const,
-            summary: {
-              ...details,
-              ...timing,
-              price: attempt.amount,
-            },
-          }),
-          "meeting-room": (details) => ({
-            kind: "meeting-room" as const,
-            summary: {
-              ...details,
-              ...timing,
-              ...Option.match(booked.setupStart, {
-                onNone: () => ({}),
-                onSome: (setupFrom) => ({ setupFrom }),
-              }),
-              price: attempt.amount,
-            },
-          }),
-          office: (details) => {
-            // Unreadable Dotypos seats leave the office summary out.
-            if (Option.isNone(booked.seats)) return { kind: "office" as const };
-            const seats = booked.seats.value;
-
-            return {
-              kind: "office" as const,
-              summary: {
-                ...details,
-                ...timing,
-                price: attempt.amount,
-                seats,
-              },
-            };
-          },
-        })
-      );
+      const statusReservation = toStatusReservation({
+        reservation,
+        booked,
+        timing,
+        attempt,
+      });
 
       yield* Effect.logDebug("Checkout status summary reconstructed");
 
