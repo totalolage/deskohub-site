@@ -12,7 +12,9 @@ const set = mock(
     else values.set(name, value);
   }
 );
+const nextHeaders = await import("next/headers");
 mock.module("next/headers", () => ({
+  ...nextHeaders,
   cookies: async () => ({
     get: (name: string) => {
       const value = values.get(name);
