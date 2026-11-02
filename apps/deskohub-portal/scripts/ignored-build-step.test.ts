@@ -448,7 +448,9 @@ describe("portal ignored build step configuration", () => {
 
     expect(configuredDecision({ ".agents/note.md": "note\n" })).toBe(SKIP);
     expect(
-      configuredDecision({ "apps/deskohub-portal/src/pages/index.astro": "x\n" })
+      configuredDecision({
+        "apps/deskohub-portal/src/pages/index.astro": "x\n",
+      })
     ).toBe(BUILD);
   });
 
