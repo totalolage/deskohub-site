@@ -40,7 +40,10 @@ const previewProgress = {
   fulfillment_failed: { paymentStatus: "paid", fulfillmentStatus: "failed" },
 } as const satisfies Record<
   string,
-  Pick<CheckoutStatusViewModel, "paymentStatus" | "fulfillmentStatus">
+  Pick<
+    Extract<CheckoutStatusViewModel, { readonly kind: "cowork" }>,
+    "paymentStatus" | "fulfillmentStatus"
+  >
 >;
 
 const previewStates = [
