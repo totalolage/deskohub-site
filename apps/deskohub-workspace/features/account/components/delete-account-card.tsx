@@ -2,13 +2,12 @@
 
 import { Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
-import { deleteCustomerAccount } from "@/features/account/actions";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  beginAnalyticsAccountTransition,
-  completeAnalyticsAccountSignOut,
-  refreshAnalyticsAccountIdentity,
-} from "@/features/account/analytics-identity";
+  type AccountExit,
+  beginAccountExit,
+} from "@/features/account/account-exit";
+import { deleteCustomerAccount } from "@/features/account/actions";
 import { createAuthReturnLifecycle } from "@/features/account/auth-return";
 import { AccountReauthenticationStep } from "@/features/account/components/account-reauthentication-step";
 import type { AccountPasskeys } from "@/features/account/components/passkeys/use-account-passkeys";
@@ -55,6 +54,8 @@ export function DeleteAccountCard({
   const [confirmed, setConfirmed] = useState(false);
   const [reauthRequired, setReauthRequired] = useState(false);
   const allowNextUnload = useAllowNextUnload();
+  // The exit begun by the latest confirm click, settled by its outcome.
+  const accountExit = useRef<AccountExit | undefined>(undefined);
   const authReturn = useMemo(
     () =>
       createAuthReturnLifecycle({
@@ -70,14 +71,12 @@ export function DeleteAccountCard({
     useWorkspaceAction(deleteCustomerAccount, {
       onSuccess: ({ data }) => {
         if (data?.status === "deleted") {
-          completeAnalyticsAccountSignOut();
+          accountExit.current?.left();
           allowNextUnload();
           leaveDocument(`/${locale}/account/deleted`);
           return;
         }
-        void refreshAnalyticsAccountIdentity({ settleTransition: true }).catch(
-          () => undefined
-        );
+        accountExit.current?.stayed();
         if (data?.status === "reauthentication-required") {
           setReauthRequired(true);
           return;
@@ -87,9 +86,7 @@ export function DeleteAccountCard({
       },
       // Also runs for thrown (transport) failures, so no onTransportError.
       onError: () => {
-        void refreshAnalyticsAccountIdentity({ settleTransition: true }).catch(
-          () => undefined
-        );
+        accountExit.current?.stayed();
       },
     });
 
@@ -235,7 +232,7 @@ export function DeleteAccountCard({
                   }
                   tone="danger"
                   onClick={() => {
-                    beginAnalyticsAccountTransition();
+                    accountExit.current = beginAccountExit();
                     execute({ confirmed: true });
                   }}
                 >
