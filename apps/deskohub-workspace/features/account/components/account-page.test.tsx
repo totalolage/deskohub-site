@@ -40,8 +40,6 @@ const adaAddress = testEmailAddress("ada");
 
 const signInMagicLink = mock(() => Promise.resolve({ error: null }));
 const getSession = mock(() => Promise.resolve({ data: null, error: null }));
-const beginAnalyticsAccountTransition = mock(() => undefined);
-const completeAnalyticsAccountSignOut = mock(() => undefined);
 const refreshAnalyticsAccountIdentity = mock(() => Promise.resolve());
 const acknowledgeSignupReferralNotice = mock(() =>
   Promise.resolve({ data: { status: "acknowledged" } } as never)
@@ -49,9 +47,11 @@ const acknowledgeSignupReferralNotice = mock(() =>
 const completeCustomerProfile = mock((_input: CustomerProfileInput) =>
   Promise.resolve({ data: { status: "completed" } })
 );
+mock.module("@/features/account/account-exit", () => ({
+  beginAccountExit: () => ({ left: () => undefined, stayed: () => undefined }),
+  signOutOfAccount: () => Promise.resolve("signed-out"),
+}));
 mock.module("@/features/account/analytics-identity", () => ({
-  beginAnalyticsAccountTransition,
-  completeAnalyticsAccountSignOut,
   getAnalyticsAccountIdentity: () => ({ status: "anonymous" }),
   refreshAnalyticsAccountIdentity,
   subscribeAnalyticsAccountIdentity: () => () => undefined,
@@ -163,7 +163,6 @@ mock.module("@/features/account/auth.client", () => ({
   authClient: {
     getSession,
     signIn: { magicLink: signInMagicLink },
-    signOut: () => Promise.resolve({ error: null }),
   },
 }));
 
@@ -214,8 +213,6 @@ describe("AccountPage states", () => {
     workspaceRouterRefresh.mockClear();
     workspaceRouterRefresh.mockImplementation(() => undefined);
     workspaceRouterReplace.mockClear();
-    beginAnalyticsAccountTransition.mockClear();
-    completeAnalyticsAccountSignOut.mockClear();
     refreshAnalyticsAccountIdentity.mockClear();
     workspaceUseSearchParams.mockReturnValue(new URLSearchParams());
     getSession.mockClear();
