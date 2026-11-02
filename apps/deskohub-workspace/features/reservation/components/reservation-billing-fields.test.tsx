@@ -1,5 +1,6 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { useForm, useWatch } from "react-hook-form";
+import { m } from "@/features/i18n";
 import {
   defaultReservationBillingSelection,
   type ReservationBillingSelectionInput,
@@ -17,6 +18,8 @@ const { ReservationBillingFields } = await import(
   "./reservation-billing-fields"
 );
 
+const locale = "en-US";
+
 const Harness = () => {
   const form = useForm<{ billing: ReservationBillingSelectionInput }>({
     defaultValues: { billing: defaultReservationBillingSelection },
@@ -25,7 +28,7 @@ const Harness = () => {
 
   return (
     <Form {...form}>
-      <ReservationBillingFields locale="en-US" />
+      <ReservationBillingFields locale={locale} />
       <output data-testid="billing-value">{JSON.stringify(billing)}</output>
     </Form>
   );
@@ -82,22 +85,28 @@ describe("ReservationBillingFields", () => {
     const billing = () =>
       JSON.parse(view.getByTestId("billing-value").textContent ?? "{}");
     const type = (label: string, value: string) =>
-      fireEvent.change(view.getByLabelText(new RegExp(`^${label}`)), {
+      fireEvent.change(view.getByLabelText(label, { exact: false }), {
         target: { value },
       });
 
-    fireEvent.click(view.getByRole("switch", { name: "Business use" }));
-    type("VAT ID", "CZ12345678");
-    type("Legal company name", "  ");
+    const vatIdLabel = m.reservationBillingVatIdLabel({}, { locale });
+    fireEvent.click(
+      view.getByRole("switch", {
+        name: m.reservationPurposeBusinessLabel({}, { locale }),
+      })
+    );
+    type(vatIdLabel, "CZ12345678");
+    type(m.reservationBillingCompanyNameLabel({}, { locale }), "  ");
     expect(billing().buyer).toMatchObject({
       legalName: "  ",
       vatId: "CZ12345678",
     });
 
-    type("VAT ID", "   ");
+    type(vatIdLabel, "   ");
     expect(billing().buyer).not.toHaveProperty("vatId");
-    expect((view.getByLabelText(/^VAT ID/) as HTMLInputElement).required).toBe(
-      false
-    );
+    expect(
+      (view.getByLabelText(vatIdLabel, { exact: false }) as HTMLInputElement)
+        .required
+    ).toBe(false);
   });
 });

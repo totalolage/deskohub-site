@@ -10,7 +10,7 @@ import {
 import { testEmailAddress } from "@deskohub/test-email";
 import { formatAdministrationDateTime } from "@/features/administration/formatters";
 import { m } from "@/features/administration/i18n";
-import type { Locale } from "@/features/i18n";
+import { m as customerMessages, type Locale } from "@/features/i18n";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import {
   registerWorkspaceComponentTestEnv,
@@ -119,7 +119,11 @@ describe("CampaignTestSendDialog", () => {
       contentLocales: ["cs-CZ"],
     });
 
-    expect(view.getByRole("button", { name: "Zavřít" })).toBeTruthy();
+    expect(
+      view.getByRole("button", {
+        name: customerMessages.closeDialogLabel({}, { locale: "cs-CZ" }),
+      })
+    ).toBeTruthy();
   });
 
   test("lists the admin inbox first and adds extra recipients in lowercase", async () => {

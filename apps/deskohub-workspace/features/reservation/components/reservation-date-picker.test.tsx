@@ -1,11 +1,18 @@
 import { afterAll, afterEach, describe, expect, mock, test } from "bun:test";
 import { useState } from "react";
 import "@/shared/polyfills/temporal";
+import { m } from "@/features/i18n";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 import type { ReservationDatePickerProps } from "./reservation-date-picker";
+
+const dateLabel = "Reservation date";
+const calendarButtonLabel = m.reservationDateCalendarButtonLabel(
+  { field: dateLabel },
+  { locale: "en-US" }
+);
 
 // React DOM detects input events and Radix picks its layout-effect hook when
 // they load, so the DOM must exist before either is imported.
@@ -28,7 +35,7 @@ function ControlledPicker({
 
   return (
     <ReservationDatePicker
-      ariaLabel="Reservation date"
+      ariaLabel={dateLabel}
       locale="en-US"
       name="date"
       onChange={(nextValue) => {
@@ -85,7 +92,7 @@ describe("ReservationDatePicker typed date", () => {
     expect(description()).toBe("Format: MM/DD/YYYY or YYYY-MM-DD");
     expect(
       view.getByRole("button", {
-        name: "Reservation date: choose from the calendar",
+        name: calendarButtonLabel,
       })
     ).not.toBeNull();
   });
@@ -343,7 +350,7 @@ describe("ReservationDatePicker typed date", () => {
 
     fireEvent.click(
       view.getByRole("button", {
-        name: "Reservation date: choose from the calendar",
+        name: calendarButtonLabel,
       })
     );
     const day = await waitFor(() => {
@@ -368,7 +375,7 @@ describe("ReservationDatePicker typed date", () => {
 
     fireEvent.click(
       view.getByRole("button", {
-        name: "Reservation date: choose from the calendar",
+        name: calendarButtonLabel,
       })
     );
     const selectedDay = await waitFor(() => {
