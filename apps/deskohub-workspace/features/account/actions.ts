@@ -11,7 +11,10 @@ import {
 } from "@/features/account/account-action-guards";
 import type { AresBusinessBillingDraft } from "@/features/account/backend/ares-business-draft";
 import { toAresBusinessBillingDraft } from "@/features/account/backend/ares-business-draft";
-import { deleteCurrentAccountThroughAuthEndpoint } from "@/features/account/backend/auth/delete-account-endpoint";
+import {
+  type CustomerAccountDeletionEndpointResult,
+  deleteCurrentAccountThroughAuthEndpoint,
+} from "@/features/account/backend/auth/delete-account-endpoint";
 import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
 import { CustomerAccountLinkRepository } from "@/features/account/backend/customer-account-link.repository";
 import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
@@ -40,6 +43,7 @@ import { ReferralFeatureFlagRequest } from "@/features/referrals/referral-featur
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import { ReferralSignupIntentRepository } from "@/features/referrals/signup-intent.repository";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
+import { currentRequestHeaders } from "@/shared/backend/workspace-request-context";
 
 const deleteCustomerAccountConfirmedSchema = Schema.toStandardSchemaV1(
   Schema.Struct({ confirmed: Schema.Literal(true) }),
@@ -295,8 +299,18 @@ const deleteCustomerAccountAction = defineWorkspaceAction(
     }
 
     // The endpoint adapter converts every rejection into its closed result.
-    const result = yield* Effect.promise(() =>
-      deleteCurrentAccountThroughAuthEndpoint()
+    const result = yield* currentRequestHeaders.pipe(
+      Effect.flatMap((requestHeaders) =>
+        Effect.promise(() =>
+          deleteCurrentAccountThroughAuthEndpoint(requestHeaders)
+        )
+      ),
+      Effect.orElseSucceed(
+        (): CustomerAccountDeletionEndpointResult => ({
+          status: "failed",
+          code: "account.delete.unexpected",
+        })
+      )
     );
 
     yield* revalidateDeletionAuthority(locale);

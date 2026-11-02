@@ -13,6 +13,7 @@ import {
 import { flushPostHogLogs } from "./logging/posthog-otel";
 import { WorkspaceTracingLive } from "./observability/workspace-tracing";
 import { runStandaloneWorkspaceEffect } from "./standalone-workspace-effect";
+import { withAnonymousVisitor } from "./workspace-request-context";
 
 export type WorkspaceEffectBoundary =
   | "action"
@@ -239,21 +240,26 @@ export const defineWorkspaceTask =
   ) =>
   (...args: Args): Promise<A> =>
     Effect.suspend(() => handler(...args)).pipe(
+      withAnonymousVisitor,
       Effect.ensuring(flushTelemetry),
       runWorkspaceEffect(operation, { boundary: "task" })
     );
 
 /**
  * Schedules `effect` to run with `runWorkspaceEffect` after the current
- * response is sent, so the request never waits for it. A failure to schedule
- * is logged, never raised.
+ * response is sent, so the request never waits for it. The work serves no
+ * visitor, even where Next.js still exposes the request. A failure to
+ * schedule is logged, never raised.
  */
 export const runWorkspaceEffectAfterResponse = <A, E>(
   operation: string,
   effect: Effect.Effect<A, E, never>
 ) =>
   Effect.try({
-    try: () => after(() => effect.pipe(runWorkspaceEffect(operation))),
+    try: () =>
+      after(() =>
+        effect.pipe(withAnonymousVisitor, runWorkspaceEffect(operation))
+      ),
     catch: (cause) =>
       new WorkspaceTelemetryError({
         cause,

@@ -6,8 +6,8 @@ import {
   canonicalPromotionCodeSchema,
 } from "@/features/discounts/contracts";
 import { getRequestCookies } from "@/shared/backend/utils/request-cookies";
-import { getRequestHeaders } from "@/shared/backend/utils/request-headers";
 import { catchRecoverableCause } from "@/shared/backend/workspace-effect";
+import { currentRequestHeaders } from "@/shared/backend/workspace-request-context";
 import type { ReferralCode } from "./client";
 import { ReferralService } from "./referral.service";
 import {
@@ -283,7 +283,7 @@ function nextCookieJar(): ReferralCodeJar {
       secure: boolean
     ) => unknown
   ) =>
-    Effect.all([getRequestCookies, getRequestHeaders]).pipe(
+    Effect.all([getRequestCookies, currentRequestHeaders]).pipe(
       Effect.mapError((cause) => new RememberedReferralError({ cause })),
       Effect.flatMap(([jar, headers]) =>
         Effect.try({
