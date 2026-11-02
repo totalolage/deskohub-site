@@ -339,7 +339,17 @@ export function ReservationDatePicker({
   value,
   variant = "default",
 }: ReservationDatePickerProps) {
-  const popover = useReservationCalendarPopover(onBlur);
+  // Destructured, so the React Compiler sees the refs as refs and the open
+  // state as a plain value.
+  const {
+    calendar,
+    closesToFieldRef,
+    inputRef,
+    open,
+    requestOpen,
+    setOpenRequested,
+    triggerRef,
+  } = useReservationCalendarPopover(onBlur);
   const baseId = useId();
   const calendarId = `${baseId}-calendar`;
   const formatId = `${baseId}-format`;
@@ -356,13 +366,13 @@ export function ReservationDatePicker({
   const inputFormat = getDateInputFormat(locale);
   const { format, isoFormat, messageLocale } = inputFormat;
   const { selectedDate, typedError } = typed;
-  const controlsId = popover.open ? calendarId : undefined;
+  const controlsId = open ? calendarId : undefined;
 
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       {name && <input name={name} type="hidden" value={committedValue} />}
       <Popover
-        open={popover.open}
+        open={open}
         onOpenChange={(nextOpen) => {
           // The popover opens once the calendar is loaded. A failed chunk load
           // leaves it closed; the next open request retries it.
@@ -370,7 +380,7 @@ export function ReservationDatePicker({
             typed.commitText();
             reservationCalendar.preload();
           }
-          popover.setOpenRequested(nextOpen);
+          setOpenRequested(nextOpen);
           // Closing the calendar is the field's blur; this lets onBlur form
           // validation run.
           if (!nextOpen) onBlur?.();
@@ -378,7 +388,7 @@ export function ReservationDatePicker({
       >
         <div className="relative">
           <Input
-            ref={popover.inputRef}
+            ref={inputRef}
             id={id}
             role="combobox"
             aria-autocomplete="none"
@@ -386,7 +396,7 @@ export function ReservationDatePicker({
             aria-describedby={[formatId, errorId, ariaDescribedBy]
               .filter(Boolean)
               .join(" ")}
-            aria-expanded={popover.open}
+            aria-expanded={open}
             aria-haspopup="dialog"
             aria-invalid={Boolean(ariaInvalid || typedError)}
             aria-label={ariaLabelledBy ? undefined : ariaLabel}
@@ -405,7 +415,7 @@ export function ReservationDatePicker({
               if (event.key === "ArrowDown") {
                 event.preventDefault();
                 typed.commitText();
-                popover.requestOpen();
+                requestOpen();
               }
             }}
             placeholder={format}
@@ -416,7 +426,7 @@ export function ReservationDatePicker({
           />
           <PopoverTrigger asChild>
             <button
-              ref={popover.triggerRef}
+              ref={triggerRef}
               aria-controls={controlsId}
               aria-label={m.reservationDateCalendarButtonLabel(
                 { field: ariaLabel },
@@ -440,17 +450,17 @@ export function ReservationDatePicker({
           // The calendar focuses the selected day, or today, itself.
           onOpenAutoFocus={(event) => event.preventDefault()}
           onEscapeKeyDown={() => {
-            popover.closesToFieldRef.current = true;
+            closesToFieldRef.current = true;
           }}
           onCloseAutoFocus={(event) => {
-            if (!popover.closesToFieldRef.current) return;
-            popover.closesToFieldRef.current = false;
+            if (!closesToFieldRef.current) return;
+            closesToFieldRef.current = false;
             event.preventDefault();
-            popover.inputRef.current?.focus();
+            inputRef.current?.focus();
           }}
         >
           <ReservationDateCalendar
-            calendar={popover.calendar}
+            calendar={calendar}
             isUnavailable={(date) =>
               typed.getUnavailability(date) !== undefined
             }
@@ -459,8 +469,8 @@ export function ReservationDatePicker({
               if (typed.getUnavailability(date)) return;
 
               typed.pickDate(date);
-              popover.closesToFieldRef.current = true;
-              popover.setOpenRequested(false);
+              closesToFieldRef.current = true;
+              setOpenRequested(false);
               onBlur?.();
             }}
             selectedDate={selectedDate}

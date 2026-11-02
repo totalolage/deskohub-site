@@ -95,17 +95,15 @@ function AccountHelp({ locale }: { readonly locale: Locale }) {
 }
 
 /**
- * The section a path opens. The page is not found at a withheld section's
- * path; the shell still never opens one.
+ * Whether a path opens its own section. The page is not found at a withheld
+ * section's path; the shell still never opens one.
  */
-const openedAccountSection = (
+const opensAccountSection = (
   pathnameSection: AccountSection | undefined,
   release: AccountSectionRelease
-): AccountSection =>
+): pathnameSection is AccountSection =>
   pathnameSection !== undefined &&
-  isAccountSectionReleased(pathnameSection, release)
-    ? pathnameSection
-    : defaultAccountSection;
+  isAccountSectionReleased(pathnameSection, release);
 
 /**
  * The page metadata keeps titling the section the page was loaded at, also
@@ -140,10 +138,12 @@ export function AccountLayoutShell({
   const routeKey = pathname ?? "";
   const isDeletedPathname = /\/account\/deleted\/*$/.test(routeKey);
   const pathnameSection = findAccountSectionOfPathname(locale, routeKey);
-  const routeSection = openedAccountSection(pathnameSection, {
+  const routeSection = opensAccountSection(pathnameSection, {
     passkeysEnabled,
     referralsEnabled,
-  });
+  })
+    ? pathnameSection
+    : defaultAccountSection;
   const isLegalPathname = routeSection === "legal";
   const [localNavigation, setLocalNavigation] = useState(() => ({
     activeSection: routeSection,

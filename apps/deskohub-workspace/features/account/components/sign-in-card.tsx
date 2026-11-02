@@ -15,7 +15,6 @@ import {
 } from "@/features/account/components/sign-in-email-step";
 import { SignInPasswordStep } from "@/features/account/components/sign-in-password-step";
 import {
-  type EmailSignInRequest,
   hasSignInCode,
   signsInWithPassword,
   useEmailSignInRequest,
@@ -66,11 +65,8 @@ export function SignInCard({
     const frame = requestAnimationFrame(() => setNoticeRegionMounted(true));
     return () => cancelAnimationFrame(frame);
   }, [noticeRegionMounted]);
-  const [storedRequest, setRequest] = useEmailSignInRequest();
-  const { request, destination } = continuingSignInRequest(
-    storedRequest,
-    parseSameOriginPath(returnTo)
-  );
+  const { request, destination, setRequest } =
+    useContinuingSignInRequest(returnTo);
   const submissionInProgress = useRef(false);
   // The control that switched the view unmounts with it, so the next view
   // takes focus once it mounts.
@@ -193,11 +189,11 @@ export function SignInCard({
 
 // The pending request continues only to its own destination: its link
 // already lands there. A card opened without one takes the request's; a
-// card opened for another one starts a fresh request.
-function continuingSignInRequest(
-  storedRequest: EmailSignInRequest | null,
-  requestedReturnTo: string | undefined
-) {
+// card opened for another one starts a fresh request. A hook, so the React
+// Compiler treats the destination as frozen and keeps the card's memoization.
+function useContinuingSignInRequest(returnTo: string | undefined) {
+  const [storedRequest, setRequest] = useEmailSignInRequest();
+  const requestedReturnTo = parseSameOriginPath(returnTo);
   const request =
     storedRequest &&
     (requestedReturnTo === undefined ||
@@ -207,5 +203,6 @@ function continuingSignInRequest(
   return {
     request,
     destination: request ? request.returnTo : requestedReturnTo,
+    setRequest,
   };
 }
