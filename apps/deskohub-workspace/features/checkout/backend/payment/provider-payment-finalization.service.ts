@@ -24,18 +24,13 @@ import {
   WorkspaceReservationRepository,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
 import { WorkspaceNexiLayer } from "@/shared/backend/config/nexi.config";
 import {
   getProviderOrderAbandonment,
   getProviderOrderAbandonmentCutoff,
   hasProviderPaymentActivity,
 } from "../../provider-order-abandonment";
-import {
-  capturePaymentAbandoned,
-  capturePaymentCompleted,
-  capturePaymentFailed,
-} from "../analytics/posthog-lifecycle-events";
+import { CheckoutAnalytics } from "../analytics/checkout-analytics.service";
 import { PaidFulfillmentQueueService } from "../fulfillment/paid-fulfillment-queue.service";
 import { ReservationFulfillment } from "../fulfillment/reservation-fulfillment.service";
 import {
@@ -94,7 +89,7 @@ export class ProviderPaymentFinalizationService extends Context.Service<
   static Live = this.Default.pipe(
     Layer.provide(PaymentAttemptRepository.Default),
     Layer.provide(PaymentLifecycleRepository.Default),
-    Layer.provide(PostHogEventService.Live),
+    Layer.provide(CheckoutAnalytics.Live),
     Layer.provide(WorkspaceReservationRepository.Default),
     Layer.provide(WorkspaceDatabase.Default),
     Layer.provide(ReservationFulfillment.Live),
@@ -115,7 +110,7 @@ function makeProviderPaymentFinalizationServiceLayer(
       const nexi = yield* NexiService;
       const paidFulfillmentQueue = yield* PaidFulfillmentQueueService;
       const fulfillment = yield* ReservationFulfillment;
-      const posthogEvents = yield* PostHogEventService;
+      const checkoutAnalytics = yield* CheckoutAnalytics;
 
       /**
        * Ends an attempt whose hosted payment page creation failed ambiguously
@@ -212,11 +207,11 @@ function makeProviderPaymentFinalizationServiceLayer(
         if (!terminal) return "not_pending";
 
         if (terminal.changed) {
-          yield* capturePaymentFailed({
+          yield* checkoutAnalytics.paymentFailed({
             attempt: terminal.attempt,
             failureReason: "nexi_hpp_create_unconfirmed",
             timestamp: terminal.timestamp,
-          }).pipe(Effect.provideService(PostHogEventService, posthogEvents));
+          });
         }
         yield* Effect.logInfo(
           "Payment finalization failed an unattached provider session",
@@ -463,12 +458,10 @@ function makeProviderPaymentFinalizationServiceLayer(
                 return "not_pending";
               }
               if (paidSuccess.changed) {
-                yield* capturePaymentCompleted({
+                yield* checkoutAnalytics.paymentCompleted({
                   attempt: paidSuccess.attempt,
                   timestamp: paidSuccess.timestamp,
-                }).pipe(
-                  Effect.provideService(PostHogEventService, posthogEvents)
-                );
+                });
               }
               yield* Effect.logDebug(
                 "Payment finalization mark paid completed"
@@ -519,20 +512,16 @@ function makeProviderPaymentFinalizationServiceLayer(
               }
               if (terminalSuccess.changed) {
                 if (terminalState === "failed") {
-                  yield* capturePaymentFailed({
+                  yield* checkoutAnalytics.paymentFailed({
                     attempt: terminalSuccess.attempt,
                     failureReason: "nexi_payment_failed",
                     timestamp: terminalSuccess.timestamp,
-                  }).pipe(
-                    Effect.provideService(PostHogEventService, posthogEvents)
-                  );
+                  });
                 } else {
-                  yield* capturePaymentAbandoned({
+                  yield* checkoutAnalytics.paymentAbandoned({
                     attempt: terminalSuccess.attempt,
                     timestamp: terminalSuccess.timestamp,
-                  }).pipe(
-                    Effect.provideService(PostHogEventService, posthogEvents)
-                  );
+                  });
                 }
               }
               yield* Effect.logDebug(

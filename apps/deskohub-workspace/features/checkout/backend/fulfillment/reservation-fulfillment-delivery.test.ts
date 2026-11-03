@@ -5,7 +5,6 @@ import { EmailDeliveryIdSchema } from "@deskohub/email";
 import { Effect, Layer } from "effect";
 import type { ReservationInvoiceService as ReservationInvoices } from "@/features/accounting/backend/reservation-invoice.service";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import type { CapturePostHogEventInput } from "@/shared/backend/analytics/posthog-event.service";
 import type { IFulfillmentLedger } from "./fulfillment-ledger.repository";
 import type { ReservationAccessDeliveryReport } from "./reservation-fulfillment.service";
 
@@ -26,8 +25,8 @@ const { WorkspaceReservationRepository } = await import(
 const { WorkspaceReservationService } = await import(
   "@/features/reservation/backend/workspace-reservation.service"
 );
-const { PostHogEventService } = await import(
-  "@/shared/backend/analytics/posthog-event.service"
+const { recordCheckoutAnalytics } = await import(
+  "@/features/checkout/backend/analytics/checkout-analytics.service.mock"
 );
 const { FulfillmentLedger } = await import("./fulfillment-ledger.repository");
 const { ReservationFulfillment } = await import(
@@ -69,9 +68,7 @@ const deliveryReport = (
 const recordDelivery = (input: {
   readonly ledger: Partial<IFulfillmentLedger>;
   readonly report: ReservationAccessDeliveryReport;
-  readonly posthogCapture?: (
-    input: CapturePostHogEventInput
-  ) => Effect.Effect<void>;
+  readonly analytics?: ReturnType<typeof recordCheckoutAnalytics>;
   readonly processInvoice?: ReservationInvoices["Service"]["processByPaymentAttemptId"];
 }) =>
   Effect.gen(function* () {
@@ -83,9 +80,7 @@ const recordDelivery = (input: {
         Layer.provide(
           Layer.mergeAll(
             Layer.mock(FulfillmentLedger, input.ledger),
-            Layer.mock(PostHogEventService, {
-              capture: input.posthogCapture ?? (() => Effect.void),
-            }),
+            (input.analytics ?? recordCheckoutAnalytics()).layer,
             Layer.mock(ReservationInvoiceService, {
               processByPaymentAttemptId:
                 input.processInvoice ?? (() => Effect.void),
@@ -115,7 +110,7 @@ const untouchedDelivery = () => ({
 
 describe("ReservationFulfillment.recordDelivery", () => {
   test("completes an awaiting delivery, emits reservation fulfilled and issues the invoice", async () => {
-    const capture = mock((_input: CapturePostHogEventInput) => Effect.void);
+    const analytics = recordCheckoutAnalytics();
     const processInvoice = mock(() => Effect.void);
     const markFulfilled = mock(() =>
       Effect.succeed(fulfilledReservation as never)
@@ -135,7 +130,7 @@ describe("ReservationFulfillment.recordDelivery", () => {
       recordDelivery({
         ledger,
         report: deliveryReport(),
-        posthogCapture: capture,
+        analytics,
         processInvoice,
       })
     );
@@ -149,7 +144,7 @@ describe("ReservationFulfillment.recordDelivery", () => {
       customerEmailDeliveryId,
       fulfilledAt: reportedAt,
     });
-    const [capturedEvent] = capture.mock.calls[0] ?? [];
+    const [capturedEvent] = analytics.messages;
     expect(capturedEvent).toMatchObject({ event: "reservation fulfilled" });
     expect(
       Temporal.Instant.compare(
@@ -165,7 +160,7 @@ describe("ReservationFulfillment.recordDelivery", () => {
   test("retries the invoice for an already fulfilled reservation", async () => {
     const invoiceFailure = new Error("synthetic invoice failure");
     const processInvoice = mock(() => Effect.fail(invoiceFailure as never));
-    const capture = mock((_input: CapturePostHogEventInput) => Effect.void);
+    const analytics = recordCheckoutAnalytics();
     const markFulfilled = mock(() => Effect.die("should not re-fulfill"));
 
     const error = await Effect.runPromise(
@@ -178,7 +173,7 @@ describe("ReservationFulfillment.recordDelivery", () => {
             markCustomerEmailDeliveryFulfilled: markFulfilled,
           },
           report: deliveryReport(),
-          posthogCapture: capture,
+          analytics,
           processInvoice,
         })
       )
@@ -194,7 +189,7 @@ describe("ReservationFulfillment.recordDelivery", () => {
       paymentAttemptId: "payment-attempt-id",
     });
     expect(markFulfilled).not.toHaveBeenCalled();
-    expect(capture).not.toHaveBeenCalled();
+    expect(analytics.messages).toEqual([]);
   });
 
   test("ignores an already fulfilled reservation once its invoice is issued", async () => {
@@ -301,7 +296,7 @@ describe("ReservationFulfillment.recordDelivery", () => {
   });
 
   test("ignores a failure report the ledger finds older than the fulfillment", async () => {
-    const capture = mock((_input: CapturePostHogEventInput) => Effect.void);
+    const analytics = recordCheckoutAnalytics();
     const markDeliveryFailed = mock(() => Effect.succeed(null));
 
     const outcome = await Effect.runPromise(
@@ -319,7 +314,7 @@ describe("ReservationFulfillment.recordDelivery", () => {
           markCustomerEmailDeliveryFailed: markDeliveryFailed,
         },
         report: deliveryReport({ outcome: "failed" }),
-        posthogCapture: capture,
+        analytics,
       })
     );
 
@@ -327,11 +322,11 @@ describe("ReservationFulfillment.recordDelivery", () => {
     expect(markDeliveryFailed).toHaveBeenCalledWith(
       expect.objectContaining({ customerEmailDeliveryId, failedAt: reportedAt })
     );
-    expect(capture).not.toHaveBeenCalled();
+    expect(analytics.messages).toEqual([]);
   });
 
   test("cannot clear a newer delivery failure with a delayed success report", async () => {
-    const capture = mock((_input: CapturePostHogEventInput) => Effect.void);
+    const analytics = recordCheckoutAnalytics();
     const processInvoice = mock(() => Effect.void);
     const markFulfilled = mock(() => Effect.succeed(null));
 
@@ -354,7 +349,7 @@ describe("ReservationFulfillment.recordDelivery", () => {
           ),
         },
         report: deliveryReport(),
-        posthogCapture: capture,
+        analytics,
         processInvoice,
       })
     );
@@ -366,7 +361,7 @@ describe("ReservationFulfillment.recordDelivery", () => {
         fulfilledAt: reportedAt,
       })
     );
-    expect(capture).not.toHaveBeenCalled();
+    expect(analytics.messages).toEqual([]);
     expect(processInvoice).not.toHaveBeenCalled();
   });
 
