@@ -1,6 +1,6 @@
 ---
 name: deskohub-repository
-description: Deskohub monorepo commands, Bun, Turbo tasks, TypeScript toolchain, Next.js upgrades, patched dependencies, generated clients, branch integration, merge conflicts, lockfile reconciliation, env files, portal Vercel Ignored Build Step, portal deployment skipping, test placement, test coverage, Istanbul, coverage-final.json, visual-crap, CRAP score, lint rules, Grit plugins, CI shards, GitHub Actions, app and package boundaries, Cloudinary gallery, Admin API quota.
+description: Deskohub monorepo commands, Bun, Turbo tasks, TypeScript toolchain, Next.js upgrades, patched dependencies, generated clients, branch integration, merge conflicts, lockfile reconciliation, env files, portal deployment skipping, Vercel unaffected-project skipping, agent-skills workspace package, test placement, test coverage, Istanbul, coverage-final.json, visual-crap, CRAP score, lint rules, Grit plugins, CI shards, GitHub Actions, app and package boundaries, Cloudinary gallery, Admin API quota.
 ---
 
 # Deskohub repository
