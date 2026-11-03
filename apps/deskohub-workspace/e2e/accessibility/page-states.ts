@@ -11,10 +11,11 @@ import {
   seedWorkspaceE2ELocalReservation,
   type WorkspaceE2ELocalReservationPaymentState,
 } from "../checkout/local-reservation-fixture";
+import type { E2EDatabase } from "../integrations/database.service";
 import { waitForReactSubmitHandler } from "../react-handlers";
+import type { E2EEffectRunner } from "../runtime-fixture";
 import { workspaceE2ETimeouts } from "../timeouts";
 import { type AuditedLocale, openSettledPage } from "./accessibility-audit";
-import { runWithLocalDatabase } from "./audit-target";
 
 export const reservationForms = [
   { family: "cowork", path: "/reservation/cowork" },
@@ -86,12 +87,21 @@ const statusPath = (locale: AuditedLocale, orderId: string) =>
 /**
  * Opens the status page in one outcome while `use` runs. A seeded checkout is
  * opened with its access token, which the proxy exchanges for the order's
- * access cookie before the page renders, and deleted afterwards.
+ * access cookie before the page renders, and deleted afterwards, through
+ * `localDatabase`.
  */
 export async function withStatusOutcome(
-  page: Page,
-  locale: AuditedLocale,
-  outcome: StatusOutcome,
+  {
+    localDatabase,
+    locale,
+    outcome,
+    page,
+  }: {
+    readonly localDatabase: E2EEffectRunner<E2EDatabase>;
+    readonly locale: AuditedLocale;
+    readonly outcome: StatusOutcome;
+    readonly page: Page;
+  },
   use: () => Promise<void>
 ) {
   if (outcome === "not_found") {
@@ -105,7 +115,7 @@ export async function withStatusOutcome(
     await use();
     return;
   }
-  const fixture = await runWithLocalDatabase(
+  const fixture = await localDatabase(
     seedWorkspaceE2ELocalReservation({}, outcome)
   );
   try {
@@ -120,6 +130,6 @@ export async function withStatusOutcome(
     await expect(page).toHaveURL((url) => url.pathname === path && !url.search);
     await use();
   } finally {
-    await runWithLocalDatabase(cleanupWorkspaceE2ELocalReservation(fixture));
+    await localDatabase(cleanupWorkspaceE2ELocalReservation(fixture));
   }
 }

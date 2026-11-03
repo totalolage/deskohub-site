@@ -29,7 +29,7 @@ import { tryWorkspaceE2EPromise } from "../errors";
 import { workspaceE2ERunIdSchema } from "../run-identifiers";
 import { workspaceAgentEvalTimeouts, workspaceE2ETimeouts } from "../timeouts";
 import { type AgentEvalBrowser, launchAgentEvalBrowser } from "./browser";
-import type { AgentEvalRuntime, AgentEvalSettings } from "./environment";
+import type { AgentEvalEffectRunner, AgentEvalSettings } from "./environment";
 import type { AgentEvalHarness, AgentEvalRequest } from "./harness-contract";
 import { runAgentEvalHarness } from "./harness-process";
 import {
@@ -223,7 +223,7 @@ export const runAgentEvalCase = async ({
   outputDir,
   repeat,
   runSet,
-  runtime,
+  runEffect,
   settings,
   taskId,
 }: {
@@ -236,7 +236,7 @@ export const runAgentEvalCase = async ({
   readonly outputDir: string;
   readonly repeat: number;
   readonly runSet: AgentEvalRunSet;
-  readonly runtime: AgentEvalRuntime;
+  readonly runEffect: AgentEvalEffectRunner;
   readonly settings: AgentEvalSettings;
   readonly taskId: AgentEvalTaskId;
 }): Promise<AgentEvalRunResult> => {
@@ -263,7 +263,7 @@ export const runAgentEvalCase = async ({
   }
 
   try {
-    const parameters = await runtime.runPromise(
+    const parameters = await runEffect(
       selectAgentEvalTaskParameters(taskId, config, lane)
     );
 
@@ -271,7 +271,7 @@ export const runAgentEvalCase = async ({
     // assigns its id, so cleanup can always find it. The profile is a
     // returning customer's: checkout asks for nothing the prompt can't give.
     await recorder.record({ authUserIds: [accountId] });
-    const customerId = await runtime.runPromise(
+    const customerId = await runEffect(
       createSyntheticCustomerProfile(datasourceConfig, {
         email,
         firstName: workspaceE2EAccountProfileFixture.firstName,
@@ -279,7 +279,7 @@ export const runAgentEvalCase = async ({
       })
     );
     await recorder.record({ dotyposCustomerIds: [customerId] });
-    await runtime.runPromise(
+    await runEffect(
       seedWorkspaceE2ESyntheticAccount({
         accountId,
         email,
@@ -288,18 +288,18 @@ export const runAgentEvalCase = async ({
       })
     );
 
-    browser = await runtime.runPromise(
+    browser = await runEffect(
       launchAgentEvalBrowser({ headless, launchOptions, locale })
     );
     const { context } = browser;
-    await runtime.runPromise(
+    await runEffect(
       primePreviewBypass({
         bypassSecret: config.bypassSecret,
         context,
         origin: config.baseUrl,
       })
     );
-    await runtime.runPromise(
+    await runEffect(
       signInWorkspaceE2ESyntheticBrowserContext({
         accountId,
         context,
@@ -331,7 +331,7 @@ export const runAgentEvalCase = async ({
       siteOrigin: config.baseUrl,
     });
     const harnessStartedAt = performance.now();
-    const harnessRun = await runtime.runPromise(
+    const harnessRun = await runEffect(
       runAgentEvalHarness({
         harness,
         harnessDirectory: settings.harnessDirectory,
@@ -342,7 +342,7 @@ export const runAgentEvalCase = async ({
     const wallTimeMs = Math.round(performance.now() - harnessStartedAt);
     const observations = observer.snapshot();
 
-    const resources = await runtime.runPromise(
+    const resources = await runEffect(
       readAgentEvalRunResources(
         datasourceConfig,
         accountId,
@@ -370,7 +370,7 @@ export const runAgentEvalCase = async ({
       judgement = judgeAgentEvalFacts(finalAnswer);
       judgeInput = { finalAnswer, parameters };
     } else {
-      const records = await runtime.runPromise(
+      const records = await runEffect(
         readAgentEvalReservations(datasourceConfig, accountId)
       );
       const statusPage =
@@ -426,9 +426,9 @@ export const runAgentEvalCase = async ({
     return result;
   } finally {
     try {
-      if (browser) await runtime.runPromise(browser.close);
+      if (browser) await runEffect(browser.close);
     } finally {
-      await runtime.runPromise(
+      await runEffect(
         reconcileAgentEvalRun(datasourceConfig, runSet.runSetId, runId)
       );
     }
