@@ -58,7 +58,7 @@ export function setGoogleConsentDefaults(): void {
   getGtmQueueWindow()?.gtag("consent", "default", DEFAULT_CONSENT_STATE);
 }
 
-type GoogleConsentUpdateOptions = {
+export type GoogleConsentUpdateOptions = {
   /**
    * Queues the `consent_update` dataLayer event after the caller's current
    * synchronous work, for first consent and changes only.
@@ -67,11 +67,11 @@ type GoogleConsentUpdateOptions = {
 };
 
 /**
- * Queues one Google consent mode update per optional category, granted or
- * denied by `accepts`.
+ * Queues one Google consent mode update per optional category, granted when
+ * `accepted` includes it and denied otherwise.
  */
 export function updateGoogleConsentMode(
-  accepts: (category: ConsentCategory) => boolean,
+  accepted: readonly ConsentCategory[],
   { announceToTagManager }: GoogleConsentUpdateOptions
 ): void {
   const gtmQueueWindow = getGtmQueueWindow();
@@ -81,7 +81,9 @@ export function updateGoogleConsentMode(
     const signals = consentSignalsByCategory[category];
     if (signals.length === 0) continue;
 
-    const status: ConsentStatus = accepts(category) ? "granted" : "denied";
+    const status: ConsentStatus = accepted.includes(category)
+      ? "granted"
+      : "denied";
     gtmQueueWindow.gtag(
       "consent",
       "update",

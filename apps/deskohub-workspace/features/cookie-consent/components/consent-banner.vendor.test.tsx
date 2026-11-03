@@ -62,12 +62,15 @@ afterEach(() => {
 afterAll(unregisterWorkspaceComponentTestEnv);
 
 test("a withdrawal in a tab that remembers the withdrawn state persists and denies Google consent", async () => {
-  render(<ConsentBanner locale="en-US" />);
+  const view = render(<ConsentBanner locale="en-US" />);
   await act(async () => {
     vendor.acceptCategory([]);
     await flushMicrotasks();
   });
   expect(accepted()).toEqual(["necessary"]);
+  // A locale change re-runs the banner effect while the vendor stays
+  // initialized.
+  view.rerender(<ConsentBanner locale="cs-CZ" />);
 
   changeConsentInAnotherTab(["necessary", "analytics"]);
   expect(visitorConsent.accepts("analytics")).toBe(true);

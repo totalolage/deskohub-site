@@ -4,9 +4,10 @@ import { useEffect } from "react";
 import * as CookieConsent from "vanilla-cookieconsent";
 import "vanilla-cookieconsent/dist/cookieconsent.css";
 import type { Locale } from "@/features/i18n";
-import { consentCategories } from "@/shared/utils/consent-cookie";
+import type { ConsentCategory } from "@/shared/utils/consent-cookie";
 import { createConsentConfig } from "../config/consent-config";
 import {
+  type GoogleConsentUpdateOptions,
   setGoogleConsentDefaults,
   updateGoogleConsentMode,
 } from "../utils/google-consent-mode";
@@ -42,11 +43,9 @@ export function ConsentBanner({ locale }: ConsentBannerProps) {
     // mode here too, so a withdrawal elsewhere stops this tab's tags. This
     // neither re-announces nor queues consent_update.
     const stopFollowingConsent = visitorConsent.subscribe(() => {
-      if (appliedCategories === acceptedCategoriesKey()) return;
-      updateGoogleConsentMode(visitorConsent.accepts, {
-        announceToTagManager: false,
-      });
-      appliedCategories = acceptedCategoriesKey();
+      const accepted = visitorConsent.acceptedCategories();
+      if (appliedCategories === accepted.join(",")) return;
+      applyGoogleConsent(accepted, { announceToTagManager: false });
     });
 
     return () => {
@@ -61,13 +60,19 @@ export function ConsentBanner({ locale }: ConsentBannerProps) {
 // The accepted set Google consent mode last received in this tab.
 let appliedCategories: string | undefined;
 
-const acceptedCategoriesKey = () =>
-  consentCategories.filter(visitorConsent.accepts).join(",");
+// One cookie read feeds both the update and the record of what was sent, so
+// another tab's write in between cannot desynchronize them.
+function applyGoogleConsent(
+  accepted: readonly ConsentCategory[],
+  options: GoogleConsentUpdateOptions
+) {
+  updateGoogleConsentMode(accepted, options);
+  appliedCategories = accepted.join(",");
+}
 
 // The tag manager's consent_update is queued, so the app event always fires
 // first.
-function applyConsent(options: { readonly announceToTagManager: boolean }) {
-  updateGoogleConsentMode(visitorConsent.accepts, options);
-  appliedCategories = acceptedCategoriesKey();
+function applyConsent(options: GoogleConsentUpdateOptions) {
+  applyGoogleConsent(visitorConsent.acceptedCategories(), options);
   announceVisitorConsentChange();
 }

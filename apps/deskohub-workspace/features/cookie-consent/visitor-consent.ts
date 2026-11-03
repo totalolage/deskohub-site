@@ -49,6 +49,9 @@ export const visitorConsent = {
   accepts: (category: ConsentCategory): boolean =>
     acceptedCategories().includes(category),
 
+  /** Every accepted category, in display order. */
+  acceptedCategories,
+
   /**
    * Calls `onChange` after consent may have changed. Read `accepts` again
    * there; the change says only where it was noticed.
