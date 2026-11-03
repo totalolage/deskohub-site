@@ -5320,6 +5320,97 @@ describe("DotyposService read retry boundary", () => {
     expect(customerRequests).toBe(4);
   });
 
+  test("resumes a retried paged list load at the failed page and ends within its paged-load worst case", async () => {
+    const apiTimeout = dotyposApiTimeoutDefaultMilliseconds;
+    const worstCase = getDotyposRequestWorstCase(apiTimeout);
+    const requestedPages: string[] = [];
+    let answerFirstPage!: () => void;
+    const firstPageStarted = Promise.withResolvers<void>();
+    const secondPageStarted = Promise.withResolvers<void>();
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      const page = url.searchParams.get("page") ?? "";
+      requestedPages.push(page);
+      if (page === "1") {
+        firstPageStarted.resolve();
+        return new Promise<Response>((resolve) => {
+          answerFirstPage = () =>
+            resolve(Response.json({ data: [reservation()], nextPage: "2" }));
+        });
+      }
+      secondPageStarted.resolve();
+      return new Promise<Response>((_, reject) => {
+        request.signal.addEventListener("abort", () =>
+          reject(request.signal.reason)
+        );
+      });
+    });
+
+    const outcome = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fiber = yield* Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos.listReservations().pipe(Effect.result);
+        }).pipe(
+          Effect.provide(
+            makeServiceLayer(fetchMock, { ...config, apiTimeout })
+          ),
+          // Pin every jittered backoff at its maximum.
+          Effect.provideService(Random.Random, {
+            nextDoubleUnsafe: () => 1,
+            nextIntUnsafe: () => 0,
+          }),
+          Effect.forkChild
+        );
+        // Page 1 answers 1 ms before its attempt timeout; every attempt at
+        // page 2 times out. That is the slowest two-page load, 1 ms under
+        // its bound.
+        yield* Effect.promise(() => firstPageStarted.promise);
+        yield* TestClock.adjust(
+          Duration.subtract(Duration.millis(apiTimeout), Duration.millis(1))
+        );
+        answerFirstPage();
+        yield* Effect.promise(() => secondPageStarted.promise);
+        const slowest = Duration.subtract(
+          worstCase.pagedLoad(2),
+          Duration.millis(1)
+        );
+        // The clock stands at 1 ms before one attempt timeout; move it to
+        // 1 ms before the slowest load.
+        yield* TestClock.adjust(
+          Duration.subtract(slowest, Duration.millis(apiTimeout))
+        );
+        const finishedEarly = fiber.pollUnsafe() !== undefined;
+        yield* TestClock.adjust("1 millis");
+        const finishedAtSlowest = fiber.pollUnsafe() !== undefined;
+        return {
+          finishedEarly,
+          finishedAtSlowest,
+          result: yield* Fiber.join(fiber),
+        };
+      }).pipe(Effect.provide(TestClock.layer()))
+    );
+
+    // Two page attempts plus three shared retries of 30 s, and 840 ms of
+    // maximal backoff.
+    expect(Duration.toMillis(worstCase.pagedLoad(2))).toBe(150_840);
+    expect(outcome.finishedEarly).toBe(false);
+    expect(outcome.finishedAtSlowest).toBe(true);
+    expect(outcome.result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "DotyposUnavailable",
+        reason: "timeout",
+        operation: "listReservations",
+        request: "reservations.list",
+      },
+    });
+    // The retries resend only page 2; page 1 is read once.
+    expect(requestedPages).toEqual(["1", "2", "2", "2", "2"]);
+    expect(Duration.isFinite(worstCase.pagedLoad("unknown"))).toBe(false);
+  });
+
   test("does not retry a generated products decode failure", async () => {
     let productRequests = 0;
     const fetchMock = mockDotyposFetch((request) => {

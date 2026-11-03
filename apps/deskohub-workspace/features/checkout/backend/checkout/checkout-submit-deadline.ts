@@ -2,9 +2,9 @@ import { getDotyposRequestWorstCase } from "@deskohub/dotypos";
 import { getGoogleCalendarRequestWorstCaseDuration } from "@deskohub/google-calendar";
 import { Duration } from "effect";
 import { env } from "@/env";
-import type { DeploymentEnvironment } from "@/shared/backend/config/deployment-request-timeout";
 import { getGoogleCalendarRequestTimeout } from "@/shared/backend/config/google-calendar.config";
 import { getNexiRequestTimeoutMilliseconds } from "@/shared/backend/config/nexi.config";
+import type { DeploymentEnvironment } from "@/shared/deployment/deployment-stage";
 
 /** Database, pricing, and fast Dotypos work besides the slow requests. */
 const checkoutSubmitOverhead = Duration.seconds(10);

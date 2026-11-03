@@ -1,4 +1,7 @@
-import { ProviderRetryPolicy } from "@deskohub/provider-request";
+import {
+  type ProviderPageCount,
+  ProviderRetryPolicy,
+} from "@deskohub/provider-request";
 import { type Duration, Effect, Option, Ref } from "effect";
 import {
   type DotyposConditionalWriteFailure,
@@ -143,13 +146,24 @@ export const getDotyposRequestPolicy = (apiTimeout: Duration.Input) =>
   dotyposRetryPolicy.withAttemptTimeout(apiTimeout);
 
 /**
- * The longest one Dotypos request can take when every attempt times out:
- * `once` for a request whose profile never retries, `retried` for any other.
- * A paginated load retries as a whole, so each of its passes waits out one
- * attempt per page.
+ * The longest Dotypos requests can take when every attempt times out: `once`
+ * for a request whose profile never retries, `retried` for any other, and
+ * `sequential` for several in a row. `pagedLoad` bounds a paginated list
+ * load: its profile's retries wrap the whole load, which keeps the pages it
+ * has read, so each retry resends only the page that failed and all pages
+ * share one retry budget. A load of an unknown page count has no finite
+ * bound.
  */
-export const getDotyposRequestWorstCase = (apiTimeout: Duration.Input) =>
-  getDotyposRequestPolicy(apiTimeout).worstCase;
+export const getDotyposRequestWorstCase = (apiTimeout: Duration.Input) => {
+  const { worstCase } = getDotyposRequestPolicy(apiTimeout);
+  return {
+    once: worstCase.once,
+    retried: worstCase.retried,
+    sequential: worstCase.sequential,
+    pagedLoad: (pages: ProviderPageCount) =>
+      worstCase.paginated({ pages, retry: "resume" }),
+  };
+};
 
 /**
  * Retries the request up to its profile's ceiling. A replayed write keeps the

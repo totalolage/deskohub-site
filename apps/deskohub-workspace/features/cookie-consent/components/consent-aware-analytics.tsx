@@ -3,7 +3,7 @@
 import type { PostHogFeatureFlagOverrides } from "@deskohub/posthog/feature-flags";
 import { Analytics } from "@vercel/analytics/react";
 import type { PostHogFeatureFlagDefinitions } from "@/features/feature-flags/generated/contract";
-import type { DeploymentEnvironment } from "@/shared/backend/config/deployment-request-timeout";
+import type { DeploymentEnvironment } from "@/shared/deployment/deployment-stage";
 import { sanitizeVercelAnalyticsEvent } from "../utils/vercel-analytics";
 import { useVisitorConsent } from "../visitor-consent";
 import { PostHogAnalytics } from "./posthog-analytics";

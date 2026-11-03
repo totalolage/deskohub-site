@@ -1,5 +1,5 @@
 import { getCalendarActionDeadline } from "@/shared/backend/calendar-action-deadline";
-import type { DeploymentEnvironment } from "@/shared/backend/config/deployment-request-timeout";
+import type { DeploymentEnvironment } from "@/shared/deployment/deployment-stage";
 
 /**
  * Reservation submission awaits two Google Calendar loads in sequence: the

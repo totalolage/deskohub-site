@@ -343,6 +343,11 @@ type DotyposPages<A> = {
   readonly pageCount: number;
 };
 
+/**
+ * Reads every page in order. The cursor and the items read so far live with
+ * the returned effect, so a retry around it resumes at the page that failed
+ * (the `resume` pagination of `getDotyposRequestWorstCase(...).pagedLoad`).
+ */
 const loadDotyposPages = <A, E, R, Request extends DotyposRequest>(
   input: DotyposPageLoad<A, E, R, Request>
 ): Effect.Effect<DotyposPages<A>, E | DotyposRequestFailure<Request>, R> => {

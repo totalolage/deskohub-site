@@ -1,4 +1,7 @@
-import { ProviderRetryPolicy } from "@deskohub/provider-request";
+import {
+  type ProviderRequestPolicy,
+  ProviderRetryPolicy,
+} from "@deskohub/provider-request";
 import { auth, calendar, type calendar_v3 } from "@googleapis/calendar";
 import {
   Context,
@@ -56,16 +59,29 @@ const retryTransientGoogleCalendarError = googleCalendarRetryPolicy.retryWhile(
 );
 
 /**
- * The longest `listEvents` can take: the first attempt and each retry wait up
- * to `requestTimeout`, with the jittered exponential backoff between them.
- * `listEvents` enforces this bound over all of its pages, so a multi-page
- * load shares the budget of one retried request.
+ * `listEvents` retries each page request on its own and reads as many pages
+ * as Google returns. It enforces one retried request's worst case over all of
+ * its pages, so a load of any page count shares that budget.
+ */
+const getListEventsDeadline = (requestPolicy: ProviderRequestPolicy) =>
+  requestPolicy.worstCase.retried;
+
+/**
+ * The longest one `listEvents` load can take: its whole-load deadline, the
+ * budget of one retried request (the first attempt and its retry, each up to
+ * `requestTimeout`, with the jittered backoff between them).
  */
 export const getGoogleCalendarRequestWorstCaseDuration = (
   requestTimeout: Duration.Input
-) =>
-  googleCalendarRetryPolicy.withAttemptTimeout(requestTimeout).worstCase
-    .retried;
+) => {
+  const requestPolicy =
+    googleCalendarRetryPolicy.withAttemptTimeout(requestTimeout);
+  return requestPolicy.worstCase.paginated({
+    pages: "unknown",
+    retry: "each-page",
+    deadline: getListEventsDeadline(requestPolicy),
+  });
+};
 
 export interface IGoogleCalendarService {
   readonly listEvents: (
@@ -104,7 +120,10 @@ export class GoogleCalendarService extends Context.Service<
             ),
             Effect.bind("events", (range) =>
               loadEventPages(range).pipe(
-                withinDeadline("events.list", requestPolicy.worstCase.retried)
+                withinDeadline(
+                  "events.list",
+                  getListEventsDeadline(requestPolicy)
+                )
               )
             ),
             Effect.bind("result", ({ events }) =>

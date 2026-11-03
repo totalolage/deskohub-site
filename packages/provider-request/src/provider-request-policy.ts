@@ -47,15 +47,54 @@ export interface ProviderRequestPolicy
   ) => <A, E, R>(
     attempt: Effect.Effect<A, E, R>
   ) => Effect.Effect<A, E | TimeoutFailure, R>;
+  /** The longest an operation built from this provider's requests can take. */
+  readonly worstCase: ProviderOperationWorstCase;
+}
+
+/**
+ * How many pages a paginated load reads. `"unknown"` when the provider decides
+ * how many pages it returns.
+ */
+export type ProviderPageCount = number | "unknown";
+
+/**
+ * How a paginated load retries:
+ *
+ * - `each-page`: every page request is retried on its own.
+ * - `resume`: the load shares one retry budget across its pages, and each
+ *   retry resends the page that failed; pages already read are kept.
+ * - `none`: every page request runs once and the load is not retried.
+ */
+export type ProviderPageRetry = "each-page" | "resume" | "none";
+
+/**
+ * Worst cases assume every attempt waits out its timeout and every backoff
+ * draws the maximum jitter. Counts that are not whole numbers round up, and a
+ * count that is not finite has no finite bound (`Duration.infinity`).
+ */
+export interface ProviderOperationWorstCase {
+  /** One request that runs once: one attempt. */
+  readonly once: Duration.Duration;
   /**
-   * The longest one request can take when every attempt times out. A
-   * request that runs once waits out one attempt. A retried request waits out
-   * the first attempt and every retry, plus the backoff between them.
+   * One retried request: the first attempt and every retry, plus the backoff
+   * between them.
    */
-  readonly worstCase: {
-    readonly once: Duration.Duration;
-    readonly retried: Duration.Duration;
-  };
+  readonly retried: Duration.Duration;
+  /** `calls` requests one after another, each run once or retried. */
+  readonly sequential: (
+    calls: number,
+    each: "once" | "retried"
+  ) => Duration.Duration;
+  /**
+   * A paginated load of `pages` pages. A load always reads its first page. An
+   * `"unknown"` page count has no finite bound, unless the load enforces its
+   * own `deadline` over all its pages, which then bounds it.
+   */
+  readonly paginated: (load: {
+    readonly pages: ProviderPageCount;
+    readonly retry: ProviderPageRetry;
+    readonly deadline?: Duration.Input;
+  }) => Duration.Duration;
 }
 
 /**
@@ -96,13 +135,11 @@ export const ProviderRetryPolicy = {
                   orElse: () => Effect.fail(onTimeout()),
                 })
               ),
-          worstCase: {
-            once: attemptTimeout,
-            retried: Duration.sum(
-              Duration.times(attemptTimeout, declaration.maxRetries + 1),
-              worstCaseBackoff
-            ),
-          },
+          worstCase: getOperationWorstCase({
+            attemptTimeout,
+            maxRetries: declaration.maxRetries,
+            worstCaseBackoff,
+          }),
         };
       },
     };
@@ -142,3 +179,49 @@ const getWorstCaseBackoff = ({
   }
   return Duration.millis(backoffMilliseconds);
 };
+
+const getOperationWorstCase = ({
+  attemptTimeout,
+  maxRetries,
+  worstCaseBackoff,
+}: {
+  readonly attemptTimeout: Duration.Duration;
+  readonly maxRetries: number;
+  readonly worstCaseBackoff: Duration.Duration;
+}): ProviderOperationWorstCase => {
+  const once = attemptTimeout;
+  const retried = Duration.sum(
+    Duration.times(attemptTimeout, maxRetries + 1),
+    worstCaseBackoff
+  );
+  const request = { once, retried };
+
+  return {
+    once,
+    retried,
+    sequential: (calls, each) => repeated(request[each], Math.max(0, calls)),
+    paginated: ({ pages, retry, deadline }) => {
+      const pageCount = pages === "unknown" ? Infinity : Math.max(1, pages);
+      const load = {
+        "each-page": () => repeated(retried, pageCount),
+        // Each page waits out one attempt, and the shared retries each wait
+        // out one more, plus the backoff between them.
+        resume: () =>
+          Duration.sum(
+            repeated(attemptTimeout, pageCount + maxRetries),
+            worstCaseBackoff
+          ),
+        none: () => repeated(once, pageCount),
+      }[retry]();
+      return deadline === undefined
+        ? load
+        : Duration.min(load, Duration.fromInputUnsafe(deadline));
+    },
+  };
+};
+
+/** `count` operations of `bound` one after another; rounds a partial count up. */
+const repeated = (bound: Duration.Duration, count: number) =>
+  Number.isFinite(count)
+    ? Duration.times(bound, Math.ceil(count))
+    : Duration.infinity;
