@@ -114,23 +114,26 @@ mock.module("vanilla-cookieconsent", () => ({
 // one process; the hook delegates to the same state the provider mock above
 // drives.
 mock.module("@/features/cookie-consent", () => ({
-  useCookieConsent: () => ({
-    acceptCategory: (category: string) => {
+  useVisitorConsent: (category: string) =>
+    acceptedCategories.includes(category),
+  visitorConsent: {
+    accept: (category: string) => {
       acceptedCategories = [...new Set(getAcceptedCategories(category))];
       onConsentChange?.();
     },
-    isAccepted: (category: string) => acceptedCategories.includes(category),
-    rejectCategory: (category: string) => {
+    accepts: (category: string) => acceptedCategories.includes(category),
+    reject: (category: string) => {
       acceptedCategories = acceptedCategories.filter(
         (accepted) => accepted !== category
       );
       onConsentChange?.();
     },
-  }),
+    subscribe: () => () => undefined,
+  },
 }));
 
-const { CookieConsentProvider } = await import(
-  "@/features/cookie-consent/components/cookie-consent-provider"
+const { ConsentBanner } = await import(
+  "@/features/cookie-consent/components/consent-banner"
 );
 const { LegalScreen } = await import("./legal-screen");
 
@@ -152,7 +155,7 @@ afterAll(async () => {
 function renderLegalScreen(locale: Locale) {
   return render(
     <>
-      <CookieConsentProvider locale={locale} />
+      <ConsentBanner locale={locale} />
       <LegalScreen locale={locale} />
     </>
   );
@@ -170,7 +173,7 @@ test.each(["en-US", "cs-CZ"] as const)(
   (locale) => {
     const view = render(
       <>
-        <CookieConsentProvider locale={locale} />
+        <ConsentBanner locale={locale} />
         <LegalScreen
           locale={locale}
           marketingPreferences={{ ...linkMarketingState }}

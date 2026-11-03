@@ -1,8 +1,7 @@
 import type CookieConsent from "vanilla-cookieconsent";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
-
-export type { ConsentCategory } from "@/shared/utils/consent-cookie";
+import { consentCategories } from "@/shared/utils/consent-cookie";
 
 export function createConsentConfig(
   locale: Locale
@@ -21,24 +20,16 @@ export function createConsentConfig(
         flipButtons: false,
       },
     },
-    categories: {
-      necessary: {
-        enabled: true,
-        readOnly: true,
-      },
-      analytics: {
-        enabled: false,
-        readOnly: false,
-      },
-      marketing: {
-        enabled: false,
-        readOnly: false,
-      },
-      preferences: {
-        enabled: false,
-        readOnly: false,
-      },
-    },
+    // Only necessary cookies are on by default, and they cannot be declined.
+    categories: Object.fromEntries(
+      consentCategories.map((category) => [
+        category,
+        {
+          enabled: category === "necessary",
+          readOnly: category === "necessary",
+        },
+      ])
+    ),
     language: {
       default: locale,
       translations: {

@@ -45,7 +45,8 @@ mock.module("@/features/cookie-consent/analytics-events", () => ({
   captureAnalyticsEvent: capture,
 }));
 mock.module("@/features/cookie-consent", () => ({
-  useCookieConsent: () => ({ isAccepted: () => analyticsAccepted }),
+  useVisitorConsent: () => analyticsAccepted,
+  visitorConsent: { accepts: () => analyticsAccepted },
 }));
 
 describe("CheckoutDiscountCodeForm", () => {

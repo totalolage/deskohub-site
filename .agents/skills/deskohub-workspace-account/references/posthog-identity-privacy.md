@@ -5,6 +5,22 @@ Code: `features/account/analytics-identity.ts`,
 `features/cookie-consent/components/posthog-analytics.tsx`, and
 `features/cookie-consent/utils/` (`posthog-config.ts`, `posthog-identity.ts`).
 
+## Visitor consent
+
+- `features/cookie-consent/visitor-consent.ts` owns browser consent: read it
+  through `visitorConsent.accepts` or `useVisitorConsent` (false on the server
+  and during hydration), and listen with `visitorConsent.subscribe`, never by
+  parsing `cc_cookie` or adding `consentUpdated`, `storage`, or focus
+  listeners. The browser and the server (`shared/backend/analytics/visitor-identity.ts`)
+  share the strict reader in `shared/utils/consent-cookie.ts`: a category
+  counts only when every cookie copy is well-formed and accepts it.
+- `ConsentBanner` alone runs vanilla-cookieconsent and maps categories to
+  Google consent mode (`utils/google-consent-mode.ts`). After each saved
+  consent it queues one `gtag` update per optional category, then fires the
+  synchronous `consentUpdated` app event and cross-tab ping; the
+  `consent_update` dataLayer event follows in a microtask, for first consent
+  and changes only. Externally managed tags rely on that order.
+
 ## Account identity contract
 
 - The account analytics boundary publishes only `pending`, `unavailable`,

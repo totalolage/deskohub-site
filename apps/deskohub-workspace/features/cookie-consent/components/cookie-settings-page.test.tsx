@@ -14,7 +14,8 @@ const isAccepted = mock((category: string) =>
 );
 
 mock.module("@/features/cookie-consent", () => ({
-  useCookieConsent: () => ({ acceptCategory, rejectCategory, isAccepted }),
+  useVisitorConsent: isAccepted,
+  visitorConsent: { accept: acceptCategory, reject: rejectCategory },
 }));
 
 import { CookieSettings } from "./cookie-settings-page";

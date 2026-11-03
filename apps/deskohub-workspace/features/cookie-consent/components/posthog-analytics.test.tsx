@@ -30,7 +30,7 @@ import {
 import {
   CONSENT_UPDATED_EVENT,
   CONSENT_UPDATED_STORAGE_KEY,
-} from "../utils/consent-event";
+} from "../visitor-consent";
 
 process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN = "phc_test";
 process.env.NEXT_PUBLIC_POSTHOG_HOST = "https://posthog.example";
