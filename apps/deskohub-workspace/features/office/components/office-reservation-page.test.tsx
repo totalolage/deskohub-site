@@ -1,121 +1,106 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect } from "effect";
-import { Children, type ReactElement, type ReactNode } from "react";
-import { renderToString } from "react-dom/server";
 import {
   isOfficeAdvertisedPrice,
   type OfficeAdvertisedPriceRequest,
 } from "@/features/checkout/advertised-price";
 import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-office";
 import { getWorkspaceOfficeAccessPrice } from "@/features/checkout/product-catalog";
+import { getPublicOfferingsStructuredData } from "@/features/checkout/public-offerings-structured-data";
 import { buildOfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
 import { m } from "@/features/i18n";
+import { recordReservationPagePreloads } from "@/features/reservation/backend/reservation-page-preloads.service.mock";
 import { getOfficeSeatAdvertisedPriceRequests } from "@/features/reservation/office-advertised-price";
-import { normalizedOfficeReservationOrderSchema } from "@/features/reservation/office-reservation";
 import {
-  getOfficeAvailabilityQuery,
-  type WorkspaceAvailabilityQuery,
-} from "@/features/reservation/workspace-availability";
+  type NormalizedOfficeReservationOrder,
+  normalizedOfficeReservationOrderSchema,
+} from "@/features/reservation/office-reservation";
+import { getOfficeAvailabilityQuery } from "@/features/reservation/workspace-availability";
 import { currencyCZK } from "@/shared/money/currencies";
 import {
   type Money,
   moneyMajorAmount,
   moneyWithValue,
 } from "@/shared/money/money";
-import type { OfficeReservationForm } from "./office-reservation-form";
 
 mock.module("next/root-params", () => ({
   locale: () => Promise.resolve("en-US"),
 }));
 
-// Each request preloads, without a price the structured data could use.
-const loadAdvertisedPrices = mock((requests: ReadonlyArray<unknown>) =>
-  Effect.succeed(requests.map((request) => ({ request })))
-);
 const loadOfficeReservationSeatCapacity = mock(() => Promise.resolve(5));
-
-mock.module("@/features/reservation/backend/advertised-prices.server", () => ({
-  loadAdvertisedPrices,
-  preloadPageAdvertisedPrices: loadAdvertisedPrices,
-}));
 mock.module(
   "@/features/office/backend/office-reservation-capacity.server",
   () => ({ loadOfficeReservationSeatCapacity })
 );
 
-const preloadAvailability = mock(
-  ({
-    queries,
-  }: {
-    readonly queries: ReadonlyArray<WorkspaceAvailabilityQuery>;
-    readonly replacementToken?: string;
-  }) =>
-    Effect.succeed(
-      queries.map((query) => ({
-        query,
-        availability: {
-          from: query.from,
-          to: query.to,
-          unavailableDates: [],
-          reservedDeskWorkstationRequiredDates: [],
-          unavailableCoworkTiers: [],
-          meetingRoomUnavailable: false,
-          officeUnavailable: false,
-          unavailableMonitorOptions: [],
-          notices: [],
-        },
-        loadedAt: 1,
-      }))
-    )
-);
-mock.module(
-  "@/features/reservation/backend/workspace-availability-loader",
-  () => ({
-    preloadPageAvailability: preloadAvailability,
-  })
-);
+const { officeReservationPage } = await import("./office-reservation-page");
 
-const { renderOfficeReservationContent } = await import(
-  "./office-reservation-page"
+// Each request preloads, without a price the structured data could use.
+const loadAdvertisedPrices = mock((requests: ReadonlyArray<unknown>) =>
+  Effect.succeed(requests.map((request) => ({ request })))
 );
+const recordEveryPricePreload = () =>
+  recordReservationPagePreloads({
+    advertisedPrices: (requests) => loadAdvertisedPrices(requests) as never,
+  });
+let preloads = recordEveryPricePreload();
+
+type OfficePageRequest = Parameters<
+  typeof officeReservationPage.loadContent
+>[0];
+
+/** The content the page renders: its structured data and form. */
+const loadOfficeReservationContent = async ({
+  checkoutAccount = { status: "signed-out" },
+  initialReservation,
+  replacementToken = "signed-replacement-token",
+  ...request
+}: Omit<OfficePageRequest, "checkoutAccount"> & {
+  readonly checkoutAccount?: OfficePageRequest["checkoutAccount"];
+  readonly initialReservation?: NormalizedOfficeReservationOrder;
+  readonly replacementToken?: string;
+}) => {
+  const content = await Effect.runPromise(
+    officeReservationPage
+      .loadContent({
+        checkoutAccount,
+        ...request,
+        ...(initialReservation && {
+          restoredReservation: {
+            replacementToken,
+            reservation: initialReservation,
+          },
+        }),
+      })
+      .pipe(Effect.provide(preloads.layer))
+  );
+  if (content.kind !== "form") throw new Error("Expected the reservation form");
+  return content;
+};
 
 /** The form the page renders beside its structured data. */
 const renderOfficeReservationForm = async (
-  input: Omit<
-    Parameters<typeof renderOfficeReservationContent>[0],
-    "checkoutAccount"
-  > &
-    Partial<
-      Pick<
-        Parameters<typeof renderOfficeReservationContent>[0],
-        "checkoutAccount"
-      >
-    >
-) => {
-  const page = (await renderOfficeReservationContent({
-    checkoutAccount: { status: "signed-out" },
-    ...input,
-  })) as ReactElement<{
-    readonly children: ReactNode;
-  }>;
-  return Children.toArray(page.props.children)[1];
-};
+  input: Parameters<typeof loadOfficeReservationContent>[0]
+) => (await loadOfficeReservationContent(input)).form;
 
-beforeEach(() => mock.clearAllMocks());
+beforeEach(() => {
+  mock.clearAllMocks();
+  preloads = recordEveryPricePreload();
+});
 
 test("prefills safe office shape on a fresh date and quote", async () => {
   const originalNow = Temporal.Now.instant;
   Temporal.Now.instant = () => Temporal.Instant.from("2099-07-30T13:01:00Z");
 
   try {
-    const form = (await renderOfficeReservationForm({
+    const form = await renderOfficeReservationForm({
       locale: "en-US",
       pageData: 5,
       searchParams: { dayCount: "3", seats: "4" },
-    })) as ReactElement<Parameters<typeof OfficeReservationForm>[0]>;
+    });
 
-    expect(form.props.initialValues).toMatchObject({
+    expect(form.initialValues).toMatchObject({
       startsOn: "2099-07-30",
       dayCount: 3,
       seats: 4,
@@ -125,7 +110,7 @@ test("prefills safe office shape on a fresh date and quote", async () => {
     });
     // The page shell loads the capacity alongside the existing customer.
     expect(loadOfficeReservationSeatCapacity).not.toHaveBeenCalled();
-    expect(loadAdvertisedPrices.mock.calls[0]?.[0]).toEqual(
+    expect(preloads.advertisedPriceRequests[0]).toEqual(
       getOfficeSeatAdvertisedPriceRequests({
         locale: "en-US",
         seatCapacity: 5,
@@ -133,8 +118,8 @@ test("prefills safe office shape on a fresh date and quote", async () => {
         endsOn: "2099-08-01",
       })
     );
-    expect(loadAdvertisedPrices.mock.calls[0]?.[0]).toHaveLength(5);
-    expect(loadAdvertisedPrices.mock.calls[0]?.[0]).toContainEqual({
+    expect(preloads.advertisedPriceRequests[0]).toHaveLength(5);
+    expect(preloads.advertisedPriceRequests[0]).toContainEqual({
       locale: "en-US",
       reservation: {
         kind: "office",
@@ -146,12 +131,12 @@ test("prefills safe office shape on a fresh date and quote", async () => {
         },
       },
     });
-    expect(form.props.initialAdvertisedPrices).toHaveLength(5);
-    expect(preloadAvailability.mock.calls[0]?.[0]).toEqual({
+    expect(form.initialAdvertisedPrices).toHaveLength(5);
+    expect(preloads.availabilityPreloads[0]).toEqual({
       queries: [getOfficeAvailabilityQuery("2099-07-30")],
       replacementToken: undefined,
     });
-    expect(form.props.initialAvailability?.map(({ query }) => query)).toEqual([
+    expect(form.initialAvailability?.map(({ query }) => query)).toEqual([
       getOfficeAvailabilityQuery("2099-07-30"),
     ]);
   } finally {
@@ -197,25 +182,20 @@ test("prices the office offer at the amounts shown for the URL selection", async
   );
 
   try {
-    const page = (await renderOfficeReservationContent({
-      checkoutAccount: { status: "signed-out" },
+    const { form, offerings } = await loadOfficeReservationContent({
       locale: "en-US",
       pageData: 5,
       searchParams: { dayCount: "2", seats: "3", startsOn: "2099-08-10" },
-    })) as ReactElement<{ readonly children: ReactNode }>;
-    const [structuredData, form] = Children.toArray(page.props.children) as [
-      ReactElement,
-      ReactElement<Parameters<typeof OfficeReservationForm>[0]>,
-    ];
-    const markup = renderToString(structuredData);
-    const office = JSON.parse(
-      markup.slice(markup.indexOf(">") + 1, markup.lastIndexOf("</script>"))
-    )["@graph"].find(
+    });
+    const office = getPublicOfferingsStructuredData({
+      locale: "en-US",
+      offerings,
+    })["@graph"].find(
       (service: { readonly name: string }) =>
         service.name ===
         m.reservationOfficeProductTitle({}, { locale: "en-US" })
     );
-    const displayed = form.props.initialAdvertisedPrices?.find(
+    const displayed = form.initialAdvertisedPrices?.find(
       ({ request }) =>
         request.reservation.kind === "office" &&
         request.reservation.details.seats === 3
@@ -230,7 +210,7 @@ test("prices the office offer at the amounts shown for the URL selection", async
         moneyWithValue(money.value / displayedItem.dayCount, money)
       );
 
-    expect(form.props.initialValues).toMatchObject({
+    expect(form.initialValues).toMatchObject({
       startsOn: "2099-08-10",
       dayCount: 2,
       seats: 3,
@@ -253,19 +233,18 @@ test("keys the preloaded availability to the Prague date near midnight", async (
   Temporal.Now.instant = () => Temporal.Instant.from("2099-07-30T22:30:00Z");
 
   try {
-    const form = (await renderOfficeReservationForm({
+    const form = await renderOfficeReservationForm({
       locale: "en-US",
       pageData: 5,
-      replacementToken: "signed-replacement-token",
       searchParams: {},
-    })) as ReactElement<Parameters<typeof OfficeReservationForm>[0]>;
-
-    expect(form.props.today).toBe("2099-07-31");
-    expect(preloadAvailability.mock.calls[0]?.[0]).toEqual({
-      queries: [getOfficeAvailabilityQuery("2099-07-31")],
-      replacementToken: "signed-replacement-token",
     });
-    expect(preloadAvailability.mock.calls[0]?.[0].queries[0]?.from).toBe(
+
+    expect(form.today).toBe("2099-07-31");
+    expect(preloads.availabilityPreloads[0]).toEqual({
+      queries: [getOfficeAvailabilityQuery("2099-07-31")],
+      replacementToken: undefined,
+    });
+    expect(preloads.availabilityPreloads[0].queries[0]?.from).toBe(
       "2099-07-31"
     );
   } finally {
@@ -289,13 +268,13 @@ describe("a signed restoration", () => {
     const originalNow = Temporal.Now.instant;
     Temporal.Now.instant = () => Temporal.Instant.from("2099-07-30T13:01:00Z");
     try {
-      return (await renderOfficeReservationForm({
+      return await renderOfficeReservationForm({
         initialReservation: restoredReservation,
         locale: "en-US",
         pageData: 5,
         replacementToken: "restored-pay-state",
         searchParams: { payState: "restored-pay-state", ...searchParams },
-      })) as ReactElement<Parameters<typeof OfficeReservationForm>[0]>;
+      });
     } finally {
       Temporal.Now.instant = originalNow;
     }
@@ -304,7 +283,7 @@ describe("a signed restoration", () => {
   test("restores the signed office reservation into the form", async () => {
     const form = await renderRestored({});
 
-    expect(form.props.initialValues).toMatchObject({
+    expect(form.initialValues).toMatchObject({
       startsOn: "2099-08-04",
       dayCount: 2,
       seats: 2,
@@ -320,15 +299,15 @@ describe("a signed restoration", () => {
       startsOn: "2099-08-10",
     });
 
-    expect(form.props.initialValues).toMatchObject({
+    expect(form.initialValues).toMatchObject({
       startsOn: "2099-08-10",
       dayCount: 3,
       seats: 4,
       name: "Eva Svobodová",
       email: evaEmail,
     });
-    expect(form.props.replacementToken).toBe("restored-pay-state");
-    expect(preloadAvailability.mock.calls[0]?.[0]).toMatchObject({
+    expect(form.replacementToken).toBe("restored-pay-state");
+    expect(preloads.availabilityPreloads[0]).toMatchObject({
       replacementToken: "restored-pay-state",
     });
   });
