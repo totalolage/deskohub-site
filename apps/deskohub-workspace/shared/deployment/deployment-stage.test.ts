@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { byStage, type DeploymentEnvironment } from "./deployment-stage";
+import { byStage } from "./deployment-stage";
 
 const choices = { production: "production", otherwise: "otherwise" } as const;
 
@@ -11,8 +11,7 @@ describe("byStage", () => {
   });
 
   test("selects the otherwise value when the stage is missing", () => {
-    expect(
-      byStage(undefined as unknown as DeploymentEnvironment, choices)
-    ).toBe("otherwise");
+    // @ts-expect-error Exercise a missing deployment stage at runtime.
+    expect(byStage(undefined, choices)).toBe("otherwise");
   });
 });
