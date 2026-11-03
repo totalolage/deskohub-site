@@ -19,8 +19,11 @@ import {
   type PostHogEventProperties,
   PostHogEventService,
 } from "@/shared/backend/analytics/posthog-event.service";
-import { CurrentPostHogRequestContext } from "@/shared/backend/analytics/posthog-request-context";
-import { CurrentAgentTraffic } from "@/shared/backend/workspace-request-context";
+import { anonymousVisitor } from "@/shared/backend/analytics/visitor-identity";
+import {
+  CurrentAgentTraffic,
+  currentVisitorIdentity,
+} from "@/shared/backend/workspace-request-context";
 import { moneyMajorAmount } from "@/shared/money/money";
 
 type LifecycleEventTimestamp = WorkspaceReservationRow["createdAt"];
@@ -95,7 +98,10 @@ const captureRequestEvent = Effect.fn("posthog.captureRequestEvent")(
     readonly properties: PostHogEventProperties;
     readonly timestamp: LifecycleEventTimestamp;
   }) {
-    const { distinctId, sessionId } = yield* CurrentPostHogRequestContext;
+    // Work outside any request serves no visitor.
+    const { distinctId, sessionId } = yield* currentVisitorIdentity.pipe(
+      Effect.orElseSucceed(() => anonymousVisitor)
+    );
     if (!distinctId) return;
 
     const posthog = yield* PostHogEventService;

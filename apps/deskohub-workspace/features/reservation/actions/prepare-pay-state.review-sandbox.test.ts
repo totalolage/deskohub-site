@@ -31,9 +31,9 @@ import {
 } from "@/features/discounts";
 import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
 import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
-import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
+import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
 import { WithheldReferralService } from "@/features/referrals/referral.service.mock";
-import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
+import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import {
   agentSelectionKeySchema,
@@ -48,7 +48,7 @@ import {
   ReviewSandbox,
 } from "@/features/review-accounts";
 import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
-import { CurrentPostHogRequestContext } from "@/shared/backend/analytics/posthog-request-context";
+import { CurrentVisitorIdentity } from "@/shared/backend/workspace-request-context";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type { PreparePayStateInput } from "./prepare-pay-state.schema";
@@ -198,12 +198,12 @@ describe.skipIf(!database)(
         assignTableId: unreachable("Table assignment"),
       }),
       EmailRecipientDomainServiceMock({ check: unreachable("Email check") }),
-      Layer.mock(OfficeReservationFeatureFlagService, {}),
+      Layer.mock(OfficeReleaseGate, {}),
       WithheldReferralService,
       RememberedReferral.inMemory(rememberedReferralCookie).pipe(
         Layer.provide(
           Layer.mergeAll(
-            ReferralFeatureFlagService.fromDecision(false),
+            ReferralReleaseGate.fromDecision(false),
             WithheldReferralService,
             contacts
           )
@@ -239,9 +239,10 @@ describe.skipIf(!database)(
         Effect.provide(services),
         // A consenting visitor, so every outcome the booking captures reaches
         // PostHog.
-        Effect.provideService(CurrentPostHogRequestContext, {
-          distinctId: PostHogDistinctId.make("review-visitor"),
-        })
+        Effect.provideService(
+          CurrentVisitorIdentity,
+          Option.some({ distinctId: PostHogDistinctId.make("review-visitor") })
+        )
       );
       return Effect.runPromise(
         bookingAgent ? operation.pipe(Effect.provide(bookingAgent)) : operation

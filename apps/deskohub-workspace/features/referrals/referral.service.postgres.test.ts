@@ -23,7 +23,7 @@ import {
   customerAccountIdSchema,
 } from "@/features/account/customer-account";
 import { canonicalPromotionCodeSchema } from "@/features/discounts/persistence-contracts";
-import { ReferralFeatureFlagServiceMock } from "@/features/referrals/referral-feature-flag.service.mock";
+import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { currencyCZK } from "@/shared/money/currencies";
 import {
   collectDatabaseQueryLogs,
@@ -143,7 +143,7 @@ const makeReferralLayer = (
   return ReferralService.Default.pipe(
     Layer.provide(
       Layer.mergeAll(
-        ReferralFeatureFlagServiceMock({ isEnabled: Effect.succeed(released) }),
+        ReferralReleaseGate.fromDecision(released),
         databaseLayer,
         lockLayer,
         accountLinksLayer,

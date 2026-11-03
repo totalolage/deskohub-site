@@ -8,8 +8,8 @@ import type { LocalePreferenceSaving } from "@/features/account/switch-locale";
 import { isCurrentAccountAdministrator } from "@/features/administrators/server/current-account-administrator.server";
 import { type Locale, m } from "@/features/i18n";
 import { getLanguageLabels } from "@/features/i18n/language-labels";
-import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";
-import { isOfficePageEnabled } from "@/features/office/backend/office-reservation-feature-flag.server";
+import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-release-gate.server";
+import { isOfficePageEnabled } from "@/features/office/backend/office-release-gate.server";
 import {
   getCoworkReservationPath,
   getOfficeReservationPath,

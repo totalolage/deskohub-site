@@ -29,7 +29,7 @@ import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   arePasskeysEnabled,
   isSignInCodeEnabled,
-} from "./account-feature-flag.server";
+} from "./account-release-gates.server";
 
 const secrets = parseBetterAuthSecrets(env.BETTER_AUTH_SECRETS);
 if (secrets.kind === "invalid") {

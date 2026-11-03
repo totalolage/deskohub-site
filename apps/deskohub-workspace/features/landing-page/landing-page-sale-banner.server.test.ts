@@ -1,14 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 import "@/shared/polyfills/temporal";
 import { describe, expect, mock, test } from "bun:test";
-import {
-  type Context,
-  Effect,
-  Layer,
-  Logger,
-  References,
-  Schema,
-} from "effect";
+import { type Context, Effect, Logger, References, Schema } from "effect";
 import { type ActiveSale, discountIdSchema } from "@/features/discounts";
 import {
   type WorkspaceProductFamily,
@@ -35,8 +28,8 @@ mock.module("@/features/discounts/active-public-sales.server", () => ({
   getActivePublicSales,
 }));
 
-const { OfficeReservationFeatureFlagService } = await import(
-  "@/features/office/backend/office-reservation-feature-flag.service"
+const { OfficeReleaseGate } = await import(
+  "@/features/office/backend/office-release-gate"
 );
 const { getActiveLandingPageSaleBanner } = await import(
   "./landing-page-sale-banner.server"
@@ -112,9 +105,7 @@ const getBannerEffect = (
     return { banner };
   }).pipe(
     Effect.provide(
-      Layer.succeed(OfficeReservationFeatureFlagService, {
-        isEnabled: Effect.sync(isOfficePageEnabled),
-      })
+      OfficeReleaseGate.fromEvaluation(Effect.sync(isOfficePageEnabled))
     )
   );
 };

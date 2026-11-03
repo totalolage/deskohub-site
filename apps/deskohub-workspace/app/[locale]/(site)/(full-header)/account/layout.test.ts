@@ -2,7 +2,7 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Context, Effect, Layer } from "effect";
 import { createElement, type ReactElement, type ReactNode } from "react";
-import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
+import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 
 const adaEmail = testEmailAddress("ada");
 
@@ -57,14 +57,14 @@ const runWithRequestLocale = mock(
 );
 
 mock.module("next/server", () => ({ connection }));
-mock.module("@/features/account/server/account-feature-flag.server", () => ({
+mock.module("@/features/account/server/account-release-gates.server", () => ({
   arePasskeysEnabled,
 }));
-mock.module("@/features/referrals/referral-feature-flag.server", () => ({
+mock.module("@/features/referrals/referral-release-gate.server", () => ({
   areReferralsEnabled,
-  ReferralFeatureFlagRequest: Layer.unwrap(
+  ReferralReleaseGateRequest: Layer.unwrap(
     Effect.promise(areReferralsEnabled).pipe(
-      Effect.map(ReferralFeatureFlagService.fromDecision)
+      Effect.map(ReferralReleaseGate.fromDecision)
     )
   ),
 }));

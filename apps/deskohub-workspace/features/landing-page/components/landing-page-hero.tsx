@@ -1,8 +1,8 @@
 import { Effect } from "effect";
 import { Suspense } from "react";
 import type { Locale } from "@/features/i18n";
-import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";
-import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
+import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-release-gate.server";
+import { OfficeReleaseGateRequest } from "@/features/office/backend/office-release-gate.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { getActiveLandingPageSaleBanner } from "../landing-page-sale-banner.server";
 import { LandingPageHeroSection } from "./landing-page-hero-section";
@@ -35,7 +35,7 @@ export async function LandingPageHero({
 
 async function ActiveLandingPageSaleBanner({ locale }: { locale: Locale }) {
   const saleBanner = await getActiveLandingPageSaleBanner({ locale }).pipe(
-    Effect.provide(OfficeReservationFeatureFlagService.Live),
+    Effect.provide(OfficeReleaseGateRequest),
     runWorkspaceEffect("landing-page.sale-banner.load", {
       boundary: "page",
     })

@@ -12,11 +12,8 @@ import {
 } from "@/features/account";
 import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice.service";
 import { WorkspaceCheckoutAccessCodeService } from "@/features/checkout/backend/reservation/access-code.service";
-import {
-  SeatingMapFeatureFlagService,
-  WorkspaceFeatureFlagService,
-} from "@/features/feature-flags/backend";
 import type { Locale } from "@/features/i18n";
+import { SeatingMapReleaseGate } from "@/features/reservation/backend/seating-map-release-gate";
 import {
   type WorkspaceReservation,
   WorkspaceReservationRepository,
@@ -1033,10 +1030,6 @@ export class ReservationFulfillment extends Context.Service<
     Layer.provide(ReservationAuthorDirectory.Default),
     Layer.provide(WorkspaceDatabase.Default),
     Layer.provide(WorkspaceDotyposLayer),
-    Layer.provide(
-      SeatingMapFeatureFlagService.Default.pipe(
-        Layer.provide(WorkspaceFeatureFlagService.Default)
-      )
-    )
+    Layer.provide(SeatingMapReleaseGate.Live)
   );
 }

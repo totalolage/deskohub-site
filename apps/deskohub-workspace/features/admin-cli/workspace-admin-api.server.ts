@@ -20,7 +20,6 @@ import {
   CurrentCliSession,
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
-import { NodeHttpServer } from "@effect/platform-node";
 import { Effect, Layer, Match, Redacted, Schema } from "effect";
 import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
@@ -68,10 +67,7 @@ import {
   getReservationAccessName,
   type ReservationAccessGrant,
 } from "@/features/reservation-access";
-import {
-  WorkspaceObservabilityLive,
-  workspaceMemoMap,
-} from "@/shared/backend/workspace-effect";
+import { toWorkspaceWebHandler } from "@/shared/backend/workspace-effect";
 import { AdministrationActionLog } from "./administration-action-log.service";
 import { AdministrationActionRecordLive } from "./administration-action-record.server";
 import {
@@ -912,19 +908,12 @@ export const provideWorkspaceAdminApiServices = <A, E, R>(
     Layer.provide(CliAuthentication.Live)
   );
 
-export const handleWorkspaceAdminApiRequest = HttpRouter.toWebHandler(
-  Layer.mergeAll(
-    provideWorkspaceAdminApiServices(
-      makeWorkspaceAdminApiLayer({
-        authentication: CliSessionAdministrationAuthenticationLive,
-        sessionAuthentication: CliBearerAuthenticationLive,
-        clientCompatibility: CliClientCompatibilityLive,
-      })
-    ),
-    // This handler runs outside the route's Effect runtime, so it needs the
-    // censoring Workspace logger and tracer. Building with the Workspace memo
-    // map reuses the instance the route runtime already built.
-    WorkspaceObservabilityLive
-  ).pipe(Layer.provide(NodeHttpServer.layerHttpServices)),
-  { disableLogger: true, memoMap: workspaceMemoMap }
-).handler;
+export const handleWorkspaceAdminApiRequest = toWorkspaceWebHandler(
+  provideWorkspaceAdminApiServices(
+    makeWorkspaceAdminApiLayer({
+      authentication: CliSessionAdministrationAuthenticationLive,
+      sessionAuthentication: CliBearerAuthenticationLive,
+      clientCompatibility: CliClientCompatibilityLive,
+    })
+  )
+);

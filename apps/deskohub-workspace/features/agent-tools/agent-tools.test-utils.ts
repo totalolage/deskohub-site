@@ -14,7 +14,7 @@ import {
   discountIdSchema,
 } from "@/features/discounts/contracts";
 import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
-import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
+import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
 import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
 import { GoogleCalendarWorkspaceLimitationsService } from "@/features/reservation/backend/google-calendar-workspace-limitations.service";
 import type { ReservationRecord } from "@/features/reservation/backend/reservation-record";
@@ -195,9 +195,7 @@ export const makeAgentToolTestServices = ({
         return [];
       }),
   });
-  const officeFlag = Layer.succeed(OfficeReservationFeatureFlagService, {
-    isEnabled: Effect.succeed(officeEnabled),
-  });
+  const officeFlag = OfficeReleaseGate.fromDecision(officeEnabled);
 
   const layer = Layer.mergeAll(
     WorkspaceAvailabilityService.Default.pipe(

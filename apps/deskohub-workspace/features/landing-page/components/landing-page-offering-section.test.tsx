@@ -21,17 +21,20 @@ import {
 const isMeetingRoomPageEnabled = mock();
 const isOfficePageEnabled = mock();
 
-mock.module(
-  "@/features/meeting-room/backend/meeting-room-page-feature-flag",
-  () => ({ isMeetingRoomPageEnabled })
-);
-const officeFeatureFlag = await import(
-  "@/features/office/backend/office-reservation-feature-flag.server"
+const meetingRoomPageReleaseGate = await import(
+  "@/features/meeting-room/backend/meeting-room-page-release-gate.server"
 );
 mock.module(
-  "@/features/office/backend/office-reservation-feature-flag.server",
+  "@/features/meeting-room/backend/meeting-room-page-release-gate.server",
+  () => ({ ...meetingRoomPageReleaseGate, isMeetingRoomPageEnabled })
+);
+const officeReleaseGate = await import(
+  "@/features/office/backend/office-release-gate.server"
+);
+mock.module(
+  "@/features/office/backend/office-release-gate.server",
   () => ({
-    ...officeFeatureFlag,
+    ...officeReleaseGate,
     isOfficePageEnabled,
   })
 );

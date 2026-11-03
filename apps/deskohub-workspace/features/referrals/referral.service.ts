@@ -42,7 +42,7 @@ import {
   getReferralReferrerDiscountId,
 } from "./discount-identifiers";
 import { referralInvitationDiscountBasisPoints } from "./program";
-import { ReferralFeatureFlagService } from "./referral-feature-flag.service";
+import { ReferralReleaseGate } from "./referral-release-gate";
 import { makeReferralStandingReads } from "./referral-standing";
 import {
   calculateReferrerDiscountAmount,
@@ -156,7 +156,7 @@ export class ReferralService extends Context.Service<
       const standing = yield* makeReferralStandingReads;
       const accountResolver = yield* CustomerAccountResolver;
       const accountLinks = yield* CustomerAccountLinkRepository;
-      const featureFlag = yield* ReferralFeatureFlagService;
+      const releaseGate = yield* ReferralReleaseGate;
 
       const requireCurrentIdentity = Effect.fn(
         "ReferralService.requireCurrentIdentity"
@@ -936,7 +936,7 @@ export class ReferralService extends Context.Service<
           withheld: Effect.Effect<A, E>
         ) =>
         (input: Input) =>
-          featureFlag.isEnabled.pipe(
+          releaseGate.isOpen.pipe(
             Effect.flatMap((released) =>
               released ? operation(input) : withheld
             )

@@ -42,20 +42,28 @@ export function getConsentCookieValuesFromCookie(cookieString: string) {
  */
 export function isConsentCategoryAcceptedInCookie(
   cookieString: string,
-  category: ConsentCategory
+  category: ConsentCategory,
+  diagnostics?: ConsentCookieDiagnostics
 ): boolean {
   const consentCookieValues = getConsentCookieValuesFromCookie(cookieString);
   if (consentCookieValues.length === 0) return false;
 
-  return consentCookieValues.every((cookieValue) => {
+  // Every copy is read, so diagnostics see each unexpected value.
+  const copiesAccepting = consentCookieValues.map((cookieValue) => {
     let hasUnexpectedValue = false;
     const acceptedCategories = getAcceptedConsentCategoriesFromCookieValue(
       cookieValue,
-      { onUnexpectedValue: () => (hasUnexpectedValue = true) }
+      {
+        onUnexpectedValue: (reason) => {
+          hasUnexpectedValue = true;
+          diagnostics?.onUnexpectedValue?.(reason);
+        },
+      }
     );
 
     return !hasUnexpectedValue && acceptedCategories.includes(category);
   });
+  return copiesAccepting.every(Boolean);
 }
 
 export function getAcceptedConsentCategoriesFromCookieValue(

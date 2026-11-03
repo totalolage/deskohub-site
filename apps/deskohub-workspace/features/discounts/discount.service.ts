@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Option, Schema, Scope } from "effect";
+import { Context, Effect, Layer, Option, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import type { Locale } from "@/features/i18n";
@@ -11,6 +11,7 @@ import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer"
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { WorkspaceGoogleCalendarLayer } from "@/shared/backend/config/google-calendar.config";
+import { shareAcrossRequests } from "@/shared/backend/share-across-requests";
 import { moneyWithValue, positiveMoneyCodec } from "@/shared/money/money";
 import { appendDiscounts, calculateDiscounts } from "./calculator";
 import { CalendarDiscountProvider } from "./calendar-discount-provider.service";
@@ -149,28 +150,25 @@ export interface IDiscountService {
   ) => Effect.Effect<AppliedDiscountCodeQuote, DiscountResolutionError>;
 }
 
-// Built once per process by `makeDiscountServiceLayer`, below.
-const discountProviders = Layer.mergeAll(
-  CalendarDiscountProvider.Live,
-  CustomerDiscountProvider.Default,
-  PromotionCodeProvider.Default
-).pipe(
-  Layer.provide(
-    Layer.mergeAll(
+// Shared by every discount service; see `makeDiscountServiceLayer`, below.
+const processDiscountProviders = shareAcrossRequests(
+  Layer.mergeAll(
+    CalendarDiscountProvider.Live,
+    CustomerDiscountProvider.Default,
+    PromotionCodeProvider.Default
+  ).pipe(
+    Layer.provide(
       Layer.mergeAll(
-        DiscountDefinitionRepository.Default,
-        PromotionCodeRepository.Default
-      ).pipe(Layer.provide(WorkspaceDatabase.Default)),
-      WorkspaceGoogleCalendarLayer,
-      CalendarResourceConfig.Default,
-      WorkspaceDotyposLayer
+        Layer.mergeAll(
+          DiscountDefinitionRepository.Default,
+          PromotionCodeRepository.Default
+        ).pipe(Layer.provide(WorkspaceDatabase.Default)),
+        WorkspaceGoogleCalendarLayer,
+        CalendarResourceConfig.Default,
+        WorkspaceDotyposLayer
+      )
     )
   )
-);
-const processScope = Scope.makeUnsafe();
-const processMemoMap = Layer.makeMemoMapUnsafe();
-const processDiscountProviders = Layer.fromBuild(() =>
-  Layer.buildWithMemoMap(discountProviders, processMemoMap, processScope)
 );
 
 export class DiscountService extends Context.Service<
@@ -817,7 +815,7 @@ export class DiscountService extends Context.Service<
  * service: they hold clients and configuration and read nothing from the
  * request. The release gates, the referral service and the discount service
  * over them are built per run, so each run sees its own request's decisions
- * (`DiscountReleaseGateService`, `ReferralFeatureFlagService`).
+ * (`DiscountReleaseGateService`, `ReferralReleaseGate`).
  */
 export function makeDiscountServiceLayer<E, R>(input: {
   readonly service: typeof DiscountService.Default;

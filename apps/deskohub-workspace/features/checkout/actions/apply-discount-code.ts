@@ -15,7 +15,7 @@ import { addCheckoutReferralAppliedMarker } from "@/features/checkout/checkout-r
 import type { DiscountCodeRejection } from "@/features/checkout/discount-code-rejection";
 import { defaultLocale, isLocale, type Locale } from "@/features/i18n";
 import { ReferralService } from "@/features/referrals";
-import { ReferralFeatureFlagRequest } from "@/features/referrals/referral-feature-flag.server";
+import { ReferralReleaseGateRequest } from "@/features/referrals/referral-release-gate.server";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { applyDiscountCodeSchema } from "./apply-discount-code-input";
@@ -44,7 +44,7 @@ const applyDiscountCodeAction = defineWorkspaceAction(
               CustomerAccountContactService.Live
             )
           ),
-          Layer.provideMerge(ReferralFeatureFlagRequest)
+          Layer.provideMerge(ReferralReleaseGateRequest)
         )
       )
     )

@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { Context, Deferred, Effect, Layer, Semaphore } from "effect";
+import {
+  Cause,
+  Context,
+  Deferred,
+  Effect,
+  Exit,
+  Layer,
+  Semaphore,
+} from "effect";
 import { notFound, redirect } from "next/navigation";
 import { NextEffect } from ".";
 
@@ -137,6 +145,81 @@ describe("NextEffect", () => {
         digest: "NEXT_HTTP_ERROR_FALLBACK;404",
       }
     );
+  });
+
+  describe("runExit", () => {
+    test("resolves with the Exit of a typed failure, a defect and a layer that fails to build, never rejecting", async () => {
+      const failure = { _tag: "DomainError" } as const;
+      const defect = new Error("defect");
+      const setup = new Error("setup");
+      const next = NextEffect.make({
+        layer: Layer.succeed(TestService, { value: "service" }),
+      });
+      const broken = NextEffect.make({
+        layer: Layer.effect(TestService, Effect.fail(setup)),
+      });
+
+      const failed = await next.runExit(Effect.fail(failure));
+      const died = await next.runExit(Effect.die(defect));
+      const unbuilt = await broken.runExit(Effect.succeed("never"));
+
+      expect(failed).toEqual(Exit.fail(failure));
+      expect(died).toEqual(Exit.die(defect));
+      expect(unbuilt).toEqual(Exit.fail(setup));
+    });
+
+    test("maps a layer build failure with mapError", async () => {
+      const mapped = new Error("mapped");
+      const next = NextEffect.make({
+        layer: Layer.effect(TestService, Effect.fail("setup")),
+        mapError: () => mapped,
+      });
+
+      expect(await next.runExit(TestService)).toEqual(Exit.fail(mapped));
+    });
+
+    test("ends in an interruption when its signal aborts", async () => {
+      const next = NextEffect.make();
+      const controller = new AbortController();
+      const exit = next.runExit(Effect.never, { signal: controller.signal });
+
+      controller.abort();
+
+      expect(Exit.hasInterrupts(await exit)).toBe(true);
+    });
+  });
+
+  describe("settle", () => {
+    test("returns a success's value", () => {
+      expect(NextEffect.settle(Exit.succeed("value"))).toBe("value");
+    });
+
+    test("throws the squashed failure", () => {
+      const failure = new Error("failure");
+
+      expect(() => NextEffect.settle(Exit.fail(failure))).toThrow(failure);
+    });
+
+    test("throws Next control flow unchanged, even after another failure", () => {
+      let redirection: unknown;
+      try {
+        redirect("/target");
+      } catch (thrown) {
+        redirection = thrown;
+      }
+      const exit = Exit.failCause(
+        Cause.fromReasons([
+          Cause.makeFailReason({ _tag: "DomainError" }),
+          Cause.makeDieReason(redirection),
+        ])
+      );
+
+      expect(() => NextEffect.settle(exit)).toThrow(
+        expect.objectContaining({
+          digest: expect.stringContaining("NEXT_REDIRECT"),
+        })
+      );
+    });
   });
 
   describe("request async context", () => {

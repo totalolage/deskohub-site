@@ -207,7 +207,7 @@ export type ReservationCheckoutCustomerForm =
       readonly existingCustomer: ReservationExistingCustomerForm;
     };
 
-type ReservationCheckoutFormValues = ReservationContactValues & {
+export type ReservationCheckoutFormValues = ReservationContactValues & {
   readonly billing?: ReservationBillingSelectionInput;
   readonly marketingConsent?: boolean;
 };

@@ -67,7 +67,7 @@ import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-detai
 import type { CanonicalPromotionCode } from "@/features/discounts/contracts";
 import { type Locale, m } from "@/features/i18n";
 import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
-import { ensureOfficeReservationsEnabled } from "@/features/office/backend/office-reservation-feature-flag.service";
+import { ensureOfficeReservationsEnabled } from "@/features/office/backend/office-release-gate";
 import {
   RememberedReferral,
   type RememberedReferralForBooking,

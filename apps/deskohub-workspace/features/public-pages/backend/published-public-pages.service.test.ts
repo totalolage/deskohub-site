@@ -5,8 +5,8 @@ import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-fla
 import { Effect, Layer, Logger } from "effect";
 import type { IWorkspaceFeatureFlagService } from "@/features/feature-flags/backend";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
-import { MeetingRoomPageFeatureFlagService } from "@/features/meeting-room/backend/meeting-room-page-feature-flag.service";
-import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
+import { MeetingRoomPageReleaseGate } from "@/features/meeting-room/backend/meeting-room-page-release-gate";
+import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
 import { publicPages } from "../public-page-definitions";
 import { PublishedPublicPagesService } from "./published-public-pages.service";
 
@@ -38,8 +38,8 @@ const listPublishedPathnames = (
       PublishedPublicPagesService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
-            MeetingRoomPageFeatureFlagService.Default,
-            OfficeReservationFeatureFlagService.Default
+            MeetingRoomPageReleaseGate.Default,
+            OfficeReleaseGate.Default
           )
         ),
         Layer.provide(WorkspaceFeatureFlagServiceMock({ isEnabled }))

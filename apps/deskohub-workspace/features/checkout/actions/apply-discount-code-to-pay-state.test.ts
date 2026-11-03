@@ -36,7 +36,7 @@ import type { Locale } from "@/features/i18n";
 import type { ReferralService as ReferralServiceTag } from "@/features/referrals";
 import { ReferralError } from "@/features/referrals/contracts";
 import { WithheldReferralService } from "@/features/referrals/referral.service.mock";
-import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
+import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { getSlowestSuccessfulCalendarLoad } from "@/shared/backend/config/google-calendar.config.test-utils";
@@ -211,7 +211,7 @@ const prepareSubmission = async (input?: SubmissionInput) => {
         }).pipe(
           Layer.provide(
             Layer.mergeAll(
-              ReferralFeatureFlagService.fromDecision(true),
+              ReferralReleaseGate.fromDecision(true),
               input?.referralService ?? referralService,
               contacts
             )

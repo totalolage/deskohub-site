@@ -9,7 +9,7 @@ import {
 } from "@/features/checkout/public-offerings";
 import type { Locale } from "@/features/i18n";
 import { loadAdvisoryOfficeSeatCapacity } from "@/features/office/backend/office-advisory-seat-capacity";
-import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
+import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
 import { pagePreloadDeadline } from "@/features/reservation/backend/page-preload";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { currentInstant } from "@/shared/utils/temporal";
@@ -100,11 +100,7 @@ const loadPublicOfficeOffer = loadAdvisoryOfficeSeatCapacity.pipe(
 
 /** The office offer, loaded only while office reservations are open. */
 const whenOfficeOpen = <E, R>(offer: Effect.Effect<PublicOfficeOffer, E, R>) =>
-  OfficeReservationFeatureFlagService.pipe(
-    Effect.flatMap((officeFlag) =>
-      offer.pipe(Effect.when(officeFlag.isEnabled))
-    )
-  );
+  offer.pipe(Effect.when(OfficeReleaseGate.isOpen));
 
 const advertisePublicOffering = ({
   offering,

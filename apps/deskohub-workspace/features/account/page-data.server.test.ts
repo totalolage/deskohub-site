@@ -4,7 +4,10 @@ import "@/shared/testing/workspace-test-env";
 import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { Cause, Effect, Layer, Predicate } from "effect";
 import { redirect } from "next/navigation";
-import { AccountFeatureFlagService } from "@/features/account/backend/account-feature-flag.service";
+import {
+  AccountAvatarReleaseGate,
+  PasskeyReleaseGate,
+} from "@/features/account/backend/account-release-gates";
 import { CustomerAgentConnections } from "@/features/account/backend/auth/customer-agent-connections.service";
 import { CustomerPasskeys } from "@/features/account/backend/auth/customer-passkeys.service";
 import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
@@ -28,7 +31,7 @@ import {
 } from "@/features/referrals/client";
 import { ReferralError } from "@/features/referrals/contracts";
 import { ReferralServiceMock } from "@/features/referrals/referral.service.mock";
-import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
+import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import { ReferralSignupIntentRepository } from "@/features/referrals/signup-intent.repository";
 import { ReviewAccountsMock } from "@/features/review-accounts/backend/review-accounts.repository.mock";
@@ -208,6 +211,15 @@ const flagValues = {
   login_passkeys: passkeysFlag,
 } as const;
 
+const flagEvaluation = WorkspaceFeatureFlagServiceMock({
+  isEnabled: (key) =>
+    Effect.tryPromise(() =>
+      key in flagValues
+        ? flagValues[key as keyof typeof flagValues]()
+        : Promise.reject(new Error(`unexpected flag ${key}`))
+    ) as never,
+});
+
 /**
  * The page's layers over the test's fakes, built through the page's own
  * composition.
@@ -271,17 +283,11 @@ const pageLayer = () =>
         return assistantListEffect;
       }) as never,
     }),
-    featureFlags: AccountFeatureFlagService.Default.pipe(
-      Layer.provide(
-        WorkspaceFeatureFlagServiceMock({
-          isEnabled: (key) =>
-            Effect.tryPromise(() =>
-              key in flagValues
-                ? flagValues[key as keyof typeof flagValues]()
-                : Promise.reject(new Error(`unexpected flag ${key}`))
-            ) as never,
-        })
-      )
+    passkeyRelease: PasskeyReleaseGate.Default.pipe(
+      Layer.provide(flagEvaluation)
+    ),
+    avatarRelease: AccountAvatarReleaseGate.Default.pipe(
+      Layer.provide(flagEvaluation)
     ),
     passkeys: Layer.mock(CustomerPasskeys, {
       list: Effect.suspend(() => {
@@ -317,7 +323,7 @@ const pageLayer = () =>
     ).pipe(Layer.provide(Layer.mock(CustomerAccountContactService, {}))),
     referralRelease: Layer.unwrap(
       Effect.promise(() => referralsFlag()).pipe(
-        Effect.map(ReferralFeatureFlagService.fromDecision)
+        Effect.map(ReferralReleaseGate.fromDecision)
       )
     ),
     ...layerOverrides,
@@ -1488,7 +1494,10 @@ describe("loadAccountPageState", () => {
     });
     test("fails every account flag closed when the flag capability can't load", async () => {
       passkeysFlag.mockResolvedValue(true);
-      layerOverrides = { featureFlags: unloadable() };
+      layerOverrides = {
+        passkeyRelease: unloadable(),
+        avatarRelease: unloadable(),
+      };
 
       await expect(loadPageState()).resolves.toMatchObject({
         kind: "linked",
@@ -1501,10 +1510,12 @@ describe("loadAccountPageState", () => {
     test("fails a flag closed when its evaluation dies", async () => {
       passkeysFlag.mockResolvedValue(true);
       layerOverrides = {
-        featureFlags: Layer.mock(AccountFeatureFlagService, {
-          isPasskeyEnabled: Effect.die(new Error("evaluation crashed")),
-          isAvatarEnabled: Effect.die(new Error("evaluation crashed")),
-        }),
+        passkeyRelease: PasskeyReleaseGate.fromEvaluation(
+          Effect.die(new Error("evaluation crashed"))
+        ),
+        avatarRelease: AccountAvatarReleaseGate.fromEvaluation(
+          Effect.die(new Error("evaluation crashed"))
+        ),
       };
 
       const state = await loadPageState();

@@ -7,13 +7,14 @@ import type {
 } from "@deskohub/google-calendar";
 import { GoogleCalendarServiceMock } from "@deskohub/google-calendar/backend/service.mock";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Effect, Layer, Schema, Scope } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import {
   CalendarResourceConfig,
   salesCalendarIdSchema,
   workspaceLimitationsCalendarIdSchema,
 } from "@/shared/backend/config/calendar-resource.config";
+import { shareAcrossRequests } from "@/shared/backend/share-across-requests";
 import {
   CalendarDiscountProvider,
   type ICalendarDiscountProvider,
@@ -1015,22 +1016,16 @@ describe("CalendarDiscountProvider", () => {
       ({ discountId }) =>
         Effect.succeed(definition(discountId, { labels: currentLabels }))
     );
-    const processMemoMap = Layer.makeMemoMapUnsafe();
-    const processScope = Scope.makeUnsafe();
     const providerLayer = Layer.mergeAll(
-      Layer.fromBuild(() =>
-        Layer.buildWithMemoMap(
-          CalendarDiscountProvider.Default.pipe(
-            Layer.provide(
-              Layer.mergeAll(
-                GoogleCalendarServiceMock({ listEvents }),
-                DiscountDefinitionRepositoryMock({ loadById }),
-                resourceConfigLayer
-              )
+      shareAcrossRequests(
+        CalendarDiscountProvider.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              GoogleCalendarServiceMock({ listEvents }),
+              DiscountDefinitionRepositoryMock({ loadById }),
+              resourceConfigLayer
             )
-          ),
-          processMemoMap,
-          processScope
+          )
         )
       ),
       TestClock.layer()

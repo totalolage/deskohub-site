@@ -51,14 +51,14 @@ import type {
   MarketingConsentLedger as MarketingConsentLedgerService,
 } from "@/features/legal/backend/marketing-consent-ledger";
 import { getLegalDocumentVersion } from "@/features/legal/document-version";
-import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
+import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
 import { ReferralError } from "@/features/referrals/contracts";
 import type { ReferralService } from "@/features/referrals/referral.service";
 import {
   ReferralServiceMock,
   WithheldReferralService,
 } from "@/features/referrals/referral.service.mock";
-import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
+import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import type { IWorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import type { CreateWorkspaceReservationDraftInput } from "@/features/reservation/backend/workspace-reservation.repository";
@@ -86,7 +86,7 @@ const inertRememberedReferral = () =>
   RememberedReferral.inMemory({}).pipe(
     Layer.provide(
       Layer.mergeAll(
-        ReferralFeatureFlagService.fromDecision(true),
+        ReferralReleaseGate.fromDecision(true),
         WithheldReferralService,
         Layer.mock(CustomerAccountContactService, {})
       )
@@ -586,7 +586,7 @@ const runReusableReservationScenario = async (input: {
     RememberedReferral.inMemory(rememberedReferralCookie).pipe(
       Layer.provide(
         Layer.mergeAll(
-          ReferralFeatureFlagService.fromDecision(true),
+          ReferralReleaseGate.fromDecision(true),
           referrals,
           contacts
         )
@@ -1041,7 +1041,7 @@ describe("prepareWorkspacePayState", () => {
           inertRememberedReferral(),
           BotProtectionServiceMock({ verifyHuman }),
           CheckoutPricingServiceMock({}),
-          OfficeReservationFeatureFlagService.Default.pipe(
+          OfficeReleaseGate.Default.pipe(
             Layer.provide(
               WorkspaceFeatureFlagServiceMock({
                 isEnabled: mock(() => Effect.succeed(false)),

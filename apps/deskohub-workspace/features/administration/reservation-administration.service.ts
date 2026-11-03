@@ -5,10 +5,7 @@ import { CustomerEmailLocaleService } from "@/features/account";
 import { WorkspaceCheckoutNetworkDetailsService } from "@/features/checkout/backend/fulfillment/network-details.service";
 import { WorkspaceReservationEmailService } from "@/features/checkout/backend/fulfillment/workspace-reservation-email.service";
 import { administrationForcedPaymentCancellationFailureCode } from "@/features/checkout/backend/repositories/payment-lifecycle.repository";
-import {
-  SeatingMapFeatureFlagService,
-  WorkspaceFeatureFlagService,
-} from "@/features/feature-flags/backend";
+import { SeatingMapReleaseGate } from "@/features/reservation/backend/seating-map-release-gate";
 import {
   type WorkspaceReservation,
   WorkspaceReservationRepository,
@@ -315,11 +312,7 @@ export class ReservationAdministrationService extends Context.Service<
     Layer.provide(WorkspaceReservationRepository.Default),
     Layer.provide(WorkspaceDatabase.Default),
     Layer.provide(WorkspaceDotyposLayer),
-    Layer.provide(
-      SeatingMapFeatureFlagService.Default.pipe(
-        Layer.provide(WorkspaceFeatureFlagService.Default)
-      )
-    )
+    Layer.provide(SeatingMapReleaseGate.Live)
   );
 }
 

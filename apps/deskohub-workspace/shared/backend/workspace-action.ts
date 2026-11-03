@@ -1,8 +1,3 @@
-import {
-  EffectAction,
-  type EffectActionArgs,
-  type EffectActionState,
-} from "@deskohub/next-effect/effect-action";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import {
   Cause,
@@ -14,9 +9,9 @@ import {
   References,
   Result,
 } from "effect";
-import { headers } from "next/headers";
 import type {
   FlattenedValidationErrors,
+  SafeActionResult,
   ValidationErrors,
 } from "next-safe-action";
 import { type Locale, type LocalizedCopy, m } from "@/features/i18n";
@@ -31,7 +26,7 @@ import {
   continueActiveTrace,
 } from "./observability/trace-correlation";
 import { runStandaloneWorkspaceEffect } from "./standalone-workspace-effect";
-import { RequestHeadersError } from "./utils/request-headers";
+import { getRequestHeaders } from "./utils/request-headers";
 import {
   findNextControlFlow,
   runWorkspaceEffect,
@@ -39,13 +34,24 @@ import {
 } from "./workspace-effect";
 import { withWorkspaceRequestContext } from "./workspace-request-context";
 
-type WorkspaceActionArgs<S extends StandardSchemaV1> = EffectActionArgs<
-  S,
-  { readonly locale: Locale }
->;
+interface WorkspaceActionArgs<S extends StandardSchemaV1> {
+  readonly parsedInput: StandardSchemaV1.InferOutput<S>;
+  readonly clientInput: StandardSchemaV1.InferInput<S>;
+  readonly ctx: { readonly locale: Locale };
+}
 
 type WorkspaceActionValidationErrors<S extends StandardSchemaV1> =
   FlattenedValidationErrors<ValidationErrors<S>>;
+
+/** What a state action's previous submission ended with. */
+interface WorkspaceActionState<S extends StandardSchemaV1, A> {
+  readonly prevResult: SafeActionResult<
+    string,
+    S,
+    WorkspaceActionValidationErrors<S>,
+    A
+  >;
+}
 
 type WorkspaceActionValidationIssue = {
   readonly message: string;
@@ -185,22 +191,14 @@ export const defineWorkspaceAction = <
     context: WorkspaceActionContext<S>
   ) => Effect.Effect<A, E, BotProtectionService>
 ) =>
-  EffectAction.fromClient(createActionClient(options), {
-    run: runWorkspaceEffect(options.operation, { boundary: "action" }),
-  })
-    .inputSchema(options.schema, {
-      handleValidationErrorsShape: (validationErrors) =>
-        handleWorkspaceActionValidationFailure(
-          options.operation,
-          validationErrors,
-          options.logInput !== false
-        ),
-    })
-    .action((args) =>
+  defineInput(options).action((args) =>
+    runAction(
+      options,
       prepareWorkspaceAction(args, options, () =>
         handler(args.parsedInput, getWorkspaceActionContext(args))
       )
-    );
+    )
+  );
 
 export const defineWorkspaceStateAction = <
   S extends StandardSchemaV1,
@@ -211,25 +209,38 @@ export const defineWorkspaceStateAction = <
   handler: (
     input: StandardSchemaV1.InferOutput<S>,
     context: WorkspaceActionContext<S>,
-    state: EffectActionState<string, S, WorkspaceActionValidationErrors<S>, A>
+    state: WorkspaceActionState<S, A>
   ) => Effect.Effect<A, E, BotProtectionService>
 ) =>
-  EffectAction.fromClient(createActionClient(options), {
-    run: runWorkspaceEffect(options.operation, { boundary: "action" }),
-  })
-    .inputSchema(options.schema, {
-      handleValidationErrorsShape: (validationErrors) =>
-        handleWorkspaceActionValidationFailure(
-          options.operation,
-          validationErrors,
-          options.logInput !== false
-        ),
-    })
-    .stateAction<A, Error | PublicSafeActionError>((args, state) =>
+  defineInput(options).stateAction<A>((args, state) =>
+    runAction(
+      options,
       prepareWorkspaceAction(args, options, () =>
         handler(args.parsedInput, getWorkspaceActionContext(args), state)
       )
-    );
+    )
+  );
+
+const defineInput = <S extends StandardSchemaV1>(
+  options: WorkspaceActionOptions<S>
+) =>
+  createActionClient(options).inputSchema<
+    S,
+    S,
+    WorkspaceActionValidationErrors<S>
+  >(options.schema, {
+    handleValidationErrorsShape: (validationErrors) =>
+      handleWorkspaceActionValidationFailure(
+        options.operation,
+        validationErrors,
+        options.logInput !== false
+      ),
+  });
+
+const runAction = <A, E>(
+  options: Pick<WorkspaceActionOptions<StandardSchemaV1>, "operation">,
+  action: Effect.Effect<A, E, never>
+) => runWorkspaceEffect(options.operation, { boundary: "action" })(action);
 
 const prepareWorkspaceAction = <
   S extends StandardSchemaV1,
@@ -267,7 +278,9 @@ const prepareWorkspaceAction = <
         logged ? Effect.void : logActionFailure(cause)
       );
 
-    return yield* readActionHeaders.pipe(
+    // The action's boundary captures its request's headers from Next's store.
+    return yield* getRequestHeaders.pipe(
+      Effect.orDie,
       Effect.flatMap((requestHeaders) =>
         handled.pipe(
           // Logged inside the request context to keep its annotations.
@@ -339,15 +352,6 @@ const getWorkspaceActionContext = <S extends StandardSchemaV1>(
   clientInput: args.clientInput,
   locale: args.ctx.locale,
 });
-
-const readActionHeaders = Effect.tryPromise({
-  try: () => headers(),
-  catch: (cause) =>
-    new RequestHeadersError({
-      message: "Could not load the current request headers.",
-      cause,
-    }),
-}).pipe(Effect.orDie);
 
 const handleWorkspaceActionValidationFailure = async <
   S extends StandardSchemaV1,

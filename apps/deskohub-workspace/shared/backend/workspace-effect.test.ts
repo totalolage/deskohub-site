@@ -1,9 +1,40 @@
 import { describe, expect, mock, spyOn, test } from "bun:test";
-import { Cause, Deferred, Effect } from "effect";
+import { Cause, Context, Deferred, Effect, Layer } from "effect";
+import {
+  HttpRouter,
+  HttpServerRequest,
+  HttpServerResponse,
+} from "effect/unstable/http";
 import { redirect } from "next/navigation";
+import * as nextServer from "next/server";
 import { CENSORED_LOG_VALUE } from "@/shared/utils/log-classification";
+import {
+  POSTHOG_DISTINCT_ID_COOKIE,
+  POSTHOG_SESSION_ID_COOKIE,
+} from "@/shared/utils/posthog-session-cookies";
+import { shareAcrossRequests } from "./share-across-requests";
 
 const emitPostHogLog = mock(() => undefined);
+
+// A consented visitor in Next's request store, which work that serves no
+// visitor must never pick up.
+const ambientHeaders = mock(async () => {
+  const consent = encodeURIComponent(
+    JSON.stringify({ categories: ["necessary", "analytics"] })
+  );
+  return new Headers({
+    cookie: `cc_cookie=${consent}; ${POSTHOG_DISTINCT_ID_COOKIE}=ambient-visitor; ${POSTHOG_SESSION_ID_COOKIE}=ambient-session`,
+  });
+});
+mock.module("next/headers", () => ({ headers: ambientHeaders }));
+
+const afterResponse: (() => unknown)[] = [];
+mock.module("next/server", () => ({
+  ...nextServer,
+  after: (callback: () => unknown) => {
+    afterResponse.push(callback);
+  },
+}));
 
 mock.module("@/instrumentation", () => ({
   postHogLoggerProvider: {
@@ -17,7 +48,9 @@ const {
   defineWorkspaceTask,
   findNextControlFlow,
   runWorkspaceEffect,
+  runWorkspaceEffectAfterResponse,
   runWorkspaceEffectOrElse,
+  toWorkspaceWebHandler,
 } = await import("./workspace-effect");
 
 describe("Workspace Effect execution", () => {
@@ -55,6 +88,58 @@ describe("Workspace Effect execution", () => {
     );
 
     await expect(task()).resolves.toEqual({ category: "unclassified" });
+  });
+
+  test("tasks serve no visitor, even with one in Next's request store", async () => {
+    const { currentVisitorIdentity } = await import(
+      "./workspace-request-context"
+    );
+    ambientHeaders.mockClear();
+    const task = defineWorkspaceTask(
+      "test.task-visitor",
+      () => currentVisitorIdentity
+    );
+
+    await expect(task()).resolves.toEqual({});
+    expect(ambientHeaders).not.toHaveBeenCalled();
+  });
+
+  test("work after the response serves no visitor, even with one in Next's request store", async () => {
+    const { currentVisitorIdentity } = await import(
+      "./workspace-request-context"
+    );
+    ambientHeaders.mockClear();
+    afterResponse.length = 0;
+    const seen: unknown[] = [];
+
+    await Effect.runPromise(
+      runWorkspaceEffectAfterResponse(
+        "test.after-response-visitor",
+        Effect.tap(currentVisitorIdentity, (visitor) =>
+          Effect.sync(() => seen.push(visitor))
+        )
+      )
+    );
+    expect(afterResponse).toHaveLength(1);
+    await afterResponse[0]?.();
+
+    expect(seen).toEqual([{}]);
+    expect(ambientHeaders).not.toHaveBeenCalled();
+  });
+
+  test("a run without a boundary reads the visitor from Next's request store", async () => {
+    const { currentVisitorIdentity } = await import(
+      "./workspace-request-context"
+    );
+    ambientHeaders.mockClear();
+
+    await expect(
+      currentVisitorIdentity.pipe(runWorkspaceEffect("test.page-visitor"))
+    ).resolves.toEqual({
+      distinctId: "ambient-visitor",
+      sessionId: "ambient-session",
+    });
+    expect(ambientHeaders).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -372,5 +457,321 @@ describe("catchRecoverableCause", () => {
     expect(exit._tag === "Failure" && Cause.hasInterruptsOnly(exit.cause)).toBe(
       true
     );
+  });
+});
+
+describe("toWorkspaceWebHandler", () => {
+  class RequestCaller extends Context.Service<
+    RequestCaller,
+    { readonly name: string }
+  >()("test/RequestCaller") {}
+
+  /** Provides each request the caller its `x-caller` header names. */
+  const CallerFromRequest = HttpRouter.middleware<{
+    provides: RequestCaller;
+  }>()(
+    Effect.succeed((httpEffect) =>
+      Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) =>
+        Effect.provideService(httpEffect, RequestCaller, {
+          name: request.headers["x-caller"] ?? "anonymous",
+        })
+      )
+    )
+  ).layer;
+
+  const request = (path: string, caller: string) =>
+    new Request(`https://workspace.deskohub.test${path}`, {
+      headers: { "x-caller": caller },
+    });
+
+  test("keeps each of several concurrent requests' services its own over one shared build", async () => {
+    const callers = ["ada", "bea", "cyd", "dov", "eli"];
+    const later = "fay";
+    let ledgerBuilds = 0;
+    class SharedLedger extends Context.Service<
+      SharedLedger,
+      { readonly entries: string[] }
+    >()("test/SharedLedger") {
+      static Live = Layer.sync(this, () => {
+        ledgerBuilds += 1;
+        return { entries: [] };
+      });
+    }
+    const entered = Object.fromEntries(
+      callers.map((caller) => [caller, Promise.withResolvers<void>()])
+    );
+    const released = Object.fromEntries(
+      [...callers, later].map((caller) => [
+        caller,
+        Promise.withResolvers<void>(),
+      ])
+    );
+    const handle = toWorkspaceWebHandler(
+      HttpRouter.add(
+        "GET",
+        "/caller",
+        Effect.gen(function* () {
+          const { name } = yield* RequestCaller;
+          const ledger = yield* SharedLedger;
+          ledger.entries.push(name);
+          entered[name]?.resolve();
+          const release = released[name];
+          if (release === undefined) return yield* Effect.die(name);
+          // Every other request enters, and its middleware runs, meanwhile.
+          yield* Effect.promise(() => release.promise);
+          const caller = yield* RequestCaller;
+          return HttpServerResponse.jsonUnsafe({
+            before: name,
+            after: caller.name,
+            seen: ledger.entries.length,
+          });
+        })
+      ).pipe(
+        HttpRouter.provideRequest(SharedLedger.Live),
+        Layer.provide(CallerFromRequest)
+      )
+    );
+
+    // All start before the handler's Layer is built.
+    const responses = callers.map((caller) =>
+      handle(request("/caller", caller))
+    );
+    await Promise.all(callers.map((caller) => entered[caller]?.promise));
+    for (const caller of [...callers].reverse()) released[caller]?.resolve();
+
+    const answers = await Promise.all(
+      responses.map(async (response) => {
+        const answered = await response;
+        return { status: answered.status, body: await answered.json() };
+      })
+    );
+    expect(answers).toEqual(
+      callers.map((caller) => ({
+        status: 200,
+        body: { before: caller, after: caller, seen: callers.length },
+      }))
+    );
+    expect(ledgerBuilds).toBe(1);
+
+    released[later]?.resolve();
+    const laterResponse = await handle(request("/caller", later));
+    expect(await laterResponse.json()).toEqual({
+      before: later,
+      after: later,
+      seen: callers.length + 1,
+    });
+    expect(ledgerBuilds).toBe(1);
+  });
+
+  test("keeps the Layers it builds from later runs, which build them per run", async () => {
+    let builds = 0;
+    class Instance extends Context.Service<Instance, { readonly id: number }>()(
+      "test/Instance"
+    ) {
+      static Live = Layer.sync(this, () => {
+        builds += 1;
+        return { id: builds };
+      });
+    }
+    const handle = toWorkspaceWebHandler(
+      HttpRouter.add(
+        "GET",
+        "/instance",
+        Effect.map(Instance, ({ id }) => HttpServerResponse.text(`${id}`))
+      ).pipe(HttpRouter.provideRequest(Instance.Live))
+    );
+    const runInstance = () =>
+      Effect.map(Instance, ({ id }) => id).pipe(
+        Effect.provide(Instance.Live),
+        runWorkspaceEffect("test.instance")
+      );
+
+    const served = await (await handle(request("/instance", "ada"))).text();
+    expect(served).toBe("1");
+    expect([await runInstance(), await runInstance()]).toEqual([2, 3]);
+    expect(await (await handle(request("/instance", "bea"))).text()).toBe("1");
+  });
+
+  test("logs a handler's requests through the censored Workspace logger", async () => {
+    const log = spyOn(console, "info").mockImplementation(() => undefined);
+    const handle = toWorkspaceWebHandler(
+      HttpRouter.add(
+        "GET",
+        "/logged",
+        Effect.as(
+          Effect.logInfo("handled", { token: "private" }),
+          HttpServerResponse.empty()
+        )
+      )
+    );
+
+    try {
+      expect((await handle(request("/logged", "ada"))).status).toBe(204);
+      const output = log.mock.calls.flat().join(" ");
+      expect(output).toContain("handled");
+      expect(output).toContain(CENSORED_LOG_VALUE);
+      expect(output).not.toContain("private");
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  test("keeps each handler's routes and global middleware to itself", async () => {
+    const answering = (name: string) =>
+      Layer.mergeAll(
+        HttpRouter.add(
+          "GET",
+          `/${name}`,
+          Effect.map(RequestCaller, (caller) =>
+            HttpServerResponse.text(`${name} answered ${caller.name}`)
+          )
+        ).pipe(Layer.provide(CallerFromRequest)),
+        HttpRouter.middleware(
+          Effect.map(HttpServerResponse.setHeader("x-handler", name)),
+          { global: true }
+        )
+      );
+    const first = toWorkspaceWebHandler(answering("first"));
+    const second = toWorkspaceWebHandler(answering("second"));
+
+    const requests = [
+      [first, "/first", "ada"],
+      [second, "/second", "bea"],
+      [first, "/second", "cyd"],
+      [second, "/first", "dov"],
+    ] as const;
+    const answers = await Promise.all(
+      requests.map(async ([handle, path, caller]) => {
+        const response = await handle(request(path, caller));
+        return [
+          path,
+          response.status,
+          response.headers.get("x-handler"),
+          response.status === 200 ? await response.text() : null,
+        ];
+      })
+    );
+
+    expect(answers).toEqual([
+      ["/first", 200, "first", "first answered ada"],
+      ["/second", 200, "second", "second answered bea"],
+      // A route not found skips global middleware.
+      ["/second", 404, null, null],
+      ["/first", 404, null, null],
+    ]);
+  });
+
+  test("serves a route Layer several handlers share from each of them", async () => {
+    const answering = HttpRouter.add(
+      "GET",
+      "/shared",
+      Effect.map(RequestCaller, (caller) =>
+        HttpServerResponse.text(`answered ${caller.name}`)
+      )
+    ).pipe(Layer.provide(CallerFromRequest));
+    const first = toWorkspaceWebHandler(answering);
+    const second = toWorkspaceWebHandler(answering);
+
+    // The first handler builds the shared route Layer before the second.
+    const firstAnswer = await first(request("/shared", "ada"));
+    const requests = [
+      [second, "bea"],
+      [first, "cyd"],
+      [second, "dov"],
+    ] as const;
+    const answers = await Promise.all(
+      requests.map(async ([handle, caller]) => {
+        const response = await handle(request("/shared", caller));
+        return [response.status, await response.text()];
+      })
+    );
+
+    expect([firstAnswer.status, await firstAnswer.text()]).toEqual([
+      200,
+      "answered ada",
+    ]);
+    expect(answers).toEqual([
+      [200, "answered bea"],
+      [200, "answered cyd"],
+      [200, "answered dov"],
+    ]);
+  });
+
+  test("builds a Layer two handlers use once per handler, and a shared Layer once for handlers and runs", async () => {
+    let ownBuilds = 0;
+    let sharedBuilds = 0;
+    class Own extends Context.Service<Own, { readonly id: number }>()(
+      "test/Own"
+    ) {
+      static Live = Layer.sync(this, () => {
+        ownBuilds += 1;
+        return { id: ownBuilds };
+      });
+    }
+    class Shared extends Context.Service<Shared, { readonly id: number }>()(
+      "test/Shared"
+    ) {
+      static Live = shareAcrossRequests(
+        Layer.sync(this, () => {
+          sharedBuilds += 1;
+          return { id: sharedBuilds };
+        })
+      );
+    }
+    const serving = HttpRouter.add(
+      "GET",
+      "/instances",
+      Effect.gen(function* () {
+        const own = yield* Own;
+        const shared = yield* Shared;
+        return HttpServerResponse.jsonUnsafe({
+          own: own.id,
+          shared: shared.id,
+        });
+      })
+    ).pipe(HttpRouter.provideRequest(Layer.merge(Own.Live, Shared.Live)));
+    const first = toWorkspaceWebHandler(serving);
+    const second = toWorkspaceWebHandler(serving);
+    const served = async (handle: typeof first, caller: string) =>
+      (await handle(request("/instances", caller))).json();
+
+    expect(await served(first, "ada")).toEqual({ own: 1, shared: 1 });
+    expect(await served(second, "bea")).toEqual({ own: 2, shared: 1 });
+    expect(await served(first, "cyd")).toEqual({ own: 1, shared: 1 });
+    expect(
+      await Effect.map(Shared, ({ id }) => id).pipe(
+        Effect.provide(Shared.Live),
+        runWorkspaceEffect("test.shared-instance")
+      )
+    ).toBe(1);
+    expect([ownBuilds, sharedBuilds]).toEqual([2, 1]);
+  });
+
+  test("keeps a failed build for its handler without failing another handler's build", async () => {
+    let builds = 0;
+    const Unavailable = Layer.effectDiscard(
+      Effect.suspend(() => {
+        builds += 1;
+        return Effect.fail(new Error(`build ${builds} failed`));
+      })
+    );
+    const serving = Layer.merge(
+      HttpRouter.add("GET", "/unavailable", HttpServerResponse.empty()),
+      Unavailable
+    );
+    const first = toWorkspaceWebHandler(serving);
+    const second = toWorkspaceWebHandler(serving);
+
+    await expect(first(request("/unavailable", "ada"))).rejects.toThrow(
+      "build 1 failed"
+    );
+    await expect(first(request("/unavailable", "bea"))).rejects.toThrow(
+      "build 1 failed"
+    );
+    expect(builds).toBe(1);
+    await expect(second(request("/unavailable", "cyd"))).rejects.toThrow(
+      "build 2 failed"
+    );
+    expect(builds).toBe(2);
   });
 });

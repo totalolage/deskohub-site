@@ -3,7 +3,7 @@ import {
   type WorkspaceCoworkCurrentTier,
   workspaceCoworkCurrentTiers,
 } from "@/features/checkout/product-catalog";
-import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
+import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
 import { isCoworkOpenSpaceDayCutoffReached } from "@/features/reservation/cowork-reservation";
 import { meetingRoomStartDateTimeSchema } from "@/features/reservation/meeting-room-reservation";
 import {
@@ -93,8 +93,7 @@ export const quoteSelectionFields = {
 };
 
 /** Fails with `unsupported_family` while office reservations are closed. */
-export const ensureOfficeOpen = OfficeReservationFeatureFlagService.pipe(
-  Effect.flatMap((flag) => flag.isEnabled),
+export const ensureOfficeOpen = OfficeReleaseGate.isOpen.pipe(
   Effect.filterOrFail(
     (enabled) => enabled,
     () => AgentToolError.unsupportedFamily()

@@ -8,7 +8,7 @@ import {
 } from "@/features/checkout/checkout-status-kind";
 import { ReferralService } from "@/features/referrals";
 import { ForgetRememberedReferralCode } from "@/features/referrals/forget-remembered-referral-code";
-import { ReferralFeatureFlagRequest } from "@/features/referrals/referral-feature-flag.server";
+import { ReferralReleaseGateRequest } from "@/features/referrals/referral-release-gate.server";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import { runWorkspaceEffectOrElse } from "@/shared/backend/workspace-effect";
 
@@ -46,7 +46,7 @@ export async function CheckoutStatusReferralCodeSettlement({
           Layer.mergeAll(
             CustomerAccountContactService.Live,
             ReferralService.Live
-          ).pipe(Layer.provideMerge(ReferralFeatureFlagRequest))
+          ).pipe(Layer.provideMerge(ReferralReleaseGateRequest))
         )
       )
     ),
