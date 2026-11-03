@@ -1,7 +1,5 @@
-export {
-  getNexiRequestWorstCaseDuration,
-  NexiService,
-} from "./backend/service";
+export { getNexiRequestWorstCaseDuration } from "./backend/request-policy";
+export { NexiService } from "./backend/service";
 export type { NexiRuntimeConfigObj } from "./config";
 export { NexiRuntimeConfig } from "./config";
 export { ExternalAPIError, NetworkError } from "./errors";

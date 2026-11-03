@@ -23,12 +23,12 @@ import {
 import { captureRecordedSignInCompletion } from "@/features/account/sign-in-analytics";
 import type { PostHogFeatureFlagDefinitions } from "@/features/feature-flags/generated/contract";
 import { applyFeatureFlagOverrides } from "@/features/feature-flags/react";
-import type { DeploymentEnvironment } from "@/shared/backend/config/deployment-request-timeout";
 import {
   deliverWorkspaceBrowserLogs,
   discardWorkspaceBrowserLogs,
   type WorkspaceBrowserLogRecord,
 } from "@/shared/browser/workspace-browser-logs";
+import type { DeploymentEnvironment } from "@/shared/deployment/deployment-stage";
 import {
   createPostHogSessionClearCookieStrings,
   createPostHogSessionCookieStrings,

@@ -2,7 +2,7 @@ import type { DotyposCustomerId } from "@deskohub/dotypos/types";
 import type { PostHog } from "posthog-js";
 import type { AnalyticsAccountIdentity } from "@/features/account/analytics-identity";
 import type { CustomerAccountId } from "@/features/account/customer-account";
-import type { DeploymentEnvironment } from "@/shared/backend/config/deployment-request-timeout";
+import type { DeploymentEnvironment } from "@/shared/deployment/deployment-stage";
 
 export const getPostHogAccountDistinctId = (
   accountId: CustomerAccountId
