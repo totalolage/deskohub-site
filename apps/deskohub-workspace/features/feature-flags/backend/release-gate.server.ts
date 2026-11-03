@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cached } from "@deskohub/next-effect/cached";
 import { Effect, Layer } from "effect";
 import { cache } from "react";
 import {
@@ -62,7 +63,7 @@ export const releaseGateForRequest = <Self>(
     layer: Layer.unwrap(
       // React `cache` keys on the arguments, so call `isOpen` exactly as
       // pages do; `Effect.promise` would pass it one.
-      Effect.cached(Effect.promise(() => isOpen())).pipe(
+      cached(Effect.promise(() => isOpen())).pipe(
         Effect.map(gate.fromEvaluation)
       )
     ),

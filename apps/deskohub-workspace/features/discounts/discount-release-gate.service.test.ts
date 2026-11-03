@@ -12,6 +12,7 @@ import type {
   PostHogFeatureFlagKey,
 } from "@/features/feature-flags/generated/contract";
 import { runReactServerFixture } from "@/shared/testing/react-server-fixture.test-utils";
+import { countWallClockReads } from "@/shared/testing/workspace-test-clock.test-utils";
 import { DiscountReleaseGateService } from "./discount-release-gate.service";
 
 const flagValues = new Map<PostHogFeatureFlagKey, boolean | undefined>();
@@ -212,6 +213,19 @@ describe("DiscountReleaseGateService", () => {
 
     expect(new Set(decisions.map((gates) => gates.calendarSales)).size).toBe(1);
     expect(evaluateFlags).toHaveBeenCalledTimes(1);
+  });
+
+  test("decides without reading the wall clock, so Next.js can prerender it", async () => {
+    flagValues.set("calendar_sales", true);
+
+    const { value, wallClockReads } = await runWithOwnLayer(
+      countWallClockReads(
+        Effect.all([evaluateIn("quote"), evaluateIn("apply_discount_code")])
+      )
+    );
+
+    expect(value.map((gates) => gates.calendarSales)).toEqual([true, true]);
+    expect(wallClockReads).toBe(0);
   });
 
   test("keeps a failed evaluation closed for the run without retrying", async () => {

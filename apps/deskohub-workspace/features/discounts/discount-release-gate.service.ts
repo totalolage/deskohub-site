@@ -1,3 +1,4 @@
+import { cached } from "@deskohub/next-effect/cached";
 import { Context, Effect, Layer } from "effect";
 import {
   closeUnavailableRelease,
@@ -100,7 +101,7 @@ export class DiscountReleaseGateService extends Context.Service<
     this,
     WorkspaceFeatureFlagService.pipe(
       Effect.flatMap((featureFlags) =>
-        Effect.cached(
+        cached(
           requestDiscountReleaseGates.pipe(
             Effect.provideService(WorkspaceFeatureFlagService, featureFlags)
           )

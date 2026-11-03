@@ -8,6 +8,7 @@ import {
   Option,
   References,
 } from "effect";
+import { countWallClockReads } from "@/shared/testing/workspace-test-clock.test-utils";
 import type { PostHogFeatureFlagKey } from "../generated/contract";
 import { closeUnavailableRelease, releaseFromValue } from "./release-gate";
 import { TestReleaseGate } from "./release-gate.test-utils";
@@ -135,6 +136,29 @@ describe("ReleaseGate", () => {
       keys: ["webmcp_site_tools"],
       values: [true, true],
       logs: [],
+    });
+  });
+
+  test("decides without reading the wall clock, so Next.js can prerender it", async () => {
+    const { value, wallClockReads } = await Effect.runPromise(
+      countWallClockReads(
+        Effect.all([TestReleaseGate.isOpen, TestReleaseGate.isOpen]).pipe(
+          Effect.provide(
+            TestReleaseGate.Default.pipe(
+              Layer.provide(
+                WorkspaceFeatureFlagServiceMock({
+                  isEnabled: () => Effect.succeed(true),
+                })
+              )
+            )
+          )
+        )
+      )
+    );
+
+    expect({ value, wallClockReads }).toEqual({
+      value: [true, true],
+      wallClockReads: 0,
     });
   });
 

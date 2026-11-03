@@ -1,3 +1,4 @@
+import { cached } from "@deskohub/next-effect/cached";
 import { Context, Effect, Layer } from "effect";
 import type { PostHogFeatureFlagKey } from "../generated/contract";
 import { type GlobalRelease, globalRelease } from "./global-release";
@@ -41,7 +42,7 @@ export const ReleaseGate =
         this,
         WorkspaceFeatureFlagService.pipe(
           Effect.flatMap((featureFlags) =>
-            Effect.cached(
+            cached(
               featureFlags
                 .isEnabled(flag)
                 .pipe(closeUnavailableRelease([flag], false))
