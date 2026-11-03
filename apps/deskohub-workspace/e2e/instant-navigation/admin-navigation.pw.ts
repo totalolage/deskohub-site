@@ -1,6 +1,6 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { instant } from "@next/playwright";
-import { test as base, expect, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { Effect } from "effect";
 import { m } from "@/features/administration/i18n";
 import { m as customerMessages } from "@/features/i18n";
@@ -16,18 +16,10 @@ import { addRedaction } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
   instantNavigationAdministratorSkipReason,
-  makeInstantNavigationAdministratorRuntime,
-  withInstantNavigationAdministratorSession,
+  instantNavigationAdministratorTest as test,
 } from "./administrator-session";
 import { requireBaseUrl, reviewScreenshots } from "./navigation-test-helpers";
 import { preparePublicLegalBrowser } from "./public-account-legal-assertions";
-
-// Every test drives its own browser session, signed in as the administrator
-// the setup project seeded with its own short-lived session.
-const test = base.extend<{ administrator: E2EBrowserSession }>({
-  administrator: async ({ baseURL, browser }, use) =>
-    withInstantNavigationAdministratorSession({ baseURL, browser }, use),
-});
 
 test.skip(
   instantNavigationAdministratorSkipReason !== undefined,
@@ -198,12 +190,12 @@ test("hydrates the customer activity section in Czech", async ({
 
 test("captures the customer reservation activity calendar", async ({
   administrator,
+  administratorRuntime,
 }, testInfo) => {
   test.skip(!reviewScreenshots, "Review screenshot capture is opt-in");
   test.setTimeout(workspaceE2ETimeouts.reviewScreenshotCapture);
 
-  const { datasourceConfig, environment, runPromise } =
-    makeInstantNavigationAdministratorRuntime();
+  const { datasourceConfig, environment, runEffect } = administratorRuntime;
   const { runId } = resolveWorkspaceE2ERunContext(environment);
   const recipient = makeWorkspaceE2EAccountRecipientForRunId(
     runId,
@@ -213,7 +205,7 @@ test("captures the customer reservation activity calendar", async ({
   let failure: Error | undefined;
 
   try {
-    customerId = await runPromise(
+    customerId = await runEffect(
       createSyntheticCustomerProfile(datasourceConfig, {
         email: recipient,
         firstName: "Workspace",
@@ -269,7 +261,7 @@ test("captures the customer reservation activity calendar", async ({
     );
     if (customerId !== undefined) {
       try {
-        await runPromise(
+        await runEffect(
           expireSyntheticCustomerProfile(datasourceConfig, customerId)
         );
       } catch {

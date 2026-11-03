@@ -20,9 +20,7 @@ import {
   type WorkspaceE2ERunId,
   workspaceE2ERunIdSchema,
 } from "../run-identifiers";
-import type { makeSeededAccountRuntime } from "./audit-target";
-
-type SeededAccountRuntime = ReturnType<typeof makeSeededAccountRuntime>;
+import type { SeededAccountRuntime } from "./audit-target";
 
 /**
  * Journaled in this config's output directory. Each audit reconciles its own
@@ -65,7 +63,7 @@ export const seedLinkedAccount = async (
   );
   const email = makeWorkspaceE2EAccountRecipientForRunId(runId, label);
   await recorder.record({ authUserIds: [accountId] });
-  const customerId = await runtime.runPromise(
+  const customerId = await runtime.runEffect(
     createSyntheticCustomerProfile(runtime.datasourceConfig, {
       email,
       firstName: workspaceE2EAccountProfileFixture.firstName,
@@ -73,7 +71,7 @@ export const seedLinkedAccount = async (
     })
   );
   await recorder.record({ dotyposCustomerIds: [customerId] });
-  await runtime.runPromise(
+  await runtime.runEffect(
     seedWorkspaceE2ESyntheticAccount({
       accountId,
       email,
@@ -93,7 +91,7 @@ export const reconcileSeededAccount = (
   runId: WorkspaceE2ERunId,
   label: string
 ) =>
-  runtime.runPromise(
+  runtime.runEffect(
     Effect.gen(function* () {
       const prepared = yield* prepareWorkspaceE2EAccountJournalReconciliations(
         runtime.datasourceConfig,
