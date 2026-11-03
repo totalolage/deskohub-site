@@ -31,13 +31,10 @@ mock.module(
 const officeReleaseGate = await import(
   "@/features/office/backend/office-release-gate.server"
 );
-mock.module(
-  "@/features/office/backend/office-release-gate.server",
-  () => ({
-    ...officeReleaseGate,
-    isOfficePageEnabled,
-  })
-);
+mock.module("@/features/office/backend/office-release-gate.server", () => ({
+  ...officeReleaseGate,
+  isOfficePageEnabled,
+}));
 
 const { LandingPageOfferingSection } = await import(
   "./landing-page-offering-section"
