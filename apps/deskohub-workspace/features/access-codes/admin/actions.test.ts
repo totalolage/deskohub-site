@@ -11,8 +11,7 @@ import {
 import { Context, Effect, Layer, Schema } from "effect";
 import { m } from "@/features/administration/i18n";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
-import { mockAdministratorAccess } from "@/features/administrators/server/administrator-access.test-utils";
-import { mockWorkspaceActionRequest } from "@/shared/testing/workspace-action-request.test-utils";
+import { mockAdministrationActionRequest } from "@/shared/testing/workspace-action-request.test-utils";
 
 interface StubCreateCall {
   readonly attemptId: AdministrationStandaloneAccessCodeAttemptId;
@@ -28,7 +27,9 @@ interface StubCreateCall {
     | undefined;
 }
 
-const access = mockAdministratorAccess("fixture-operator");
+const { access } = await mockAdministrationActionRequest({
+  administrator: "fixture-operator",
+});
 const actor = access.administrator;
 
 const serviceCreateCalls: StubCreateCall[] = [];
@@ -66,8 +67,6 @@ mock.module("@/instrumentation", () => ({
     getLogger: () => ({ emit: () => undefined }),
   },
 }));
-
-await mockWorkspaceActionRequest();
 
 const attemptId = Schema.decodeSync(
   AdministrationStandaloneAccessCodeAttemptId

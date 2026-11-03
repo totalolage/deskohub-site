@@ -2,12 +2,10 @@ import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Context, Effect, Layer } from "effect";
-import { mockAdministratorAccess } from "@/features/administrators/server/administrator-access.test-utils";
-import { mockWorkspaceActionRequest } from "@/shared/testing/workspace-action-request.test-utils";
+import { mockAdministrationActionRequest } from "@/shared/testing/workspace-action-request.test-utils";
 
-const access = mockAdministratorAccess("campaign-image-upload");
-
-await mockWorkspaceActionRequest({
+const { access } = await mockAdministrationActionRequest({
+  administrator: "campaign-image-upload",
   referer: "https://deskohub.test/en-US/admin",
 });
 mock.module("@/instrumentation", () => ({

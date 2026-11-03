@@ -8,9 +8,8 @@ import {
   customerAccountIdSchema,
 } from "@/features/account/customer-account";
 import { m } from "@/features/administration/i18n";
-import { mockWorkspaceActionRequest } from "@/shared/testing/workspace-action-request.test-utils";
+import { mockAdministrationActionRequest } from "@/shared/testing/workspace-action-request.test-utils";
 import type { AdministratorAccountActor } from "../account-role";
-import { mockAdministratorAccess } from "../server/administrator-access.test-utils";
 
 class StubAdministratorAccountNotFoundError extends Data.TaggedError(
   "AdministratorAccountNotFoundError"
@@ -20,7 +19,11 @@ class StubAdministratorSelfRevocationError extends Data.TaggedError(
   "AdministratorSelfRevocationError"
 )<{ readonly message: string }> {}
 
-const access = mockAdministratorAccess("roster-actor");
+const request = await mockAdministrationActionRequest({
+  administrator: "roster-actor",
+  referer: "https://deskohub.test/en-US/admin/administrators",
+});
+const { access } = request;
 const actor = access.administrator;
 const otherAccountId = customerAccountIdSchema.make("fixture-other");
 const otherEmail = testEmailAddress("roster-other");
@@ -78,14 +81,9 @@ mock.module("@/instrumentation", () => ({
   },
 }));
 
-const request = await mockWorkspaceActionRequest({
-  referer: "https://deskohub.test/en-US/admin/administrators",
-});
-
 const { grantAdministrator, revokeAdministrator } = await import("./actions");
 
 beforeEach(() => {
-  access.set("administrator");
   request.reset();
   rosterCalls.length = 0;
   revalidatedPaths.length = 0;
@@ -102,6 +100,27 @@ describe("grantAdministrator action", () => {
       { method: "grant", input: { email: otherEmail, actor } },
     ]);
     expect(revalidatedPaths).toEqual(["/admin/administrators"]);
+  });
+
+  test("acts as the administrator the session reads until the request resets", async () => {
+    const otherAdministrator: AdministratorAccountActor = {
+      accountId: customerAccountIdSchema.make("fixture-other-administrator"),
+      email: testEmailAddress("roster-other-administrator"),
+    };
+    grantResult = Effect.succeed({ changed: true, email: otherEmail });
+
+    access.actAs(otherAdministrator);
+    await grantAdministrator({ email: otherEmail });
+    request.reset();
+    await grantAdministrator({ email: otherEmail });
+
+    expect(rosterCalls).toEqual([
+      {
+        method: "grant",
+        input: { email: otherEmail, actor: otherAdministrator },
+      },
+      { method: "grant", input: { email: otherEmail, actor } },
+    ]);
   });
 
   test("reports an existing grant as unchanged data, not an error", async () => {

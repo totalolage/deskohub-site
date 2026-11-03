@@ -20,18 +20,19 @@ import { Effect } from "effect";
 import { cliAuthenticationRequests, cliSessions } from "@/db/schema";
 import { cliAuthenticationRequestIdSchema } from "@/features/admin-cli/cli-identifiers";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
-import { mockAdministratorAccess } from "@/features/administrators/server/administrator-access.test-utils";
-import { mockWorkspaceActionRequest } from "@/shared/testing/workspace-action-request.test-utils";
+import { mockAdministrationActionRequest } from "@/shared/testing/workspace-action-request.test-utils";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import {
   connectWorkspacePostgresTestDatabase,
   type WorkspacePostgresTestDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 
-const access = mockAdministratorAccess(`cli-action-${crypto.randomUUID()}`);
+const { access } = await mockAdministrationActionRequest({
+  administrator: `cli-action-${crypto.randomUUID()}`,
+  referer: null,
+});
 const revalidatedPaths: string[] = [];
 
-await mockWorkspaceActionRequest({ referer: null });
 mock.module("@/features/i18n/server/revalidate-localized-path", () => ({
   revalidateLocalizedPath: (path: string) => {
     revalidatedPaths.push(path);

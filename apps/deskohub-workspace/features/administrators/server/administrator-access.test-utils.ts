@@ -14,29 +14,41 @@ import { AccountRoleGrants } from "../backend/account-role-grants.service";
  * Who the request acts as: an administrator, a signed-in account without the
  * grant, a signed-out visitor, or a request whose session can't be read.
  */
-export type TestAdministratorAccess =
+type TestAdministratorAccess =
   | "administrator"
   | "not-administrator"
   | "signed-out"
   | "unavailable";
 
+/** The session and grant reads a test drives, from `mockAdministratorAccess`. */
+export interface TestAdministratorAccessControl {
+  /** The administrator the request starts as and returns to on `reset()`. */
+  readonly administrator: AdministratorAccountActor;
+  /** The account the session currently reads as. */
+  readonly actor: () => AdministratorAccountActor;
+  /** Reads the session as another account, keeping the current access. */
+  readonly actAs: (actor: AdministratorAccountActor) => void;
+  /** How often the guards read the session since the last `reset()`. */
+  readonly reads: () => number;
+  readonly set: (access: TestAdministratorAccess) => void;
+  /** Returns to `administrator` with the grant and a zero read count. */
+  readonly reset: () => void;
+}
+
 /**
  * Substitutes the session and grant reads behind the administration request
  * edge, so a test drives pages and actions through the real guards. Call it
  * before importing the module under test; it starts as `administrator`.
+ * Server Action tests get it through `mockAdministrationActionRequest`.
  */
 export const mockAdministratorAccess = (
   name = "administration-request"
-): {
-  readonly administrator: AdministratorAccountActor;
-  /** How often the guards read the session. */
-  readonly reads: () => number;
-  readonly set: (access: TestAdministratorAccess) => void;
-} => {
+): TestAdministratorAccessControl => {
   const administrator: AdministratorAccountActor = {
     accountId: customerAccountIdSchema.make(crypto.randomUUID()),
     email: reservationCustomerEmailSchema.make(testEmailAddress(name)),
   };
+  let actor = administrator;
   let access: TestAdministratorAccess = "administrator";
   let reads = 0;
 
@@ -55,7 +67,7 @@ export const mockAdministratorAccess = (
             return Effect.succeed(
               access === "signed-out"
                 ? null
-                : { ...administrator, deletionRequested: false }
+                : { ...actor, deletionRequested: false }
             );
           }),
         }),
@@ -72,9 +84,18 @@ export const mockAdministratorAccess = (
 
   return {
     administrator,
+    actor: () => actor,
+    actAs: (next) => {
+      actor = next;
+    },
     reads: () => reads,
     set: (next) => {
       access = next;
+    },
+    reset: () => {
+      actor = administrator;
+      access = "administrator";
+      reads = 0;
     },
   };
 };

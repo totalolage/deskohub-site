@@ -1,5 +1,9 @@
 import { type Mock, mock } from "bun:test";
 import type { checkBotId as realCheckBotId } from "botid/server";
+import {
+  mockAdministratorAccess,
+  type TestAdministratorAccessControl,
+} from "@/features/administrators/server/administrator-access.test-utils";
 
 type BotIdVerification = Awaited<ReturnType<typeof realCheckBotId>>;
 
@@ -64,8 +68,8 @@ const botIdVerdicts = {
  *
  * Module mocks are process-wide and bind at import, so call this once per
  * test file before importing the action module, and `reset()` between
- * tests. Who the request acts as is a separate concern: use
- * `mockAdministratorAccess` for administration actions.
+ * tests. Administration actions also need someone to act as: use
+ * `mockAdministrationActionRequest`.
  */
 export const mockWorkspaceActionRequest = async (
   options: WorkspaceActionRequestOptions = {}
@@ -146,6 +150,49 @@ export const mockWorkspaceActionRequest = async (
       after.mockReset();
       checkBotId.mockReset();
       checkBotId.mockImplementation(answerBotId);
+    },
+  };
+};
+
+export interface AdministrationActionRequestOptions
+  extends WorkspaceActionRequestOptions {
+  /** Names the administrator's test email address. */
+  readonly administrator?: string;
+}
+
+export interface AdministrationActionRequest extends WorkspaceActionRequest {
+  /**
+   * Who the request acts as: the administrator it starts as, the account the
+   * session reads as now, and whether that account is signed in and holds
+   * the grant.
+   */
+  readonly access: TestAdministratorAccessControl;
+  /**
+   * Also returns the request to its administrator, with the grant and a zero
+   * session read count.
+   */
+  readonly reset: () => void;
+}
+
+/**
+ * `mockWorkspaceActionRequest` for an administration action: the request also
+ * acts as an administrator, through the real administration guards. Pick
+ * another account with `access.actAs`, or drop the session or grant with
+ * `access.set`; `reset()` returns to the administrator.
+ */
+export const mockAdministrationActionRequest = async ({
+  administrator,
+  ...options
+}: AdministrationActionRequestOptions = {}): Promise<AdministrationActionRequest> => {
+  const access = mockAdministratorAccess(administrator);
+  const request = await mockWorkspaceActionRequest(options);
+
+  return {
+    ...request,
+    access,
+    reset: () => {
+      request.reset();
+      access.reset();
     },
   };
 };

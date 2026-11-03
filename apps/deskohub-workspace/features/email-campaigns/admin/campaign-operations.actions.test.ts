@@ -2,8 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Effect, Exit, Layer } from "effect";
-import { mockAdministratorAccess } from "@/features/administrators/server/administrator-access.test-utils";
-import { mockWorkspaceActionRequest } from "@/shared/testing/workspace-action-request.test-utils";
+import { mockAdministrationActionRequest } from "@/shared/testing/workspace-action-request.test-utils";
 import { automationServiceStubs } from "../backend/campaign-operations.test-utils";
 import type { ICampaignSendService } from "../backend/campaign-send.service";
 import {
@@ -12,7 +11,9 @@ import {
 } from "../campaign-identifiers";
 import { CampaignConfirmationRejected, CampaignReadOnly } from "../errors";
 
-const access = mockAdministratorAccess("campaign-operations-actions");
+const { access } = await mockAdministrationActionRequest({
+  administrator: "campaign-operations-actions",
+});
 const revalidatePath = mock((_path: string) => undefined);
 
 mock.module("next/cache", () => ({
@@ -25,7 +26,6 @@ mock.module("@/instrumentation", () => ({
     getLogger: () => ({ emit: () => undefined }),
   },
 }));
-await mockWorkspaceActionRequest();
 
 const operationsModule = await import("../backend/campaign-operations.service");
 const grantsModule = await import(
