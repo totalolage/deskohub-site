@@ -7,6 +7,10 @@ import { unstable_rethrow } from "next/navigation";
 import { after } from "next/server";
 import { postHogLoggerProvider } from "@/instrumentation";
 import {
+  flushServerAnalytics,
+  isServerAnalyticsEnabled,
+} from "./analytics/analytics-event-delivery.service";
+import {
   createWorkspaceOtelLoggerLive,
   WorkspaceLoggerLive,
 } from "./logging/censorship";
@@ -276,7 +280,7 @@ export const runWorkspaceEffectAfterResponse = <A, E>(
   );
 
 export const scheduleWorkspaceTelemetryFlush = () =>
-  postHogLoggerProvider
+  postHogLoggerProvider || isServerAnalyticsEnabled
     ? runWorkspaceEffectAfterResponse("telemetry.flush", flushTelemetry)
     : Effect.void;
 
@@ -303,10 +307,19 @@ const workspaceRuntime = NextEffect.make({
 
 // Telemetry is best effort: an unexpected flush defect must not fail the
 // request or task it follows.
-const flushTelemetry = flushPostHogLogs({
-  provider: postHogLoggerProvider,
-}).pipe(
-  Effect.ignoreCause({ log: "Warn", message: "PostHog log flush failed" })
+const flushTelemetry = Effect.all(
+  [
+    flushPostHogLogs({ provider: postHogLoggerProvider }).pipe(
+      Effect.ignoreCause({ log: "Warn", message: "PostHog log flush failed" })
+    ),
+    flushServerAnalytics.pipe(
+      Effect.ignoreCause({
+        log: "Warn",
+        message: "Server analytics flush failed",
+      })
+    ),
+  ],
+  { concurrency: "unbounded", discard: true }
 );
 
 // Built into the runtime's memo map whether a run or a handler needs it

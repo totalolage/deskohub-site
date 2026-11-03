@@ -1,9 +1,8 @@
 import "@/shared/testing/workspace-test-env";
 
 import { expect, mock, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { Effect } from "effect";
 import type { IReservationAuthorizationService } from "@/features/reservation/backend/reservation-authorization.service";
-import type { CapturePostHogEventInput } from "@/shared/backend/analytics/posthog-event.service";
 import type {
   CheckoutStatusViewModel,
   ICheckoutStatusService,
@@ -80,34 +79,25 @@ test("does not read checkout status when reservation access is unauthorized", as
 });
 
 test("attributes a payment the page refresh finalizes to the page request's agent", async () => {
-  const { capturePaymentCompleted } = await import(
-    "@/features/checkout/backend/analytics/posthog-lifecycle-events"
+  const { CheckoutAnalytics } = await import(
+    "@/features/checkout/backend/analytics/checkout-analytics.service"
   );
-  const { PostHogEventService } = await import(
-    "@/shared/backend/analytics/posthog-event.service"
+  const { recordCheckoutAnalytics } = await import(
+    "@/features/checkout/backend/analytics/checkout-analytics.service.mock"
   );
-  const captures: CapturePostHogEventInput[] = [];
+  const analytics = recordCheckoutAnalytics();
   const refreshStatus = mock(() =>
-    capturePaymentCompleted({
-      attempt: {
-        id: "019edbd2-82f7-7cc0-8536-f2b3874d62d5",
-        workspaceReservationId: "019edbcf-5026-7ecc-821b-eda46998eaaa",
-        provider: "nexi",
-        amount: { value: 35_000, exponent: 2, currency: "CZK" },
-      },
-      timestamp: Temporal.Instant.from("2026-06-17T12:00:00.000Z"),
-    }).pipe(
-      Effect.provide(
-        Layer.succeed(PostHogEventService, {
-          alias: () => Effect.void,
-          capture: (event) =>
-            Effect.sync(() => {
-              captures.push(event);
-            }),
-        })
-      ),
-      Effect.as(fulfilledStatus)
-    )
+    Effect.flatMap(CheckoutAnalytics, (checkoutAnalytics) =>
+      checkoutAnalytics.paymentCompleted({
+        attempt: {
+          id: "019edbd2-82f7-7cc0-8536-f2b3874d62d5",
+          workspaceReservationId: "019edbcf-5026-7ecc-821b-eda46998eaaa",
+          provider: "nexi",
+          amount: { value: 35_000, exponent: 2, currency: "CZK" },
+        },
+        timestamp: Temporal.Instant.from("2026-06-17T12:00:00.000Z"),
+      })
+    ).pipe(Effect.provide(analytics.layer), Effect.as(fulfilledStatus))
   );
 
   await Effect.runPromise(
@@ -126,8 +116,8 @@ test("attributes a payment the page refresh finalizes to the page request's agen
     )
   );
 
-  expect(captures).toHaveLength(1);
-  expect(captures[0]?.properties).toMatchObject({
+  expect(analytics.messages).toHaveLength(1);
+  expect(analytics.messages[0]?.properties).toMatchObject({
     agent_category: "ai_user_agent",
     agent_name: "chatgpt",
   });

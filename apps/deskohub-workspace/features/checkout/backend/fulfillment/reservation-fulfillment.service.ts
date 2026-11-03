@@ -20,13 +20,9 @@ import {
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import { WorkspaceReservationService } from "@/features/reservation/backend/workspace-reservation.service";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { WorkspaceEmailLayer } from "@/shared/backend/config/email.config";
-import {
-  captureReservationCompleted,
-  captureReservationFulfilled,
-} from "../analytics/posthog-lifecycle-events";
+import { CheckoutAnalytics } from "../analytics/checkout-analytics.service";
 import {
   createCustomerEmailInitialIdempotencyKey,
   createCustomerEmailRecoveryIdempotencyKey,
@@ -175,7 +171,7 @@ export class ReservationFulfillment extends Context.Service<
         createCustomerEmailLocaleResolver(emailLocale);
       const workspaceReservations = yield* WorkspaceReservationService;
       const accessCodes = yield* WorkspaceCheckoutAccessCodeService;
-      const posthogEvents = yield* PostHogEventService;
+      const checkoutAnalytics = yield* CheckoutAnalytics;
       const reservationInvoices = yield* ReservationInvoiceService;
       const reservationAuthors = yield* ReservationAuthorDirectory;
 
@@ -511,12 +507,10 @@ export class ReservationFulfillment extends Context.Service<
               yield* Effect.logInfo(
                 "Paid fulfillment reservation confirmed marker succeeded"
               );
-              yield* captureReservationCompleted({
+              yield* checkoutAnalytics.reservationCompleted({
                 reservation: claimed,
                 timestamp: confirmedAt,
-              }).pipe(
-                Effect.provideService(PostHogEventService, posthogEvents)
-              );
+              });
             }
 
             yield* Effect.logInfo("Paid reservation email flow started");
@@ -813,12 +807,10 @@ export class ReservationFulfillment extends Context.Service<
                 return ignoredDelivery("reservation_delivery_state_changed");
               }
 
-              yield* captureReservationFulfilled({
+              yield* checkoutAnalytics.reservationFulfilled({
                 reservation: fulfilledReservation,
                 timestamp: fulfilledAt,
-              }).pipe(
-                Effect.provideService(PostHogEventService, posthogEvents)
-              );
+              });
               yield* processDeliveredReservationInvoice(fulfilledReservation);
 
               return appliedDelivery;
@@ -875,7 +867,7 @@ export class ReservationFulfillment extends Context.Service<
         )
       )
     ),
-    Layer.provide(PostHogEventService.Live),
+    Layer.provide(CheckoutAnalytics.Live),
     Layer.provide(ReservationInvoiceService.Live),
     Layer.provide(WorkspaceReservationService.Default),
     Layer.provide(WorkspaceCheckoutAccessCodeService.Live),

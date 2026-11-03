@@ -12,6 +12,7 @@ import {
   POSTHOG_DISTINCT_ID_COOKIE,
   POSTHOG_SESSION_ID_COOKIE,
 } from "@/shared/utils/posthog-session-cookies";
+import * as serverAnalyticsDelivery from "./analytics/analytics-event-delivery.service";
 import { shareAcrossRequests } from "./share-across-requests";
 
 const emitPostHogLog = mock(() => undefined);
@@ -36,6 +37,14 @@ mock.module("next/server", () => ({
   },
 }));
 
+// Each flush of the process's server analytics capture client.
+const serverAnalyticsFlushes = mock(() => undefined);
+mock.module("./analytics/analytics-event-delivery.service", () => ({
+  ...serverAnalyticsDelivery,
+  flushServerAnalytics: Effect.sync(serverAnalyticsFlushes),
+  isServerAnalyticsEnabled: true,
+}));
+
 mock.module("@/instrumentation", () => ({
   postHogLoggerProvider: {
     forceFlush: () => Promise.resolve(),
@@ -50,6 +59,7 @@ const {
   runWorkspaceEffect,
   runWorkspaceEffectAfterResponse,
   runWorkspaceEffectOrElse,
+  scheduleWorkspaceTelemetryFlush,
   toWorkspaceWebHandler,
 } = await import("./workspace-effect");
 
@@ -125,6 +135,28 @@ describe("Workspace Effect execution", () => {
 
     expect(seen).toEqual([{}]);
     expect(ambientHeaders).not.toHaveBeenCalled();
+  });
+
+  test("tasks send the server analytics they queued before they settle", async () => {
+    serverAnalyticsFlushes.mockClear();
+    const task = defineWorkspaceTask("test.task-analytics-flush", () =>
+      Effect.sync(() => serverAnalyticsFlushes.mock.calls.length)
+    );
+
+    await expect(task()).resolves.toBe(0);
+    expect(serverAnalyticsFlushes).toHaveBeenCalledTimes(1);
+  });
+
+  test("the telemetry flush after a response sends queued server analytics", async () => {
+    serverAnalyticsFlushes.mockClear();
+    afterResponse.length = 0;
+
+    await Effect.runPromise(scheduleWorkspaceTelemetryFlush());
+    expect(serverAnalyticsFlushes).not.toHaveBeenCalled();
+    expect(afterResponse).toHaveLength(1);
+    await afterResponse[0]?.();
+
+    expect(serverAnalyticsFlushes).toHaveBeenCalledTimes(1);
   });
 
   test("a run without a boundary reads the visitor from Next's request store", async () => {

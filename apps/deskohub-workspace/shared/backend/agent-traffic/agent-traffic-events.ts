@@ -1,18 +1,12 @@
 import "server-only";
 
+import { Context, Effect, Layer } from "effect";
+import type { AgentTraffic } from "@/shared/agent-traffic/agent-traffic";
+import { flushServerAnalytics } from "@/shared/backend/analytics/analytics-event-delivery.service";
 import {
-  PostHogDistinctId,
-  PostHogEventId,
-} from "@deskohub/posthog/identifiers";
-import { Effect } from "effect";
-import {
-  type AgentTraffic,
-  agentTrafficProperties,
-} from "@/shared/agent-traffic/agent-traffic";
-import {
-  type PostHogEventProperties,
-  PostHogEventService,
-} from "@/shared/backend/analytics/posthog-event.service";
+  ServerAnalytics,
+  type ServerEventProperties,
+} from "@/shared/backend/analytics/server-analytics.service";
 import {
   runWorkspaceEffect,
   runWorkspaceEffectAfterResponse,
@@ -25,50 +19,52 @@ export interface AgentTrafficEvent {
     | "bot protection rejection";
   readonly traffic: AgentTraffic;
   /** Low-cardinality context; never a user agent, header value, or IP. */
-  readonly properties: PostHogEventProperties;
+  readonly properties: ServerEventProperties;
   readonly timestamp: Temporal.Instant;
 }
 
 /**
- * Captures an agent traffic event without any person: every event gets its
+ * Agent traffic events, captured without any person: every event gets its
  * own random distinct ID and creates no person profile, whatever the
  * client's analytics consent.
  */
-export const captureAgentTrafficEvent = Effect.fn("agentTraffic.captureEvent")(
-  function* (input: AgentTrafficEvent) {
-    const posthog = yield* PostHogEventService;
-    const { distinctId, uuid } = yield* Effect.sync(() => ({
-      distinctId: PostHogDistinctId.make(crypto.randomUUID()),
-      uuid: PostHogEventId.make(crypto.randomUUID()),
-    }));
-    yield* posthog.capture({
-      distinctId,
-      event: input.event,
-      properties: {
-        ...input.properties,
-        ...agentTrafficProperties(input.traffic),
-        $process_person_profile: false,
-      },
-      timestamp: input.timestamp,
-      uuid,
-    });
-  }
-);
+export class AgentTrafficEvents extends Context.Service<
+  AgentTrafficEvents,
+  { readonly record: (event: AgentTrafficEvent) => Effect.Effect<void> }
+>()("@deskohub-workspace/agent-traffic/AgentTrafficEvents") {
+  static Default = Layer.effect(
+    this,
+    Effect.gen(function* () {
+      const analytics = yield* ServerAnalytics;
+      return {
+        record: ({ event, traffic, properties, timestamp }) =>
+          analytics.capture({
+            name: event,
+            subject: { kind: "anonymous", traffic },
+            properties,
+            timestamp,
+          }),
+      };
+    })
+  );
 
-const captureLiveAgentTrafficEvent = (input: AgentTrafficEvent) =>
-  captureAgentTrafficEvent(input).pipe(
-    Effect.provide(PostHogEventService.Live)
+  static Live = this.Default.pipe(Layer.provide(ServerAnalytics.Live));
+}
+
+/** Records the event, then sends it: this work runs after the response. */
+const recordAfterResponse = (input: AgentTrafficEvent) =>
+  Effect.flatMap(AgentTrafficEvents, (events) => events.record(input)).pipe(
+    Effect.andThen(flushServerAnalytics),
+    Effect.provide(AgentTrafficEvents.Live)
   );
 
 /** Records the event after the current response is sent. */
 export const scheduleAgentTrafficEvent = (input: AgentTrafficEvent) =>
   runWorkspaceEffectAfterResponse(
     "agent-traffic.capture",
-    captureLiveAgentTrafficEvent(input)
+    recordAfterResponse(input)
   );
 
 /** Records the event now; for the proxy's own after-response callback. */
 export const recordAgentTrafficEvent = (input: AgentTrafficEvent) =>
-  captureLiveAgentTrafficEvent(input).pipe(
-    runWorkspaceEffect("agent-traffic.capture")
-  );
+  recordAfterResponse(input).pipe(runWorkspaceEffect("agent-traffic.capture"));
