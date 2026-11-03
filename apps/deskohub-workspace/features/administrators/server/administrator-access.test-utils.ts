@@ -24,7 +24,7 @@ type TestAdministratorAccess =
 export interface TestAdministratorAccessControl {
   /** The administrator the request starts as and returns to on `reset()`. */
   readonly administrator: AdministratorAccountActor;
-  /** The account the session currently reads as. */
+  /** The selected account, which the session reads as while signed in. */
   readonly actor: () => AdministratorAccountActor;
   /** Reads the session as another account, keeping the current access. */
   readonly actAs: (actor: AdministratorAccountActor) => void;

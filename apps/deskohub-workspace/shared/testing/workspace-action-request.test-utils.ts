@@ -1,9 +1,6 @@
 import { type Mock, mock } from "bun:test";
 import type { checkBotId as realCheckBotId } from "botid/server";
-import {
-  mockAdministratorAccess,
-  type TestAdministratorAccessControl,
-} from "@/features/administrators/server/administrator-access.test-utils";
+import type { TestAdministratorAccessControl } from "@/features/administrators/server/administrator-access.test-utils";
 
 type BotIdVerification = Awaited<ReturnType<typeof realCheckBotId>>;
 
@@ -184,6 +181,11 @@ export const mockAdministrationActionRequest = async ({
   administrator,
   ...options
 }: AdministrationActionRequestOptions = {}): Promise<AdministrationActionRequest> => {
+  // Loaded here so requests outside administration never load the
+  // authentication and grant services it substitutes.
+  const { mockAdministratorAccess } = await import(
+    "@/features/administrators/server/administrator-access.test-utils"
+  );
   const access = mockAdministratorAccess(administrator);
   const request = await mockWorkspaceActionRequest(options);
 
