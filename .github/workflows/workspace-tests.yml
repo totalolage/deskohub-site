@@ -90,10 +90,10 @@ jobs:
 
       - run: bun turbo typecheck
 
-      # Covers the portal, including the package graph that decides which
-      # commits Vercel deploys it for.
-      - name: Lint and test Portal
-        run: bun turbo lint test --filter=deskohub-portal
+      # Vercel skips the portal for commits that don't affect it relative to
+      # their parent alone, so every pull request builds it here.
+      - name: Lint, test and build Portal
+        run: bun turbo lint test build --filter=deskohub-portal
 
       # No app depends on the coverage tooling, so the test shards skip it.
       - name: Lint and test the coverage tooling

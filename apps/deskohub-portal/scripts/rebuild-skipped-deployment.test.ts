@@ -69,6 +69,7 @@ const deployment = (
   created: 0,
   readyState: "READY",
   target: null,
+  repositoryId: "1",
   ref: "feature",
   sha: "a".repeat(40),
   ...overrides,
@@ -81,7 +82,7 @@ describe("comparisonBase", () => {
     readyState: "CANCELED",
   });
 
-  test("uses the branch's newest ready deployment before the skipped one", () => {
+  test("uses the branch's newest ready preview before the skipped one", () => {
     expect(
       comparisonBase(skipped, [
         deployment({ id: "older", created: 10 }),
@@ -90,11 +91,12 @@ describe("comparisonBase", () => {
         deployment({ id: "failed", created: 60, readyState: "ERROR" }),
         deployment({ id: "canceled", created: 70, readyState: "CANCELED" }),
         deployment({ id: "other-branch", created: 90, ref: "other" }),
+        deployment({ id: "fork", created: 95, repositoryId: "2" }),
       ])?.id
     ).toBe("newer");
   });
 
-  test("falls back to production for a branch without a ready deployment", () => {
+  test("falls back to production for a branch without a ready preview", () => {
     expect(
       comparisonBase(skipped, [
         deployment({
@@ -104,23 +106,14 @@ describe("comparisonBase", () => {
           ref: "main",
         }),
         deployment({ id: "preview-elsewhere", created: 80, ref: "other" }),
+        deployment({
+          id: "fork-production",
+          created: 90,
+          target: "production",
+          repositoryId: "2",
+        }),
       ])?.id
     ).toBe("production");
-  });
-
-  test("finds nothing for production without an earlier ready production deployment", () => {
-    const skippedProduction = deployment({
-      id: "skipped",
-      created: 100,
-      readyState: "CANCELED",
-      target: "production",
-      ref: "main",
-    });
-    expect(
-      comparisonBase(skippedProduction, [
-        deployment({ id: "preview", created: 40, ref: "feature" }),
-      ])
-    ).toBeUndefined();
   });
 
   test("ignores ready deployments without a commit", () => {
@@ -135,18 +128,20 @@ describe("comparisonBase", () => {
 describe("isSuperseded", () => {
   const skipped = deployment({ id: "skipped", created: 100 });
 
-  test("is superseded by a newer deployment of the same branch", () => {
+  test("is superseded by a newer preview of the same branch", () => {
     expect(
       isSuperseded(skipped, [deployment({ id: "next", created: 101 })])
     ).toBe(true);
   });
 
-  test("isn't superseded by older deployments or other branches", () => {
+  test("isn't superseded by older deployments, other branches, forks or production", () => {
     expect(
       isSuperseded(skipped, [
         skipped,
         deployment({ id: "before", created: 99 }),
         deployment({ id: "other", created: 200, ref: "other" }),
+        deployment({ id: "fork", created: 200, repositoryId: "2" }),
+        deployment({ id: "production", created: 200, target: "production" }),
       ])
     ).toBe(false);
   });

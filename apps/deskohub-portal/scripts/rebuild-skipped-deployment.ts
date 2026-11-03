@@ -1,12 +1,14 @@
 /**
- * Builds a portal deployment that Vercel skipped although the portal changed.
+ * Builds a portal preview that Vercel skipped although the portal changed.
  *
  * Vercel skips the portal when a commit doesn't affect it relative to its
  * parent. A push of several commits, or a parent whose deployment failed or
- * was canceled, can leave a portal change without any deployment. This
- * compares the skipped commit with the branch's last ready portal deployment
- * instead and redeploys the skipped deployment, which builds it, unless every
- * change since then is in a package the portal doesn't depend on.
+ * was canceled, can leave a portal change without a preview. This compares
+ * the skipped commit with the branch's last ready portal preview (or
+ * production's) instead, and redeploys the skipped deployment, which builds
+ * it, unless every change since then is in a package the portal doesn't
+ * depend on. Production needs no recovery: a main merge commit's parent
+ * diff covers its whole pull request, whose CI builds the portal.
  *
  * Run by `.github/workflows/portal-skipped-deployments.yml`. `DRY_RUN=1`
  * reports the decision without redeploying.
@@ -73,14 +75,21 @@ export type DeploymentSummary = {
   readonly created: number;
   readonly readyState: string;
   readonly target: string | null;
+  readonly repositoryId: string | undefined;
   readonly ref: string | undefined;
   readonly sha: string | undefined;
 };
 
+/** Whether two deployments come from the same repository, branch and target. */
+const sameSource = (left: DeploymentSummary, right: DeploymentSummary) =>
+  left.repositoryId === right.repositoryId &&
+  left.ref === right.ref &&
+  (left.target ?? "preview") === (right.target ?? "preview");
+
 /**
- * The deployment to compare with: the newest ready one of the same branch
- * created before the skipped one, or for a preview branch without one, the
- * newest ready production deployment.
+ * The deployment to compare with: the newest ready one of the same source
+ * created before the skipped one, or else the newest ready production
+ * deployment of the repository.
  */
 export const comparisonBase = (
   skipped: DeploymentSummary,
@@ -91,26 +100,25 @@ export const comparisonBase = (
       (deployment) =>
         deployment.readyState === "READY" &&
         deployment.created < skipped.created &&
-        deployment.sha !== undefined
+        deployment.sha !== undefined &&
+        deployment.repositoryId === skipped.repositoryId
     )
     .sort((left, right) => right.created - left.created);
 
   return (
-    ready.find((deployment) => deployment.ref === skipped.ref) ??
-    (skipped.target === "production"
-      ? undefined
-      : ready.find((deployment) => deployment.target === "production"))
+    ready.find((deployment) => sameSource(deployment, skipped)) ??
+    ready.find((deployment) => deployment.target === "production")
   );
 };
 
-/** Whether a newer deployment of the branch makes the skipped one obsolete. */
+/** Whether a newer deployment of the same source makes the skipped one obsolete. */
 export const isSuperseded = (
   skipped: DeploymentSummary,
   deployments: readonly DeploymentSummary[]
 ) =>
   deployments.some(
     (deployment) =>
-      deployment.ref === skipped.ref && deployment.created > skipped.created
+      sameSource(deployment, skipped) && deployment.created > skipped.created
   );
 
 /** Files changed between two commits, or `undefined` if Git can't tell. */
@@ -159,7 +167,16 @@ type VercelDeployment = {
   state?: string;
   target?: string | null;
   projectId?: string;
-  meta?: { githubCommitRef?: string; githubCommitSha?: string };
+  meta?: {
+    githubCommitRef?: string;
+    githubCommitRepoId?: string;
+    githubCommitSha?: string;
+  };
+};
+
+type DeploymentList = {
+  deployments: VercelDeployment[];
+  pagination?: { next?: number | null };
 };
 
 const summarize = (deployment: VercelDeployment): DeploymentSummary => {
@@ -173,6 +190,7 @@ const summarize = (deployment: VercelDeployment): DeploymentSummary => {
     created,
     readyState: deployment.readyState ?? deployment.state ?? "UNKNOWN",
     target: deployment.target ?? null,
+    repositoryId: deployment.meta?.githubCommitRepoId,
     ref: deployment.meta?.githubCommitRef,
     sha: deployment.meta?.githubCommitSha,
   };
@@ -218,7 +236,11 @@ const decideAgainst = async (
   if (changedPaths === undefined) {
     return { rebuild: true, reason: `cannot compare with ${base.sha}` };
   }
-  return decideRebuild(changedPaths, await readPackageGraph(repositoryRoot));
+  const graph = await readPackageGraph(repositoryRoot).catch(() => undefined);
+  if (graph === undefined) {
+    return { rebuild: true, reason: "cannot read the package graph" };
+  }
+  return decideRebuild(changedPaths, graph);
 };
 
 const main = async () => {
@@ -226,8 +248,18 @@ const main = async () => {
   const teamId = requireEnv("VERCEL_TEAM_ID");
   const projectId = requireEnv("PORTAL_PROJECT_ID");
   const skippedUrl = process.env.SKIPPED_DEPLOYMENT_URL;
-  const skippedSha = process.env.SKIPPED_DEPLOYMENT_SHA;
   const repositoryRoot = (await $`git rev-parse --show-toplevel`.text()).trim();
+
+  const listDeployments = async (query: string) => {
+    const list = (await vercelApi(
+      `/v6/deployments?projectId=${projectId}&teamId=${teamId}&${query}`,
+      token
+    )) as DeploymentList;
+    return {
+      deployments: list.deployments.map(summarize),
+      truncated: Boolean(list.pagination?.next),
+    };
+  };
 
   const skippedDeployment = skippedUrl
     ? ((await vercelApi(
@@ -238,64 +270,74 @@ const main = async () => {
         )}?teamId=${teamId}`,
         token
       )) as VercelDeployment)
+    : undefined;
+  const skipped = skippedDeployment
+    ? summarize(skippedDeployment)
     : (
-        (await vercelApi(
-          `/v6/deployments?projectId=${projectId}&teamId=${teamId}&limit=20&sha=${requireEnv("SKIPPED_DEPLOYMENT_SHA")}`,
-          token
-        )) as { deployments: VercelDeployment[] }
+        await listDeployments(
+          `limit=20&sha=${requireEnv("SKIPPED_DEPLOYMENT_SHA")}`
+        )
       ).deployments.find(
-        (deployment) => deployment.meta?.githubCommitSha === skippedSha
+        (deployment) => deployment.sha === process.env.SKIPPED_DEPLOYMENT_SHA
       );
-  if (!skippedDeployment) {
+  if (!skipped) {
     throw new Error("No portal deployment matches the skipped commit");
   }
-  if (skippedDeployment.projectId !== projectId) {
+  if (skippedDeployment && skippedDeployment.projectId !== projectId) {
     throw new Error("The skipped deployment belongs to another project");
   }
-  const skipped = summarize(skippedDeployment);
-  if (!skipped.ref || !skipped.sha) {
+  if (!skipped.ref || !skipped.sha || !skipped.repositoryId) {
     throw new Error("The skipped deployment has no Git commit");
   }
-
-  const listDeployments = async (query: string) =>
-    (
-      (await vercelApi(
-        `/v6/deployments?projectId=${projectId}&teamId=${teamId}&limit=100&${query}`,
-        token
-      )) as { deployments: VercelDeployment[] }
-    ).deployments.map(summarize);
-  const recent = await listDeployments(`since=${skipped.created}`);
-  const ready = [
-    ...(await listDeployments(`state=READY&until=${skipped.created}`)),
-    ...(await listDeployments(
-      `state=READY&target=production&until=${skipped.created}`
-    )),
-  ];
-  const deployments = [...recent, ...ready];
-
-  if (isSuperseded(skipped, deployments)) {
-    report(`${skipped.id} is superseded by a newer ${skipped.ref} deployment`);
+  const { ref, sha } = skipped;
+  // A main merge commit's parent diff covers the whole pull request, and CI
+  // builds the portal for every pull request, so only previews need this.
+  if (skipped.target === "production") {
+    report(`${skipped.id} is a production deployment; nothing to do`);
     return;
   }
 
-  const base = comparisonBase(skipped, deployments);
-  const decision = await decideAgainst(skipped.sha, base, repositoryRoot);
+  const supersededNow = async () => {
+    const newer = await listDeployments(
+      `branch=${encodeURIComponent(ref)}&since=${skipped.created}&limit=100`
+    );
+    return newer.truncated || isSuperseded(skipped, newer.deployments);
+  };
+  if (await supersededNow()) {
+    report(`${skipped.id} is superseded by a newer ${ref} deployment`);
+    return;
+  }
+
+  const ready = [
+    ...(
+      await listDeployments(
+        `branch=${encodeURIComponent(ref)}&state=READY&until=${skipped.created}&limit=20`
+      )
+    ).deployments,
+    ...(
+      await listDeployments(
+        `target=production&state=READY&until=${skipped.created}&limit=20`
+      )
+    ).deployments,
+  ];
+  const base = comparisonBase(skipped, ready);
+  const decision = await decideAgainst(sha, base, repositoryRoot);
   report(
-    `${skipped.id} (${skipped.sha}) against ${base?.id ?? "nothing"}: ${decision.reason}`
+    `${skipped.id} (${sha}) against ${base?.id ?? "nothing"}: ${decision.reason}`
   );
   if (!decision.rebuild || process.env.DRY_RUN === "1") return;
+  if (await supersededNow()) {
+    report(`${skipped.id} was superseded while comparing`);
+    return;
+  }
 
   const rebuilt = summarize(
     (await vercelApi(`/v13/deployments?teamId=${teamId}&forceNew=1`, token, {
       method: "POST",
-      body: {
-        name: portalPackageName,
-        deploymentId: skipped.id,
-        ...(skipped.target === "production" && { target: "production" }),
-      },
+      body: { name: portalPackageName, deploymentId: skipped.id },
     })) as VercelDeployment
   );
-  report(`Rebuilding ${skipped.sha} as ${rebuilt.id}`);
+  report(`Rebuilding ${sha} as ${rebuilt.id}`);
 };
 
 if (import.meta.main) await main();
