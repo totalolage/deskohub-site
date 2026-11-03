@@ -312,6 +312,7 @@
       "name": "@deskohub/cloudinary",
       "version": "0.1.0",
       "dependencies": {
+        "@deskohub/provider-request": "workspace:*",
         "@opentelemetry/api": "^1.9.0",
         "@opentelemetry/core": "2.8.0",
         "@opentelemetry/sdk-trace-base": "2.8.0",
@@ -344,6 +345,7 @@
       "name": "@deskohub/dotypos",
       "version": "0.1.0",
       "dependencies": {
+        "@deskohub/provider-request": "workspace:*",
         "effect": "4.0.0-beta.85",
         "libphonenumber-js": "^1.13.15",
       },
@@ -382,6 +384,7 @@
     "packages/email": {
       "name": "@deskohub/email",
       "dependencies": {
+        "@deskohub/provider-request": "workspace:*",
         "@deskohub/test-email": "workspace:*",
         "effect": "4.0.0-beta.85",
         "resend": "^6.32.1",
@@ -402,6 +405,7 @@
       "name": "@deskohub/google-calendar",
       "version": "0.1.0",
       "dependencies": {
+        "@deskohub/provider-request": "workspace:*",
         "@googleapis/calendar": "^20.1.0",
         "effect": "4.0.0-beta.85",
       },
@@ -440,6 +444,7 @@
       "name": "@deskohub/nexi",
       "version": "0.1.0",
       "dependencies": {
+        "@deskohub/provider-request": "workspace:*",
         "@deskohub/secret-comparison": "workspace:*",
         "effect": "4.0.0-beta.85",
       },
@@ -499,6 +504,16 @@
       "peerDependencies": {
         "posthog-js": ">=1.257.2",
         "react": ">=16.8.0",
+      },
+    },
+    "packages/provider-request": {
+      "name": "@deskohub/provider-request",
+      "version": "0.1.0",
+      "dependencies": {
+        "effect": "4.0.0-beta.85",
+      },
+      "devDependencies": {
+        "typescript": "npm:@typescript/typescript6@6.0.2",
       },
     },
     "packages/qr-code": {
@@ -795,6 +810,8 @@
     "@deskohub/next-effect": ["@deskohub/next-effect@workspace:packages/next-effect"],
 
     "@deskohub/posthog": ["@deskohub/posthog@workspace:packages/posthog"],
+
+    "@deskohub/provider-request": ["@deskohub/provider-request@workspace:packages/provider-request"],
 
     "@deskohub/qr-code": ["@deskohub/qr-code@workspace:packages/qr-code"],
 

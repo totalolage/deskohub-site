@@ -1,12 +1,12 @@
+import { ProviderRetryPolicy } from "@deskohub/provider-request";
 import { auth, calendar, type calendar_v3 } from "@googleapis/calendar";
 import {
   Context,
-  Duration,
+  type Duration,
   Effect,
   Layer,
   Option,
   Predicate,
-  Schedule,
   Schema,
   Stream,
 } from "effect";
@@ -34,35 +34,25 @@ const calendarReadonlyScope =
 const defaultPageSize = 250;
 const defaultRequestTimeout = "10 seconds";
 
-const retryBaseDelayMilliseconds = 100;
-const maxRetries = 1;
-/** `Schedule.jittered` scales each delay by a random factor of at most 1.2. */
-const maxRetryJitterFactor = 1.2;
+/**
+ * Event reads retry a transient failure once, after a jittered 100 ms
+ * backoff. A watch registration runs once.
+ */
+const googleCalendarRetryPolicy = ProviderRetryPolicy.make({
+  label: "Google Calendar",
+  baseDelay: "100 millis",
+  maxRetries: 1,
+});
 
 /**
  * A timeout, a network failure (no HTTP status), rate limiting, or a server
  * error is transient. Other client errors would fail again.
  */
-const isTransientGoogleCalendarError = (error: GoogleCalendarAPIError) =>
-  error.statusCode === undefined ||
-  error.statusCode === 429 ||
-  error.statusCode >= 500;
-
-const retryPolicy = Schedule.exponential(
-  Duration.millis(retryBaseDelayMilliseconds)
-).pipe(
-  Schedule.jittered,
-  Schedule.while<GoogleCalendarAPIError, Duration.Duration>(({ input }) =>
-    isTransientGoogleCalendarError(input)
-  ),
-  Schedule.both(Schedule.recurs(maxRetries)),
-  Schedule.tapOutput(([delay, attempt]) =>
-    Effect.logWarning(`Google Calendar retry attempt #${attempt + 1}`, {
-      attemptNumber: attempt + 1,
-      delayMs: Duration.toMillis(delay),
-      maxRetries,
-    })
-  )
+const retryTransientGoogleCalendarError = googleCalendarRetryPolicy.retryWhile(
+  (error: GoogleCalendarAPIError) =>
+    error.statusCode === undefined ||
+    error.statusCode === 429 ||
+    error.statusCode >= 500
 );
 
 /**
@@ -73,16 +63,9 @@ const retryPolicy = Schedule.exponential(
  */
 export const getGoogleCalendarRequestWorstCaseDuration = (
   requestTimeout: Duration.Input
-) => {
-  let backoffMilliseconds = 0;
-  for (let retry = 0; retry < maxRetries; retry += 1) {
-    backoffMilliseconds +=
-      retryBaseDelayMilliseconds * 2 ** retry * maxRetryJitterFactor;
-  }
-  return Duration.millis(
-    Duration.toMillis(requestTimeout) * (maxRetries + 1) + backoffMilliseconds
-  );
-};
+) =>
+  googleCalendarRetryPolicy.withAttemptTimeout(requestTimeout).worstCase
+    .retried;
 
 export interface IGoogleCalendarService {
   readonly listEvents: (
@@ -103,9 +86,9 @@ export class GoogleCalendarService extends Context.Service<
       const rawConfig = yield* GoogleCalendarRuntimeConfig;
       const config = yield* validateGoogleCalendarRuntimeConfig(rawConfig);
       const client = getCalendarClient(config);
-      const requestTimeout = config.requestTimeout ?? defaultRequestTimeout;
-      const listEventsTimeout =
-        getGoogleCalendarRequestWorstCaseDuration(requestTimeout);
+      const requestPolicy = googleCalendarRetryPolicy.withAttemptTimeout(
+        config.requestTimeout ?? defaultRequestTimeout
+      );
 
       const listEvents = Effect.fn("GoogleCalendarService.listEvents")(
         (input: GoogleCalendarListEventsInput) =>
@@ -121,7 +104,7 @@ export class GoogleCalendarService extends Context.Service<
             ),
             Effect.bind("events", (range) =>
               loadEventPages(range).pipe(
-                withRequestTimeout("events.list", listEventsTimeout)
+                withinDeadline("events.list", requestPolicy.worstCase.retried)
               )
             ),
             Effect.bind("result", ({ events }) =>
@@ -180,7 +163,7 @@ export class GoogleCalendarService extends Context.Service<
                 cause: withoutRequestBody(cause),
               }),
           }).pipe(
-            withRequestTimeout("events.watch", requestTimeout),
+            requestPolicy.attempt(() => googleCalendarTimeout("events.watch")),
             Effect.flatMap((data) => toGoogleCalendarWatchChannel(data, input))
           ),
         (effect, input) =>
@@ -247,8 +230,8 @@ export class GoogleCalendarService extends Context.Service<
               cause,
             }),
         }).pipe(
-          withRequestTimeout("events.list", requestTimeout),
-          Effect.retry(retryPolicy)
+          requestPolicy.attempt(() => googleCalendarTimeout("events.list")),
+          retryTransientGoogleCalendarError
         );
 
       return { listEvents, watchEvents };
@@ -370,20 +353,20 @@ const toGoogleCalendarWatchChannel = (
     return result;
   });
 
+const googleCalendarTimeout = (operation: string) =>
+  new GoogleCalendarAPIError({
+    operation,
+    message: "Google Calendar request timed out.",
+  });
+
 /** Interrupting the request aborts it, so a stalled provider call is released. */
-const withRequestTimeout =
-  (operation: string, duration: Duration.Input) =>
+const withinDeadline =
+  (operation: string, deadline: Duration.Input) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     effect.pipe(
       Effect.timeoutOrElse({
-        duration,
-        orElse: () =>
-          Effect.fail(
-            new GoogleCalendarAPIError({
-              operation,
-              message: "Google Calendar request timed out.",
-            })
-          ),
+        duration: deadline,
+        orElse: () => Effect.fail(googleCalendarTimeout(operation)),
       })
     );
 

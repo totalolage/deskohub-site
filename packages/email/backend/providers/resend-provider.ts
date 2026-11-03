@@ -1,3 +1,4 @@
+import type { ProviderRequestPolicy } from "@deskohub/provider-request";
 import { Config, Duration, Effect, Layer, Option, Schema } from "effect";
 import { Resend } from "resend";
 import {
@@ -13,6 +14,7 @@ import {
   isRetryableEmailError,
 } from "../capabilities";
 import { NetworkError } from "../network-error";
+import { emailRetryPolicy } from "../request-policy";
 
 const resendTagPattern = /^[A-Za-z0-9_-]{1,256}$/;
 
@@ -101,7 +103,7 @@ const isResendRefusal = (statusCode: number) =>
  */
 const requestResend = <A>(
   request: (signal: AbortSignal) => Promise<ResendResponse<A>>,
-  timeout: Duration.Input
+  policy: ProviderRequestPolicy
 ) =>
   Effect.tryPromise({
     try: async (signal) => {
@@ -149,15 +151,12 @@ const requestResend = <A>(
       });
     },
   }).pipe(
-    Effect.timeoutOrElse({
-      duration: timeout,
-      orElse: () =>
-        Effect.fail(
-          new NetworkError({
-            message: "Resend send timed out",
-          })
-        ),
-    }),
+    policy.attempt(
+      () =>
+        new NetworkError({
+          message: "Resend send timed out",
+        })
+    ),
     Effect.tapError((error) =>
       Effect.logWarning(
         "Resend tryPromise failed - will retry if NetworkError",
@@ -201,6 +200,8 @@ export const createResendProvider = (
   timeouts: ResendRequestTimeouts
 ): EmailProvider => {
   const resend = new Resend(apiKey);
+  const sendPolicy = emailRetryPolicy.withAttemptTimeout(timeouts.send);
+  const batchPolicy = emailRetryPolicy.withAttemptTimeout(timeouts.batch);
 
   return {
     name: "resend",
@@ -230,7 +231,7 @@ export const createResendProvider = (
                 signal,
               }
             ),
-          timeouts.send
+          sendPolicy
         ).pipe(
           Effect.tap((response) =>
             Effect.logInfo("Resend tryPromise succeeded", {
@@ -288,7 +289,7 @@ export const createResendProvider = (
               idempotencyKey: getResendIdempotencyKey(options.idempotencyKey),
               signal,
             }),
-          timeouts.batch
+          batchPolicy
         );
 
         const ids = data?.data ?? [];

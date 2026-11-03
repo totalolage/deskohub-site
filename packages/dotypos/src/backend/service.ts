@@ -63,6 +63,7 @@ import { type DotyposIdReadOptions, readByIds } from "./id-reads";
 import {
   type DotyposAttemptFailure,
   type DotyposRequestFailure,
+  getDotyposRequestPolicy,
   retryDotyposRequest,
 } from "./request-profiles";
 
@@ -718,6 +719,7 @@ const makeDotyposService: Effect.Effect<
 > = Effect.gen(function* () {
   const config = yield* DotyposRuntimeConfig;
   const { client } = yield* DotyposGeneratedClient;
+  const requestPolicy = getDotyposRequestPolicy(config.apiTimeout);
 
   /**
    * Sends one request attempt and classifies its failure by the request's
@@ -734,10 +736,7 @@ const makeDotyposService: Effect.Effect<
           call
         )
       ),
-      Effect.timeoutOrElse({
-        duration: config.apiTimeout,
-        orElse: () => Effect.fail(dotyposTimeout(call)),
-      })
+      requestPolicy.attempt(() => dotyposTimeout(call))
     );
 
   /** A creation answered with an empty array created nothing, so it can be retried. */
