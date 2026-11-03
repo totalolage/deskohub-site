@@ -2,7 +2,7 @@ import { type ReactNode, Suspense } from "react";
 import { env } from "@/env";
 import { SiteToolsWhenEnabled } from "@/features/agent-tools/site-tools-when-enabled";
 import { ConsentAwareAnalytics } from "@/features/cookie-consent/components/consent-aware-analytics";
-import { CookieConsentProvider } from "@/features/cookie-consent/components/cookie-consent-provider";
+import { ConsentBanner } from "@/features/cookie-consent/components/consent-banner";
 import { DeferredTagManager } from "@/features/cookie-consent/components/deferred-tag-manager";
 import { PostHogProvider } from "@/features/cookie-consent/components/posthog-analytics";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
@@ -34,7 +34,7 @@ export default async function SiteLayout({
       />
       {gtmId && <DeferredTagManager gtmId={gtmId} />}
       <PostHogProvider>
-        <CookieConsentProvider locale={locale} />
+        <ConsentBanner locale={locale} />
         <RememberSharedReferralCodeWhenEnabled />
         <SiteToolsWhenEnabled locale={locale} />
         <Suspense fallback={null}>

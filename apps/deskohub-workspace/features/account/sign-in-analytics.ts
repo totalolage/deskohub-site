@@ -2,11 +2,11 @@
 
 import { Option, Schema } from "effect";
 import { captureAnalyticsEvent } from "@/features/cookie-consent/analytics-events";
+import { visitorConsent } from "@/features/cookie-consent/visitor-consent";
 import {
   readSessionStorageItem,
   writeSessionStorageItem,
 } from "@/shared/browser/session-storage";
-import { isConsentCategoryAcceptedInCookie } from "@/shared/utils/consent-cookie";
 
 /** A customer finished signing in; `method` says how. */
 export const SIGN_IN_COMPLETED_EVENT = "sign-in completed";
@@ -39,9 +39,7 @@ const decodeRecordedCompletion = Schema.decodeUnknownOption(
   Schema.fromJsonString(recordedCompletionSchema)
 );
 
-const hasAnalyticsConsent = () =>
-  globalThis.document !== undefined &&
-  isConsentCategoryAcceptedInCookie(globalThis.document.cookie, "analytics");
+const hasAnalyticsConsent = () => visitorConsent.accepts("analytics");
 
 const readRecordedMethod = (): SignInMethod | undefined => {
   const raw = readSessionStorageItem(completionStorageKey);

@@ -1,12 +1,15 @@
+import { Option, Predicate } from "effect";
+
 export const CONSENT_COOKIE_NAME = "cc_cookie";
 
-const consentCategories = [
+/** Every consent category the visitor can accept, in display order. */
+export const consentCategories = [
   "necessary",
   "analytics",
   "marketing",
   "preferences",
 ] as const;
-export const isConsentCategory = <T>(value: T): value is T & ConsentCategory =>
+const isConsentCategory = <T>(value: T): value is T & ConsentCategory =>
   Predicate.isString(value) && consentCategories.includes(value);
 export type ConsentCategory = (typeof consentCategories)[number];
 
@@ -21,18 +24,37 @@ type ConsentCookieDiagnostics = {
   readonly onUnexpectedValue?: (reason: UnexpectedConsentCookieReason) => void;
 };
 
-export function getAcceptedConsentCategoriesFromCookie(
-  cookieString: string,
-  diagnostics?: ConsentCookieDiagnostics
-) {
-  const cookieValue = getConsentCookieValuesFromCookie(cookieString)[0];
-
-  return getAcceptedConsentCategoriesFromCookieValue(cookieValue, diagnostics);
-}
-
 export function getConsentCookieValuesFromCookie(cookieString: string) {
   return new URLSearchParams(cookieString.replace(/;\s*/g, "&")).getAll(
     CONSENT_COOKIE_NAME
+  );
+}
+
+/**
+ * The categories every copy of the consent cookie accepts. Empty without a
+ * consent cookie or when any copy is malformed, so an unexpected value reads
+ * as declined. Every copy is read, so diagnostics see each unexpected value.
+ */
+export function getAcceptedConsentCategoriesFromCookie(
+  cookieString: string,
+  diagnostics?: ConsentCookieDiagnostics
+): ConsentCategory[] {
+  const consentCookieValues = getConsentCookieValuesFromCookie(cookieString);
+  if (consentCookieValues.length === 0) return [];
+
+  let hasUnexpectedValue = false;
+  const acceptedByCopy = consentCookieValues.map((cookieValue) =>
+    getAcceptedConsentCategoriesFromCookieValue(cookieValue, {
+      onUnexpectedValue: (reason) => {
+        hasUnexpectedValue = true;
+        diagnostics?.onUnexpectedValue?.(reason);
+      },
+    })
+  );
+  if (hasUnexpectedValue) return [];
+
+  return consentCategories.filter((category) =>
+    acceptedByCopy.every((accepted) => accepted.includes(category))
   );
 }
 
@@ -45,47 +67,33 @@ export function isConsentCategoryAcceptedInCookie(
   category: ConsentCategory,
   diagnostics?: ConsentCookieDiagnostics
 ): boolean {
-  const consentCookieValues = getConsentCookieValuesFromCookie(cookieString);
-  if (consentCookieValues.length === 0) return false;
-
-  // Every copy is read, so diagnostics see each unexpected value.
-  const copiesAccepting = consentCookieValues.map((cookieValue) => {
-    let hasUnexpectedValue = false;
-    const acceptedCategories = getAcceptedConsentCategoriesFromCookieValue(
-      cookieValue,
-      {
-        onUnexpectedValue: (reason) => {
-          hasUnexpectedValue = true;
-          diagnostics?.onUnexpectedValue?.(reason);
-        },
-      }
-    );
-
-    return !hasUnexpectedValue && acceptedCategories.includes(category);
-  });
-  return copiesAccepting.every(Boolean);
+  return getAcceptedConsentCategoriesFromCookie(
+    cookieString,
+    diagnostics
+  ).includes(category);
 }
 
-export function getAcceptedConsentCategoriesFromCookieValue(
-  cookieValue: string | null | undefined,
-  diagnostics?: ConsentCookieDiagnostics
-) {
+function getAcceptedConsentCategoriesFromCookieValue(
+  cookieValue: string,
+  diagnostics: ConsentCookieDiagnostics
+): ConsentCategory[] {
+  // An emptied copy accepts nothing without being unexpected.
   if (!cookieValue) return [];
 
   const parsedValue = parseConsentCookieValue(cookieValue);
   if (Option.isNone(parsedValue)) {
-    diagnostics?.onUnexpectedValue?.("invalid_json");
+    diagnostics.onUnexpectedValue?.("invalid_json");
     return [];
   }
   const value = parsedValue.value;
   if (!Predicate.isObject(value)) {
-    diagnostics?.onUnexpectedValue?.("invalid_value_type");
+    diagnostics.onUnexpectedValue?.("invalid_value_type");
     return [];
   }
 
   const { categories } = value as { categories?: unknown };
   if (!Array.isArray(categories)) {
-    diagnostics?.onUnexpectedValue?.("invalid_categories_type");
+    diagnostics.onUnexpectedValue?.("invalid_categories_type");
     return [];
   }
 
@@ -93,11 +101,11 @@ export function getAcceptedConsentCategoriesFromCookieValue(
 
   for (const category of categories) {
     if (!Predicate.isString(category)) {
-      diagnostics?.onUnexpectedValue?.("invalid_category_type");
+      diagnostics.onUnexpectedValue?.("invalid_category_type");
       continue;
     }
     if (!isConsentCategory(category)) {
-      diagnostics?.onUnexpectedValue?.("unknown_category");
+      diagnostics.onUnexpectedValue?.("unknown_category");
       continue;
     }
 
@@ -119,5 +127,3 @@ const parseConsentCookieValue = (cookieValue: string) =>
   parseJsonCookieValue(cookieValue).pipe(
     Option.orElse(() => parseUriEncodedJsonCookieValue(cookieValue))
   );
-
-import { Option, Predicate } from "effect";
