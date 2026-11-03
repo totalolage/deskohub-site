@@ -14,6 +14,7 @@
     "src/**/*.ts",
     "features/**/*.ts",
     "astro.config.ts",
-    "deployment-graph.test.ts"
+    "deployment-graph.test.ts",
+    "scripts/**/*.ts"
   ]
 }
