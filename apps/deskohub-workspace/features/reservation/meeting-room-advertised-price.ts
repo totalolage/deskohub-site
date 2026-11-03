@@ -1,8 +1,18 @@
 import { Option, Schema } from "effect";
-import type { MeetingRoomAdvertisedPriceRequest } from "@/features/checkout/advertised-price";
+import {
+  getAdvertisedProductAmount,
+  isMeetingRoomAdvertisedPrice,
+  type MeetingRoomAdvertisedPrice,
+  type MeetingRoomAdvertisedPriceRequest,
+} from "@/features/checkout/advertised-price";
 import type { CanonicalPromotionCode } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
-import { meetingRoomReservationDurations } from "@/features/reservation/meeting-room-reservation-duration";
+import type { AdvertisedOptionFamily } from "@/features/reservation/advertised-option-prices";
+import {
+  getMeetingRoomReservationDurationKey,
+  type MeetingRoomReservationDurationKey,
+  meetingRoomReservationDurations,
+} from "@/features/reservation/meeting-room-reservation-duration";
 import {
   getMeetingRoomLastServiceDate,
   getMeetingRoomReservationInterval,
@@ -53,4 +63,26 @@ export const getMeetingRoomDurationAdvertisedPriceRequests = ({
       });
     }),
     Option.getOrElse(() => [])
+  );
+
+/** Each duration option shows its own product line's advertised amount. */
+export const meetingRoomDurationOptions: AdvertisedOptionFamily<
+  MeetingRoomAdvertisedPriceRequest,
+  MeetingRoomAdvertisedPrice
+> = {
+  isPrice: isMeetingRoomAdvertisedPrice,
+  amountOf: (price, { reservation: { details } }) =>
+    getAdvertisedProductAmount(price, {
+      kind: "meeting-room",
+      duration: details.duration,
+    }),
+};
+
+export const findMeetingRoomDurationAdvertisedPriceRequest = (
+  requests: ReadonlyArray<MeetingRoomAdvertisedPriceRequest>,
+  durationKey: MeetingRoomReservationDurationKey
+) =>
+  requests.find(
+    ({ reservation: { details } }) =>
+      getMeetingRoomReservationDurationKey(details.duration) === durationKey
   );
