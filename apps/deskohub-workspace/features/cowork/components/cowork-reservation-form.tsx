@@ -74,8 +74,13 @@ import {
   getCoworkReservationDefaultValues,
   type NormalizedCoworkReservationOrder,
 } from "@/features/reservation/cowork-reservation";
+import {
+  evaluateCoworkSelectionAvailability,
+  getCoworkWorkstationNormalization,
+  getCoworkWorkstationOrigin,
+} from "@/features/reservation/cowork-selection-availability";
 import { coworkSelectionLink } from "@/features/reservation/cowork-selection-link";
-import { getReservationAvailabilityUnavailableMessage } from "@/features/reservation/reservation.i18n";
+import { getReservationCheckoutAvailability } from "@/features/reservation/reservation.i18n";
 import {
   formatReservationInputDate,
   getCurrentWorkspaceDate,
@@ -273,143 +278,33 @@ export function CoworkReservationForm({
     ? formatMoney(workstationPrice, locale)
     : undefined;
 
-  const { availability } = availabilityQueryResult;
-  const { availability: rangeAvailability } = rangeAvailabilityQueryResult;
-  const isAvailabilitySettledForCurrentRange = Boolean(
-    rangeAvailabilityQuery &&
-      rangeAvailability?.from === rangeAvailabilityQuery.from &&
-      rangeAvailability?.to === rangeAvailabilityQuery.to &&
-      rangeAvailabilityQueryResult.isSuccess &&
-      !rangeAvailabilityQueryResult.isError &&
-      !rangeAvailabilityQueryResult.isPlaceholderData
-  );
-  const currentRangeAvailability = isAvailabilitySettledForCurrentRange
-    ? rangeAvailability
-    : null;
-  const isAvailabilitySettledForSelectedDate = Boolean(
-    selectedDate &&
-      availabilityQuery?.date === selectedDate &&
-      availability?.date === selectedDate &&
-      availabilityQueryResult.isSuccess &&
-      !availabilityQueryResult.isError &&
-      !availabilityQueryResult.isPlaceholderData
-  );
-  const currentAvailability = isAvailabilitySettledForSelectedDate
-    ? availability
-    : null;
-  const isWorkstationRequirementSettledForSelectedDate = Boolean(
-    selectedDate &&
-      workstationRequirementQuery?.date === selectedDate &&
-      workstationRequirementQueryResult.availability?.date === selectedDate &&
-      workstationRequirementQueryResult.isSuccess &&
-      !workstationRequirementQueryResult.isError &&
-      !workstationRequirementQueryResult.isPlaceholderData
-  );
-  const currentWorkstationRequirementAvailability =
-    isWorkstationRequirementSettledForSelectedDate
-      ? workstationRequirementQueryResult.availability
-      : null;
-  const isSelectedAvailabilityUnsettled = Boolean(
-    selectedDate &&
-      availabilityQuery?.date === selectedDate &&
-      !isAvailabilitySettledForSelectedDate
-  );
-  const isWorkstationRequirementUnsettled = Boolean(
-    workstationRequirementQuery &&
-      !isWorkstationRequirementSettledForSelectedDate
-  );
-  const isSelectionAvailabilityPending =
-    availabilityQueryResult.isPending ||
-    workstationRequirementQueryResult.isPending;
-  const unavailableCalendarDates = new Set(
-    (currentRangeAvailability?.unavailableDates ?? []).filter(
-      (date) =>
-        selectedTier !== "reserved-desk" ||
-        !currentRangeAvailability?.reservedDeskWorkstationRequiredDates.includes(
-          date
-        )
-    )
-  );
-  const currentTierAvailability =
-    currentAvailability ?? currentRangeAvailability;
-  const unavailableCoworkTiers = new Set(
-    currentTierAvailability?.unavailableCoworkTiers ?? []
-  );
-  // Memoized because the workstation normalization effect depends on it.
-  const unavailableMonitorOptions = useMemo(
-    () =>
-      new Set(
-        currentWorkstationRequirementAvailability?.unavailableMonitorOptions ??
-          []
-      ),
-    [currentWorkstationRequirementAvailability]
-  );
-  const selectedDateNotices = (currentAvailability?.notices ?? []).filter(
-    (notice) => notice.date === selectedDate
-  );
-  const firstAvailableMonitorOption = allowedMonitorOptions.find(
-    (option) => !unavailableMonitorOptions.has(option)
-  );
-  const isWorkstationRequiredForDate = Boolean(
-    isWorkstationRequirementSettledForSelectedDate &&
-      selectedTier === "reserved-desk" &&
-      selectedDate &&
-      currentWorkstationRequirementAvailability?.reservedDeskWorkstationRequiredDates.includes(
-        selectedDate
-      ) &&
-      firstAvailableMonitorOption
-  );
-  const isWorkstationNormalizationPending = Boolean(
-    isWorkstationRequiredForDate &&
-      (!selectedMonitorOption ||
-        unavailableMonitorOptions.has(selectedMonitorOption))
-  );
-  const isSelectedTierUnavailable = Boolean(
-    currentAvailability?.unavailableCoworkTiers.includes(selectedTier)
-  );
-  const isSelectedMonitorUnavailable = Boolean(
-    selectedMonitorOption &&
-      unavailableMonitorOptions.has(selectedMonitorOption)
-  );
-  const isSelectedDateUnavailable = Boolean(
-    currentAvailability &&
-      selectedDate &&
-      currentAvailability.unavailableDates.includes(selectedDate) &&
-      !(
-        selectedTier === "reserved-desk" &&
-        currentAvailability.reservedDeskWorkstationRequiredDates.includes(
-          selectedDate
-        )
-      )
-  );
-  const isSelectedReservationUnavailable =
-    isSelectedTierUnavailable ||
-    isSelectedMonitorUnavailable ||
-    isSelectedDateUnavailable;
-  const selectedReservationUnavailableMessage =
-    getReservationAvailabilityUnavailableMessage({
+  const selectionAvailability = evaluateCoworkSelectionAvailability(
+    {
+      range: rangeAvailabilityQueryResult,
+      selection: availabilityQueryResult,
+      workstationRequirement: workstationRequirementQueryResult,
+    },
+    {
       date: selectedDate,
-      dateFallback: m.reservationDatePlaceholder({}, { locale }),
-      locale,
-      reservation: { kind: "cowork", entryTier: selectedTier },
-    });
-  const availabilityMessage = isSelectedReservationUnavailable
-    ? selectedReservationUnavailableMessage
-    : undefined;
-  const availabilityConfirmationErrorMessage =
-    (isSelectedAvailabilityUnsettled || isWorkstationRequirementUnsettled) &&
-    !isSelectionAvailabilityPending
-      ? m.reservationAvailabilityError({}, { locale })
-      : undefined;
+      entryTier: selectedTier,
+      monitorOption: selectedMonitorOption,
+    }
+  );
+  const { workstation } = selectionAvailability;
+  const {
+    isSelectedMonitorUnavailable,
+    normalizable: isWorkstationNormalizable,
+    requiredMonitorOption,
+  } = workstation;
+  const isWorkstationRequired = requiredMonitorOption !== undefined;
 
+  // Whether the form added the current workstation itself. Customer choices
+  // and tier changes reset it.
   const autoAddedWorkstation = useRef(false);
 
   useEffect(() => {
     if (showWorkstationAddon) {
       if (
-        !isAvailabilitySettledForSelectedDate ||
-        !isWorkstationRequirementSettledForSelectedDate ||
-        selectedTier !== "reserved-desk" ||
         form.getValues("entryTier") !== selectedTier ||
         form.getValues("date") !== selectedDate ||
         form.getValues("monitorOption") !== selectedMonitorOption
@@ -417,29 +312,26 @@ export function CoworkReservationForm({
         return;
       }
 
-      if (isWorkstationRequiredForDate) {
-        if (!firstAvailableMonitorOption) return;
-
-        if (!selectedMonitorOption) {
-          autoAddedWorkstation.current = true;
-          form.setValue("monitorOption", firstAvailableMonitorOption, {
-            shouldValidate: true,
-          });
-          return;
+      const normalized = getCoworkWorkstationNormalization(
+        {
+          isSelectedMonitorUnavailable,
+          normalizable: isWorkstationNormalizable,
+          requiredMonitorOption,
+        },
+        {
+          monitorOption: selectedMonitorOption,
+          origin: getCoworkWorkstationOrigin({
+            autoAdded: autoAddedWorkstation.current,
+            monitorOption: selectedMonitorOption,
+          }),
         }
+      );
+      if (!normalized) return;
 
-        if (unavailableMonitorOptions.has(selectedMonitorOption)) {
-          form.setValue("monitorOption", firstAvailableMonitorOption, {
-            shouldValidate: true,
-          });
-        }
-        return;
-      }
-
-      if (autoAddedWorkstation.current) {
-        autoAddedWorkstation.current = false;
-        form.setValue("monitorOption", undefined, { shouldValidate: true });
-      }
+      autoAddedWorkstation.current = normalized.origin === "auto-added";
+      form.setValue("monitorOption", normalized.monitorOption, {
+        shouldValidate: true,
+      });
       return;
     }
 
@@ -449,31 +341,31 @@ export function CoworkReservationForm({
       form.setValue("coffee", true, { shouldValidate: true });
     }
   }, [
-    firstAvailableMonitorOption,
     form,
-    isAvailabilitySettledForSelectedDate,
-    isWorkstationRequirementSettledForSelectedDate,
-    isWorkstationRequiredForDate,
+    isSelectedMonitorUnavailable,
+    isWorkstationNormalizable,
+    requiredMonitorOption,
     selectedDate,
     selectedMonitorOption,
     selectedTier,
     showCoffeeAddon,
     showWorkstationAddon,
-    unavailableMonitorOptions,
   ]);
 
   return (
     <ReservationCheckoutForm
       checkoutCustomer={checkoutCustomer}
       advertisedPrice={advertisedPrices.checkout}
-      availability={{
-        isPending:
-          isSelectionAvailabilityPending ||
-          rangeAvailabilityQueryResult.isPending ||
-          isWorkstationNormalizationPending,
-        unavailableMessage:
-          availabilityMessage ?? availabilityConfirmationErrorMessage,
-      }}
+      availability={getReservationCheckoutAvailability({
+        isError: selectionAvailability.checkout.isError,
+        isPending: selectionAvailability.checkout.isPending,
+        locale,
+        unavailable: selectionAvailability.checkout.unavailable && {
+          date: selectedDate,
+          dateFallback: m.reservationDatePlaceholder({}, { locale }),
+          reservation: selectionAvailability.checkout.unavailable,
+        },
+      })}
       checkoutSessionId={checkoutSessionId}
       form={form}
       getReservation={getCoworkCurrentReservationOrder}
@@ -533,9 +425,8 @@ export function CoworkReservationForm({
                     option.title,
                     locale
                   );
-                  const isUnavailable = unavailableCoworkTiers.has(
-                    option.value
-                  );
+                  const isUnavailable =
+                    selectionAvailability.unavailableTiers.has(option.value);
                   const tierPrice = getCoworkTierOptionPrice(
                     advertisedPrices,
                     option.value
@@ -611,12 +502,12 @@ export function CoworkReservationForm({
           <CoworkReservationDateField
             control={form.control}
             locale={locale}
-            unavailableDates={unavailableCalendarDates}
+            unavailableDates={selectionAvailability.unavailableDates}
           />
 
-          {selectedDateNotices.length > 0 && (
+          {selectionAvailability.selectedDateNotices.length > 0 && (
             <div className="space-y-3">
-              {selectedDateNotices.map((notice) => (
+              {selectionAvailability.selectedDateNotices.map((notice) => (
                 <p
                   key={`${notice.date}-${notice.startsAt}-${notice.endsAt}`}
                   aria-live="polite"
@@ -650,16 +541,14 @@ export function CoworkReservationForm({
           <CoworkWorkstationAddonField
             allowedMonitorOptions={allowedMonitorOptions}
             control={form.control}
-            isWorkstationRequired={isWorkstationRequiredForDate}
-            monitorOptionsAvailabilitySettled={
-              isWorkstationRequirementSettledForSelectedDate
-            }
+            isWorkstationRequired={isWorkstationRequired}
+            monitorOptionsAvailabilitySettled={workstation.settled}
             locale={locale}
             onManualSelection={() => {
               autoAddedWorkstation.current = false;
             }}
             priceLabel={workstationPriceLabel}
-            unavailableMonitorOptions={unavailableMonitorOptions}
+            unavailableMonitorOptions={workstation.unavailableMonitorOptions}
           />
         )}
       </div>

@@ -122,7 +122,9 @@ describe("useReservationAvailability", () => {
         : Promise.resolve(jsonResponse(availabilityResponse))
     );
     const view = renderAvailability(queryStartingAt(8));
-    await waitFor(() => expect(view.result.current.isSuccess).toBe(true));
+    await waitFor(() =>
+      expect(view.result.current.availability).not.toBeNull()
+    );
 
     isRefetching = true;
     let refetch: Promise<void> | undefined;
@@ -131,8 +133,8 @@ describe("useReservationAvailability", () => {
     });
     await waitFor(() => expect(respondToRefetch).toBeDefined());
 
-    expect(view.result.current.isFetching).toBe(true);
     expect(view.result.current.isPending).toBe(false);
+    expect(view.result.current.isError).toBe(false);
     expect(view.result.current.availability).toEqual(availabilityResponse);
 
     await act(async () => {
@@ -156,7 +158,9 @@ describe("useReservationAvailability", () => {
       return Promise.resolve(jsonResponse(availabilityResponse));
     });
     const view = renderAvailability(queryStartingAt(8));
-    await waitFor(() => expect(view.result.current.isSuccess).toBe(true));
+    await waitFor(() =>
+      expect(view.result.current.availability).not.toBeNull()
+    );
 
     mode = "failing";
     await act(async () => {
@@ -172,8 +176,9 @@ describe("useReservationAvailability", () => {
       retry = view.refetch();
     });
     await waitFor(() => expect(respondToRetry).toBeDefined());
-    // The errored query keeps its error status while the retry is in flight.
-    expect(view.result.current.isError).toBe(true);
+    // TanStack keeps the error status while the retry is in flight; the hook
+    // reports it as pending, not failed.
+    expect(view.result.current.isError).toBe(false);
     expect(view.result.current.isPending).toBe(true);
     expect(view.result.current.availability).toBeNull();
 
@@ -190,7 +195,9 @@ describe("useReservationAvailability", () => {
       Promise.resolve(jsonResponse(availabilityResponse))
     );
     const view = renderAvailability(queryStartingAt(8), { debounceMs: 250 });
-    await waitFor(() => expect(view.result.current.isSuccess).toBe(true));
+    await waitFor(() =>
+      expect(view.result.current.availability).not.toBeNull()
+    );
     expect(fetch).toHaveBeenCalledTimes(1);
 
     jest.useFakeTimers();

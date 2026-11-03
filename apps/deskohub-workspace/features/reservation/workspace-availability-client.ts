@@ -1,3 +1,4 @@
+import { queryOptions, skipToken } from "@tanstack/react-query";
 import { Match } from "effect";
 import {
   type MeetingRoomStartTimes,
@@ -6,6 +7,7 @@ import {
   parseWorkspaceAvailabilityResponse,
   type WorkspaceAvailability,
   type WorkspaceAvailabilityQuery,
+  workspaceAvailabilityKeys,
 } from "@/features/reservation/workspace-availability";
 import {
   type WorkspaceAvailabilityClientRequest,
@@ -86,7 +88,7 @@ export const loadWorkspaceAvailability = async ({
     })
   );
 
-export const loadMeetingRoomStartTimes = async ({
+const loadMeetingRoomStartTimes = async ({
   query,
   replacementToken,
   signal,
@@ -102,3 +104,53 @@ export const loadMeetingRoomStartTimes = async ({
       url: getMeetingRoomStartTimesUrl(query),
     })
   );
+
+// Every availability read retries a failed request three times and stays
+// fresh for 30 seconds. A replacement token gets its own cache entry because
+// the server leaves the replaced reservation out of the occupancy it reports.
+const availabilityQueryPolicy = {
+  retry: (failureCount: number) => failureCount < 3,
+  staleTime: 30_000,
+};
+
+/** The query for a reservation form's availability; empty without a query. */
+export const workspaceAvailabilityQueryOptions = ({
+  query,
+  replacementToken,
+}: {
+  readonly query: WorkspaceAvailabilityQuery | undefined;
+  readonly replacementToken?: string;
+}) =>
+  queryOptions({
+    queryKey: query
+      ? [
+          ...workspaceAvailabilityKeys.availability(query),
+          replacementToken ?? null,
+        ]
+      : ["workspace-availability", "empty"],
+    queryFn: query
+      ? ({ signal }) =>
+          loadWorkspaceAvailability({ query, replacementToken, signal })
+      : skipToken,
+    ...availabilityQueryPolicy,
+  });
+
+/** The query for the free meeting-room starts; empty without a query. */
+export const meetingRoomStartTimesQueryOptions = ({
+  query,
+  replacementToken,
+}: {
+  readonly query: MeetingRoomStartTimesQuery | undefined;
+  readonly replacementToken?: string;
+}) =>
+  queryOptions({
+    queryKey: [
+      ...workspaceAvailabilityKeys.meetingRoomStartTimes(query),
+      replacementToken ?? null,
+    ],
+    queryFn: query
+      ? ({ signal }) =>
+          loadMeetingRoomStartTimes({ query, replacementToken, signal })
+      : skipToken,
+    ...availabilityQueryPolicy,
+  });
