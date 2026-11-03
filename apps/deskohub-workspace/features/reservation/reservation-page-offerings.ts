@@ -1,13 +1,7 @@
-import {
-  type AdvertisedPrice,
-  type AdvertisedPriceRequest,
-  advertisedPriceRequestEquals,
-  getAdvertisedProductItem,
-  isCoworkAdvertisedPrice,
-  isOfficeAdvertisedPrice,
-  type PreloadedAdvertisedPrice,
+import type {
+  AdvertisedPrice,
+  PreloadedAdvertisedPrice,
 } from "@/features/checkout/advertised-price";
-import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
 import {
   getPublicCatalogOfferings,
   type PublicCatalogOffering,
@@ -18,12 +12,27 @@ import { getReservationQuoteDiscountLastDay } from "@/features/checkout/reservat
 import type { CanonicalPromotionCode } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
 import {
+  type AdvertisedOptionPrice,
+  getPreloadedOptionPrices,
+} from "@/features/reservation/advertised-option-prices";
+import {
+  coworkTierOptions,
+  findCoworkAdvertisedPriceRequest,
+  getCoworkAddOnAmount,
   getCoworkCoffeeAdvertisedPriceRequest,
   getCoworkFormAdvertisedPriceRequests,
+  getCoworkTierOptionPrice,
 } from "@/features/reservation/cowork-advertised-price";
-import { getMeetingRoomDurationAdvertisedPriceRequests } from "@/features/reservation/meeting-room-advertised-price";
+import {
+  findMeetingRoomDurationAdvertisedPriceRequest,
+  getMeetingRoomDurationAdvertisedPriceRequests,
+  meetingRoomDurationOptions,
+} from "@/features/reservation/meeting-room-advertised-price";
 import { getMeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
-import { getOfficeAdvertisedPriceRequest } from "@/features/reservation/office-advertised-price";
+import {
+  getOfficeAdvertisedPriceRequest,
+  officeSeatOptions,
+} from "@/features/reservation/office-advertised-price";
 import type { NormalizedOfficeReservationOrder } from "@/features/reservation/office-reservation";
 import { moneyWithValue } from "@/shared/money/money";
 
@@ -34,39 +43,25 @@ type ReservationPageOfferingsInput = {
   readonly submittedCode?: CanonicalPromotionCode;
 };
 
-const findAdvertisedPrice = (
-  advertisedPrices: ReadonlyArray<PreloadedAdvertisedPrice>,
-  request: AdvertisedPriceRequest
-): AdvertisedPrice | undefined =>
-  advertisedPrices.find((preloaded) =>
-    advertisedPriceRequestEquals(preloaded.request, request)
-  )?.advertisedPrice;
-
 /**
- * The price the product's order line advertises, with the sale it includes
- * against the line's regular amount.
+ * The price an option's card advertises, with the sale it includes against
+ * the option's regular amount.
  */
-const getProductAdvertisedPrice = (
-  advertisedPrice: AdvertisedPrice,
-  product: WorkspaceProductIdentity
-): PublicOfferingAdvertisedPrice | undefined => {
-  const item = getAdvertisedProductItem(advertisedPrice, product);
-  if (!item) return undefined;
-
-  const regularAmount =
-    "originalAmount" in item && item.originalAmount
-      ? item.originalAmount
-      : item.amount;
+const getOfferingAdvertisedPrice = ({
+  advertisedPrice,
+  amount,
+  originalAmount,
+}: AdvertisedOptionPrice<AdvertisedPrice>): PublicOfferingAdvertisedPrice => {
   const discount = moneyWithValue(
-    regularAmount.value - item.amount.value,
-    item.amount
+    (originalAmount ?? amount).value - amount.value,
+    amount
   );
   const saleLastDay =
     discount.value > 0
       ? getReservationQuoteDiscountLastDay(advertisedPrice.quote.payment)
       : undefined;
 
-  return { price: item.amount, discount, ...(saleLastDay && { saleLastDay }) };
+  return { price: amount, discount, ...(saleLastDay && { saleLastDay }) };
 };
 
 /**
@@ -84,37 +79,30 @@ export const getCoworkPageOfferings = ({
   readonly date: string;
 }) => {
   const priceInput = { date, locale, ...(submittedCode && { submittedCode }) };
-  const formRequests = getCoworkFormAdvertisedPriceRequests({
+  const prices = getPreloadedOptionPrices(
+    getCoworkFormAdvertisedPriceRequests({ ...priceInput, coffee }),
+    coworkTierOptions,
+    advertisedPrices
+  );
+  const coffeeRequest = getCoworkCoffeeAdvertisedPriceRequest({
     ...priceInput,
-    coffee,
+    tier: "open-space",
   });
-  const findCoworkAdvertisedPrice = (request: AdvertisedPriceRequest) => {
-    const advertisedPrice = findAdvertisedPrice(advertisedPrices, request);
-    return advertisedPrice && isCoworkAdvertisedPrice(advertisedPrice)
-      ? advertisedPrice
-      : undefined;
-  };
-  const findAddOnAmount = (
-    request: AdvertisedPriceRequest | undefined,
-    type: "coffee" | "workstation"
-  ) =>
-    request &&
-    findCoworkAdvertisedPrice(request)?.quote.items.find(
-      (item) => item.type === type
-    )?.amount;
+  const workstationRequest = findCoworkAdvertisedPriceRequest(prices.requests, {
+    entryTier: "reserved-desk",
+    workstation: true,
+  });
   const addOnAmounts = {
-    coffee: findAddOnAmount(
-      getCoworkCoffeeAdvertisedPriceRequest({
-        ...priceInput,
-        tier: "open-space",
-      }),
+    coffee: getCoworkAddOnAmount(
+      getPreloadedOptionPrices(
+        [coffeeRequest],
+        coworkTierOptions,
+        advertisedPrices
+      ).priceOf(coffeeRequest),
       "coffee"
     ),
-    workstation: findAddOnAmount(
-      formRequests.find(
-        ({ reservation: { details } }) =>
-          details.entryTier === "reserved-desk" && details.workstation
-      ),
+    workstation: getCoworkAddOnAmount(
+      workstationRequest && prices.priceOf(workstationRequest),
       "workstation"
     ),
   };
@@ -122,22 +110,9 @@ export const getCoworkPageOfferings = ({
   return getPublicCatalogOfferings({ locale })
     .filter((offering) => offering.kind === "cowork")
     .map((offering) => {
-      // Like the tier card, take the first price the form loads for the tier.
-      const tierAdvertisedPrice = formRequests
-        .filter(
-          ({ reservation: { details } }) => details.entryTier === offering.tier
-        )
-        .map((request) => {
-          const advertisedPrice = findCoworkAdvertisedPrice(request);
-          return (
-            advertisedPrice &&
-            getProductAdvertisedPrice(advertisedPrice, {
-              kind: "cowork",
-              tier: offering.tier,
-            })
-          );
-        })
-        .find((price) => price !== undefined);
+      const tierPrice = getCoworkTierOptionPrice(prices, offering.tier);
+      const tierAdvertisedPrice =
+        tierPrice && getOfferingAdvertisedPrice(tierPrice);
 
       return {
         ...offering,
@@ -162,30 +137,26 @@ export const getMeetingRoomPageOfferings = ({
   startDateTime,
   submittedCode,
 }: ReservationPageOfferingsInput & { readonly startDateTime: string }) => {
-  const formRequests = getMeetingRoomDurationAdvertisedPriceRequests({
-    locale,
-    startDateTime,
-    ...(submittedCode && { submittedCode }),
-  });
+  const prices = getPreloadedOptionPrices(
+    getMeetingRoomDurationAdvertisedPriceRequests({
+      locale,
+      startDateTime,
+      ...(submittedCode && { submittedCode }),
+    }),
+    meetingRoomDurationOptions,
+    advertisedPrices
+  );
 
   return getPublicCatalogOfferings({ locale })
     .filter((offering) => offering.kind === "meeting-room")
     .map((offering) => {
-      const durationKey = getMeetingRoomReservationDurationKey(
-        offering.duration
+      const request = findMeetingRoomDurationAdvertisedPriceRequest(
+        prices.requests,
+        getMeetingRoomReservationDurationKey(offering.duration)
       );
-      const request = formRequests.find(
-        ({ reservation: { details } }) =>
-          getMeetingRoomReservationDurationKey(details.duration) === durationKey
-      );
-      const advertisedPrice =
-        request && findAdvertisedPrice(advertisedPrices, request);
+      const durationPrice = request && prices.of(request);
       const durationAdvertisedPrice =
-        advertisedPrice &&
-        getProductAdvertisedPrice(advertisedPrice, {
-          kind: "meeting-room",
-          duration: offering.duration,
-        });
+        durationPrice && getOfferingAdvertisedPrice(durationPrice);
 
       return {
         ...offering,
@@ -213,18 +184,16 @@ export const getOfficePageOfferings = ({
     "startsOn" | "endsOn" | "seats"
   >;
 }) => {
-  const advertisedPrice = findAdvertisedPrice(
-    advertisedPrices,
-    getOfficeAdvertisedPriceRequest({
-      ...selection,
-      locale,
-      ...(submittedCode && { submittedCode }),
-    })
-  );
-  const quoteItem =
-    advertisedPrice && isOfficeAdvertisedPrice(advertisedPrice)
-      ? advertisedPrice.quote.items[0]
-      : undefined;
+  const request = getOfficeAdvertisedPriceRequest({
+    ...selection,
+    locale,
+    ...(submittedCode && { submittedCode }),
+  });
+  const quoteItem = getPreloadedOptionPrices(
+    [request],
+    officeSeatOptions,
+    advertisedPrices
+  ).priceOf(request)?.quote.items[0];
   // The form shows the selection's whole-range amounts; the offer is per day.
   const perDay = quoteItem
     ? {

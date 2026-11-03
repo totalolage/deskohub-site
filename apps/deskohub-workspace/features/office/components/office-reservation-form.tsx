@@ -4,11 +4,7 @@ import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import { Option, Predicate, Schema } from "effect";
 import { useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
-import {
-  type AdvertisedPrice,
-  isOfficeAdvertisedPrice,
-  type PreloadedAdvertisedPrice,
-} from "@/features/checkout/advertised-price";
+import type { PreloadedAdvertisedPrice } from "@/features/checkout/advertised-price";
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
 import { getWorkspaceOfficeProductTitle } from "@/features/checkout/product-catalog.i18n";
 import type { CanonicalPromotionCode } from "@/features/discounts";
@@ -24,20 +20,23 @@ import {
   ReservationSubmitFallback,
 } from "@/features/reservation/components/reservation-form-fallback";
 import { ReservationFormLabel } from "@/features/reservation/components/reservation-form-label";
-import { getReservationAdvertisedTotal } from "@/features/reservation/components/reservation-selection-summary";
 import {
   ReservationTypeInput,
   ReservationTypeOption,
   reservationTypeInputLayout,
   reservationTypeOptionLayout,
 } from "@/features/reservation/components/reservation-type-input";
-import { useAdvertisedPrices } from "@/features/reservation/components/use-advertised-price";
+import { useAdvertisedOptionPrices } from "@/features/reservation/components/use-advertised-option-prices";
 import { useReservationAvailability } from "@/features/reservation/components/use-reservation-availability";
 import {
   useReservationSelectionUrl,
   useWatchedSelection,
 } from "@/features/reservation/components/use-reservation-selection-url";
-import { getOfficeSeatAdvertisedPriceRequests } from "@/features/reservation/office-advertised-price";
+import {
+  findOfficeSeatAdvertisedPriceRequest,
+  getOfficeSeatAdvertisedPriceRequests,
+  officeSeatOptions,
+} from "@/features/reservation/office-advertised-price";
 import {
   getOfficeReservationDayCount,
   getOfficeReservationEndsOn,
@@ -62,7 +61,7 @@ import {
   FormItem,
   FormMessage,
 } from "@/shared/components/ui/form";
-import { formatMoney, moneyWithValue } from "@/shared/money/money";
+import { formatMoney } from "@/shared/money/money";
 import { cn } from "@/shared/utils";
 import { OfficeDayCountInput } from "./office-day-count-input";
 import { getOfficeReservationSelectionSummary } from "./office-reservation-selection-summary";
@@ -152,39 +151,18 @@ export function OfficeReservationForm({
         : [],
     [seatCapacity, locale, selection, submittedCode]
   );
-  const advertisedPriceResults = useAdvertisedPrices(
-    advertisedPriceRequests,
-    initialAdvertisedPrices
-  );
-  const advertisedPricesBySeats = new Map<
-    number,
-    Extract<AdvertisedPrice, { readonly kind: "office" }>
-  >();
-
-  for (const [index, result] of advertisedPriceResults.entries()) {
-    const request = advertisedPriceRequests[index];
-    if (
-      request &&
-      !result.isError &&
-      result.data &&
-      isOfficeAdvertisedPrice(result.data)
-    ) {
-      advertisedPricesBySeats.set(
-        request.reservation.details.seats,
-        result.data
-      );
-    }
-  }
-
-  const selectedAdvertisedPriceIndex = advertisedPriceRequests.findIndex(
-    (request) => request.reservation.details.seats === seats
-  );
-  const advertisedPriceResult =
-    advertisedPriceResults[selectedAdvertisedPriceIndex];
-  const advertisedPrice = Predicate.isNumber(seats)
-    ? advertisedPricesBySeats.get(seats)
-    : undefined;
-  const advertisedOfficeQuoteItem = advertisedPrice?.quote.items[0];
+  const advertisedPrices = useAdvertisedOptionPrices({
+    family: officeSeatOptions,
+    initialAdvertisedPrices,
+    productLabel: getWorkspaceOfficeProductTitle(locale),
+    requests: advertisedPriceRequests,
+    selected: findOfficeSeatAdvertisedPriceRequest(
+      advertisedPriceRequests,
+      seats
+    ),
+  });
+  const advertisedOfficeQuoteItem =
+    advertisedPrices.selectedPrice?.quote.items[0];
   const unavailableDates = useMemo(
     () => new Set(availabilityResult.availability?.unavailableDates ?? []),
     [availabilityResult.availability]
@@ -233,21 +211,7 @@ export function OfficeReservationForm({
   return (
     <ReservationCheckoutForm
       checkoutCustomer={checkoutCustomer}
-      advertisedPrice={{
-        token: advertisedPrice?.advertisedPriceToken,
-        isFetching: advertisedPriceResult?.isFetching ?? false,
-        isError: advertisedPriceResult?.isError ?? false,
-        retry: () => void advertisedPriceResult?.refetch(),
-        sale: advertisedPrice
-          ? {
-              discounts: advertisedPrice.quote.payment.discounts,
-              productLabel: getWorkspaceOfficeProductTitle(locale),
-            }
-          : undefined,
-        total: advertisedPrice
-          ? getReservationAdvertisedTotal(advertisedPrice.quote.payment)
-          : undefined,
-      }}
+      advertisedPrice={advertisedPrices.checkout}
       availability={{
         isPending: availabilityResult.isPending,
         unavailableMessage: availabilityMessage ?? availabilityErrorMessage,
@@ -369,16 +333,12 @@ export function OfficeReservationForm({
                     { count: seatCount },
                     { locale }
                   );
-                  const optionAdvertisedPrice =
-                    advertisedPricesBySeats.get(seatCount);
-                  const quotedSeatAmount =
-                    optionAdvertisedPrice?.quote.items[0].seatAmount;
-                  const seatPrice = quotedSeatAmount
-                    ? moneyWithValue(
-                        quotedSeatAmount.value * seatCount,
-                        quotedSeatAmount
-                      )
-                    : undefined;
+                  const seatRequest = findOfficeSeatAdvertisedPriceRequest(
+                    advertisedPriceRequests,
+                    seatCount
+                  );
+                  const seatPrice =
+                    seatRequest && advertisedPrices.of(seatRequest)?.amount;
 
                   return (
                     <ReservationTypeOption
