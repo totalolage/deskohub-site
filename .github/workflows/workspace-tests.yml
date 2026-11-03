@@ -90,8 +90,8 @@ jobs:
 
       - run: bun turbo typecheck
 
-      # Covers the portal's Vercel Ignored Build Step, which decides whether
-      # each commit deploys the portal.
+      # Covers the portal, including the package graph that decides which
+      # commits Vercel deploys it for.
       - name: Lint and test Portal
         run: bun turbo lint test --filter=deskohub-portal
 
