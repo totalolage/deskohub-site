@@ -17,6 +17,10 @@
         "typescript": "npm:@typescript/typescript6@6.0.2",
       },
     },
+    ".agents": {
+      "name": "@deskohub/agent-skills",
+      "version": "0.1.0",
+    },
     "apps/deskohub-boardgame-bar": {
       "name": "deskohub-boardgame-bar",
       "version": "0.1.0",
@@ -241,6 +245,7 @@
       "devDependencies": {
         "@axe-core/playwright": "^4.13.0",
         "@biomejs/biome": "^2.5.14",
+        "@deskohub/agent-skills": "workspace:*",
         "@happy-dom/global-registrator": "^20.10.1",
         "@modelcontextprotocol/client": "^2.3.1",
         "@next/playwright": "16.4.3",
@@ -769,6 +774,8 @@
     "@cloudinary/url-gen": ["@cloudinary/url-gen@1.15.0", "", { "dependencies": { "@cloudinary/transformation-builder-sdk": "^1.10.0" } }, "sha512-bjU67eZxLUgoRy/Plli4TQio7q6P31OYqnEgXxeN9TKXrzr6h0DeEdIUhKI9gy3HkEBWXWWJIPh7j7gkOJPnyA=="],
 
     "@date-fns/tz": ["@date-fns/tz@1.5.0", "", {}, "sha512-lwYN/vDPeNRULcepoE/LO2Pgx+7/RV+S9ARfbc9lr2DtGkOD7pAiruHvbR1RX3Qyf6ja47EWJDMsNK5vK08DJg=="],
+
+    "@deskohub/agent-skills": ["@deskohub/agent-skills@workspace:.agents"],
 
     "@deskohub/ares": ["@deskohub/ares@workspace:packages/ares"],
 

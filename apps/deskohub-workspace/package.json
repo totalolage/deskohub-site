@@ -166,6 +166,7 @@
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
     "@biomejs/biome": "^2.5.14",
+    "@deskohub/agent-skills": "workspace:*",
     "@happy-dom/global-registrator": "^20.10.1",
     "@modelcontextprotocol/client": "^2.3.1",
     "@next/playwright": "16.4.3",
