@@ -57,9 +57,10 @@ const botIdVerdicts = {
 /**
  * Stands in for the Next.js request APIs a Server Action reads outside a
  * Next request: `headers()` and `cookies()` from `next/headers`, `after` and
- * `connection` from `next/server` (its other exports stay real), the
- * en-US `next/root-params` locale, and BotID's check. The action boundary itself
- * runs for real.
+ * `connection` from `next/server`, the en-US `next/root-params` locale, and
+ * BotID's check. The rest of `next/server` is what the file had installed
+ * before the call, the real module unless an earlier mock replaced it. The
+ * action boundary itself runs for real.
  *
  * Module mocks are process-wide and bind at import, so call this once per
  * test file before importing the action module, and `reset()` between
