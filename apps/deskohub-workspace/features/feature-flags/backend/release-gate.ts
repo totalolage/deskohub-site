@@ -68,6 +68,29 @@ export const ReleaseGate =
         Layer.succeed(this, { isOpen });
 
       /**
+       * The gate over `featureFlags`, built when a run first reads it rather
+       * than with the run's other services: a run that never reads the gate
+       * never builds the provider, and a provider that can't be built fails
+       * only the reads of this gate. Decided at most once per build of the
+       * layer, like `Default`.
+       */
+      static readonly onFirstRead = (
+        featureFlags: Layer.Layer<WorkspaceFeatureFlagService>
+      ): Layer.Layer<Self> =>
+        Layer.unwrap(
+          cached(
+            this.isOpen.pipe(
+              Effect.provide(this.Default.pipe(Layer.provide(featureFlags)))
+            )
+          ).pipe(Effect.map(this.fromEvaluation))
+        );
+
+      /** `Live`, built on the gate's first read. */
+      static readonly LiveOnFirstRead = this.onFirstRead(
+        WorkspaceFeatureFlagService.Default
+      );
+
+      /**
        * Whether the gate is open for every visitor, read without the request,
        * so static output can describe it.
        */

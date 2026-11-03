@@ -8,8 +8,11 @@ import { makeAuthDatabase } from "@/db/auth-database-client";
 import { drizzleAuthTables } from "@/db/schema/auth";
 import { env } from "@/env";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  postgresAuthHookServices,
+  testAccountDeletion,
+} from "./auth/auth-hook-services.test-utils";
 import { makeWorkspaceAuth } from "./auth/auth-server";
-import { ensureCustomerAccount } from "./customer-account.repository";
 import {
   CustomerAuthentication,
   makeAuthoritySessionRead,
@@ -50,21 +53,16 @@ describe.skipIf(!testDatabase)(
         allowedHosts: [HOST],
         passkeyRelyingParty: { rpID: HOST, origins: [`https://${HOST}`] },
         customerMcpResource: `https://${HOST}/api/mcp`,
-        arePasskeysEnabled: async () => false,
         httpsOnly: true,
         sendMagicLink: (data) => {
           sentMagicLinks.push(data.url);
         },
-        verifyHuman: () => Effect.void,
-        beforeDeleteUser: () => Effect.void,
-        createCustomerAccount: (accountId) =>
-          ensureCustomerAccount(accountId).pipe(
-            Effect.provide(testDatabase!.layer)
-          ),
-        captureAccountLocalePreference: () => Effect.void,
         reviewAccountCredentials: [],
-        isReviewAccount: () => Effect.succeed(false),
-        registerReviewAccount: () => Effect.void,
+        services: postgresAuthHookServices(testDatabase!, {
+          passkeyFlag: Effect.succeed(false),
+          captureLocalePreference: () => Effect.void,
+        }),
+        accountDeletion: testAccountDeletion(),
       });
 
     const callHandler = (

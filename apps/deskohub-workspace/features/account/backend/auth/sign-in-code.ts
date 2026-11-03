@@ -1,6 +1,6 @@
 import type { AuthContext, DBAdapter } from "better-auth";
 import { Clock, Data, Effect, Option } from "effect";
-import type { SqlError } from "effect/unstable/sql";
+import { WorkspaceLockSections } from "@/db/workspace-locks";
 import {
   betterAuthMagicLinkOptions,
   betterAuthSignInCodeOptions,
@@ -31,15 +31,6 @@ type StoredVerifications = Pick<
   AuthContext["internalAdapter"],
   "deleteVerificationByIdentifier"
 >;
-
-/**
- * Runs an effect while it holds one address's sign-in lock, named by
- * its `digestAddress`: a Workspace lock section in production.
- */
-export type SignInEmailLock = <A, E>(
-  address: string,
-  effect: Effect.Effect<A, E>
-) => Effect.Effect<A, E | SqlError.SqlError>;
 
 /** A sign-in code or link row could not be read or written. */
 class SignInCodeStorageError extends Data.TaggedError(
@@ -114,7 +105,6 @@ type SignInCodeIssue = {
   readonly verifications: VerificationRows;
   readonly signInCodes: StoredVerifications;
   readonly createSignInCode: (email: string) => Promise<string>;
-  readonly withSignInEmailLock: SignInEmailLock;
 };
 
 /**
@@ -198,7 +188,7 @@ export const issueSignInCode = (issue: SignInCodeIssue) =>
     Effect.map(({ code }) => code),
     (issuance) =>
       Effect.flatMap(digestAddress(issue), (address) =>
-        issue.withSignInEmailLock(address, issuance)
+        WorkspaceLockSections.signInEmail(address)(issuance)
       ),
     Effect.mapError(() => new SignInCodeStorageError()),
     Effect.withSpan("SignInCode.issue")
