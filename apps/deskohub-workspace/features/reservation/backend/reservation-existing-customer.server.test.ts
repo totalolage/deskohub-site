@@ -393,20 +393,31 @@ describe("remembered reservation option availability", () => {
     getAvailability.mockClear();
   });
 
+  // The checks are Effects the page recipe runs; each test runs one alone.
+  const coworkOfferAvailable = (
+    offer: Parameters<typeof isRememberedCoworkOfferAvailable>[0]
+  ) => Effect.runPromise(isRememberedCoworkOfferAvailable(offer));
+  const meetingRoomReservationAvailable = (
+    remembered: Parameters<
+      typeof isRememberedMeetingRoomReservationAvailable
+    >[0]
+  ) =>
+    Effect.runPromise(isRememberedMeetingRoomReservationAvailable(remembered));
+
   afterAll(() => {
     WorkspaceAvailabilityService.Live = originalAvailabilityLive;
   });
 
   test("queries the remembered cowork offer on the form's date", async () => {
     expect(
-      await isRememberedCoworkOfferAvailable({
+      await coworkOfferAvailable({
         date,
         entryTier: "reserved-desk",
         monitorOption: "2x27-qhd",
       })
     ).toBe(true);
     expect(
-      await isRememberedCoworkOfferAvailable({
+      await coworkOfferAvailable({
         date,
         entryTier: "open-space",
         monitorOption: undefined,
@@ -445,7 +456,7 @@ describe("remembered reservation option availability", () => {
       availableOn({ unavailableMonitorOptions: ["2x27-qhd"] })
     );
     expect(
-      await isRememberedCoworkOfferAvailable({
+      await coworkOfferAvailable({
         date,
         entryTier: "reserved-desk",
         monitorOption: "2x27-qhd",
@@ -456,7 +467,7 @@ describe("remembered reservation option availability", () => {
       new AvailabilityQueryInvalid({ message: "Invalid availability date." })
     );
     expect(
-      await isRememberedCoworkOfferAvailable({
+      await coworkOfferAvailable({
         date,
         entryTier: "open-space",
         monitorOption: undefined,
@@ -471,7 +482,7 @@ describe("remembered reservation option availability", () => {
     );
 
     expect(
-      await isRememberedMeetingRoomReservationAvailable({
+      await meetingRoomReservationAvailable({
         duration: "hour:4",
         startDateTime: `${date}T09:00`,
       })
@@ -491,20 +502,16 @@ describe("remembered reservation option availability", () => {
     availability = Effect.succeed(
       availableOn({ meetingRoomUnavailable: true })
     );
-    expect(await isRememberedMeetingRoomReservationAvailable(remembered)).toBe(
-      false
-    );
+    expect(await meetingRoomReservationAvailable(remembered)).toBe(false);
 
     availability = Effect.fail(
       new AvailabilityQueryInvalid({ message: "Invalid availability date." })
     );
-    expect(await isRememberedMeetingRoomReservationAvailable(remembered)).toBe(
-      false
-    );
+    expect(await meetingRoomReservationAvailable(remembered)).toBe(false);
 
     getAvailability.mockClear();
     expect(
-      await isRememberedMeetingRoomReservationAvailable({
+      await meetingRoomReservationAvailable({
         ...remembered,
         startDateTime: "not-a-start",
       })
