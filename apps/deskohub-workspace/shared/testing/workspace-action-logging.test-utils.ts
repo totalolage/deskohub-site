@@ -1,26 +1,14 @@
 import { mock } from "bun:test";
 import type { LogRecord } from "@opentelemetry/api-logs";
 import { Effect } from "effect";
+import { mockWorkspaceActionRequest } from "./workspace-action-request.test-utils";
 
 const emittedLogRecords: LogRecord[] = [];
 let installation: Promise<void> | undefined;
 
 const installActionTelemetryMocks = async () => {
-  const nextServer = await import("next/server");
-
   mock.module("server-only", () => ({}));
-  mock.module("next/server", () => ({ ...nextServer, after: () => {} }));
-  mock.module("next/headers", () => ({
-    cookies: async () => ({ get: () => undefined, getAll: () => [] }),
-    headers: async () =>
-      new Headers({ referer: "https://deskohub.test/en-US" }),
-  }));
-  mock.module("botid/server", () => ({
-    checkBotId: () => Promise.resolve({ isBot: false }),
-  }));
-  mock.module("@/shared/backend/bot-protection/bot-protection.runtime", () => ({
-    isWorkspaceBotIdEnforcedAtRuntime: () => false,
-  }));
+  await mockWorkspaceActionRequest();
   mock.module("@/instrumentation", () => ({
     postHogLoggerProvider: {
       forceFlush: () => Promise.resolve(),
