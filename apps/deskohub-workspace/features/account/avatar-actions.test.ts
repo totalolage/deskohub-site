@@ -6,6 +6,7 @@ import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-fla
 import { Context, Effect, Layer } from "effect";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import { m } from "@/features/i18n";
+import { mockWorkspaceActionRequest } from "@/shared/testing/workspace-action-request.test-utils";
 import { AccountAvatarReleaseGate } from "./backend/account-release-gates";
 import { CustomerAccountAccessError } from "./customer-account";
 
@@ -14,22 +15,12 @@ const revalidatePath = mock(
 );
 mock.module("next/cache", () => ({ revalidatePath }));
 
-const requestHeaders = new Headers({ referer: "https://deskohub.test/en-US" });
-mock.module("next/headers", () => ({
-  headers: async () => requestHeaders,
-  cookies: async () => ({ get: () => undefined, getAll: () => [] }),
-}));
-mock.module("next/server", () => ({
-  after: () => undefined,
-}));
+await mockWorkspaceActionRequest();
 mock.module("@/instrumentation", () => ({
   postHogLoggerProvider: {
     forceFlush: () => Promise.resolve(),
     getLogger: () => ({ emit: () => undefined }),
   },
-}));
-mock.module("botid/server", () => ({
-  checkBotId: () => Promise.resolve({ isBot: false }),
 }));
 
 // The avatar release gate over a fake flag evaluation.

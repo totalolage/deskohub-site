@@ -8,6 +8,7 @@ import {
   customerAccountIdSchema,
 } from "@/features/account/customer-account";
 import { m } from "@/features/administration/i18n";
+import { mockWorkspaceActionRequest } from "@/shared/testing/workspace-action-request.test-utils";
 import type { AdministratorAccountActor } from "../account-role";
 import { mockAdministratorAccess } from "../server/administrator-access.test-utils";
 
@@ -24,7 +25,6 @@ const actor = access.administrator;
 const otherAccountId = customerAccountIdSchema.make("fixture-other");
 const otherEmail = testEmailAddress("roster-other");
 
-let referer = "https://deskohub.test/en-US/admin/administrators";
 const rosterCalls: { readonly method: string; readonly input: unknown }[] = [];
 const revalidatedPaths: string[] = [];
 let grantResult: Effect.Effect<unknown, unknown> = Effect.succeed({});
@@ -71,11 +71,6 @@ mock.module("@/features/i18n/server/revalidate-localized-path", () => ({
   },
 }));
 
-mock.module("next/server", () => ({
-  after: () => undefined,
-  connection: () => Promise.resolve(),
-}));
-
 mock.module("@/instrumentation", () => ({
   postHogLoggerProvider: {
     forceFlush: () => Promise.resolve(),
@@ -83,16 +78,15 @@ mock.module("@/instrumentation", () => ({
   },
 }));
 
-mock.module("next/headers", () => ({
-  cookies: async () => ({ get: () => undefined, getAll: () => [] }),
-  headers: async () => new Headers({ referer }),
-}));
+const request = await mockWorkspaceActionRequest({
+  referer: "https://deskohub.test/en-US/admin/administrators",
+});
 
 const { grantAdministrator, revokeAdministrator } = await import("./actions");
 
 beforeEach(() => {
   access.set("administrator");
-  referer = "https://deskohub.test/en-US/admin/administrators";
+  request.reset();
   rosterCalls.length = 0;
   revalidatedPaths.length = 0;
 });
@@ -133,7 +127,7 @@ describe("grantAdministrator action", () => {
   });
 
   test("answers in the locale of the page that called it", async () => {
-    referer = "https://deskohub.test/cs-CZ/admin/administrators";
+    request.setReferer("https://deskohub.test/cs-CZ/admin/administrators");
     grantResult = Effect.fail(
       new StubAdministratorAccountNotFoundError({ message: "not found" })
     );

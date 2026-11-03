@@ -12,6 +12,7 @@ import { Context, Effect, Layer, Schema } from "effect";
 import { m } from "@/features/administration/i18n";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import { mockAdministratorAccess } from "@/features/administrators/server/administrator-access.test-utils";
+import { mockWorkspaceActionRequest } from "@/shared/testing/workspace-action-request.test-utils";
 
 interface StubCreateCall {
   readonly attemptId: AdministrationStandaloneAccessCodeAttemptId;
@@ -59,11 +60,6 @@ mock.module("@/features/access-codes", () => ({
   ),
 }));
 
-mock.module("next/server", () => ({
-  after: () => undefined,
-  connection: () => Promise.resolve(),
-}));
-
 mock.module("@/instrumentation", () => ({
   postHogLoggerProvider: {
     forceFlush: () => Promise.resolve(),
@@ -71,10 +67,7 @@ mock.module("@/instrumentation", () => ({
   },
 }));
 
-mock.module("next/headers", () => ({
-  cookies: async () => ({ get: () => undefined, getAll: () => [] }),
-  headers: async () => new Headers({ referer: "https://deskohub.test/en-US" }),
-}));
+await mockWorkspaceActionRequest();
 
 const attemptId = Schema.decodeSync(
   AdministrationStandaloneAccessCodeAttemptId

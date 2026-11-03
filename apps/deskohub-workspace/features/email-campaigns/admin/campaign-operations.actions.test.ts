@@ -3,6 +3,7 @@ import "@/shared/testing/workspace-test-env";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Effect, Exit, Layer } from "effect";
 import { mockAdministratorAccess } from "@/features/administrators/server/administrator-access.test-utils";
+import { mockWorkspaceActionRequest } from "@/shared/testing/workspace-action-request.test-utils";
 import { automationServiceStubs } from "../backend/campaign-operations.test-utils";
 import type { ICampaignSendService } from "../backend/campaign-send.service";
 import {
@@ -18,23 +19,13 @@ mock.module("next/cache", () => ({
   revalidatePath,
   revalidateTag: () => undefined,
 }));
-mock.module("next/server", () => ({
-  after: () => undefined,
-  connection: async () => undefined,
-}));
 mock.module("@/instrumentation", () => ({
   postHogLoggerProvider: {
     forceFlush: () => Promise.resolve(),
     getLogger: () => ({ emit: () => undefined }),
   },
 }));
-mock.module("next/headers", () => ({
-  cookies: async () => ({ get: () => undefined, getAll: () => [] }),
-  headers: async () => new Headers({ referer: "https://deskohub.test/en-US" }),
-}));
-mock.module("next/root-params", () => ({
-  locale: () => Promise.resolve("en-US"),
-}));
+await mockWorkspaceActionRequest();
 
 const operationsModule = await import("../backend/campaign-operations.service");
 const grantsModule = await import(

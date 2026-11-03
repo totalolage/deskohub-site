@@ -3,21 +3,13 @@ import "@/shared/testing/workspace-test-env";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Context, Effect, Layer } from "effect";
 import { mockAdministratorAccess } from "@/features/administrators/server/administrator-access.test-utils";
+import { mockWorkspaceActionRequest } from "@/shared/testing/workspace-action-request.test-utils";
 
 const access = mockAdministratorAccess("campaign-image-upload");
 
-mock.module("next/headers", () => ({
-  cookies: async () => ({ get: () => undefined, getAll: () => [] }),
-  headers: async () =>
-    new Headers({ referer: "https://deskohub.test/en-US/admin" }),
-}));
-mock.module("next/server", () => ({
-  after: () => undefined,
-  connection: () => Promise.resolve(),
-}));
-mock.module("next/root-params", () => ({
-  locale: () => Promise.resolve("en-US"),
-}));
+await mockWorkspaceActionRequest({
+  referer: "https://deskohub.test/en-US/admin",
+});
 mock.module("@/instrumentation", () => ({
   postHogLoggerProvider: {
     forceFlush: () => Promise.resolve(),
