@@ -8,8 +8,8 @@ import {
   customerAccountIdSchema,
 } from "@/features/account/customer-account";
 import { m } from "@/features/administration/i18n";
+import { mockAdministrationActionRequest } from "@/shared/testing/workspace-action-request.test-utils";
 import type { AdministratorAccountActor } from "../account-role";
-import { mockAdministratorAccess } from "../server/administrator-access.test-utils";
 
 class StubAdministratorAccountNotFoundError extends Data.TaggedError(
   "AdministratorAccountNotFoundError"
@@ -19,12 +19,15 @@ class StubAdministratorSelfRevocationError extends Data.TaggedError(
   "AdministratorSelfRevocationError"
 )<{ readonly message: string }> {}
 
-const access = mockAdministratorAccess("roster-actor");
+const request = await mockAdministrationActionRequest({
+  administrator: "roster-actor",
+  referer: "https://deskohub.test/en-US/admin/administrators",
+});
+const { access } = request;
 const actor = access.administrator;
 const otherAccountId = customerAccountIdSchema.make("fixture-other");
 const otherEmail = testEmailAddress("roster-other");
 
-let referer = "https://deskohub.test/en-US/admin/administrators";
 const rosterCalls: { readonly method: string; readonly input: unknown }[] = [];
 const revalidatedPaths: string[] = [];
 let grantResult: Effect.Effect<unknown, unknown> = Effect.succeed({});
@@ -71,11 +74,6 @@ mock.module("@/features/i18n/server/revalidate-localized-path", () => ({
   },
 }));
 
-mock.module("next/server", () => ({
-  after: () => undefined,
-  connection: () => Promise.resolve(),
-}));
-
 mock.module("@/instrumentation", () => ({
   postHogLoggerProvider: {
     forceFlush: () => Promise.resolve(),
@@ -83,16 +81,10 @@ mock.module("@/instrumentation", () => ({
   },
 }));
 
-mock.module("next/headers", () => ({
-  cookies: async () => ({ get: () => undefined, getAll: () => [] }),
-  headers: async () => new Headers({ referer }),
-}));
-
 const { grantAdministrator, revokeAdministrator } = await import("./actions");
 
 beforeEach(() => {
-  access.set("administrator");
-  referer = "https://deskohub.test/en-US/admin/administrators";
+  request.reset();
   rosterCalls.length = 0;
   revalidatedPaths.length = 0;
 });
@@ -108,6 +100,27 @@ describe("grantAdministrator action", () => {
       { method: "grant", input: { email: otherEmail, actor } },
     ]);
     expect(revalidatedPaths).toEqual(["/admin/administrators"]);
+  });
+
+  test("acts as the administrator the session reads until the request resets", async () => {
+    const otherAdministrator: AdministratorAccountActor = {
+      accountId: customerAccountIdSchema.make("fixture-other-administrator"),
+      email: testEmailAddress("roster-other-administrator"),
+    };
+    grantResult = Effect.succeed({ changed: true, email: otherEmail });
+
+    access.actAs(otherAdministrator);
+    await grantAdministrator({ email: otherEmail });
+    request.reset();
+    await grantAdministrator({ email: otherEmail });
+
+    expect(rosterCalls).toEqual([
+      {
+        method: "grant",
+        input: { email: otherEmail, actor: otherAdministrator },
+      },
+      { method: "grant", input: { email: otherEmail, actor } },
+    ]);
   });
 
   test("reports an existing grant as unchanged data, not an error", async () => {
@@ -133,7 +146,7 @@ describe("grantAdministrator action", () => {
   });
 
   test("answers in the locale of the page that called it", async () => {
-    referer = "https://deskohub.test/cs-CZ/admin/administrators";
+    request.setReferer("https://deskohub.test/cs-CZ/admin/administrators");
     grantResult = Effect.fail(
       new StubAdministratorAccountNotFoundError({ message: "not found" })
     );

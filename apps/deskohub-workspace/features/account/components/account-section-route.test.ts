@@ -19,10 +19,10 @@ const AccountContentLoading = mock(() => null);
 
 mock.module("next/navigation", () => ({ notFound }));
 mock.module("next/server", () => ({ connection }));
-mock.module("@/features/account/server/account-feature-flag.server", () => ({
+mock.module("@/features/account/server/account-release-gates.server", () => ({
   arePasskeysEnabled,
 }));
-mock.module("@/features/referrals/referral-feature-flag.server", () => ({
+mock.module("@/features/referrals/referral-release-gate.server", () => ({
   areReferralsEnabled,
 }));
 mock.module("@/shared/backend/utils/request-pathname", () => ({

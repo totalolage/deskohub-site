@@ -53,7 +53,8 @@ const submitReservation = mock();
 const verifyEmail = mock();
 
 mock.module("@/features/cookie-consent", () => ({
-  useCookieConsent: () => ({ isAccepted: () => false }),
+  useVisitorConsent: () => false,
+  visitorConsent: { accepts: () => false },
 }));
 mock.module("@/features/reservation/actions/prepare-pay-state", () => ({
   preparePayState,

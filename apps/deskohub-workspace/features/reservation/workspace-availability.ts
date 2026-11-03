@@ -189,6 +189,19 @@ export type PreloadedWorkspaceAvailability = {
 };
 
 /**
+ * Where a reservation form's availability query stands. `availability` is
+ * the settled response for the current query only, never a previous query's.
+ * `isPending` waits for a usable response, and `isError` means the query
+ * failed and is not retrying. A background refresh of settled availability is
+ * neither.
+ */
+export type WorkspaceAvailabilityState = {
+  readonly availability: WorkspaceAvailability | null;
+  readonly isError: boolean;
+  readonly isPending: boolean;
+};
+
+/**
  * The calendar range availability is queried for by default: six months from
  * the workspace's current date.
  */

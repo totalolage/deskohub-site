@@ -79,7 +79,7 @@ import type { ReactNode } from "react";
 import { FixtureHydration } from "@/fixture/hydration";
 ${
   realCookieConsent
-    ? 'import { CookieConsentProvider } from "@/features/cookie-consent/components/cookie-consent-provider";\n'
+    ? 'import { ConsentBanner } from "@/features/cookie-consent/components/consent-banner";\n'
     : ""
 }import { UnsavedChangesProvider } from "@/shared/components/unsaved-changes-guard";
 import "../globals.css";
@@ -105,7 +105,7 @@ export default async function LocaleLayout({
     <html lang={locale} data-scroll-behavior="smooth">
       <body>
 ${
-  realCookieConsent ? "        <CookieConsentProvider locale={locale} />\n" : ""
+  realCookieConsent ? "        <ConsentBanner locale={locale} />\n" : ""
 }        <UnsavedChangesProvider>
           <FixtureHydration>{children}</FixtureHydration>
         </UnsavedChangesProvider>
@@ -303,14 +303,15 @@ export const env = {
 const fixtureCookieConsent = `
 export type ConsentCategory = "necessary" | "analytics" | "marketing" | "preferences";
 
-export function useCookieConsent() {
-  return {
-    acceptAll: () => undefined,
-    acceptCategory: (_category: ConsentCategory) => undefined,
-    isAccepted: (_category: ConsentCategory) => false,
-    rejectAll: () => undefined,
-    rejectCategory: (_category: ConsentCategory) => undefined,
-  };
+export const visitorConsent = {
+  accept: (_category: ConsentCategory) => undefined,
+  accepts: (_category: ConsentCategory) => false,
+  reject: (_category: ConsentCategory) => undefined,
+  subscribe: () => () => undefined,
+};
+
+export function useVisitorConsent(_category: ConsentCategory) {
+  return false;
 }
 `;
 
@@ -470,7 +471,7 @@ const writeFixture = async (
         }
       : {}),
     "app/[locale]/layout.tsx": localeLayout(realCookieConsent),
-    "fixture/account-feature-flag.server.ts": fixtureAccountFeatureFlag,
+    "fixture/account-release-gates.server.ts": fixtureAccountFeatureFlag,
     "fixture/account-actions.ts": fixtureAccountActions,
     "fixture/account-draft.tsx": fixtureAccountDraft,
     "fixture/account-page.tsx": fixtureAccountPage,
@@ -483,7 +484,7 @@ const writeFixture = async (
     "fixture/hydration.tsx": fixtureHydration,
     "fixture/marketing-actions.ts": fixtureMarketingActions,
     "fixture/marketing-preferences.server.ts": fixtureMarketingPreferences,
-    "fixture/referral-feature-flag.server.ts": fixtureReferralFeatureFlag,
+    "fixture/referral-release-gate.server.ts": fixtureReferralFeatureFlag,
     "fixture/site-header-config.ts": fixtureSiteHeaderConfig(
       realCookieConsent
         ? 'localePath + "/consent-waypoint"'
@@ -514,8 +515,8 @@ const writeFixture = async (
       moduleResolution: "bundler",
       noEmit: true,
       paths: {
-        "@/features/account/server/account-feature-flag.server": [
-          "./fixture/account-feature-flag.server.ts",
+        "@/features/account/server/account-release-gates.server": [
+          "./fixture/account-release-gates.server.ts",
         ],
         "@/features/account/components/account-page": [
           "./fixture/account-page.tsx",
@@ -534,8 +535,8 @@ const writeFixture = async (
           "./fixture/marketing-preferences.server.ts",
         ],
         "@/features/legal/actions": ["./fixture/marketing-actions.ts"],
-        "@/features/referrals/referral-feature-flag.server": [
-          "./fixture/referral-feature-flag.server.ts",
+        "@/features/referrals/referral-release-gate.server": [
+          "./fixture/referral-release-gate.server.ts",
         ],
         "@/shared/backend/workspace-effect": ["./fixture/workspace-effect.ts"],
         "@/shared/components/site-header-config": [

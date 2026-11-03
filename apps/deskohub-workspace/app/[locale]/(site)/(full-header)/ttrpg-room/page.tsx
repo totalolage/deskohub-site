@@ -6,7 +6,7 @@ import { loadVenuePhotos } from "@/features/gallery/backend/load-venue-photos.se
 import { RoomImageCarousel } from "@/features/gallery/components/room-image-carousel";
 import { type Locale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";
+import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-release-gate.server";
 import { publicPageMetadata } from "@/features/public-pages/backend/public-page-route.server";
 import { getTtrpgRooms } from "@/features/ttrpg-room/ttrpg-rooms";
 import { Container } from "@/shared/components/container";

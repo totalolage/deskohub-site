@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { Effect } from "effect";
 import { type Locale, locales } from "@/features/i18n";
+import { MeetingRoomPageReleaseGate } from "@/features/meeting-room/backend/meeting-room-page-release-gate";
+import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { publicSiteShareImage } from "../page-metadata";
 import {
@@ -21,19 +24,29 @@ mock.module("next/root-params", () => ({
   locale: () => Promise.resolve(requestLocale),
 }));
 const meetingRoomFeatureFlag = await import(
-  "@/features/meeting-room/backend/meeting-room-page-feature-flag"
+  "@/features/meeting-room/backend/meeting-room-page-release-gate.server"
 );
 mock.module(
-  "@/features/meeting-room/backend/meeting-room-page-feature-flag",
-  () => ({ ...meetingRoomFeatureFlag, isMeetingRoomPageEnabled })
+  "@/features/meeting-room/backend/meeting-room-page-release-gate.server",
+  () => ({
+    ...meetingRoomFeatureFlag,
+    isMeetingRoomPageEnabled,
+    MeetingRoomPageReleaseGateRequest:
+      MeetingRoomPageReleaseGate.fromEvaluation(
+        Effect.promise(isMeetingRoomPageEnabled)
+      ),
+  })
 );
 const officeFeatureFlag = await import(
-  "@/features/office/backend/office-reservation-feature-flag.server"
+  "@/features/office/backend/office-release-gate.server"
 );
-mock.module(
-  "@/features/office/backend/office-reservation-feature-flag.server",
-  () => ({ ...officeFeatureFlag, isOfficePageEnabled })
-);
+mock.module("@/features/office/backend/office-release-gate.server", () => ({
+  ...officeFeatureFlag,
+  isOfficePageEnabled,
+  OfficeReleaseGateRequest: OfficeReleaseGate.fromEvaluation(
+    Effect.promise(isOfficePageEnabled)
+  ),
+}));
 
 const { publicPageMetadata, requirePublishedPublicPage } = await import(
   "./public-page-route.server"

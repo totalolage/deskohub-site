@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
 import {
   getAccountPath,
   getAccountSectionPath,
@@ -17,11 +17,13 @@ import {
 } from "./accessibility-audit";
 import { signInAccessibilityAccount } from "./account-session";
 import { seededAccountSkipReason } from "./audit-target";
+import { accessibilityTest as test } from "./fixtures";
 
-test.beforeEach(async ({ baseURL, context }) => {
-  test.skip(seededAccountSkipReason !== undefined, seededAccountSkipReason);
+test.skip(seededAccountSkipReason !== undefined, seededAccountSkipReason);
+
+test.beforeEach(async ({ baseURL, context, seededAccounts }) => {
   await enablePreviewAccess(context, baseURL);
-  await signInAccessibilityAccount(context, baseURL);
+  await signInAccessibilityAccount(context, seededAccounts);
 });
 
 for (const locale of auditedLocales) {

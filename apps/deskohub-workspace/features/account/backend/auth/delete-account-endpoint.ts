@@ -1,7 +1,6 @@
 import "server-only";
 
 import { APIError } from "better-auth";
-import { headers } from "next/headers";
 import { auth } from "@/features/account/server/auth.server";
 
 export type CustomerAccountDeletionEndpointResult =
@@ -18,28 +17,30 @@ export type CustomerAccountDeletionEndpointResult =
  * endpoint, so its session-freshness gate and the provider-first beforeDelete
  * hook stay the single identity-deletion path. Better Auth names stay inside
  * the auth boundary; callers see only this closed, censored result union.
+ * `requestHeaders` are the current request's, carrying its session.
  */
-export const deleteCurrentAccountThroughAuthEndpoint =
-  async (): Promise<CustomerAccountDeletionEndpointResult> => {
-    try {
-      await auth.api.deleteUser({ body: {}, headers: await headers() });
-      return { status: "deleted" };
-    } catch (cause) {
-      if (cause instanceof APIError) {
-        if (
-          cause.body?.code === "SESSION_EXPIRED" ||
-          cause.body?.code === "UNAUTHORIZED"
-        ) {
-          return { status: "reauthentication-required" };
-        }
-        if (cause.body?.code === "REVIEW_ACCOUNT_DELETION_REFUSED") {
-          return { status: "refused" };
-        }
-        return {
-          status: "failed",
-          code: "account.delete.endpoint",
-        };
+export const deleteCurrentAccountThroughAuthEndpoint = async (
+  requestHeaders: Headers
+): Promise<CustomerAccountDeletionEndpointResult> => {
+  try {
+    await auth.api.deleteUser({ body: {}, headers: requestHeaders });
+    return { status: "deleted" };
+  } catch (cause) {
+    if (cause instanceof APIError) {
+      if (
+        cause.body?.code === "SESSION_EXPIRED" ||
+        cause.body?.code === "UNAUTHORIZED"
+      ) {
+        return { status: "reauthentication-required" };
       }
-      return { status: "failed", code: "account.delete.unexpected" };
+      if (cause.body?.code === "REVIEW_ACCOUNT_DELETION_REFUSED") {
+        return { status: "refused" };
+      }
+      return {
+        status: "failed",
+        code: "account.delete.endpoint",
+      };
     }
-  };
+    return { status: "failed", code: "account.delete.unexpected" };
+  }
+};

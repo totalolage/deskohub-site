@@ -2,8 +2,12 @@ import { testEmailAddress } from "@deskohub/test-email";
 import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-flags/node";
 import { Context, Effect, Layer } from "effect";
+import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import { m } from "@/features/i18n";
+import { mockWorkspaceActionRequest } from "@/shared/testing/workspace-action-request.test-utils";
+import { AccountAvatarReleaseGate } from "./backend/account-release-gates";
 import { CustomerAccountAccessError } from "./customer-account";
 
 const revalidatePath = mock(
@@ -11,28 +15,27 @@ const revalidatePath = mock(
 );
 mock.module("next/cache", () => ({ revalidatePath }));
 
-const requestHeaders = new Headers({ referer: "https://deskohub.test/en-US" });
-mock.module("next/headers", () => ({
-  headers: async () => requestHeaders,
-  cookies: async () => ({ get: () => undefined, getAll: () => [] }),
-}));
-mock.module("next/server", () => ({
-  after: () => undefined,
-}));
+await mockWorkspaceActionRequest();
 mock.module("@/instrumentation", () => ({
   postHogLoggerProvider: {
     forceFlush: () => Promise.resolve(),
     getLogger: () => ({ emit: () => undefined }),
   },
 }));
-mock.module("botid/server", () => ({
-  checkBotId: () => Promise.resolve({ isBot: false }),
-}));
 
-const areAccountAvatarsEnabled = mock(() => Promise.resolve(true));
-mock.module("@/features/account/server/account-feature-flag.server", () => ({
-  areAccountAvatarsEnabled,
-}));
+// The avatar release gate over a fake flag evaluation.
+let avatarFlag: Effect.Effect<boolean, PostHogFeatureFlagEvaluationError> =
+  Effect.succeed(true);
+const readAvatarFlag = mock(() => avatarFlag);
+Object.assign(AccountAvatarReleaseGate, {
+  Live: AccountAvatarReleaseGate.Default.pipe(
+    Layer.provide(
+      WorkspaceFeatureFlagServiceMock({
+        isEnabled: () => Effect.suspend(readAvatarFlag),
+      })
+    )
+  ),
+});
 
 let currentUser: Effect.Effect<
   {
@@ -191,8 +194,8 @@ describe("customer avatar actions", () => {
     };
     removeOutcome = { status: "removed" };
     revalidatePath.mockClear();
-    areAccountAvatarsEnabled.mockReset();
-    areAccountAvatarsEnabled.mockResolvedValue(true);
+    readAvatarFlag.mockClear();
+    avatarFlag = Effect.succeed(true);
     currentUser = Effect.succeed(activeSession);
     resolverCalls = 0;
     resolve = Effect.succeed({
@@ -262,7 +265,7 @@ describe("customer avatar actions", () => {
     expect(removeResult.serverError).toBe(
       "Your session has expired. Please sign in again."
     );
-    expect(areAccountAvatarsEnabled).not.toHaveBeenCalled();
+    expect(readAvatarFlag).not.toHaveBeenCalled();
     expect(uploadCalls).toHaveLength(0);
     expect(removeCalls).toHaveLength(0);
   });
@@ -292,7 +295,7 @@ describe("customer avatar actions", () => {
   });
 
   test("rejects direct upload and removal before resolution or media work when avatars are disabled", async () => {
-    areAccountAvatarsEnabled.mockResolvedValue(false);
+    avatarFlag = Effect.succeed(false);
     const form = uploadForm();
     const file = form.get("file");
     if (!(file instanceof File)) throw new Error("Missing test upload file");
@@ -313,7 +316,7 @@ describe("customer avatar actions", () => {
     );
     expect(uploadResult.serverError).toBe(unavailableMessage);
     expect(removeResult.serverError).toBe(unavailableMessage);
-    expect(areAccountAvatarsEnabled).toHaveBeenCalledTimes(2);
+    expect(readAvatarFlag).toHaveBeenCalledTimes(2);
     expect(resolverCalls).toBe(0);
     expect(arrayBuffer).not.toHaveBeenCalled();
     expect(uploadCalls).toHaveLength(0);
@@ -322,7 +325,12 @@ describe("customer avatar actions", () => {
   });
 
   test("treats avatar capability evaluation failure as the same safe unavailable response", async () => {
-    areAccountAvatarsEnabled.mockRejectedValue(new Error("flag unavailable"));
+    avatarFlag = Effect.fail(
+      new PostHogFeatureFlagEvaluationError({
+        message: "Could not evaluate the PostHog feature flag.",
+        cause: new Error("flag unavailable"),
+      })
+    );
     const form = uploadForm();
     const file = form.get("file");
     if (!(file instanceof File)) throw new Error("Missing test upload file");

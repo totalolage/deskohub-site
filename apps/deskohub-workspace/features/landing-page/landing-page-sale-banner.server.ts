@@ -7,7 +7,7 @@ import {
   workspaceProductFamilies,
 } from "@/features/discounts/product-target";
 import type { Locale } from "@/features/i18n";
-import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
+import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import type { LandingPageSaleBannerContent } from "./components/landing-page-sale-banner";
 import { getLandingPageSaleBannerContent } from "./landing-page-sale-banner-content";
@@ -73,8 +73,7 @@ const getEligibleLandingPageSaleBanner = Effect.fn(
 /** The product families visitors can reserve; offices only while switched on. */
 const getBookableProducts = Effect.fn("LandingPage.getBookableProducts")(
   function* () {
-    const officeFeatureFlag = yield* OfficeReservationFeatureFlagService;
-    if (yield* officeFeatureFlag.isEnabled) return workspaceProductFamilies;
+    if (yield* OfficeReleaseGate.isOpen) return workspaceProductFamilies;
 
     return workspaceProductFamilies.filter((family) => family !== "office");
   }

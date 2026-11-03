@@ -7,7 +7,7 @@ const arePasskeysEnabled = mock(() => Promise.resolve(false));
 const connection = mock(() => Promise.resolve());
 
 mock.module("next/server", () => ({ connection }));
-mock.module("@/features/account/server/account-feature-flag.server", () => ({
+mock.module("@/features/account/server/account-release-gates.server", () => ({
   arePasskeysEnabled,
 }));
 

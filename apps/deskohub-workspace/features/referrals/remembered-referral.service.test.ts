@@ -14,7 +14,7 @@ import { parseReferralCode } from "./client";
 import { ReferralError } from "./contracts";
 import type { IReferralService } from "./referral.service";
 import { ReferralServiceMock } from "./referral.service.mock";
-import { ReferralFeatureFlagService } from "./referral-feature-flag.service";
+import { ReferralReleaseGate } from "./referral-release-gate";
 import { RememberedReferral } from "./remembered-referral.service";
 
 type CurrentAccount = Effect.Success<
@@ -67,7 +67,7 @@ const run = async <A, E>(
         }).pipe(
           Layer.provide(
             Layer.mergeAll(
-              ReferralFeatureFlagService.fromDecision(options.released ?? true),
+              ReferralReleaseGate.fromDecision(options.released ?? true),
               ReferralServiceMock({
                 hasSettledReferral: ({ dotyposCustomerId }) =>
                   Effect.sync(() => {

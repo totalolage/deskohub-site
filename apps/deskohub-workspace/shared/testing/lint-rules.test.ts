@@ -673,6 +673,7 @@ const rules: { name: string; diagnostic: string; module: string; cases: Row[] }[
       ["permits the browser runner", 'export const refresh = () => Effect.void.pipe(runWorkspaceBrowserEffect("account.refresh"));\n', false],
       ["permits the server runner", 'export const refresh = () => Effect.void.pipe(runWorkspaceEffect("account.refresh"));\n', false],
       ["permits test modules", 'export const refresh = () => Effect.runPromise(Effect.void);\n', false, `${account}/refresh-identity.test.ts`],
+      ["permits React server fixtures", 'export const refresh = () => Effect.runPromise(Effect.void);\n', false, `${account}/refresh-identity.rsc-fixture.ts`],
     ],
   },
   {

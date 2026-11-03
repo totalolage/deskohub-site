@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { Layer, ManagedRuntime } from "effect";
+import { Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { WorkspaceE2EAccountResourceService } from "../account/resources.service";
 import {
@@ -10,8 +10,8 @@ import {
   getDatasourceConfig,
 } from "../config";
 import { makeAgentEvalEnvironment, makeE2EEnvironment } from "../e2e-env";
-import { E2EDatabase } from "../integrations/database.service";
 import { assertSafeDatabaseUrl } from "../runtime";
+import type { E2EEffectRunner } from "../runtime-fixture";
 import { parseAgentEvalHarnesses } from "./harness-contract";
 
 /**
@@ -49,15 +49,13 @@ export const makeAgentEvalSettings = () => {
 
 export type AgentEvalSettings = ReturnType<typeof makeAgentEvalSettings>;
 
-/** One runtime per Playwright worker, with a two-connection database pool. */
-export const makeAgentEvalRuntime = (datasourceConfig: DatasourceConfig) =>
-  ManagedRuntime.make(
-    Layer.mergeAll(
-      WorkspaceE2EAccountResourceService.layer(datasourceConfig).pipe(
-        Layer.provideMerge(E2EDatabase.layer(datasourceConfig))
-      ),
-      FetchHttpClient.layer
-    )
+/** The services an eval run uses, with a two-connection database pool. */
+export const makeAgentEvalRuntimeLive = (datasourceConfig: DatasourceConfig) =>
+  Layer.mergeAll(
+    WorkspaceE2EAccountResourceService.layerWithDatabase(datasourceConfig),
+    FetchHttpClient.layer
   );
 
-export type AgentEvalRuntime = ReturnType<typeof makeAgentEvalRuntime>;
+export type AgentEvalEffectRunner = E2EEffectRunner<
+  Layer.Success<ReturnType<typeof makeAgentEvalRuntimeLive>>
+>;

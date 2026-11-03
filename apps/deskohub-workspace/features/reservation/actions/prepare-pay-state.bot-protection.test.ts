@@ -3,26 +3,11 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { m } from "@/features/i18n";
+import { mockWorkspaceActionRequest } from "@/shared/testing/workspace-action-request.test-utils";
 
-// The real action boundary runs outside a Next request.
-const nextServer = await import("next/server");
 mock.module("server-only", () => ({}));
-mock.module("next/server", () => ({ ...nextServer, after: () => {} }));
-mock.module("next/headers", () => ({
-  cookies: async () => ({ get: () => undefined, getAll: () => [] }),
-  headers: async () => new Headers({ referer: "https://deskohub.test/en-US" }),
-}));
-
-const checkBotId = mock(async () => ({
-  isHuman: false,
-  isBot: true,
-  isVerifiedBot: false,
-  bypassed: false,
-}));
-mock.module("botid/server", () => ({ checkBotId }));
-mock.module("@/shared/backend/bot-protection/bot-protection.runtime", () => ({
-  isWorkspaceBotIdEnforcedAtRuntime: () => true,
-}));
+// The real action boundary runs outside a Next request.
+const request = await mockWorkspaceActionRequest({ botId: "bot" });
 
 const { preparePayState } = await import("./prepare-pay-state");
 
@@ -46,7 +31,7 @@ describe("preparePayState", () => {
       },
     } as never);
 
-    expect(checkBotId).toHaveBeenCalledTimes(1);
+    expect(request.checkBotId).toHaveBeenCalledTimes(1);
     expect(result).toEqual({
       serverError: m.automatedRequestRejected({}, { locale: "en-US" }),
     });

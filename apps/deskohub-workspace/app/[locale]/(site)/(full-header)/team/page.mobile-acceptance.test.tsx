@@ -3,6 +3,8 @@ import { type Browser, chromium } from "@playwright/test";
 import { createElement, type ReactElement, type ReactNode } from "react";
 import { renderToReadableStream } from "react-dom/server";
 import { type Locale, m } from "@/features/i18n";
+import { MeetingRoomPageReleaseGate } from "@/features/meeting-room/backend/meeting-room-page-release-gate";
+import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import { compileWorkspaceAppStyles } from "@/shared/testing/workspace-app-styles.test-utils";
 import {
@@ -39,21 +41,21 @@ mock.module("@/features/account/actions", () => ({
   updateLocalePreference: async () => undefined,
 }));
 mock.module(
-  "@/features/meeting-room/backend/meeting-room-page-feature-flag",
+  "@/features/meeting-room/backend/meeting-room-page-release-gate.server",
   () => ({
     isMeetingRoomPageEnabled: async () => false,
+    MeetingRoomPageReleaseGateRequest:
+      MeetingRoomPageReleaseGate.fromDecision(false),
   })
 );
 const officeFeatureFlag = await import(
-  "@/features/office/backend/office-reservation-feature-flag.server"
+  "@/features/office/backend/office-release-gate.server"
 );
-mock.module(
-  "@/features/office/backend/office-reservation-feature-flag.server",
-  () => ({
-    ...officeFeatureFlag,
-    isOfficePageEnabled: async () => false,
-  })
-);
+mock.module("@/features/office/backend/office-release-gate.server", () => ({
+  ...officeFeatureFlag,
+  isOfficePageEnabled: async () => false,
+  OfficeReleaseGateRequest: OfficeReleaseGate.fromDecision(false),
+}));
 // The page module also loads server code that imports more of these modules.
 const nextNavigation = await import("next/navigation");
 mock.module("next/navigation", () => ({

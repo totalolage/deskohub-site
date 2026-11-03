@@ -1,14 +1,22 @@
-import type {
-  AdvertisedPriceRequest,
-  CoworkAdvertisedPriceRequest,
+import { Match } from "effect";
+import {
+  type CoworkAdvertisedPrice,
+  type CoworkAdvertisedPriceRequest,
+  getAdvertisedProductAmount,
+  isCoworkAdvertisedPrice,
 } from "@/features/checkout/advertised-price";
 import {
   type WorkspaceCoworkCurrentTier,
+  type WorkspaceCoworkProductTier,
   type WorkspaceProductMonitorOption,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
 import type { CanonicalPromotionCode } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
+import type {
+  AdvertisedOptionFamily,
+  AdvertisedOptionPrices,
+} from "@/features/reservation/advertised-option-prices";
 import { getCoworkAdvertisedPriceReservation } from "@/features/reservation/cowork-reservation";
 
 type CoworkAdvertisedPriceOfferSelection = {
@@ -99,7 +107,7 @@ export const getCoworkCoffeeAdvertisedPriceRequest = ({
   readonly locale: Locale;
   readonly submittedCode?: CanonicalPromotionCode;
   readonly tier: WorkspaceCoworkCurrentTier;
-}): AdvertisedPriceRequest => ({
+}): CoworkAdvertisedPriceRequest => ({
   locale,
   ...(submittedCode && { submittedCode }),
   reservation: getCoworkAdvertisedPriceReservation({
@@ -108,3 +116,68 @@ export const getCoworkCoffeeAdvertisedPriceRequest = ({
     date,
   }),
 });
+
+/** Each tier option shows its tier's product line's advertised amount. */
+export const coworkTierOptions: AdvertisedOptionFamily<
+  CoworkAdvertisedPriceRequest,
+  CoworkAdvertisedPrice
+> = {
+  isPrice: isCoworkAdvertisedPrice,
+  amountOf: (price, { reservation: { details } }) =>
+    getAdvertisedProductAmount(price, {
+      kind: "cowork",
+      tier: details.entryTier,
+    }),
+};
+
+/**
+ * The price a tier card shows: the first price loaded for one of the tier's
+ * requests. Both Reserved Desk variants carry the same base product price.
+ */
+export const getCoworkTierOptionPrice = (
+  prices: AdvertisedOptionPrices<
+    CoworkAdvertisedPriceRequest,
+    CoworkAdvertisedPrice
+  >,
+  tier: WorkspaceCoworkCurrentTier
+) =>
+  prices.requests
+    .filter(({ reservation: { details } }) => details.entryTier === tier)
+    .map((request) => prices.of(request))
+    .find((price) => price !== undefined);
+
+/**
+ * The request priced for a tier selection. A Reserved Desk selection with a
+ * workstation is priced by the workstation variant; Open Space has one.
+ */
+export const findCoworkAdvertisedPriceRequest = (
+  requests: ReadonlyArray<CoworkAdvertisedPriceRequest>,
+  selection: {
+    readonly entryTier: WorkspaceCoworkProductTier;
+    readonly workstation: boolean;
+  }
+) =>
+  requests.find(({ reservation }) =>
+    Match.value(reservation.details).pipe(
+      Match.when(
+        { entryTier: "open-space" },
+        () => selection.entryTier === "open-space"
+      ),
+      Match.when(
+        { entryTier: "reserved-desk" },
+        ({ workstation }) =>
+          selection.entryTier === "reserved-desk" &&
+          workstation === selection.workstation
+      ),
+      Match.when({ entryTier: "basic" }, () => false),
+      Match.when({ entryTier: "plus" }, () => false),
+      Match.when({ entryTier: "profi" }, () => false),
+      Match.exhaustive
+    )
+  );
+
+/** The add-on line's amount in a cowork price. */
+export const getCoworkAddOnAmount = (
+  price: CoworkAdvertisedPrice | undefined,
+  type: "coffee" | "workstation"
+) => price?.quote.items.find((item) => item.type === type)?.amount;

@@ -1,7 +1,7 @@
+import { visitorConsent } from "@/features/cookie-consent";
 import type { DiscountId } from "@/features/discounts/contracts";
 import type { Locale } from "@/features/i18n";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
-import { isConsentCategoryAcceptedInCookie } from "@/shared/utils/consent-cookie";
 
 /** A visitor followed the home page sale banner to a reservation form. */
 export const SALE_BANNER_CLICKED_EVENT = "sale banner clicked";
@@ -24,12 +24,7 @@ export const captureSaleBannerClick = ({
   locale,
   reservationKind,
 }: LandingPageSaleBannerClick): void => {
-  if (
-    globalThis.document === undefined ||
-    !isConsentCategoryAcceptedInCookie(globalThis.document.cookie, "analytics")
-  ) {
-    return;
-  }
+  if (!visitorConsent.accepts("analytics")) return;
   import("posthog-js")
     .then(({ default: posthog }) => {
       posthog.capture(SALE_BANNER_CLICKED_EVENT, {

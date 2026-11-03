@@ -1,6 +1,6 @@
 import { Context, Effect, Layer } from "effect";
-import { MeetingRoomPageFeatureFlagService } from "@/features/meeting-room/backend/meeting-room-page-feature-flag.service";
-import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
+import { MeetingRoomPageReleaseGate } from "@/features/meeting-room/backend/meeting-room-page-release-gate";
+import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
 import {
   type PublicPage,
   type PublicPageReleaseGate,
@@ -29,11 +29,11 @@ export class PublishedPublicPagesService extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const meetingRoomPage = yield* MeetingRoomPageFeatureFlagService;
-      const officePage = yield* OfficeReservationFeatureFlagService;
+      const meetingRoomPage = yield* MeetingRoomPageReleaseGate;
+      const officePage = yield* OfficeReleaseGate;
       const releaseGates = {
-        "meeting-room-page": meetingRoomPage.isEnabled,
-        "office-page": officePage.isEnabled,
+        "meeting-room-page": meetingRoomPage.isOpen,
+        "office-page": officePage.isOpen,
       } satisfies Record<PublicPageReleaseGate, Effect.Effect<boolean>>;
 
       const isPublished = (pathname: PublicPagePathname) => {
@@ -56,10 +56,7 @@ export class PublishedPublicPagesService extends Context.Service<
 
   static Live = this.Default.pipe(
     Layer.provide(
-      Layer.mergeAll(
-        MeetingRoomPageFeatureFlagService.Live,
-        OfficeReservationFeatureFlagService.Live
-      )
+      Layer.mergeAll(MeetingRoomPageReleaseGate.Live, OfficeReleaseGate.Live)
     )
   );
 }

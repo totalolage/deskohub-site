@@ -16,8 +16,8 @@ import {
 import type { Locale } from "@/features/i18n";
 import type { LandingPageSaleBannerContent } from "@/features/landing-page/components/landing-page-sale-banner";
 import { getLandingPageSaleBanner } from "@/features/landing-page/landing-page-sale-banner.server";
-import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
-import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
+import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
+import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { readSharedSnapshot } from "@/shared/backend/shared-snapshot";
 import {
   type MarkdownBlocks,
@@ -63,11 +63,9 @@ type Sourced<A> = {
 
 // The office page is published exactly while office reservations are open.
 const officeDecision = (releases: PublicPageMarkdownReleases) =>
-  Layer.succeed(OfficeReservationFeatureFlagService, {
-    isEnabled: Effect.succeed(
-      releases.publishedPathnames.includes("/reservation/office")
-    ),
-  });
+  OfficeReleaseGate.fromDecision(
+    releases.publishedPathnames.includes("/reservation/office")
+  );
 
 /** An offering without a quote advertises its catalog price. */
 const withCatalogAdvertisedPrice = (
@@ -111,9 +109,7 @@ const loadMarkdownOfferings = (
         // anonymous advertised price.
         CheckoutPricingService.withDiscountReleaseGates(
           releases.discountReleaseGates
-        ).pipe(
-          Layer.provideMerge(ReferralFeatureFlagService.fromDecision(false))
-        ),
+        ).pipe(Layer.provideMerge(ReferralReleaseGate.fromDecision(false))),
         officeDecision(releases)
       )
     ),

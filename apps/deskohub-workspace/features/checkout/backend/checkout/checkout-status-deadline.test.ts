@@ -6,9 +6,9 @@ import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Fiber, Layer } from "effect";
 import { TestClock } from "effect/testing";
 import { FetchHttpClient } from "effect/unstable/http";
-import { SeatingMapFeatureFlagServiceMock } from "@/features/feature-flags/backend/seating-map-feature-flag.service.mock";
 import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
 import { ReservationRecords } from "@/features/reservation/backend/reservation-records";
+import { SeatingMapReleaseGate } from "@/features/reservation/backend/seating-map-release-gate";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { ReviewSandboxMock } from "@/features/review-accounts/backend/review-sandbox.service.mock";
@@ -175,9 +175,7 @@ const loadStatusPageOnTestClock = (options: {
             Layer.mock(AdvisoryAvailabilityInventory, {
               tables: Effect.never,
             }),
-            SeatingMapFeatureFlagServiceMock({
-              isEnabled: Effect.succeed(true),
-            }),
+            SeatingMapReleaseGate.fromDecision(true),
             ReviewSandboxMock({})
           )
         )

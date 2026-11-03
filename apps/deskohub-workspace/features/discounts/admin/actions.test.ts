@@ -4,9 +4,8 @@ import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { Effect, Fiber, Layer, Predicate } from "effect";
 import { administrationHref } from "@/features/administration/administration-href";
 import { m } from "@/features/administration/i18n";
-import { mockAdministratorAccess } from "@/features/administrators/server/administrator-access.test-utils";
+import { mockAdministrationActionRequest } from "@/shared/testing/workspace-action-request.test-utils";
 
-const access = mockAdministratorAccess("discount-administration-actions");
 const revalidatedPaths: string[] = [];
 // The mutation and every tag invalidation and `after` callback, each with
 // whether it ran inside a fiber. The action's own telemetry flush schedules
@@ -25,20 +24,14 @@ mock.module("next/cache", () => ({
     timeline.push(`${fiberState()}:revalidate:${tag}`);
   },
 }));
-mock.module("next/headers", () => ({
-  cookies: async () => ({ get: () => undefined, getAll: () => [] }),
-  headers: async () =>
-    new Headers({ referer: "https://deskohub.test/en-US/admin" }),
-}));
-mock.module("next/server", () => ({
-  after: () => {
-    timeline.push(`${fiberState()}:after`);
-  },
-  connection: () => Promise.resolve(),
-}));
-mock.module("next/root-params", () => ({
-  locale: () => Promise.resolve("en-US"),
-}));
+const request = await mockAdministrationActionRequest({
+  administrator: "discount-administration-actions",
+  referer: "https://deskohub.test/en-US/admin",
+});
+const { access } = request;
+request.after.mockImplementation(() => {
+  timeline.push(`${fiberState()}:after`);
+});
 mock.module("@/instrumentation", () => ({
   postHogLoggerProvider: {
     forceFlush: () => Promise.resolve(),

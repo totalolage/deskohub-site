@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./cached": "./src/cached.ts",
     "./effect-action": "./src/effect-action.ts"
   },
   "scripts": {

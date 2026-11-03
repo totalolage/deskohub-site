@@ -38,7 +38,8 @@ const executeAsync = mock((_input: PreparePayStateInput) =>
 let preparePayStateOptions: PreparePayStateOptions | undefined;
 
 mock.module("@/features/cookie-consent", () => ({
-  useCookieConsent: () => ({ isAccepted: () => false }),
+  useVisitorConsent: () => false,
+  visitorConsent: { accepts: () => false },
 }));
 
 mock.module("@/features/reservation/actions/prepare-pay-state", () => ({

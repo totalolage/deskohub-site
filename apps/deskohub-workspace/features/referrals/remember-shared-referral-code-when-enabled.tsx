@@ -1,7 +1,7 @@
 import "server-only";
 
 import { GlobalReleaseGate } from "@/features/feature-flags/components/global-release-gate";
-import { areReferralsEnabled } from "./referral-feature-flag.server";
+import { areReferralsEnabled } from "./referral-release-gate.server";
 import { RememberSharedReferralCode } from "./remember-shared-referral-code";
 
 /**

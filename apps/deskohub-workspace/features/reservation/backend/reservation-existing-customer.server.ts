@@ -222,10 +222,7 @@ export const loadLinkedExistingCustomer = Effect.fn(
  * Availability for a remembered reservation option. A failure is logged and
  * reads as unavailable so the form opens on the usual defaults instead.
  */
-const loadRememberedOptionAvailability = (
-  name: string,
-  query: WorkspaceAvailabilityQuery
-) =>
+const loadRememberedOptionAvailability = (query: WorkspaceAvailabilityQuery) =>
   Effect.flatMap(WorkspaceAvailabilityService, (service) =>
     service.getAvailability({ query })
   ).pipe(
@@ -235,41 +232,45 @@ const loadRememberedOptionAvailability = (
         error,
       })
     ),
-    Effect.result,
-    runWorkspaceEffect(name, { boundary: "page" })
+    Effect.result
   );
 
 /** Whether a remembered cowork offer is still bookable on the form's date. */
-export const isRememberedCoworkOfferAvailable = async ({
+export const isRememberedCoworkOfferAvailable = Effect.fn(
+  "reservation.isRememberedCoworkOfferAvailable"
+)(function* ({
   date,
   entryTier,
   monitorOption,
-}: Pick<CoworkReservationInput, "date" | "entryTier" | "monitorOption">) => {
+}: Pick<CoworkReservationInput, "date" | "entryTier" | "monitorOption">) {
   const offer = { date, entryTier, ...(monitorOption && { monitorOption }) };
-  const availability = await loadRememberedOptionAvailability(
-    "reservation.cowork.remembered-offer-availability",
-    { kind: "cowork", from: date, to: date, ...offer }
-  );
+  const availability = yield* loadRememberedOptionAvailability({
+    kind: "cowork",
+    from: date,
+    to: date,
+    ...offer,
+  });
 
   return (
     Result.isSuccess(availability) &&
     isCoworkOfferAvailable(availability.success, offer)
   );
-};
+});
 
 /** Whether the meeting room is free for a remembered duration. */
-export const isRememberedMeetingRoomReservationAvailable = async ({
+export const isRememberedMeetingRoomReservationAvailable = Effect.fn(
+  "reservation.isRememberedMeetingRoomReservationAvailable"
+)(function* ({
   duration,
   startDateTime,
-}: Pick<MeetingRoomReservationInput, "duration" | "startDateTime">) => {
+}: Pick<MeetingRoomReservationInput, "duration" | "startDateTime">) {
   const interval = getMeetingRoomReservationInterval(
     startDateTime,
     getMeetingRoomReservationDuration(duration)
   );
   if (!interval) return false;
 
-  const availability = await loadRememberedOptionAvailability(
-    "reservation.meeting-room.remembered-duration-availability",
+  const availability = yield* loadRememberedOptionAvailability(
     getMeetingRoomAvailabilityQuery(interval)
   );
 
@@ -277,4 +278,4 @@ export const isRememberedMeetingRoomReservationAvailable = async ({
     Result.isSuccess(availability) &&
     isMeetingRoomAvailable(availability.success)
   );
-};
+});

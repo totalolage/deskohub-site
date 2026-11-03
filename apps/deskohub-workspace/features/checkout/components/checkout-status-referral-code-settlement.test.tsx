@@ -7,7 +7,7 @@ import { CustomerAccountContactService } from "@/features/account/backend/custom
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import type { CheckoutStatusKind } from "@/features/checkout/checkout-status-kind";
 import { ReferralServiceMock } from "@/features/referrals/referral.service.mock";
-import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
+import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
 import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
@@ -52,7 +52,7 @@ const runSettlement = async (
         }).pipe(
           Layer.provide(
             Layer.mergeAll(
-              ReferralFeatureFlagService.fromDecision(true),
+              ReferralReleaseGate.fromDecision(true),
               ReferralServiceMock({
                 hasSettledReferral: hasSettledReferral as never,
               }),

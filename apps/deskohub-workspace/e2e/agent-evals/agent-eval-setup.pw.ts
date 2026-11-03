@@ -1,7 +1,6 @@
 import "../../shared/polyfills/temporal";
 
-import { test } from "@playwright/test";
-import { makeAgentEvalRuntime, makeAgentEvalSettings } from "./environment";
+import { agentEvalTest as test } from "./fixtures";
 import {
   makeAgentEvalRunSetId,
   readAgentEvalRunSet,
@@ -14,21 +13,20 @@ import { verifyAgentEvalTarget } from "./target";
 // checks the verified target before it seeds anything. The run set id is
 // written once per invocation: `--repeat-each` repeats this project too, and
 // every repeat must keep the first id.
-test("verify the preview target and open a run set", async () => {
-  const settings = makeAgentEvalSettings();
-  const runtime = makeAgentEvalRuntime(settings.datasourceConfig);
-  const target = await runtime
-    .runPromise(
-      verifyAgentEvalTarget({
-        expectation: {
-          sha: settings.targetSha,
-          vercelProjectId: settings.vercelProjectId,
-        },
-        expectedHost: settings.config.expectedHost,
-        vercelToken: settings.vercelToken,
-      })
-    )
-    .finally(() => runtime.dispose());
+test("verify the preview target and open a run set", async ({
+  agentEvalSettings: settings,
+  runEffect,
+}) => {
+  const target = await runEffect(
+    verifyAgentEvalTarget({
+      expectation: {
+        sha: settings.targetSha,
+        vercelProjectId: settings.vercelProjectId,
+      },
+      expectedHost: settings.config.expectedHost,
+      vercelToken: settings.vercelToken,
+    })
+  );
   const existing = await readAgentEvalRunSet().catch(() => undefined);
   if (existing?.target.sha === target.sha) return;
   await writeAgentEvalRunSet({

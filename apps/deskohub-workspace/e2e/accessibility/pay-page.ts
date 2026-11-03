@@ -4,11 +4,10 @@ import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date
 import { signInWorkspaceE2ESyntheticBrowserContext } from "../account/seeded-session";
 import { readAgentEvalRunResources } from "../agent-evals/records";
 import { tryWorkspaceE2EPromise } from "../errors";
-import { requireBaseUrl } from "../instant-navigation/navigation-test-helpers";
 import { waitForReactSubmitHandler } from "../react-handlers";
 import { workspaceE2ETimeouts } from "../timeouts";
 import { type AuditedLocale, openSettledPage } from "./accessibility-audit";
-import { makeSeededAccountRuntime } from "./audit-target";
+import type { SeededAccountRuntime } from "./audit-target";
 import { reservationForm } from "./page-states";
 import {
   makeSeededAccountRunId,
@@ -61,30 +60,28 @@ async function pickPayAuditDate(page: Page) {
  */
 export async function withPayPage(
   {
-    baseURL,
     context,
     locale,
     page,
+    runtime,
   }: {
-    readonly baseURL: string | undefined;
     readonly context: BrowserContext;
     readonly locale: AuditedLocale;
     readonly page: Page;
+    readonly runtime: SeededAccountRuntime;
   },
   use: () => Promise<void>
 ) {
-  const origin = new URL(requireBaseUrl(baseURL)).origin;
-  const runtime = makeSeededAccountRuntime(origin);
   const runId = makeSeededAccountRunId();
   let seeded: Awaited<ReturnType<typeof seedLinkedAccount>> | undefined;
 
   try {
     seeded = await seedLinkedAccount(runtime, runId, payAuditRecipientLabel);
-    await runtime.runPromise(
+    await runtime.runEffect(
       signInWorkspaceE2ESyntheticBrowserContext({
         accountId: seeded.accountId,
         context,
-        origin,
+        origin: runtime.origin,
         secret: runtime.secret,
       })
     );
@@ -112,7 +109,7 @@ export async function withPayPage(
     if (seeded !== undefined) {
       const { accountId, recorder } = seeded;
       // Journal the hold the checkout created before reconciling.
-      await runtime.runPromise(
+      await runtime.runEffect(
         Effect.gen(function* () {
           const resources = yield* readAgentEvalRunResources(
             runtime.datasourceConfig,
