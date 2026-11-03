@@ -44,3 +44,41 @@ export const getReservationAvailabilityUnavailableMessage = (input: {
         m.reservationOfficeUnavailable({}, { locale: input.locale }),
     })
   );
+
+/**
+ * A reservation form's checkout availability: the family's unavailable
+ * message when availability rules the selection out, else the availability
+ * error when the check failed.
+ */
+export const getReservationCheckoutAvailability = ({
+  isError,
+  isPending,
+  locale,
+  unavailable,
+}: {
+  readonly isError: boolean;
+  readonly isPending: boolean;
+  readonly locale: Locale;
+  /** The selection availability rules out, if it does. */
+  readonly unavailable?: Omit<
+    Parameters<typeof getReservationAvailabilityUnavailableMessage>[0],
+    "locale"
+  >;
+}) => {
+  if (unavailable) {
+    return {
+      isPending,
+      unavailableMessage: getReservationAvailabilityUnavailableMessage({
+        ...unavailable,
+        locale,
+      }),
+    };
+  }
+
+  return {
+    isPending,
+    unavailableMessage: isError
+      ? m.reservationAvailabilityError({}, { locale })
+      : undefined,
+  };
+};

@@ -50,6 +50,7 @@ import {
   officeReservationSchema,
 } from "@/features/reservation/office-reservation";
 import { officeSelectionLink } from "@/features/reservation/office-selection-link";
+import { getReservationCheckoutAvailability } from "@/features/reservation/reservation.i18n";
 import type { ReservationCheckoutCustomerForm } from "@/features/reservation/reservation-existing-customer";
 import {
   getOfficeAvailabilityQuery,
@@ -194,13 +195,6 @@ export function OfficeReservationForm({
       (maximumDayCount === 0 ||
         (Predicate.isNumber(dayCount) && dayCount > maximumDayCount))
   );
-  const availabilityMessage = unavailable
-    ? m.reservationOfficeUnavailable({}, { locale })
-    : undefined;
-  const availabilityErrorMessage =
-    availabilityResult.isError && !availabilityResult.isPending
-      ? m.reservationAvailabilityError({}, { locale })
-      : undefined;
   const basePriceLabel = selection
     ? m.reservationOfficeBasePriceLabel(
         { dayCount: getOfficeReservationDayCount(selection) },
@@ -212,10 +206,14 @@ export function OfficeReservationForm({
     <ReservationCheckoutForm
       checkoutCustomer={checkoutCustomer}
       advertisedPrice={advertisedPrices.checkout}
-      availability={{
+      availability={getReservationCheckoutAvailability({
+        isError: availabilityResult.isError,
         isPending: availabilityResult.isPending,
-        unavailableMessage: availabilityMessage ?? availabilityErrorMessage,
-      }}
+        locale,
+        unavailable: unavailable
+          ? { date: startsOn, reservation: { kind: "office" } }
+          : undefined,
+      })}
       checkoutSessionId={checkoutSessionId}
       form={form}
       getReservation={getOfficeReservationOrder}

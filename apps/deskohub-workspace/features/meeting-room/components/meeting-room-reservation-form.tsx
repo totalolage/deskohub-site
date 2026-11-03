@@ -62,9 +62,11 @@ import {
 } from "@/features/reservation/meeting-room-reservation-duration";
 import {
   getEarliestMeetingRoomStartDateTime,
+  getMeetingRoomReservationDate,
   getMeetingRoomReservationInterval,
 } from "@/features/reservation/meeting-room-reservation-time";
 import { meetingRoomSelectionLink } from "@/features/reservation/meeting-room-selection-link";
+import { getReservationCheckoutAvailability } from "@/features/reservation/reservation.i18n";
 import type { ReservationCheckoutCustomerForm } from "@/features/reservation/reservation-existing-customer";
 import {
   getMeetingRoomSelectionAvailabilityQuery,
@@ -157,17 +159,9 @@ export function MeetingRoomReservationForm({
     { debounceMs: 250, initialAvailability, replacementToken }
   );
   const { availability } = availabilityQueryResult;
-  const isSelectedReservationUnavailable = Boolean(
+  const unavailableInterval =
     selectedInterval && availability && !isMeetingRoomAvailable(availability)
-  );
-  const availabilityMessage = isSelectedReservationUnavailable
-    ? m.reservationMeetingRoomUnavailable({}, { locale })
-    : undefined;
-  const availabilityErrorMessage =
-    availabilityQuery &&
-    availabilityQueryResult.isError &&
-    !availabilityQueryResult.isPending
-      ? m.reservationAvailabilityError({}, { locale })
+      ? selectedInterval
       : undefined;
   // A whole day lists no starts, but its midnight start's entry still says
   // whether its setup time is free.
@@ -223,10 +217,15 @@ export function MeetingRoomReservationForm({
     <ReservationCheckoutForm
       checkoutCustomer={checkoutCustomer}
       advertisedPrice={advertisedPrices.checkout}
-      availability={{
+      availability={getReservationCheckoutAvailability({
+        isError: availabilityQueryResult.isError,
         isPending: availabilityQueryResult.isPending,
-        unavailableMessage: availabilityMessage ?? availabilityErrorMessage,
-      }}
+        locale,
+        unavailable: unavailableInterval && {
+          date: getMeetingRoomReservationDate(unavailableInterval),
+          reservation: { kind: "meeting-room" },
+        },
+      })}
       checkoutSessionId={checkoutSessionId}
       form={form}
       getReservation={getMeetingRoomReservationOrder}
