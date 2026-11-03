@@ -815,7 +815,7 @@ export class DiscountService extends Context.Service<
  * service: they hold clients and configuration and read nothing from the
  * request. The release gates, the referral service and the discount service
  * over them are built per run, so each run sees its own request's decisions
- * (`DiscountReleaseGateService`, `ReferralFeatureFlagService`).
+ * (`DiscountReleaseGateService`, `ReferralReleaseGate`).
  */
 export function makeDiscountServiceLayer<E, R>(input: {
   readonly service: typeof DiscountService.Default;

@@ -3,7 +3,7 @@
 import { Effect, Layer, Schema } from "effect";
 import { advertisedPriceRequestsSchema } from "@/features/checkout/advertised-price";
 import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
-import { ReferralFeatureFlagRequest } from "@/features/referrals/referral-feature-flag.server";
+import { ReferralReleaseGateRequest } from "@/features/referrals/referral-release-gate.server";
 import { loadAdvertisedPrices } from "@/features/reservation/backend/advertised-prices.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 
@@ -18,7 +18,7 @@ const getAdvertisedPricesAction = defineWorkspaceAction(
     loadAdvertisedPrices(requests).pipe(
       Effect.provide(
         CheckoutPricingService.Live.pipe(
-          Layer.provideMerge(ReferralFeatureFlagRequest)
+          Layer.provideMerge(ReferralReleaseGateRequest)
         )
       ),
       Effect.scoped

@@ -17,8 +17,7 @@ import { admitPendingNexiPayment } from "@/features/checkout/backend/repositorie
 import { canonicalPromotionCodeSchema } from "@/features/discounts/persistence-contracts";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import { ReferralService } from "@/features/referrals";
-import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
-import { ReferralFeatureFlagServiceMock } from "@/features/referrals/referral-feature-flag.service.mock";
+import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { ReferralSignupIntentRepository } from "@/features/referrals/signup-intent.repository";
 import { NoReviewAccounts } from "@/features/review-accounts/backend/review-accounts.repository.mock";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
@@ -186,14 +185,12 @@ const completionLayer = (options: {
   readonly createdCustomers?: DotyposCustomerId[];
   readonly referralsEnabled?: boolean;
   /** The referral flag the services read; `referralsEnabled` by default. */
-  readonly featureFlag?: Layer.Layer<ReferralFeatureFlagService>;
+  readonly featureFlag?: Layer.Layer<ReferralReleaseGate>;
 }) => {
   const database = databaseLayer();
   const featureFlag =
     options.featureFlag ??
-    ReferralFeatureFlagServiceMock({
-      isEnabled: Effect.succeed(options.referralsEnabled ?? true),
-    });
+    ReferralReleaseGate.fromDecision(options.referralsEnabled ?? true);
   const lock = WorkspaceDatabaseAdvisoryLock.makeLayer(testDatabase!.pool);
   const links = CustomerAccountLinkRepository.Default.pipe(
     Layer.provide(Layer.mergeAll(database, lock))
@@ -538,8 +535,8 @@ describe.skipIf(!testDatabase)(
       // A fresh build evaluates on its own; a shared one is memoized.
       const flakyFlag = (build: "fresh" | "shared") =>
         (build === "fresh"
-          ? Layer.fresh(ReferralFeatureFlagService.Default)
-          : ReferralFeatureFlagService.Default
+          ? Layer.fresh(ReferralReleaseGate.Default)
+          : ReferralReleaseGate.Default
         ).pipe(
           Layer.provide(
             WorkspaceFeatureFlagServiceMock({
@@ -557,9 +554,7 @@ describe.skipIf(!testDatabase)(
             })
           )
         );
-      const pageGate = ReferralFeatureFlagService.pipe(
-        Effect.flatMap((featureFlag) => featureFlag.isEnabled)
-      );
+      const pageGate = ReferralReleaseGate.isOpen;
       const linkedLoad = Effect.gen(function* () {
         const released = yield* pageGate;
         return released

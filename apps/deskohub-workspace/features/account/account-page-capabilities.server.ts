@@ -1,7 +1,10 @@
 import "server-only";
 
 import { type Context, Effect, Layer } from "effect";
-import { AccountFeatureFlagService } from "@/features/account/backend/account-feature-flag.service";
+import {
+  AccountAvatarReleaseGate,
+  PasskeyReleaseGate,
+} from "@/features/account/backend/account-release-gates";
 import { CustomerAgentConnections } from "@/features/account/backend/auth/customer-agent-connections.service";
 import { CustomerPasskeys } from "@/features/account/backend/auth/customer-passkeys.service";
 import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
@@ -10,9 +13,10 @@ import { CustomerAuthentication } from "@/features/account/backend/customer-auth
 import { CustomerAvatarService } from "@/features/account/backend/customer-avatar.service";
 import { CustomerProfileService } from "@/features/account/backend/customer-profile.service";
 import { CustomerReservationHistoryService } from "@/features/account/backend/customer-reservation-history.service";
+import { PasskeyReleaseGateRequest } from "@/features/account/server/account-release-gates.server";
 import { ReferralService } from "@/features/referrals";
-import { ReferralFeatureFlagRequest } from "@/features/referrals/referral-feature-flag.server";
-import type { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
+import type { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
+import { ReferralReleaseGateRequest } from "@/features/referrals/referral-release-gate.server";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import { ReferralSignupIntentRepository } from "@/features/referrals/signup-intent.repository";
 import { ReviewAccounts } from "@/features/review-accounts";
@@ -30,9 +34,10 @@ export type AccountPageCapabilities =
   | ReviewAccounts
   | ReferralService
   | ReferralSignupIntentRepository
-  | ReferralFeatureFlagService
+  | ReferralReleaseGate
   | RememberedReferral
-  | AccountFeatureFlagService;
+  | PasskeyReleaseGate
+  | AccountAvatarReleaseGate;
 
 /**
  * The layers the account page's capabilities come from. Each may fail to
@@ -63,16 +68,17 @@ export type AccountPageLayers = {
   readonly referrals: Layer.Layer<
     ReferralService,
     Layer.Error<typeof ReferralService.Live>,
-    ReferralFeatureFlagService
+    ReferralReleaseGate
   >;
   readonly signupIntents: Layer.Layer<ReferralSignupIntentRepository>;
-  readonly referralRelease: Layer.Layer<ReferralFeatureFlagService>;
+  readonly referralRelease: Layer.Layer<ReferralReleaseGate>;
   readonly rememberedReferral: Layer.Layer<
     RememberedReferral,
     Layer.Error<typeof CustomerAccountContactService.Live>,
-    ReferralService | ReferralFeatureFlagService
+    ReferralService | ReferralReleaseGate
   >;
-  readonly featureFlags: Layer.Layer<AccountFeatureFlagService>;
+  readonly passkeyRelease: Layer.Layer<PasskeyReleaseGate>;
+  readonly avatarRelease: Layer.Layer<AccountAvatarReleaseGate>;
 };
 
 export const liveAccountPageLayers: AccountPageLayers = {
@@ -86,11 +92,12 @@ export const liveAccountPageLayers: AccountPageLayers = {
   reviewAccounts: ReviewAccounts.Live,
   referrals: ReferralService.Live,
   signupIntents: ReferralSignupIntentRepository.Live,
-  referralRelease: ReferralFeatureFlagRequest,
+  referralRelease: ReferralReleaseGateRequest,
   rememberedReferral: RememberedReferral.Cookies.pipe(
     Layer.provide(CustomerAccountContactService.Live)
   ),
-  featureFlags: AccountFeatureFlagService.Live,
+  passkeyRelease: PasskeyReleaseGateRequest,
+  avatarRelease: AccountAvatarReleaseGate.Live,
 };
 
 /**
@@ -182,11 +189,14 @@ export const accountPageCapabilities = (
         isSettled: () => failure,
       }))
     ),
-    layers.featureFlags.pipe(
-      unavailableUntilUsed(AccountFeatureFlagService, (failure) => ({
-        isSignInCodeEnabled: failure,
-        isPasskeyEnabled: failure,
-        isAvatarEnabled: failure,
+    layers.passkeyRelease.pipe(
+      unavailableUntilUsed(PasskeyReleaseGate, (failure) => ({
+        isOpen: failure,
+      }))
+    ),
+    layers.avatarRelease.pipe(
+      unavailableUntilUsed(AccountAvatarReleaseGate, (failure) => ({
+        isOpen: failure,
       }))
     )
   ).pipe(Layer.provideMerge(layers.referralRelease));

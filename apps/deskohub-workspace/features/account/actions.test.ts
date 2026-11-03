@@ -7,7 +7,7 @@ import { Context, Effect, Layer } from "effect";
 import { m } from "@/features/i18n";
 import { ReferralError } from "@/features/referrals/contracts";
 import { ReferralService as Referrals } from "@/features/referrals/referral.service";
-import { ReferralFeatureFlagService as ReferralFeatureFlag } from "@/features/referrals/referral-feature-flag.service";
+import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import {
   type InMemoryReferralCookie,
   RememberedReferral,
@@ -52,17 +52,12 @@ mock.module("botid/server", () => ({
   checkBotId: () => Promise.resolve({ isBot: false }),
 }));
 
-const areAccountAvatarsEnabled = mock(() => Promise.resolve(true));
-mock.module("@/features/account/server/account-feature-flag.server", () => ({
-  areAccountAvatarsEnabled,
-}));
-
 let referralsEnabled = true;
 const areReferralsEnabled = mock(() => Promise.resolve(referralsEnabled));
-const decideReferrals = ReferralFeatureFlag.fromDecision;
-mock.module("@/features/referrals/referral-feature-flag.server", () => ({
+const decideReferrals = ReferralReleaseGate.fromDecision;
+mock.module("@/features/referrals/referral-release-gate.server", () => ({
   areReferralsEnabled,
-  ReferralFeatureFlagRequest: Layer.unwrap(
+  ReferralReleaseGateRequest: Layer.unwrap(
     Effect.promise(areReferralsEnabled).pipe(Effect.map(decideReferrals))
   ),
 }));

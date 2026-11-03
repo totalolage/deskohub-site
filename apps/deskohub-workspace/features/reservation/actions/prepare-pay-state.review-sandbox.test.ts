@@ -31,9 +31,9 @@ import {
 } from "@/features/discounts";
 import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
 import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
-import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
+import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
 import { WithheldReferralService } from "@/features/referrals/referral.service.mock";
-import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
+import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import {
   agentSelectionKeySchema,
@@ -198,12 +198,12 @@ describe.skipIf(!database)(
         assignTableId: unreachable("Table assignment"),
       }),
       EmailRecipientDomainServiceMock({ check: unreachable("Email check") }),
-      Layer.mock(OfficeReservationFeatureFlagService, {}),
+      Layer.mock(OfficeReleaseGate, {}),
       WithheldReferralService,
       RememberedReferral.inMemory(rememberedReferralCookie).pipe(
         Layer.provide(
           Layer.mergeAll(
-            ReferralFeatureFlagService.fromDecision(false),
+            ReferralReleaseGate.fromDecision(false),
             WithheldReferralService,
             contacts
           )

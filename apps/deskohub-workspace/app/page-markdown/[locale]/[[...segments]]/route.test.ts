@@ -6,7 +6,7 @@ import { advertisedCatalogOfferings } from "@/features/checkout/public-offerings
 import { DiscountReleaseGateService } from "@/features/discounts/discount-release-gate.service";
 import type { Locale } from "@/features/i18n";
 import { getLegalDocument } from "@/features/legal/content";
-import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
+import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
 import { PublishedPublicPagesService } from "@/features/public-pages/backend";
 import {
   type PublicPage,
@@ -29,8 +29,7 @@ mock.module("@/features/faq/backend/faq-occupancy.server", () => ({
 mock.module("@/features/checkout/backend/checkout/public-offerings", () => ({
   loadPublicPriceList: (locale: Locale) =>
     Effect.gen(function* () {
-      const officeFlag = yield* OfficeReservationFeatureFlagService;
-      const officeOpen = yield* officeFlag.isEnabled;
+      const officeOpen = yield* OfficeReleaseGate.isOpen;
       return {
         advertisedOn: Temporal.Now.plainDateISO(),
         offerings: advertisedCatalogOfferings({

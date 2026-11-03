@@ -9,7 +9,10 @@ import {
   liveAccountPageLayers,
   replayBuildFailure,
 } from "@/features/account/account-page-capabilities.server";
-import { AccountFeatureFlagService } from "@/features/account/backend/account-feature-flag.service";
+import {
+  AccountAvatarReleaseGate,
+  PasskeyReleaseGate,
+} from "@/features/account/backend/account-release-gates";
 import { CustomerAgentConnections } from "@/features/account/backend/auth/customer-agent-connections.service";
 import { CustomerPasskeys } from "@/features/account/backend/auth/customer-passkeys.service";
 import { acceptAutoLinkedReferral } from "@/features/account/backend/auto-linked-referral";
@@ -41,14 +44,13 @@ import {
 } from "@/features/account/customer-account";
 import type { CustomerAgentConnection } from "@/features/account/customer-agent-connections";
 import type { AccountPasskeySettings } from "@/features/account/passkeys";
-import { accountAvatarsEnabled } from "@/features/account/server/account-feature-flag.server";
 import { ReferralService } from "@/features/referrals";
 import {
   getReferralShareUrl,
   type ReferralCode,
 } from "@/features/referrals/client";
 import type { ReferralAccountOverview } from "@/features/referrals/contracts";
-import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
+import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import { ReviewAccounts } from "@/features/review-accounts";
 import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/workspace-url.config";
@@ -276,9 +278,7 @@ const degradable =
  * this load. An unavailable evaluation fails closed: a withheld program
  * reads, writes, and shows no referral state.
  */
-const referralsReleased = ReferralFeatureFlagService.pipe(
-  Effect.flatMap((featureFlag) => featureFlag.isEnabled)
-);
+const referralsReleased = ReferralReleaseGate.isOpen;
 
 /**
  * The Sign-in & security section's passkeys while `login_passkeys` is on. An
@@ -286,12 +286,9 @@ const referralsReleased = ReferralFeatureFlagService.pipe(
  * an unavailable notice.
  */
 const loadPasskeySettings = Effect.fn(function* (accountId: CustomerAccountId) {
-  const passkeysEnabled = yield* accountFlag(
-    Effect.flatMap(
-      AccountFeatureFlagService,
-      (featureFlag) => featureFlag.isPasskeyEnabled
-    )
-  ).pipe(withOperation("account.passkeys-enabled"));
+  const passkeysEnabled = yield* accountFlag(PasskeyReleaseGate.isOpen).pipe(
+    withOperation("account.passkeys-enabled")
+  );
   if (!passkeysEnabled) return undefined;
   const passkeys = yield* Effect.flatMap(
     CustomerPasskeys,
@@ -369,9 +366,9 @@ const loadLinkedAccount = Effect.fn(function* (
   const history = yield* loadReservationHistory(account);
 
   // An unavailable avatar capability evaluation fails closed to hidden.
-  const avatarsEnabled = yield* accountFlag(accountAvatarsEnabled).pipe(
-    withOperation("account.avatars-enabled")
-  );
+  const avatarsEnabled = yield* accountFlag(
+    AccountAvatarReleaseGate.isOpen
+  ).pipe(withOperation("account.avatars-enabled"));
   let avatar: CustomerAvatarPresentation = { kind: "hidden" };
   if (avatarsEnabled) {
     // A media outage never blocks the account page: an avatar read failure

@@ -9,7 +9,7 @@ import {
   discountIdSchema,
 } from "@/features/discounts/contracts";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
-import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
+import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
 import { CheckoutPricingServiceMock } from "./checkout-pricing.service.mock";
 
 mock.module("server-only", () => ({}));
@@ -51,7 +51,7 @@ describe("buildAdvertisedPrice", () => {
       Effect.provide(
         Layer.merge(
           CheckoutPricingServiceMock({ quoteAdvertisement }),
-          OfficeReservationFeatureFlagService.Default.pipe(
+          OfficeReleaseGate.Default.pipe(
             Layer.provide(
               WorkspaceFeatureFlagServiceMock({
                 isEnabled: mock(() => Effect.succeed(false)),
@@ -120,7 +120,7 @@ describe("buildAdvertisedPrice", () => {
       Effect.provide(
         Layer.merge(
           CheckoutPricingServiceMock({ quoteAdvertisement }),
-          OfficeReservationFeatureFlagService.Default.pipe(
+          OfficeReleaseGate.Default.pipe(
             Layer.provide(
               WorkspaceFeatureFlagServiceMock({
                 isEnabled: () => Effect.sync(evaluateOfficeReservationsEnabled),
@@ -184,7 +184,7 @@ describe("buildAdvertisedPrice", () => {
       Effect.provide(
         Layer.merge(
           CheckoutPricingServiceMock({ quoteAdvertisement }),
-          OfficeReservationFeatureFlagService.Default.pipe(
+          OfficeReleaseGate.Default.pipe(
             Layer.provide(
               WorkspaceFeatureFlagServiceMock({
                 isEnabled: () => Effect.succeed(false),

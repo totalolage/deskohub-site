@@ -3,6 +3,7 @@ import { testEmailAddress } from "@deskohub/test-email";
 import { Effect } from "effect";
 import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { buildCoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
+import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
 import { instantStringSchema } from "@/shared/utils/temporal";
 
 const testEmailAddressForAda = testEmailAddress("ada");
@@ -22,12 +23,15 @@ mock.module("next/server", () => ({
 let officePageEnabled = true;
 const isOfficePageEnabled = mock(() => Promise.resolve(officePageEnabled));
 const officeFeatureFlag = await import(
-  "@/features/office/backend/office-reservation-feature-flag.server"
+  "@/features/office/backend/office-release-gate.server"
 );
-mock.module(
-  "@/features/office/backend/office-reservation-feature-flag.server",
-  () => ({ ...officeFeatureFlag, isOfficePageEnabled })
-);
+mock.module("@/features/office/backend/office-release-gate.server", () => ({
+  ...officeFeatureFlag,
+  isOfficePageEnabled,
+  OfficeReleaseGateRequest: OfficeReleaseGate.fromEvaluation(
+    Effect.promise(isOfficePageEnabled)
+  ),
+}));
 beforeEach(() => {
   officePageEnabled = true;
 });

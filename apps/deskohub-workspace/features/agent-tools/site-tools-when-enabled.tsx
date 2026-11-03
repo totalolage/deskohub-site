@@ -2,7 +2,7 @@ import "server-only";
 
 import { GlobalReleaseGate } from "@/features/feature-flags/components/global-release-gate";
 import type { Locale } from "@/features/i18n";
-import { areSiteToolsEnabled } from "./site-tools-feature-flag.server";
+import { areSiteToolsEnabled } from "./site-tools-release-gate.server";
 import { SiteToolsRegistrar } from "./webmcp/site-tools-registrar";
 
 /**

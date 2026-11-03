@@ -39,7 +39,7 @@ import { getAccountPath } from "@/features/account/routes";
 import type { Locale } from "@/features/i18n";
 import { locales, m } from "@/features/i18n";
 import { ReferralService } from "@/features/referrals";
-import { ReferralFeatureFlagRequest } from "@/features/referrals/referral-feature-flag.server";
+import { ReferralReleaseGateRequest } from "@/features/referrals/referral-release-gate.server";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import { ReferralSignupIntentRepository } from "@/features/referrals/signup-intent.repository";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
@@ -183,7 +183,7 @@ const completeCustomerProfileAction = defineWorkspaceAction(
     return outcome.status === "completed" && outcome.referral
       ? { status: "completed" as const, referral: outcome.referral }
       : { status: "completed" as const };
-  }, Effect.provide(ReferralFeatureFlagRequest))
+  }, Effect.provide(ReferralReleaseGateRequest))
 );
 
 const updateCustomerProfileAction = defineWorkspaceAction(
@@ -195,7 +195,7 @@ const updateCustomerProfileAction = defineWorkspaceAction(
   (input, { locale }) =>
     Effect.as(saveCustomerProfile(input, undefined, locale), {
       status: "updated" as const,
-    }).pipe(Effect.provide(ReferralFeatureFlagRequest))
+    }).pipe(Effect.provide(ReferralReleaseGateRequest))
 );
 
 const acknowledgeSignupReferralNoticeSchema = Schema.toStandardSchemaV1(
@@ -235,7 +235,7 @@ const acknowledgeSignupReferralNoticeAction = defineWorkspaceAction(
           )
         )
       )
-    ).pipe(Effect.provide(ReferralFeatureFlagRequest))
+    ).pipe(Effect.provide(ReferralReleaseGateRequest))
 );
 
 const updateLocalePreferenceAction = defineWorkspaceAction(
