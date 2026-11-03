@@ -3,12 +3,18 @@ import "server-only";
 import { Effect, Option } from "effect";
 import { connection } from "next/server";
 import type { ReactNode } from "react";
+import type {
+  AdvertisedPriceRequest,
+  PreloadedAdvertisedPrice,
+} from "@/features/checkout/advertised-price";
 import {
   openPayState,
   payStateContinuesOn,
   payStateTokenQueryParam,
 } from "@/features/checkout/backend/checkout";
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
+import { PublicOfferingsStructuredData } from "@/features/checkout/components/public-offerings-structured-data";
+import type { PublicPriceListOffering } from "@/features/checkout/public-offerings";
 import {
   type CanonicalPromotionCode,
   discountCodeQueryParam,
@@ -25,12 +31,26 @@ import { publicPageDefinitions } from "@/features/public-pages/public-page-defin
 import type { PublicPagePathname } from "@/features/public-pages/public-pages";
 import { checkoutContactReturnState } from "@/features/reservation/backend/checkout-contact-return-state";
 import { loadReservationCheckoutAccount } from "@/features/reservation/backend/reservation-existing-customer.server";
+import { ReservationPagePreloads } from "@/features/reservation/backend/reservation-page-preloads.service";
 import {
   checkoutContactQueryParam,
   type ReservationCheckoutContact,
 } from "@/features/reservation/reservation-checkout-contact";
-import type { ReservationCheckoutAccount } from "@/features/reservation/reservation-existing-customer";
+import { getReservationCustomerQueryMode } from "@/features/reservation/reservation-checkout-query";
+import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
+import {
+  type CustomerLastReservationForKind,
+  getCheckoutAccountLastReservation,
+  getReservationCheckoutCustomerForm,
+  type ReservationCheckoutAccount,
+  type ReservationCheckoutCustomerForm,
+  type ReservationCheckoutFormValues,
+} from "@/features/reservation/reservation-existing-customer";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
+import type {
+  PreloadedWorkspaceAvailability,
+  WorkspaceAvailabilityQuery,
+} from "@/features/reservation/workspace-availability";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { getSearchParam, type SearchParamsRecord } from "@/shared/utils";
 import { ReservationPage } from "./reservation-page";
@@ -42,24 +62,78 @@ type ReservationForKind<Kind extends ReservationKind> = Extract<
   { readonly kind: Kind }
 >;
 
-type ReservationPageContext<Kind extends ReservationKind, PageData> = {
+/** What a page's family decides from, after the request loads. */
+type ReservationPageRequest<Kind extends ReservationKind, PageData> = {
   /** Who reaches the contact-details step. */
   readonly checkoutAccount: ReservationCheckoutAccount<Kind>;
   /** Contact details typed before an email verification that led here. */
   readonly checkoutContact?: ReservationCheckoutContact;
-  readonly checkoutSessionId?: CheckoutSessionId;
-  readonly initialReservation?: ReservationForKind<Kind>;
   readonly locale: Locale;
   /** Customer-independent data from the definition's `loadPageData`. */
   readonly pageData: PageData;
-  readonly replacementToken?: string;
+  /** The signed reservation a Pay return or edit link reopens. */
+  readonly restoredReservation?: RestoredReservation<Kind>;
   readonly searchParams: SearchParamsRecord;
   readonly submittedCode?: CanonicalPromotionCode;
 };
 
+type RestoredReservation<Kind extends ReservationKind> = {
+  readonly checkoutSessionId?: CheckoutSessionId;
+  readonly reservation: ReservationForKind<Kind>;
+  readonly replacementToken: string;
+  readonly submittedCode?: CanonicalPromotionCode;
+};
+
+/** The page inputs every family step can read. */
+type ReservationPageScope<PageData> = {
+  readonly locale: Locale;
+  readonly pageData: PageData;
+  readonly submittedCode?: CanonicalPromotionCode;
+  /** The Prague workspace date the server renders on. */
+  readonly today: string;
+};
+
+/** What a signed reservation reopens on its family's page. */
+export type ReservationPageRestoration<Values> =
+  /** The signed selection, with any selection the URL names beside it. */
+  | { readonly kind: "restored"; readonly values: Values }
+  /**
+   * The signed reservation can't reopen the form, as once its interval has
+   * ended. The page opens as a link without a selection would, keeping the
+   * checkout it continues.
+   */
+  | { readonly kind: "ended" }
+  /** The signed offer no longer exists; the page shows `content` instead. */
+  | { readonly kind: "replaced"; readonly content: ReactNode };
+
+/** The data a family's form opens with. */
+export type ReservationPageForm<PageData, Values> = {
+  readonly checkoutCustomer: ReservationCheckoutCustomerForm;
+  readonly checkoutSessionId?: CheckoutSessionId;
+  readonly initialAdvertisedPrices: ReadonlyArray<PreloadedAdvertisedPrice>;
+  readonly initialAvailability: ReadonlyArray<PreloadedWorkspaceAvailability>;
+  readonly initialValues: Values;
+  readonly locale: Locale;
+  readonly pageData: PageData;
+  readonly replacementToken?: string;
+  readonly submittedCode?: CanonicalPromotionCode;
+  readonly today: string;
+};
+
+/** What a reservation page renders inside its content boundary. */
+type ReservationPageContent<PageData, Values> =
+  | {
+      readonly kind: "form";
+      readonly form: ReservationPageForm<PageData, Values>;
+      /** The offerings the page's structured data lists. */
+      readonly offerings: ReadonlyArray<PublicPriceListOffering>;
+    }
+  | { readonly kind: "replaced"; readonly content: ReactNode };
+
 type ReservationPageDefinition<
   Kind extends ReservationKind,
-  PageData = undefined,
+  PageData,
+  Values extends ReservationCheckoutFormValues,
 > = {
   /**
    * The pages above this one, ending with it, when a landing page leads
@@ -75,9 +149,48 @@ type ReservationPageDefinition<
    * description and release gate.
    */
   readonly pathname: PublicPagePathname;
-  readonly render: (
-    context: ReservationPageContext<Kind, PageData>
-  ) => ReactNode | Promise<ReactNode>;
+  /**
+   * Whether a link's contact parameters (name, email, phone) open the
+   * contact-details step on that contact. Without them only an explicit
+   * `customer` parameter chooses the mode.
+   */
+  readonly prefillsContact: boolean;
+  /**
+   * The form values a link opens with, filled from the customer's last
+   * reservation of the family where the family allows. A signed reservation
+   * that can't reopen the form reads an empty link.
+   */
+  readonly read: (
+    searchParams: SearchParamsRecord,
+    scope: ReservationPageScope<PageData> & {
+      readonly lastReservation:
+        | CustomerLastReservationForKind<Kind>
+        | undefined;
+    }
+  ) => Effect.Effect<Values>;
+  /** What a signed reservation reopens, with the URL beside its token. */
+  readonly restore: (
+    reservation: ReservationForKind<Kind>,
+    searchParams: SearchParamsRecord,
+    scope: ReservationPageScope<PageData>
+  ) => ReservationPageRestoration<Values>;
+  /** The prices and availability the form reads first for its values. */
+  readonly preload: (
+    values: Values,
+    scope: ReservationPageScope<PageData>
+  ) => {
+    readonly advertisedPrices: ReadonlyArray<AdvertisedPriceRequest>;
+    readonly availability: ReadonlyArray<WorkspaceAvailabilityQuery>;
+  };
+  /** The offerings the structured data lists, priced from the preload. */
+  readonly offerings: (
+    values: Values,
+    advertisedPrices: ReadonlyArray<PreloadedAdvertisedPrice>,
+    scope: ReservationPageScope<PageData>
+  ) => ReadonlyArray<PublicPriceListOffering>;
+  readonly renderForm: (
+    form: ReservationPageForm<PageData, Values>
+  ) => ReactNode;
 } & ([PageData] extends [undefined]
   ? { readonly loadPageData?: undefined }
   : {
@@ -113,12 +226,12 @@ export const loadRestoredReservation = Effect.fn(
 
   return {
     checkoutSessionId: payState.checkoutSessionId,
-    initialReservation: payState.reservation as ReservationForKind<Kind>,
+    reservation: payState.reservation as ReservationForKind<Kind>,
     replacementToken: token,
     // Restored requested intent (or the applied code on older tokens) wins
     // over a fresh public discount-code query parameter.
     submittedCode: payState.requestedDiscountCode ?? payState.submittedCode,
-  };
+  } satisfies RestoredReservation<Kind>;
 });
 
 /**
@@ -135,8 +248,9 @@ const loadCheckoutContact = (token: string | undefined) =>
 
 export function createReservationPage<
   const Kind extends ReservationKind,
+  Values extends ReservationCheckoutFormValues,
   PageData = undefined,
->(definition: ReservationPageDefinition<Kind, PageData>) {
+>(definition: ReservationPageDefinition<Kind, PageData, Values>) {
   const generateMetadata = publicPageMetadata(definition.pathname);
 
   async function Page({ searchParams }: LocalizedReservationPageProps) {
@@ -147,7 +261,7 @@ export function createReservationPage<
         locale={locale}
         title={publicPageDefinitions[definition.pathname].title({}, { locale })}
       >
-        <ReservationPageContent
+        <ReservationPageRequestContent
           definition={definition}
           searchParams={searchParams}
         />
@@ -155,14 +269,27 @@ export function createReservationPage<
     ));
   }
 
-  return { generateMetadata, Page };
+  return {
+    generateMetadata,
+    /**
+     * The content the page renders for a loaded request, before it becomes
+     * elements. The page provides the live preloads.
+     */
+    loadContent: (request: ReservationPageRequest<Kind, PageData>) =>
+      loadReservationPageContent(definition, request),
+    Page,
+  };
 }
 
-async function ReservationPageContent<Kind extends ReservationKind, PageData>({
+async function ReservationPageRequestContent<
+  Kind extends ReservationKind,
+  PageData,
+  Values extends ReservationCheckoutFormValues,
+>({
   definition,
   searchParams,
 }: {
-  readonly definition: ReservationPageDefinition<Kind, PageData>;
+  readonly definition: ReservationPageDefinition<Kind, PageData, Values>;
   readonly searchParams: Promise<SearchParamsRecord>;
 }) {
   await connection();
@@ -181,7 +308,6 @@ async function ReservationPageContent<Kind extends ReservationKind, PageData>({
       Effect.orElseSucceed(() => Option.none()),
       runWorkspaceEffect(`reservation.${definition.kind}.normalize-code`)
     );
-    const submittedCode = Option.getOrUndefined(normalizedCode);
     // None of these depends on another: the restored reservation and the
     // checkout contact read only their sealed tokens, the checkout account
     // only the session, and the page data neither. Every step before render
@@ -202,15 +328,132 @@ async function ReservationPageContent<Kind extends ReservationKind, PageData>({
         definition.loadPageData?.(),
       ]);
 
-    return definition.render({
+    const content = await loadReservationPageContent(definition, {
       checkoutAccount,
       checkoutContact,
       locale,
       // A definition without a loader has `undefined` page data.
       pageData: pageData as PageData,
+      restoredReservation,
       searchParams: resolvedSearchParams,
-      submittedCode,
-      ...restoredReservation,
-    });
+      // A restored checkout keeps its own discount intent, even none.
+      submittedCode: restoredReservation
+        ? restoredReservation.submittedCode
+        : Option.getOrUndefined(normalizedCode),
+    }).pipe(
+      Effect.provide(ReservationPagePreloads.Default),
+      runWorkspaceEffect(`reservation.${definition.kind}.load-content`, {
+        boundary: "page",
+      })
+    );
+
+    if (content.kind === "replaced") return content.content;
+    return (
+      <>
+        <PublicOfferingsStructuredData
+          locale={locale}
+          offerings={content.offerings}
+        />
+        {definition.renderForm(content.form)}
+      </>
+    );
   });
 }
+
+/**
+ * The reservation page recipe: the family's selection, restored or read from
+ * the link, the contact-details step, both preloads side by side, and the
+ * offerings priced from them.
+ */
+const loadReservationPageContent = Effect.fn("reservationPage.loadContent")(
+  function* <
+    Kind extends ReservationKind,
+    PageData,
+    Values extends ReservationCheckoutFormValues,
+  >(
+    definition: ReservationPageDefinition<Kind, PageData, Values>,
+    request: ReservationPageRequest<Kind, PageData>
+  ) {
+    const { checkoutAccount, locale, pageData, restoredReservation } = request;
+    const scope: ReservationPageScope<PageData> = {
+      locale,
+      pageData,
+      submittedCode: request.submittedCode,
+      today: getCurrentWorkspaceDate().toString(),
+    };
+    const restoration =
+      restoredReservation &&
+      definition.restore(
+        restoredReservation.reservation,
+        request.searchParams,
+        scope
+      );
+    if (restoration?.kind === "replaced") {
+      return {
+        kind: "replaced",
+        content: restoration.content,
+      } satisfies ReservationPageContent<PageData, Values>;
+    }
+
+    // A signed reservation decides the page even once it can't reopen the
+    // form: its fallback reads no public query values, neither a selection
+    // nor a contact mode.
+    const values =
+      restoration?.kind === "restored"
+        ? restoration.values
+        : yield* definition.read(
+            restoredReservation ? {} : request.searchParams,
+            {
+              ...scope,
+              lastReservation:
+                getCheckoutAccountLastReservation(checkoutAccount),
+            }
+          );
+    const { checkoutCustomer, initialValues } =
+      getReservationCheckoutCustomerForm({
+        account: checkoutAccount,
+        checkoutContact: request.checkoutContact,
+        queryMode: restoredReservation
+          ? undefined
+          : getReservationCustomerQueryMode(request.searchParams, {
+              prefillsContact: definition.prefillsContact,
+            }),
+        restored: restoration?.kind === "restored",
+        values,
+      });
+
+    const preload = definition.preload(initialValues, scope);
+    const preloads = yield* ReservationPagePreloads;
+    const [initialAdvertisedPrices, initialAvailability] = yield* Effect.all(
+      [
+        preloads.advertisedPrices(preload.advertisedPrices),
+        preloads.availability({
+          queries: preload.availability,
+          replacementToken: restoredReservation?.replacementToken,
+        }),
+      ],
+      { concurrency: "unbounded" }
+    );
+
+    return {
+      kind: "form",
+      form: {
+        checkoutCustomer,
+        checkoutSessionId: restoredReservation?.checkoutSessionId,
+        initialAdvertisedPrices,
+        initialAvailability,
+        initialValues,
+        locale,
+        pageData,
+        replacementToken: restoredReservation?.replacementToken,
+        submittedCode: scope.submittedCode,
+        today: scope.today,
+      },
+      offerings: definition.offerings(
+        initialValues,
+        initialAdvertisedPrices,
+        scope
+      ),
+    } satisfies ReservationPageContent<PageData, Values>;
+  }
+);
