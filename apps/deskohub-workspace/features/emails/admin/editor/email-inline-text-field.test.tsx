@@ -505,3 +505,42 @@ test("keeps copied value chips and formatting when pasted into a rich text", asy
     { _tag: "Text", text: "dál", italic: true },
   ]);
 });
+
+test("shows the new text when the field switches to another text", async () => {
+  const values = {
+    translations: {
+      [contentLocale]: {
+        subject: [{ _tag: "Text", text: "Předmět" }],
+        preheader: [{ _tag: "Text", text: "Úvod", italic: true }],
+      },
+    },
+  } satisfies EmailDraftFormValues;
+  let form: DraftForm | undefined;
+  const field = (target: "subject" | "preheader") => (
+    <Host
+      defaultValues={values}
+      onForm={(next) => {
+        form = next;
+      }}
+    >
+      <EmailInlineTextField
+        contentLocale={contentLocale}
+        fieldId={subjectId}
+        label="Text"
+        mode="rich"
+        target={{ kind: target }}
+      />
+    </Host>
+  );
+  const view = render(field("subject"));
+  const textbox = () => view.getByRole("textbox", { name: "Text" });
+  await waitFor(() => expect(textbox().textContent).toBe("Předmět"));
+
+  view.rerender(field("preheader"));
+
+  await waitFor(() => expect(textbox().textContent).toBe("Úvod"));
+  expect(textbox().querySelector("em")?.textContent).toBe("Úvod");
+  expect(form?.getValues(`translations.${contentLocale}`)).toEqual(
+    values.translations[contentLocale]
+  );
+});
