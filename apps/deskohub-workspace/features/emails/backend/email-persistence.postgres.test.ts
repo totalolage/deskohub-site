@@ -267,7 +267,7 @@ describe.skipIf(!database)(
       await expect(
         run(
           Effect.flatMap(EmailRecipientPersistence, (service) =>
-            service.finish(preparation.id, "ready")
+            service.finish(preparation.id, { state: "ready" })
           )
         )
       ).rejects.toThrow();
@@ -340,7 +340,7 @@ describe.skipIf(!database)(
       ).rejects.toThrow("not required");
       await run(
         Effect.flatMap(EmailRecipientPersistence, (service) =>
-          service.finish(preparation.id, "ready")
+          service.finish(preparation.id, { state: "ready" })
         )
       );
       await run(
@@ -418,7 +418,7 @@ describe.skipIf(!database)(
       await expect(
         run(
           Effect.flatMap(EmailRecipientPersistence, (service) =>
-            service.finish(preparation.id, "ready")
+            service.finish(preparation.id, { state: "ready" })
           )
         )
       ).rejects.toThrow();
@@ -432,7 +432,7 @@ describe.skipIf(!database)(
       );
       await run(
         Effect.flatMap(EmailRecipientPersistence, (service) =>
-          service.finish(preparation.id, "ready")
+          service.finish(preparation.id, { state: "ready" })
         )
       );
     });
@@ -477,7 +477,7 @@ describe.skipIf(!database)(
       );
       await run(
         Effect.flatMap(EmailRecipientPersistence, (service) =>
-          service.finish(preparation.id, "ready")
+          service.finish(preparation.id, { state: "ready" })
         )
       );
       const descriptor = emailCustomerFieldAtPath(
@@ -566,7 +566,12 @@ describe.skipIf(!database)(
         );
         await run(
           Effect.flatMap(EmailRecipientPersistence, (service) =>
-            service.finish(preparation.id, state)
+            service.finish(
+              preparation.id,
+              state === "failed"
+                ? { state, reason: "customer-rejected" }
+                : { state: "skipped", reason: "missing-value" }
+            )
           )
         );
         await expect(
@@ -601,7 +606,7 @@ describe.skipIf(!database)(
       );
       await run(
         Effect.flatMap(EmailRecipientPersistence, (service) =>
-          service.finish(preparation.id, "ready")
+          service.finish(preparation.id, { state: "ready" })
         )
       );
       await run(

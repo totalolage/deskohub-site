@@ -19,6 +19,8 @@ import {
   Predicate,
   Schema,
 } from "effect";
+import { AdministrationService } from "@/features/administration/administration.service";
+import { DiscountAdministration } from "@/features/discounts/admin/discount-administration.service";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import {
   CustomerValueMissing,
@@ -147,7 +149,38 @@ export class CustomerValues extends Context.Service<
     })
   );
 
+  /** Administrator reads, for previews of a real customer. */
   static Live = this.Default.pipe(Layer.provide(CustomerValueSource.Live));
+
+  // The variants below build `Default` fresh: layers memoize by reference, so
+  // sharing it would let one runtime reuse the administrator-checked build.
+
+  /** Trusted server-side reads for recipient preparation; see `CustomerValueSource.Delivery`. */
+  static Delivery = Layer.fresh(this.Default).pipe(
+    Layer.provide(CustomerValueSource.Delivery)
+  );
+
+  static DeliveryLive = this.Delivery.pipe(
+    Layer.provide(
+      Layer.mergeAll(DiscountAdministration.Live, AdministrationService.Live)
+    )
+  );
+
+  /** Resolves against a synthetic customer, so a sample reads no customer data. */
+  static Synthetic = (customer: AdministrationCustomerDetail) =>
+    Layer.fresh(this.Default).pipe(
+      Layer.provide(
+        Layer.succeed(CustomerValueSource, {
+          profile: () =>
+            Effect.fromNullishOr(customer.profile).pipe(
+              Effect.mapError(
+                () => new CustomerValueMissing({ reason: "customer-not-found" })
+              )
+            ),
+          activity: () => Effect.succeed(customer.activity),
+        })
+      )
+    );
 }
 
 const validateDefinitionHistory = (

@@ -15,6 +15,7 @@ import { WorkspaceReservationDetailsMalformedError } from "@/features/reservatio
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { CustomerValueSource } from "./customer-value-source.service";
+import { CustomerValues } from "./customer-values.service";
 
 const customerId = "synthetic-customer";
 const actor = {
@@ -118,6 +119,82 @@ describe("CustomerValueSource", () => {
       failure: { _tag: "CustomerValueUnauthorized" },
     });
     expect(calls).toBe(1);
+  });
+
+  test("delivery reads need no request actor and never consult administrator grants", async () => {
+    let grantChecks = 0;
+    const layer = CustomerValueSource.Delivery.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(DiscountAdministration, {
+            loadCustomerProfile: () => Effect.succeed(profile),
+          } as never),
+          Layer.mock(AdministrationService, {
+            loadCustomerActivityStrict: () => Effect.succeed(activity),
+          } as never)
+        )
+      )
+    );
+    expect(await runProfile(layer as never, false)).toMatchObject({
+      _tag: "Success",
+    });
+    // The administrator layer still refuses the same anonymous read.
+    const administrator = sourceLayer({
+      allowed: () => {
+        grantChecks++;
+        return true;
+      },
+    });
+    expect(await runProfile(administrator, false)).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "CustomerValueUnauthorized" },
+    });
+    expect(grantChecks).toBe(0);
+  });
+
+  test("one runtime keeps administrator reads checked while its delivery reads need no actor", async () => {
+    const dependencies = Layer.mergeAll(
+      Layer.mock(AccountRoleGrants, { has: () => Effect.succeed(true) }),
+      Layer.mock(DiscountAdministration, {
+        loadCustomerProfile: () => Effect.succeed(profile),
+      } as never),
+      Layer.mock(AdministrationService, {
+        loadCustomerActivityStrict: () => Effect.succeed(activity),
+      } as never)
+    );
+    const resolve = Effect.flatMap(CustomerValues, (values) =>
+      values.resolve({
+        customerId,
+        definition: {
+          name: "contact",
+          source: { kind: "customer", path: ["profile", "customer", "email"] },
+        },
+        locale: "en-US",
+      })
+    ).pipe(Effect.result);
+    const [before, delivery, after] = await Effect.all([
+      resolve,
+      resolve.pipe(Effect.provide(CustomerValues.Delivery)),
+      resolve,
+    ]).pipe(
+      Effect.provide(
+        CustomerValues.Default.pipe(Layer.provide(CustomerValueSource.Default))
+      ),
+      Effect.provide(dependencies),
+      Effect.runPromise
+    );
+    expect(before).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "CustomerValueUnauthorized" },
+    });
+    expect(delivery).toMatchObject({
+      _tag: "Success",
+      success: profile.customer.email,
+    });
+    expect(after).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "CustomerValueUnauthorized" },
+    });
   });
 
   test("reads the real administration profile path with synthetic Dotypos and storage", async () => {
