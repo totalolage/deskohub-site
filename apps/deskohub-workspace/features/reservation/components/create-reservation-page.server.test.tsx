@@ -416,7 +416,9 @@ test("reopens the contact details sealed into a sign-in's return path", async ()
     marketingConsent: true,
   } as const;
   const token = await Effect.runPromise(
-    checkoutContactReturnState.seal(contact)
+    checkoutContactReturnState
+      .seal(contact)
+      .pipe(Effect.provide(TestSealedStateKeys))
   );
   const family = createPreloadFreeFamily();
   const pageDefinition = createReservationPage(family);
