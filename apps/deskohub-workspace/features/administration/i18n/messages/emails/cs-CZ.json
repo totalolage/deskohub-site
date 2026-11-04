@@ -29,6 +29,18 @@
   "emailsEditorPreheaderLabel": "Text náhledu",
   "emailsEditorOperationalReasonLabel": "Proč zákazník tento e-mail dostává",
   "emailsEditorInlineToolbarLabel": "Formátování textu",
+  "emailsEditorInlineBold": "Tučně",
+  "emailsEditorInlineItalic": "Kurzíva",
+  "emailsEditorInlineLink": "Odkaz",
+  "emailsEditorInlineLinkRemove": "Odebrat odkaz",
+  "emailsEditorInlineLinkNone": "Nejprve do tohoto bloku přidejte cíl odkazu, potom na něj můžete text odkázat.",
+  "emailsEditorInlineValueInsert": "Vložit hodnotu",
+  "emailsEditorInlineValueSearch": "Hledat hodnoty",
+  "emailsEditorInlineValueNone": "Nejprve definujte hodnotu, kterou chcete v tomto textu zobrazit.",
+  "emailsEditorInlineValueNoMatch": "Hledání neodpovídá žádná hodnota.",
+  "emailsEditorInlineValueDiscountCode": "Slevový kód",
+  "emailsEditorInlineValueDiscountExpiry": "Platnost slevového kódu",
+  "emailsEditorInlineValueMissing": "Tato hodnota už není definována.",
   "emailsEditorProblemsHeading": "Před zveřejněním",
   "emailsEditorProblemsCount": [
     {

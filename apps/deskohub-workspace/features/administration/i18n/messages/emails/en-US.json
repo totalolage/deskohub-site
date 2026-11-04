@@ -28,6 +28,18 @@
   "emailsEditorPreheaderLabel": "Preheader",
   "emailsEditorOperationalReasonLabel": "Why the customer receives this email",
   "emailsEditorInlineToolbarLabel": "Text formatting",
+  "emailsEditorInlineBold": "Bold",
+  "emailsEditorInlineItalic": "Italic",
+  "emailsEditorInlineLink": "Link",
+  "emailsEditorInlineLinkRemove": "Remove link",
+  "emailsEditorInlineLinkNone": "Add a link destination to this block first, then link text to it.",
+  "emailsEditorInlineValueInsert": "Insert value",
+  "emailsEditorInlineValueSearch": "Search values",
+  "emailsEditorInlineValueNone": "Define a value first to show it in this text.",
+  "emailsEditorInlineValueNoMatch": "No value matches your search.",
+  "emailsEditorInlineValueDiscountCode": "Discount code",
+  "emailsEditorInlineValueDiscountExpiry": "Discount code expiry",
+  "emailsEditorInlineValueMissing": "This value is no longer defined.",
   "emailsEditorProblemsHeading": "Before publishing",
   "emailsEditorProblemsCount": [
     {

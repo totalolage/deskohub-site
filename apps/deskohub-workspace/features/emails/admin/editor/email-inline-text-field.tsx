@@ -1,12 +1,29 @@
 "use client";
 
-// CONTRACT STUB: the inline-text clone replaces this implementation with a
-// TipTap editor; the props below are the stable contract.
-
+import { EditorContent, useEditor } from "@tiptap/react";
+import { useEffect, useId, useMemo, useRef } from "react";
+import { useWatch } from "react-hook-form";
+import { m } from "@/features/administration/i18n";
+import { useRouteLocale } from "@/features/i18n/route-locale";
+import { cn } from "@/shared/utils";
+import type { EmailDraftInlineParts } from "./email-draft-form";
+import { useEmailDraftForm } from "./email-draft-form";
 import {
   EmailFieldProblems,
   useEmailFieldProblems,
 } from "./email-editor-context";
+import {
+  emailInlinePartsEqual,
+  emailInlinePartsToTipTap,
+  normalizeEmailInlineParts,
+  tipTapToEmailInlineParts,
+  unformattedEmailInlineParts,
+} from "./email-inline-parts";
+import {
+  emailInlineTextExtensions,
+  setEmailInlineValueNames,
+} from "./email-inline-text-extensions";
+import { EmailInlineTextToolbar } from "./email-inline-text-toolbar";
 import {
   type EmailTranslatedTextTarget,
   useEmailTranslatedText,
@@ -32,35 +49,179 @@ export type EmailInlineTextFieldProps = {
   readonly links?: Readonly<Record<string, string>>;
 };
 
-/** One translated text, edited inline. */
+const noLinks: Readonly<Record<string, string>> = {};
+
+/** The text as its editor shows it: plain texts drop any formatting. */
+const editorParts = (
+  parts: EmailDraftInlineParts,
+  mode: "rich" | "plain"
+): EmailDraftInlineParts =>
+  mode === "rich"
+    ? normalizeEmailInlineParts(parts)
+    : unformattedEmailInlineParts(parts);
+
+/** The editable element's attributes; PM writes every given value. */
+const editorAttributes = ({
+  contentLocale,
+  describedBy,
+  fieldId,
+  invalid,
+  labelId,
+}: {
+  readonly contentLocale: string;
+  readonly describedBy: string | undefined;
+  readonly fieldId: string;
+  readonly invalid: boolean;
+  readonly labelId: string;
+}): Record<string, string> => ({
+  id: fieldId,
+  lang: contentLocale,
+  role: "textbox",
+  "aria-labelledby": labelId,
+  "aria-multiline": "false",
+  ...(invalid && { "aria-invalid": "true" }),
+  ...(describedBy && { "aria-describedby": describedBy }),
+  class:
+    "min-h-8 px-2 py-1 text-navy-blue text-sm leading-6 focus:outline-none [&_p]:m-0",
+});
+
+/**
+ * One translated text, edited inline: a single line of text and value
+ * references, with bold, italic and the block's links in rich texts. The
+ * editor follows the form value, so a host `reset()` or another control's
+ * change shows at once.
+ */
 export function EmailInlineTextField({
   contentLocale,
   fieldId,
   hideLabel,
   label,
+  links = noLinks,
+  mode,
   target,
 }: EmailInlineTextFieldProps) {
+  const locale = useRouteLocale();
+  const labelId = useId();
+  const { control } = useEmailDraftForm();
   const [parts, setParts] = useEmailTranslatedText(contentLocale, target);
-  const { controlProps } = useEmailFieldProblems(fieldId);
-  const text = (parts ?? [])
-    .map((part) =>
-      part._tag === "Text" ? (part.text ?? "") : `{${part.name ?? ""}}`
+  const definitions = useWatch({ control, name: "values" }) ?? [];
+  const { invalid, describedBy } = useEmailFieldProblems(fieldId);
+  const missingValueLabel = m.emailsEditorInlineValueMissing({}, { locale });
+  const extensions = useMemo(
+    () => emailInlineTextExtensions({ mode, missingValueLabel }),
+    [mode, missingValueLabel]
+  );
+  const shown = editorParts(parts ?? [], mode);
+  const editor = useEditor(
+    {
+      extensions,
+      content: emailInlinePartsToTipTap(shown),
+      immediatelyRender: false,
+      shouldRerenderOnTransaction: false,
+      editorProps: {
+        attributes: editorAttributes({
+          contentLocale,
+          describedBy,
+          fieldId,
+          invalid,
+          labelId,
+        }),
+      },
+    },
+    // A mode change needs a new schema; everything else updates in place.
+    [extensions]
+  );
+
+  useEffect(() => {
+    editor?.setOptions({
+      editorProps: {
+        attributes: editorAttributes({
+          contentLocale,
+          describedBy,
+          fieldId,
+          invalid,
+          labelId,
+        }),
+      },
+    });
+  }, [editor, contentLocale, describedBy, fieldId, invalid, labelId]);
+
+  // The texts the editor wrote since the form value last reached it.
+  const written = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (!editor) return;
+    const write = () => {
+      // ProseMirror builds attributes as null-prototype objects, which a
+      // Server Action can't receive; a structured clone makes them plain.
+      const next = structuredClone(tipTapToEmailInlineParts(editor.getJSON()));
+      written.current.add(JSON.stringify(next));
+      setParts(next);
+    };
+    editor.on("update", write);
+    return () => {
+      editor.off("update", write);
+    };
+  }, [editor, setParts]);
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    // A value the editor wrote itself is no news, even when the editor has
+    // moved on since this render.
+    const echoed = written.current.has(JSON.stringify(shown));
+    written.current.clear();
+    if (echoed) return;
+    if (
+      emailInlinePartsEqual(tipTapToEmailInlineParts(editor.getJSON()), shown)
     )
-    .join("");
+      return;
+    // A change from outside replaces the text without writing it back, and
+    // leaves no undo step that would restore the replaced text.
+    editor
+      .chain()
+      .setMeta("addToHistory", false)
+      .setContent(emailInlinePartsToTipTap(shown), { emitUpdate: false })
+      .run();
+  }, [editor, shown]);
+
+  const definedNames = JSON.stringify(
+    definitions.flatMap((definition) =>
+      definition.name ? [definition.name] : []
+    )
+  );
+  useEffect(() => {
+    if (editor)
+      setEmailInlineValueNames(
+        editor,
+        new Set(JSON.parse(definedNames) as string[])
+      );
+  }, [editor, definedNames]);
+
   return (
     <div>
-      <label className={hideLabel ? "sr-only" : undefined} htmlFor={fieldId}>
+      <div
+        className={cn(
+          "mb-1 font-medium text-navy-blue text-sm",
+          hideLabel && "sr-only"
+        )}
+        id={labelId}
+      >
         {label}
-      </label>
-      <input
-        {...controlProps}
-        id={fieldId}
-        lang={contentLocale}
-        onChange={(event) =>
-          setParts([{ _tag: "Text", text: event.target.value }])
-        }
-        value={text}
-      />
+      </div>
+      <div
+        className={cn(
+          "flex items-start gap-1 rounded-md border bg-white pr-1 focus-within:ring-2 focus-within:ring-burned-orange/40",
+          invalid ? "border-burned-orange" : "border-navy-blue/20"
+        )}
+      >
+        <EditorContent className="min-h-8 min-w-0 flex-1" editor={editor} />
+        <EmailInlineTextToolbar
+          definitions={definitions}
+          editor={editor}
+          links={links}
+          mode={mode}
+        />
+      </div>
       <EmailFieldProblems fieldId={fieldId} />
     </div>
   );
