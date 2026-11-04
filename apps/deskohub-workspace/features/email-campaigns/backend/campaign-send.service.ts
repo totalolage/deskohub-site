@@ -1,6 +1,6 @@
 import "server-only";
 
-import { EmailServiceTag } from "@deskohub/email";
+import { type EmailMessage, EmailServiceTag } from "@deskohub/email";
 import { NodeCrypto } from "@effect/platform-node";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
@@ -28,21 +28,11 @@ import { type Locale, locales } from "@/features/i18n";
 import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { WorkspaceEmailLayer } from "@/shared/backend/config/email.config";
-import {
-  getWorkspaceRuntimeCallbackOrigin,
-  type WorkspaceUrlConfigError,
-} from "@/shared/backend/config/workspace-url.config";
+import type { WorkspaceUrlConfigError } from "@/shared/backend/config/workspace-url.config";
 import { currentInstant } from "@/shared/utils/temporal";
 import type { AudienceFilter } from "../audience-filter";
 import { hashCampaignContent } from "../body/campaign-content-hash";
-import {
-  CampaignEmailFooter,
-  renderCampaignEmail,
-} from "../body/render-campaign-email";
-import {
-  campaignTestMessage,
-  type RenderedCampaignEmail,
-} from "../campaign-email-message";
+import { CampaignEmailOccasion, campaignEmailMessage } from "../campaign-email";
 import type {
   CampaignAudienceId,
   CampaignConfirmationCode,
@@ -307,52 +297,42 @@ export class CampaignSendService extends Context.Service<
             )
           );
 
-      /** One `[TEST]` email per content locale, each with the new code. */
-      const renderTestEmails = (input: {
+      /**
+       * One `[TEST]` email per recipient and content locale, each with the
+       * new code. All are rendered before any is sent.
+       */
+      const testEmails = (input: {
         readonly campaign: CampaignRow;
+        readonly recipients: readonly string[];
         readonly contentLocales: readonly Locale[];
         readonly issued: { readonly code: CampaignConfirmationCode };
       }) =>
-        getWorkspaceRuntimeCallbackOrigin.pipe(
-          Effect.map((origin) => new URL("/account/legal", origin).href),
-          Effect.flatMap((preferencesPreviewUrl) =>
-            Effect.forEach(input.contentLocales, (locale) =>
-              renderCampaignEmail({
-                templateKey: input.campaign.templateKey,
-                locale,
-                content: input.campaign.content[locale]!,
-                footer:
-                  input.campaign.purpose === "marketing"
-                    ? CampaignEmailFooter.Marketing({
-                        marketingPreferencesUrl: preferencesPreviewUrl,
-                      })
-                    : CampaignEmailFooter.Operational(),
-                confirmationCode: input.issued.code,
-              })
-            ).pipe(
-              Effect.mapError(
-                (cause) => new CampaignEmailDeliveryFailed({ cause })
-              )
-            )
+        Effect.forEach(input.recipients, (to) =>
+          Effect.forEach(input.contentLocales, (locale) =>
+            campaignEmailMessage({
+              templateKey: input.campaign.templateKey,
+              locale,
+              content: input.campaign.content[locale]!,
+              occasion: CampaignEmailOccasion.Test({
+                to,
+                purpose: input.campaign.purpose,
+                code: input.issued.code,
+              }),
+              sender: config,
+              deploymentEnvironment: config.deploymentEnvironment,
+            })
+          )
+        ).pipe(
+          Effect.map(Arr.flatten),
+          Effect.catchTag("EmailServiceError", (cause) =>
+            Effect.fail(new CampaignEmailDeliveryFailed({ cause }))
           )
         );
 
       const mailTestEmails = (input: {
-        readonly recipients: readonly string[];
-        readonly emails: readonly RenderedCampaignEmail[];
+        readonly emails: readonly EmailMessage[];
       }) =>
-        Effect.forEach(input.recipients, (to) =>
-          Effect.forEach(input.emails, (rendered) =>
-            email.send(
-              campaignTestMessage({
-                sender: config,
-                to,
-                email: rendered,
-                deploymentEnvironment: config.deploymentEnvironment,
-              })
-            )
-          )
-        ).pipe(
+        Effect.forEach(input.emails, (message) => email.send(message)).pipe(
           Effect.mapError((cause) => new CampaignEmailDeliveryFailed({ cause }))
         );
 
@@ -542,7 +522,7 @@ export class CampaignSendService extends Context.Service<
             ),
             Effect.tap(ensureContentCoversAudience),
             Effect.bind("issued", ({ campaign }) => issueTestCode(campaign)),
-            Effect.bind("emails", renderTestEmails),
+            Effect.bind("emails", testEmails),
             Effect.tap(mailTestEmails),
             Effect.map(
               ({ recipients, contentLocales, issued }): CampaignTestSend => ({
