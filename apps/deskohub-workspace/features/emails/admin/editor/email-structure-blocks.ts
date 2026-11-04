@@ -29,55 +29,63 @@ export const emailBlockChoices = [
 
 const textKey = () => newEmailEditorKey("text");
 
+/** A block whose only setting is its id; the author picks the rest. */
+const newBareBlock = (
+  tag: "Divider" | "Spacer" | "Record" | "List"
+): EmailDraftComponent => ({
+  _tag: tag,
+  id: newEmailEditorKey(tag.toLowerCase()),
+});
+
+/** A block with a label to write, such as a button's. */
+const newLabelledBlock = (tag: "Button" | "Offer"): EmailDraftComponent => ({
+  _tag: tag,
+  id: newEmailEditorKey(tag.toLowerCase()),
+  labelKey: textKey(),
+});
+
+/** A text list with one empty item, numbered or bulleted. */
+const newTextList = (ordered: boolean): EmailDraftComponent => ({
+  _tag: "TextList",
+  id: newEmailEditorKey("textlist"),
+  ordered,
+  items: [{ textKey: textKey() }],
+});
+
+/** How to start a new block of each choice. */
+const newBlockOfChoice = {
+  Paragraph: () => ({
+    _tag: "Paragraph",
+    id: newEmailEditorKey("paragraph"),
+    textKey: textKey(),
+  }),
+  Heading: () => ({
+    _tag: "Heading",
+    id: newEmailEditorKey("heading"),
+    textKey: textKey(),
+    level: 2,
+  }),
+  BulletedList: () => newTextList(false),
+  NumberedList: () => newTextList(true),
+  Divider: () => newBareBlock("Divider"),
+  Spacer: () => newBareBlock("Spacer"),
+  Image: () => ({
+    _tag: "Image",
+    id: newEmailEditorKey("image"),
+    altKey: textKey(),
+  }),
+  Button: () => newLabelledBlock("Button"),
+  Record: () => newBareBlock("Record"),
+  List: () => newBareBlock("List"),
+  Offer: () => newLabelledBlock("Offer"),
+} satisfies Record<EmailBlockChoice, () => EmailDraftComponent>;
+
 /**
  * A new block of `choice` with a fresh id and fresh text keys. Settings the
  * author must choose, such as an image or a value, start unset.
  */
-export const newEmailBlock = (
-  choice: EmailBlockChoice
-): EmailDraftComponent => {
-  switch (choice) {
-    case "Paragraph":
-      return {
-        _tag: "Paragraph",
-        id: newEmailEditorKey("paragraph"),
-        textKey: textKey(),
-      };
-    case "Heading":
-      return {
-        _tag: "Heading",
-        id: newEmailEditorKey("heading"),
-        textKey: textKey(),
-        level: 2,
-      };
-    case "BulletedList":
-    case "NumberedList":
-      return {
-        _tag: "TextList",
-        id: newEmailEditorKey("textlist"),
-        ordered: choice === "NumberedList",
-        items: [{ textKey: textKey() }],
-      };
-    case "Image":
-      return {
-        _tag: "Image",
-        id: newEmailEditorKey("image"),
-        altKey: textKey(),
-      };
-    case "Button":
-    case "Offer":
-      return {
-        _tag: choice,
-        id: newEmailEditorKey(choice.toLowerCase()),
-        labelKey: textKey(),
-      };
-    case "Divider":
-    case "Spacer":
-    case "Record":
-    case "List":
-      return { _tag: choice, id: newEmailEditorKey(choice.toLowerCase()) };
-  }
-};
+export const newEmailBlock = (choice: EmailBlockChoice): EmailDraftComponent =>
+  newBlockOfChoice[choice]();
 
 /** The block kind as the author knows it; a text list by its numbering. */
 export const emailBlockChoice = (

@@ -58,6 +58,35 @@ const sameMarks = (a: EmailInlineMarks, b: EmailInlineMarks): boolean =>
   Boolean(a.italic) === Boolean(b.italic) &&
   a.link === b.link;
 
+/** A value part with every key it sets, even an empty name or field path. */
+const normalizedValuePart = (
+  part: Extract<EmailDraftInlinePart, { readonly _tag: "Value" }>
+): EmailDraftInlinePart => ({
+  _tag: "Value",
+  ...(part.name !== undefined && { name: part.name }),
+  ...(part.field !== undefined && { field: [...part.field] }),
+  ...setMarks(part),
+});
+
+/**
+ * Adds a text part to `normalized`: nothing when it is empty, joined to the
+ * previous text when their marks match.
+ */
+const appendTextPart = (
+  normalized: EmailDraftInlinePart[],
+  part: Extract<EmailDraftInlinePart, { readonly _tag: "Text" }>
+) => {
+  const text = part.text ?? "";
+  if (!text) return;
+  const previous = normalized.at(-1);
+  if (previous?._tag === "Text" && sameMarks(previous, part))
+    normalized[normalized.length - 1] = {
+      ...previous,
+      text: `${previous.text ?? ""}${text}`,
+    };
+  else normalized.push({ _tag: "Text", text, ...setMarks(part) });
+};
+
 /**
  * The one spelling of a text's parts that a text editor reads back: empty
  * texts dropped, neighbouring texts with the same marks joined, and unset or
@@ -69,24 +98,8 @@ export const normalizeEmailInlineParts = (
 ): EmailDraftInlineParts => {
   const normalized: EmailDraftInlinePart[] = [];
   for (const part of parts) {
-    if (part._tag === "Value") {
-      normalized.push({
-        _tag: "Value",
-        ...(part.name !== undefined && { name: part.name }),
-        ...(part.field !== undefined && { field: [...part.field] }),
-        ...setMarks(part),
-      });
-      continue;
-    }
-    const text = part.text ?? "";
-    if (!text) continue;
-    const previous = normalized.at(-1);
-    if (previous?._tag === "Text" && sameMarks(previous, part))
-      normalized[normalized.length - 1] = {
-        ...previous,
-        text: `${previous.text ?? ""}${text}`,
-      };
-    else normalized.push({ _tag: "Text", text, ...setMarks(part) });
+    if (part._tag === "Value") normalized.push(normalizedValuePart(part));
+    else appendTextPart(normalized, part);
   }
   return normalized;
 };

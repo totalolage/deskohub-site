@@ -354,6 +354,110 @@ describe("previewEmailDocument", () => {
     }
   );
 
+  test("keeps a discount reference only to its code or expiry", () => {
+    const offer = (field?: readonly string[]) => ({
+      _tag: "Value" as const,
+      name: "offer",
+      ...(field && { field: [...field] }),
+    });
+    const document = previewEmailDocument(
+      {
+        translations: {
+          "en-US": {
+            subject: [
+              offer(["code"]),
+              offer(["expiresAt"]),
+              offer(),
+              offer(["percent"]),
+              offer(["code", "expiresAt"]),
+            ],
+          },
+        },
+        values: [
+          {
+            name: "offer",
+            source: {
+              kind: "discount",
+              discountId: "11111111-1111-4111-8111-111111111111",
+              validDays: 14,
+            },
+          },
+        ],
+      },
+      "en-US"
+    );
+
+    expect(document.translations["en-US"]?.subject).toEqual([
+      offer(["code"]),
+      offer(["expiresAt"]),
+    ]);
+  });
+
+  test("keeps the first of repeated value names and component ids", () => {
+    const document = previewEmailDocument(
+      {
+        structure: [
+          { _tag: "Divider", id: "rule" },
+          { _tag: "Spacer", id: "rule" },
+          { _tag: "Spacer", id: "gap" },
+        ],
+        values: [
+          { name: "first_name", source: { kind: "discount", validDays: 7 } },
+          {
+            name: "first_name",
+            source: {
+              kind: "customer",
+              path: ["profile", "customer", "displayName"],
+            },
+          },
+          {
+            name: "first_name",
+            source: { kind: "customer", path: ["profile", "customer"] },
+          },
+        ],
+      },
+      "en-US"
+    );
+
+    expect(document.structure).toEqual([
+      expect.objectContaining({ _tag: "Divider", id: "rule" }),
+      expect.objectContaining({ _tag: "Spacer", id: "gap" }),
+    ]);
+    expect(document.values).toEqual([
+      expect.objectContaining({
+        name: "first_name",
+        source: expect.objectContaining({
+          path: ["profile", "customer", "displayName"],
+        }),
+      }),
+    ]);
+  });
+
+  test("keeps an operational reason's finished parts", () => {
+    const document = previewEmailDocument(
+      {
+        purpose: "operational",
+        translations: {
+          "cs-CZ": {
+            operationalReason: [
+              { _tag: "Text", text: "Máte rezervaci" },
+              { _tag: "Value", name: "removed" },
+            ],
+          },
+        },
+      },
+      "cs-CZ"
+    );
+
+    expect(document.translations["cs-CZ"]?.operationalReason).toEqual([
+      { _tag: "Text", text: "Máte rezervaci" },
+    ]);
+    expect(
+      previewEmailDocument({ translations: { "cs-CZ": {} } }, "cs-CZ")
+        .translations["cs-CZ"]
+    ).not.toHaveProperty("operationalReason");
+  });
+
   test("renders an empty draft", () => {
     const document = previewEmailDocument({}, "en-US");
 

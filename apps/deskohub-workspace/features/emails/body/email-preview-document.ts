@@ -8,7 +8,7 @@ import {
   emailCustomerFieldAtPath,
   isEmailCustomerScalar,
 } from "@deskohub/workspace-admin-api";
-import { Match, Option, Schema } from "effect";
+import { Array as Arr, Match, Option, Schema } from "effect";
 import { emailCustomerValueField } from "./email-sample-values";
 
 type DraftComponent = NonNullable<EmailDraft["structure"]>[number];
@@ -178,28 +178,34 @@ const previewComponent = (
   return usable ? decodeComponent(candidate) : Option.none();
 };
 
-/**
- * A renderable email from a draft still being written, for its preview. It
- * keeps what is finished and drops the rest: unfinished components and value
- * definitions, value references they would break, and broken links. A missing
- * text, or a language without any, renders empty. It never fails.
- */
-export const previewEmailDocument = (
-  draft: EmailDraft,
-  locale: string
-): EmailDocument => {
-  const definitions = new Map<string, EmailValueDefinition>();
-  for (const value of draft.values ?? [])
-    for (const definition of Option.toArray(decodeDefinition(value)))
-      if (!definitions.has(definition.name))
-        definitions.set(definition.name, definition);
-  const structure = new Map<string, EmailBodyComponent>();
-  for (const component of draft.structure ?? [])
-    for (const finished of Option.toArray(
-      previewComponent(component, definitions)
-    ))
-      if (!structure.has(finished.id)) structure.set(finished.id, finished);
-  const translation = draft.translations?.[locale];
+/** The draft's finished value definitions by name; a repeated name keeps its first. */
+const previewDefinitions = (values: EmailDraft["values"]): Definitions =>
+  new Map(
+    Arr.dedupeWith(
+      Arr.getSomes((values ?? []).map(decodeDefinition)),
+      (a, b) => a.name === b.name
+    ).map((definition) => [definition.name, definition])
+  );
+
+/** The draft's finished components; a repeated id keeps its first. */
+const previewStructure = (
+  structure: EmailDraft["structure"],
+  definitions: Definitions
+): EmailBodyComponent[] =>
+  Arr.dedupeWith(
+    Arr.getSomes(
+      (structure ?? []).map((component) =>
+        previewComponent(component, definitions)
+      )
+    ),
+    (a, b) => a.id === b.id
+  );
+
+/** A language's finished texts; a missing text, or language, renders empty. */
+const previewTranslation = (
+  translation: DraftTranslation | undefined,
+  definitions: Definitions
+): EmailTranslation => {
   const texts: EmailTranslation = {
     subject: previewParts(translation?.subject, definitions),
     preheader: previewParts(translation?.preheader, definitions),
@@ -210,20 +216,34 @@ export const previewEmailDocument = (
       ])
     ),
   };
+  return translation?.operationalReason
+    ? {
+        ...texts,
+        operationalReason: previewParts(
+          translation.operationalReason,
+          definitions
+        ),
+      }
+    : texts;
+};
+
+/**
+ * A renderable email from a draft still being written, for its preview. It
+ * keeps what is finished and drops the rest: unfinished components and value
+ * definitions, value references they would break, and broken links. A missing
+ * text, or a language without any, renders empty. It never fails.
+ */
+export const previewEmailDocument = (
+  draft: EmailDraft,
+  locale: string
+): EmailDocument => {
+  const definitions = previewDefinitions(draft.values);
   return {
     purpose: draft.purpose ?? "marketing",
     templateKey: draft.templateKey ?? "workspace",
-    structure: [...structure.values()],
+    structure: previewStructure(draft.structure, definitions),
     translations: {
-      [locale]: translation?.operationalReason
-        ? {
-            ...texts,
-            operationalReason: previewParts(
-              translation.operationalReason,
-              definitions
-            ),
-          }
-        : texts,
+      [locale]: previewTranslation(draft.translations?.[locale], definitions),
     },
     values: [...definitions.values()],
   };
