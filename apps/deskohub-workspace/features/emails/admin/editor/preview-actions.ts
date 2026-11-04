@@ -2,7 +2,6 @@
 
 import { EmailDraft, EmailValueSnapshot } from "@deskohub/workspace-admin-api";
 import { Clock, Effect, Layer, Schema } from "effect";
-import { m } from "@/features/administration/i18n";
 import { defineAdministrationAction } from "@/features/administrators/server/administration-request.server";
 import { isCampaignImageSource } from "@/features/email-campaigns/body/campaign-body-rules";
 import { campaignImageCloudName } from "@/features/email-campaigns/body/campaign-image-account";
@@ -12,6 +11,7 @@ import {
   sampleEmailValues,
 } from "@/features/emails/body";
 import { locales } from "@/features/i18n";
+import { emailsEditorActionFailureCopy } from "./editor-action-failure-copy";
 
 const EmailDraftPreviewInput = Schema.Struct({
   draft: EmailDraft,
@@ -24,10 +24,7 @@ const previewEmailDraftAction = defineAdministrationAction(
   {
     operation: "emails.admin.preview-draft",
     schema: Schema.toStandardSchemaV1(EmailDraftPreviewInput),
-    failureCopy: {
-      timeout: m.emailsActionTimedOut,
-      unexpected: m.emailsActionFailedUnexpectedly,
-    },
+    failureCopy: emailsEditorActionFailureCopy,
     capabilities: Layer.empty,
   },
   Effect.fn("previewEmailDraft")(function* (input) {
