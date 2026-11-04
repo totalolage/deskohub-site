@@ -65,17 +65,20 @@ export const useRemoveEmailTexts = () => {
 };
 
 /**
- * Where focus goes once the row at `position` is removed: the same control
- * of the row after it, else of the row before it, else `fallback`.
+ * Where focus goes once the row at `position` is removed, given the same
+ * control of each remaining row: the row that took its place, else the row
+ * before it, else `fallback`.
  */
 export const emailRowRemovalFocus = (
-  rowControlIds: readonly string[],
+  remainingRowControlIds: readonly string[],
   position: number,
   fallback: string
 ): readonly string[] =>
-  [rowControlIds[position + 1], rowControlIds[position - 1], fallback].filter(
-    (id): id is string => id !== undefined
-  );
+  [
+    remainingRowControlIds[position],
+    remainingRowControlIds[position - 1],
+    fallback,
+  ].filter((id): id is string => id !== undefined);
 
 /**
  * Moves focus after the structure changed under it: to the first of

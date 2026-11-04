@@ -29,7 +29,7 @@ import {
   useEmailFieldProblems,
 } from "./email-editor-context";
 import { emailEditorFieldIds } from "./email-editor-field-ids";
-import { withEmailSetting } from "./email-structure-blocks";
+import { emailKeyOccurrence, withEmailSetting } from "./email-structure-blocks";
 import {
   type EmailCustomerFieldPath,
   type EmailValueKind,
@@ -101,12 +101,16 @@ function ValueBlockFields({
   const { controlProps } = useEmailFieldProblems(fieldsId);
   const fields = component.fields ?? [];
   const paths = definition ? selectedEmailCustomerFieldPaths(definition) : [];
-  // A row's label key names it, unless it has none or repeats an earlier row's.
-  const rowId = (field: ComponentField, position: number) =>
-    field.labelKey &&
-    fields.findIndex((entry) => entry.labelKey === field.labelKey) === position
-      ? `${fieldsId}-${field.labelKey}`
-      : `${fieldsId}-${field.labelKey ?? ""}@${position}`;
+  // Label keys may repeat, so a row is named by its key's occurrence.
+  const rowIds = (rows: readonly ComponentField[]) =>
+    rows.map(
+      (_row, position) =>
+        `${fieldsId}-${emailKeyOccurrence(
+          rows.map((row) => row.labelKey),
+          position
+        )}`
+    );
+  const ids = rowIds(fields);
   const addId = `${fieldsId}-add`;
   const setFields = (next: readonly ComponentField[]) =>
     update(
@@ -134,10 +138,10 @@ function ValueBlockFields({
         return (
           <div
             className="flex flex-wrap items-end gap-3"
-            key={rowId(field, position)}
+            key={ids[position] ?? ""}
           >
             <EmailBlockSelectSetting
-              fieldId={rowId(field, position)}
+              fieldId={ids[position] ?? ""}
               label={m.emailsEditorBlockField({ number }, { locale })}
               onChange={(value) => {
                 const path = paths.find(
@@ -169,13 +173,16 @@ function ValueBlockFields({
                 { number },
                 { locale }
               )}
-              id={`${rowId(field, position)}-remove`}
+              id={`${ids[position] ?? ""}-remove`}
               onClick={() => {
-                setFields(fields.filter((_entry, at) => at !== position));
+                const remaining = fields.filter(
+                  (_entry, at) => at !== position
+                );
+                setFields(remaining);
                 if (field.labelKey) removeTexts([field.labelKey]);
                 focusAfterChange(
                   emailRowRemovalFocus(
-                    fields.map((entry, at) => `${rowId(entry, at)}-remove`),
+                    rowIds(remaining).map((id) => `${id}-remove`),
                     position,
                     addId
                   )

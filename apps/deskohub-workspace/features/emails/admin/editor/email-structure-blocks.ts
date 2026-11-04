@@ -117,6 +117,23 @@ export const emailBlockTextKeys = (
   emailComponentTexts(component).map(({ textKey }) => textKey);
 
 /**
+ * A name for the entry at `index` of `keys` that no other entry shares, even
+ * where keys repeat or are missing: its key and how many earlier entries
+ * have the same one. The encoding is injective, so no key imitates another
+ * entry's name, and it is safe inside an element id.
+ */
+export const emailKeyOccurrence = (
+  keys: readonly (string | undefined)[],
+  index: number
+): string => {
+  const key = keys[index] ?? "";
+  const earlier = keys
+    .slice(0, index)
+    .filter((other) => (other ?? "") === key).length;
+  return encodeURIComponent(JSON.stringify([key, earlier]));
+};
+
+/**
  * `list` with the entry at `index` moved `offset` places; unchanged when the
  * entry would leave the list.
  */

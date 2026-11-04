@@ -70,10 +70,11 @@ export function EmailBlockLinks({ index }: { readonly index: number }) {
               aria-label={m.emailsEditorBlockLinkRemove({ number }, { locale })}
               id={removeId(linkKey)}
               onClick={() => {
-                setLinks(Record.remove(links, linkKey));
+                const remaining = Record.remove(links, linkKey);
+                setLinks(remaining);
                 focusAfterChange(
                   emailRowRemovalFocus(
-                    Object.keys(links).map(removeId),
+                    Object.keys(remaining).map(removeId),
                     position,
                     addId
                   )

@@ -23,9 +23,11 @@ import {
 import { EmailBlockLinks } from "./email-block-links";
 import {
   appendEmailTextListItem,
+  type EmailTextListItemMove,
   type EmailTextListItemPath,
   emailTextListItemAt,
   emailTextListItemIdentity,
+  emailTextListItemPathAfter,
   emailTextListTextKeys,
   indentEmailTextListItem,
   moveEmailTextListItem,
@@ -281,31 +283,60 @@ export function EmailBlockTextListSettings({
     contentLocale,
     links: component.links,
     run: (action, path) => {
-      const identity = emailTextListItemIdentity(items, path);
-      const focus = (...actions: ItemAction[]) =>
+      // Focus follows the item to its new place, where its controls may be
+      // named differently when its text key repeats.
+      const focusMoved = (
+        next: EmailDraftTextListItems,
+        move: EmailTextListItemMove,
+        ...controls: ItemAction[]
+      ) => {
+        setItems(next);
+        const identity = emailTextListItemIdentity(
+          next,
+          emailTextListItemPathAfter(items, path, move)
+        );
         focusAfterChange([
-          ...actions.map((next) => itemControlId(itemsId, identity, next)),
+          ...controls.map((control) =>
+            itemControlId(itemsId, identity, control)
+          ),
           itemsId,
         ]);
+      };
       switch (action) {
         case "move-up":
-        case "move-down":
-          setItems(
-            moveEmailTextListItem(items, path, action === "move-up" ? -1 : 1)
+          return focusMoved(
+            moveEmailTextListItem(items, path, -1),
+            action,
+            "move-up",
+            "move-down"
           );
-          return focus(action, action === "move-up" ? "move-down" : "move-up");
+        case "move-down":
+          return focusMoved(
+            moveEmailTextListItem(items, path, 1),
+            action,
+            "move-down",
+            "move-up"
+          );
         case "indent": {
           const levelOrdered =
             path.length > 1
               ? (emailTextListItemAt(items, path.slice(0, -1))?.list?.ordered ??
                 false)
               : ordered;
-          setItems(indentEmailTextListItem(items, path, levelOrdered));
-          return focus("indent", "outdent");
+          return focusMoved(
+            indentEmailTextListItem(items, path, levelOrdered),
+            action,
+            "indent",
+            "outdent"
+          );
         }
         case "outdent":
-          setItems(outdentEmailTextListItem(items, path));
-          return focus("outdent", "indent");
+          return focusMoved(
+            outdentEmailTextListItem(items, path),
+            action,
+            "outdent",
+            "indent"
+          );
         case "remove": {
           const item = emailTextListItemAt(items, path);
           setItems(removeEmailTextListItem(items, path));

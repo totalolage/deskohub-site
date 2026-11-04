@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
   appendEmailTextListItem,
+  emailTextListItemAt,
   emailTextListItemIdentity,
+  emailTextListItemPathAfter,
   emailTextListTextKeys,
   indentEmailTextListItem,
   moveEmailTextListItem,
@@ -107,15 +109,47 @@ describe("text list items", () => {
 });
 
 describe("item identity", () => {
-  test("an item is named by its text key unless an earlier item has it", () => {
+  test("items get distinct names however their text keys repeat", () => {
     const items = [
-      { textKey: "a", list: { ordered: false, items: [{ textKey: "b" }] } },
-      { textKey: "b" },
+      { textKey: "a", list: { ordered: false, items: [{ textKey: "a" }] } },
+      { textKey: "a@1" },
+      { textKey: '["a",1]' },
+      {},
       {},
     ];
-    expect(emailTextListItemIdentity(items, [0])).toBe("a");
-    expect(emailTextListItemIdentity(items, [0, 0])).toBe("b");
-    expect(emailTextListItemIdentity(items, [1])).toBe("b@1");
-    expect(emailTextListItemIdentity(items, [2])).toBe("@2");
+    const names = [[0], [0, 0], [1], [2], [3], [4]].map((path) =>
+      emailTextListItemIdentity(items, path)
+    );
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  test("a uniquely keyed item keeps its name wherever it moves", () => {
+    const before = [{ textKey: "a" }, { textKey: "b" }];
+    const after = moveEmailTextListItem(before, [1], -1);
+    expect(emailTextListItemIdentity(after, [0])).toBe(
+      emailTextListItemIdentity(before, [1])
+    );
+  });
+});
+
+describe("item destinations", () => {
+  test("each move says where the item ends up", () => {
+    expect(emailTextListItemPathAfter(nested, [1], "move-up")).toEqual([0]);
+    expect(emailTextListItemPathAfter(nested, [0, 0], "move-down")).toEqual([
+      0, 1,
+    ]);
+    expect(emailTextListItemPathAfter(nested, [1], "indent")).toEqual([0, 2]);
+    expect(emailTextListItemPathAfter(nested, [0, 1, 0], "outdent")).toEqual([
+      0, 2,
+    ]);
+    // The destinations match where the operations put the item.
+    expect(
+      emailTextListItemAt(indentEmailTextListItem(nested, [1], false), [0, 2])
+        ?.textKey
+    ).toBe("b");
+    expect(
+      emailTextListItemAt(outdentEmailTextListItem(nested, [0, 1, 0]), [0, 2])
+        ?.textKey
+    ).toBe("a2x");
   });
 });

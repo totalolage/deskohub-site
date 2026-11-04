@@ -495,9 +495,11 @@ describe("text lists", () => {
       name: m.emailsEditorBlockListNestedOrdered({ number: "1" }, { locale }),
     });
     // The nested level's switch is a block setting control like the others.
-    expect(nestedOrdered.id).toBe(
-      `${emailEditorFieldIds.componentSetting("steps", "items")}-a-ordered`
-    );
+    expect(
+      nestedOrdered.id.startsWith(
+        emailEditorFieldIds.componentSetting("steps", "items")
+      )
+    ).toBe(true);
     expect(nestedOrdered.hasAttribute("aria-invalid")).toBe(false);
     await click(nestedOrdered);
     expect(items(values)?.[0]?.list?.ordered).toBe(false);
@@ -563,6 +565,47 @@ describe("text lists", () => {
       false,
       true,
     ]);
+  });
+
+  test("focus follows a moved item whose text key repeats or is missing", async () => {
+    const { view, values } = renderSection({
+      structure: [
+        {
+          _tag: "TextList",
+          id: "steps",
+          ordered: false,
+          items: [{ textKey: "a" }, { textKey: "a" }, {}],
+        },
+      ],
+    });
+    const moveDown = (number: string) =>
+      m.emailsEditorBlockListItemMoveDown({ number }, { locale });
+
+    await click(
+      itemButton(
+        view,
+        m.emailsEditorBlockListItemMoveUp({ number: "2" }, { locale })
+      )
+    );
+    // Its Move up is now disabled, so focus is on its Move down, at 1.
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute("aria-label")).toBe(
+        moveDown("1")
+      )
+    );
+
+    await click(
+      itemButton(
+        view,
+        m.emailsEditorBlockListItemMoveUp({ number: "3" }, { locale })
+      )
+    );
+    expect(items(values)).toEqual([{ textKey: "a" }, {}, { textKey: "a" }]);
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute("aria-label")).toBe(
+        m.emailsEditorBlockListItemMoveUp({ number: "2" }, { locale })
+      )
+    );
   });
 
   test("items are added, moved and removed with their texts", async () => {
@@ -943,17 +986,19 @@ describe("value blocks", () => {
           fields: [
             { labelKey: "label", field: ["reservationCount"] },
             { labelKey: "label", field: ["favoriteProduct"] },
+            { labelKey: "label@1", field: ["reservationCount"] },
+            { field: ["favoriteProduct"] },
           ],
         },
       ],
       values,
     });
-    const pickers = [1, 2].map((number) =>
+    const pickers = [1, 2, 3, 4].map((number) =>
       view.getByRole("combobox", {
         name: m.emailsEditorBlockField({ number }, { locale }),
       })
     );
-    expect(pickers[0]?.id).not.toBe(pickers[1]?.id);
+    expect(new Set(pickers.map((picker) => picker.id)).size).toBe(4);
     expect(pickers[1]?.textContent).toContain("favoriteProduct");
   });
 

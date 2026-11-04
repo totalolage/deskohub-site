@@ -1,5 +1,5 @@
 import type { EmailDraftTextListItems } from "./email-draft-form";
-import { moveEmailEntry } from "./email-structure-blocks";
+import { emailKeyOccurrence, moveEmailEntry } from "./email-structure-blocks";
 
 /** One item of a text list, as the draft holds it. */
 export type EmailTextListItem = EmailDraftTextListItems[number];
@@ -22,36 +22,64 @@ export const emailTextListTextKeys = (
     ...emailTextListTextKeys(item.list?.items),
   ]);
 
+/** Every item's path, depth first. */
+const itemPaths = (
+  items: EmailDraftTextListItems,
+  prefix: EmailTextListItemPath = []
+): EmailTextListItemPath[] =>
+  items.flatMap((item, index) => {
+    const path = [...prefix, index];
+    return [path, ...itemPaths(item.list?.items ?? [], path)];
+  });
+
 /**
- * A name for the item at `path` that no other item of the list shares: its
- * text key, which follows it when it moves, or, for an item without one or
- * repeating an earlier item's key, its key and place.
+ * A name for the item at `path` that no other item of the list shares, even
+ * where text keys repeat or are missing: its text key and how many earlier
+ * items, depth first, have the same one.
  */
 export const emailTextListItemIdentity = (
   items: EmailDraftTextListItems,
   path: EmailTextListItemPath
 ): string => {
-  const textKey = emailTextListItemAt(items, path)?.textKey;
+  const paths = itemPaths(items);
   const place = path.join(".");
-  if (!textKey) return `@${place}`;
-  return firstItemPlace(items, textKey) === place
-    ? textKey
-    : `${textKey}@${place}`;
+  return emailKeyOccurrence(
+    paths.map((other) => emailTextListItemAt(items, other)?.textKey),
+    paths.findIndex((other) => other.join(".") === place)
+  );
 };
 
-/** The place of the first item, depth first, keyed `textKey`. */
-const firstItemPlace = (
+/** A change that moves an item within its list. */
+export type EmailTextListItemMove =
+  | "move-up"
+  | "move-down"
+  | "indent"
+  | "outdent";
+
+/**
+ * Where the item at `path` of `items` ends up after `move`, which must be
+ * possible: one place up or down its level, at the end of the level under
+ * the item before it, or just after the item it was under.
+ */
+export const emailTextListItemPathAfter = (
   items: EmailDraftTextListItems,
-  textKey: string,
-  prefix: EmailTextListItemPath = []
-): string | undefined => {
-  for (const [index, item] of items.entries()) {
-    const path = [...prefix, index];
-    if (item.textKey === textKey) return path.join(".");
-    const nested = firstItemPlace(item.list?.items ?? [], textKey, path);
-    if (nested !== undefined) return nested;
+  path: EmailTextListItemPath,
+  move: EmailTextListItemMove
+): EmailTextListItemPath => {
+  const levelPath = path.slice(0, -1);
+  const index = path.at(-1) ?? 0;
+  switch (move) {
+    case "move-up":
+      return [...levelPath, index - 1];
+    case "move-down":
+      return [...levelPath, index + 1];
+    case "indent": {
+      const previous = emailTextListItemAt(items, [...levelPath, index - 1]);
+      return [...levelPath, index - 1, previous?.list?.items?.length ?? 0];
+    }
+    case "outdent":
+      return [...levelPath.slice(0, -1), (levelPath.at(-1) ?? 0) + 1];
   }
-  return undefined;
 };
 
 /** The item at `path`. */
