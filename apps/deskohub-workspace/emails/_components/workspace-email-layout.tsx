@@ -10,18 +10,23 @@ import {
   Tailwind,
   Text,
 } from "react-email";
+import type { Locale } from "@/features/i18n";
 import { workspaceSiteConstants } from "@/shared/utils";
 
 const { brand } = workspaceSiteConstants;
 const { address } = workspaceSiteConstants.location;
 
-export type WorkspaceEmailLocale = "cs-CZ" | "en-US";
+/**
+ * @deprecated Use `Locale` from `@/features/i18n`. Kept only until the
+ * reservation and campaign templates take `Locale` directly.
+ */
+export type WorkspaceEmailLocale = Locale;
 
 type WorkspaceEmailLayoutProps = {
   readonly children: ReactNode;
   /** Content below the address line, such as a campaign footer. */
   readonly footer?: ReactNode;
-  readonly locale: WorkspaceEmailLocale;
+  readonly locale: Locale;
   readonly preview: string;
 };
 

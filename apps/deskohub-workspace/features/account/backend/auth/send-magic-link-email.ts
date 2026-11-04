@@ -1,7 +1,7 @@
 import { type EmailMessage, EmailServiceTag } from "@deskohub/email";
 import type { EmailServiceError } from "@deskohub/email/backend/service";
 import { type Config, Data, Effect, Predicate } from "effect";
-import type { WorkspaceEmailLocale } from "@/emails/_components/workspace-email-layout";
+import type { Locale } from "@/features/i18n";
 import {
   WorkspaceEmailLayer,
   workspaceDefaultFromAddress,
@@ -43,7 +43,7 @@ export type MagicLinkDeliveryRequest = {
   readonly url: string;
   /** The sign-in code sent with the link, while sign-in codes are on. */
   readonly code?: string;
-  readonly locale: WorkspaceEmailLocale;
+  readonly locale: Locale;
 };
 
 export type MagicLinkEmailRenderer = (

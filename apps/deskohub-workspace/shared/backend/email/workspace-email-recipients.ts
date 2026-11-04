@@ -20,6 +20,11 @@ export const internalWorkspaceEmailRecipientFor = (
     testLocalPart: "workspace-internal",
   });
 
+/** The deployment staff mail is sent from; read at send time. */
+export const workspaceEmailEnvironment = (): {
+  readonly isProduction: boolean;
+} => ({ isProduction: env.VERCEL_ENV === "production" });
+
 /** Subject for a staff copy; tagged as test mail outside production. */
 export const internalWorkspaceEmailSubject = (subject: string): string =>
-  staffEmailSubject(subject, { isProduction: env.VERCEL_ENV === "production" });
+  staffEmailSubject(subject, workspaceEmailEnvironment());

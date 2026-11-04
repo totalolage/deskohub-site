@@ -28,7 +28,6 @@ import {
 } from "@/features/accounting/invoice.test-utils";
 import type { InvoiceEmailDeliveryAudience } from "@/features/accounting/invoice-email-delivery";
 import { invoiceIdSchema } from "@/features/accounting/manual-invoice";
-import { m } from "@/features/i18n";
 import { workspaceDefaultFromAddress } from "@/shared/backend/config/email.config";
 import * as emailRendering from "@/shared/backend/email/render-react-email";
 import { AccountingDocumentSnapshotRepository } from "./accounting-document-snapshot.repository";
@@ -59,11 +58,13 @@ const renderStubInvoicePdf = (
 ): ReturnType<typeof invoicePdf.renderInvoicePdf> =>
   Effect.succeed(stubInvoicePdf);
 const renderStubEmail = (
-  email: Parameters<typeof emailRendering.renderWorkspaceEmail>[0]
-): ReturnType<typeof emailRendering.renderWorkspaceEmail> => {
-  const { body } = email.props as InvoiceDeliveryEmailProps;
-  return Effect.succeed({ html: body, text: body });
-};
+  ..._args: Parameters<typeof emailRendering.renderWorkspaceEmail>
+): ReturnType<typeof emailRendering.renderWorkspaceEmail> =>
+  Effect.succeed({ html: "stub email", text: "stub email" });
+const renderedInvoiceEmails = () =>
+  renderWorkspaceEmail.mock.calls.map(
+    ([email]) => email.props as InvoiceDeliveryEmailProps
+  );
 const renderInvoicePdf = mock(renderStubInvoicePdf);
 const renderWorkspaceEmail = mock(renderStubEmail);
 mock.module("./invoice-pdf", () => ({
@@ -349,6 +350,18 @@ describe("invoice email delivery", () => {
     expect(sentMessages[0]?.idempotencyKey).toBe(
       `${sentMessages[0]?.tags?.[0]}-${manualInvoice.id}`
     );
+    expect(renderedInvoiceEmails()).toEqual([
+      {
+        invoiceNumber: manualInvoice.invoiceNumber,
+        invoice: { source: "manual", requestsPayment: true },
+        recipient: { audience: "customer", locale: "en-US" },
+      },
+      {
+        invoiceNumber: manualInvoice.invoiceNumber,
+        invoice: { source: "manual", requestsPayment: true },
+        recipient: { audience: "internal" },
+      },
+    ]);
     expect(
       harness.accountingSnapshots.findByPaymentAttemptId
     ).not.toHaveBeenCalled();
@@ -375,12 +388,10 @@ describe("invoice email delivery", () => {
       manualInvoice.id
     );
 
-    expect(sentMessages[0]?.html).toBe(
-      m.invoiceManualEmailBody(
-        { invoiceNumber: manualInvoice.invoiceNumber },
-        { locale: "en-US" }
-      )
-    );
+    expect(renderedInvoiceEmails()[0]).toMatchObject({
+      invoice: { source: "manual", requestsPayment: false },
+      recipient: { audience: "customer", locale: "en-US" },
+    });
   });
 
   test("does not request payment in the email for a non-positive manual invoice", async () => {
@@ -401,12 +412,10 @@ describe("invoice email delivery", () => {
       manualInvoice.id
     );
 
-    expect(sentMessages[0]?.html).toBe(
-      m.invoiceManualEmailBody(
-        { invoiceNumber: manualInvoice.invoiceNumber },
-        { locale: "en-US" }
-      )
-    );
+    expect(renderedInvoiceEmails()[0]).toMatchObject({
+      invoice: { source: "manual", requestsPayment: false },
+      recipient: { audience: "customer", locale: "en-US" },
+    });
   });
 });
 

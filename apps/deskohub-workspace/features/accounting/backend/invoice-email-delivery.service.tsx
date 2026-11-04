@@ -4,28 +4,21 @@ import {
   EmailServiceError,
   EmailServiceTag,
 } from "@deskohub/email/backend/service";
-import { Context, Data, Effect, Layer, Match } from "effect";
+import { Context, Data, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import { InvoiceDeliveryEmail } from "@/emails/invoice-delivery";
 import { env } from "@/env";
 import { isManualInvoiceDocument } from "@/features/accounting/invoice";
-import {
-  getInvoiceSettlement,
-  InvoiceSettlement,
-} from "@/features/accounting/invoice-settlement";
 import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
-import { m } from "@/features/i18n";
 import { WorkspaceEmailLayer } from "@/shared/backend/config/email.config";
-import { renderWorkspaceEmail } from "@/shared/backend/email/render-react-email";
 import {
   internalWorkspaceEmailRecipientFor,
-  internalWorkspaceEmailSubject,
   workspaceEmailRecipient,
 } from "@/shared/backend/email/workspace-email-recipients";
 import { censorLogValue } from "@/shared/backend/logging/censorship";
 import { AccountingDocumentSnapshotRepository } from "./accounting-document-snapshot.repository";
 import { AccountingSnapshotKeyService } from "./accounting-snapshot-key.service";
 import { type Invoice, InvoiceRepository } from "./invoice.repository";
+import { renderInvoiceDeliveryEmail } from "./invoice-delivery-email";
 import {
   type IInvoiceEmailDeliveryRepository,
   type InvoiceEmailDeliveryClaim,
@@ -35,7 +28,6 @@ import { type InvoicePdfRenderingError, renderInvoicePdf } from "./invoice-pdf";
 
 const invoiceCustomerEmailCategory = "workspace-invoice-customer";
 const invoiceInternalEmailCategory = "workspace-invoice-internal";
-const internalInvoiceLocale = "cs-CZ" as const;
 
 export class InvoiceEmailDeliveryError extends Data.TaggedError(
   "InvoiceEmailDeliveryError"
@@ -112,67 +104,10 @@ export class InvoiceEmailDeliveryService extends Context.Service<
 
         if (!claim) return false;
 
-        const manualDocument = isManualInvoiceDocument(input.invoice.document)
-          ? input.invoice.document
-          : null;
-        const content = Match.value(input.audience).pipe(
-          Match.when("customer", () => {
-            const locale = input.invoice.document.locale;
-            const asksForPayment = InvoiceSettlement.$is("PaymentRequested")(
-              getInvoiceSettlement(input.invoice.document)
-            );
-            const manualBody = asksForPayment
-              ? m.invoiceManualEmailBodyPaymentDetails(
-                  { invoiceNumber: input.invoice.invoiceNumber },
-                  { locale }
-                )
-              : m.invoiceManualEmailBody(
-                  { invoiceNumber: input.invoice.invoiceNumber },
-                  { locale }
-                );
-            return {
-              body: manualDocument
-                ? manualBody
-                : m.invoiceEmailBody(
-                    {
-                      invoiceNumber: input.invoice.invoiceNumber,
-                      orderId: input.invoice.workspaceReservationId ?? "",
-                    },
-                    { locale }
-                  ),
-              category: invoiceCustomerEmailCategory,
-              heading: m.invoiceEmailHeading({}, { locale }),
-              locale,
-              formatSubject: (subject: string) => subject,
-            };
-          }),
-          Match.when("internal", () => {
-            return {
-              body: manualDocument
-                ? m.invoiceManualEmailInternalBody(
-                    { invoiceNumber: input.invoice.invoiceNumber },
-                    { locale: internalInvoiceLocale }
-                  )
-                : m.invoiceEmailInternalBody(
-                    {
-                      invoiceNumber: input.invoice.invoiceNumber,
-                      orderId: input.invoice.workspaceReservationId ?? "",
-                    },
-                    { locale: internalInvoiceLocale }
-                  ),
-              category: invoiceInternalEmailCategory,
-              heading: m.invoiceEmailInternalHeading(
-                {},
-                { locale: internalInvoiceLocale }
-              ),
-              locale: internalInvoiceLocale,
-              formatSubject: internalWorkspaceEmailSubject,
-            };
-          }),
-          Match.exhaustive
-        );
-        const title = m.invoiceTitle({}, { locale: content.locale });
-        const preview = `${title} ${input.invoice.invoiceNumber}`;
+        const category = {
+          customer: invoiceCustomerEmailCategory,
+          internal: invoiceInternalEmailCategory,
+        }[input.audience];
         const { pdf, rendered } = yield* Effect.all({
           pdf: input.renderPdf.pipe(
             Effect.mapError((cause) =>
@@ -185,14 +120,10 @@ export class InvoiceEmailDeliveryService extends Context.Service<
               })
             )
           ),
-          rendered: renderWorkspaceEmail(
-            <InvoiceDeliveryEmail
-              body={content.body}
-              heading={content.heading}
-              locale={content.locale}
-              preview={preview}
-            />
-          ).pipe(
+          rendered: renderInvoiceDeliveryEmail({
+            invoice: input.invoice,
+            audience: input.audience,
+          }).pipe(
             Effect.mapError((cause) =>
               deliveryError({
                 code: "email_delivery_failed",
@@ -219,12 +150,12 @@ export class InvoiceEmailDeliveryService extends Context.Service<
           from: emailConfig.defaultFrom,
           to: input.recipient,
           replyTo: workspaceEmailRecipient,
-          subject: content.formatSubject(preview),
+          subject: rendered.subject,
           html: rendered.html,
           text: rendered.text,
           idempotencyKey: input.resend
             ? `workspace-invoice-customer-resend-${input.invoice.id}-${claim.attemptNumber}`
-            : `${content.category}-${input.invoice.id}`,
+            : `${category}-${input.invoice.id}`,
           attachments: [
             {
               filename: `${input.invoice.invoiceNumber}.pdf`,
@@ -232,7 +163,7 @@ export class InvoiceEmailDeliveryService extends Context.Service<
               contentType: "application/pdf",
             },
           ],
-          tags: [content.category],
+          tags: [category],
           metadata: {
             deploymentEnvironment: env.VERCEL_ENV,
             source: "workspace-invoice-delivery",
