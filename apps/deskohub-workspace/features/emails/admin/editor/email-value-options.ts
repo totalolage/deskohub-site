@@ -139,3 +139,8 @@ export const emailValueReferenceLabel = ({
   field,
 }: EmailScalarValueOption): string =>
   [name, ...(field ?? [])].filter(Boolean).join(".");
+
+/** A customer field path as one readable token, such as `stats.reservationCount`. */
+export const emailCustomerFieldPathLabel = (
+  path: EmailCustomerFieldPath
+): string => path.join(".");
