@@ -7,6 +7,7 @@ import {
   type EmailValueDefinition,
   type EmailValueName,
   type EmailValueSnapshot,
+  emailValueMatchesField,
   WORKSPACE_SITE_TIME_ZONE,
 } from "@deskohub/workspace-admin-api";
 import type { JSONContent } from "@tiptap/core";
@@ -72,7 +73,7 @@ const resolvedValue = (
     readonly definition: EmailValueDefinition;
     readonly snapshot: EmailValueSnapshot;
   },
-  EmailValueMissing
+  ValueFailure
 > => {
   const definition = rendering.document.values.find(
     (candidate) => candidate.name === name
@@ -80,9 +81,19 @@ const resolvedValue = (
   const snapshot = Object.hasOwn(rendering.values, name)
     ? rendering.values[name]
     : undefined;
-  return definition && snapshot
+  if (!definition || !snapshot)
+    return Result.fail(new EmailValueMissing({ name }));
+  // A customer value must have the shape publication froze, whatever today's
+  // catalogue says; the renderer still checks each use it reads.
+  const frozen = definition["customerShape"];
+  const matchesFrozen = Match.valueTags(snapshot, {
+    Fallback: () => true,
+    Resolved: ({ value }) =>
+      frozen === undefined || emailValueMatchesField(value, frozen),
+  });
+  return matchesFrozen
     ? Result.succeed({ definition, snapshot })
-    : Result.fail(new EmailValueMissing({ name }));
+    : Result.fail(new EmailValueMismatch({ name }));
 };
 
 const discountValue = (

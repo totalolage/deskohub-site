@@ -111,8 +111,26 @@ const previewList = (
   const { fields: _drafted, sort, ...list } = component;
   const fields = previewFields(component, definition, true);
   const withFields = fields.length > 0 ? { ...list, fields } : list;
-  return sort?.path && sort.direction ? { ...withFields, sort } : withFields;
+  const element = recordFieldOf(definition, true);
+  return sort?.path &&
+    sort.direction &&
+    element &&
+    isEmailCustomerScalar(emailCustomerFieldAtPath(element, sort.path))
+    ? { ...withFields, sort }
+    : withFields;
 };
+
+/**
+ * Whether a list component can render: its value is a customer list, and a
+ * list of records shows at least one of their fields.
+ */
+const isUsableList = (
+  component: DraftComponent,
+  definition: EmailValueDefinition | undefined
+) =>
+  recordFieldOf(definition, false)?.kind === "list" &&
+  (recordFieldOf(definition, true)?.kind !== "record" ||
+    previewFields(component, definition, true).length > 0);
 
 /**
  * The renderable form of one draft component, or nothing while it is
@@ -153,7 +171,7 @@ const previewComponent = (
   );
   const usable = Match.value(component._tag).pipe(
     Match.when("Record", () => definition?.source.kind === "customer"),
-    Match.when("List", () => recordFieldOf(definition, false)?.kind === "list"),
+    Match.when("List", () => isUsableList(component, definition)),
     Match.when("Offer", () => definition?.source.kind === "discount"),
     Match.orElse(() => true)
   );

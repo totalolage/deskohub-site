@@ -21,6 +21,9 @@ import { previewEmailDocument } from "./email-preview-document";
 import { sampleEmailValues } from "./email-sample-values";
 
 const now = Temporal.Instant.from("2026-11-04T09:00:00Z");
+type DraftComponent = NonNullable<
+  (typeof EmailDraft.Encoded)["structure"]
+>[number];
 
 describe("renderEmailPreview", () => {
   test.each([
@@ -277,6 +280,64 @@ describe("previewEmailDocument", () => {
       { _tag: "Text", text: "Hello " },
       { _tag: "Value", name: "first_name" },
     ]);
+  });
+
+  test("drops a record list without a field it can show and an unusable sort", () => {
+    const groups = {
+      name: "groups",
+      source: {
+        kind: "customer",
+        path: ["profile", "discountGroups"],
+        fields: [["name"]],
+      },
+    } as const;
+    const list = (
+      id: string,
+      extra: Pick<DraftComponent, "fields" | "sort">
+    ): DraftComponent => ({
+      _tag: "List" as const,
+      id,
+      value: "groups",
+      ...extra,
+    });
+    const document = previewEmailDocument(
+      {
+        structure: [
+          list("unfinished", { fields: [{ labelKey: "label" }] }),
+          list("absent", {
+            fields: [{ field: ["unknown"], labelKey: "label" }],
+          }),
+          list("whole-record-sort", {
+            fields: [{ field: ["name"], labelKey: "label" }],
+            sort: { path: [], direction: "asc" },
+          }),
+          list("named-sort", {
+            fields: [{ field: ["name"], labelKey: "label" }],
+            sort: { path: ["name"], direction: "desc" },
+          }),
+        ],
+        values: [groups],
+      },
+      "en-US"
+    );
+
+    expect(document.structure).toEqual([
+      expect.objectContaining({ id: "whole-record-sort" }),
+      expect.objectContaining({
+        id: "named-sort",
+        sort: { path: ["name"], direction: "desc" },
+      }),
+    ]);
+    expect(document.structure[0]).not.toHaveProperty("sort");
+    expect(
+      Result.isSuccess(
+        renderEmailContent({
+          document,
+          locale: "en-US",
+          values: sampleEmailValues(document, "en-US", now),
+        })
+      )
+    ).toBe(true);
   });
 
   test.each(["en-US", "cs-CZ"] as const)(

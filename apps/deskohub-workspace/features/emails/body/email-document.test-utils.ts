@@ -249,7 +249,7 @@ export const emailDocumentFixture: EmailDocument = Schema.decodeUnknownSync(
       source: customer(["profile", "customer"], [["displayName"], ["email"]]),
       customerShape: record({
         displayName: scalar("string"),
-        email: scalar("string"),
+        email: { ...scalar("string"), nullable: true, optional: true },
       }),
     },
     {

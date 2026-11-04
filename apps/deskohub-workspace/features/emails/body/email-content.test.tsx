@@ -181,6 +181,41 @@ describe("renderEmailContent", () => {
     });
   });
 
+  test("renders a nullable or absent optional record field empty", async () => {
+    for (const contact of [
+      { displayName: "Jana Testová", email: null },
+      { displayName: "Jana Testová" },
+    ]) {
+      const content = renderedContent("en-US", {
+        ...emailFixtureValues,
+        contact: { _tag: "Resolved", value: contact },
+      });
+      const cells = textsOf(await renderHtml(content.body), "td");
+
+      expect(cells).toEqual(
+        expect.arrayContaining([emailFixtureWords["en-US"].contactEmail, ""])
+      );
+    }
+  });
+
+  test("fails for a translation in a language the Workspace doesn't offer", () => {
+    const encoded = Schema.encodeSync(EmailDocument)(emailDocumentFixture);
+    const document = Schema.decodeUnknownSync(EmailDocument)({
+      ...encoded,
+      translations: {
+        ...encoded.translations,
+        "de-DE": encoded.translations["en-US"],
+      },
+    });
+
+    expect(
+      failureOf(rendered("de-DE", emailFixtureValues, document))
+    ).toMatchObject({
+      _tag: "EmailLanguageMissing",
+      locale: "de-DE",
+    });
+  });
+
   test("fails for a shown value without a snapshot", () => {
     const { contact: _contact, ...values } = emailFixtureValues;
 
@@ -198,6 +233,13 @@ describe("renderEmailContent", () => {
     ["a scalar list item that isn't a scalar", "tags", [["coffee"]]],
     ["a sort key that isn't a scalar", "groups", [{ basisPoints: [1] }]],
     ["a scalar that is a record", "first_name", { name: "Jana" }],
+    ["a scalar of another type than publication froze", "first_name", 42],
+    ["a record without a required field", "contact", { email: null }],
+    [
+      "a record with a field publication didn't select",
+      "contact",
+      { displayName: "Jana", phone: "1" },
+    ],
     ["a discount without a code", "offer", { expiresAt: fixtureOfferExpiry }],
     [
       "a discount with an invalid expiry",
