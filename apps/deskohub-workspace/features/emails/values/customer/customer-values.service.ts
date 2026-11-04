@@ -151,13 +151,13 @@ export class CustomerValues extends Context.Service<
 }
 
 /** Whether a definition's frozen output no longer matches the catalogue. */
-const isFrozenShapeIncompatible = (
+const hasIncompatibleFrozenFields = (
   definition: EmailValueDefinition,
-  shape: ReturnType<typeof selectedEmailCustomerFields>
+  fields: ReturnType<typeof selectedEmailCustomerFields>
 ) =>
   Boolean(
     definition["customerShape"] &&
-      (!shape || !sameFields(definition["customerShape"], shape))
+      (!fields || !sameFields(definition["customerShape"], fields))
   );
 
 /** The catalogue's current field at a list selection's sort path. */
@@ -194,7 +194,7 @@ const validateDefinitionHistory = (
 ): Effect.Effect<void, CustomerValueRejected> => {
   const selection = definition.source;
   if (
-    isFrozenShapeIncompatible(
+    hasIncompatibleFrozenFields(
       definition,
       selectedEmailCustomerFields(selection)
     )
