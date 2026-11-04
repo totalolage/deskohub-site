@@ -1,0 +1,314 @@
+import {
+  type AdministrationCustomerDetail,
+  EmailCustomerField,
+  type EmailCustomerSelection,
+  type EmailCustomerSelectionInvalid,
+  type EmailValueDefinition,
+  EmailValueSnapshot,
+  emailCustomerFieldAtPath,
+  emailCustomerFieldCatalogue,
+  emailValueSnapshotForDefinition,
+  selectedEmailCustomerShape as selectedEmailCustomerFields,
+  validateEmailCustomerSelection,
+} from "@deskohub/workspace-admin-api";
+import {
+  Array as Arr,
+  Context,
+  Effect,
+  Layer,
+  Predicate,
+  Schema,
+} from "effect";
+import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
+import {
+  CustomerValueMissing,
+  CustomerValueRejected,
+  CustomerValueSource,
+} from "./customer-value-source.service";
+
+type CustomerValueFailure = Effect.Error<
+  ReturnType<CustomerValueSource["Service"]["profile"]>
+>;
+type CustomerValueInput = {
+  readonly customerId: DotyposCustomerId;
+  readonly definition: EmailValueDefinition & {
+    readonly source: EmailCustomerSelection;
+  };
+  readonly locale: string;
+};
+
+interface ICustomerValues {
+  /** Only current lookups run here. Preparation replays persisted snapshots before calling this. */
+  readonly resolve: (
+    input: CustomerValueInput
+  ) => Effect.Effect<
+    Schema.Json,
+    CustomerValueFailure | EmailCustomerSelectionInvalid
+  >;
+}
+
+const sameFields = Schema.toEquivalence(EmailCustomerField);
+const sortKeySchema = Schema.NullOr(
+  Schema.Union([Schema.Finite, Schema.String, Schema.Boolean])
+);
+type SortKey = typeof sortKeySchema.Type;
+
+export class CustomerValues extends Context.Service<
+  CustomerValues,
+  ICustomerValues
+>()("@deskohub-workspace/emails/CustomerValues") {
+  static Default = Layer.effect(
+    this,
+    Effect.gen(function* () {
+      const source = yield* CustomerValueSource;
+      const sources: Readonly<
+        Record<
+          string,
+          (input: {
+            readonly customerId: DotyposCustomerId;
+          }) => Effect.Effect<unknown, CustomerValueFailure>
+        >
+      > = {
+        profile: source.profile,
+        activity: source.activity,
+      } satisfies Record<
+        keyof AdministrationCustomerDetail,
+        (input: {
+          readonly customerId: DotyposCustomerId;
+        }) => Effect.Effect<unknown, CustomerValueFailure>
+      >;
+      return {
+        resolve: Effect.fn("CustomerValues.resolve")(
+          (input: CustomerValueInput) => {
+            const selection: Effect.Effect<
+              EmailCustomerField,
+              EmailCustomerSelectionInvalid
+            > = validateEmailCustomerSelection(input.definition.source);
+            return selection.pipe(
+              Effect.tap(() => validateDefinitionHistory(input.definition)),
+              Effect.andThen(() =>
+                Effect.succeed(
+                  sources[input.definition.source.path[0] ?? ""]
+                ).pipe(
+                  Effect.filterOrFail(
+                    (load): load is NonNullable<typeof load> =>
+                      load !== undefined,
+                    () =>
+                      new CustomerValueRejected({
+                        reason: "incompatible-shape",
+                      })
+                  ),
+                  Effect.flatMap((load) =>
+                    load({ customerId: input.customerId })
+                  )
+                )
+              ),
+              Effect.flatMap((customer) =>
+                Schema.decodeUnknownEffect(Schema.Json)(customer).pipe(
+                  Effect.mapError(
+                    () => new CustomerValueRejected({ reason: "invalid-data" })
+                  )
+                )
+              ),
+              Effect.map((customer) =>
+                valueAtPath(customer, input.definition.source.path.slice(1))
+              ),
+              Effect.filterOrFail(
+                (value): value is Schema.Json =>
+                  value !== null && value !== undefined,
+                () => new CustomerValueMissing({ reason: "field-absent" })
+              ),
+              Effect.flatMap((value) =>
+                selectCustomerValue(value, input.definition.source)
+              ),
+              Effect.flatMap((value) =>
+                EmailValueSnapshot.members[0].makeEffect({ value }).pipe(
+                  Effect.flatMap(
+                    Schema.decodeUnknownEffect(
+                      emailValueSnapshotForDefinition(
+                        input.definition,
+                        input.locale
+                      )
+                    )
+                  ),
+                  Effect.mapError(
+                    () =>
+                      new CustomerValueRejected({
+                        reason: "incompatible-shape",
+                      })
+                  ),
+                  Effect.as(value)
+                )
+              )
+            );
+          }
+        ),
+      } satisfies ICustomerValues;
+    })
+  );
+
+  static Live = this.Default.pipe(Layer.provide(CustomerValueSource.Live));
+}
+
+const validateDefinitionHistory = (
+  definition: EmailValueDefinition & { readonly source: EmailCustomerSelection }
+): Effect.Effect<void, CustomerValueRejected> => {
+  const selection = definition.source;
+  const shape = selectedEmailCustomerFields(selection);
+  if (
+    definition["customerShape"] &&
+    (!shape || !sameFields(definition["customerShape"], shape))
+  )
+    return Effect.fail(
+      new CustomerValueRejected({ reason: "incompatible-shape" })
+    );
+  if (!selection.sort) return Effect.void;
+  const selected = emailCustomerFieldAtPath(
+    emailCustomerFieldCatalogue,
+    selection.path,
+    { inheritPresence: false }
+  );
+  const current =
+    selected?.kind === "list"
+      ? emailCustomerFieldAtPath(selected.element, selection.sort.path)
+      : undefined;
+  const frozenOutput = definition["customerShape"];
+  const frozenSort =
+    definition["customerSortShape"] ??
+    (frozenOutput?.kind === "list"
+      ? emailCustomerFieldAtPath(frozenOutput.element, selection.sort.path)
+      : undefined);
+  // An unprojected historical sort field needs its own frozen descriptor.
+  return Effect.void.pipe(
+    Effect.filterOrFail(
+      () =>
+        current !== undefined &&
+        frozenSort !== undefined &&
+        sameFields(frozenSort, current),
+      () => new CustomerValueRejected({ reason: "incompatible-sort" })
+    )
+  );
+};
+
+const selectCustomerValue = (
+  value: Schema.Json,
+  selection: EmailCustomerSelection
+) => {
+  if (!Arr.isArray<Schema.Json>(value))
+    return Effect.succeed(projectFields(value, selection.fields));
+  return Effect.succeed(value).pipe(
+    Effect.flatMap((items) =>
+      selection.sort
+        ? Effect.forEach(items, (item) =>
+            Schema.decodeUnknownEffect(sortKeySchema)(
+              valueAtPath(item, selection.sort?.path ?? []) ?? null
+            ).pipe(
+              Effect.map((key) => ({ item, key })),
+              Effect.mapError(
+                () => new CustomerValueRejected({ reason: "invalid-data" })
+              )
+            )
+          ).pipe(
+            Effect.map((keyed) =>
+              keyed
+                .toSorted((left, right) =>
+                  compareSortKeys(
+                    left.key,
+                    right.key,
+                    selection.sort?.direction ?? "asc"
+                  )
+                )
+                .map(({ item }) => item)
+            )
+          )
+        : Effect.succeed(items)
+    ),
+    Effect.map((items) =>
+      items
+        .slice(0, selection.limit)
+        .map((item) => projectFields(item, selection.fields))
+    )
+  );
+};
+
+/** Sorting/limits apply to the administration's bounded history, never the customer's complete history. */
+const compareSortKeys = (
+  left: SortKey,
+  right: SortKey,
+  direction: "asc" | "desc"
+): number => {
+  if (left === right) return 0;
+  // Null and missing sort keys stay last in both directions; ties preserve source order.
+  if (left === null) return 1;
+  if (right === null) return -1;
+  const compared = comparePresentKeys(left, right);
+  return direction === "asc" ? compared : -compared;
+};
+
+const comparePresentKeys = (
+  left: Exclude<SortKey, null>,
+  right: Exclude<SortKey, null>
+): number => {
+  if (Predicate.isBoolean(left) && Predicate.isBoolean(right))
+    return Number(left) - Number(right);
+  if (Predicate.isNumber(left) && Predicate.isNumber(right))
+    return left - right;
+  if (Predicate.isString(left) && Predicate.isString(right))
+    return left < right ? -1 : 1;
+  const rank = (value: Exclude<SortKey, null>) => {
+    if (Predicate.isBoolean(value)) return 0;
+    if (Predicate.isNumber(value)) return 1;
+    return 2;
+  };
+  return rank(left) - rank(right);
+};
+
+const valueAtPath = (
+  root: Schema.Json,
+  path: readonly string[]
+): Schema.Json | undefined => {
+  let value: Schema.Json | undefined = root;
+  for (const part of path) {
+    if (
+      value === null ||
+      !Predicate.isObjectKeyword(value) ||
+      Arr.isArray<Schema.Json>(value) ||
+      !Object.hasOwn(value, part)
+    )
+      return undefined;
+    value = value[part];
+  }
+  return value;
+};
+
+const projectFields = (
+  value: Schema.Json,
+  paths: readonly (readonly string[])[] | undefined
+): Schema.Json => {
+  if (
+    !paths ||
+    value === null ||
+    !Predicate.isObjectKeyword(value) ||
+    Arr.isArray<Schema.Json>(value)
+  )
+    return value;
+  return Object.fromEntries(
+    [...new Set(paths.flatMap((path) => (path[0] ? [path[0]] : [])))].flatMap(
+      (name) => {
+        const child = Object.hasOwn(value, name) ? value[name] : undefined;
+        if (child === undefined) return [];
+        const relative = paths
+          .filter((path) => path[0] === name)
+          .map((path) => path.slice(1));
+        return [
+          [
+            name,
+            relative.some((path) => path.length === 0)
+              ? child
+              : projectFields(child, relative),
+          ],
+        ];
+      }
+    )
+  );
+};

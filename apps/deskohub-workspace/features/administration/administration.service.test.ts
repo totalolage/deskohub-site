@@ -3138,6 +3138,89 @@ describe("AdministrationService", () => {
     });
   });
 
+  test("strict customer activity distinguishes provider failure from an absent live record", async () => {
+    const instant = Temporal.Instant.from("2026-08-10T08:00:00Z");
+    const row = {
+      id: "synthetic-activity-reservation",
+      dotyposCustomerId: "synthetic-customer",
+      dotyposReservationId: "synthetic-booking",
+      reservationState: "confirmed",
+      paymentState: "paid",
+      fulfillmentState: "fulfilled",
+      reservationPurpose: null,
+      reservationDetails: { kind: "meeting-room" as const },
+      reservationCreatedAt: instant,
+      reservationConfirmedAt: instant,
+      reservationCancelledAt: null,
+      reservationHoldExpiredAt: null,
+      paidAt: instant,
+      fulfilledAt: instant,
+      fulfillmentFailedAt: null,
+      createdAt: instant,
+      updatedAt: instant,
+    };
+    const read = (strict: boolean, unavailable: boolean) => {
+      let selectCall = 0;
+      return Effect.flatMap(AdministrationService, (service) =>
+        strict
+          ? service.loadCustomerActivityStrict("synthetic-customer")
+          : service.loadCustomerActivity("synthetic-customer")
+      ).pipe(
+        Effect.provide(
+          AdministrationService.Default.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.succeed(
+                  WorkspaceDatabase,
+                  WorkspaceDatabase.make({
+                    select: () => makeQuery(selectCall++ === 0 ? [row] : []),
+                  } as never)
+                ),
+                DotyposServiceMock({
+                  getReservationsByIds: () =>
+                    unavailable
+                      ? Effect.fail(
+                          new DotyposUnavailable({
+                            operation: "getReservationsByIds",
+                            reason: "server",
+                          })
+                        )
+                      : Effect.succeed(new Map()),
+                  getCustomersByIds: () => Effect.succeed(new Map()),
+                  getCustomer: () => Effect.succeed(Option.none()),
+                }),
+                Layer.succeed(
+                  PostHogReservationHistory,
+                  PostHogReservationHistory.of({
+                    load: () =>
+                      Effect.succeed({ kind: "unavailable" } as const),
+                  })
+                ),
+                reservationAuthorsMock(),
+                PaymentAdministrationServiceMock({})
+              )
+            )
+          )
+        ),
+        Effect.result,
+        Effect.runPromise
+      );
+    };
+    expect(await read(true, true)).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "AdministrationListSourceUnavailableError",
+        source: "booking-details",
+      },
+    });
+    expect(await read(false, true)).toMatchObject({ _tag: "Success" });
+    const absent = await read(true, false);
+    expect(absent).toMatchObject({
+      _tag: "Success",
+      success: { reservations: [{ startsAt: null }] },
+    });
+  });
+
   test("loads customer marketing consent without a reservation", async () => {
     const grantedAt = Temporal.Instant.from("2026-08-09T10:00:00Z");
     const withdrawnAt = Temporal.Instant.from("2026-08-10T11:00:00Z");

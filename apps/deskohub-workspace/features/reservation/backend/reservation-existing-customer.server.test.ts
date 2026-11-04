@@ -17,6 +17,7 @@ import { MarketingConsentLedger } from "@/features/legal/backend/marketing-conse
 import type { MarketingConsentStatus } from "@/features/legal/marketing-consent-status";
 import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import type { CustomerLastReservation } from "@/features/reservation/reservation-existing-customer";
+import { ReviewAccounts } from "@/features/review-accounts";
 import { CustomerLastReservationService } from "./customer-last-reservation.service";
 
 const testEmailAddressForAda = testEmailAddress("ada");
@@ -175,6 +176,7 @@ describe("loadReservationCheckoutAccount", () => {
   const originalResolverLive = CustomerAccountResolver.Live;
   const originalLastReservationsLive = CustomerLastReservationService.Live;
   const originalMarketingConsentsLive = MarketingConsentLedger.Live;
+  const originalReviewAccountsLive = ReviewAccounts.Live;
 
   CustomerAccountContactService.Live = Layer.mock(
     CustomerAccountContactService,
@@ -193,6 +195,9 @@ describe("loadReservationCheckoutAccount", () => {
   MarketingConsentLedger.Live = Layer.mock(MarketingConsentLedger, {
     status: () => Effect.succeed("absent"),
   });
+  ReviewAccounts.Live = Layer.mock(ReviewAccounts, {
+    isReviewAccount: () => Effect.succeed(false),
+  });
 
   beforeEach(() => {
     currentAccount = Effect.succeed({ status: "linked", ...account });
@@ -210,6 +215,7 @@ describe("loadReservationCheckoutAccount", () => {
     CustomerAccountResolver.Live = originalResolverLive;
     CustomerLastReservationService.Live = originalLastReservationsLive;
     MarketingConsentLedger.Live = originalMarketingConsentsLive;
+    ReviewAccounts.Live = originalReviewAccountsLive;
   });
 
   test("reads a signed-out visitor without loading a profile", async () => {
