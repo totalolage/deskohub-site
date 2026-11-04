@@ -40,7 +40,10 @@ const spare = EmailValueName.make("spare");
 /** Synthetic customer data per Dotypos customer, and how the fake source answers. */
 type FakeCustomer = {
   email: string | null;
-  mode: "ok" | "unavailable" | "rejected";
+  mode: "ok" | "unavailable" | "rejected" | "gated";
+  /** A gated read waits for this, then reports the customer as missing or unavailable. */
+  gate?: Promise<void>;
+  afterGate?: "missing" | "unavailable";
 };
 
 describe.skipIf(!database)(
@@ -50,6 +53,30 @@ describe.skipIf(!database)(
     const { db, pool } = database;
 
     const customers = new Map<string, FakeCustomer>();
+    const profileOf = (id: string, email: string | null) => ({
+      customer: {
+        id,
+        displayName: "Synthetic Customer",
+        email,
+        phone: null,
+        discountGroupId: null,
+      },
+      discountGroups: [],
+      codes: [],
+      claims: [],
+      vouchers: [],
+      voucherClaims: [],
+    });
+    const gated = (afterGate: "missing" | "unavailable") => {
+      let release = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return { gate, afterGate, release };
+    };
+    const untilSourceCalls = async (count: number) => {
+      while (sourceCalls < count) await Bun.sleep(5);
+    };
     let resolverCalls = 0;
     let sourceCalls = 0;
     beforeEach(() => {
@@ -61,6 +88,16 @@ describe.skipIf(!database)(
       profile: ({ customerId }) => {
         sourceCalls += 1;
         const customer = customers.get(customerId);
+        if (customer?.mode === "gated")
+          return Effect.promise(() => customer.gate).pipe(
+            Effect.andThen(() =>
+              customer.afterGate === "missing"
+                ? Effect.succeed(profileOf(customerId, null))
+                : Effect.fail(
+                    new CustomerValueUnavailable({ source: "profile" })
+                  )
+            )
+          );
         if (customer?.mode === "unavailable")
           return Effect.fail(
             new CustomerValueUnavailable({ source: "profile" })
@@ -69,20 +106,7 @@ describe.skipIf(!database)(
           return Effect.fail(
             new CustomerValueRejected({ reason: "invalid-data" })
           );
-        return Effect.succeed({
-          customer: {
-            id: customerId,
-            displayName: "Synthetic Customer",
-            email: customer?.email ?? null,
-            phone: null,
-            discountGroupId: null,
-          },
-          discountGroups: [],
-          codes: [],
-          claims: [],
-          vouchers: [],
-          voucherClaims: [],
-        });
+        return Effect.succeed(profileOf(customerId, customer?.email ?? null));
       },
       activity: () => Effect.die("activity is not selected"),
     });
@@ -606,6 +630,71 @@ describe.skipIf(!database)(
       expect(prepared._tag).toBe("Ready");
       expect(valuesOf(prepared)[contact]).toEqual(stored);
       expect(resolverCalls).toBe(0);
+    });
+
+    test("a slow attempt that finds data missing resumes from the value another attempt stored", async () => {
+      const { version } = await publishEmail(
+        draftFor({ discountId: await seedDiscount() })
+      );
+      const input = await recipientFor(version);
+      const email = customers.get(input.dotyposCustomerId)?.email ?? null;
+      const { gate, afterGate, release } = gated("missing");
+      customers.set(input.dotyposCustomerId, {
+        email,
+        mode: "gated",
+        gate,
+        afterGate,
+      });
+      const slow = prepare(input);
+      await untilSourceCalls(1);
+      const preparation = await run(
+        Effect.flatMap(EmailRecipientPersistence, (recipients) =>
+          recipients.select(input)
+        )
+      );
+      const stored = { _tag: "Resolved", value: email };
+      await run(
+        Effect.flatMap(EmailRecipientPersistence, (recipients) =>
+          recipients.saveSnapshot({
+            preparationId: preparation.id,
+            valueName: contact,
+            value: stored,
+          })
+        )
+      );
+      release();
+      const prepared = await slow;
+      expect(prepared._tag).toBe("Ready");
+      expect(valuesOf(prepared)[contact]).toEqual(stored);
+      expect((await storedRows(preparation.id)).preparation.state).toBe(
+        "ready"
+      );
+      expect(await codesFor(input.dotyposCustomerId)).toHaveLength(1);
+    });
+
+    test("an attempt interrupted after another attempt sealed reports the sealed result", async () => {
+      const { version } = await publishEmail(
+        draftFor({ discountId: await seedDiscount() })
+      );
+      const input = await recipientFor(version);
+      const email = customers.get(input.dotyposCustomerId)?.email ?? null;
+      const { gate, afterGate, release } = gated("unavailable");
+      customers.set(input.dotyposCustomerId, {
+        email,
+        mode: "gated",
+        gate,
+        afterGate,
+      });
+      const slow = prepare(input);
+      await untilSourceCalls(1);
+      customers.set(input.dotyposCustomerId, { email, mode: "ok" });
+      const winner = await prepare(input);
+      expect(winner._tag).toBe("Ready");
+      customers.set(input.dotyposCustomerId, { email, mode: "unavailable" });
+      release();
+      const interrupted = await slow;
+      expect(interrupted._tag).toBe("Ready");
+      expect(valuesOf(interrupted)).toEqual(valuesOf(winner));
     });
 
     test("a lost sealing race returns the winning outcome, and recorded outcomes stay frozen", async () => {

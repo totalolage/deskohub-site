@@ -5,7 +5,7 @@ import type {
   EmailValueSnapshot,
 } from "@deskohub/workspace-admin-api";
 import { requiredEmailValueNames } from "@deskohub/workspace-admin-api";
-import { Clock, Context, Effect, Layer, Match } from "effect";
+import { Clock, Context, Data, Effect, Layer, Match } from "effect";
 import type {
   EmailPreparationFailureReason,
   EmailPreparationSkipReason,
@@ -28,31 +28,31 @@ import {
  * Whose data a sample shows. A real customer's data needs a signed-in
  * administrator; everything else uses the synthetic customer.
  */
-export type EmailSampleRecipient =
-  | { readonly _tag: "Synthetic" }
-  | { readonly _tag: "Customer"; readonly customerId: DotyposCustomerId };
+export type EmailSampleRecipient = Data.TaggedEnum<{
+  Synthetic: Record<never, never>;
+  Customer: { readonly customerId: DotyposCustomerId };
+}>;
+export const EmailSampleRecipient = Data.taggedEnum<EmailSampleRecipient>();
 
 /** Values for a preview, test send, or dry run. Nothing is stored or issued. */
-export type EmailValueSample =
-  | {
-      readonly _tag: "Ready";
-      readonly values: ReadonlyMap<EmailValueName, EmailValueSnapshot>;
-    }
-  | {
-      readonly _tag: "Skipped";
-      readonly reason: EmailPreparationSkipReason;
-      readonly valueName: EmailValueName | undefined;
-    }
-  | {
-      readonly _tag: "Failed";
-      readonly reason: EmailPreparationFailureReason;
-      readonly valueName: EmailValueName | undefined;
-    }
-  | {
-      readonly _tag: "Unavailable";
-      readonly reason: EmailValuesUnavailable["reason"];
-      readonly valueName: EmailValueName;
-    };
+export type EmailValueSample = Data.TaggedEnum<{
+  Ready: {
+    readonly values: ReadonlyMap<EmailValueName, EmailValueSnapshot>;
+  };
+  Skipped: {
+    readonly reason: EmailPreparationSkipReason;
+    readonly valueName: EmailValueName | undefined;
+  };
+  Failed: {
+    readonly reason: EmailPreparationFailureReason;
+    readonly valueName: EmailValueName | undefined;
+  };
+  Unavailable: {
+    readonly reason: EmailValuesUnavailable["reason"];
+    readonly valueName: EmailValueName;
+  };
+}>;
+export const EmailValueSample = Data.taggedEnum<EmailValueSample>();
 
 interface IEmailValueSamples {
   /**
@@ -138,33 +138,25 @@ export class EmailValueSamples extends Context.Service<
                   )
               )
             ),
-            Effect.map(
-              (values): EmailValueSample => ({
-                _tag: "Ready",
-                values: new Map(values),
-              })
+            Effect.map((values) =>
+              EmailValueSample.Ready({ values: new Map(values) })
             ),
             Effect.catchTag("EmailValuesIncomplete", ({ outcome }) =>
-              Effect.succeed<EmailValueSample>(
-                outcome.state === "skipped"
-                  ? {
-                      _tag: "Skipped",
-                      reason: outcome.reason,
-                      valueName: outcome.valueName,
-                    }
-                  : {
-                      _tag: "Failed",
-                      reason: outcome.reason,
-                      valueName: outcome.valueName,
-                    }
+              Effect.succeed(
+                Match.value(outcome).pipe(
+                  Match.discriminatorsExhaustive("state")({
+                    skipped: ({ reason, valueName }) =>
+                      EmailValueSample.Skipped({ reason, valueName }),
+                    failed: ({ reason, valueName }) =>
+                      EmailValueSample.Failed({ reason, valueName }),
+                  })
+                )
               )
             ),
             Effect.catchTag("EmailValuesUnavailable", ({ reason, valueName }) =>
-              Effect.succeed<EmailValueSample>({
-                _tag: "Unavailable",
-                reason,
-                valueName,
-              })
+              Effect.succeed(
+                EmailValueSample.Unavailable({ reason, valueName })
+              )
             )
           )
         ),

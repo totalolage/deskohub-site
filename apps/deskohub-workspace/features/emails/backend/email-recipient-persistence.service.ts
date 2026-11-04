@@ -8,7 +8,7 @@ import {
   type EmailVersionId,
   emailValueSnapshotForDefinition,
 } from "@deskohub/workspace-admin-api";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -100,6 +100,8 @@ export interface IEmailRecipientPersistence {
   /**
    * Seals an open preparation with its outcome. A preparation another attempt
    * already sealed is returned unchanged, so callers read the winning outcome.
+   * A skip or failure naming a value that another attempt has stored meanwhile
+   * leaves the preparation open, so the caller resumes from that value.
    */
   readonly finish: (
     preparationId: EmailPreparationId,
@@ -293,32 +295,40 @@ export class EmailRecipientPersistence extends Context.Service<
           preparationId: EmailPreparationId,
           outcome: EmailPreparationOutcome
         ) {
-          const [sealed] = yield* db
-            .update(emailPreparations)
-            .set({
-              state: outcome.state,
-              outcomeReason: outcome.state === "ready" ? null : outcome.reason,
-              outcomeValueName:
-                outcome.state === "ready" ? null : (outcome.valueName ?? null),
+          return yield* transaction(
+            Effect.gen(function* () {
+              const current = yield* lockedPreparation(preparationId);
+              if (current.state !== "selected" && current.state !== "preparing")
+                return current;
+              if (outcome.state !== "ready" && outcome.valueName) {
+                // Snapshot inserts lock this row too, so this read sees any committed value.
+                const [stored] = yield* db
+                  .select({ valueName: emailValueSnapshots.valueName })
+                  .from(emailValueSnapshots)
+                  .where(
+                    and(
+                      eq(emailValueSnapshots.preparationId, preparationId),
+                      eq(emailValueSnapshots.valueName, outcome.valueName)
+                    )
+                  );
+                if (stored) return current;
+              }
+              const [sealed] = yield* db
+                .update(emailPreparations)
+                .set({
+                  state: outcome.state,
+                  outcomeReason:
+                    outcome.state === "ready" ? null : outcome.reason,
+                  outcomeValueName:
+                    outcome.state === "ready"
+                      ? null
+                      : (outcome.valueName ?? null),
+                })
+                .where(eq(emailPreparations.id, preparationId))
+                .returning();
+              return sealed!;
             })
-            .where(
-              and(
-                eq(emailPreparations.id, preparationId),
-                inArray(emailPreparations.state, ["selected", "preparing"])
-              )
-            )
-            .returning();
-          if (sealed) return sealed;
-          const [existing] = yield* db
-            .select()
-            .from(emailPreparations)
-            .where(eq(emailPreparations.id, preparationId));
-          if (!existing)
-            return yield* new EmailPreparationConflict({
-              preparationId,
-              reason: "not-found",
-            });
-          return existing;
+          );
         }),
         recordDeliveryOutcome: Effect.fn(
           "EmailRecipientPersistence.recordDeliveryOutcome"

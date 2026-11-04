@@ -1,11 +1,11 @@
 export {
   EmailRecipientPreparation,
-  type PreparedRecipient,
+  PreparedRecipient,
   type RecipientPreparationInput,
 } from "./email-recipient-preparation.service";
 export { EmailPreparationRetry } from "./email-value-generation";
 export {
-  type EmailSampleRecipient,
-  type EmailValueSample,
+  EmailSampleRecipient,
+  EmailValueSample,
   EmailValueSamples,
 } from "./email-value-samples.service";

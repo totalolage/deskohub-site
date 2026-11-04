@@ -6,7 +6,7 @@ import type {
   EmailValueSnapshot,
   EmailVersionId,
 } from "@deskohub/workspace-admin-api";
-import { Context, Effect, Layer, Match, Schema } from "effect";
+import { Context, Data, Effect, Layer, Match, Schema } from "effect";
 import {
   type EmailPreparationFailureReason,
   type EmailPreparationRow,
@@ -51,28 +51,29 @@ type Prepared = {
   readonly version: EmailVersionRow;
 };
 
-/** A sealed preparation, which every retry of the same delivery replays, or a retryable interruption. */
-export type PreparedRecipient =
-  | (Prepared & {
-      readonly _tag: "Ready";
-      readonly values: ReadonlyMap<EmailValueName, EmailValueSnapshot>;
-    })
-  | (Prepared & {
-      readonly _tag: "Skipped";
-      readonly reason: EmailPreparationSkipReason;
-      readonly valueName: EmailValueName | undefined;
-    })
-  | (Prepared & {
-      readonly _tag: "Failed";
-      readonly reason: EmailPreparationFailureReason;
-      readonly valueName: EmailValueName | undefined;
-    })
-  | (Prepared & {
-      /** Not sealed: a later retry resumes after the temporary failure passes. */
-      readonly _tag: "Unavailable";
-      readonly reason: EmailValuesUnavailable["reason"];
-      readonly valueName: EmailValueName;
-    });
+/**
+ * A sealed preparation, which every retry of the same delivery replays, or a
+ * temporary interruption that leaves it open for a later retry.
+ */
+export type PreparedRecipient = Data.TaggedEnum<{
+  Ready: Prepared & {
+    readonly values: ReadonlyMap<EmailValueName, EmailValueSnapshot>;
+  };
+  Skipped: Prepared & {
+    readonly reason: EmailPreparationSkipReason;
+    readonly valueName: EmailValueName | undefined;
+  };
+  Failed: Prepared & {
+    readonly reason: EmailPreparationFailureReason;
+    readonly valueName: EmailValueName | undefined;
+  };
+  /** Not sealed. Delivery may retry later; codes already issued stay with this preparation. */
+  Unavailable: Prepared & {
+    readonly reason: EmailValuesUnavailable["reason"];
+    readonly valueName: EmailValueName;
+  };
+}>;
+export const PreparedRecipient = Data.taggedEnum<PreparedRecipient>();
 
 type PreparationFailure =
   | DatabaseQueryError
@@ -115,51 +116,58 @@ export class EmailRecipientPreparation extends Context.Service<
           )
         );
 
-      const settled = ({ preparation, version }: Prepared) =>
-        Match.value(preparation.state).pipe(
-          Match.when("ready", () =>
-            recipients.readSnapshots(preparation.id).pipe(
-              Effect.map(
-                (snapshots): PreparedRecipient => ({
-                  _tag: "Ready",
-                  preparation,
-                  version,
-                  values: new Map(
-                    snapshots.map(({ valueName, value }) => [valueName, value])
-                  ),
-                })
-              )
-            )
-          ),
-          Match.when("skipped", () =>
-            recordedReason(skipReason, preparation).pipe(
-              Effect.map(
-                (reason): PreparedRecipient => ({
-                  _tag: "Skipped",
-                  preparation,
-                  version,
-                  reason,
-                  valueName: preparation.outcomeValueName ?? undefined,
-                })
-              )
-            )
-          ),
-          Match.when("failed", () =>
-            recordedReason(failureReason, preparation).pipe(
-              Effect.map(
-                (reason): PreparedRecipient => ({
-                  _tag: "Failed",
-                  preparation,
-                  version,
-                  reason,
-                  valueName: preparation.outcomeValueName ?? undefined,
-                })
-              )
-            )
-          ),
-          Match.orElse((state) =>
-            Effect.die(`Preparation ${preparation.id} is still ${state}`)
+      /** The preparation as stored now; selection returns the existing row. */
+      const current = ({ preparation, version }: Prepared) =>
+        recipients
+          .select({
+            sendId: preparation.sendId,
+            dotyposCustomerId: preparation.dotyposCustomerId,
+            emailVersionId: preparation.emailVersionId,
+            locale: preparation.locale,
+          })
+          .pipe(Effect.map((row): Prepared => ({ preparation: row, version })));
+
+      const replay = (prepared: Prepared) =>
+        recipients.readSnapshots(prepared.preparation.id).pipe(
+          Effect.map((snapshots) =>
+            PreparedRecipient.Ready({
+              ...prepared,
+              values: new Map(
+                snapshots.map(({ valueName, value }) => [valueName, value])
+              ),
+            })
           )
+        );
+
+      const recorded = (prepared: Prepared) =>
+        Match.value(prepared.preparation).pipe(
+          Match.discriminatorsExhaustive("state")({
+            selected: () => Effect.die("An open preparation has no outcome"),
+            preparing: () => Effect.die("An open preparation has no outcome"),
+            ready: () => replay(prepared),
+            skipped: () =>
+              recordedReason(skipReason, prepared.preparation).pipe(
+                Effect.map((reason) =>
+                  PreparedRecipient.Skipped({
+                    ...prepared,
+                    reason,
+                    valueName:
+                      prepared.preparation.outcomeValueName ?? undefined,
+                  })
+                )
+              ),
+            failed: () =>
+              recordedReason(failureReason, prepared.preparation).pipe(
+                Effect.map((reason) =>
+                  PreparedRecipient.Failed({
+                    ...prepared,
+                    reason,
+                    valueName:
+                      prepared.preparation.outcomeValueName ?? undefined,
+                  })
+                )
+              ),
+          })
         );
 
       const discountValueSnapshot = (input: {
@@ -203,8 +211,8 @@ export class EmailRecipientPreparation extends Context.Service<
       const valueSnapshot = (input: {
         readonly preparation: EmailPreparationRow;
         readonly definition: EmailValueDefinition;
-      }) => {
-        return Match.value(input.definition.source).pipe(
+      }) =>
+        Match.value(input.definition.source).pipe(
           Match.discriminatorsExhaustive("kind")({
             customer: (source) =>
               customerValueSnapshot({
@@ -215,9 +223,8 @@ export class EmailRecipientPreparation extends Context.Service<
             discount: () => discountValueSnapshot(input),
           })
         );
-      };
 
-      /** Generates and stores one value unless an earlier attempt already stored it. */
+      /** Generates and stores one value. A concurrent attempt's stored value wins. */
       const storeValue = (input: {
         readonly preparation: EmailPreparationRow;
         readonly definition: EmailValueDefinition;
@@ -231,36 +238,73 @@ export class EmailRecipientPreparation extends Context.Service<
             })
           ),
           Effect.catchTag("EmailPreparationConflict", (conflict) =>
-            Match.value(conflict.reason).pipe(
-              // A concurrent attempt stored this value first; its snapshot wins.
-              Match.when("snapshot-conflict", () => Effect.void),
-              Match.when("invalid-snapshot", () =>
-                Effect.fail(
-                  new EmailValuesIncomplete({
-                    outcome: {
-                      state: "failed",
-                      reason: "invalid-value",
-                      valueName: input.definition.name,
-                    },
-                  })
-                )
-              ),
-              Match.orElse(() => Effect.fail(conflict))
+            Match.value(conflict).pipe(
+              Match.discriminatorsExhaustive("reason")({
+                "snapshot-conflict": () => Effect.void,
+                "invalid-snapshot": () =>
+                  Effect.fail(
+                    new EmailValuesIncomplete({
+                      outcome: {
+                        state: "failed",
+                        reason: "invalid-value",
+                        valueName: input.definition.name,
+                      },
+                    })
+                  ),
+                "not-found": () => Effect.fail(conflict),
+                "issuance-conflict": () => Effect.fail(conflict),
+                "delivery-conflict": () => Effect.fail(conflict),
+              })
             )
           )
         );
 
-      const generate = ({ preparation, version }: Prepared) =>
+      /** An interrupted attempt reports the durable state, which another attempt may have sealed. */
+      const interrupted = (
+        prepared: Prepared,
+        { reason, valueName }: EmailValuesUnavailable
+      ) =>
+        current(prepared).pipe(
+          Effect.flatMap((latest) =>
+            Match.value(latest.preparation).pipe(
+              Match.discriminatorsExhaustive("state")({
+                selected: () =>
+                  Effect.succeed(
+                    PreparedRecipient.Unavailable({
+                      ...latest,
+                      reason,
+                      valueName,
+                    })
+                  ),
+                preparing: () =>
+                  Effect.succeed(
+                    PreparedRecipient.Unavailable({
+                      ...latest,
+                      reason,
+                      valueName,
+                    })
+                  ),
+                ready: () => recorded(latest),
+                skipped: () => recorded(latest),
+                failed: () => recorded(latest),
+              })
+            )
+          )
+        );
+
+      const generate = (
+        prepared: Prepared
+      ): Effect.Effect<PreparedRecipient, PreparationFailure> =>
         Effect.Do.pipe(
           Effect.tap(() =>
             requirePublishedLanguage({
-              document: version.document,
-              locale: preparation.locale,
+              document: prepared.version.document,
+              locale: prepared.preparation.locale,
             })
           ),
           Effect.bind("stored", () =>
             recipients
-              .readSnapshots(preparation.id)
+              .readSnapshots(prepared.preparation.id)
               .pipe(
                 Effect.map(
                   (snapshots) =>
@@ -271,10 +315,11 @@ export class EmailRecipientPreparation extends Context.Service<
           Effect.tap(({ stored }) =>
             Effect.forEach(
               referencedDefinitions(
-                version.document,
-                preparation.requiredValueNames
+                prepared.version.document,
+                prepared.preparation.requiredValueNames
               ).filter((definition) => !stored.has(definition.name)),
-              (definition) => storeValue({ preparation, definition }),
+              (definition) =>
+                storeValue({ preparation: prepared.preparation, definition }),
               { discard: true }
             )
           ),
@@ -283,18 +328,29 @@ export class EmailRecipientPreparation extends Context.Service<
             Effect.succeed(outcome)
           ),
           Effect.flatMap((outcome) =>
-            recipients.finish(preparation.id, outcome)
+            recipients.finish(prepared.preparation.id, outcome)
           ),
-          Effect.flatMap((sealed) => settled({ preparation: sealed, version })),
-          Effect.catchTag("EmailValuesUnavailable", ({ reason, valueName }) =>
-            Effect.succeed<PreparedRecipient>({
-              _tag: "Unavailable",
-              preparation,
-              version,
-              reason,
-              valueName,
-            })
+          // An open row means another attempt stored the value this one lacked; resume from it.
+          Effect.flatMap((sealed) =>
+            settle({ preparation: sealed, version: prepared.version })
+          ),
+          Effect.catchTag("EmailValuesUnavailable", (unavailable) =>
+            interrupted(prepared, unavailable)
           )
+        );
+
+      /** Generates an open preparation and replays a sealed one. */
+      const settle = (
+        prepared: Prepared
+      ): Effect.Effect<PreparedRecipient, PreparationFailure> =>
+        Match.value(prepared.preparation).pipe(
+          Match.discriminatorsExhaustive("state")({
+            selected: () => generate(prepared),
+            preparing: () => generate(prepared),
+            ready: () => recorded(prepared),
+            skipped: () => recorded(prepared),
+            failed: () => recorded(prepared),
+          })
         );
 
       return {
@@ -302,20 +358,20 @@ export class EmailRecipientPreparation extends Context.Service<
           input: RecipientPreparationInput
         ) {
           const preparation = yield* recipients.select(input);
-          const version = yield* frozenVersion(preparation);
-          return yield* Match.value(preparation).pipe(
-            Match.when(isOpen, () => generate({ preparation, version })),
-            Match.orElse(() => settled({ preparation, version })),
+          const prepared: Prepared = {
+            preparation,
+            version: yield* frozenVersion(preparation),
+          };
+          return yield* settle(prepared).pipe(
             // A concurrent attempt may seal first, which rejects this attempt's writes.
             Effect.catchIf(isDatabaseQueryError, (error) =>
-              recipients.select(input).pipe(
+              current(prepared).pipe(
                 Effect.filterOrFail(
-                  (current) => !isOpen(current),
+                  ({ preparation: latest }) =>
+                    latest.state !== "selected" && latest.state !== "preparing",
                   () => error
                 ),
-                Effect.flatMap((current) =>
-                  settled({ preparation: current, version })
-                )
+                Effect.flatMap(recorded)
               )
             )
           );
@@ -341,13 +397,10 @@ export class EmailRecipientPreparation extends Context.Service<
   );
 }
 
-const isOpen = (preparation: EmailPreparationRow) =>
-  preparation.state === "selected" || preparation.state === "preparing";
-
 const skipReason = Schema.Literals(emailPreparationOutcomeReasons.skipped);
 const failureReason = Schema.Literals(emailPreparationOutcomeReasons.failed);
 
-/** The database check pairs every sealed skip or failure with one of its reasons. */
+/** Reads a sealed row's reason; the database check guarantees it matches the state. */
 const recordedReason = <S extends Schema.Top>(
   reasons: S,
   preparation: EmailPreparationRow
