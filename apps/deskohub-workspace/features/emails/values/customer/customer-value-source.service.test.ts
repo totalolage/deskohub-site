@@ -120,6 +120,37 @@ describe("CustomerValueSource", () => {
     expect(calls).toBe(1);
   });
 
+  test("delivery reads need no request actor and never consult administrator grants", async () => {
+    let grantChecks = 0;
+    const layer = CustomerValueSource.Delivery.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(DiscountAdministration, {
+            loadCustomerProfile: () => Effect.succeed(profile),
+          } as never),
+          Layer.mock(AdministrationService, {
+            loadCustomerActivityStrict: () => Effect.succeed(activity),
+          } as never)
+        )
+      )
+    );
+    expect(await runProfile(layer as never, false)).toMatchObject({
+      _tag: "Success",
+    });
+    // The administrator layer still refuses the same anonymous read.
+    const administrator = sourceLayer({
+      allowed: () => {
+        grantChecks++;
+        return true;
+      },
+    });
+    expect(await runProfile(administrator, false)).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "CustomerValueUnauthorized" },
+    });
+    expect(grantChecks).toBe(0);
+  });
+
   test("reads the real administration profile path with synthetic Dotypos and storage", async () => {
     const calls: string[] = [];
     const discounts = DiscountAdministration.Default.pipe(

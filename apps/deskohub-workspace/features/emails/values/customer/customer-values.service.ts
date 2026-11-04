@@ -150,14 +150,17 @@ export class CustomerValues extends Context.Service<
   /** Administrator reads, for previews of a real customer. */
   static Live = this.Default.pipe(Layer.provide(CustomerValueSource.Live));
 
+  // The variants below build `Default` fresh: layers memoize by reference, so
+  // sharing it would let one runtime reuse the administrator-checked build.
+
   /** Trusted server-side reads for recipient preparation; see `CustomerValueSource.Delivery`. */
-  static DeliveryLive = this.Default.pipe(
+  static DeliveryLive = Layer.fresh(this.Default).pipe(
     Layer.provide(CustomerValueSource.DeliveryLive)
   );
 
   /** Resolves against a synthetic customer, so a sample reads no customer data. */
   static Synthetic = (customer: AdministrationCustomerDetail) =>
-    this.Default.pipe(
+    Layer.fresh(this.Default).pipe(
       Layer.provide(
         Layer.succeed(CustomerValueSource, {
           profile: () =>
