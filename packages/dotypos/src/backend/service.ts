@@ -1,4 +1,14 @@
-import { Context, Data, Effect, Layer, Match, Option, Schema } from "effect";
+import {
+  Context,
+  Data,
+  Effect,
+  Layer,
+  Match,
+  Option,
+  Ref,
+  Schedule,
+  Schema,
+} from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { DotyposRuntimeConfig } from "../config";
 import {
@@ -9,6 +19,7 @@ import {
   type DotyposRequest,
   DotyposReservationCancelledError,
   DotyposUnavailable,
+  type DotyposUncertain,
   type DotyposWriteFailure,
 } from "../errors";
 import type {
@@ -66,6 +77,7 @@ import {
   type DotyposAttemptFailure,
   type DotyposRequestFailure,
   getDotyposRequestPolicy,
+  keepUncertainty,
   retryDotyposRequest,
 } from "./request-profiles";
 
@@ -123,6 +135,14 @@ type DotyposPage<A> = {
 
 const isNotFound = (failure: DotyposAttemptFailure) =>
   failure._tag === "DotyposRejected" && failure.reason === "not-found";
+
+/** A replayed reservation PATCH that met 412 after an uncertain attempt. */
+const isReplayConflict = (
+  failure: DotyposConditionalWriteFailure | DotyposReservationCancelledError
+): failure is DotyposUncertain =>
+  failure._tag === "DotyposUncertain" &&
+  failure.reason === "conflict-after-replay" &&
+  failure.request === "reservation.patch";
 
 /**
  * Reads the addressed record as some, or none when Dotypos answers 404 for
@@ -775,7 +795,10 @@ export interface IDotyposService {
   readonly updateReservation: (
     input: UpdateDotyposReservationInput
   ) => Effect.Effect<DotyposReservation, DotyposConditionalWriteFailure>;
-  /** CONFIRMED already: succeeds without a PATCH. CANCELLED: DotyposReservationCancelledError. A vanished reservation: DotyposRejected{not-found}. */
+  /**
+   * CONFIRMED already: succeeds without a PATCH. CANCELLED: DotyposReservationCancelledError. A vanished reservation: DotyposRejected{not-found}.
+   * A replayed PATCH that meets 412 reruns the read, status match and PATCH once to settle it; a plain 412 is DotyposVersionConflict.
+   */
   readonly confirmReservation: (
     reservationId: DotyposReservationId
   ) => Effect.Effect<
@@ -1179,6 +1202,9 @@ const makeDotyposService: Effect.Effect<
 
       yield* Effect.logInfo("Dotypos reservation confirmation patch started");
 
+      // The replay conflict that makes the next attempt a settling rerun.
+      const unsettled = yield* Ref.make(Option.none<DotyposUncertain>());
+
       // The If-Match ETag makes the status check and the PATCH one atomic
       // transition: a cancellation after this read fails the PATCH instead of
       // being overwritten, so a cancelled hold is never revived.
@@ -1186,6 +1212,14 @@ const makeDotyposService: Effect.Effect<
         id,
         "confirmReservation"
       ).pipe(
+        // A failed settling read leaves the earlier attempt uncertain.
+        Effect.catch((failure) =>
+          Ref.get(unsettled).pipe(
+            Effect.flatMap((uncertain) =>
+              Effect.fail(keepUncertainty(failure, uncertain))
+            )
+          )
+        ),
         Effect.flatMap((current) =>
           Match.value(current.reservation.status).pipe(
             Match.when("CANCELLED", () =>
@@ -1208,6 +1242,25 @@ const makeDotyposService: Effect.Effect<
             Match.exhaustive
           )
         ),
+        // A replayed PATCH that meets 412 has probably already landed: the
+        // replay carries the ETag the landed PATCH replaced. Rerun the read,
+        // status match and PATCH once to settle it. CONFIRMED means it landed,
+        // CANCELLED keeps the cancellation, and NEW patches under the fresh
+        // ETag. A plain 412 stays a version conflict and is not rerun.
+        Effect.tapError((failure) =>
+          isReplayConflict(failure)
+            ? Ref.getAndSet(unsettled, Option.some(failure)).pipe(
+                Effect.flatMap((earlier) =>
+                  Option.isNone(earlier)
+                    ? Effect.logWarning(
+                        "Dotypos reservation confirmation replay conflicted; rereading to settle it"
+                      )
+                    : Effect.void
+                )
+              )
+            : Effect.void
+        ),
+        Effect.retry({ schedule: Schedule.recurs(1), while: isReplayConflict }),
         Effect.tapError((error) =>
           Effect.logError("Dotypos reservation confirmation failed", {
             error,
