@@ -569,7 +569,7 @@ describe.skipIf(!database)(
             service.finish(
               preparation.id,
               state === "failed"
-                ? { state, reason: "customer-unavailable" }
+                ? { state, reason: "customer-rejected" }
                 : { state: "skipped", reason: "missing-value" }
             )
           )
