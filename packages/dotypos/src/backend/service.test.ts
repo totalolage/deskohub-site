@@ -19,11 +19,15 @@ import {
   DotyposRuntimeConfigSchema,
   makeDotyposRuntimeConfigLayer,
 } from "../config";
-import type {
-  Category,
+import {
+  type Category,
   Customer,
-  DotyposClient,
+  CustomerWriteRecord,
+  type DotyposClient,
+  ReplaceCustomersRequestJson,
+  ReplaceReservationsRequestJson,
   Reservation,
+  ReservationWriteRecord,
   Table,
 } from "../generated/effect.gen";
 import { dotyposIdReadBatchSize, dotyposIdReadRequests } from "../id-reads";
@@ -952,9 +956,8 @@ describe("DotyposService customer lookup", () => {
     expect(updateAttempts).toBeGreaterThan(1);
   });
 
-  test("fails filling a matched customer Dotypos returned without an id", async () => {
-    const matched = customer({
-      id: undefined,
+  test("rejects a customer lookup that returns a customer without an id", async () => {
+    const { id: _id, ...matched } = customer({
       email: adaAddress,
       lastName: undefined,
     });
@@ -3399,55 +3402,6 @@ describe("DotyposService customer discounts", () => {
       },
     });
   });
-
-  test('accepts "10" and ignores out-of-range discounts', async () => {
-    const discounts: Record<string, string> = {
-      ten: "10",
-      zero: "0",
-      tooHigh: "101",
-    };
-    const fetchMock = mockDotyposFetch((request) => {
-      const url = new URL(request.url);
-      if (url.pathname === "/signin/token") return tokenResponse();
-      const match = url.pathname.match(/\/discount-groups\/(.+)$/);
-      if (match) {
-        const discountGroupId = match[1]!;
-        return Response.json({
-          id: discountGroupId,
-          discountPercent: discounts[discountGroupId],
-        });
-      }
-      return new Response("Not found", { status: 404 });
-    });
-
-    const result = await runWithService(
-      Effect.gen(function* () {
-        const dotypos = yield* DotyposService;
-        return yield* Effect.all([
-          dotypos.getCustomerDiscount(
-            customer({ _discountGroupId: dotyposDiscountGroupId("ten") })
-          ),
-          dotypos.getCustomerDiscount(
-            customer({ _discountGroupId: dotyposDiscountGroupId("zero") })
-          ),
-          dotypos.getCustomerDiscount(
-            customer({ _discountGroupId: dotyposDiscountGroupId("tooHigh") })
-          ),
-        ]);
-      }),
-      fetchMock
-    );
-
-    expect(result).toEqual([
-      {
-        source: "dotypos-discount-group",
-        discountGroupId: dotyposDiscountGroupId("ten"),
-        percent: 10,
-      },
-      undefined,
-      undefined,
-    ]);
-  });
 });
 
 describe("DotyposService reservation listing", () => {
@@ -5525,16 +5479,25 @@ describe("DotyposService read retry boundary", () => {
       label: "reservation 404",
       linkedCustomer: false,
       missingCustomerId: false,
+      missingId: false,
     },
     {
       label: "linked customer 404",
       linkedCustomer: true,
       missingCustomerId: false,
+      missingId: false,
     },
     {
       label: "missing customer ID",
       linkedCustomer: false,
       missingCustomerId: true,
+      missingId: false,
+    },
+    {
+      label: "reservation without an ID",
+      linkedCustomer: false,
+      missingCustomerId: false,
+      missingId: true,
     },
   ])("getReservation read boundary: $label", async (row) => {
     let reservationReads = 0;
@@ -5544,11 +5507,13 @@ describe("DotyposService read retry boundary", () => {
       if (url.pathname === "/signin/token") return tokenResponse();
       if (url.pathname === "/clouds/cloud-id/reservations/reservation-id") {
         reservationReads += 1;
-        if (!row.linkedCustomer && !row.missingCustomerId) {
+        if (!row.linkedCustomer && !row.missingCustomerId && !row.missingId) {
           return new Response("Not found", { status: 404 });
         }
+        const { id, ...withoutId } = reservation();
         return Response.json({
-          ...reservation(),
+          ...withoutId,
+          ...(!row.missingId && { id }),
           ...(row.missingCustomerId && { _customerId: "" }),
         });
       }
@@ -5568,7 +5533,7 @@ describe("DotyposService read retry boundary", () => {
       fetchMock
     );
 
-    if (!row.linkedCustomer && !row.missingCustomerId) {
+    if (!row.linkedCustomer && !row.missingCustomerId && !row.missingId) {
       expect(result).toMatchObject({ _tag: "Success", success: Option.none() });
       expect(customerReads).toBe(0);
     } else if (row.linkedCustomer) {
@@ -5723,16 +5688,9 @@ describe("DotyposService ID reads", () => {
         );
 
   test.each(["customers", "reservations"] as const)(
-    "%s handles empty 404s, unidentified records and invalid filters",
+    "%s handles empty 404s and rejects unidentified records and invalid filters",
     async (resource) => {
-      for (const response of [
-        () => Response.json(null, { status: 404 }),
-        () => {
-          const { id, ...unidentified } =
-            resource === "customers" ? customer() : reservation();
-          return Response.json({ data: [unidentified] });
-        },
-      ]) {
+      const readWith = async (response: () => Response) => {
         let attempts = 0;
         const fetchMock = mockDotyposFetch((request) => {
           if (new URL(request.url).pathname === "/signin/token")
@@ -5742,13 +5700,31 @@ describe("DotyposService ID reads", () => {
         });
         const result = await runWithService(
           Effect.flatMap(DotyposService, (dotypos) =>
-            read(dotypos, resource, ["id-0"])
+            read(dotypos, resource, ["id-0"]).pipe(Effect.result)
           ),
           fetchMock
         );
-        expect(result.size).toBe(0);
-        expect(attempts).toBe(1);
+        return { attempts, result };
+      };
+
+      const empty = await readWith(() => Response.json(null, { status: 404 }));
+      expect(empty.result).toMatchObject({ _tag: "Success" });
+      if (empty.result._tag === "Success") {
+        expect(empty.result.success.size).toBe(0);
       }
+      expect(empty.attempts).toBe(1);
+
+      const unidentified = await readWith(() => {
+        const { id: _id, ...record } =
+          resource === "customers" ? customer() : reservation();
+        return Response.json({ data: [record] });
+      });
+      expect(unidentified.result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "DotyposRejected", reason: "invalid-response" },
+      });
+      expect(unidentified.attempts).toBe(1);
+
       let attempts = 0;
       const fetchMock = mockDotyposFetch(() => {
         attempts++;
@@ -5921,4 +5897,185 @@ describe("DotyposService ID reads", () => {
       }
     }
   );
+});
+
+describe("DotyposService write responses without an id", () => {
+  const withoutId = <A extends { readonly id: string }>({
+    id: _id,
+    ...record
+  }: A) => record;
+
+  test("generated write schemas accept records without an id; read schemas reject them", () => {
+    const decodes = (schema: Schema.Decoder<unknown>, value: unknown) =>
+      Schema.decodeUnknownExit(schema)(value)._tag === "Success";
+
+    expect(decodes(ReplaceCustomersRequestJson, [withoutId(customer())])).toBe(
+      true
+    );
+    expect(
+      decodes(ReplaceReservationsRequestJson, [withoutId(reservation())])
+    ).toBe(true);
+    expect(decodes(CustomerWriteRecord, withoutId(customer()))).toBe(true);
+    expect(decodes(ReservationWriteRecord, withoutId(reservation()))).toBe(
+      true
+    );
+    expect(decodes(Customer, withoutId(customer()))).toBe(false);
+    expect(decodes(Reservation, withoutId(reservation()))).toBe(false);
+    expect(decodes(Table, withoutId(table()))).toBe(false);
+  });
+
+  test("createCustomer returns a created customer without an id for the caller's fallback", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/customers" &&
+        request.method === "POST"
+      ) {
+        return Response.json([withoutId(customer())]);
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const created = await runWithService(
+      Effect.flatMap(DotyposService, (dotypos) =>
+        dotypos.createCustomer(failureOutcomeCustomerDetails)
+      ),
+      fetchMock
+    );
+
+    expect(created.id).toBeUndefined();
+    expect(created.firstName).toBe("Ada");
+  });
+
+  test("createReservation still fails as invalid-response without an id", async () => {
+    let attempts = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/reservations" &&
+        request.method === "POST"
+      ) {
+        attempts += 1;
+        return Response.json([withoutId(reservation())]);
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const error = await runWithService(
+      Effect.flatMap(DotyposService, (dotypos) =>
+        dotypos.createReservation(failureOutcomeReservationInput)
+      ).pipe(Effect.flip),
+      fetchMock
+    );
+
+    expect(error).toMatchObject({
+      operation: "createReservation",
+      request: "reservation.create",
+      reason: "invalid-response",
+    });
+    expect(attempts).toBe(1);
+  });
+
+  test("patchCustomer keeps the requested id when the PATCH response has none", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers/customer-id") {
+        if (request.method === "GET") {
+          return Response.json(customer(), {
+            headers: { etag: '"customer-etag"' },
+          });
+        }
+        if (request.method === "PATCH") {
+          return Response.json(withoutId(customer({ firstName: "Grace" })));
+        }
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const patched = await runWithService(
+      Effect.flatMap(DotyposService, (dotypos) =>
+        dotypos.patchCustomer(dotyposCustomerId("customer-id"), {
+          firstName: "Grace",
+        })
+      ),
+      fetchMock
+    );
+
+    expect(Option.getOrThrow(patched)).toMatchObject({
+      id: dotyposCustomerId("customer-id"),
+      firstName: "Grace",
+    });
+  });
+
+  test("confirmReservation keeps the requested id when the PATCH response has none", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/reservations/reservation-id") {
+        if (request.method === "GET") {
+          return Response.json(reservation(), {
+            headers: { etag: '"reservation-etag"' },
+          });
+        }
+        if (request.method === "PATCH") {
+          return Response.json(withoutId(reservation({ status: "CONFIRMED" })));
+        }
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const confirmed = await runWithService(
+      Effect.flatMap(DotyposService, (dotypos) =>
+        dotypos.confirmReservation(dotyposReservationId("reservation-id"))
+      ),
+      fetchMock
+    );
+
+    expect(confirmed).toMatchObject({
+      id: dotyposReservationId("reservation-id"),
+      status: "CONFIRMED",
+    });
+  });
+
+  test("findOrCreateCustomer keeps the matched id when the fill response has none", async () => {
+    const matched = customer({ email: adaAddress, lastName: undefined });
+    let fills = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/customers" &&
+        request.method === "GET"
+      ) {
+        return Response.json({ data: [matched] });
+      }
+      if (
+        url.pathname === "/clouds/cloud-id/customers/customer-id" &&
+        request.method === "PUT"
+      ) {
+        fills += 1;
+        return Response.json(withoutId(customer({ lastName: "Lovelace" })));
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const found = await runWithService(
+      Effect.flatMap(DotyposService, (dotypos) =>
+        dotypos.findOrCreateCustomer(
+          { firstName: "Ada", lastName: "Lovelace", email: adaAddress },
+          { lookupFields: ["email"] }
+        )
+      ),
+      fetchMock
+    );
+
+    expect(fills).toBe(1);
+    expect(found).toMatchObject({
+      id: dotyposCustomerId("customer-id"),
+      lastName: "Lovelace",
+    });
+  });
 });

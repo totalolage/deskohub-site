@@ -327,10 +327,8 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
   )(function* (query: string) {
     const matches = yield* dotypos.searchCustomers(query);
     return matches
-      .flatMap((customer): InvoiceAdministrationCustomer[] => {
-        const projection = toCustomer(customer);
-        return projection && !customer.deleted ? [projection] : [];
-      })
+      .filter((customer) => !customer.deleted)
+      .map(toCustomer)
       .slice(0, 50);
   });
 
@@ -562,14 +560,7 @@ const resolveCustomer = Effect.fn(
       )
     ),
     Match.tag("Matched", ({ customer }) =>
-      customer.id
-        ? dotypos.updateCustomerDetails(customer.id, details)
-        : Effect.fail(
-            new InvoiceAdministrationCustomerError({
-              reason: "customer-id-missing",
-              message: "Dotypos returned a customer without an id.",
-            })
-          )
+      dotypos.updateCustomerDetails(customer.id, details)
     ),
     Match.tag("NotFound", () => dotypos.createCustomer(details)),
     // Deleted profiles were invisible to lookups before; keep creating a
@@ -672,8 +663,7 @@ const toCustomerDetails = (
 
 const toCustomer = (
   customer: DotyposCustomer
-): InvoiceAdministrationCustomer | null => {
-  if (!customer.id) return null;
+): InvoiceAdministrationCustomer => {
   const personName = [customer.firstName, customer.lastName]
     .filter(Boolean)
     .join(" ")

@@ -6,11 +6,12 @@ import {
   type DotyposProduct,
   DotyposProductSchema,
 } from "@deskohub/dotypos";
-import type { Category, Product } from "@deskohub/dotypos/generated";
 import { Effect, Layer, Schema } from "effect";
 import { setBoardgameTestEnv } from "@/shared/testing/boardgame-test-env";
 
-const category = (overrides: Partial<Category>): DotyposCategory => {
+const category = (
+  overrides: Partial<typeof DotyposCategorySchema.Encoded>
+): DotyposCategory => {
   const { id, ...fields } = overrides;
   let identifier: { readonly id?: string } = { id: "category-id" };
   if ("id" in overrides) {
@@ -25,7 +26,9 @@ const category = (overrides: Partial<Category>): DotyposCategory => {
   });
 };
 
-const product = (overrides: Partial<Product>): DotyposProduct => {
+const product = (
+  overrides: Partial<typeof DotyposProductSchema.Encoded>
+): DotyposProduct => {
   const { id, ...fields } = overrides;
   let identifier: { readonly id?: string } = { id: "product-id" };
   if ("id" in overrides) {

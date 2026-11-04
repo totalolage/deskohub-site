@@ -12,7 +12,7 @@ export interface DotyposIdReadOptions {
   ) => Effect.Effect<void>;
 }
 
-export const readByIds = <Id extends string, A extends { readonly id?: Id }>(
+export const readByIds = <Id extends string, A extends { readonly id: Id }>(
   ids: Iterable<Id>,
   operation: DotyposOperation,
   read: (ids: readonly Id[]) => Effect.Effect<readonly A[], DotyposReadFailure>,
@@ -41,13 +41,7 @@ export const readByIds = <Id extends string, A extends { readonly id?: Id }>(
     ).pipe(
       Effect.map(
         (batches) =>
-          new Map(
-            batches
-              .flat()
-              .flatMap((record) =>
-                record.id === undefined ? [] : [[record.id, record] as const]
-              )
-          )
+          new Map(batches.flat().map((record) => [record.id, record] as const))
       )
     );
   });

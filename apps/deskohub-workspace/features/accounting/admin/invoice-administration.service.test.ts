@@ -181,7 +181,7 @@ describe("InvoiceAdministrationService", () => {
     ]);
   });
 
-  test("projects searched customers' billing details and skips deleted or id-less ones", async () => {
+  test("projects searched customers' billing details and skips deleted ones", async () => {
     const businessEmail = testEmailAddress("business-search");
     const personEmail = testEmailAddress("person-search");
     const layer = InvoiceAdministrationService.Default.pipe(
@@ -214,7 +214,6 @@ describe("InvoiceAdministrationService", () => {
                   vatId: "CZ0",
                 },
                 { id: "dotypos-customer-deleted", deleted: true },
-                { companyName: "No id" },
               ] as never),
           }),
           Layer.mock(InvoiceRepository, {}),

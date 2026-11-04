@@ -1,11 +1,6 @@
-import {
-  DotyposCustomerIdSchema,
-  DotyposDiscountGroupIdSchema,
-  DotyposService,
-} from "@deskohub/dotypos";
-import type { Customer as DotyposCustomer } from "@deskohub/dotypos/generated";
+import { type DotyposCustomer, DotyposService } from "@deskohub/dotypos";
 import { GoogleCalendarService } from "@deskohub/google-calendar";
-import { Effect, Option, Schema } from "effect";
+import { Effect, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import type {
   DiscountCode,
@@ -59,9 +54,7 @@ export const makeDiscountAdministrationReads = Effect.gen(function* () {
     "DiscountAdministration.loadActiveCustomer"
   )((customerId: DotyposCustomerId) =>
     dotypos.getCustomer(customerId).pipe(
-      Effect.map(
-        Option.filter((customer) => Boolean(customer.id) && !customer.deleted)
-      ),
+      Effect.map(Option.filter((customer) => !customer.deleted)),
       Effect.flatMap(
         Option.match({
           onNone: () =>
@@ -305,7 +298,7 @@ export const makeDiscountAdministrationReads = Effect.gen(function* () {
   const searchCustomers = Effect.fn("DiscountAdministration.searchCustomers")(
     function* (input: DiscountAdminCustomerSearch) {
       const customers = (yield* dotypos.searchCustomers(input.query))
-        .filter((customer) => customer.id && !customer.deleted)
+        .filter((customer) => !customer.deleted)
         .map(toAdminDotyposCustomer)
         .slice(0, 50);
       let kind: AdminCustomerSearchResult["kind"] = "not-found";
@@ -580,16 +573,12 @@ export const toAdminDotyposCustomer = (
     customer.phone?.trim();
 
   return {
-    id: Schema.decodeUnknownSync(DotyposCustomerIdSchema)(customer.id),
+    id: customer.id,
     displayName: name || unnamedCustomerDisplayName,
     hasName: Boolean(name),
     email: customer.email?.trim() || null,
     phone: customer.phone?.trim() || null,
-    discountGroupId: Option.getOrNull(
-      Schema.decodeUnknownOption(DotyposDiscountGroupIdSchema)(
-        customer._discountGroupId?.trim()
-      )
-    ),
+    discountGroupId: customer._discountGroupId ?? null,
   };
 };
 

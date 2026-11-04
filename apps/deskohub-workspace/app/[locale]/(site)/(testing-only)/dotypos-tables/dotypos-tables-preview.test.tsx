@@ -39,8 +39,8 @@ const hiddenTable: Table = {
   positionY: "20",
   display: false,
 };
-/** A table Dotypos returns without an ID or placement. */
-const bareTable: Table = { _cloudId: "cloud", name: "Bare" };
+/** A table Dotypos returns without placement. */
+const bareTable: Table = { _cloudId: "cloud", id: "table-4", name: "Bare" };
 
 const shapeClassOf = (view: ReturnType<typeof render>, name: string) =>
   view
@@ -91,7 +91,7 @@ describe("DotyposTablesPreview", () => {
     expect(shapeClassOf(view, "Window")).toContain("fill-emerald-300");
     expect(selectedFacts(view).slice(0, 7)).toEqual([
       "Bare",
-      "-",
+      "table-4",
       "GENERIC",
       "-",
       "-",

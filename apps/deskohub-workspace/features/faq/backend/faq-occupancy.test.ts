@@ -1,48 +1,63 @@
 import "@/shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
-import type {
-  Reservation as DotyposReservation,
-  Table as DotyposTable,
-} from "@deskohub/dotypos/generated";
-import { Effect } from "effect";
+import {
+  type DotyposReservation,
+  DotyposReservationSchema,
+  type DotyposTable,
+  DotyposTableSchema,
+} from "@deskohub/dotypos";
+import { Effect, Schema } from "effect";
 import { getFaqOccupancyStats } from "./faq-occupancy";
 
 const coworkTableId = "cowork-table";
 
-const makeTable = (input: Partial<DotyposTable> = {}): DotyposTable => ({
-  _cloudId: "synthetic-cloud",
-  id: coworkTableId,
-  name: input.id ?? "Synthetic cowork table",
-  seats: "4",
-  tags: ["cowork:basic"],
-  ...input,
-});
+type TableFields = Partial<typeof DotyposTableSchema.Encoded>;
+type ReservationFields = Partial<typeof DotyposReservationSchema.Encoded>;
 
-const makeReservation = (
-  input: Partial<DotyposReservation> = {}
-): DotyposReservation => {
+/** Provider fields, without the keys an override leaves undefined. */
+const definedFields = <A extends object>(fields: A): A =>
+  Object.fromEntries(
+    Object.entries(fields).filter(([, value]) => value !== undefined)
+  ) as A;
+
+const makeTable = (input: TableFields = {}): DotyposTable =>
+  Schema.decodeUnknownSync(DotyposTableSchema)(
+    definedFields({
+      _cloudId: "synthetic-cloud",
+      id: coworkTableId,
+      name: input.id ?? "Synthetic cowork table",
+      seats: "4",
+      tags: ["cowork:basic"],
+      ...input,
+    })
+  );
+
+const makeReservation = (input: ReservationFields = {}): DotyposReservation => {
   const startDate = input.startDate ?? "2025-05-01T00:00:00Z";
   const endDate =
     input.endDate ??
     Temporal.Instant.from(startDate).add({ hours: 1 }).toString();
 
-  return {
-    _branchId: "synthetic-branch",
-    _cloudId: "synthetic-cloud",
-    _tableId: coworkTableId,
-    seats: "1",
-    status: "CONFIRMED",
-    ...input,
-    startDate,
-    endDate,
-  };
+  return Schema.decodeUnknownSync(DotyposReservationSchema)(
+    definedFields({
+      id: "synthetic-reservation",
+      _branchId: "synthetic-branch",
+      _cloudId: "synthetic-cloud",
+      _tableId: coworkTableId,
+      seats: "1",
+      status: "CONFIRMED",
+      ...input,
+      startDate,
+      endDate,
+    })
+  );
 };
 
 const makeReservationsAt = (
   count: number,
   startDate: string,
-  input: Partial<DotyposReservation> = {}
+  input: ReservationFields = {}
 ) =>
   Array.from({ length: count }, (_, index) =>
     makeReservation({
@@ -251,16 +266,7 @@ describe("getFaqOccupancyStats", () => {
     });
   });
 
-  test("rejects relevant malformed table IDs and seat capacities", () => {
-    for (const id of [undefined, "   "]) {
-      expect(() =>
-        calculateStats({
-          now: "2025-06-15T12:00:00Z",
-          tables: [makeTable({ id })],
-        })
-      ).toThrow("Cowork-tagged Dotypos table has an invalid ID");
-    }
-
+  test("rejects relevant malformed seat capacities", () => {
     for (const seats of [undefined, "invalid", "2.5", "0", "-1"]) {
       expect(() =>
         calculateStats({
@@ -271,21 +277,14 @@ describe("getFaqOccupancyStats", () => {
     }
   });
 
-  test("rejects relevant malformed reservation IDs and intervals", () => {
-    expect(() =>
-      calculateStats({
-        now: "2025-06-15T12:00:00Z",
-        reservations: [makeReservation({ id: "   " })],
-      })
-    ).toThrow("Confirmed cowork Dotypos reservation has an invalid ID");
-
+  test("rejects relevant malformed reservation intervals", () => {
     expect(() =>
       calculateStats({
         now: "2025-06-15T12:00:00Z",
         reservations: [
           makeReservation({
             id: "invalid-interval",
-            startDate: "not-a-date",
+            startDate: "2025-05-01T02:00:00Z",
             endDate: "2025-05-01T01:00:00Z",
           }),
         ],

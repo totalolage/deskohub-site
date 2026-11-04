@@ -1,10 +1,6 @@
 "use server";
 
-import {
-  type DotyposReservationId,
-  DotyposReservationIdSchema,
-  DotyposService,
-} from "@deskohub/dotypos";
+import { type DotyposReservationId, DotyposService } from "@deskohub/dotypos";
 import { EmailRecipientDomainService } from "@deskohub/email/backend/recipient-domain.service";
 import {
   Data,
@@ -230,31 +226,6 @@ const quotePreparedReservation = Effect.fn(
       input.advertisement.requestedDiscountCode ?? input.referralCodePrefill,
     changedKeys,
   };
-});
-
-const DotyposEntityWithIdSchema = Schema.Struct({
-  id: DotyposReservationIdSchema,
-});
-
-const decodeDotyposEntityId = Effect.fn(
-  "preparePayState.decodeDotyposEntityId"
-)(function* (input: {
-  readonly value: unknown;
-  readonly missingIdMessage: string;
-}) {
-  const entity = yield* Schema.decodeUnknownEffect(DotyposEntityWithIdSchema)(
-    input.value
-  ).pipe(
-    Effect.mapError(
-      () =>
-        new MissingDotyposId({
-          entity: "reservation",
-          message: input.missingIdMessage,
-        })
-    )
-  );
-
-  return entity.id;
 });
 
 const decodeDotyposCustomerId = Schema.decodeUnknownEffect(
@@ -1855,23 +1826,7 @@ const prepareSubmission = Effect.fn("prepareWorkspacePayState.submission")(
           );
           yield* Effect.annotateLogsScoped({ dotyposReservation });
 
-          const dotyposReservationId = yield* decodeDotyposEntityId({
-            value: dotyposReservation,
-            missingIdMessage: "Dotypos reservation was created without an ID",
-          }).pipe(
-            Effect.tapError(
-              Effect.fn(function* (cause) {
-                yield* Effect.logError(
-                  "Workspace Dotypos reservation hold was created without an ID",
-                  {
-                    cause,
-                  }
-                );
-
-                yield* releaseHoldCreation(reservationDraft.id);
-              })
-            )
-          );
+          const dotyposReservationId = dotyposReservation.id;
           yield* Effect.annotateLogsScoped({ dotyposReservationId });
           yield* Effect.logInfo("Workspace Dotypos reservation hold created");
 

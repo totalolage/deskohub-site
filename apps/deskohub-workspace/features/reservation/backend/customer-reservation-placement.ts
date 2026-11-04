@@ -36,12 +36,10 @@ const getAssignedTableName = (
   reservation: Pick<DotyposReservation, "_tableId">,
   tables: readonly DotyposTable[]
 ) => {
-  const tableId = reservation._tableId?.trim();
+  const tableId = reservation._tableId;
   if (!tableId) return undefined;
 
-  const tableName = tables
-    .find((table) => table.id?.trim() === tableId)
-    ?.name?.trim();
+  const tableName = tables.find((table) => table.id === tableId)?.name?.trim();
 
   return tableName || tableId;
 };

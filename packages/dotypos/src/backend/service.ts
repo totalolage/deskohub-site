@@ -24,6 +24,7 @@ import type {
   DotyposCategoryId,
   DotyposCustomer,
   DotyposCustomerId,
+  DotyposCustomerWriteRecord,
   DotyposDiscountGroup,
   DotyposDiscountGroupId,
   DotyposProduct,
@@ -37,6 +38,7 @@ import {
   DotyposCategorySchema,
   DotyposCustomerIdSchema,
   DotyposCustomerSchema,
+  DotyposCustomerWriteRecordSchema,
   DotyposDiscountGroupIdSchema,
   DotyposDiscountGroupSchema,
   DotyposProductSchema,
@@ -392,12 +394,6 @@ export type DotyposCustomerLookupData = {
   phone?: string;
 };
 
-export type DotyposCustomerDiscount = {
-  readonly source: "dotypos-discount-group";
-  readonly discountGroupId: DotyposDiscountGroupId;
-  readonly percent: number;
-};
-
 export type DotyposCustomerDiscountGroup = {
   readonly discountGroupId: DotyposDiscountGroupId;
   readonly discountPercent: DotyposDiscountGroup["discountPercent"];
@@ -544,24 +540,12 @@ const addUniqueCustomer = (
   customers: DotyposCustomer[],
   customer: DotyposCustomer
 ) => {
-  const isDuplicate = customers.find((existing) =>
-    customer.id ? existing.id === customer.id : existing === customer
-  );
+  const isDuplicate = customers.find((existing) => existing.id === customer.id);
 
   if (!isDuplicate) {
     customers.push(customer);
   }
 };
-
-const DiscountPercentSchema = Schema.Union([
-  Schema.Finite,
-  Schema.FiniteFromString,
-]).check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(100));
-
-const parseDiscountPercent = (value: unknown) =>
-  Option.getOrUndefined(
-    Schema.decodeUnknownOption(DiscountPercentSchema)(value)
-  );
 
 const hasAtLeastTwoCustomers = (
   customers: readonly DotyposCustomer[]
@@ -738,9 +722,6 @@ export interface IDotyposService {
     DotyposCustomerDiscountGroup | undefined,
     DotyposReadFailure
   >;
-  readonly getCustomerDiscount: (
-    customer: DotyposCustomer
-  ) => Effect.Effect<DotyposCustomerDiscount | undefined, DotyposReadFailure>;
   readonly getDiscountGroups: () => Effect.Effect<
     readonly DotyposDiscountGroup[],
     DotyposReadFailure
@@ -779,12 +760,12 @@ export interface IDotyposService {
   /** Never retried. */
   readonly createCustomer: (
     details: DotyposCustomerDetails
-  ) => Effect.Effect<DotyposCustomer, DotyposWriteFailure>;
+  ) => Effect.Effect<DotyposCustomerWriteRecord, DotyposWriteFailure>;
   /** A lookup, then either a fill-missing PUT whose failures are swallowed or a create retried like createReservation. */
   readonly findOrCreateCustomer: (
     customerData: DotyposCustomerLookupData,
     options?: FindCustomerOptions
-  ) => Effect.Effect<DotyposCustomer, DotyposWriteFailure>;
+  ) => Effect.Effect<DotyposCustomerWriteRecord, DotyposWriteFailure>;
   /** Never retried. A missing reservation fails DotyposRejected{not-found}. */
   readonly cancelReservation: (
     reservationId: DotyposReservationId
@@ -922,7 +903,7 @@ const makeDotyposService: Effect.Effect<
 
       return yield* decodeProviderEntity(
         DotyposReservationSchema,
-        { ...reservationResult, id: reservationId },
+        reservationResult,
         call
       );
     },
@@ -960,19 +941,7 @@ const makeDotyposService: Effect.Effect<
         "Customer ID",
         reservationCall
       );
-      const customerCall = {
-        operation: "getReservation",
-        request: "customer.get",
-      } as const;
-      const customerResult = yield* readCustomer(
-        customerId,
-        customerCall.operation
-      );
-      const customer = yield* decodeProviderEntity(
-        DotyposCustomerSchema,
-        { ...customerResult, id: customerId },
-        customerCall
-      );
+      const customer = yield* readCustomer(customerId, "getReservation");
 
       return { reservation, customer };
     },
@@ -1159,7 +1128,7 @@ const makeDotyposService: Effect.Effect<
 
           return decodeProviderEntity(
             DotyposReservationSchema,
-            { ...reservation, id: reservation.id ?? reservationId },
+            reservation,
             call
           ).pipe(Effect.map((decoded) => ({ etag, reservation: decoded })));
         })
@@ -1308,11 +1277,7 @@ const makeDotyposService: Effect.Effect<
         client.getCustomer(config.cloudId, id, undefined),
         call
       ).pipe(retryDotyposRequest(call.request));
-      return yield* decodeProviderEntity(
-        DotyposCustomerSchema,
-        { ...customer, id: customer.id ?? id },
-        call
-      );
+      return yield* decodeProviderEntity(DotyposCustomerSchema, customer, call);
     },
     (effect, customerId) =>
       effect.pipe(
@@ -1630,7 +1595,11 @@ const makeDotyposService: Effect.Effect<
         retryDotyposRequest(call.request)
       );
 
-      return yield* decodeProviderEntity(DotyposCustomerSchema, result, call);
+      return yield* decodeProviderEntity(
+        DotyposCustomerWriteRecordSchema,
+        result,
+        call
+      );
     },
     (effect) => effect.pipe(Effect.scoped)
   );
@@ -1653,16 +1622,6 @@ const makeDotyposService: Effect.Effect<
 
       if (needsUpdate) {
         const customerId = existingCustomer.id;
-        if (!customerId) {
-          return yield* dotyposInvalidResponse(
-            {
-              operation: "findOrCreateCustomer",
-              request: "customers.lookup",
-            },
-            { message: "Cannot update Dotypos customer without id" }
-          );
-        }
-
         const fillCall = {
           operation: "findOrCreateCustomer",
           request: "customer.fill",
@@ -1777,7 +1736,7 @@ const makeDotyposService: Effect.Effect<
       );
 
       const customer = yield* decodeProviderEntity(
-        DotyposCustomerSchema,
+        DotyposCustomerWriteRecordSchema,
         customerResult,
         createCall
       );
@@ -1857,7 +1816,7 @@ const makeDotyposService: Effect.Effect<
 
   const loadCustomerDiscountGroup = (
     customer: DotyposCustomer,
-    operation: "getCustomerDiscountGroup" | "getCustomerDiscount"
+    operation: "getCustomerDiscountGroup"
   ) =>
     Effect.gen(function* () {
       const rawDiscountGroupId = customer._discountGroupId?.toString().trim();
@@ -1909,32 +1868,6 @@ const makeDotyposService: Effect.Effect<
       ),
     (effect, input) =>
       effect.pipe(Effect.annotateLogs({ customerId: input.customerId }))
-  );
-
-  const getCustomerDiscount = Effect.fn("getCustomerDiscount")(
-    function* (customer: DotyposCustomer) {
-      const discountGroup = yield* loadCustomerDiscountGroup(
-        customer,
-        "getCustomerDiscount"
-      );
-      if (!discountGroup) return undefined;
-
-      const percent = parseDiscountPercent(discountGroup.discountPercent);
-
-      if (percent === undefined) return undefined;
-
-      return {
-        source: "dotypos-discount-group",
-        discountGroupId: discountGroup.discountGroupId,
-        percent,
-      } satisfies DotyposCustomerDiscount;
-    },
-    (effect, customer) =>
-      effect.pipe(
-        Effect.annotateLogs({
-          discountGroupId: customer._discountGroupId?.toString().trim(),
-        })
-      )
   );
 
   const discountGroupsCall = {
@@ -2338,7 +2271,6 @@ const makeDotyposService: Effect.Effect<
     patchCustomer,
     searchCustomers,
     getCustomerDiscountGroup,
-    getCustomerDiscount,
     getDiscountGroups,
     setCustomerDiscountGroup,
     updateCustomerBillingDetails,

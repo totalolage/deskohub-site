@@ -152,8 +152,7 @@ const getBoundsCenter = (bounds: Bounds): Point => ({
   y: (bounds.minY + bounds.maxY) / 2,
 });
 
-const getTableKey = ({ table, x, y }: PositionedTable) =>
-  table.id ?? `${table.name}-${x}-${y}`;
+const getTableKey = ({ table }: PositionedTable) => table.id;
 
 function renderTableGeometry(
   positionedTable: PositionedTable,
