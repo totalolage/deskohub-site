@@ -151,6 +151,36 @@ describe("CustomerValues", () => {
       await run({ definition: selected, profile: { discountGroups: [] } })
     ).toMatchObject({ _tag: "Success", success: [] });
   });
+  test("orders mixed sort data by type, booleans first and strings last", async () => {
+    expect(
+      await run({
+        definition: definition({
+          kind: "customer",
+          path: ["profile", "codes"],
+          fields: [["code"]],
+          sort: { path: ["createdAt"], direction: "asc" },
+        }),
+        profile: {
+          codes: [
+            { code: "string", createdAt: "2026-01-01" },
+            { code: "five", createdAt: 5 },
+            { code: "true", createdAt: true },
+            { code: "three", createdAt: 3 },
+            { code: "false", createdAt: false },
+          ],
+        },
+      })
+    ).toMatchObject({
+      _tag: "Success",
+      success: [
+        { code: "false" },
+        { code: "true" },
+        { code: "three" },
+        { code: "five" },
+        { code: "string" },
+      ],
+    });
+  });
   test("keeps null sort keys last in either direction", async () => {
     for (const direction of ["asc", "desc"] as const) {
       const selected = definition({
