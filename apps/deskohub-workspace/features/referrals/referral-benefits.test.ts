@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import type { AppliedDiscount } from "@/features/discounts/contracts";
+import { Effect } from "effect";
+import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
+import { calculateDiscounts } from "@/features/discounts/calculator";
+import {
+  type AppliedDiscount,
+  discountIdSchema,
+} from "@/features/discounts/contracts";
 import { promotionCodeIdSchema } from "@/features/discounts/persistence-contracts";
 import type { DiscountProvenance } from "@/features/discounts/provider";
 import { m } from "@/features/i18n";
@@ -11,6 +17,7 @@ import {
   makeReferralInvitationCandidate,
   makeReferralReferrerCandidate,
   matchesReferrerFormula,
+  priceReferralBenefits,
   recognizeCommittedReferralBenefit,
   recognizeReferralBenefit,
 } from "./referral-benefits";
@@ -343,5 +350,80 @@ describe("recognizing a committed referral benefit", () => {
     expect(
       matchesReferrerFormula(apply(referrerDiscount(2_000), 20_000, 1_950), 2)
     ).toBe(false);
+  });
+});
+
+describe("pricing the referral phase", () => {
+  const product = {
+    kind: "cowork",
+    tier: "basic",
+  } satisfies WorkspaceProductIdentity;
+  const ordinaryCandidate = {
+    discount: {
+      id: discountIdSchema.make("ordinary-discount"),
+      label: "ordinary",
+      adjustment: { kind: "fixed" as const, amount: currencyCZK(1_000) },
+    },
+    provenance: { providerNamespace: "ordinary", providerReference: "code" },
+  };
+  const baseQuote = Effect.runSync(
+    calculateDiscounts({
+      product,
+      discountableSubtotal: currencyCZK(21_000),
+      candidates: [ordinaryCandidate],
+    })
+  ).quote;
+  const referrerFor = (remainingSubtotal: AppliedDiscount["amount"]) =>
+    makeReferralReferrerCandidate({
+      dotyposCustomerId: customer,
+      locale: "en-US",
+      eligibleInviteeCount: 1,
+      remainingSubtotal,
+    });
+
+  test("applies the invitation, then the referrer on the subtotal it leaves", () => {
+    const remainders: number[] = [];
+    const priced = Effect.runSync(
+      priceReferralBenefits({
+        baseQuote,
+        invitation: Effect.succeed(invitationCandidate),
+        referrer: (remainingSubtotal) => {
+          remainders.push(remainingSubtotal.value);
+          return Effect.succeed(referrerFor(remainingSubtotal));
+        },
+      })
+    );
+    expect(remainders).toEqual([17_000]);
+    expect(
+      priced.applications.map(({ application }) => [
+        application.discount.id,
+        application.subtotalBefore.value,
+        application.amount.value,
+      ])
+    ).toEqual([
+      [ids.invitation, 20_000, 3_000],
+      [ids.referrer, 17_000, 850],
+    ]);
+    expect(priced.quote).toEqual({
+      product: baseQuote.product,
+      discountableSubtotal: currencyCZK(21_000),
+      discounts: [
+        ...baseQuote.discounts,
+        ...priced.applications.map(({ application }) => application),
+      ],
+      totalDiscount: currencyCZK(4_850),
+      discountedSubtotal: currencyCZK(16_150),
+    });
+  });
+
+  test("leaves the quote unchanged without referral candidates", () => {
+    const priced = Effect.runSync(
+      priceReferralBenefits({
+        baseQuote,
+        invitation: Effect.succeed(undefined),
+        referrer: () => Effect.succeed(undefined),
+      })
+    );
+    expect(priced).toEqual({ quote: baseQuote, applications: [] });
   });
 });

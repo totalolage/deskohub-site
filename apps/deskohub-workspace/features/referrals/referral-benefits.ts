@@ -1,12 +1,16 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
+import { Effect } from "effect";
 import {
+  appendDiscountCalculation,
   applyBasisPoints,
+  type DiscountCalculation,
   isApplicationArithmeticConsistent,
 } from "@/features/discounts/calculator";
 import type {
   AppliedDiscount,
   Discount,
   DiscountAdjustment,
+  DiscountQuote,
 } from "@/features/discounts/contracts";
 import { deriveOpaqueDiscountId } from "@/features/discounts/opaque-discount-id";
 import type { PromotionCodeId } from "@/features/discounts/persistence-contracts";
@@ -25,7 +29,8 @@ import {
 
 // The two benefits a referral grants: the invited customer's first-booking
 // invitation and the referrer's compounding discount. This module owns their
-// identity, their candidates, and how an application is recognized as one.
+// identity, their candidates, how they are priced, and how an application is
+// recognized as one.
 
 const invitationNamespace = "referral-invitation";
 const referrerNamespace = "referral-referrer";
@@ -133,6 +138,37 @@ export const makeReferralReferrerCandidate = (input: {
     },
   };
 };
+
+/**
+ * Prices the referral phase on a quote that already carries the ordinary and
+ * customer discounts: the invitation first, then the referrer on the exact
+ * subtotal the invitation leaves. A candidate that takes nothing adds no
+ * application. The caller resolves each candidate and decides what a failed
+ * resolution means.
+ */
+export const priceReferralBenefits = <EI, RI, ER, RR>(input: {
+  readonly baseQuote: DiscountQuote;
+  readonly invitation: Effect.Effect<DiscountCandidate | undefined, EI, RI>;
+  readonly referrer: (
+    remainingSubtotal: Money
+  ) => Effect.Effect<DiscountCandidate | undefined, ER, RR>;
+}) =>
+  Effect.gen(function* () {
+    const invitation = yield* input.invitation;
+    const invited = yield* appendDiscountCalculation({
+      baseQuote: input.baseQuote,
+      candidates: invitation ? [invitation] : [],
+    });
+    const referrer = yield* input.referrer(invited.quote.discountedSubtotal);
+    const referred = yield* appendDiscountCalculation({
+      baseQuote: invited.quote,
+      candidates: referrer ? [referrer] : [],
+    });
+    return {
+      quote: referred.quote,
+      applications: [...invited.applications, ...referred.applications],
+    } satisfies DiscountCalculation;
+  }).pipe(Effect.withSpan("ReferralBenefits.price"));
 
 export type ReferralBenefitRecognition =
   | { readonly kind: "invitation"; readonly offersProgramRate: boolean }

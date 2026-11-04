@@ -47,7 +47,13 @@ export const calculateDiscounts = Effect.fn("DiscountCalculator.calculate")(
     )
 );
 
-export const appendDiscounts = Effect.fn("DiscountCalculator.append")(
+/**
+ * Calculates candidates on the quote's remaining subtotal and appends them,
+ * returning the extended quote and the new applications.
+ */
+export const appendDiscountCalculation = Effect.fn(
+  "DiscountCalculator.appendCalculation"
+)(
   (input: {
     readonly baseQuote: DiscountQuote;
     readonly candidates: readonly DiscountCandidate[];
@@ -57,27 +63,33 @@ export const appendDiscounts = Effect.fn("DiscountCalculator.append")(
       discountableSubtotal: input.baseQuote.discountedSubtotal,
       candidates: input.candidates,
     }).pipe(
-      Effect.bindTo("additional"),
-      Effect.let("totalDiscount", ({ additional }) =>
-        moneyWithValue(
-          input.baseQuote.totalDiscount.value +
-            additional.quote.totalDiscount.value,
-          input.baseQuote.totalDiscount
-        )
-      ),
       Effect.map(
-        ({ additional, totalDiscount }): DiscountQuote => ({
-          product: input.baseQuote.product,
-          discountableSubtotal: input.baseQuote.discountableSubtotal,
-          discounts: [
-            ...input.baseQuote.discounts,
-            ...additional.quote.discounts,
-          ],
-          totalDiscount,
-          discountedSubtotal: additional.quote.discountedSubtotal,
+        (additional): DiscountCalculation => ({
+          quote: {
+            product: input.baseQuote.product,
+            discountableSubtotal: input.baseQuote.discountableSubtotal,
+            discounts: [
+              ...input.baseQuote.discounts,
+              ...additional.quote.discounts,
+            ],
+            totalDiscount: moneyWithValue(
+              input.baseQuote.totalDiscount.value +
+                additional.quote.totalDiscount.value,
+              input.baseQuote.totalDiscount
+            ),
+            discountedSubtotal: additional.quote.discountedSubtotal,
+          },
+          applications: additional.applications,
         })
       )
     )
+);
+
+export const appendDiscounts = Effect.fn("DiscountCalculator.append")(
+  (input: {
+    readonly baseQuote: DiscountQuote;
+    readonly candidates: readonly DiscountCandidate[];
+  }) => appendDiscountCalculation(input).pipe(Effect.map(({ quote }) => quote))
 );
 
 const validateDiscountableSubtotal = (input: {
