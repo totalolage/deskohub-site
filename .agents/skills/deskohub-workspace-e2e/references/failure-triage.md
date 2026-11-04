@@ -19,6 +19,8 @@ Read [operations diagnostics](../../deskohub-workspace-operations/references/dia
 
 Never dump whole spans, attribute objects, exception events, or artifact payloads. Report correlation values, span names, durations, configured timeouts, closed outcomes and failure kinds, and the minimum artifact facts.
 
+The anonymous public-account-legal render saves `anonymous-navigation-diagnostics.json` in its test output directory and attaches it by path on failure, including a whole-test timeout. The default reporters do not persist in-memory JSON bodies, so verify artifact retention with the normal reporter chain. The file records load milestones, error counts, and request statuses, outcomes and elapsed times by fixed resource category. It contains no URLs, paths, payloads or error messages and reads no browser state during teardown. Use it to distinguish an unfinished document from pending scripts or other resources; a loading fallback alone does not identify the stalled server operation.
+
 ## Query spans in PostHog
 
 In the Workspace PostHog project, open **Traces**, filter the service name to `deskohub-workspace-e2e` and the span attribute `e2e.run.id` to the correlation value, and use native span duration, not log timestamps.

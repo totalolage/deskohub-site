@@ -21,7 +21,3 @@ export const getPrefilledReservationConditionScript = (
   data: CheckoutData,
   options: PrefilledReservationOptions = {}
 ) => inPageCall(isPrefilledReservation, toPrefilledReservation(data, options));
-
-export const browserTextScript = `
-(() => document.body?.innerText ?? '')()
-`;
