@@ -139,7 +139,8 @@ const decodeSeatCapacity = Schema.decodeUnknownResult(
   workspaceTableSeatCapacitySchema
 );
 
-const decodeTableSeatCapacity = (table: DotyposTable) =>
+/** A table's configured seat capacity, or why Workspace can't use it. */
+export const decodeTableSeatCapacity = (table: DotyposTable) =>
   Result.mapError(
     decodeSeatCapacity(table.seats),
     (cause) =>

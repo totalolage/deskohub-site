@@ -1,7 +1,6 @@
 import {
   type DotyposReservationId,
   DotyposService,
-  type DotyposTable,
   getCustomerDisplayName,
 } from "@deskohub/dotypos";
 import type { Customer } from "@deskohub/dotypos/generated";
@@ -11,24 +10,18 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import type { FulfillmentState, PaymentState } from "@/db/schema";
 import { checkoutStatusTraits } from "@/features/checkout/checkout-status-kind";
 import { getProviderOrderAbandonmentCutoff } from "@/features/checkout/provider-order-abandonment";
-import {
-  getWorkspaceTableMap,
-  type WorkspaceTableMap,
-} from "@/features/checkout/workspace-table-map";
 import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
 import { SharedAvailabilityInventoryLive } from "@/features/reservation/backend/availability-inventory-cache.server";
 import {
   type BookedReservation,
   decodeBookedReservation,
 } from "@/features/reservation/backend/booked-reservation";
+import {
+  type CustomerReservationPlacement,
+  getCustomerReservationPlacement,
+} from "@/features/reservation/backend/customer-reservation-placement";
 import type { ReservationRecord } from "@/features/reservation/backend/reservation-record";
 import { ReservationRecords } from "@/features/reservation/backend/reservation-records";
-import {
-  type CustomerReservationTable,
-  getCustomerReservationTable,
-  getOpenSpaceTableNames,
-  getReservationTableName,
-} from "@/features/reservation/backend/reservation-table";
 import { SeatingMapReleaseGate } from "@/features/reservation/backend/seating-map-release-gate";
 import type { WorkspaceReservationDetailsMalformedError } from "@/features/reservation/backend/stored-reservation-details.server";
 import {
@@ -92,28 +85,25 @@ type CheckoutStatusContactPrefill = {
   readonly phone?: string;
 };
 
-type CheckoutStatusTableMap = WorkspaceTableMap;
-
 type CheckoutStatusViewModelBase = {
   readonly orderId: WorkspaceReservationId;
   readonly returnOutcome: CheckoutStatusReturnOutcome;
 };
 
-type CheckoutReservationStatusViewModelBase = CheckoutStatusViewModelBase & {
-  readonly status: CheckoutReservationStatusKind;
-  readonly paymentStatus: PaymentState;
-  readonly fulfillmentStatus: FulfillmentState;
-  readonly table?: CustomerReservationTable;
-  readonly tableMap?: CheckoutStatusTableMap;
-  readonly supportContactPrefill?: CheckoutStatusContactPrefill;
-  /** The booked selection a retry status reopens on the reservation page. */
-  readonly retrySelection?: ReservationSelection;
-  /**
-   * Marks a review account's sample or simulated hold, which nothing was
-   * reserved or charged for and which has no access code.
-   */
-  readonly reviewSandbox?: true;
-};
+type CheckoutReservationStatusViewModelBase = CheckoutStatusViewModelBase &
+  CustomerReservationPlacement & {
+    readonly status: CheckoutReservationStatusKind;
+    readonly paymentStatus: PaymentState;
+    readonly fulfillmentStatus: FulfillmentState;
+    readonly supportContactPrefill?: CheckoutStatusContactPrefill;
+    /** The booked selection a retry status reopens on the reservation page. */
+    readonly retrySelection?: ReservationSelection;
+    /**
+     * Marks a review account's sample or simulated hold, which nothing was
+     * reserved or charged for and which has no access code.
+     */
+    readonly reviewSandbox?: true;
+  };
 
 type CheckoutCoworkStatusViewModel = CheckoutReservationStatusViewModelBase & {
   readonly kind: "cowork";
@@ -161,8 +151,7 @@ type CheckoutStatusReservationReconstruction =
 
 type CheckoutStatusReconstruction = {
   readonly reservation: CheckoutStatusReservationReconstruction;
-  readonly table?: CustomerReservationTable;
-  readonly tableMap?: CheckoutStatusTableMap;
+  readonly placement?: CustomerReservationPlacement;
 };
 
 type CheckoutStatusError =
@@ -292,30 +281,6 @@ const getEmptyCheckoutStatusReservation = (
       office: () => ({ kind: "office" as const }),
     })
   );
-
-/** Where the reservation sits: its table and, once released, the seating map. */
-const placeStatusReservationTable = Effect.fnUntraced(function* (input: {
-  readonly reservation: WorkspaceReservation;
-  readonly dotyposReservation: ReservationRecord;
-  readonly tables: readonly DotyposTable[];
-  readonly seatingMapEnabled: boolean;
-}) {
-  const { reservation, dotyposReservation, tables } = input;
-  const openSpaceTableNames =
-    reservation.reservationDetails.kind === "cowork" &&
-    reservation.reservationDetails.entryTier === "open-space"
-      ? yield* getOpenSpaceTableNames(tables)
-      : undefined;
-  const table = getCustomerReservationTable({
-    reservationDetails: reservation.reservationDetails,
-    tableName: getReservationTableName(dotyposReservation, tables),
-    openSpaceTableNames,
-  });
-  const tableMap = input.seatingMapEnabled
-    ? getWorkspaceTableMap(dotyposReservation, tables)
-    : undefined;
-  return { table, tableMap };
-});
 
 /** The family's summary of the booked time and the paid attempt's amount. */
 const toStatusReservation = ({
@@ -504,11 +469,11 @@ const implementation = Effect.gen(function* () {
         "Checkout status summary Dotypos reservation loaded"
       );
 
-      const { table, tableMap } = yield* placeStatusReservationTable({
-        reservation,
+      const placement = getCustomerReservationPlacement({
+        reservationDetails: reservation.reservationDetails,
         dotyposReservation,
         tables,
-        seatingMapEnabled,
+        seatingMap: seatingMapEnabled,
       });
 
       const booked = decodeBookedReservation(
@@ -531,8 +496,7 @@ const implementation = Effect.gen(function* () {
       if (!timing) {
         const reconstruction: CheckoutStatusReconstruction = {
           reservation: emptyReconstruction.reservation,
-          table,
-          tableMap,
+          placement,
         };
 
         return reconstruction;
@@ -549,8 +513,7 @@ const implementation = Effect.gen(function* () {
 
       const reconstruction: CheckoutStatusReconstruction = {
         reservation: statusReservation,
-        table,
-        tableMap,
+        placement,
       };
 
       return reconstruction;
@@ -774,10 +737,7 @@ const implementation = Effect.gen(function* () {
         fulfillmentStatus: reservation.fulfillmentState,
         // A late payment has no booked place to show until recovery confirms
         // a reservation; the original hold's table may belong to someone else.
-        ...(!latePaymentStatusKind && {
-          table: reconstruction.table,
-          tableMap: reconstruction.tableMap,
-        }),
+        ...(!latePaymentStatusKind && reconstruction.placement),
         supportContactPrefill,
         // A late payment that settled takes over the status, and with it the
         // retry of the payment it replaced.
