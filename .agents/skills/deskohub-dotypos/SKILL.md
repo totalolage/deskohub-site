@@ -54,7 +54,14 @@ If a real response fails generated decoding, fix the OpenAPI schema and regenera
 
 ## Record ids
 
-`id` is required on the `Reservation`, `Customer` and `Table` schemas in `openapi/dotypos-api.yaml`, so `DotyposReservation`, `DotyposCustomer` and `DotyposTable` always carry a branded, trimmed id. Don't guard against a missing id or re-decode one. A response without an id fails generated decoding as `invalid-response`: `DotyposRejected` for reads, `DotyposUncertain` for writes, which are never retried for it. Read-only probes on a non-production cloud on 2026-11-04 found a string id on every list and item read of tables, reservations and customers, deleted customers included; some customer ids are negative signed longs. Write responses share these schemas but weren't probed.
+Read records always carry an id. `id` is required on the `Reservation`, `Customer` and `Table` schemas in `openapi/dotypos-api.yaml`, which every read references, so `DotyposReservation`, `DotyposCustomer` and `DotyposTable` carry a branded, trimmed id. Don't guard a read record against a missing id or re-decode one. A read response without an id fails generated decoding as `DotyposRejected{invalid-response}`. Read-only probes on a non-production cloud on 2026-11-04 found a string id on every list and item read of tables, reservations and customers, deleted customers included; some customer ids are negative signed longs.
+
+Write responses are unprobed, so they keep their id fallbacks:
+
+- Writes and the bulk `replace*` request items reference `ReservationWriteRecord` and `CustomerWriteRecord`, whose id is optional. Keep new write operations on these schemas until a write probe proves the id.
+- A write that addresses a known id (reservation and customer PATCH, the customer fill PUT) keeps that id when the response omits it.
+- `createReservation` fails as `invalid-response` without a response id.
+- `createCustomer` and `findOrCreateCustomer` return `DotyposCustomerWriteRecord`, which may lack the id. Callers keep their fallback: the account adapter rereads by exact email, and checkout and invoice administration fail with their missing-id errors.
 
 ## Customer records
 

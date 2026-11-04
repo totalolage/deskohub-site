@@ -19,11 +19,15 @@ import {
   DotyposRuntimeConfigSchema,
   makeDotyposRuntimeConfigLayer,
 } from "../config";
-import type {
-  Category,
+import {
+  type Category,
   Customer,
-  DotyposClient,
+  CustomerWriteRecord,
+  type DotyposClient,
+  ReplaceCustomersRequestJson,
+  ReplaceReservationsRequestJson,
   Reservation,
+  ReservationWriteRecord,
   Table,
 } from "../generated/effect.gen";
 import { dotyposIdReadBatchSize, dotyposIdReadRequests } from "../id-reads";
@@ -5882,4 +5886,185 @@ describe("DotyposService ID reads", () => {
       }
     }
   );
+});
+
+describe("DotyposService write responses without an id", () => {
+  const withoutId = <A extends { readonly id: string }>({
+    id: _id,
+    ...record
+  }: A) => record;
+
+  test("generated write schemas accept records without an id; read schemas reject them", () => {
+    const decodes = (schema: Schema.Decoder<unknown>, value: unknown) =>
+      Schema.decodeUnknownExit(schema)(value)._tag === "Success";
+
+    expect(decodes(ReplaceCustomersRequestJson, [withoutId(customer())])).toBe(
+      true
+    );
+    expect(
+      decodes(ReplaceReservationsRequestJson, [withoutId(reservation())])
+    ).toBe(true);
+    expect(decodes(CustomerWriteRecord, withoutId(customer()))).toBe(true);
+    expect(decodes(ReservationWriteRecord, withoutId(reservation()))).toBe(
+      true
+    );
+    expect(decodes(Customer, withoutId(customer()))).toBe(false);
+    expect(decodes(Reservation, withoutId(reservation()))).toBe(false);
+    expect(decodes(Table, withoutId(table()))).toBe(false);
+  });
+
+  test("createCustomer returns a created customer without an id for the caller's fallback", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/customers" &&
+        request.method === "POST"
+      ) {
+        return Response.json([withoutId(customer())]);
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const created = await runWithService(
+      Effect.flatMap(DotyposService, (dotypos) =>
+        dotypos.createCustomer(failureOutcomeCustomerDetails)
+      ),
+      fetchMock
+    );
+
+    expect(created.id).toBeUndefined();
+    expect(created.firstName).toBe("Ada");
+  });
+
+  test("createReservation still fails as invalid-response without an id", async () => {
+    let attempts = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/reservations" &&
+        request.method === "POST"
+      ) {
+        attempts += 1;
+        return Response.json([withoutId(reservation())]);
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const error = await runWithService(
+      Effect.flatMap(DotyposService, (dotypos) =>
+        dotypos.createReservation(failureOutcomeReservationInput)
+      ).pipe(Effect.flip),
+      fetchMock
+    );
+
+    expect(error).toMatchObject({
+      operation: "createReservation",
+      request: "reservation.create",
+      reason: "invalid-response",
+    });
+    expect(attempts).toBe(1);
+  });
+
+  test("patchCustomer keeps the requested id when the PATCH response has none", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers/customer-id") {
+        if (request.method === "GET") {
+          return Response.json(customer(), {
+            headers: { etag: '"customer-etag"' },
+          });
+        }
+        if (request.method === "PATCH") {
+          return Response.json(withoutId(customer({ firstName: "Grace" })));
+        }
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const patched = await runWithService(
+      Effect.flatMap(DotyposService, (dotypos) =>
+        dotypos.patchCustomer(dotyposCustomerId("customer-id"), {
+          firstName: "Grace",
+        })
+      ),
+      fetchMock
+    );
+
+    expect(Option.getOrThrow(patched)).toMatchObject({
+      id: dotyposCustomerId("customer-id"),
+      firstName: "Grace",
+    });
+  });
+
+  test("confirmReservation keeps the requested id when the PATCH response has none", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/reservations/reservation-id") {
+        if (request.method === "GET") {
+          return Response.json(reservation(), {
+            headers: { etag: '"reservation-etag"' },
+          });
+        }
+        if (request.method === "PATCH") {
+          return Response.json(withoutId(reservation({ status: "CONFIRMED" })));
+        }
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const confirmed = await runWithService(
+      Effect.flatMap(DotyposService, (dotypos) =>
+        dotypos.confirmReservation(dotyposReservationId("reservation-id"))
+      ),
+      fetchMock
+    );
+
+    expect(confirmed).toMatchObject({
+      id: dotyposReservationId("reservation-id"),
+      status: "CONFIRMED",
+    });
+  });
+
+  test("findOrCreateCustomer keeps the matched id when the fill response has none", async () => {
+    const matched = customer({ email: adaAddress, lastName: undefined });
+    let fills = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/customers" &&
+        request.method === "GET"
+      ) {
+        return Response.json({ data: [matched] });
+      }
+      if (
+        url.pathname === "/clouds/cloud-id/customers/customer-id" &&
+        request.method === "PUT"
+      ) {
+        fills += 1;
+        return Response.json(withoutId(customer({ lastName: "Lovelace" })));
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const found = await runWithService(
+      Effect.flatMap(DotyposService, (dotypos) =>
+        dotypos.findOrCreateCustomer(
+          { firstName: "Ada", lastName: "Lovelace", email: adaAddress },
+          { lookupFields: ["email"] }
+        )
+      ),
+      fetchMock
+    );
+
+    expect(fills).toBe(1);
+    expect(found).toMatchObject({
+      id: dotyposCustomerId("customer-id"),
+      lastName: "Lovelace",
+    });
+  });
 });

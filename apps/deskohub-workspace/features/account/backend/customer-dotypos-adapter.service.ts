@@ -3,6 +3,7 @@ import {
   type DotyposConditionalWriteFailure,
   type DotyposCustomer,
   type DotyposCustomerId,
+  type DotyposCustomerWriteRecord,
   DotyposService,
   type DotyposUncertain,
   type FindCustomerResult,
@@ -11,6 +12,7 @@ import {
 import type { UpdateCustomerRequest } from "@deskohub/dotypos/generated";
 import { Context, Data, Effect, Layer, Option } from "effect";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
+import { MissingDotyposId } from "@/shared/backend/missing-dotypos-id";
 import type { CustomerProfile, CustomerProfileInput } from "../contracts";
 
 /** A profile update or reactivation addressed a Dotypos customer that does not exist. */
@@ -22,6 +24,7 @@ class DotyposCustomerMissing extends Data.TaggedError(
 
 export type DotyposCustomerError =
   | DotyposConditionalWriteFailure
+  | MissingDotyposId
   | DotyposCustomerMissing;
 
 /**
@@ -114,7 +117,9 @@ const providerTextMatches = <Field extends BillingTextField>(
 ): boolean =>
   fields.every((field) => (stored[field] ?? "") === (requested[field] ?? ""));
 
-const toCustomerBilling = (customer: DotyposCustomer): StoredBilling | null => {
+const toCustomerBilling = (
+  customer: DotyposCustomerWriteRecord
+): StoredBilling | null => {
   const billing = {
     addressLine1: nonEmpty(customer.addressLine1),
     addressLine2: nonEmpty(customer.addressLine2),
@@ -135,7 +140,9 @@ const toCustomerBilling = (customer: DotyposCustomer): StoredBilling | null => {
   return { kind: isBusiness ? "business" : "personal", ...billing };
 };
 
-const toCustomerProfile = (customer: DotyposCustomer): CustomerProfile => ({
+const toCustomerProfile = (
+  customer: DotyposCustomerWriteRecord
+): CustomerProfile => ({
   firstName: nonEmpty(customer.firstName) ?? "",
   lastName: nonEmpty(customer.lastName),
   phone: nonEmpty(customer.phone),
@@ -291,10 +298,28 @@ export class CustomerDotyposAdapter extends Context.Service<
         const customer = yield* dotypos.createCustomer(
           toCustomerDetails(input)
         );
-        return {
-          customerId: customer.id,
-          profile: toCustomerProfile(customer),
-        };
+        if (customer.id) {
+          return {
+            customerId: customer.id,
+            profile: toCustomerProfile(customer),
+          };
+        }
+
+        const reread = yield* Effect.map(
+          findExactEmailCustomer(input.email),
+          classifyExactEmailResult
+        );
+        if (reread.kind === "matched") {
+          return {
+            customerId: reread.customerId,
+            profile: toCustomerProfile(reread.customer),
+          };
+        }
+
+        return yield* new MissingDotyposId({
+          entity: "customer",
+          message: "Dotypos returned a created customer without an id.",
+        });
       });
 
       const findExactEmailCustomer = (email: string) =>

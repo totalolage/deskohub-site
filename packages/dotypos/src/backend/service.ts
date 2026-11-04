@@ -24,6 +24,7 @@ import type {
   DotyposCategoryId,
   DotyposCustomer,
   DotyposCustomerId,
+  DotyposCustomerWriteRecord,
   DotyposDiscountGroup,
   DotyposDiscountGroupId,
   DotyposProduct,
@@ -37,6 +38,7 @@ import {
   DotyposCategorySchema,
   DotyposCustomerIdSchema,
   DotyposCustomerSchema,
+  DotyposCustomerWriteRecordSchema,
   DotyposDiscountGroupIdSchema,
   DotyposDiscountGroupSchema,
   DotyposProductSchema,
@@ -758,12 +760,12 @@ export interface IDotyposService {
   /** Never retried. */
   readonly createCustomer: (
     details: DotyposCustomerDetails
-  ) => Effect.Effect<DotyposCustomer, DotyposWriteFailure>;
+  ) => Effect.Effect<DotyposCustomerWriteRecord, DotyposWriteFailure>;
   /** A lookup, then either a fill-missing PUT whose failures are swallowed or a create retried like createReservation. */
   readonly findOrCreateCustomer: (
     customerData: DotyposCustomerLookupData,
     options?: FindCustomerOptions
-  ) => Effect.Effect<DotyposCustomer, DotyposWriteFailure>;
+  ) => Effect.Effect<DotyposCustomerWriteRecord, DotyposWriteFailure>;
   /** Never retried. A missing reservation fails DotyposRejected{not-found}. */
   readonly cancelReservation: (
     reservationId: DotyposReservationId
@@ -1034,9 +1036,15 @@ const makeDotyposService: Effect.Effect<
         )
       );
 
+      const reservationId = yield* decodeResponseIdentifier(
+        DotyposReservationIdSchema,
+        reservationResult.id ?? "",
+        "Reservation ID",
+        call
+      );
       const reservation = yield* decodeProviderEntity(
         DotyposReservationSchema,
-        reservationResult,
+        { ...reservationResult, id: reservationId },
         call
       );
 
@@ -1150,7 +1158,11 @@ const makeDotyposService: Effect.Effect<
       ).pipe(
         retryDotyposRequest(call.request),
         Effect.flatMap((reservation) =>
-          decodeProviderEntity(DotyposReservationSchema, reservation, call)
+          decodeProviderEntity(
+            DotyposReservationSchema,
+            { ...reservation, id: reservation.id ?? input.reservationId },
+            call
+          )
         )
       );
     }
@@ -1583,7 +1595,11 @@ const makeDotyposService: Effect.Effect<
         retryDotyposRequest(call.request)
       );
 
-      return yield* decodeProviderEntity(DotyposCustomerSchema, result, call);
+      return yield* decodeProviderEntity(
+        DotyposCustomerWriteRecordSchema,
+        result,
+        call
+      );
     },
     (effect) => effect.pipe(Effect.scoped)
   );
@@ -1618,7 +1634,11 @@ const makeDotyposService: Effect.Effect<
         ).pipe(
           retryDotyposRequest(fillCall.request),
           Effect.flatMap((customer) =>
-            decodeProviderEntity(DotyposCustomerSchema, customer, fillCall)
+            decodeProviderEntity(
+              DotyposCustomerSchema,
+              { ...customer, id: customer.id ?? customerId },
+              fillCall
+            )
           ),
           Effect.tapError((error) =>
             Effect.logWarning("Dotypos customer update failed", {
@@ -1716,7 +1736,7 @@ const makeDotyposService: Effect.Effect<
       );
 
       const customer = yield* decodeProviderEntity(
-        DotyposCustomerSchema,
+        DotyposCustomerWriteRecordSchema,
         customerResult,
         createCall
       );
@@ -1919,7 +1939,7 @@ const makeDotyposService: Effect.Effect<
       ).pipe(retryDotyposRequest(patchCall.request));
       return yield* decodeProviderEntity(
         DotyposCustomerSchema,
-        customer,
+        { ...customer, id: customer.id ?? normalizedCustomerId },
         patchCall
       );
     }

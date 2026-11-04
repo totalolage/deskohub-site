@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   type DotyposCustomer,
+  type DotyposCustomerWriteRecord,
   DotyposRejected,
   DotyposService,
   DotyposUnavailable,
@@ -34,6 +35,12 @@ const makeCustomer = (
     expireDate: null,
     ...overrides,
   }) as DotyposCustomer;
+
+/** A customer as a create may return it, without the id Dotypos assigned. */
+const createdCustomerWithoutId = (): DotyposCustomerWriteRecord => {
+  const { id: _id, ...customer } = makeCustomer();
+  return customer;
+};
 
 const activeCustomer = makeCustomer();
 
@@ -1133,6 +1140,75 @@ describe("CustomerDotyposAdapter", () => {
         firstName: "Ada",
         lastName: "Lovelace",
         email: customerEmail,
+      });
+    });
+
+    test("recovers the id and profile from the exact-email match when creation returns no id", async () => {
+      const calls: string[] = [];
+      const matched = makeCustomer({
+        id: "60777",
+        lastName: "Lovelace",
+        phone: "+420601111222",
+      });
+
+      const created = await runWithDotypos(
+        {
+          createCustomer: () => {
+            calls.push("create");
+            return Effect.succeed(createdCustomerWithoutId());
+          },
+          findCustomer: () => {
+            calls.push("find");
+            return Effect.succeed(
+              FindCustomerResult.Matched({
+                customer: matched,
+                matches: [matched],
+              })
+            );
+          },
+          getCustomer: () => {
+            calls.push("read");
+            return Effect.succeed(Option.some(makeCustomer()));
+          },
+        },
+        (adapter) =>
+          adapter.createCustomerProfile({
+            email: customerEmail,
+            profile: { firstName: "Ada" },
+          })
+      );
+
+      expect(created).toEqual({
+        customerId: "60777",
+        profile: {
+          firstName: "Ada",
+          lastName: "Lovelace",
+          phone: "+420601111222",
+          billing: null,
+        },
+      });
+      expect(calls).toEqual(["create", "find"]);
+    });
+
+    test("fails with the unusable-create error when the exact-email fallback has no match", async () => {
+      const outcome = await runWithDotypos(
+        {
+          createCustomer: () => Effect.succeed(createdCustomerWithoutId()),
+          findCustomer: () =>
+            Effect.succeed(FindCustomerResult.NotFound({ matches: [] })),
+        },
+        (adapter) =>
+          adapter
+            .createCustomerProfile({
+              email: customerEmail,
+              profile: { firstName: "Ada" },
+            })
+            .pipe(Effect.result)
+      );
+
+      expect(outcome).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "MissingDotyposId", entity: "customer" },
       });
     });
   });

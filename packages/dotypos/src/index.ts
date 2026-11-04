@@ -61,6 +61,7 @@ export type {
   DotyposCloudId,
   DotyposCustomer,
   DotyposCustomerId,
+  DotyposCustomerWriteRecord,
   DotyposDiscountGroup,
   DotyposDiscountGroupId,
   DotyposEmployeeId,

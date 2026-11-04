@@ -410,7 +410,7 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
             )
           : customerResolution
       ).pipe(
-        Effect.map((customer) => customer.id),
+        Effect.flatMap((customer) => decodeDotyposCustomerId(customer.id)),
         Effect.flatMap(issueForCustomer)
       );
     });

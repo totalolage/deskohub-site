@@ -1369,7 +1369,7 @@ const resolveBookedCustomerId = Effect.fnUntraced(function* (
         },
         { lookupFields: ["email"] }
       )
-      .pipe(Effect.map((customer) => customer.id)))
+      .pipe(Effect.flatMap((customer) => getDotyposCustomerId(customer.id))))
   );
 });
 

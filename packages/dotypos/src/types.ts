@@ -119,6 +119,17 @@ export const DotyposCustomerSchema = Schema.Struct({
 });
 export type DotyposCustomer = typeof DotyposCustomerSchema.Type;
 
+export const DotyposCustomerWriteRecordSchema = Schema.Struct({
+  ...DotyposCustomerSchema.fields,
+  id: Schema.optionalKey(DotyposCustomerIdSchema),
+}).annotate({
+  identifier: "DotyposCustomerWriteRecord",
+  description:
+    "A Dotypos customer a create returned. Create responses aren't known to carry the id, so callers keep a fallback.",
+});
+export type DotyposCustomerWriteRecord =
+  typeof DotyposCustomerWriteRecordSchema.Type;
+
 export const DotyposDiscountGroupSchema = Schema.Struct({
   ...GeneratedDiscountGroupSchema.fields,
   id: Schema.optionalKey(DotyposDiscountGroupIdSchema),
