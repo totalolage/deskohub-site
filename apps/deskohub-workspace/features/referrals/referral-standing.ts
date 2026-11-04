@@ -13,15 +13,12 @@ import { decodeBookedReservation } from "@/features/reservation/backend/booked-r
 import type { ReferralCode } from "./client";
 import type { ReferralAccountSummary } from "./contracts";
 import {
-  getReferralInvitationDiscountId,
-  getReferralReferrerDiscountId,
-} from "./discount-identifiers";
-import {
   countEligibleReferralInvitees,
   hasPreviousPaidBooking,
   hasPriorConfirmedDotyposBooking,
   type ReferralHistoryEvidence,
 } from "./eligibility";
+import { listReferralBenefitIds } from "./referral-benefits";
 import { formatReferrerDiscountPercentage } from "./referrer-discount";
 
 const isReservationCancelled = (input: {
@@ -225,10 +222,10 @@ export const makeReferralStandingReads = Effect.gen(function* () {
         .where(
           and(
             eq(workspaceReservations.dotyposCustomerId, dotyposCustomerId),
-            inArray(discountApplications.publicDiscountId, [
-              getReferralInvitationDiscountId(dotyposCustomerId),
-              getReferralReferrerDiscountId(dotyposCustomerId),
-            ]),
+            inArray(
+              discountApplications.publicDiscountId,
+              listReferralBenefitIds(dotyposCustomerId)
+            ),
             eq(paymentAttempts.state, "paid"),
             inArray(paymentAttempts.refundState, ["not_required", "refunded"])
           )

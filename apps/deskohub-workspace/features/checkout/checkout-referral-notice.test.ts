@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { type AppliedDiscount, discountIdSchema } from "@/features/discounts";
-import { getReferralInvitationDiscountId } from "@/features/referrals/discount-identifiers";
+import { getReferralBenefitIds } from "@/features/referrals/referral-benefits";
 import {
   addCheckoutReferralAppliedMarker,
   hasCheckoutReferralAppliedNotice,
@@ -12,7 +12,7 @@ const invitationDiscount: AppliedDiscount = {
   amount: { currency: "CZK", exponent: 2, value: 1500 },
   discount: {
     adjustment: { basisPoints: 1500, kind: "percentage" },
-    id: getReferralInvitationDiscountId(customerId),
+    id: getReferralBenefitIds(customerId).invitation,
     label: "First booking referral discount",
   },
   subtotalAfter: { currency: "CZK", exponent: 2, value: 8500 },

@@ -34,11 +34,8 @@ import {
   workspaceFixtures,
 } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import {
-  getReferralInvitationDiscountId,
-  getReferralReferrerDiscountId,
-} from "./discount-identifiers";
 import { ReferralService } from "./referral.service";
+import { getReferralBenefitIds } from "./referral-benefits";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 const uniqueId = () => crypto.randomUUID();
@@ -812,14 +809,15 @@ describe.skipIf(!testDatabase)("ReferralService on disposable Postgres", () => {
       )
     );
     const referrerDiscountId =
-      getReferralReferrerDiscountId(referrerCustomerId);
+      getReferralBenefitIds(referrerCustomerId).referrer;
     await insertDiscountedBooking({
       dotyposCustomerId: referrerCustomerId,
       attempt: "paid",
       applications: [
         { publicDiscountId: "synthetic-ordinary-discount", amountValue: 1000 },
         {
-          publicDiscountId: getReferralInvitationDiscountId(referrerCustomerId),
+          publicDiscountId:
+            getReferralBenefitIds(referrerCustomerId).invitation,
           amountValue: 3000,
         },
         { publicDiscountId: referrerDiscountId, amountValue: 1234 },
@@ -877,7 +875,7 @@ describe.skipIf(!testDatabase)("ReferralService on disposable Postgres", () => {
       attempt: "paid",
       applications: [
         {
-          publicDiscountId: getReferralReferrerDiscountId(otherCustomer),
+          publicDiscountId: getReferralBenefitIds(otherCustomer).referrer,
           amountValue: 7000,
         },
       ],
@@ -1423,7 +1421,7 @@ describe.skipIf(!testDatabase)(
           _tag: "Success",
           success: {
             discount: {
-              id: getReferralReferrerDiscountId(referrer.dotyposCustomerId),
+              id: getReferralBenefitIds(referrer.dotyposCustomerId).referrer,
               adjustment: { kind: "fixed", amount: currencyCZK(5_000) },
             },
             provenance: {

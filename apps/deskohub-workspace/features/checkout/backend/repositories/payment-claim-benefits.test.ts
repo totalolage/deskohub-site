@@ -12,7 +12,7 @@ import { deriveOpaqueDiscountId } from "@/features/discounts/opaque-discount-id"
 import { promotionCodeIdSchema } from "@/features/discounts/persistence-contracts";
 import { getPromotionTiming } from "@/features/discounts/promotion-code";
 import { m } from "@/features/i18n";
-import { getReferralInvitationDiscountId } from "@/features/referrals/discount-identifiers";
+import { getReferralBenefitIds } from "@/features/referrals/referral-benefits";
 import {
   discountAdjustmentsEqual,
   isAttributedToAnotherReferral,
@@ -160,7 +160,7 @@ describe("referralInvitationBenefitChanged", () => {
   ) =>
     applied(
       {
-        id: getReferralInvitationDiscountId(invited),
+        id: getReferralBenefitIds(invited).invitation,
         label: m.checkoutSummaryItemReferralInvitationDiscount(
           {},
           { locale: "en-US" }
@@ -189,7 +189,7 @@ describe("referralInvitationBenefitChanged", () => {
     [
       "another customer's invitation",
       claim,
-      invitation({ id: getReferralInvitationDiscountId(referrer) }),
+      invitation({ id: getReferralBenefitIds(referrer).invitation }),
     ],
     ["another label", claim, invitation({ label: "Other" })],
     [
@@ -299,7 +299,7 @@ describe("voucher credit and presentation", () => {
     expect(
       voucherPresentationChanged({
         claim,
-        application: credit({ id: getReferralInvitationDiscountId(invited) }),
+        application: credit({ id: getReferralBenefitIds(invited).invitation }),
         locale: "en-US",
         timing: {},
       })

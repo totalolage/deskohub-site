@@ -30,7 +30,7 @@ import {
 import { getWorkspaceProductTargetsCovering } from "@/features/discounts/product-target";
 import type { DiscountCandidate } from "@/features/discounts/provider";
 import { type Locale, m } from "@/features/i18n";
-import { getReferralInvitationDiscountId } from "@/features/referrals/discount-identifiers";
+import { getReferralBenefitIds } from "@/features/referrals/referral-benefits";
 import type { Money } from "@/shared/money/money";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
@@ -333,7 +333,7 @@ describe.skipIf(!testDatabase)(
         const promotionCodeId = promotionCodeIdSchema.make(promotionId);
         return {
           discount: {
-            id: getReferralInvitationDiscountId(invitedDotyposCustomerId),
+            id: getReferralBenefitIds(invitedDotyposCustomerId).invitation,
             label: m.checkoutSummaryItemReferralInvitationDiscount(
               {},
               { locale }

@@ -8,10 +8,7 @@ import {
 } from "@/features/discounts/contracts";
 import { promotionCodeIdSchema } from "@/features/discounts/persistence-contracts";
 import type { DiscountCandidate } from "@/features/discounts/provider";
-import {
-  getReferralInvitationDiscountId,
-  getReferralReferrerDiscountId,
-} from "@/features/referrals/discount-identifiers";
+import { getReferralBenefitIds } from "@/features/referrals/referral-benefits";
 import { calculateReferrerDiscountAmount } from "@/features/referrals/referrer-discount";
 import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
 import { isExpectedReferralQuoteAddition } from "./checkout-referral-price-change";
@@ -31,8 +28,8 @@ const referrerCustomerId = dotyposCustomerIdSchema.make(
 const referralPromotionCodeId = promotionCodeIdSchema.make(
   "referral-price-change-code-id"
 );
-const invitationId = getReferralInvitationDiscountId(invitedCustomerId);
-const referrerId = getReferralReferrerDiscountId(invitedCustomerId);
+const invitationId = getReferralBenefitIds(invitedCustomerId).invitation;
+const referrerId = getReferralBenefitIds(invitedCustomerId).referrer;
 const ordinaryDiscountId = discountIdSchema.make("ordinary-code-discount");
 
 const makeAppliedDiscount = (input: {

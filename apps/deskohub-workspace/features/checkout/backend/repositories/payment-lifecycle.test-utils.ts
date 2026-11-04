@@ -10,8 +10,8 @@ import { makeDiscountCommitment } from "@/features/discounts/commitment";
 import { promotionCodeIdSchema } from "@/features/discounts/persistence-contracts";
 import type { DiscountCandidate } from "@/features/discounts/provider";
 import { type Locale, m } from "@/features/i18n";
-import { getReferralInvitationDiscountId } from "@/features/referrals/discount-identifiers";
 import { referralInvitationDiscountBasisPoints } from "@/features/referrals/program";
+import { getReferralBenefitIds } from "@/features/referrals/referral-benefits";
 import type { IPaymentLifecycleRepository } from "./payment-lifecycle.repository";
 
 const product = { kind: "cowork", tier: "basic" } as const;
@@ -30,7 +30,7 @@ const makeInvitationCandidate = (referral: {
   const promotionCodeId = promotionCodeIdSchema.make(referral.promotionCodeId);
   return {
     discount: {
-      id: getReferralInvitationDiscountId(referral.invitedDotyposCustomerId),
+      id: getReferralBenefitIds(referral.invitedDotyposCustomerId).invitation,
       label: m.checkoutSummaryItemReferralInvitationDiscount({}, { locale }),
       adjustment: {
         kind: "percentage",

@@ -72,8 +72,8 @@ import {
 import type { DiscountCandidate } from "@/features/discounts/provider";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import { type Locale, m } from "@/features/i18n";
-import { getReferralInvitationDiscountId } from "@/features/referrals/discount-identifiers";
 import { ReferralService } from "@/features/referrals/referral.service";
+import { getReferralBenefitIds } from "@/features/referrals/referral-benefits";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import type { Money } from "@/shared/money/money";
@@ -498,7 +498,7 @@ const makeReferralAdmission = (input: {
   const promotionCodeId = promotionCodeIdSchema.make(input.promotionCodeId);
   const candidate = {
     discount: {
-      id: getReferralInvitationDiscountId(input.invitedDotyposCustomerId),
+      id: getReferralBenefitIds(input.invitedDotyposCustomerId).invitation,
       label: m.checkoutSummaryItemReferralInvitationDiscount({}, { locale }),
       adjustment: { kind: "percentage" as const, basisPoints: 1_500 },
     },
@@ -1394,9 +1394,9 @@ describe.skipIf(!testDatabase)(
             .where(eq(discountApplications.paymentAttemptId, attempt.id))
             .orderBy(discountApplications.sequence)
         );
-        const invitationId = getReferralInvitationDiscountId(
+        const invitationId = getReferralBenefitIds(
           fixture.invitedDotyposCustomerId
-        );
+        ).invitation;
         const [sale, invitation] = applications;
         expect(
           applications.filter(

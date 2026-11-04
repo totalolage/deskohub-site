@@ -25,7 +25,6 @@ import {
 import { generatePromotionCode } from "@/features/discounts/promotion-code";
 import type { DiscountCandidate } from "@/features/discounts/provider";
 import type { Locale } from "@/features/i18n";
-import { m } from "@/features/i18n";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import type { Money } from "@/shared/money/money";
 import { evaluateReferralAttribution } from "./attribution";
@@ -38,16 +37,11 @@ import {
   ReferralError,
 } from "./contracts";
 import {
-  getReferralInvitationDiscountId,
-  getReferralReferrerDiscountId,
-} from "./discount-identifiers";
-import { referralInvitationDiscountBasisPoints } from "./program";
+  makeReferralInvitationCandidate,
+  makeReferralReferrerCandidate,
+} from "./referral-benefits";
 import { ReferralReleaseGate } from "./referral-release-gate";
 import { makeReferralStandingReads } from "./referral-standing";
-import {
-  calculateReferrerDiscountAmount,
-  formatReferrerDiscountPercentage,
-} from "./referrer-discount";
 
 export interface IReferralService {
   readonly getAccountSummary: (input: {
@@ -383,42 +377,6 @@ export class ReferralService extends Context.Service<
         }
       );
 
-      const makeInvitationCandidate = (input: {
-        readonly dotyposCustomerId: DotyposCustomerId;
-        readonly locale: Locale;
-        readonly referral: InvitationReferral;
-      }): DiscountCandidate => ({
-        discount: {
-          id: getReferralInvitationDiscountId(input.dotyposCustomerId),
-          label: m.checkoutSummaryItemReferralInvitationDiscount(
-            {},
-            { locale: input.locale }
-          ),
-          adjustment: {
-            kind: "percentage" as const,
-            basisPoints: referralInvitationDiscountBasisPoints,
-          },
-        },
-        provenance: {
-          providerNamespace: "referral-invitation",
-          providerReference: input.referral.promotionCodeId,
-          details: {
-            referralInvitation: {
-              invitedDotyposCustomerId: input.dotyposCustomerId,
-              referrerDotyposCustomerId:
-                input.referral.referrerDotyposCustomerId,
-              promotionCodeId: input.referral.promotionCodeId,
-            },
-          },
-        },
-        claim: {
-          kind: "referral_invitation" as const,
-          invitedDotyposCustomerId: input.dotyposCustomerId,
-          referrerDotyposCustomerId: input.referral.referrerDotyposCustomerId,
-          promotionCodeId: input.referral.promotionCodeId,
-        },
-      });
-
       const resolveInvitationCandidate = Effect.fn(
         "ReferralService.resolveInvitationCandidate"
       )(
@@ -433,7 +391,10 @@ export class ReferralService extends Context.Service<
               input.dotyposCustomerId
             );
             return window === "open"
-              ? makeInvitationCandidate({ ...input, referral: attribution })
+              ? makeReferralInvitationCandidate({
+                  ...input,
+                  referral: attribution,
+                })
               : undefined;
           }
 
@@ -446,7 +407,7 @@ export class ReferralService extends Context.Service<
             attribution,
           }).pipe(Effect.catchTag("ReferralError", () => Effect.undefined));
           return evaluation
-            ? makeInvitationCandidate({
+            ? makeReferralInvitationCandidate({
                 ...input,
                 referral: evaluation.referral,
               })
@@ -464,36 +425,9 @@ export class ReferralService extends Context.Service<
           readonly remainingSubtotal: Money;
         }) =>
           standing.eligibleInviteeCount(input.dotyposCustomerId).pipe(
-            Effect.map((count) => {
-              if (count === 0) return undefined;
-              const amount = calculateReferrerDiscountAmount({
-                eligibleInviteeCount: count,
-                remainingSubtotal: input.remainingSubtotal,
-              });
-              if (amount.value === 0) return undefined;
-              return {
-                discount: {
-                  id: getReferralReferrerDiscountId(input.dotyposCustomerId),
-                  label: m.checkoutSummaryItemReferralDiscount(
-                    { count: count.toString() },
-                    { locale: input.locale }
-                  ),
-                  adjustment: { kind: "fixed" as const, amount },
-                },
-                provenance: {
-                  providerNamespace: "referral-referrer",
-                  providerReference: input.dotyposCustomerId,
-                  details: {
-                    referralReferrer: {
-                      referrerDotyposCustomerId: input.dotyposCustomerId,
-                      eligibleInviteeCount: count,
-                      discountPercentage:
-                        formatReferrerDiscountPercentage(count),
-                    },
-                  },
-                },
-              };
-            }),
+            Effect.map((eligibleInviteeCount) =>
+              makeReferralReferrerCandidate({ ...input, eligibleInviteeCount })
+            ),
             Effect.mapError(() => fail("unavailable"))
           )
       );

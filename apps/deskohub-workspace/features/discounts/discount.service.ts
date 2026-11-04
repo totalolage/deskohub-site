@@ -4,9 +4,9 @@ import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import type { Locale } from "@/features/i18n";
 import { ReferralService } from "@/features/referrals";
 import {
-  getReferralInvitationDiscountId,
-  getReferralReferrerDiscountId,
-} from "@/features/referrals/discount-identifiers";
+  listReferralBenefitIds,
+  priceReferralBenefits,
+} from "@/features/referrals/referral-benefits";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
@@ -199,90 +199,39 @@ export class DiscountService extends Context.Service<
           const voucherCandidates = input.voucherCandidates.filter(
             ({ claim }) => claim?.kind === "voucher"
           );
-          return Effect.succeed(input).pipe(
-            Effect.let("referralBaseQuote", () =>
-              removeVoucherApplications(input.baseQuote, voucherCandidates)
+          const recoverReferralCandidate = (
+            resolution: Effect.Effect<
+              DiscountCandidate | undefined,
+              DiscountResolutionFailure
+            >
+          ) =>
+            recoverDiscountResolution(resolution, {
+              operation: input.operation,
+              provider: "referral",
+            }).pipe(Effect.map(Option.getOrUndefined));
+          return priceReferralBenefits({
+            baseQuote: removeVoucherApplications(
+              input.baseQuote,
+              voucherCandidates
             ),
-            Effect.bind("invitationCandidate", () =>
-              recoverDiscountResolution(
-                referrals.resolveInvitationCandidate({
-                  dotyposCustomerId: input.dotyposCustomerId,
-                  locale: input.locale,
-                  ...(input.referralCode !== undefined && {
-                    referralCode: input.referralCode,
-                  }),
+            invitation: recoverReferralCandidate(
+              referrals.resolveInvitationCandidate({
+                dotyposCustomerId: input.dotyposCustomerId,
+                locale: input.locale,
+                ...(input.referralCode !== undefined && {
+                  referralCode: input.referralCode,
                 }),
-                { operation: input.operation, provider: "referral" }
-              ).pipe(Effect.map(Option.getOrUndefined))
+              })
             ),
-            Effect.bind(
-              "invitationCalculation",
-              ({ invitationCandidate, referralBaseQuote }) =>
-                calculateDiscounts({
-                  product: referralBaseQuote.product,
-                  discountableSubtotal: referralBaseQuote.discountedSubtotal,
-                  candidates: invitationCandidate ? [invitationCandidate] : [],
-                })
-            ),
-            Effect.bind("referrerCandidate", ({ invitationCalculation }) =>
-              recoverDiscountResolution(
+            referrer: (remainingSubtotal) =>
+              recoverReferralCandidate(
                 referrals.resolveReferrerCandidate({
                   dotyposCustomerId: input.dotyposCustomerId,
                   locale: input.locale,
-                  remainingSubtotal:
-                    invitationCalculation.quote.discountedSubtotal,
-                }),
-                { operation: input.operation, provider: "referral" }
-              ).pipe(Effect.map(Option.getOrUndefined))
-            ),
-            Effect.bind(
-              "referrerCalculation",
-              ({
-                invitationCalculation,
-                referrerCandidate,
-                referralBaseQuote,
-              }) =>
-                calculateDiscounts({
-                  product: referralBaseQuote.product,
-                  discountableSubtotal:
-                    invitationCalculation.quote.discountedSubtotal,
-                  candidates: referrerCandidate ? [referrerCandidate] : [],
+                  remainingSubtotal,
                 })
-            ),
-            Effect.map(
-              ({
-                invitationCalculation,
-                referrerCalculation,
-                referralBaseQuote,
-              }) => {
-                const addedDiscount =
-                  invitationCalculation.quote.totalDiscount.value +
-                  referrerCalculation.quote.totalDiscount.value;
-                const addedApplications = [
-                  ...invitationCalculation.applications,
-                  ...referrerCalculation.applications,
-                ];
-                return {
-                  quote: {
-                    product: referralBaseQuote.product,
-                    discountableSubtotal:
-                      referralBaseQuote.discountableSubtotal,
-                    discounts: [
-                      ...referralBaseQuote.discounts,
-                      ...invitationCalculation.quote.discounts,
-                      ...referrerCalculation.quote.discounts,
-                    ],
-                    totalDiscount: moneyWithValue(
-                      referralBaseQuote.totalDiscount.value + addedDiscount,
-                      referralBaseQuote.totalDiscount
-                    ),
-                    discountedSubtotal:
-                      referrerCalculation.quote.discountedSubtotal,
-                  } satisfies DiscountQuote,
-                  applications: addedApplications,
-                };
-              }
-            ),
+              ),
+          }).pipe(
             Effect.flatMap((referralQuote) => {
               return voucherCandidates.length === 0
                 ? Effect.succeed(referralQuote)
@@ -938,13 +887,8 @@ const selectDiscountCandidates = (input: {
   });
 };
 
-const getReferralDiscountIds = (dotyposCustomerId: DotyposCustomerId) => [
-  getReferralInvitationDiscountId(dotyposCustomerId),
-  getReferralReferrerDiscountId(dotyposCustomerId),
-];
-
 const getOrdinaryDiscountIds = (input: DisplayedDiscountAffirmationInput) => {
-  const referralIds = new Set(getReferralDiscountIds(input.dotyposCustomerId));
+  const referralIds = new Set(listReferralBenefitIds(input.dotyposCustomerId));
   return input.displayedDiscountIds.filter(
     (discountId) => !referralIds.has(discountId)
   );
@@ -954,7 +898,7 @@ const removeReferralDiscounts = (
   quote: DiscountQuote,
   dotyposCustomerId: DotyposCustomerId
 ): DiscountQuote => {
-  const referralIds = new Set(getReferralDiscountIds(dotyposCustomerId));
+  const referralIds = new Set(listReferralBenefitIds(dotyposCustomerId));
   const firstReferral = quote.discounts.find(({ discount }) =>
     referralIds.has(discount.id)
   );
