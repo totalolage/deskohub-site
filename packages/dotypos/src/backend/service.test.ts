@@ -5479,16 +5479,25 @@ describe("DotyposService read retry boundary", () => {
       label: "reservation 404",
       linkedCustomer: false,
       missingCustomerId: false,
+      missingId: false,
     },
     {
       label: "linked customer 404",
       linkedCustomer: true,
       missingCustomerId: false,
+      missingId: false,
     },
     {
       label: "missing customer ID",
       linkedCustomer: false,
       missingCustomerId: true,
+      missingId: false,
+    },
+    {
+      label: "reservation without an ID",
+      linkedCustomer: false,
+      missingCustomerId: false,
+      missingId: true,
     },
   ])("getReservation read boundary: $label", async (row) => {
     let reservationReads = 0;
@@ -5498,11 +5507,13 @@ describe("DotyposService read retry boundary", () => {
       if (url.pathname === "/signin/token") return tokenResponse();
       if (url.pathname === "/clouds/cloud-id/reservations/reservation-id") {
         reservationReads += 1;
-        if (!row.linkedCustomer && !row.missingCustomerId) {
+        if (!row.linkedCustomer && !row.missingCustomerId && !row.missingId) {
           return new Response("Not found", { status: 404 });
         }
+        const { id, ...withoutId } = reservation();
         return Response.json({
-          ...reservation(),
+          ...withoutId,
+          ...(!row.missingId && { id }),
           ...(row.missingCustomerId && { _customerId: "" }),
         });
       }
@@ -5522,7 +5533,7 @@ describe("DotyposService read retry boundary", () => {
       fetchMock
     );
 
-    if (!row.linkedCustomer && !row.missingCustomerId) {
+    if (!row.linkedCustomer && !row.missingCustomerId && !row.missingId) {
       expect(result).toMatchObject({ _tag: "Success", success: Option.none() });
       expect(customerReads).toBe(0);
     } else if (row.linkedCustomer) {
