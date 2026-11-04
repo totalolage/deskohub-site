@@ -1034,6 +1034,180 @@ describe("AccountPage states", () => {
     withoutPasskeyBrowser();
   });
 
+  test("offers deletion only where the state does, retrying a pending one", async () => {
+    const deletionTrigger = (view: Awaited<ReturnType<typeof renderState>>) =>
+      view.container.querySelector("#delete-account-trigger");
+    const withheld = [
+      {
+        kind: "authenticated-unavailable",
+        deletion: "withheld",
+        email: adaAddress,
+      },
+      {
+        kind: "completion-required",
+        deletion: "withheld",
+        email: adaAddress,
+        referralsEnabled: true,
+      },
+      { kind: "support-required", deletion: "withheld", email: adaAddress },
+    ] as const satisfies readonly CustomerAccountPageState[];
+    for (const state of withheld) {
+      expect(deletionTrigger(await renderState(state))).toBeNull();
+      cleanup();
+    }
+
+    const offered = await renderState({
+      kind: "support-required",
+      deletion: "offered",
+      email: adaAddress,
+    });
+    expect(deletionTrigger(offered)?.closest("[hidden]")).toBeNull();
+    cleanup();
+
+    const pending = await renderState({
+      kind: "deletion-pending",
+      deletion: "pending",
+      email: adaAddress,
+    });
+    expect(deletionTrigger(pending)?.closest("[hidden]")).toBeNull();
+    expect(
+      pending.getByText(m.accountDeletionPendingTitle({}, en))
+    ).toBeTruthy();
+    cleanup();
+
+    // A linked account keeps deletion to its own section.
+    const linked = await renderState(linkedState);
+    expect(deletionTrigger(linked)?.closest("[hidden]")).not.toBeNull();
+    openSection(linked, "en-US", m.accountSectionDanger({}, en));
+    expect(deletionTrigger(linked)?.closest("[hidden]")).toBeNull();
+  });
+
+  test("keeps a profile completion draft mounted while Sign-in & security is open", async () => {
+    const view = await renderState({
+      kind: "completion-required",
+      deletion: "offered",
+      email: adaAddress,
+      referralsEnabled: true,
+      passkeys: {
+        accountId: "account-1",
+        passkeys: [
+          {
+            id: "passkey-1",
+            name: "Work laptop",
+            provider: undefined,
+            createdAt: "2026-10-14T16:40:00.000Z",
+          },
+        ],
+      },
+    });
+    const firstName = view.getByLabelText(
+      m.accountProfileFirstNameLabel({}, en)
+    ) as HTMLInputElement;
+    fireEvent.change(firstName, { target: { value: "Grace" } });
+
+    openSection(view, "en-US", m.accountSectionSecurity({}, en));
+    expect(firstName.isConnected).toBe(true);
+    expect(firstName.closest("[hidden]")).not.toBeNull();
+    expect(
+      view.getByText(m.accountSecurityPasskeysAdd({}, en)).closest("[hidden]")
+    ).toBeNull();
+
+    openSection(view, "en-US", m.accountSectionProfile({}, en));
+    expect(firstName.closest("[hidden]")).toBeNull();
+    expect(firstName.value).toBe("Grace");
+  });
+
+  test("reads the passkeys afresh when a refresh links the completed account", async () => {
+    const { AccountLayoutShell } = await import("./account-layout-shell");
+    const { AccountPage } = await import("./account-page");
+    const passkeys = (name: string) => ({
+      accountId: "account-1",
+      passkeys: [
+        {
+          id: name,
+          name,
+          provider: undefined,
+          createdAt: "2026-10-14T16:40:00.000Z",
+        },
+      ],
+    });
+    const page = (state: CustomerAccountPageState) => (
+      <AccountLayoutShell
+        locale="en-US"
+        passkeysEnabled
+        referralsEnabled
+        signedIn
+      >
+        <AccountPage locale="en-US" state={state} />
+      </AccountLayoutShell>
+    );
+    const view = render(
+      page({
+        kind: "completion-required",
+        deletion: "offered",
+        email: adaAddress,
+        referralsEnabled: true,
+        passkeys: passkeys("Work laptop"),
+      })
+    );
+
+    view.rerender(page({ ...linkedState, passkeys: passkeys("Home phone") }));
+    openSection(view, "en-US", m.accountSectionSecurity({}, en));
+
+    const list = view.getByRole("list", {
+      name: m.accountSecurityPasskeysTitle({}, en),
+    });
+    expect(within(list).getByText("Home phone")).toBeTruthy();
+    expect(within(list).queryByText("Work laptop")).toBeNull();
+  });
+
+  test("publishes a linked account's referral badge and clears it when the state leaves linked", async () => {
+    const code = parseReferralCode("RFL12345");
+    if (code === undefined) throw new Error("Invalid referral test code");
+    const { AccountLayoutShell } = await import("./account-layout-shell");
+    const { AccountPage } = await import("./account-page");
+    const page = (state: CustomerAccountPageState) => (
+      <AccountLayoutShell
+        locale="en-US"
+        passkeysEnabled={false}
+        referralsEnabled
+        signedIn
+      >
+        <AccountPage locale="en-US" state={state} />
+      </AccountLayoutShell>
+    );
+    const view = render(
+      page({
+        ...linkedState,
+        referrals: {
+          summary: {
+            code,
+            inviteeCount: 2,
+            eligibleInviteeCount: 1,
+            discount: "5",
+            savings: [],
+          },
+          shareUrl: "https://workspace.example/account?ref=RFL12345",
+        },
+      })
+    );
+    const referralBadge = () =>
+      view.container.querySelector(
+        '[data-account-navigation-badge="referrals"]'
+      );
+    expect(referralBadge()).not.toBeNull();
+
+    view.rerender(
+      page({
+        kind: "completion-required",
+        deletion: "offered",
+        email: adaAddress,
+        referralsEnabled: true,
+      })
+    );
+    expect(referralBadge()).toBeNull();
+  });
+
   test("asks the account identity adapter to refresh once per authenticated view", async () => {
     await renderState(linkedState);
     expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(1);
