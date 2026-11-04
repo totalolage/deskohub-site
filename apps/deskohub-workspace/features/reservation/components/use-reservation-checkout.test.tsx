@@ -24,10 +24,15 @@ import {
 
 type PreparePayStateOptions = {
   readonly onSuccess: (result: {
-    readonly data: {
-      readonly status: "pricing_changed";
-      readonly redirectUrl: string;
-    };
+    readonly data?:
+      | {
+          readonly status: "pricing_changed" | "ready";
+          readonly redirectUrl?: string;
+        }
+      | { readonly status: "error"; readonly message: string };
+  }) => void;
+  readonly onError: (result: {
+    readonly error: { readonly serverError?: string };
   }) => void;
   readonly onTransportError: () => void;
 };
@@ -37,10 +42,20 @@ const executeAsync = mock((_input: PreparePayStateInput) =>
 );
 let preparePayStateOptions: PreparePayStateOptions | undefined;
 
+let analyticsAccepted = false;
+const cookieConsent = await import("@/features/cookie-consent");
 mock.module("@/features/cookie-consent", () => ({
-  useVisitorConsent: () => false,
-  visitorConsent: { accepts: () => false },
+  ...cookieConsent,
+  useVisitorConsent: () => analyticsAccepted,
+  visitorConsent: {
+    ...cookieConsent.visitorConsent,
+    accepts: () => analyticsAccepted,
+  },
 }));
+
+const track = mock((_event: string, _properties?: unknown) => undefined);
+const vercelAnalytics = await import("@vercel/analytics/react");
+mock.module("@vercel/analytics/react", () => ({ ...vercelAnalytics, track }));
 
 mock.module("@/features/reservation/actions/prepare-pay-state", () => ({
   preparePayState: mock(),
@@ -85,6 +100,8 @@ describe("useReservationCheckout", () => {
     workspaceUseAction.mockReset();
     workspaceUseSearchParams.mockReturnValue(new URLSearchParams());
     preparePayStateOptions = undefined;
+    analyticsAccepted = false;
+    track.mockClear();
   });
 
   afterAll(async () => {
@@ -128,5 +145,87 @@ describe("useReservationCheckout", () => {
     });
 
     expect(push).toHaveBeenCalledWith("/en-US/checkout/pay?payState=fresh");
+  });
+
+  test("shows the action's message when preparation fails", () => {
+    const { result } = renderCheckout();
+
+    act(() => {
+      preparePayStateOptions?.onSuccess({
+        data: { status: "error", message: "The room was just booked." },
+      });
+    });
+
+    expect(result.current.submissionError).toBe("The room was just booked.");
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  test("shows the generic error when a prepared checkout has no pay page", () => {
+    const { result } = renderCheckout();
+
+    act(() => {
+      preparePayStateOptions?.onSuccess({ data: { status: "ready" } });
+    });
+
+    expect(result.current.submissionError).toBeString();
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  test("tracks a started checkout once per submission with analytics consent", () => {
+    analyticsAccepted = true;
+    renderCheckout();
+    const succeed = () =>
+      act(() => {
+        preparePayStateOptions?.onSuccess({
+          data: { status: "ready", redirectUrl: "/en-US/checkout/pay" },
+        });
+      });
+
+    succeed();
+    succeed();
+
+    expect(track).toHaveBeenCalledTimes(1);
+    expect(track.mock.calls[0]?.[0]).toBe("workspace_checkout_started");
+    expect(push).toHaveBeenCalledTimes(2);
+  });
+
+  test("tracks nothing without analytics consent", () => {
+    renderCheckout();
+
+    act(() => {
+      preparePayStateOptions?.onSuccess({
+        data: { status: "ready", redirectUrl: "/en-US/checkout/pay" },
+      });
+    });
+
+    expect(track).not.toHaveBeenCalled();
+    expect(push).toHaveBeenCalledWith("/en-US/checkout/pay");
+  });
+
+  test("shows the server's error, or the generic one without it", () => {
+    const { result } = renderCheckout();
+
+    act(() => {
+      preparePayStateOptions?.onError({
+        error: { serverError: "Checkout is closed." },
+      });
+    });
+    expect(result.current.submissionError).toBe("Checkout is closed.");
+
+    act(() => {
+      preparePayStateOptions?.onError({ error: {} });
+    });
+    expect(result.current.submissionError).toBeString();
+    expect(result.current.submissionError).not.toBe("Checkout is closed.");
+  });
+
+  test("shows the generic error when the request does not reach the server", () => {
+    const { result } = renderCheckout();
+
+    act(() => {
+      preparePayStateOptions?.onTransportError();
+    });
+
+    expect(result.current.submissionError).toBeString();
   });
 });

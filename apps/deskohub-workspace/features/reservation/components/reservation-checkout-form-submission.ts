@@ -16,6 +16,7 @@ import {
   getInvalidFormFields,
   type InvalidFormField,
 } from "@/shared/utils/form-field-errors";
+import type { ReservationCheckoutAdvertisedPrice } from "./reservation-checkout-form";
 import { confirmReservationContactEmail } from "./reservation-customer-fields";
 import type { useCheckoutEmailVerification } from "./use-checkout-email-verification";
 import type {
@@ -51,11 +52,10 @@ export type ReservationSubmitOptions = {
 
 type ReservationCheckout = ReturnType<typeof useReservationCheckout>;
 
-type AdvertisedPriceState = {
-  readonly isError: boolean;
-  readonly isFetching: boolean;
-  readonly token?: string;
-};
+type AdvertisedPriceState = Pick<
+  ReservationCheckoutAdvertisedPrice,
+  "isError" | "isFetching" | "token"
+>;
 
 type AvailabilityState = {
   readonly isPending: boolean;
