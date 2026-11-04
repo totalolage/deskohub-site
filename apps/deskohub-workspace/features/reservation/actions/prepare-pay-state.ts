@@ -40,7 +40,10 @@ import {
   deriveCheckoutSessionKeys,
   deriveCheckoutSessionLockKey,
 } from "@/features/checkout/backend/checkout/checkout-lookup-keys.server";
-import { ReservationHoldCleanupScheduleService } from "@/features/checkout/backend/holds";
+import {
+  DotyposHoldRelease,
+  ReservationHoldCleanupScheduleService,
+} from "@/features/checkout/backend/holds";
 import {
   createWorkspaceDotyposReservation,
   splitCustomerName,
@@ -521,52 +524,34 @@ const cancelSupersededHold = Effect.fn("preparePayState.cancelSupersededHold")(
     readonly reservationId: WorkspaceReservationId;
     readonly dotyposReservationId: DotyposReservationId;
   }) {
-    const reservations = yield* WorkspaceReservationRepository;
-    const dotypos = yield* DotyposService;
+    const holdRelease = yield* DotyposHoldRelease;
     const { reservationId, dotyposReservationId } = input;
-    const cancelled = yield* Effect.gen(function* () {
-      const status = yield* dotypos.getReservationStatus(dotyposReservationId);
-      if (status === "CANCELLED") return true;
-      if (status !== "NEW") {
-        yield* Effect.logError(
-          "Checkout supersession refused to cancel a non-pending Dotypos reservation",
-          { reservationId, dotyposReservationId, status }
-        );
-        return false;
-      }
-
-      yield* dotypos.cancelReservation(dotyposReservationId);
-      return true;
-    }).pipe(
-      Effect.catch(
-        Effect.fn(function* (cause) {
-          yield* Effect.logError(
-            "Checkout supersession Dotypos cancellation failed",
-            { reservationId, dotyposReservationId, cause }
-          );
-          return false;
-        })
-      )
-    );
-
-    if (!cancelled) {
-      yield* reservations
-        .markCancellationFailed({
-          id: reservationId,
-          failureCode: "checkout_supersession_cancel_failed",
-        })
-        .pipe(
-          Effect.tapError((cause) =>
-            Effect.logError(
-              "Checkout supersession cancellation failure marker failed",
-              { reservationId, cause }
-            )
-          ),
-          Effect.ignore
-        );
-    }
-    return cancelled;
-  }
+    return yield* holdRelease
+      .release({
+        reservationId,
+        dotyposReservationId,
+        liveStatus: "require_new",
+        failureCode: "checkout_supersession_cancel_failed",
+      })
+      .pipe(
+        Effect.flatMap((release) =>
+          Predicate.isString(release)
+            ? Effect.succeed(true)
+            : Effect.logError(
+                "Checkout supersession refused to cancel a non-pending Dotypos reservation",
+                { reservationId, dotyposReservationId, status: release.refused }
+              ).pipe(Effect.as(false))
+        ),
+        Effect.catch((cause) =>
+          Effect.logError("Checkout supersession Dotypos cancellation failed", {
+            reservationId,
+            dotyposReservationId,
+            cause,
+          }).pipe(Effect.as(false))
+        )
+      );
+  },
+  Effect.provide(DotyposHoldRelease.Default)
 );
 
 /** A reservation whose hold creation or cancellation is still in flight. */

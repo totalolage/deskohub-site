@@ -134,6 +134,7 @@ const makeReservation = (
   reservedFrom: Temporal.Instant.from("2026-06-12T07:00:00Z"),
   reservedUntil: Temporal.Instant.from("2026-06-12T11:00:00Z"),
   seats: 1,
+  placement: {},
   ...overrides,
 });
 
@@ -297,7 +298,7 @@ const loadOpenSpaceReservationFromSyntheticSnapshot = async () => {
     Effect.runPromise
   );
 
-  return { details, providerReads, names };
+  return { details, providerReads };
 };
 
 const extractEmailUrls = (body: string) => {
@@ -362,7 +363,7 @@ const getTextValueAfterLabel = (text: string, label: string) => {
 
 describe("Open Space customer reservation emails", () => {
   test("renders the eligible table names from loaded reservation details in HTML and text", async () => {
-    const { details, names, providerReads } =
+    const { details, providerReads } =
       await loadOpenSpaceReservationFromSyntheticSnapshot();
     const message = await sendPaidReservationEmail(details);
     const { createWorkspaceReservationCustomerEmailPreviewHtml } = await import(
@@ -378,8 +379,10 @@ describe("Open Space customer reservation emails", () => {
       }).pipe(Effect.runPromise);
     const expectedTableNames = "9-12, 15, 16, wallee, gromice";
 
-    expect(details.openSpaceTableNames).toEqual(names);
-    expect(details.tableName).toBe("assigned-only-sentinel-raw-table-id");
+    expect(details.placement.table).toEqual({
+      mode: "shared",
+      name: expectedTableNames,
+    });
     expect(providerReads.toSorted()).toEqual(["getReservation", "getTables"]);
     expect(message.html).toContain("Tables");
     expect(message.text).toContain("Tables");
@@ -402,8 +405,7 @@ describe("Open Space customer reservation emails", () => {
           entryTier: "open-space",
           coffee: false,
         },
-        tableName: "assigned-only-sentinel-raw-table-id",
-        openSpaceTableNames: [],
+        placement: {},
       })
     );
 
@@ -437,7 +439,10 @@ describe("Open Space customer reservation emails", () => {
 
     for (const reservationDetails of assignedProducts) {
       const message = await sendPaidReservationEmail(
-        makeReservation({ reservationDetails, tableName: "12" })
+        makeReservation({
+          reservationDetails,
+          placement: { table: { mode: "assigned", name: "12" } },
+        })
       );
 
       expect(message.html).toContain(">Table<");
@@ -677,21 +682,23 @@ describe("sendPaidReservationEmails internal notification failure", () => {
     );
     const reservation = makeReservation({
       customer: { ...customer, phone: "123456789" },
-      tableName: "12",
-      tableMap: {
-        assignedTableId: "desk-12",
-        roomName: "Main room",
-        tables: [
-          {
-            _cloudId: "cloud-id",
-            id: "desk-12",
-            name: "12",
-            locationName: "Main room",
-            positionX: "40",
-            positionY: "80",
-            type: "SQUARE",
-          },
-        ],
+      placement: {
+        table: { mode: "assigned", name: "12" },
+        tableMap: {
+          assignedTableId: "desk-12",
+          roomName: "Main room",
+          tables: [
+            {
+              _cloudId: "cloud-id",
+              id: "desk-12",
+              name: "12",
+              locationName: "Main room",
+              positionX: "40",
+              positionY: "80",
+              type: "SQUARE",
+            },
+          ],
+        },
       },
     });
     const sentMessages: EmailMessage[] = [];

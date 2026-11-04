@@ -1,4 +1,4 @@
-import { type DotyposReservationId, DotyposService } from "@deskohub/dotypos";
+import type { DotyposReservationId } from "@deskohub/dotypos";
 import { Context, Data, Effect, Layer, Match } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
@@ -14,6 +14,7 @@ import {
   ProviderPaymentFinalizationService,
 } from "../payment/provider-payment-finalization.service";
 import { PaymentLifecycleRepository } from "../repositories/payment-lifecycle.repository";
+import { DotyposHoldRelease } from "./dotypos-hold-release.service";
 
 class ReservationHoldCleanupError extends Data.TaggedError(
   "ReservationHoldCleanupError"
@@ -68,6 +69,7 @@ export class ReservationHoldCleanupService extends Context.Service<
   static Default = makeReservationHoldCleanupServiceLayer(this);
 
   static Live = this.Default.pipe(
+    Layer.provide(DotyposHoldRelease.Default),
     Layer.provide(ProviderPaymentFinalizationService.Live),
     Layer.provide(PaymentLifecycleRepository.Default),
     Layer.provide(CheckoutAnalytics.Live),
@@ -86,7 +88,7 @@ function makeReservationHoldCleanupServiceLayer(
       const reservations = yield* WorkspaceReservationRepository;
       const paymentLifecycle = yield* PaymentLifecycleRepository;
       const finalization = yield* ProviderPaymentFinalizationService;
-      const dotypos = yield* DotyposService;
+      const holdRelease = yield* DotyposHoldRelease;
       const checkoutAnalytics = yield* CheckoutAnalytics;
 
       const loadOrder = (orderId: WorkspaceReservationId) =>
@@ -284,44 +286,34 @@ function makeReservationHoldCleanupServiceLayer(
         };
       });
 
+      // Hold cleanup cancels whatever it claimed without the live Dotypos NEW
+      // check that supersession and late payment apply.
       const cancelDotyposHold = Effect.fnUntraced(function* (input: {
         readonly claimed: WorkspaceReservation;
         readonly dotyposReservationId: DotyposReservationId;
       }) {
         const { claimed } = input;
         yield* Effect.logInfo("Dotypos reservation hold cancellation started");
-        yield* dotypos.cancelReservation(input.dotyposReservationId).pipe(
-          Effect.tapError(
-            Effect.fn(function* (cause) {
-              yield* Effect.logError(
-                "Dotypos reservation hold cancellation failed",
-                { claimed, cause }
-              );
-              yield* reservations
-                .markCancellationFailed({
-                  id: claimed.id,
-                  failureCode: "dotypos_cancel_failed",
-                })
-                .pipe(
-                  Effect.tapError((markerCause) =>
-                    Effect.logError(
-                      "Reservation cancellation failure marker failed",
-                      {
-                        orderId: claimed.id,
-                        cause: markerCause,
-                      }
-                    )
-                  ),
-                  Effect.ignore
-                );
-            })
-          ),
-          Effect.mapError(
-            ReservationHoldCleanupError.fromError(
-              "Dotypos reservation hold could not be cancelled."
+        yield* holdRelease
+          .release({
+            reservationId: claimed.id,
+            dotyposReservationId: input.dotyposReservationId,
+            liveStatus: "unchecked",
+            failureCode: "dotypos_cancel_failed",
+          })
+          .pipe(
+            Effect.tapError((cause) =>
+              Effect.logError("Dotypos reservation hold cancellation failed", {
+                claimed,
+                cause,
+              })
+            ),
+            Effect.mapError(
+              ReservationHoldCleanupError.fromError(
+                "Dotypos reservation hold could not be cancelled."
+              )
             )
-          )
-        );
+          );
         yield* Effect.logInfo(
           "Dotypos reservation hold cancellation completed"
         );

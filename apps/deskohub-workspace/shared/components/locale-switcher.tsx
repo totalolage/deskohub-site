@@ -5,6 +5,7 @@ import {
   Fragment,
   type MouseEvent,
   type ReactNode,
+  Suspense,
   useEffect,
   useState,
 } from "react";
@@ -17,15 +18,8 @@ import {
   locales,
   withLocalePrefixAndSearch,
 } from "@/features/i18n";
+import { getLanguageLabels } from "@/features/i18n/language-labels";
 import { cn } from "@/shared/utils";
-
-type LocaleSwitcherLinksProps = {
-  readonly currentLocale: Locale;
-  readonly languageLabels: Record<Locale, string>;
-  readonly closeMenu?: () => void;
-  readonly isMobile?: boolean;
-  readonly localePreference?: LocalePreferenceSaving;
-};
 
 type SignedInState = "pending" | boolean;
 
@@ -57,7 +51,8 @@ const isPlainClick = (event: MouseEvent<HTMLAnchorElement>) =>
 
 /**
  * Hrefs and click handling for links that switch the current page to another
- * locale.
+ * locale. `LocaleSwitcher` renders them for the customer site; the
+ * administration renders its own markup around them.
  */
 export function useLocaleSwitch(localePreference?: LocalePreferenceSaving) {
   const pathname = usePathname();
@@ -83,41 +78,32 @@ export function useLocaleSwitch(localePreference?: LocalePreferenceSaving) {
   return { getLocaleHref, selectLocale };
 }
 
-export function LocaleSwitcherLinks({
-  currentLocale,
-  languageLabels,
-  closeMenu,
-  isMobile = false,
-  localePreference,
-}: LocaleSwitcherLinksProps) {
-  const { getLocaleHref, selectLocale } = useLocaleSwitch(localePreference);
+type LocaleSwitcherProps = {
+  readonly locale: Locale;
+  /** `stacked` separates the languages with a slash; `inline` runs them together in a row. */
+  readonly appearance: "inline" | "stacked";
+  readonly localePreference?: LocalePreferenceSaving;
+  /** Runs on every click of another locale's link, for example to close a menu. */
+  readonly onSwitch?: () => void;
+};
 
-  return (
-    <LocaleSwitcherLabels
-      currentLocale={currentLocale}
-      languageLabels={languageLabels}
-      closeMenu={closeMenu}
-      getLocaleHref={getLocaleHref}
-      isMobile={isMobile}
-      selectLocale={selectLocale}
-    />
-  );
-}
-
-export function LocaleSwitcherLabels({
-  currentLocale,
-  languageLabels,
-  closeMenu,
-  getLocaleHref,
-  isMobile = false,
-  selectLocale,
-}: Omit<LocaleSwitcherLinksProps, "localePreference"> & {
+type LocaleLabelsProps = Omit<LocaleSwitcherProps, "localePreference"> & {
   readonly getLocaleHref?: (locale: Locale) => string;
   readonly selectLocale?: (
     locale: Locale,
     event: MouseEvent<HTMLAnchorElement>
   ) => void;
-}) {
+};
+
+function LocaleLabels({
+  locale: currentLocale,
+  appearance,
+  onSwitch,
+  getLocaleHref,
+  selectLocale,
+}: LocaleLabelsProps) {
+  const languageLabels = getLanguageLabels(currentLocale);
+
   return locales.map((locale, index) => {
     const isCurrent = locale === currentLocale;
     let label: ReactNode = languageLabels[locale];
@@ -129,7 +115,7 @@ export function LocaleSwitcherLabels({
         <a
           href={getLocaleHref(locale)}
           onClick={(event) => {
-            closeMenu?.();
+            onSwitch?.();
             selectLocale?.(locale, event);
           }}
           className="transition-colors hover:text-sunset-yellow"
@@ -139,7 +125,7 @@ export function LocaleSwitcherLabels({
       );
     }
 
-    if (isMobile) {
+    if (appearance === "inline") {
       return <Fragment key={locale}>{label}</Fragment>;
     }
 
@@ -156,4 +142,42 @@ export function LocaleSwitcherLabels({
       </span>
     );
   });
+}
+
+function LocaleLinks({ localePreference, ...props }: LocaleSwitcherProps) {
+  const { getLocaleHref, selectLocale } = useLocaleSwitch(localePreference);
+  return (
+    <LocaleLabels
+      {...props}
+      getLocaleHref={getLocaleHref}
+      selectLocale={selectLocale}
+    />
+  );
+}
+
+/**
+ * The customer site's language links, each named in the current locale's
+ * language. Another locale's link opens the current page, query included,
+ * under that locale, and a signed-in customer's preference is saved before the
+ * navigation. The prerendered shell cannot read the query, so it shows the
+ * same labels without links until the client takes over.
+ */
+export function LocaleSwitcher({
+  locale,
+  appearance,
+  localePreference,
+  onSwitch,
+}: LocaleSwitcherProps) {
+  return (
+    <Suspense
+      fallback={<LocaleLabels locale={locale} appearance={appearance} />}
+    >
+      <LocaleLinks
+        locale={locale}
+        appearance={appearance}
+        localePreference={localePreference}
+        onSwitch={onSwitch}
+      />
+    </Suspense>
+  );
 }

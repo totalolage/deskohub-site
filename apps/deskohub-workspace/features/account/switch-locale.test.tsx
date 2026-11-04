@@ -36,8 +36,8 @@ afterAll(async () => {
 });
 
 test("the header switcher and the profile language control switch through the same client path", async () => {
-  const { LocaleSwitcherLinks } = await import(
-    "@/shared/components/locale-switcher-links"
+  const { LocaleSwitcher } = await import(
+    "@/shared/components/locale-switcher"
   );
   const { ProfileScreen } = await import(
     "@/features/account/components/profile/profile-screen"
@@ -49,10 +49,10 @@ test("the header switcher and the profile language control switch through the sa
   };
   const view = render(
     <>
-      <LocaleSwitcherLinks
-        currentLocale="en-US"
+      <LocaleSwitcher
+        locale="en-US"
+        appearance="stacked"
         localePreference={headerPreference}
-        languageLabels={{ "cs-CZ": "Czech", "en-US": "English" }}
       />
       <ProfileScreen
         email={testEmailAddress("ada")}
@@ -66,7 +66,11 @@ test("the header switcher and the profile language control switch through the sa
   );
   await act(() => headerPreference.signedIn);
 
-  fireEvent.click(view.getByRole("link", { name: "Czech" }));
+  fireEvent.click(
+    view.getByRole("link", {
+      name: m.languageCzech({}, { locale: "en-US" }),
+    })
+  );
 
   await act(async () => {
     fireEvent.keyDown(

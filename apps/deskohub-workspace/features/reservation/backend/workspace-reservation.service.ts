@@ -7,13 +7,13 @@ import type { Customer } from "@deskohub/dotypos/generated";
 import { Context, Data, Effect, Layer, Option, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
-  getWorkspaceTableMap,
-  type WorkspaceTableMap,
-} from "@/features/checkout/workspace-table-map";
-import {
   type BookedReservation,
   decodeBookedReservation,
 } from "@/features/reservation/backend/booked-reservation";
+import {
+  type CustomerReservationPlacement,
+  getCustomerReservationPlacement,
+} from "@/features/reservation/backend/customer-reservation-placement";
 import { SeatingMapReleaseGate } from "@/features/reservation/backend/seating-map-release-gate";
 import {
   type WorkspaceReservation,
@@ -21,11 +21,6 @@ import {
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
-
-import {
-  getOpenSpaceTableNames,
-  getReservationTableName,
-} from "./reservation-table";
 
 export class WorkspaceReservationDetailsError extends Data.TaggedError(
   "WorkspaceReservationDetailsError"
@@ -61,9 +56,7 @@ export type WorkspaceReservationDetails = Pick<
   readonly setupFrom?: Temporal.Instant;
   readonly providerStatus: "NEW" | "CONFIRMED" | "CANCELLED";
   readonly seats: number;
-  readonly tableName?: string;
-  readonly tableMap?: WorkspaceTableMap;
-  readonly openSpaceTableNames?: readonly string[];
+  readonly placement: CustomerReservationPlacement;
 };
 
 export interface IWorkspaceReservationService {
@@ -181,22 +174,12 @@ export class WorkspaceReservationService extends Context.Service<
           }
           const seats = booked.seats.value;
 
-          const tableName = getReservationTableName(
-            dotyposReservationDetails.reservation,
-            tables
-          );
-          const openSpaceTableNames =
-            reservation.reservationDetails.kind === "cowork" &&
-            reservation.reservationDetails.entryTier === "open-space"
-              ? yield* getOpenSpaceTableNames(tables)
-              : undefined;
-          const seatingMapEnabled = yield* seatingMap.isOpen;
-          const tableMap = seatingMapEnabled
-            ? getWorkspaceTableMap(
-                dotyposReservationDetails.reservation,
-                tables
-              )
-            : undefined;
+          const placement = getCustomerReservationPlacement({
+            reservationDetails: reservation.reservationDetails,
+            dotyposReservation: dotyposReservationDetails.reservation,
+            tables,
+            seatingMap: yield* seatingMap.isOpen,
+          });
 
           return {
             id: reservation.id,
@@ -214,9 +197,7 @@ export class WorkspaceReservationService extends Context.Service<
               onSome: (setupFrom) => ({ setupFrom }),
             }),
             seats,
-            ...(tableName && { tableName }),
-            ...(tableMap && { tableMap }),
-            ...(openSpaceTableNames !== undefined && { openSpaceTableNames }),
+            placement,
           };
         }
       );

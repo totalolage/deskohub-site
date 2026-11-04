@@ -35,7 +35,6 @@ import {
   getReservationAccessPath,
   getReservationInvoicePath,
 } from "@/features/reservation/backend/reservation-access-url";
-import { getCustomerReservationTable } from "@/features/reservation/backend/reservation-table";
 import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
 import type { StoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
 import {
@@ -418,7 +417,7 @@ const createCustomerReservationEmail = (input: {
     {},
     { locale: input.locale }
   );
-  const table = getCustomerReservationTable(input.reservation);
+  const { table } = input.reservation.placement;
 
   return (
     <CustomerReservationEmail
@@ -488,7 +487,7 @@ const createReservationAuthorEmail = (input: {
   readonly locationMapImageSrc?: string;
 }) => {
   const { reservation, locale } = input;
-  const table = getCustomerReservationTable(reservation);
+  const { table } = reservation.placement;
 
   return (
     <ReservationAuthorEmail
