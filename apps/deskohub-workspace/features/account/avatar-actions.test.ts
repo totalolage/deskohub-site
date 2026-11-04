@@ -16,12 +16,6 @@ const revalidatePath = mock(
 mock.module("next/cache", () => ({ revalidatePath }));
 
 await mockWorkspaceActionRequest();
-mock.module("@/instrumentation", () => ({
-  postHogLoggerProvider: {
-    forceFlush: () => Promise.resolve(),
-    getLogger: () => ({ emit: () => undefined }),
-  },
-}));
 
 // The avatar release gate over a fake flag evaluation.
 let avatarFlag: Effect.Effect<boolean, PostHogFeatureFlagEvaluationError> =

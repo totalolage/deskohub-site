@@ -1,10 +1,7 @@
 import { Data, Effect } from "effect";
 import { NextResponse } from "next/server";
 import { unclassifiedTraffic } from "@/shared/agent-traffic/agent-traffic";
-import {
-  runWorkspaceEffect,
-  scheduleWorkspaceTelemetryFlush,
-} from "./workspace-effect";
+import { runWorkspaceEffect } from "./workspace-effect";
 import { withWorkspaceRequestContext } from "./workspace-request-context";
 
 type WorkspaceRouteCancellation =
@@ -72,10 +69,9 @@ export const defineWorkspaceRoute =
         options.caller === "service" ? unclassifiedTraffic : undefined
       )
     );
-    const effect = Effect.andThen(
-      scheduleWorkspaceTelemetryFlush(),
-      invocation
-    ).pipe(Effect.annotateLogs({ method: request.method.toUpperCase() }));
+    const effect = invocation.pipe(
+      Effect.annotateLogs({ method: request.method.toUpperCase() })
+    );
     const signal =
       options.cancellation === "interrupt-on-disconnect"
         ? request.signal

@@ -1,17 +1,19 @@
 import { NextEffect } from "@deskohub/next-effect";
 import { NodeHttpServer } from "@effect/platform-node";
 import { waitUntil } from "@vercel/functions";
-import { Cause, Data, Effect, Exit, Layer, Result } from "effect";
+import { Cause, Data, Effect, Exit, identity, Layer, Result } from "effect";
 import { HttpRouter } from "effect/unstable/http";
 import { unstable_rethrow } from "next/navigation";
 import { after } from "next/server";
-import { postHogLoggerProvider } from "@/instrumentation";
 import {
-  createWorkspaceOtelLoggerLive,
-  WorkspaceLoggerLive,
-} from "./logging/censorship";
-import { flushPostHogLogs } from "./logging/posthog-otel";
-import { WorkspaceTracingLive } from "./observability/workspace-tracing";
+  flushServerAnalytics,
+  isServerAnalyticsEnabled,
+} from "./analytics/analytics-event-delivery.service";
+import {
+  flushWorkspaceLogs,
+  WorkspaceObservabilityLive,
+  workspaceLoggerProvider,
+} from "./observability/workspace-telemetry";
 import { runStandaloneWorkspaceEffect } from "./standalone-workspace-effect";
 import { withAnonymousVisitor } from "./workspace-request-context";
 
@@ -58,16 +60,28 @@ export const runWorkspaceEffect =
     runWorkspaceExit(operation, options, effect).then(NextEffect.settle);
 
 /**
+ * How a run sends the telemetry it records. A run that serves a response
+ * flushes after the response; work that no response follows, such as a task
+ * or work already running after the response, waits for the flush before it
+ * settles.
+ */
+type TelemetryFlushTiming = "after-response" | "before-settling";
+
+/**
  * The `Exit` of a Workspace run, a runtime that could not be built included.
  * Never rejects.
  */
 const runWorkspaceExit = <A, E>(
   operation: string,
   options: RunWorkspaceEffectOptions,
-  effect: Effect.Effect<A, E, never>
+  effect: Effect.Effect<A, E, never>,
+  flushTiming: TelemetryFlushTiming = "after-response"
 ) => {
   const exit = workspaceRuntime.runExit(
     effect.pipe(
+      flushTiming === "before-settling"
+        ? Effect.ensuring(flushTelemetry)
+        : identity,
       Effect.annotateLogs({
         boundary: options.boundary ?? "run",
         operation,
@@ -80,6 +94,11 @@ const runWorkspaceExit = <A, E>(
   // boundary can outlive the response. The suspended instance then fires
   // the run's timers on its next invocation as spurious timeouts.
   waitUntil(exit.then(ignoreSettlement));
+  if (flushTiming === "after-response") {
+    // Scheduled now, in the caller's request context, which the run's fibers
+    // may not keep.
+    flushAfterResponse(exit);
+  }
   return exit;
 };
 
@@ -239,17 +258,21 @@ export const defineWorkspaceTask =
     handler: (...args: Args) => Effect.Effect<A, E, never>
   ) =>
   (...args: Args): Promise<A> =>
-    Effect.suspend(() => handler(...args)).pipe(
-      withAnonymousVisitor,
-      Effect.ensuring(flushTelemetry),
-      runWorkspaceEffect(operation, { boundary: "task" })
-    );
+    // No response follows a task, so it sends its telemetry before it
+    // settles.
+    runWorkspaceExit(
+      operation,
+      { boundary: "task" },
+      Effect.suspend(() => handler(...args)).pipe(withAnonymousVisitor),
+      "before-settling"
+    ).then(NextEffect.settle);
 
 /**
  * Schedules `effect` to run with `runWorkspaceEffect` after the current
  * response is sent, so the request never waits for it. The work serves no
- * visitor, even where Next.js still exposes the request. A failure to
- * schedule is logged, never raised.
+ * visitor, even where Next.js still exposes the request, and sends its
+ * telemetry before it settles. A failure to schedule is logged, never
+ * raised.
  */
 export const runWorkspaceEffectAfterResponse = <A, E>(
   operation: string,
@@ -258,7 +281,13 @@ export const runWorkspaceEffectAfterResponse = <A, E>(
   Effect.try({
     try: () =>
       after(() =>
-        effect.pipe(withAnonymousVisitor, runWorkspaceEffect(operation))
+        runWorkspaceExit(
+          operation,
+          {},
+          effect.pipe(withAnonymousVisitor),
+          // A flush scheduled now would run beside this work, not after it.
+          "before-settling"
+        ).then(NextEffect.settle)
       ),
     catch: (cause) =>
       new WorkspaceTelemetryError({
@@ -275,18 +304,6 @@ export const runWorkspaceEffectAfterResponse = <A, E>(
     Effect.ignore
   );
 
-export const scheduleWorkspaceTelemetryFlush = () =>
-  postHogLoggerProvider
-    ? runWorkspaceEffectAfterResponse("telemetry.flush", flushTelemetry)
-    : Effect.void;
-
-const WorkspaceObservabilityLive = Layer.merge(
-  postHogLoggerProvider
-    ? createWorkspaceOtelLoggerLive(postHogLoggerProvider)
-    : WorkspaceLoggerLive,
-  WorkspaceTracingLive
-);
-
 /**
  * Process-wide memo map of the Workspace runtime. Each run forks it, so a run
  * reuses what the runtime built, such as `WorkspaceObservabilityLive`.
@@ -294,8 +311,7 @@ const WorkspaceObservabilityLive = Layer.merge(
 const workspaceMemoMap = Layer.makeMemoMapUnsafe();
 
 // Built on first run and kept for the life of the process. It is never
-// disposed: telemetry is flushed per request through `after()` and per task
-// through `Effect.ensuring`, not by closing a layer scope.
+// disposed: each run flushes the telemetry it recorded, not a layer scope.
 const workspaceRuntime = NextEffect.make({
   layer: WorkspaceObservabilityLive,
   memoMap: workspaceMemoMap,
@@ -303,11 +319,51 @@ const workspaceRuntime = NextEffect.make({
 
 // Telemetry is best effort: an unexpected flush defect must not fail the
 // request or task it follows.
-const flushTelemetry = flushPostHogLogs({
-  provider: postHogLoggerProvider,
-}).pipe(
-  Effect.ignoreCause({ log: "Warn", message: "PostHog log flush failed" })
+const flushTelemetry = Effect.all(
+  [
+    flushWorkspaceLogs.pipe(
+      Effect.ignoreCause({ log: "Warn", message: "PostHog log flush failed" })
+    ),
+    flushServerAnalytics.pipe(
+      Effect.ignoreCause({
+        log: "Warn",
+        message: "Server analytics flush failed",
+      })
+    ),
+  ],
+  { concurrency: "unbounded", discard: true }
 );
+
+// Runs the flush in the runtime directly: a Workspace run would schedule
+// another flush when it ends.
+const runTelemetryFlush = () =>
+  workspaceRuntime.runExit(
+    flushTelemetry.pipe(
+      Effect.annotateLogs({ boundary: "run", operation: "telemetry.flush" })
+    )
+  );
+
+const sendsTelemetry = () =>
+  isServerAnalyticsEnabled || workspaceLoggerProvider() !== undefined;
+
+/**
+ * Flushes the telemetry of the work `settled` stands for after the current
+ * response is sent and that work has settled, so the flush also covers work
+ * that outlives the response, such as a background `use cache` revalidation.
+ * Where Next.js has no response to follow, such as outside a request or
+ * inside a prerender without `waitUntil`, the flush starts once the work
+ * settles and the platform keeps the invocation alive for it. Skipped when
+ * the process sends no telemetry. Never throws or waits for the flush.
+ */
+const flushAfterResponse = (settled: Promise<unknown>) => {
+  const enabled = Result.try(sendsTelemetry);
+  if (Result.isFailure(enabled) || !enabled.success) return;
+  const flushOnceSettled = () =>
+    settled.then(runTelemetryFlush, runTelemetryFlush);
+  if (Result.isFailure(Result.try(() => after(flushOnceSettled)))) {
+    waitUntil(flushOnceSettled());
+  }
+};
 
 // Built into the runtime's memo map whether a run or a handler needs it
 // first, so both log and trace through one instance.
@@ -348,5 +404,11 @@ export const toWorkspaceWebHandler = <A, E>(
       memoMap: Layer.forkMemoMapUnsafe(workspaceMemoMap),
     }
   );
-  return (request) => handler(request);
+  return (request) => {
+    const response = handler(request);
+    // The handler runs outside the Workspace runtime, so it schedules the
+    // flush a run would.
+    flushAfterResponse(response);
+    return response;
+  };
 };

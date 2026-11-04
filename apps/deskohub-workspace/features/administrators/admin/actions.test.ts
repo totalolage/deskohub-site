@@ -74,13 +74,6 @@ mock.module("@/features/i18n/server/revalidate-localized-path", () => ({
   },
 }));
 
-mock.module("@/instrumentation", () => ({
-  postHogLoggerProvider: {
-    forceFlush: () => Promise.resolve(),
-    getLogger: () => ({ emit: () => undefined }),
-  },
-}));
-
 const { grantAdministrator, revokeAdministrator } = await import("./actions");
 
 beforeEach(() => {

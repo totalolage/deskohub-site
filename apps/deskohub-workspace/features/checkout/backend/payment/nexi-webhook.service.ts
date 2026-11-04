@@ -15,12 +15,7 @@ import { Context, Data, Effect, Layer, Predicate, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import type { PaymentAttemptState } from "@/db/schema";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
-import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
-import {
-  capturePaymentAbandoned,
-  capturePaymentCompleted,
-  capturePaymentFailed,
-} from "../analytics/posthog-lifecycle-events";
+import { CheckoutAnalytics } from "../analytics/checkout-analytics.service";
 import { ReservationFulfillment } from "../fulfillment/reservation-fulfillment.service";
 import { LatePaymentRecoveryRepository } from "../repositories/late-payment-recovery.repository";
 import {
@@ -85,7 +80,7 @@ export class NexiWebhookService extends Context.Service<
     Layer.provide(PaymentLifecycleRepository.Default),
     Layer.provide(LatePaymentRecoveryRepository.Default),
     Layer.provide(LatePaymentRecoveryQueueService.Live),
-    Layer.provide(PostHogEventService.Live),
+    Layer.provide(CheckoutAnalytics.Live),
     Layer.provide(WorkspaceReservationRepository.Default),
     Layer.provide(
       PaymentRefundService.Default.pipe(
@@ -158,7 +153,7 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
       const reservations = yield* WorkspaceReservationRepository;
       const nexi = yield* NexiService;
       const fulfillment = yield* ReservationFulfillment;
-      const posthogEvents = yield* PostHogEventService;
+      const checkoutAnalytics = yield* CheckoutAnalytics;
       const latePaymentRecoveries = yield* LatePaymentRecoveryRepository;
       const latePaymentRecoveryQueue = yield* LatePaymentRecoveryQueueService;
       const paymentRefunds = yield* PaymentRefundService;
@@ -612,12 +607,10 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
                 paidAt: Temporal.Now.instant(),
               });
               if (transition.changed) {
-                yield* capturePaymentCompleted({
+                yield* checkoutAnalytics.paymentCompleted({
                   attempt: transition.attempt,
                   timestamp: transition.timestamp,
-                }).pipe(
-                  Effect.provideService(PostHogEventService, posthogEvents)
-                );
+                });
               }
               yield* Effect.logInfo("Nexi webhook payment attempt marked paid");
 
@@ -678,20 +671,16 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
                 );
               if (transition?.changed) {
                 if (terminalState === "failed") {
-                  yield* capturePaymentFailed({
+                  yield* checkoutAnalytics.paymentFailed({
                     attempt: transition.attempt,
                     failureReason: "nexi_payment_failed",
                     timestamp: transition.timestamp,
-                  }).pipe(
-                    Effect.provideService(PostHogEventService, posthogEvents)
-                  );
+                  });
                 } else {
-                  yield* capturePaymentAbandoned({
+                  yield* checkoutAnalytics.paymentAbandoned({
                     attempt: transition.attempt,
                     timestamp: transition.timestamp,
-                  }).pipe(
-                    Effect.provideService(PostHogEventService, posthogEvents)
-                  );
+                  });
                 }
               }
               yield* Effect.logInfo(

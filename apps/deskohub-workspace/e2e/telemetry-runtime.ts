@@ -1,23 +1,27 @@
 import { Effect, Layer } from "effect";
-import { createTracingLive } from "../shared/backend/observability/otel-tracing";
-import { createPostHogTracerProvider } from "../shared/backend/observability/posthog-tracing";
+import {
+  createIdentifiedTracingLive,
+  createPostHogTracerProvider,
+  type TelemetryIdentity,
+} from "../shared/backend/observability/telemetry-sinks";
 import type { E2EEnvironment } from "./e2e-env";
 import { runUntracedE2EEffect } from "./effect-edge";
 import { workspaceE2EError } from "./errors";
 import { makeNativeRunCapture, soakEvidenceService } from "./soak-native";
 
-const soakEvidenceServicespace = "deskohub";
 const telemetryShutdownTimeoutMs = 5_000;
 
 export const makeE2ETelemetryRuntime = (environment: E2EEnvironment) => {
   const capture = makeNativeRunCapture();
-  const provider = createPostHogTracerProvider({
+  const identity: TelemetryIdentity = {
     deploymentEnvironment: "preview",
+    serviceName: soakEvidenceService,
+    serviceVersion: environment.TARGET_SHA,
+  };
+  const provider = createPostHogTracerProvider({
+    ...identity,
     posthogHost: environment.WORKSPACE_E2E_POSTHOG_HOST,
     posthogProjectToken: environment.WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN,
-    serviceName: soakEvidenceService,
-    serviceNamespace: soakEvidenceServicespace,
-    serviceVersion: environment.TARGET_SHA,
   });
 
   return {
@@ -67,15 +71,7 @@ export const makeE2ETelemetryRuntime = (environment: E2EEnvironment) => {
       : Effect.void,
     telemetryEnabled: provider !== undefined,
     tracingLayer: provider
-      ? createTracingLive({
-          attributes: {
-            "deployment.environment.name": "preview",
-            "service.namespace": soakEvidenceServicespace,
-          },
-          provider,
-          serviceName: soakEvidenceService,
-          serviceVersion: environment.TARGET_SHA,
-        })
+      ? createIdentifiedTracingLive(identity, provider)
       : Layer.empty,
   };
 };

@@ -434,8 +434,8 @@ const runReusableReservationScenario = async (input: {
   const { BookingAgent } = await import(
     "@/features/reservation/backend/booking-agent"
   );
-  const { PostHogEventService } = await import(
-    "@/shared/backend/analytics/posthog-event.service"
+  const { recordCheckoutAnalytics } = await import(
+    "@/features/checkout/backend/analytics/checkout-analytics.service.mock"
   );
   const { MarketingConsentLedger } = await import(
     "@/features/legal/backend/marketing-consent-ledger"
@@ -613,9 +613,7 @@ const runReusableReservationScenario = async (input: {
     WorkspaceTableAssignmentServiceMock({
       assignTableId: mock(() => Effect.succeed("table-id")),
     }),
-    Layer.mock(PostHogEventService, {
-      capture: mock(() => Effect.void),
-    }),
+    recordCheckoutAnalytics().layer,
     Layer.mock(DotyposService, {
       findOrCreateCustomer,
       getReservationStatus,
@@ -745,8 +743,8 @@ const runMeetingRoomNewHoldScenario = async (
   const { WorkspaceReservationRepository } = await import(
     "@/features/reservation/backend/workspace-reservation.repository"
   );
-  const { PostHogEventService } = await import(
-    "@/shared/backend/analytics/posthog-event.service"
+  const { recordCheckoutAnalytics } = await import(
+    "@/features/checkout/backend/analytics/checkout-analytics.service.mock"
   );
   const { BotProtectionServiceMock } = await import(
     "@/shared/backend/bot-protection/bot-protection.service.mock"
@@ -869,9 +867,7 @@ const runMeetingRoomNewHoldScenario = async (
       ),
       createReservation,
     }),
-    Layer.mock(PostHogEventService, {
-      capture: mock(() => Effect.void),
-    })
+    recordCheckoutAnalytics().layer
   );
 
   const submission = prepareFromReservationForm({
@@ -989,6 +985,9 @@ describe("prepareWorkspacePayState", () => {
 
   test("rejects office reservation issuance while the office flag is disabled", async () => {
     const prepareFromReservationForm = await loadReservationFormPreparation();
+    const { recordCheckoutAnalytics } = await import(
+      "@/features/checkout/backend/analytics/checkout-analytics.service.mock"
+    );
     const { BotProtectionServiceMock } = await import(
       "@/shared/backend/bot-protection/bot-protection.service.mock"
     );
@@ -1015,6 +1014,7 @@ describe("prepareWorkspacePayState", () => {
           inertRememberedReferral(),
           BotProtectionServiceMock({ verifyHuman }),
           CheckoutPricingServiceMock({}),
+          recordCheckoutAnalytics().layer,
           OfficeReleaseGate.Default.pipe(
             Layer.provide(
               WorkspaceFeatureFlagServiceMock({
@@ -1178,8 +1178,8 @@ describe("prepareWorkspacePayState", () => {
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
-    const { PostHogEventService } = await import(
-      "@/shared/backend/analytics/posthog-event.service"
+    const { recordCheckoutAnalytics } = await import(
+      "@/features/checkout/backend/analytics/checkout-analytics.service.mock"
     );
     const { BotProtectionServiceMock } = await import(
       "@/shared/backend/bot-protection/bot-protection.service.mock"
@@ -1306,9 +1306,7 @@ describe("prepareWorkspacePayState", () => {
         findOrCreateCustomer,
         createReservation,
       }),
-      Layer.mock(PostHogEventService, {
-        capture: mock(() => Effect.void),
-      })
+      recordCheckoutAnalytics().layer
     );
     const result = await prepareFromReservationForm({
       locale: "en-US",
@@ -3935,6 +3933,9 @@ describe("prepareWorkspacePayState", () => {
     },
   ])("rejects a $label before downstream work", async (row) => {
     const prepareFromReservationForm = await loadReservationFormPreparation();
+    const { recordCheckoutAnalytics } = await import(
+      "@/features/checkout/backend/analytics/checkout-analytics.service.mock"
+    );
     const { BotProtectionServiceMock } = await import(
       "@/shared/backend/bot-protection/bot-protection.service.mock"
     );
@@ -3951,7 +3952,8 @@ describe("prepareWorkspacePayState", () => {
           accountAuthorityLayer,
           inertRememberedReferral(),
           BotProtectionServiceMock({ verifyHuman: () => Effect.void }),
-          CheckoutPricingServiceMock({})
+          CheckoutPricingServiceMock({}),
+          recordCheckoutAnalytics().layer
         )
       )
     ) as Effect.Effect<never, unknown, never>;

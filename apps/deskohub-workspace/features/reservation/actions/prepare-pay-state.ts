@@ -27,11 +27,7 @@ import {
   OptionalAccountActivityGuard,
 } from "@/features/account";
 import type { CustomerAccountId } from "@/features/account/customer-account";
-import {
-  captureAvailabilityResult,
-  capturePrePaymentOutcome,
-  captureReservationStarted,
-} from "@/features/checkout/backend/analytics";
+import { CheckoutAnalytics } from "@/features/checkout/backend/analytics";
 import {
   buildCheckoutPayPath,
   buildSignedPayState,
@@ -1139,16 +1135,19 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     // A review account books in its sandbox, which captures no checkout
     // analytics, whatever the outcome.
     const inReviewSandbox = yield* Ref.make(false);
+    const checkoutAnalytics = yield* CheckoutAnalytics;
     const captureOutcome = (outcome: ReservationPrePaymentOutcome) =>
-      capturePrePaymentOutcome({
-        checkoutAttemptId: input.checkoutAttemptId,
-        outcome,
-        timestamp: Temporal.Now.instant(),
-      }).pipe(
-        Effect.when(
-          Ref.get(inReviewSandbox).pipe(Effect.map((sandboxed) => !sandboxed))
-        )
-      );
+      checkoutAnalytics
+        .prePaymentOutcome({
+          checkoutAttemptId: input.checkoutAttemptId,
+          outcome,
+          timestamp: Temporal.Now.instant(),
+        })
+        .pipe(
+          Effect.when(
+            Ref.get(inReviewSandbox).pipe(Effect.map((sandboxed) => !sandboxed))
+          )
+        );
 
     return yield* prepareSubmission(input, inReviewSandbox).pipe(
       Effect.scoped,
@@ -1197,6 +1196,7 @@ const prepareSubmission = Effect.fn("prepareWorkspacePayState.submission")(
     const bookingAgent = yield* Effect.serviceOption(BookingAgent);
     const accountActivity = yield* OptionalAccountActivityGuard;
     const rememberedReferral = yield* RememberedReferral;
+    const checkoutAnalytics = yield* CheckoutAnalytics;
     const bookedCustomer = yield* Ref.make<DotyposCustomerId | undefined>(
       undefined
     );
@@ -1484,7 +1484,7 @@ const prepareSubmission = Effect.fn("prepareWorkspacePayState.submission")(
           },
         }).pipe(
           Effect.tap(() =>
-            captureAvailabilityResult({
+            checkoutAnalytics.availabilityResult({
               checkoutAttemptId: input.checkoutAttemptId,
               result: "available",
               timestamp: Temporal.Now.instant(),
@@ -1493,7 +1493,7 @@ const prepareSubmission = Effect.fn("prepareWorkspacePayState.submission")(
           Effect.tapError((error) =>
             Match.value(error).pipe(
               Match.tag("WorkspaceTableUnavailableError", () =>
-                captureAvailabilityResult({
+                checkoutAnalytics.availabilityResult({
                   checkoutAttemptId: input.checkoutAttemptId,
                   result: "unavailable",
                   timestamp: Temporal.Now.instant(),
@@ -1524,7 +1524,7 @@ const prepareSubmission = Effect.fn("prepareWorkspacePayState.submission")(
               getStoredWorkspaceReservationDetails(reservation),
             locale: input.locale,
           });
-          yield* captureReservationStarted({
+          yield* checkoutAnalytics.reservationStarted({
             reservation: reservationDraft,
             timestamp: reservationDraft.createdAt,
           });
@@ -1572,7 +1572,7 @@ const prepareSubmission = Effect.fn("prepareWorkspacePayState.submission")(
                 getStoredWorkspaceReservationDetails(reservation),
               locale: input.locale,
             });
-            yield* captureReservationStarted({
+            yield* checkoutAnalytics.reservationStarted({
               reservation: claimConflictReservation,
               timestamp: claimConflictReservation.createdAt,
             });
@@ -1717,7 +1717,7 @@ const prepareSubmission = Effect.fn("prepareWorkspacePayState.submission")(
           orderId: reservationDraft.id,
           reservationHoldExpiresAt: holdExpiresAt,
         });
-        yield* captureReservationStarted({
+        yield* checkoutAnalytics.reservationStarted({
           reservation: { id: reservationDraft.id },
           timestamp: reservationCreatedAt,
         });

@@ -71,7 +71,7 @@ Meeting-room advertised-price details carry `lastServiceDate` rather than clock 
 
 ## Calendar time budgets
 
-Each Calendar request attempt times out after 5 seconds in production and 15 seconds elsewhere (`getGoogleCalendarRequestTimeout`, built on `getDeploymentRequestTimeout`). `listEvents` retries a transient failure once and bounds the whole load, all pages included, by `getGoogleCalendarRequestWorstCaseDuration`.
+Each Calendar request attempt times out after 5 seconds in production and 15 seconds elsewhere (`getGoogleCalendarRequestTimeout`, selected with `byStage` from `shared/deployment/deployment-stage.ts`). `listEvents` retries a transient failure once and bounds the whole load, all pages included, by `getGoogleCalendarRequestWorstCaseDuration`.
 
 An action that awaits Calendar in sequence with other work adds one worst-case load per sequential Calendar load to its deadline:
 

@@ -1,7 +1,6 @@
 import { testEmailAddress } from "@deskohub/test-email";
 import "@/shared/testing/workspace-test-env";
 
-import { mock } from "bun:test";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter/relations-v2";
 import type { Passkey } from "@better-auth/passkey";
 import type {
@@ -23,6 +22,7 @@ import { WorkspaceLockSections } from "@/db/workspace-locks";
 import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
 import { ReviewAccounts } from "@/features/review-accounts";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { captureWorkspaceLogs } from "@/shared/testing/workspace-telemetry.test-utils";
 import { ensureCustomerAccount } from "../customer-account.repository";
 import { captureAccountLocalePreference } from "../customer-locale-preference";
 import { revokeUnconsentedAdministrationTokens } from "./administration-agent-access";
@@ -38,14 +38,8 @@ import type {
  * HTTP helpers its handler tests share.
  */
 
-export const emitWorkspaceLog = mock(() => undefined);
-
-mock.module("@/instrumentation", () => ({
-  postHogLoggerProvider: {
-    forceFlush: () => Promise.resolve(),
-    getLogger: () => ({ emit: emitWorkspaceLog }),
-  },
-}));
+/** The Workspace logs the auth handler's runs send. */
+export const workspaceLogs = captureWorkspaceLogs();
 
 const { makeWorkspaceAuth } = await import("./auth-server");
 

@@ -8,11 +8,11 @@ import {
 } from "@deskohub/google-calendar/config";
 import { Context, Duration, Layer, Schema } from "effect";
 import { env } from "@/env";
-import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
+  byStage,
   type DeploymentEnvironment,
-  getDeploymentRequestTimeout,
-} from "./deployment-request-timeout";
+} from "@/shared/deployment/deployment-stage";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
 export const workspaceLimitationsCalendarIdSchema = GoogleCalendarIdSchema.pipe(
   Schema.brand("WorkspaceLimitationsCalendarId")
@@ -60,13 +60,10 @@ export class CalendarResourceConfig extends Context.Service<
 export const getGoogleCalendarRequestTimeout = (
   deploymentEnvironment: DeploymentEnvironment
 ) =>
-  getDeploymentRequestTimeout(
-    {
-      production: Duration.seconds(5),
-      nonProduction: Duration.seconds(15),
-    },
-    deploymentEnvironment
-  );
+  byStage(deploymentEnvironment, {
+    production: Duration.seconds(5),
+    otherwise: Duration.seconds(15),
+  });
 
 export const WorkspaceGoogleCalendarLayer = GoogleCalendarService.Default.pipe(
   Layer.provide(

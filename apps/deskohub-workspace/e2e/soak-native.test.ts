@@ -1,11 +1,11 @@
 import { expect, spyOn, test } from "bun:test";
-import {
-  BasicTracerProvider,
-  InMemorySpanExporter,
-  SimpleSpanProcessor,
-} from "@opentelemetry/sdk-trace-base";
+import { InMemorySpanExporter } from "@opentelemetry/sdk-trace-base";
 import { Effect, Exit, Layer } from "effect";
-import { createTracingLive } from "../shared/backend/observability/otel-tracing";
+import {
+  createIdentifiedTracingLive,
+  createWorkspaceTracerProvider,
+} from "../shared/backend/observability/telemetry-sinks";
+import { CENSORED_LOG_VALUE } from "../shared/utils/log-classification";
 import { makeTestE2EEnvironment } from "./e2e-env.test-fixture";
 import {
   E2ERunContextService,
@@ -132,9 +132,12 @@ test("capture rejection preserves a real failed root and emits only the safe no-
 
 test("the configured OTel tracer's actual native timestamps equal the receipt", async () => {
   const exporter = new InMemorySpanExporter();
-  const provider = new BasicTracerProvider({
-    spanProcessors: [new SimpleSpanProcessor(exporter)],
-  });
+  const identity = {
+    deploymentEnvironment: "preview",
+    serviceName: soakEvidenceService,
+    serviceVersion: environment.TARGET_SHA,
+  };
+  const provider = createWorkspaceTracerProvider(exporter, identity);
   const runtime = makeE2ETelemetryRuntime(environment);
   try {
     await runE2EEffect(
@@ -144,10 +147,7 @@ test("the configured OTel tracer's actual native timestamps equal the receipt", 
       }).pipe(Effect.provide(layer)),
       {
         ...runtime,
-        tracingLayer: createTracingLive({
-          provider,
-          serviceName: soakEvidenceService,
-        }),
+        tracingLayer: createIdentifiedTracingLive(identity, provider),
       }
     );
     await provider.forceFlush();
@@ -168,6 +168,12 @@ test("the configured OTel tracer's actual native timestamps equal the receipt", 
       )
     );
     expect(root.attributes["e2e.outcome"]).toBe("passed");
+    expect(root.resource.attributes).toMatchObject({
+      "deployment.environment.name": CENSORED_LOG_VALUE,
+      "service.name": soakEvidenceService,
+      "service.namespace": "deskohub",
+      "service.version": environment.TARGET_SHA,
+    });
   } finally {
     await provider.shutdown();
   }

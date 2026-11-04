@@ -61,13 +61,6 @@ mock.module("@/features/access-codes", () => ({
   ),
 }));
 
-mock.module("@/instrumentation", () => ({
-  postHogLoggerProvider: {
-    forceFlush: () => Promise.resolve(),
-    getLogger: () => ({ emit: () => undefined }),
-  },
-}));
-
 const attemptId = Schema.decodeSync(
   AdministrationStandaloneAccessCodeAttemptId
 )("01980000-0000-7000-8000-000000000042");

@@ -1,6 +1,6 @@
 import { getGoogleCalendarRequestWorstCaseDuration } from "@deskohub/google-calendar";
 import { Duration } from "effect";
-import type { DeploymentEnvironment } from "./config/deployment-request-timeout";
+import type { DeploymentEnvironment } from "@/shared/deployment/deployment-stage";
 import { getGoogleCalendarRequestTimeout } from "./config/google-calendar.config";
 import { workspaceActionDeadline } from "./workspace-action";
 

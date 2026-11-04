@@ -7,14 +7,17 @@ import {
 } from "effect/unstable/http";
 import { redirect } from "next/navigation";
 import * as nextServer from "next/server";
+import { captureWorkspaceLogs } from "@/shared/testing/workspace-telemetry.test-utils";
 import { CENSORED_LOG_VALUE } from "@/shared/utils/log-classification";
 import {
   POSTHOG_DISTINCT_ID_COOKIE,
   POSTHOG_SESSION_ID_COOKIE,
 } from "@/shared/utils/posthog-session-cookies";
+import * as serverAnalyticsDelivery from "./analytics/analytics-event-delivery.service";
 import { shareAcrossRequests } from "./share-across-requests";
 
-const emitPostHogLog = mock(() => undefined);
+const workspaceLogs = captureWorkspaceLogs();
+const logFlushes = spyOn(workspaceLogs.loggerProvider, "forceFlush");
 
 // A consented visitor in Next's request store, which work that serves no
 // visitor must never pick up.
@@ -28,19 +31,33 @@ const ambientHeaders = mock(async () => {
 });
 mock.module("next/headers", () => ({ headers: ambientHeaders }));
 
+// Callbacks Next.js would run after the response. Outside a request scope,
+// Next's `after` throws instead.
 const afterResponse: (() => unknown)[] = [];
+let insideRequestScope = true;
 mock.module("next/server", () => ({
   ...nextServer,
   after: (callback: () => unknown) => {
+    if (!insideRequestScope) {
+      throw new Error("`after` was called outside a request scope.");
+    }
     afterResponse.push(callback);
   },
 }));
 
-mock.module("@/instrumentation", () => ({
-  postHogLoggerProvider: {
-    forceFlush: () => Promise.resolve(),
-    getLogger: () => ({ emit: emitPostHogLog }),
-  },
+/** Runs the callbacks queued after the response, including nested ones. */
+const sendResponse = async () => {
+  while (afterResponse.length > 0) {
+    await Promise.all(afterResponse.splice(0).map((callback) => callback()));
+  }
+};
+
+// Each flush of the process's server analytics capture client.
+const serverAnalyticsFlushes = mock(() => undefined);
+mock.module("./analytics/analytics-event-delivery.service", () => ({
+  ...serverAnalyticsDelivery,
+  flushServerAnalytics: Effect.sync(serverAnalyticsFlushes),
+  isServerAnalyticsEnabled: true,
 }));
 
 const {
@@ -71,14 +88,21 @@ describe("Workspace Effect execution", () => {
     }
   });
 
-  test("emits logs through the provider exported by instrumentation", async () => {
-    emitPostHogLog.mockClear();
+  test("emits logs to the process's log sink, censored and annotated", async () => {
+    workspaceLogs.reset();
 
-    await Effect.logInfo("exported").pipe(
-      runWorkspaceEffect("test.posthog-export")
+    await Effect.logInfo("exported", { token: "private" }).pipe(
+      runWorkspaceEffect("test.posthog-export", { boundary: "page" })
     );
 
-    expect(emitPostHogLog).toHaveBeenCalledTimes(1);
+    const records = workspaceLogs.records();
+    expect(records).toHaveLength(1);
+    expect(records[0]?.attributes).toMatchObject({
+      boundary: "page",
+      operation: "test.posthog-export",
+    });
+    expect(JSON.stringify(records[0]?.body)).toContain(CENSORED_LOG_VALUE);
+    expect(JSON.stringify(records[0]?.body)).not.toContain("private");
   });
 
   test("tasks serve no customer request, so their agent traffic is unclassified", async () => {
@@ -125,6 +149,151 @@ describe("Workspace Effect execution", () => {
 
     expect(seen).toEqual([{}]);
     expect(ambientHeaders).not.toHaveBeenCalled();
+  });
+
+  test("tasks send their logs and the server analytics they queued before they settle", async () => {
+    serverAnalyticsFlushes.mockClear();
+    logFlushes.mockClear();
+    afterResponse.length = 0;
+    const task = defineWorkspaceTask("test.task-telemetry-flush", () =>
+      Effect.sync(() => serverAnalyticsFlushes.mock.calls.length)
+    );
+
+    await expect(task()).resolves.toBe(0);
+    expect(serverAnalyticsFlushes).toHaveBeenCalledTimes(1);
+    expect(logFlushes).toHaveBeenCalledTimes(1);
+    expect(afterResponse).toHaveLength(0);
+  });
+
+  for (const boundary of ["page", "route", "action", "run"] as const) {
+    test(`a ${boundary} run flushes its telemetry after the response, not before`, async () => {
+      serverAnalyticsFlushes.mockClear();
+      logFlushes.mockClear();
+      afterResponse.length = 0;
+
+      await Effect.void.pipe(
+        runWorkspaceEffect(`test.${boundary}-flush`, { boundary })
+      );
+      expect(serverAnalyticsFlushes).not.toHaveBeenCalled();
+      expect(logFlushes).not.toHaveBeenCalled();
+      expect(afterResponse).toHaveLength(1);
+      await sendResponse();
+
+      expect(serverAnalyticsFlushes).toHaveBeenCalledTimes(1);
+      expect(logFlushes).toHaveBeenCalledTimes(1);
+    });
+  }
+
+  test("a run that outlives the response flushes once it settles", async () => {
+    logFlushes.mockClear();
+    afterResponse.length = 0;
+    const gate = Deferred.makeUnsafe<void>();
+
+    const run = Deferred.await(gate).pipe(
+      Effect.andThen(Effect.logInfo("revalidated")),
+      runWorkspaceEffect("test.outliving-flush", { boundary: "page" })
+    );
+    const responseSent = sendResponse();
+    await Bun.sleep(0);
+    expect(logFlushes).not.toHaveBeenCalled();
+
+    Effect.runSync(Deferred.succeed(gate, undefined));
+    await run;
+    await responseSent;
+
+    expect(logFlushes).toHaveBeenCalledTimes(1);
+  });
+
+  test("a failing run still flushes its telemetry after the response", async () => {
+    logFlushes.mockClear();
+    afterResponse.length = 0;
+
+    await expect(
+      Effect.fail(new Error("synthetic failure")).pipe(
+        runWorkspaceEffect("test.failed-flush", { boundary: "route" })
+      )
+    ).rejects.toThrow("synthetic failure");
+    await sendResponse();
+
+    expect(logFlushes).toHaveBeenCalledTimes(1);
+  });
+
+  test("work after the response sends its telemetry before it settles", async () => {
+    serverAnalyticsFlushes.mockClear();
+    logFlushes.mockClear();
+    afterResponse.length = 0;
+    const flushesDuringWork: number[] = [];
+
+    await Effect.runPromise(
+      runWorkspaceEffectAfterResponse(
+        "test.after-response-flush",
+        Effect.sync(() => flushesDuringWork.push(logFlushes.mock.calls.length))
+      )
+    );
+    expect(afterResponse).toHaveLength(1);
+    await afterResponse.splice(0)[0]?.();
+
+    expect(flushesDuringWork).toEqual([0]);
+    expect(logFlushes).toHaveBeenCalledTimes(1);
+    expect(serverAnalyticsFlushes).toHaveBeenCalledTimes(1);
+    // No flush is left to run beside a later callback.
+    expect(afterResponse).toHaveLength(0);
+  });
+
+  test("outside a request scope, a run starts its flush when it ends and keeps the function alive for it", async () => {
+    logFlushes.mockClear();
+    afterResponse.length = 0;
+    const registered: Promise<unknown>[] = [];
+    const vercelRequestContext = Symbol.for("@vercel/request-context");
+    const previousContext = Reflect.get(globalThis, vercelRequestContext);
+    Reflect.set(globalThis, vercelRequestContext, {
+      get: () => ({
+        waitUntil: (promise: Promise<unknown>) => registered.push(promise),
+      }),
+    });
+    insideRequestScope = false;
+
+    try {
+      const flushesDuringRun: number[] = [];
+      await Effect.sync(() =>
+        flushesDuringRun.push(logFlushes.mock.calls.length)
+      ).pipe(runWorkspaceEffect("test.unscoped-flush"));
+      await Promise.all(registered);
+
+      expect(flushesDuringRun).toEqual([0]);
+      expect(afterResponse).toHaveLength(0);
+      expect(logFlushes).toHaveBeenCalledTimes(1);
+      // The run's own settlement and its flush.
+      expect(registered).toHaveLength(2);
+    } finally {
+      insideRequestScope = true;
+      Reflect.set(globalThis, vercelRequestContext, previousContext);
+    }
+  });
+
+  test("a flush that rejects never fails the response it follows", async () => {
+    logFlushes.mockClear();
+    logFlushes.mockImplementationOnce(() =>
+      Promise.reject(new Error("export failed"))
+    );
+    afterResponse.length = 0;
+    const warn = spyOn(console, "warn").mockImplementation(() => undefined);
+
+    try {
+      await expect(
+        Effect.succeed("value").pipe(
+          runWorkspaceEffect("test.rejected-flush", { boundary: "route" })
+        )
+      ).resolves.toBe("value");
+      await sendResponse();
+
+      expect(logFlushes).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls.flat().join(" ")).toContain(
+        "PostHog log flush failed."
+      );
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   test("a run without a boundary reads the visitor from Next's request store", async () => {
@@ -483,6 +652,28 @@ describe("toWorkspaceWebHandler", () => {
     new Request(`https://workspace.deskohub.test${path}`, {
       headers: { "x-caller": caller },
     });
+
+  test("flushes each request's telemetry after its response", async () => {
+    logFlushes.mockClear();
+    serverAnalyticsFlushes.mockClear();
+    afterResponse.length = 0;
+    const handler = toWorkspaceWebHandler(
+      HttpRouter.add(
+        "GET",
+        "/flushed",
+        Effect.succeed(HttpServerResponse.text("served"))
+      )
+    );
+
+    const response = await handler(request("/flushed", "ada"));
+    expect(await response.text()).toBe("served");
+    expect(logFlushes).not.toHaveBeenCalled();
+    expect(afterResponse).toHaveLength(1);
+    await sendResponse();
+
+    expect(logFlushes).toHaveBeenCalledTimes(1);
+    expect(serverAnalyticsFlushes).toHaveBeenCalledTimes(1);
+  });
 
   test("keeps each of several concurrent requests' services its own over one shared build", async () => {
     const callers = ["ada", "bea", "cyd", "dov", "eli"];
