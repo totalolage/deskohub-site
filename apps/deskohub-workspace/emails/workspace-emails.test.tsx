@@ -60,7 +60,7 @@ describe("Workspace React Email templates", () => {
     );
     expect(campaign).toContain("Podzim ve Workspace");
     expect(campaign).toContain(
-      `href="${workspaceCampaignPreviewProps.footer.link.href}"`
+      `href="${workspaceCampaignPreviewProps.footer.marketingPreferencesUrl}"`
     );
   });
 

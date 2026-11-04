@@ -28,7 +28,7 @@ import {
   readCampaignDraftContent,
 } from "../body/campaign-content-codec";
 import { campaignTemplates } from "../body/campaign-templates";
-import { renderCampaignEmailPreview } from "../body/render-campaign-email-preview";
+import { renderCampaignEmailPreview } from "../campaign-email";
 import { CampaignService } from "./campaign.service";
 import { CampaignAudienceService } from "./campaign-audience.service";
 import {
@@ -339,8 +339,7 @@ const makeCampaignOperationHandlers = Effect.gen(function* () {
             locale: preview.locale,
             content,
           })
-        ),
-        Effect.map(({ subject, html, text }) => ({ subject, html, text }))
+        )
       ),
     listCampaigns: () =>
       campaigns.list.pipe(
