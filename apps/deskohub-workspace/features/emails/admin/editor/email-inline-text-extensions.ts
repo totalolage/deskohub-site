@@ -2,6 +2,7 @@ import {
   type Editor,
   Extension,
   type Extensions,
+  type JSONContent,
   Mark,
   mergeAttributes,
   Node,
@@ -12,24 +13,17 @@ import Italic from "@tiptap/extension-italic";
 import Paragraph from "@tiptap/extension-paragraph";
 import Text from "@tiptap/extension-text";
 import { UndoRedo } from "@tiptap/extensions";
-import {
-  Fragment,
-  type Node as ProseMirrorNode,
-  Slice,
-} from "@tiptap/pm/model";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Fragment, Node as ProseMirrorNode, Slice } from "@tiptap/pm/model";
+import { EditorState, Plugin, PluginKey, Selection } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { Option, Schema } from "effect";
 import {
   emailInlineLinkMark,
   emailInlineValueNode,
   emailInlineValueReference,
+  singleLineEmailInlineText,
 } from "./email-inline-parts";
 import { emailValueReferenceLabel } from "./email-value-options";
-
-/** A translated text holds one line: line breaks become spaces. */
-const singleLine = (text: string) =>
-  text.replace(/[^\S\r\n]*[\r\n]+[^\S\r\n]*/g, " ");
 
 /** The inline content of a pasted or dropped slice, its blocks joined by spaces. */
 const inlineSlice = (slice: Slice): Slice => {
@@ -38,7 +32,10 @@ const inlineSlice = (slice: Slice): Slice => {
     fragment.forEach((node) => {
       if (node.isText)
         nodes.push(
-          node.type.schema.text(singleLine(node.text ?? ""), node.marks)
+          node.type.schema.text(
+            singleLineEmailInlineText(node.text ?? ""),
+            node.marks
+          )
         );
       else if (node.isInline) nodes.push(node);
       else {
@@ -68,7 +65,7 @@ const EmailInlineSingleLine = Extension.create({
     new Plugin({
       key: new PluginKey("emailInlineSingleLine"),
       props: {
-        transformPastedText: singleLine,
+        transformPastedText: singleLineEmailInlineText,
         transformPasted: inlineSlice,
       },
     }),
@@ -116,6 +113,31 @@ export const setEmailInlineValueNames = (
   names: ReadonlySet<string>
 ) => {
   if (editor.isDestroyed) return;
+  editor.view.dispatch(
+    editor.state.tr
+      .setMeta(emailInlineValueCheckKey, names)
+      .setMeta("addToHistory", false)
+  );
+};
+
+/**
+ * Replaces the text of `editor` with `content` and starts its undo history
+ * afresh, so Undo can't bring back what was replaced. It writes nothing
+ * back: the editor reports no update.
+ */
+export const replaceEmailInlineContent = (
+  editor: Editor,
+  content: JSONContent
+) => {
+  if (editor.isDestroyed) return;
+  const { plugins, schema } = editor.state;
+  const names = emailInlineValueCheckKey.getState(editor.state)?.names;
+  const doc = ProseMirrorNode.fromJSON(schema, content);
+  editor.view.updateState(
+    EditorState.create({ doc, plugins, selection: Selection.atEnd(doc) })
+  );
+  // The new state restarts every plugin, so the value check learns the
+  // defined names again; the transaction also refreshes the toolbar.
   editor.view.dispatch(
     editor.state.tr
       .setMeta(emailInlineValueCheckKey, names)

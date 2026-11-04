@@ -5,6 +5,10 @@ import type {
   EmailDraftInlineParts,
 } from "./email-draft-form";
 
+/** A translated text holds one line: line breaks become spaces. */
+export const singleLineEmailInlineText = (text: string): string =>
+  text.replace(/[^\S\r\n]*[\r\n]+[^\S\r\n]*/g, " ");
+
 /** The inline node that holds a value reference in a text editor. */
 export const emailInlineValueNode = "emailValue";
 /** The mark that ties text to one of its block's links, by link key. */

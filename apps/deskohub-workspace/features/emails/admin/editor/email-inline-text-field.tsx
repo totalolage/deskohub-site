@@ -1,12 +1,15 @@
 "use client";
 
 import { EditorContent, useEditor } from "@tiptap/react";
-import { useEffect, useId, useMemo, useRef } from "react";
+import { useEffect, useId, useMemo } from "react";
 import { useWatch } from "react-hook-form";
 import { m } from "@/features/administration/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { cn } from "@/shared/utils";
-import type { EmailDraftInlineParts } from "./email-draft-form";
+import type {
+  EmailDraftInlineParts,
+  EmailDraftTranslation,
+} from "./email-draft-form";
 import { useEmailDraftForm } from "./email-draft-form";
 import {
   EmailFieldProblems,
@@ -16,11 +19,13 @@ import {
   emailInlinePartsEqual,
   emailInlinePartsToTipTap,
   normalizeEmailInlineParts,
+  singleLineEmailInlineText,
   tipTapToEmailInlineParts,
   unformattedEmailInlineParts,
 } from "./email-inline-parts";
 import {
   emailInlineTextExtensions,
+  replaceEmailInlineContent,
   setEmailInlineValueNames,
 } from "./email-inline-text-extensions";
 import { EmailInlineTextToolbar } from "./email-inline-text-toolbar";
@@ -51,14 +56,33 @@ export type EmailInlineTextFieldProps = {
 
 const noLinks: Readonly<Record<string, string>> = {};
 
-/** The text as its editor shows it: plain texts drop any formatting. */
+/**
+ * The text as its editor shows it: on one line, and without formatting in a
+ * plain text. The form keeps a stored line break or formatting until the
+ * text is edited; a plain text's formatting is a problem the author sees.
+ */
 const editorParts = (
   parts: EmailDraftInlineParts,
   mode: "rich" | "plain"
-): EmailDraftInlineParts =>
-  mode === "rich"
-    ? normalizeEmailInlineParts(parts)
-    : unformattedEmailInlineParts(parts);
+): EmailDraftInlineParts => {
+  const oneLine = parts.map((part) =>
+    part._tag === "Text" && part.text
+      ? { ...part, text: singleLineEmailInlineText(part.text) }
+      : part
+  );
+  return mode === "rich"
+    ? normalizeEmailInlineParts(oneLine)
+    : unformattedEmailInlineParts(oneLine);
+};
+
+/** The translated text `target` names in one language's entry. */
+const targetParts = (
+  translation: EmailDraftTranslation | undefined,
+  target: EmailTranslatedTextTarget
+): EmailDraftInlineParts | undefined =>
+  target.kind === "text"
+    ? translation?.texts?.[target.textKey]
+    : translation?.[target.kind];
 
 /** The editable element's attributes; PM writes every given value. */
 const editorAttributes = ({
@@ -102,7 +126,7 @@ export function EmailInlineTextField({
 }: EmailInlineTextFieldProps) {
   const locale = useRouteLocale();
   const labelId = useId();
-  const { control } = useEmailDraftForm();
+  const { control, getValues } = useEmailDraftForm();
   const [parts, setParts] = useEmailTranslatedText(contentLocale, target);
   const definitions = useWatch({ control, name: "values" }) ?? [];
   const { invalid, describedBy } = useEmailFieldProblems(fieldId);
@@ -146,16 +170,12 @@ export function EmailInlineTextField({
     });
   }, [editor, contentLocale, describedBy, fieldId, invalid, labelId]);
 
-  // The texts the editor wrote since the form value last reached it.
-  const written = useRef(new Set<string>());
-
   useEffect(() => {
     if (!editor) return;
     const write = () => {
       // ProseMirror builds attributes as null-prototype objects, which a
       // Server Action can't receive; a structured clone makes them plain.
       const next = structuredClone(tipTapToEmailInlineParts(editor.getJSON()));
-      written.current.add(JSON.stringify(next));
       setParts(next);
     };
     editor.on("update", write);
@@ -166,23 +186,21 @@ export function EmailInlineTextField({
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
-    // A value the editor wrote itself is no news, even when the editor has
-    // moved on since this render.
-    const echoed = written.current.has(JSON.stringify(shown));
-    written.current.clear();
-    if (echoed) return;
+    const current = editorParts(
+      targetParts(getValues(`translations.${contentLocale}`), target) ?? [],
+      mode
+    );
+    // The form changed again since this render, maybe by the editor's own
+    // typing; the render that change brings syncs with it.
+    if (!emailInlinePartsEqual(current, shown)) return;
     if (
-      emailInlinePartsEqual(tipTapToEmailInlineParts(editor.getJSON()), shown)
+      emailInlinePartsEqual(tipTapToEmailInlineParts(editor.getJSON()), current)
     )
       return;
-    // A change from outside replaces the text without writing it back, and
-    // leaves no undo step that would restore the replaced text.
-    editor
-      .chain()
-      .setMeta("addToHistory", false)
-      .setContent(emailInlinePartsToTipTap(shown), { emitUpdate: false })
-      .run();
-  }, [editor, shown]);
+    // A change from outside replaces the text and its undo history, and
+    // writes nothing back.
+    replaceEmailInlineContent(editor, emailInlinePartsToTipTap(current));
+  }, [editor, shown, getValues, contentLocale, target, mode]);
 
   const definedNames = JSON.stringify(
     definitions.flatMap((definition) =>

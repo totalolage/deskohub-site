@@ -370,3 +370,138 @@ test("ties invalid state and problem messages to the control as they change", as
   expect(textbox().hasAttribute("aria-describedby")).toBe(false);
   expect(view.container.querySelector(`[id="${problemsId}"]`)).toBeNull();
 });
+
+const subjectOf = (text: string) =>
+  ({
+    translations: { [contentLocale]: { subject: [{ _tag: "Text", text }] } },
+  }) satisfies EmailDraftFormValues;
+
+test("follows a reset that lands together with typing", async () => {
+  const { editor, form, subject, textbox } = await renderSubject({
+    values: subjectOf("A"),
+  });
+
+  act(() => {
+    editor.view.dispatch(editor.state.tr.insertText("B", 2));
+    form().reset(subjectOf("A"));
+  });
+
+  await waitFor(() => expect(textbox().textContent).toBe("A"));
+  expect(subject()).toEqual([{ _tag: "Text", text: "A" }]);
+});
+
+test("a reset leaves nothing to undo or redo", async () => {
+  const { editor, form, textbox } = await renderSubject({
+    values: subjectOf("Starý"),
+  });
+
+  // Typing over the whole text, then a reset: Undo keeps the reset text.
+  act(() => {
+    editor.view.dispatch(
+      editor.state.tr.insertText("Nový", 1, editor.state.doc.content.size - 1)
+    );
+  });
+  act(() => {
+    form().reset(subjectOf("Po resetu"));
+  });
+  await waitFor(() => expect(textbox().textContent).toBe("Po resetu"));
+  act(() => {
+    editor.commands.undo();
+  });
+  expect(textbox().textContent).toBe("Po resetu");
+
+  // An undone edit, then a reset: Redo keeps the reset text.
+  type(editor, "!");
+  act(() => {
+    editor.commands.undo();
+  });
+  act(() => {
+    form().reset(subjectOf("Znovu"));
+  });
+  await waitFor(() => expect(textbox().textContent).toBe("Znovu"));
+  act(() => {
+    editor.commands.redo();
+  });
+  expect(textbox().textContent).toBe("Znovu");
+});
+
+test("removes a link whose destination the block no longer has", async () => {
+  const { editor, subject, view } = await renderSubject({
+    values: {
+      translations: {
+        [contentLocale]: {
+          subject: [{ _tag: "Text", text: "Odkaz", link: "smazany" }],
+        },
+      },
+    },
+  });
+
+  act(() => {
+    editor.commands.setTextSelection(3);
+  });
+  fireEvent.keyDown(
+    view.getByRole("button", {
+      name: m.emailsEditorInlineLink({}, { locale }),
+    }),
+    { key: "Enter" }
+  );
+  fireEvent.click(
+    await view.findByRole("menuitem", {
+      name: m.emailsEditorInlineLinkRemove({}, { locale }),
+    })
+  );
+
+  expect(subject()).toEqual([{ _tag: "Text", text: "Odkaz" }]);
+});
+
+test("shows stored line breaks and plain-text formatting as the text will be saved", async () => {
+  const { editor, subject, textbox } = await renderSubject({
+    mode: "plain",
+    values: {
+      translations: {
+        [contentLocale]: {
+          subject: [
+            { _tag: "Text", text: "První\nřádek", bold: true },
+            { _tag: "Value", name: "sleva", field: ["code"], italic: true },
+          ],
+        },
+      },
+    },
+  });
+
+  expect(textbox().textContent).toBe("První řádeksleva.code");
+  expect(textbox().querySelector("strong, em")).toBeNull();
+  // The form keeps the stored text until it is edited.
+  expect(subject()).toEqual([
+    { _tag: "Text", text: "První\nřádek", bold: true },
+    { _tag: "Value", name: "sleva", field: ["code"], italic: true },
+  ]);
+
+  act(() => {
+    editor.commands.setTextSelection(1);
+  });
+  type(editor, "> ");
+
+  expect(subject()).toEqual([
+    { _tag: "Text", text: "> První řádek" },
+    { _tag: "Value", name: "sleva", field: ["code"] },
+  ]);
+});
+
+test("keeps copied value chips and formatting when pasted into a rich text", async () => {
+  const { editor, subject } = await renderSubject();
+
+  act(() => {
+    editor.view.pasteHTML(
+      `<p>Kód <strong>tučně <span data-email-value="" data-name="sleva" data-field='["code"]'>sleva.code</span></strong></p><p><em>dál</em></p>`
+    );
+  });
+
+  expect(subject()).toEqual([
+    { _tag: "Text", text: "Kód " },
+    { _tag: "Text", text: "tučně ", bold: true },
+    { _tag: "Value", name: "sleva", field: ["code"], bold: true },
+    { _tag: "Text", text: " " },
+    { _tag: "Text", text: "dál", italic: true },
+  ]);
+});

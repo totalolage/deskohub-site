@@ -174,7 +174,10 @@ function EmailInlineLinkPicker({
   const chose = useRef(false);
   const hintId = useId();
   const destinations = Object.entries(links);
-  const available = Boolean(editor) && destinations.length > 0;
+  const hasDestinations = destinations.length > 0;
+  // A link to a removed destination can still be removed.
+  const available =
+    Boolean(editor) && (hasDestinations || currentLink !== undefined);
   const label = m.emailsEditorInlineLink({}, { locale });
   const unavailableHint = m.emailsEditorInlineLinkNone({}, { locale });
 
@@ -194,12 +197,12 @@ function EmailInlineLinkPicker({
       onOpenChange={(next) => setOpen(next && available)}
       open={open}
     >
-      <ToolbarHint label={available ? label : unavailableHint}>
+      <ToolbarHint label={hasDestinations ? label : unavailableHint}>
         <DropdownMenuTrigger asChild>
           {/* Pressed while the caret is in a link. It stays focusable when the
           block has no destinations, so its hint can explain why. */}
           <Toggle
-            aria-describedby={available ? undefined : hintId}
+            aria-describedby={hasDestinations ? undefined : hintId}
             aria-disabled={!available || undefined}
             aria-label={label}
             className="aria-disabled:opacity-50"
@@ -210,7 +213,7 @@ function EmailInlineLinkPicker({
         </DropdownMenuTrigger>
       </ToolbarHint>
       <span className="sr-only" id={hintId}>
-        {!available && unavailableHint}
+        {!hasDestinations && unavailableHint}
       </span>
       <DropdownMenuContent
         align="end"
