@@ -25,6 +25,7 @@ import {
   appendEmailTextListItem,
   type EmailTextListItemPath,
   emailTextListItemAt,
+  emailTextListItemIdentity,
   emailTextListTextKeys,
   indentEmailTextListItem,
   moveEmailTextListItem,
@@ -52,6 +53,8 @@ type ItemControl = ItemAction | "ordered";
 /** What a level's rows do to the block's items; each path names one item. */
 type ItemOperations = {
   readonly itemsId: string;
+  /** A name for the item at a path that no other item shares. */
+  readonly identity: (path: EmailTextListItemPath) => string;
   readonly contentLocale: Locale;
   readonly links: Readonly<Record<string, string>> | undefined;
   readonly run: (action: ItemAction, path: EmailTextListItemPath) => void;
@@ -64,9 +67,9 @@ type ItemOperations = {
 
 const itemControlId = (
   itemsId: string,
-  textKey: string | undefined,
+  identity: string,
   control: ItemControl
-) => `${itemsId}-${textKey ?? ""}-${control}`;
+) => `${itemsId}-${identity}-${control}`;
 
 const itemActions = [
   {
@@ -154,6 +157,7 @@ function TextListLevel({
       {items.map((item, index) => {
         const path = [...levelPath, index];
         const number = path.map((position) => position + 1).join(".");
+        const identity = operations.identity(path);
         const disabled = {
           "move-up": index === 0,
           "move-down": index === items.length - 1,
@@ -162,7 +166,7 @@ function TextListLevel({
           remove: false,
         } satisfies Record<ItemAction, boolean>;
         return (
-          <li className="space-y-2" key={item.textKey ?? index}>
+          <li className="space-y-2" key={identity}>
             <div className="flex items-end gap-2">
               <div className="min-w-0 flex-1">
                 {item.textKey && (
@@ -186,11 +190,7 @@ function TextListLevel({
                     <Button
                       aria-label={name}
                       disabled={disabled[action]}
-                      id={itemControlId(
-                        operations.itemsId,
-                        item.textKey,
-                        action
-                      )}
+                      id={itemControlId(operations.itemsId, identity, action)}
                       key={action}
                       onClick={() => operations.run(action, path)}
                       size="icon-sm"
@@ -211,7 +211,7 @@ function TextListLevel({
                   checked={item.list.ordered ?? false}
                   fieldId={itemControlId(
                     operations.itemsId,
-                    item.textKey,
+                    identity,
                     "ordered"
                   )}
                   number={number}
@@ -277,13 +277,14 @@ export function EmailBlockTextListSettings({
 
   const operations: ItemOperations = {
     itemsId,
+    identity: (path) => emailTextListItemIdentity(items, path),
     contentLocale,
     links: component.links,
     run: (action, path) => {
-      const textKey = emailTextListItemAt(items, path)?.textKey;
+      const identity = emailTextListItemIdentity(items, path);
       const focus = (...actions: ItemAction[]) =>
         focusAfterChange([
-          ...actions.map((next) => itemControlId(itemsId, textKey, next)),
+          ...actions.map((next) => itemControlId(itemsId, identity, next)),
           itemsId,
         ]);
       switch (action) {

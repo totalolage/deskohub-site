@@ -22,6 +22,38 @@ export const emailTextListTextKeys = (
     ...emailTextListTextKeys(item.list?.items),
   ]);
 
+/**
+ * A name for the item at `path` that no other item of the list shares: its
+ * text key, which follows it when it moves, or, for an item without one or
+ * repeating an earlier item's key, its key and place.
+ */
+export const emailTextListItemIdentity = (
+  items: EmailDraftTextListItems,
+  path: EmailTextListItemPath
+): string => {
+  const textKey = emailTextListItemAt(items, path)?.textKey;
+  const place = path.join(".");
+  if (!textKey) return `@${place}`;
+  return firstItemPlace(items, textKey) === place
+    ? textKey
+    : `${textKey}@${place}`;
+};
+
+/** The place of the first item, depth first, keyed `textKey`. */
+const firstItemPlace = (
+  items: EmailDraftTextListItems,
+  textKey: string,
+  prefix: EmailTextListItemPath = []
+): string | undefined => {
+  for (const [index, item] of items.entries()) {
+    const path = [...prefix, index];
+    if (item.textKey === textKey) return path.join(".");
+    const nested = firstItemPlace(item.list?.items ?? [], textKey, path);
+    if (nested !== undefined) return nested;
+  }
+  return undefined;
+};
+
 /** The item at `path`. */
 export const emailTextListItemAt = (
   items: EmailDraftTextListItems,

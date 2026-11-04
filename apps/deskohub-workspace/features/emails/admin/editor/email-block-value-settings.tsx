@@ -101,8 +101,12 @@ function ValueBlockFields({
   const { controlProps } = useEmailFieldProblems(fieldsId);
   const fields = component.fields ?? [];
   const paths = definition ? selectedEmailCustomerFieldPaths(definition) : [];
+  // A row's label key names it, unless it has none or repeats an earlier row's.
   const rowId = (field: ComponentField, position: number) =>
-    `${fieldsId}-${field.labelKey ?? position}`;
+    field.labelKey &&
+    fields.findIndex((entry) => entry.labelKey === field.labelKey) === position
+      ? `${fieldsId}-${field.labelKey}`
+      : `${fieldsId}-${field.labelKey ?? ""}@${position}`;
   const addId = `${fieldsId}-add`;
   const setFields = (next: readonly ComponentField[]) =>
     update(
@@ -130,7 +134,7 @@ function ValueBlockFields({
         return (
           <div
             className="flex flex-wrap items-end gap-3"
-            key={field.labelKey ?? position}
+            key={rowId(field, position)}
           >
             <EmailBlockSelectSetting
               fieldId={rowId(field, position)}

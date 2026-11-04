@@ -528,6 +528,43 @@ describe("text lists", () => {
     expect(values().translations).toEqual(list(true).translations);
   });
 
+  test("items that share a text key keep their own controls", async () => {
+    const { view, values } = renderSection({
+      structure: [
+        {
+          _tag: "TextList",
+          id: "steps",
+          ordered: false,
+          items: [
+            {
+              textKey: "a",
+              list: { ordered: false, items: [{ textKey: "x" }] },
+            },
+            {
+              textKey: "a",
+              list: { ordered: false, items: [{ textKey: "y" }] },
+            },
+          ],
+        },
+      ],
+    });
+    const switches = view.getAllByRole("switch");
+    expect(new Set(switches.map((control) => control.id)).size).toBe(
+      switches.length
+    );
+
+    await click(
+      view.getByText(
+        m.emailsEditorBlockListNestedOrdered({ number: "2" }, { locale })
+      )
+    );
+
+    expect(items(values)?.map((item) => item.list?.ordered)).toEqual([
+      false,
+      true,
+    ]);
+  });
+
   test("items are added, moved and removed with their texts", async () => {
     const { view, values } = renderSection(list(false));
 
@@ -894,6 +931,30 @@ describe("value blocks", () => {
         .getElementById(emailEditorFieldIds.componentSetting("block", "fields"))
         ?.getAttribute("aria-invalid")
     ).toBe("true");
+  });
+
+  test("fields that share a label key keep their own controls", () => {
+    const { view } = renderSection({
+      structure: [
+        {
+          _tag: "Record",
+          id: "block",
+          value: "stats",
+          fields: [
+            { labelKey: "label", field: ["reservationCount"] },
+            { labelKey: "label", field: ["favoriteProduct"] },
+          ],
+        },
+      ],
+      values,
+    });
+    const pickers = [1, 2].map((number) =>
+      view.getByRole("combobox", {
+        name: m.emailsEditorBlockField({ number }, { locale }),
+      })
+    );
+    expect(pickers[0]?.id).not.toBe(pickers[1]?.id);
+    expect(pickers[1]?.textContent).toContain("favoriteProduct");
   });
 
   test("removing a field deletes its label in every language", async () => {

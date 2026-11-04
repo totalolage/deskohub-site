@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   appendEmailTextListItem,
+  emailTextListItemIdentity,
   emailTextListTextKeys,
   indentEmailTextListItem,
   moveEmailTextListItem,
@@ -102,5 +103,19 @@ describe("text list items", () => {
     }));
     expect(next[0]?.list?.items[1]?.list?.ordered).toBe(true);
     expect(next[0]?.list?.ordered).toBe(true);
+  });
+});
+
+describe("item identity", () => {
+  test("an item is named by its text key unless an earlier item has it", () => {
+    const items = [
+      { textKey: "a", list: { ordered: false, items: [{ textKey: "b" }] } },
+      { textKey: "b" },
+      {},
+    ];
+    expect(emailTextListItemIdentity(items, [0])).toBe("a");
+    expect(emailTextListItemIdentity(items, [0, 0])).toBe("b");
+    expect(emailTextListItemIdentity(items, [1])).toBe("b@1");
+    expect(emailTextListItemIdentity(items, [2])).toBe("@2");
   });
 });
