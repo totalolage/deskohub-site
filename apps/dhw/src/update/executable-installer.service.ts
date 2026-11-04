@@ -17,7 +17,11 @@ import {
 } from "effect/unstable/http";
 import { ChildProcess } from "effect/unstable/process";
 import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner";
-import { DHW_BUILD_TARGET, type ReleaseBuildTarget } from "../build-info";
+import {
+  type BuildTarget,
+  DHW_BUILD_TARGET,
+  type ReleaseBuildTarget,
+} from "../build-info";
 import type { AvailableUpdate } from "./update-state-store.service";
 
 const CandidateBuildInfo = Schema.fromJsonString(
@@ -51,6 +55,10 @@ export class ExecutableInstaller extends Context.Service<
           (update: AvailableUpdate) =>
             installExecutable({
               update,
+              executable: {
+                path: process.execPath,
+                target: DHW_BUILD_TARGET,
+              },
               crypto,
               fileSystem,
               httpClient,
@@ -81,22 +89,30 @@ export class ExecutableInstallerError extends Data.TaggedError(
         });
 }
 
+/** The executable an update replaces, and the target it was built for. */
+interface RunningExecutable {
+  readonly path: string;
+  readonly target: BuildTarget;
+}
+
 interface InstallExecutableInput {
   readonly update: AvailableUpdate;
+  readonly executable: RunningExecutable;
   readonly crypto: Crypto.Crypto;
   readonly fileSystem: FileSystem.FileSystem;
   readonly httpClient: HttpClient.HttpClient;
   readonly path: Path.Path;
 }
 
-const installExecutable = Effect.fn("installExecutable")(function* ({
+export const installExecutable = Effect.fn("installExecutable")(function* ({
   update,
+  executable,
   crypto,
   fileSystem,
   httpClient,
   path,
 }: InstallExecutableInput) {
-  const executablePath = process.execPath;
+  const executablePath = executable.path;
   const executableInfo = yield* fileSystem.stat(executablePath);
 
   if (executableInfo.type !== "File") {
@@ -137,7 +153,7 @@ const installExecutable = Effect.fn("installExecutable")(function* ({
 
   yield* fileSystem.chmod(candidatePath, executableInfo.mode);
   yield* syncFile(fileSystem, candidatePath);
-  yield* verifyCandidate(candidatePath, update.version, update.target);
+  yield* verifyCandidate(candidatePath, update, executable.target);
   yield* fileSystem.rename(candidatePath, executablePath);
 });
 
@@ -150,8 +166,8 @@ const syncFile = (fileSystem: FileSystem.FileSystem, path: string) =>
 
 const verifyCandidate = Effect.fn("verifyUpdateCandidate")(function* (
   candidatePath: string,
-  expectedVersion: string,
-  expectedTarget: ReleaseBuildTarget
+  expected: { readonly version: string; readonly target: ReleaseBuildTarget },
+  runningTarget: BuildTarget
 ) {
   const handle = yield* ChildProcess.make(candidatePath, ["version", "--json"]);
   const output = yield* handle.stdout.pipe(
@@ -168,9 +184,9 @@ const verifyCandidate = Effect.fn("verifyUpdateCandidate")(function* (
 
   if (
     exitCode !== 0 ||
-    buildInfo.version !== expectedVersion ||
-    buildInfo.target !== expectedTarget ||
-    buildInfo.target !== DHW_BUILD_TARGET
+    buildInfo.version !== expected.version ||
+    buildInfo.target !== expected.target ||
+    buildInfo.target !== runningTarget
   ) {
     return yield* new ExecutableInstallerError({
       message: "The downloaded CLI reported unexpected build information.",

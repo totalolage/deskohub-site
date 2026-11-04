@@ -1,7 +1,6 @@
 import {
   afterAll,
   afterEach,
-  beforeAll,
   beforeEach,
   expect,
   mock,
@@ -10,11 +9,13 @@ import {
 } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { AdministrationInvoiceCreateInput } from "@deskohub/workspace-admin-api";
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { Schema } from "effect";
 import { createElement } from "react";
+import type { InvoiceAdministrationCustomer } from "@/features/accounting/admin/invoice-administration.service";
+import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
+import { getLocalizedPagePath } from "@/features/i18n/routing";
 import {
   workspaceRouterPush,
   workspaceUseAction,
@@ -23,6 +24,7 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
+import { getInvoiceCustomerName } from "./invoice-display";
 import type { InvoiceFormOutput } from "./invoice-form";
 
 const billingEmail = testEmailAddress("billing");
@@ -42,26 +44,22 @@ mock.module("next/navigation", () => ({
   unstable_rethrow: () => {},
 }));
 
-// The form module (and the Radix dialog it renders) must be imported after
-// the happy-dom global registration, or the dialog portal never mounts.
-let getInvoiceDraftId: typeof import("./invoice-form").getInvoiceDraftId;
-let getInvoiceReviewTotal: typeof import("./invoice-form").getInvoiceReviewTotal;
-let InvoiceCreationForm: typeof import("./invoice-form").InvoiceCreationForm;
-let createInvoiceFormSchema: typeof import("./invoice-form").createInvoiceFormSchema;
-let isInvoicePriceInput: typeof import("./invoice-form").isInvoicePriceInput;
-let readInvoiceForm: typeof import("./invoice-form").readInvoiceForm;
+registerWorkspaceComponentTestEnv();
+// React DOM, which @testing-library/react and the form load, must load after
+// the happy-dom registration to handle input events; the Radix dialog portal
+// also needs the registered document.
+const { act, cleanup, fireEvent, render } = await import(
+  "@testing-library/react"
+);
+const {
+  getInvoiceDraftId,
+  getInvoiceReviewTotal,
+  InvoiceCreationForm,
+  createInvoiceFormSchema,
+  isInvoicePriceInput,
+  readInvoiceForm,
+} = await import("./invoice-form");
 
-beforeAll(async () => {
-  registerWorkspaceComponentTestEnv();
-  ({
-    getInvoiceDraftId,
-    getInvoiceReviewTotal,
-    InvoiceCreationForm,
-    createInvoiceFormSchema,
-    isInvoicePriceInput,
-    readInvoiceForm,
-  } = await import("./invoice-form"));
-});
 beforeEach(() => {
   workspaceUseAction.mockReset();
   window.happyDOM.setURL("https://deskohub.test/en-US/admin/invoices/new");
@@ -735,9 +733,10 @@ test("accepts a browser-typed price and keeps a rejected one out of the payload"
   fireEvent.input(priceInput, { target: { value: "1250.5" } });
   expect(priceInput.value).toBe("1250.5");
 
-  // More precision than the currency allows: rejected, never enters state.
+  // More precision than the currency allows: rejected, never enters state,
+  // and the controlled field shows the accepted price again.
   fireEvent.input(priceInput, { target: { value: "1250.555" } });
-  expect(priceInput.value).toBe("1250.555");
+  expect(priceInput.value).toBe("1250.5");
 
   submitInvoiceForm(view);
   await view.findByText("This action creates and sends the invoice");
@@ -766,7 +765,7 @@ test("follows the switched currency exponent when gating price input", async () 
   fireEvent.change(priceInput, { target: { value: "1.5" } });
   expect(priceInput.value).toBe("1000");
   fireEvent.input(priceInput, { target: { value: "1.5" } });
-  expect(priceInput.value).toBe("1.5");
+  expect(priceInput.value).toBe("1000");
 
   submitInvoiceForm(view);
   await view.findByText("This action creates and sends the invoice");
@@ -790,4 +789,374 @@ test("follows the switched currency exponent when gating price input", async () 
     description: "Space rental",
     price: "1.5",
   });
+});
+
+const en = { locale: "en-US" } as const;
+
+type InvoiceActionName = keyof typeof invoiceActions;
+
+type CapturedInvoiceAction = {
+  readonly execute: ReturnType<typeof mock>;
+  options: {
+    readonly onSuccess?: (result: { readonly data?: unknown }) => void;
+    readonly onError?: (result: {
+      readonly error: { readonly serverError?: string };
+    }) => void;
+    readonly onTransportError?: () => void;
+  };
+};
+
+const captureInvoiceAction = (): CapturedInvoiceAction => ({
+  execute: mock(),
+  options: {},
+});
+
+// Wires every invoice action to its own execute mock and keeps the callbacks
+// the form registered, so a test can settle an action the way the server would.
+const captureInvoiceActions = ({
+  executing = [],
+}: {
+  readonly executing?: readonly InvoiceActionName[];
+} = {}) => {
+  const captured = {
+    createAdministrationInvoice: captureInvoiceAction(),
+    previewAdministrationInvoice: captureInvoiceAction(),
+    searchAdministrationInvoiceCustomers: captureInvoiceAction(),
+  };
+  workspaceUseAction.mockImplementation((action, options) => {
+    const name = (Object.keys(invoiceActions) as InvoiceActionName[]).find(
+      (key) => invoiceActions[key] === action
+    );
+    if (!name) throw new Error("Unexpected invoice action");
+    captured[name].options = options as CapturedInvoiceAction["options"];
+    return {
+      execute: captured[name].execute,
+      isExecuting: executing.includes(name),
+    } as never;
+  });
+  return captured;
+};
+
+const businessCustomer: InvoiceAdministrationCustomer = {
+  id: "customer-business",
+  displayName: "Synthetic Works s.r.o.",
+  hasName: true,
+  email: billingEmail,
+  details: {
+    kind: "business",
+    email: billingEmail,
+    phone: "+420 111 222 333",
+    companyName: "Synthetic Works s.r.o.",
+    companyId: "12345678",
+    vatId: "CZ12345678",
+    firstName: "Synthetic",
+    lastName: "Contact",
+    address: {
+      line1: "Synthetic 1",
+      line2: "Floor 2",
+      city: "Prague",
+      postalCode: "110 00",
+      country: "SK",
+    },
+  },
+};
+
+const sparsePersonCustomer: InvoiceAdministrationCustomer = {
+  id: "customer-person",
+  displayName: "",
+  hasName: false,
+  email: null,
+  details: {
+    kind: "person",
+    email: testEmailAddress("sparse-person"),
+    firstName: "Sparse",
+    lastName: "Person",
+    address: {
+      line1: "Synthetic 2",
+      city: "Brno",
+      postalCode: "602 00",
+      country: "",
+    },
+  },
+};
+
+const inputValue = (view: InvoiceFormView, label: string) =>
+  (view.getByLabelText(label) as HTMLInputElement).value;
+
+const searchCustomers = (view: InvoiceFormView, query: string) => {
+  const input = view.getByLabelText(m.accountingInvoiceFormSearchLabel({}, en));
+  fireEvent.input(input, { target: { value: query } });
+  fireEvent.keyDown(input, { key: "Enter" });
+  return input as HTMLInputElement;
+};
+
+test("searches customers by the trimmed query only once it has two characters", () => {
+  const { searchAdministrationInvoiceCustomers: search } =
+    captureInvoiceActions();
+  const view = renderInvoiceCreationForm();
+  const searchButton = view.getByRole("button", {
+    name: m.accountingInvoiceFormSearch({}, en),
+  });
+
+  searchCustomers(view, " a ");
+  expect(searchButton).toHaveProperty("disabled", true);
+  fireEvent.click(searchButton);
+  expect(search.execute).not.toHaveBeenCalled();
+
+  const input = searchCustomers(view, "  ada  ");
+  fireEvent.keyDown(input, { key: "a" });
+  expect(search.execute).toHaveBeenCalledTimes(1);
+  expect(search.execute).toHaveBeenCalledWith({ query: "ada" });
+  expect(searchButton).toHaveProperty("disabled", false);
+  fireEvent.click(searchButton);
+  expect(search.execute).toHaveBeenCalledTimes(2);
+});
+
+test("blocks another search while one is running", () => {
+  const { searchAdministrationInvoiceCustomers: search } =
+    captureInvoiceActions({
+      executing: ["searchAdministrationInvoiceCustomers"],
+    });
+  const view = renderInvoiceCreationForm();
+
+  searchCustomers(view, "ada");
+
+  expect(search.execute).not.toHaveBeenCalled();
+  expect(
+    view.getByRole("button", { name: m.accountingInvoiceFormSearching({}, en) })
+  ).toHaveProperty("disabled", true);
+});
+
+test("prefills a selected business customer and keeps the query after changing it", () => {
+  const { searchAdministrationInvoiceCustomers: search } =
+    captureInvoiceActions();
+  const view = renderInvoiceCreationForm();
+  searchCustomers(view, "synthetic");
+
+  act(() => search.options.onSuccess?.({ data: undefined }));
+  expect(view.queryByRole("list")).toBeNull();
+  act(() =>
+    search.options.onSuccess?.({
+      data: [businessCustomer, sparsePersonCustomer],
+    })
+  );
+  expect(view.getAllByRole("listitem")).toHaveLength(2);
+  expect(
+    view.getByText(m.accountingInvoiceFormCustomerNoEmail({}, en))
+  ).toBeTruthy();
+
+  fireEvent.click(
+    view.getAllByRole("button", {
+      name: m.accountingInvoiceFormSelectCustomer({}, en),
+    })[0]!
+  );
+
+  expect(
+    view.getByText(getInvoiceCustomerName(businessCustomer, "en-US"))
+  ).toBeTruthy();
+  expect(
+    view.queryByLabelText(m.accountingInvoiceFormSearchLabel({}, en))
+  ).toBeNull();
+  expect(
+    (
+      view.getByLabelText(
+        m.accountingInvoiceFormCustomerType({}, en)
+      ) as HTMLSelectElement
+    ).value
+  ).toBe("business");
+  expect(
+    [
+      m.accountingInvoiceFormEmail({}, en),
+      m.accountingInvoiceFormContactFirstName({}, en),
+      m.accountingInvoiceFormContactLastName({}, en),
+      m.accountingInvoiceFormCompanyName({}, en),
+      m.accountingInvoiceFormCompanyId({}, en),
+      m.accountingInvoiceFormVatId({}, en),
+      m.accountingInvoiceFormPhone({}, en),
+      m.accountingInvoiceFormAddressLine1({}, en),
+      m.accountingInvoiceFormAddressLine2({}, en),
+      m.accountingInvoiceFormCity({}, en),
+      m.accountingInvoiceFormPostalCode({}, en),
+      m.accountingInvoiceFormCountryCode({}, en),
+    ].map((label) => inputValue(view, label))
+  ).toEqual([
+    billingEmail,
+    "Synthetic",
+    "Contact",
+    "Synthetic Works s.r.o.",
+    "12345678",
+    "CZ12345678",
+    "+420 111 222 333",
+    "Synthetic 1",
+    "Floor 2",
+    "Prague",
+    "110 00",
+    "SK",
+  ]);
+
+  fireEvent.click(
+    view.getByRole("button", {
+      name: m.accountingInvoiceFormChangeCustomer({}, en),
+    })
+  );
+
+  expect(
+    view.queryByLabelText(m.accountingInvoiceFormEmail({}, en))
+  ).toBeNull();
+  expect(inputValue(view, m.accountingInvoiceFormSearchLabel({}, en))).toBe(
+    "synthetic"
+  );
+  expect(view.queryByRole("list")).toBeNull();
+});
+
+test("fills blanks and the default country for a sparse person customer", () => {
+  const { searchAdministrationInvoiceCustomers: search } =
+    captureInvoiceActions();
+  const view = renderInvoiceCreationForm();
+  searchCustomers(view, "sparse");
+  act(() => search.options.onSuccess?.({ data: [sparsePersonCustomer] }));
+
+  fireEvent.click(
+    view.getByRole("button", {
+      name: m.accountingInvoiceFormSelectCustomer({}, en),
+    })
+  );
+
+  expect(view.getByText(m.accountingUnnamedCustomer({}, en))).toBeTruthy();
+  expect(
+    view.queryByLabelText(m.accountingInvoiceFormCompanyName({}, en))
+  ).toBeNull();
+  expect(
+    [
+      m.accountingInvoiceFormFirstName({}, en),
+      m.accountingInvoiceFormLastName({}, en),
+      m.accountingInvoiceFormPhone({}, en),
+      m.accountingInvoiceFormAddressLine2({}, en),
+      m.accountingInvoiceFormCountryCode({}, en),
+    ].map((label) => inputValue(view, label))
+  ).toEqual(["Sparse", "Person", "", "", "CZ"]);
+
+  // Switching to a new customer drops the selected one's details.
+  fireEvent.click(
+    view.getByRole("radio", {
+      name: m.accountingInvoiceFormCustomerSourceNew({}, en),
+    })
+  );
+  expect(view.queryByText(m.accountingUnnamedCustomer({}, en))).toBeNull();
+  expect(inputValue(view, m.accountingInvoiceFormFirstName({}, en))).toBe("");
+});
+
+test("reports search failures and an empty result", () => {
+  const { searchAdministrationInvoiceCustomers: search } =
+    captureInvoiceActions();
+  const view = renderInvoiceCreationForm();
+  searchCustomers(view, "nobody");
+  const searchError = m.accountingInvoiceFormSearchError({}, en);
+
+  act(() =>
+    search.options.onError?.({ error: { serverError: "Search exploded." } })
+  );
+  expect(view.getByRole("alert").textContent).toBe("Search exploded.");
+  act(() => search.options.onError?.({ error: {} }));
+  expect(view.getByRole("alert").textContent).toBe(searchError);
+  searchCustomers(view, "nobody");
+  expect(view.queryByRole("alert")).toBeNull();
+  act(() => search.options.onTransportError?.());
+  expect(view.getByRole("alert").textContent).toBe(searchError);
+
+  act(() => search.options.onSuccess?.({ data: [] }));
+  expect(view.queryByRole("alert")).toBeNull();
+  expect(
+    view.getByText(m.accountingInvoiceFormSearchEmpty({}, en))
+  ).toBeTruthy();
+});
+
+const openReviewedInvoice = async (view: InvoiceFormView) => {
+  fillValidPersonInvoice(view);
+  submitInvoiceForm(view);
+  await view.findByRole("dialog");
+};
+
+test("opens the created invoice and reports creation and preview failures", async () => {
+  workspaceRouterPush.mockClear();
+  const {
+    createAdministrationInvoice: create,
+    previewAdministrationInvoice: preview,
+  } = captureInvoiceActions();
+  const view = renderInvoiceCreationForm();
+  await openReviewedInvoice(view);
+  const createButton = view.getByRole("button", {
+    name: m.accountingInvoiceFormCreate({}, en),
+  });
+  const previewError = m.accountingInvoiceFormPreviewError({}, en);
+
+  act(() => preview.options.onSuccess?.({ data: undefined }));
+  expect(createButton).toHaveProperty("disabled", true);
+  act(() => preview.options.onError?.({ error: {} }));
+  expect(view.getByRole("alert").textContent).toBe(previewError);
+  act(() =>
+    preview.options.onError?.({ error: { serverError: "Preview exploded." } })
+  );
+  expect(view.getByRole("alert").textContent).toBe("Preview exploded.");
+  act(() => preview.options.onTransportError?.());
+  expect(view.getByRole("alert").textContent).toBe(previewError);
+  act(() =>
+    preview.options.onSuccess?.({
+      data: { dataUrl: "data:text/plain;base64,PA==" },
+    })
+  );
+  expect(view.queryByRole("alert")).toBeNull();
+
+  fireEvent.click(createButton);
+  expect(create.execute).toHaveBeenCalledTimes(1);
+  const invoiceId = invoiceIdOf(create.execute.mock.calls[0]);
+
+  act(() => create.options.onError?.({ error: {} }));
+  expect(view.getByRole("alert").textContent).toBe(
+    m.accountingInvoiceFormCreateError({}, en)
+  );
+  act(() => create.options.onTransportError?.());
+  expect(view.getByRole("alert").textContent).toBe(
+    m.accountingInvoiceFormCreateError({}, en)
+  );
+
+  act(() => create.options.onSuccess?.({ data: undefined }));
+  expect(workspaceRouterPush).not.toHaveBeenCalled();
+  act(() => create.options.onSuccess?.({ data: { invoiceId } }));
+  expect(workspaceRouterPush).toHaveBeenCalledWith(
+    getLocalizedPagePath("en-US", "/[locale]/admin/invoices/[invoiceId]", {
+      invoiceId,
+    })
+  );
+});
+
+test("closes the review unless the invoice is being created", async () => {
+  captureInvoiceActions();
+  const view = renderInvoiceCreationForm();
+  await openReviewedInvoice(view);
+
+  fireEvent.click(
+    view.getByRole("button", { name: m.accountingInvoiceFormGoBack({}, en) })
+  );
+  await flush();
+  expect(view.queryByRole("dialog")).toBeNull();
+  cleanup();
+
+  const { createAdministrationInvoice: create } = captureInvoiceActions({
+    executing: ["createAdministrationInvoice"],
+  });
+  const creating = renderInvoiceCreationForm();
+  await openReviewedInvoice(creating);
+
+  fireEvent.keyDown(document.activeElement ?? document.body, {
+    key: "Escape",
+  });
+  await flush();
+  expect(creating.getByRole("dialog")).toBeTruthy();
+  expect(
+    creating.getByRole("button", {
+      name: m.accountingInvoiceFormCreating({}, en),
+    })
+  ).toHaveProperty("disabled", true);
+  expect(create.execute).not.toHaveBeenCalled();
 });

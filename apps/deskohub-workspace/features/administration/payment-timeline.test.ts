@@ -2,8 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { NexiOperationIdSchema, NexiOrderIdSchema } from "@deskohub/nexi";
 import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
 import type { AdministrationPaymentAttempt } from "./administration.service";
+import { loadFixtureReservation } from "./fixtures";
+import { m } from "./i18n";
 import type { AdministrationOrder } from "./payment-administration.service";
+import { getProviderValueLabel } from "./payment-presentation";
 import {
+  type AdministrationPaymentTimelineEvent,
   buildPaymentAttemptTimeline,
   getAdministrationPaymentTimelineCopy,
   getOrderTimeline,
@@ -215,5 +219,344 @@ describe("payment timeline", () => {
       title: "Capture: Denied by risk check",
       description: "Nexi reported this Back office operation.",
     });
+  });
+
+  test("ends an attempt only once it stops without a payment", () => {
+    const attempt = (
+      state: AdministrationPaymentAttempt["state"],
+      failureCode: string | null = null
+    ): AdministrationPaymentAttempt => ({
+      ...refundedAttempt,
+      id: paymentAttemptIdSchema.make(`synthetic-${state}`),
+      state,
+      failureCode,
+      refundedAt: null,
+    });
+    const items = buildPaymentAttemptTimeline(
+      [
+        attempt("created"),
+        attempt("pending"),
+        attempt("paid"),
+        attempt("failed"),
+        attempt("expired"),
+        attempt("cancelled"),
+        attempt("expired", "payment_abandoned_after_provider_cutoff"),
+      ],
+      []
+    );
+
+    expect(
+      items.map(({ id, event, occurredAt, tone }) => ({
+        id,
+        event,
+        occurredAt,
+        tone,
+      }))
+    ).toEqual([
+      ...["created", "pending", "paid"].map((state) => ({
+        id: `payment-attempt-synthetic-${state}-started`,
+        event: {
+          source: "payment",
+          kind: "attemptStarted",
+          attemptId: `synthetic-${state}`,
+          provider: "nexi",
+        },
+        occurredAt: refundedAttempt.createdAt,
+        tone: "neutral",
+      })),
+      ...(
+        [
+          ["failed", "failed"],
+          ["expired", "unsuccessful"],
+          ["cancelled", "unsuccessful"],
+        ] as const
+      ).flatMap(([state, outcome]) => [
+        expect.objectContaining({
+          id: `payment-attempt-synthetic-${state}-started`,
+        }),
+        {
+          id: `payment-attempt-synthetic-${state}-${state}`,
+          event: { source: "payment", kind: "attemptEnded", outcome },
+          occurredAt: refundedAttempt.updatedAt,
+          tone: "warning",
+        },
+      ]),
+      expect.objectContaining({
+        id: "payment-attempt-synthetic-expired-started",
+      }),
+      {
+        id: "payment-attempt-synthetic-expired-expired",
+        event: {
+          source: "payment",
+          kind: "attemptEnded",
+          outcome: "abandoned",
+        },
+        occurredAt: refundedAttempt.updatedAt,
+        tone: "warning",
+      },
+    ]);
+    const [failed, unsuccessful, , abandoned] = items
+      .filter(({ event }) => event.kind === "attemptEnded")
+      .map(({ description }) => description);
+    expect(failed).toBe(unsuccessful);
+    expect(abandoned).not.toBe(failed);
+  });
+
+  test("records when Nexi created each order, marking estimated times", () => {
+    const fixtureLink = loadFixtureReservation("0198-admin-fixture-attention")
+      ?.orders[0]?.link;
+    if (!fixtureLink) throw new Error("Expected a linked fixture order");
+    const link = {
+      ...fixtureLink,
+      providerOrderCreatedAt: "2026-10-01T10:00:01Z",
+      providerOrderCreatedAtEstimated: false,
+    };
+    const items = getOrderTimeline([
+      { ...orderUnavailable, link },
+      {
+        ...orderUnavailable,
+        orderId: NexiOrderIdSchema.make("synthetic-estimated"),
+        link: { ...link, providerOrderCreatedAtEstimated: true },
+      },
+      {
+        ...orderUnavailable,
+        orderId: NexiOrderIdSchema.make("synthetic-untracked"),
+        link: { ...link, providerOrderCreatedAt: null },
+      },
+    ]);
+
+    expect(
+      items.map(({ id, event, href, occurredAt }) => ({
+        id,
+        event,
+        href,
+        occurredAt,
+      }))
+    ).toEqual([
+      {
+        id: "order-synthetic-order-created",
+        event: { source: "payment", kind: "orderCreated", estimated: false },
+        href: "#order-synthetic-order",
+        occurredAt: link.providerOrderCreatedAt,
+      },
+      {
+        id: "order-synthetic-estimated-created",
+        event: { source: "payment", kind: "orderCreated", estimated: true },
+        href: "#order-synthetic-estimated",
+        occurredAt: link.providerOrderCreatedAt,
+      },
+    ]);
+    expect(
+      items.map(({ event }) =>
+        getAdministrationPaymentTimelineCopy(event, "cs-CZ")
+      )
+    ).toEqual([
+      {
+        title: m.administrationPaymentTimelineOrderCreatedTitle(
+          {},
+          { locale: "cs-CZ" }
+        ),
+        description: m.administrationPaymentTimelineOrderCreatedDescription(
+          {},
+          { locale: "cs-CZ" }
+        ),
+      },
+      {
+        title: m.administrationPaymentTimelineOrderCreatedEstimatedTitle(
+          {},
+          { locale: "cs-CZ" }
+        ),
+        description:
+          m.administrationPaymentTimelineOrderCreatedEstimatedDescription(
+            {},
+            { locale: "cs-CZ" }
+          ),
+      },
+    ]);
+  });
+
+  test("classifies each Nexi operation by its type and result, in any case", () => {
+    const operation = (
+      operationType: string | undefined,
+      operationResult: string | undefined
+    ) => ({
+      operationType,
+      operationResult,
+      operationTime: "2026-10-01T10:02:00Z",
+    });
+    const items = getOrderTimeline([
+      {
+        ...orderWithBackOfficeRefund,
+        provider: {
+          orderId: providerOrderId,
+          operations: [
+            operation("AUTHORIZATION", "AUTHORIZED"),
+            operation("authorization", "executed"),
+            operation("CAPTURE", "EXECUTED"),
+            operation("CAPTURE", "PENDING"),
+            operation("AUTHORIZATION", undefined),
+            operation("REFUND", undefined),
+            operation("CANCEL", "EXECUTED"),
+            operation("VOID", "VOIDED"),
+            operation(undefined, "EXECUTED"),
+            { ...operation("CAPTURE", "EXECUTED"), operationTime: undefined },
+          ],
+        },
+      },
+    ]);
+
+    expect(items.map(({ event }) => event)).toEqual([
+      {
+        source: "payment",
+        kind: "operationReported",
+        outcome: "authorized",
+        operationType: "AUTHORIZATION",
+        operationResult: "AUTHORIZED",
+      },
+      {
+        source: "payment",
+        kind: "operationReported",
+        outcome: "executed",
+        operationType: "AUTHORIZATION",
+        operationResult: "EXECUTED",
+      },
+      {
+        source: "payment",
+        kind: "operationReported",
+        outcome: "executed",
+        operationType: "CAPTURE",
+        operationResult: "EXECUTED",
+      },
+      {
+        source: "payment",
+        kind: "operationReported",
+        outcome: "other",
+        operationType: "CAPTURE",
+        operationResult: "PENDING",
+      },
+      {
+        source: "payment",
+        kind: "operationReported",
+        outcome: "other",
+        operationType: "AUTHORIZATION",
+      },
+      {
+        source: "payment",
+        kind: "operationReported",
+        outcome: "refund",
+        operationType: "REFUND",
+      },
+      {
+        source: "payment",
+        kind: "operationReported",
+        outcome: "reversal",
+        operationType: "CANCEL",
+        operationResult: "EXECUTED",
+      },
+      {
+        source: "payment",
+        kind: "operationReported",
+        outcome: "reversal",
+        operationType: "VOID",
+        operationResult: "VOIDED",
+      },
+      {
+        source: "payment",
+        kind: "operationReported",
+        outcome: "other",
+        operationResult: "EXECUTED",
+      },
+    ]);
+    expect(items.map(({ id, href }) => ({ id, href }))).toEqual(
+      items.map((_, index) => ({
+        id: `nexi-operation-${providerOrderId}-${index}`,
+        href: undefined,
+      }))
+    );
+  });
+
+  test("names each classified Nexi operation in the route locale", () => {
+    const copy = (event: AdministrationPaymentTimelineEvent) =>
+      getAdministrationPaymentTimelineCopy(event, "cs-CZ");
+    const reported = (
+      outcome: Extract<
+        AdministrationPaymentTimelineEvent,
+        { readonly kind: "operationReported" }
+      >["outcome"],
+      details: { operationType?: string; operationResult?: string } = {}
+    ) =>
+      copy({
+        source: "payment",
+        kind: "operationReported",
+        outcome,
+        ...details,
+      });
+    const locale = { locale: "cs-CZ" } as const;
+    const description = m.administrationPaymentTimelineOperationDescription(
+      {},
+      locale
+    );
+
+    expect([
+      reported("authorized"),
+      reported("executed"),
+      reported("refund"),
+      reported("reversal"),
+      reported("other"),
+      reported("other", { operationType: "CAPTURE" }),
+    ]).toEqual([
+      {
+        title: m.administrationPaymentTimelineAuthorizedTitle({}, locale),
+        description,
+      },
+      {
+        title: m.administrationPaymentTimelineExecutedTitle({}, locale),
+        description,
+      },
+      {
+        title: m.administrationPaymentTimelineRefundReportedTitle({}, locale),
+        description,
+      },
+      {
+        title: m.administrationPaymentTimelineReversalTitle({}, locale),
+        description,
+      },
+      {
+        title: m.administrationPaymentOperationFallback({}, locale),
+        description,
+      },
+      { title: getProviderValueLabel("CAPTURE", "cs-CZ"), description },
+    ]);
+    expect([
+      copy({ source: "payment", kind: "refundRecorded" }),
+      copy({ source: "payment", kind: "attemptEnded", outcome: "failed" }),
+      copy({
+        source: "payment",
+        kind: "attemptEnded",
+        outcome: "unsuccessful",
+      }),
+    ]).toEqual([
+      {
+        title: m.administrationPaymentTimelineRefundRecordedTitle({}, locale),
+        description: m.administrationPaymentTimelineRefundRecordedDescription(
+          {},
+          locale
+        ),
+      },
+      {
+        title: m.administrationPaymentTimelineFailedTitle({}, locale),
+        description: m.administrationPaymentTimelineEndedDescription(
+          {},
+          locale
+        ),
+      },
+      {
+        title: m.administrationPaymentTimelineUnsuccessfulTitle({}, locale),
+        description: m.administrationPaymentTimelineEndedDescription(
+          {},
+          locale
+        ),
+      },
+    ]);
   });
 });

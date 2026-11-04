@@ -15,7 +15,9 @@ import {
 } from "@/shared/testing/workspace-component-test-env";
 
 registerWorkspaceComponentTestEnv();
-const { cleanup, render, waitFor } = await import("@testing-library/react");
+const { act, cleanup, fireEvent, render, waitFor } = await import(
+  "@testing-library/react"
+);
 const { rememberEmailSignInRequest } = await import(
   "@/features/account/email-sign-in-request"
 );
@@ -35,12 +37,13 @@ const getSession = mock(
     Promise.resolve(signedOut)
 );
 const routerReplace = mock((_href: string) => undefined);
+const routerBack = mock(() => undefined);
 
 mock.module("@/features/account/auth.client", () => ({
   authClient: { getSession },
 }));
 mock.module("next/navigation", () => ({
-  useRouter: () => ({ back: () => undefined, replace: routerReplace }),
+  useRouter: () => ({ back: routerBack, replace: routerReplace }),
 }));
 
 const { SignInVerifyCard } = await import("./sign-in-verify-card");
@@ -62,6 +65,7 @@ describe("sign-in verify card", () => {
     window.location.replace = originalReplace;
     navigations.length = 0;
     routerReplace.mockClear();
+    routerBack.mockClear();
     getSession.mockClear();
     getSession.mockImplementation(() => Promise.resolve(signedOut));
   });
@@ -128,5 +132,74 @@ describe("sign-in verify card", () => {
     await waitFor(() => expect(getSession).toHaveBeenCalled());
     expect(navigations).toEqual([]);
     expect(routerReplace).not.toHaveBeenCalled();
+  });
+
+  describe("using a different email", () => {
+    const rememberWaitingRequest = (returnTo?: string) =>
+      rememberEmailSignInRequest({
+        email: testEmailAddress("ada"),
+        requestedAt: Date.now(),
+        signInCode: false,
+        returnTo,
+      });
+
+    const useDifferentEmail = async (view: ReturnType<typeof render>) => {
+      await act(async () => {
+        fireEvent.click(
+          await view.findByRole("button", {
+            name: m.accountSignInAcceptedAgain({}, { locale }),
+          })
+        );
+      });
+    };
+
+    test("the page opens the form the sign-in returns to and keeps the step until it is gone", async () => {
+      rememberWaitingRequest("/en-US/account/billing");
+      const view = render(
+        <SignInVerifyCard locale={locale} presentation="page" />
+      );
+
+      await useDifferentEmail(view);
+
+      expect(routerReplace).toHaveBeenCalledWith("/en-US/account/billing");
+      expect(routerBack).not.toHaveBeenCalled();
+      // A reload no longer restores the request, but the step stays on screen.
+      expect(sessionStorage.length).toBe(0);
+      expect(
+        view.getByText(m.accountSignInAcceptedTitle({}, { locale }))
+      ).toBeTruthy();
+
+      // Once the card is gone, the request is dropped for every view.
+      view.unmount();
+      render(<SignInVerifyCard locale={locale} presentation="page" />);
+      await waitFor(() =>
+        expect(navigations).toEqual([
+          "/en-US/auth/sign-in?notice=no-longer-waiting",
+        ])
+      );
+    });
+
+    test("the page opens the plain sign-in form for a request without a return path", async () => {
+      rememberWaitingRequest();
+      const view = render(
+        <SignInVerifyCard locale={locale} presentation="page" />
+      );
+
+      await useDifferentEmail(view);
+
+      expect(routerReplace).toHaveBeenCalledWith("/en-US/auth/sign-in");
+    });
+
+    test("the modal closes back to the form underneath", async () => {
+      rememberWaitingRequest("/en-US/account/billing");
+      const view = render(
+        <SignInVerifyCard locale={locale} presentation="modal" />
+      );
+
+      await useDifferentEmail(view);
+
+      expect(routerBack).toHaveBeenCalledTimes(1);
+      expect(routerReplace).not.toHaveBeenCalled();
+    });
   });
 });

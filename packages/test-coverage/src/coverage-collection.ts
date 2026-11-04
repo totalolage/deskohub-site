@@ -37,17 +37,26 @@ export function startCoverageCollection(
   const run = readCoverageRun(runDirectory);
   const instrumentation = createSourceInstrumentation(run.cacheDirectory);
   // Bun rejects an onLoad callback that declines a file, so the filter alone
-  // selects the run's sources.
+  // selects the run's sources. Tests import a fresh module instance with a
+  // query suffix (`./module?fresh`); Bun passes the suffix in the path, and
+  // every instance counts toward the source file's coverage.
   const filter = new RegExp(
-    `^(?:${run.sources.map((source) => RegExp.escape(source)).join("|")})$`
+    `^(?:${run.sources.map((source) => RegExp.escape(source)).join("|")})(?:\\?.*)?$`,
+    "s"
   );
   plugin({
     name: "istanbul-coverage",
     setup(build) {
-      build.onLoad({ filter }, ({ path }) => ({
-        contents: instrumentation.instrument(path, readFileSync(path, "utf8")),
-        loader: sourceLoader(path),
-      }));
+      build.onLoad({ filter }, ({ path }) => {
+        const source = withoutQuery(path);
+        return {
+          contents: instrumentation.instrument(
+            source,
+            readFileSync(source, "utf8")
+          ),
+          loader: sourceLoader(source),
+        };
+      });
     },
   });
   dumpScheduler(() => dumpCoverage(coverageDumpDirectory(runDirectory)));
@@ -88,6 +97,12 @@ function dumpCoverage(dumpDirectory: string): void {
     join(dumpDirectory, `${coverageGlobal.__deskohubCoverageDumpId}.json`),
     JSON.stringify(coverageGlobal.__coverage__)
   );
+}
+
+/** The source file a module path names, without an import query suffix. */
+function withoutQuery(path: string): string {
+  const queryStart = path.indexOf("?");
+  return queryStart === -1 ? path : path.slice(0, queryStart);
 }
 
 function sourceLoader(path: string): "js" | "jsx" | "ts" | "tsx" {

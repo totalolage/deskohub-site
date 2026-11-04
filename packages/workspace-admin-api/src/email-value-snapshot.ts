@@ -3,6 +3,7 @@ import {
   EmailCustomerField,
   selectedEmailCustomerShape,
 } from "./email-customer-selection";
+import { matchesEmailCustomerField } from "./email-customer-value-match";
 import type { EmailValueDefinition } from "./emails";
 
 const sameCustomerShape = Schema.toEquivalence(EmailCustomerField);
@@ -26,38 +27,13 @@ export const emailValueSnapshotForDefinition = (
           definition.source.kind === "customer"
             ? selectedEmailCustomerShape(definition.source)
             : undefined;
-        if (
-          definition.source.kind === "customer" &&
-          (!current ||
-            (definition.customerShape &&
-              !sameCustomerShape(definition.customerShape, current)))
-        )
-          return false;
+        if (hasStaleCustomerShape(definition, current)) return false;
         if (snapshot._tag === "Fallback")
           return definition.fallback?.[locale] === snapshot.text;
-        const value = snapshot.value;
-        if (value === null) return false;
-        if (definition.source.kind === "discount")
-          return (
-            typeof value === "object" &&
-            !Arr.isArray<Schema.Json>(value) &&
-            Object.keys(value).length === 2 &&
-            typeof value.code === "string" &&
-            value.code.length > 0 &&
-            typeof value.expiresAt === "string" &&
-            Number.isFinite(Date.parse(value.expiresAt))
-          );
-        const selection = definition.source;
-        const selected = definition.customerShape ?? current;
-        if (!selected) return false;
-        if (
-          selected.kind === "list" &&
-          selection.limit !== undefined &&
-          Arr.isArray<Schema.Json>(value) &&
-          value.length > selection.limit
-        )
-          return false;
-        return emailValueMatchesField(value, selected);
+        return (
+          snapshot.value !== null &&
+          matchesSourceValue(definition, current, snapshot.value)
+        );
       },
       {
         description:
@@ -66,45 +42,50 @@ export const emailValueSnapshotForDefinition = (
     )
   );
 
-/**
- * Whether a value matches a frozen field shape, independent of today's
- * customer catalogue.
- */
-export function emailValueMatchesField(
-  value: Schema.Json | undefined,
-  field: EmailCustomerField
-): boolean {
-  if (value === undefined) return field.optional;
-  if (value === null) return field.nullable;
-  switch (field.kind) {
-    case "scalar":
-      return (
-        typeof value === field.type &&
-        (field.choices === undefined ||
-          field.choices.some((choice) => choice === value))
-      );
-    case "union":
-      return field.alternatives.some((alternative) =>
-        emailValueMatchesField(value, alternative)
-      );
-    case "list":
-      return (
-        Arr.isArray<Schema.Json>(value) &&
-        value.every((item) => emailValueMatchesField(item, field.element))
-      );
-    case "record":
-      return (
-        typeof value === "object" &&
-        !Arr.isArray<Schema.Json>(value) &&
-        Object.keys(value).every((key) => Object.hasOwn(field.fields, key)) &&
-        Object.entries(field.fields).every(([key, descriptor]) =>
-          emailValueMatchesField(
-            Object.hasOwn(value, key) ? value[key] : undefined,
-            descriptor
-          )
-        )
-      );
-    case "unsupported":
-      return false;
-  }
-}
+type CustomerSelection = Extract<
+  EmailValueDefinition["source"],
+  { readonly kind: "customer" }
+>;
+type JsonValue = NonNullable<Schema.Json>;
+
+/** A customer source that no longer resolves, or resolves to a different shape than the frozen one. */
+const hasStaleCustomerShape = (
+  definition: EmailValueDefinition,
+  current: EmailCustomerField | undefined
+) =>
+  definition.source.kind === "customer" &&
+  (!current ||
+    (definition.customerShape &&
+      !sameCustomerShape(definition.customerShape, current)));
+
+const matchesSourceValue = (
+  definition: EmailValueDefinition,
+  current: EmailCustomerField | undefined,
+  value: JsonValue
+): boolean => {
+  if (definition.source.kind === "discount") return isDiscountValue(value);
+  const selected = definition.customerShape ?? current;
+  if (!selected) return false;
+  if (exceedsSelectionLimit(selected, definition.source, value)) return false;
+  return matchesEmailCustomerField(value, selected);
+};
+
+/** A discount is exactly a non-empty code and a parseable expiry. */
+const isDiscountValue = (value: JsonValue) =>
+  typeof value === "object" &&
+  !Arr.isArray<Schema.Json>(value) &&
+  Object.keys(value).length === 2 &&
+  typeof value.code === "string" &&
+  value.code.length > 0 &&
+  typeof value.expiresAt === "string" &&
+  Number.isFinite(Date.parse(value.expiresAt));
+
+const exceedsSelectionLimit = (
+  selected: EmailCustomerField,
+  selection: CustomerSelection,
+  value: JsonValue
+) =>
+  selected.kind === "list" &&
+  selection.limit !== undefined &&
+  Arr.isArray<Schema.Json>(value) &&
+  value.length > selection.limit;

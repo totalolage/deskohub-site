@@ -112,6 +112,11 @@ describe("date-time formatting", () => {
     // The same numbers read in each locale's own order.
     expect(read("3/4/2099", "en-US")).toBe("2099-03-04");
     expect(read("3/4/2099", "cs-CZ")).toBe("2099-04-03");
+    // Spaces alone, or around another separator, separate the numbers too.
+    expect(read("5 11 2099", "cs-CZ")).toBe("2099-11-05");
+    expect(read("2099 - 11 - 05", "en-US")).toBe("2099-11-05");
+    expect(read("2096/2/29", "en-US")).toBe("2096-02-29");
+    expect(read("0001-01-01", "en-US")).toBe("0001-01-01");
   });
 
   test("rejects text that is no complete calendar date", () => {
@@ -127,5 +132,13 @@ describe("date-time formatting", () => {
     expect(read("2099-02-29")).toBe(false);
     expect(read("31. 4. 2099", "cs-CZ")).toBe(false);
     expect(read("11/5/2099/1")).toBe(false);
+    expect(read("11//2099")).toBe(false);
+    expect(read("11/5/+2099")).toBe(false);
+    expect(read("011/5/2099")).toBe(false);
+    expect(read("11/005/2099")).toBe(false);
+    expect(read("11/5/02099")).toBe(false);
+    expect(read("0000-01-01")).toBe(false);
+    expect(read("0/5/2099")).toBe(false);
+    expect(read("11/0/2099")).toBe(false);
   });
 });

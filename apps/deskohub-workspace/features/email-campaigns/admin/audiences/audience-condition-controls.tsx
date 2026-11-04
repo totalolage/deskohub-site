@@ -436,6 +436,23 @@ const absentValue = "absent";
 const thisCampaignValue = "this";
 
 /**
+ * The campaign a source names among the listed ones, and whether the list
+ * lost it, as it does a deleted campaign.
+ */
+const campaignSourceChoice = (
+  value: CampaignEmailSourceType | undefined,
+  campaigns: readonly AudienceCampaignOption[]
+) => {
+  const chosen = value?._tag === "Specific" ? value.campaignId : undefined;
+  const chosenCampaign = campaigns.find(({ id }) => id === chosen);
+  return {
+    chosen,
+    chosenCampaign,
+    lost: chosen !== undefined && chosenCampaign === undefined,
+  };
+};
+
+/**
  * Whose emails count: any campaign, this campaign where `holder` can hold
  * it, or one picked by name, searchable and badged with each campaign's
  * state. A chosen campaign missing from the list, such as a deleted one,
@@ -456,14 +473,11 @@ function CampaignSourceControl({
 }) {
   const locale = useRouteLocale();
   const [open, setOpen] = useState(false);
-  const chosen = value?._tag === "Specific" ? value.campaignId : undefined;
-  const chosenCampaign = campaigns.find(({ id }) => id === chosen);
-  const lost = chosen !== undefined && chosenCampaign === undefined;
+  const { chosen, chosenCampaign, lost } = campaignSourceChoice(
+    value,
+    campaigns
+  );
   const thisCampaign = m.emailAutomationFlowCampaignSourceThis({}, { locale });
-  const pick = (next: CampaignEmailSourceType | undefined) => {
-    onChange(next);
-    setOpen(false);
-  };
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -497,60 +511,104 @@ function CampaignSourceControl({
         <Command label={wording.search}>
           <CommandInput placeholder={wording.search} />
           <CommandList>
-            <CommandGroup>
-              <CommandItem
-                value={absentValue}
-                keywords={[wording.absent]}
-                selected={value === undefined}
-                onSelect={() => pick(undefined)}
-              >
-                {wording.absent}
-              </CommandItem>
-              {canHoldCampaignSource(holder, "This") && (
-                <CommandItem
-                  value={thisCampaignValue}
-                  keywords={[thisCampaign]}
-                  selected={value?._tag === "This"}
-                  onSelect={() => pick({ _tag: "This" })}
-                >
-                  {thisCampaign}
-                </CommandItem>
-              )}
-              {lost && (
-                <CommandItem
-                  value={chosen}
-                  keywords={[wording.unknown]}
-                  selected
-                  onSelect={() => setOpen(false)}
-                >
-                  {wording.unknown}
-                </CommandItem>
-              )}
-              {campaigns.map((campaign) => (
-                <CommandItem
-                  key={campaign.id}
-                  value={campaign.id}
-                  keywords={[campaign.name]}
-                  selected={campaign.id === chosen}
-                  onSelect={() =>
-                    pick({
-                      _tag: "Specific",
-                      campaignId: AdministrationCampaignId.make(campaign.id),
-                    })
-                  }
-                >
-                  <span className="min-w-0 flex-1 truncate">
-                    {campaign.name}
-                  </span>
-                  <CampaignStateBadge locale={locale} campaign={campaign} />
-                </CommandItem>
-              ))}
-            </CommandGroup>
+            <CampaignSourceOptions
+              wording={wording}
+              campaigns={campaigns}
+              value={value}
+              chosen={chosen}
+              lost={lost}
+              thisCampaign={thisCampaign}
+              holder={holder}
+              onPick={(next) => {
+                onChange(next);
+                setOpen(false);
+              }}
+              onKeep={() => setOpen(false)}
+            />
           </CommandList>
           <CommandEmpty>{wording.empty}</CommandEmpty>
         </Command>
       </PopoverContent>
     </Popover>
+  );
+}
+
+/**
+ * The campaign picker's options: any campaign, this campaign where `holder`
+ * can hold it, the lost chosen campaign, then each listed campaign.
+ */
+function CampaignSourceOptions({
+  wording,
+  campaigns,
+  value,
+  chosen,
+  lost,
+  thisCampaign,
+  holder,
+  onPick,
+  onKeep,
+}: {
+  readonly wording: AudienceCampaignSourceWording;
+  readonly campaigns: readonly AudienceCampaignOption[];
+  readonly value: CampaignEmailSourceType | undefined;
+  readonly chosen: string | undefined;
+  readonly lost: boolean;
+  /** The automation's own campaign, as its option reads. */
+  readonly thisCampaign: string;
+  readonly holder: AudienceFilterHolder;
+  readonly onPick: (value: CampaignEmailSourceType | undefined) => void;
+  /** Closes the picker on the lost campaign, which stays chosen. */
+  readonly onKeep: () => void;
+}) {
+  const locale = useRouteLocale();
+  return (
+    <CommandGroup>
+      <CommandItem
+        value={absentValue}
+        keywords={[wording.absent]}
+        selected={value === undefined}
+        onSelect={() => onPick(undefined)}
+      >
+        {wording.absent}
+      </CommandItem>
+      {canHoldCampaignSource(holder, "This") && (
+        <CommandItem
+          value={thisCampaignValue}
+          keywords={[thisCampaign]}
+          selected={value?._tag === "This"}
+          onSelect={() => onPick({ _tag: "This" })}
+        >
+          {thisCampaign}
+        </CommandItem>
+      )}
+      {lost && (
+        <CommandItem
+          value={chosen}
+          keywords={[wording.unknown]}
+          selected
+          onSelect={onKeep}
+        >
+          {wording.unknown}
+        </CommandItem>
+      )}
+      {campaigns.map((campaign) => (
+        <CommandItem
+          key={campaign.id}
+          value={campaign.id}
+          keywords={[campaign.name]}
+          selected={campaign.id === chosen}
+          onSelect={() =>
+            onPick({
+              _tag: "Specific",
+              campaignId: AdministrationCampaignId.make(campaign.id),
+            })
+          }
+        >
+          <span className="min-w-0 flex-1 truncate">{campaign.name}</span>
+          <CampaignStateBadge locale={locale} campaign={campaign} />
+        </CommandItem>
+      ))}
+    </CommandGroup>
   );
 }
 

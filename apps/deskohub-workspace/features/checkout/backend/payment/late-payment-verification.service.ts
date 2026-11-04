@@ -4,19 +4,29 @@ import {
   getNexiPaymentMetadata,
   NexiCurrencySchema,
   NexiService,
+  type PaymentVerificationResult,
 } from "@deskohub/nexi";
 import { Context, type Duration, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
+import type { LatePaymentRecovery } from "@/db/schema";
+import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
+import {
+  type WorkspaceReservation,
+  WorkspaceReservationRepository,
+} from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { WorkspaceNexiLayer } from "@/shared/backend/config/nexi.config";
 import { LatePaymentRecoveryRepository } from "../repositories/late-payment-recovery.repository";
 import {
-  isNexiPaymentAttempt,
+  type PaymentAttempt,
   PaymentAttemptRepository,
 } from "../repositories/payment-attempt.repository";
 import { LatePaymentRecoveryQueueService } from "./late-payment-recovery-queue.service";
 import { getNexiCurrencyOverride } from "./nexi-currency";
+import {
+  isVerifiableNexiPaymentAttempt,
+  type VerifiableNexiPaymentAttempt,
+} from "./verifiable-nexi-payment-attempt";
 
 type LatePaymentVerificationResult =
   | "not_applicable"
@@ -34,6 +44,22 @@ const stalledRecoveryEnqueueAfter = Temporal.Duration.from({ minutes: 1 });
 
 const isTerminalPaymentState = (state: string) =>
   state === "failed" || state === "cancelled" || state === "expired";
+
+const isStalledPendingRecovery = (
+  recovery: Pick<LatePaymentRecovery, "state" | "createdAt">
+) =>
+  recovery.state === "pending" &&
+  Temporal.Instant.compare(
+    recovery.createdAt,
+    Temporal.Now.instant().subtract(stalledRecoveryEnqueueAfter)
+  ) < 0;
+
+/** A terminal Nexi attempt Nexi can verify with its stored security token. */
+const isVerifiableTerminalAttempt = (
+  attempt: PaymentAttempt | null
+): attempt is VerifiableNexiPaymentAttempt =>
+  isVerifiableNexiPaymentAttempt(attempt) &&
+  isTerminalPaymentState(attempt.state);
 
 export interface ILatePaymentVerificationService {
   /**
@@ -62,6 +88,79 @@ export class LatePaymentVerificationService extends Context.Service<
       const recoveryQueue = yield* LatePaymentRecoveryQueueService;
       const nexi = yield* NexiService;
 
+      const resumeExistingRecovery = Effect.fnUntraced(function* (
+        existing: Pick<LatePaymentRecovery, "state" | "createdAt">,
+        paymentAttemptId: PaymentAttemptId
+      ) {
+        if (isStalledPendingRecovery(existing)) {
+          yield* recoveryQueue.enqueue({ paymentAttemptId });
+        }
+        return "recovery_started" as const;
+      });
+
+      /** Nexi's verification of the attempt, or undefined when it failed. */
+      const verifyAttemptOutcome = Effect.fnUntraced(function* (
+        attempt: VerifiableNexiPaymentAttempt,
+        correlationId: WorkspaceReservation["correlationId"],
+        verificationDeadline: Duration.Input | undefined
+      ) {
+        const currency = yield* Schema.decodeUnknownEffect(NexiCurrencySchema)(
+          attempt.amount.currency
+        );
+
+        return yield* nexi
+          .verifyPaymentOutcome({
+            orderId: attempt.providerOrderId,
+            correlationId,
+            amount: String(attempt.amount.value),
+            currency: getNexiCurrencyOverride() ?? currency,
+            securityToken: attempt.securityToken,
+            deadline: verificationDeadline,
+          })
+          .pipe(
+            Effect.tapError((cause) =>
+              Effect.logWarning(
+                "Late-payment verification provider lookup failed",
+                { cause }
+              )
+            ),
+            Effect.orElseSucceed(() => undefined)
+          );
+      });
+
+      const startRecoveryFromVerification = Effect.fnUntraced(function* (
+        paymentAttemptId: PaymentAttemptId,
+        workspaceReservationId: WorkspaceReservationId,
+        verification: PaymentVerificationResult | undefined
+      ) {
+        if (!verification) return "provider_verification_failed" as const;
+        if (verification.mismatches.length > 0) {
+          yield* Effect.logWarning(
+            "Late-payment verification provider facts mismatch",
+            { mismatches: verification.mismatches }
+          );
+          return "verification_mismatch" as const;
+        }
+        if (verification.status !== "success") {
+          return "not_settled" as const;
+        }
+
+        yield* Effect.logWarning(
+          "Nexi payment settled after the local payment attempt became terminal"
+        );
+        const { providerOperationId, providerStatus } =
+          getNexiPaymentMetadata(verification);
+        yield* recoveries.start({
+          paymentAttemptId,
+          workspaceReservationId,
+          providerOperationId,
+          providerStatus,
+          verifiedPaidAt: Temporal.Now.instant(),
+        });
+        yield* recoveryQueue.enqueue({ paymentAttemptId });
+        return "recovery_started" as const;
+      });
+
       const startRecoveryIfSettled = Effect.fn(
         "latePaymentVerification.startRecoveryIfSettled"
       )(
@@ -82,75 +181,24 @@ export class LatePaymentVerificationService extends Context.Service<
           const existing =
             yield* recoveries.findByPaymentAttemptId(paymentAttemptId);
           if (existing) {
-            if (
-              existing.state === "pending" &&
-              Temporal.Instant.compare(
-                existing.createdAt,
-                Temporal.Now.instant().subtract(stalledRecoveryEnqueueAfter)
-              ) < 0
-            ) {
-              yield* recoveryQueue.enqueue({ paymentAttemptId });
-            }
-            return "recovery_started" as const;
+            return yield* resumeExistingRecovery(existing, paymentAttemptId);
           }
 
           const attempt = yield* paymentAttempts.findById(paymentAttemptId);
-          if (
-            !attempt ||
-            !isNexiPaymentAttempt(attempt) ||
-            !attempt.securityToken ||
-            !isTerminalPaymentState(attempt.state)
-          ) {
+          if (!isVerifiableTerminalAttempt(attempt)) {
             return "not_verifiable" as const;
           }
-          const currency = yield* Schema.decodeUnknownEffect(
-            NexiCurrencySchema
-          )(attempt.amount.currency);
 
-          const verification = yield* nexi
-            .verifyPaymentOutcome({
-              orderId: attempt.providerOrderId,
-              correlationId: reservation.correlationId,
-              amount: String(attempt.amount.value),
-              currency: getNexiCurrencyOverride() ?? currency,
-              securityToken: attempt.securityToken,
-              deadline: input.verificationDeadline,
-            })
-            .pipe(
-              Effect.tapError((cause) =>
-                Effect.logWarning(
-                  "Late-payment verification provider lookup failed",
-                  { cause }
-                )
-              ),
-              Effect.orElseSucceed(() => undefined)
-            );
-          if (!verification) return "provider_verification_failed" as const;
-          if (verification.mismatches.length > 0) {
-            yield* Effect.logWarning(
-              "Late-payment verification provider facts mismatch",
-              { mismatches: verification.mismatches }
-            );
-            return "verification_mismatch" as const;
-          }
-          if (verification.status !== "success") {
-            return "not_settled" as const;
-          }
-
-          yield* Effect.logWarning(
-            "Nexi payment settled after the local payment attempt became terminal"
+          const verification = yield* verifyAttemptOutcome(
+            attempt,
+            reservation.correlationId,
+            input.verificationDeadline
           );
-          const { providerOperationId, providerStatus } =
-            getNexiPaymentMetadata(verification);
-          yield* recoveries.start({
+          return yield* startRecoveryFromVerification(
             paymentAttemptId,
-            workspaceReservationId: reservation.id,
-            providerOperationId,
-            providerStatus,
-            verifiedPaidAt: Temporal.Now.instant(),
-          });
-          yield* recoveryQueue.enqueue({ paymentAttemptId });
-          return "recovery_started" as const;
+            reservation.id,
+            verification
+          );
         },
         (effect, input) =>
           effect.pipe(

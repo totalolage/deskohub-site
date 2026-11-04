@@ -4,6 +4,7 @@ import { hashKey, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import type {
   PreloadedWorkspaceAvailability,
+  WorkspaceAvailability,
   WorkspaceAvailabilityQuery,
   WorkspaceAvailabilityState,
 } from "@/features/reservation/workspace-availability";
@@ -48,6 +49,39 @@ const findPreloadedAvailability = (
   );
 };
 
+type AvailabilityQueryResult = {
+  readonly data?: WorkspaceAvailability;
+  readonly isError: boolean;
+  readonly isFetching: boolean;
+  readonly isPending: boolean;
+};
+
+/**
+ * Whether the query still waits for a usable response: loading, or retrying
+ * after a failure (an errored query keeps its error status while it
+ * refetches). A background refetch of successful data is not waiting.
+ */
+const isAwaitingAvailability = (result: AvailabilityQueryResult) =>
+  result.isPending || (result.isError && result.isFetching);
+
+/** The query's availability as the form reads it while the query debounces. */
+const getAvailabilityState = (
+  result: AvailabilityQueryResult,
+  { isDebouncing, query }: ReturnType<typeof useDebouncedAvailabilityQuery>
+): WorkspaceAvailabilityState => {
+  // Debouncing also waits for a usable response; an empty query never does.
+  const isPending =
+    isDebouncing || Boolean(query && isAwaitingAvailability(result));
+
+  return {
+    // Each query key has its own cache entry and no placeholder data, so
+    // data is always the current query's.
+    availability: result.isError || isDebouncing ? null : (result.data ?? null),
+    isError: result.isError && !isPending,
+    isPending,
+  };
+};
+
 export function useReservationAvailability(
   query: WorkspaceAvailabilityQuery | undefined,
   options: UseReservationAvailabilityOptions = {}
@@ -56,35 +90,17 @@ export function useReservationAvailability(
     query,
     options.debounceMs ?? 0
   );
-  const availabilityQuery = debounced.query;
-  const preloaded = availabilityQuery
-    ? findPreloadedAvailability(options.initialAvailability, availabilityQuery)
-    : undefined;
+  const preloaded =
+    debounced.query &&
+    findPreloadedAvailability(options.initialAvailability, debounced.query);
   const result = useQuery({
     ...workspaceAvailabilityQueryOptions({
-      query: availabilityQuery,
+      query: debounced.query,
       replacementToken: options.replacementToken,
     }),
     initialData: preloaded?.availability,
     initialDataUpdatedAt: preloaded?.loadedAt,
   });
-  // The current query still waits for a usable response while it debounces,
-  // loads, or retries after a failure (an errored query keeps its error
-  // status while it refetches). A background refetch of successful data is
-  // not pending, and an empty query never is.
-  const isPending =
-    debounced.isDebouncing ||
-    Boolean(
-      availabilityQuery &&
-        (result.isPending || (result.isError && result.isFetching))
-    );
 
-  return {
-    // Each query key has its own cache entry and no placeholder data, so
-    // data is always the current query's.
-    availability:
-      result.isError || debounced.isDebouncing ? null : (result.data ?? null),
-    isError: result.isError && !isPending,
-    isPending,
-  };
+  return getAvailabilityState(result, debounced);
 }

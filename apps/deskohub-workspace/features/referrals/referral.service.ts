@@ -498,6 +498,79 @@ export class ReferralService extends Context.Service<
           )
       );
 
+      const parseIssuedReferralCode = (code: string) => {
+        const referralCode = parseReferralCode(code);
+        return referralCode
+          ? Effect.succeed(referralCode)
+          : Effect.fail(fail("unavailable"));
+      };
+
+      /**
+       * Adopts the code a concurrent issue stored for the referrer after this
+       * attempt's own promotion code lost, discarding that promotion code.
+       */
+      const adoptConcurrentlyIssuedCode = Effect.fnUntraced(function* (
+        referrerDotyposCustomerId: DotyposCustomerId,
+        abandonedPromotionCodeId: PromotionCodeId
+      ) {
+        const [raced] = yield* db
+          .select({
+            code: promotionCodes.code,
+            promotionCodeId: promotionCodes.id,
+          })
+          .from(referralCodes)
+          .innerJoin(
+            promotionCodes,
+            eq(promotionCodes.id, referralCodes.promotionCodeId)
+          )
+          .where(
+            eq(
+              referralCodes.referrerDotyposCustomerId,
+              referrerDotyposCustomerId
+            )
+          )
+          .limit(1);
+        if (!raced) return undefined;
+        yield* db
+          .delete(promotionCodes)
+          .where(eq(promotionCodes.id, abandonedPromotionCodeId));
+        return yield* parseIssuedReferralCode(raced.code);
+      });
+
+      /** One issue attempt; undefined when the generated code can't be used. */
+      const issueGeneratedReferralCode = Effect.fnUntraced(function* (
+        referrerDotyposCustomerId: DotyposCustomerId
+      ) {
+        const candidate = generatePromotionCode();
+        const referralCode = parseReferralCode(candidate);
+        if (!referralCode) return undefined;
+        const [promotion] = yield* db
+          .insert(promotionCodes)
+          .values({
+            kind: "referral",
+            code: canonicalPromotionCodeSchema.make(candidate),
+            enabled: true,
+          })
+          .onConflictDoNothing()
+          .returning({ id: promotionCodes.id });
+        if (!promotion) return undefined;
+
+        const [created] = yield* db
+          .insert(referralCodes)
+          .values({
+            promotionCodeId: promotion.id,
+            referrerDotyposCustomerId,
+          })
+          .onConflictDoNothing()
+          .returning({ promotionCodeId: referralCodes.promotionCodeId });
+        if (created) return referralCode;
+
+        return yield* adoptConcurrentlyIssuedCode(
+          referrerDotyposCustomerId,
+          promotion.id
+        );
+      });
+
       const ensureReferralCode = Effect.fn(
         "ReferralService.ensureReferralCode"
       )((referrerDotyposCustomerId: DotyposCustomerId) =>
@@ -517,62 +590,13 @@ export class ReferralService extends Context.Service<
                 )
               )
               .limit(1);
-            if (existing) {
-              const code = parseReferralCode(existing.code);
-              if (!code) return yield* fail("unavailable");
-              return code;
-            }
+            if (existing) return yield* parseIssuedReferralCode(existing.code);
 
             for (let attempt = 0; attempt < 8; attempt += 1) {
-              const candidate = generatePromotionCode();
-              const referralCode = parseReferralCode(candidate);
-              if (!referralCode) continue;
-              const [promotion] = yield* db
-                .insert(promotionCodes)
-                .values({
-                  kind: "referral",
-                  code: canonicalPromotionCodeSchema.make(candidate),
-                  enabled: true,
-                })
-                .onConflictDoNothing()
-                .returning({ id: promotionCodes.id });
-              if (!promotion) continue;
-
-              const [created] = yield* db
-                .insert(referralCodes)
-                .values({
-                  promotionCodeId: promotion.id,
-                  referrerDotyposCustomerId,
-                })
-                .onConflictDoNothing()
-                .returning({ promotionCodeId: referralCodes.promotionCodeId });
-              if (created) return referralCode;
-
-              const [raced] = yield* db
-                .select({
-                  code: promotionCodes.code,
-                  promotionCodeId: promotionCodes.id,
-                })
-                .from(referralCodes)
-                .innerJoin(
-                  promotionCodes,
-                  eq(promotionCodes.id, referralCodes.promotionCodeId)
-                )
-                .where(
-                  eq(
-                    referralCodes.referrerDotyposCustomerId,
-                    referrerDotyposCustomerId
-                  )
-                )
-                .limit(1);
-              if (raced) {
-                yield* db
-                  .delete(promotionCodes)
-                  .where(eq(promotionCodes.id, promotion.id));
-                const code = parseReferralCode(raced.code);
-                if (!code) return yield* fail("unavailable");
-                return code;
-              }
+              const issued = yield* issueGeneratedReferralCode(
+                referrerDotyposCustomerId
+              );
+              if (issued) return issued;
             }
 
             return yield* fail("unavailable");
@@ -627,6 +651,186 @@ export class ReferralService extends Context.Service<
           )
       );
 
+      /** The invitee's account is still active and linked to the same customer. */
+      const requireCurrentInviteeLink = Effect.fnUntraced(function* (
+        identity: LinkedCustomerAccount
+      ) {
+        const [inviteeActivity] = yield* db
+          .select({
+            deletionRequestedAt: authUser.deletionRequestedAt,
+          })
+          .from(authUser)
+          .where(eq(authUser.id, identity.accountId))
+          .limit(1)
+          .pipe(Effect.mapError(() => fail("account_unavailable")));
+        if (!inviteeActivity || inviteeActivity.deletionRequestedAt !== null) {
+          return yield* fail("account_unavailable");
+        }
+        const [currentLink] = yield* db
+          .select({
+            dotyposCustomerId: customerAccounts.dotyposCustomerId,
+          })
+          .from(customerAccounts)
+          .where(eq(customerAccounts.id, identity.accountId))
+          .limit(1)
+          .pipe(Effect.mapError(() => fail("account_unavailable")));
+        if (currentLink?.dotyposCustomerId !== identity.dotyposCustomerId) {
+          return yield* fail("account_unavailable");
+        }
+      });
+
+      /** The code, read again under the locks, still belongs to the same active referrer. */
+      const requireCurrentReferral = Effect.fnUntraced(function* (
+        code: ReferralCode,
+        referrerDotyposCustomerId: DotyposCustomerId
+      ) {
+        const referral = yield* findReferralCode(code).pipe(
+          Effect.mapError(() => fail("unavailable"))
+        );
+        if (
+          !referral ||
+          referral.referrerDotyposCustomerId !== referrerDotyposCustomerId ||
+          !isReferralCodeActive(referral, Temporal.Now.instant())
+        ) {
+          return yield* fail("unavailable");
+        }
+        return referral;
+      });
+
+      /**
+       * The referrer still has an account without pending deletion, and it is
+       * the one whose lock this acceptance took.
+       */
+      const requireCurrentReferrerAccount = Effect.fnUntraced(function* (
+        referrerDotyposCustomerId: DotyposCustomerId,
+        lockedReferrerAccountId: CustomerAccountId | undefined
+      ) {
+        const [owner] = yield* db
+          .select({ accountId: customerAccounts.id })
+          .from(customerAccounts)
+          .innerJoin(authUser, eq(authUser.id, customerAccounts.id))
+          .where(
+            and(
+              eq(customerAccounts.dotyposCustomerId, referrerDotyposCustomerId),
+              isNull(authUser.deletionRequestedAt)
+            )
+          )
+          .limit(1)
+          .pipe(Effect.mapError(() => fail("unavailable")));
+        if (!owner || !lockedReferrerAccountId) {
+          return yield* fail("unavailable");
+        }
+        const currentReferrerAccountId = yield* decodeLinkedAccountId(
+          owner.accountId
+        );
+        if (currentReferrerAccountId !== lockedReferrerAccountId) {
+          return yield* fail("unavailable");
+        }
+      });
+
+      /**
+       * An invitee already attributed to this referrer has accepted; one
+       * attributed to another referrer can't change.
+       */
+      const findExistingAcceptance = Effect.fnUntraced(function* (
+        identity: LinkedCustomerAccount,
+        referral: InvitationReferral
+      ) {
+        const [existingAttribution] = yield* db
+          .select({
+            referrerDotyposCustomerId:
+              referralAttributions.referrerDotyposCustomerId,
+          })
+          .from(referralAttributions)
+          .where(
+            eq(
+              referralAttributions.invitedDotyposCustomerId,
+              identity.dotyposCustomerId
+            )
+          )
+          .limit(1)
+          .pipe(Effect.mapError(() => fail("unavailable")));
+        if (!existingAttribution) return undefined;
+        return existingAttribution.referrerDotyposCustomerId ===
+          referral.referrerDotyposCustomerId
+          ? ({ kind: "already_accepted" } as const)
+          : yield* fail("already_attributed");
+      });
+
+      /** The invitee has no paid booking and no payment in progress. */
+      const requireOpenInvitation = Effect.fnUntraced(function* (
+        identity: LinkedCustomerAccount
+      ) {
+        const history = yield* standing
+          .loadCustomerHistoryInTurn(identity.dotyposCustomerId)
+          .pipe(Effect.mapError(() => fail("unavailable")));
+        if (history.hasPreviousPaidBooking) {
+          return yield* fail("ineligible");
+        }
+        const [pendingAttempt] = yield* db
+          .select({ id: workspaceReservations.id })
+          .from(workspaceReservations)
+          .where(
+            and(
+              eq(
+                workspaceReservations.dotyposCustomerId,
+                identity.dotyposCustomerId
+              ),
+              eq(workspaceReservations.paymentState, "pending")
+            )
+          )
+          .limit(1)
+          .pipe(Effect.mapError(() => fail("unavailable")));
+        // The invitation stays open until that payment settles; a reserved
+        // invitation claim always comes with such a pending reservation.
+        if (pendingAttempt) {
+          return yield* fail("pending_payment");
+        }
+      });
+
+      /** Records the attribution unless the referral graph rejects it. */
+      const recordAttribution = Effect.fnUntraced(function* (
+        identity: LinkedCustomerAccount,
+        referral: InvitationReferral
+      ) {
+        const existingRows = yield* db
+          .select({
+            invitedDotyposCustomerId:
+              referralAttributions.invitedDotyposCustomerId,
+            referrerDotyposCustomerId:
+              referralAttributions.referrerDotyposCustomerId,
+          })
+          .from(referralAttributions)
+          .pipe(Effect.mapError(() => fail("unavailable")));
+        const existing = new Map(
+          existingRows.map((row) => [
+            row.invitedDotyposCustomerId,
+            row.referrerDotyposCustomerId,
+          ])
+        );
+        const decision = evaluateReferralAttribution({
+          invitedCustomerId: identity.dotyposCustomerId,
+          referrerCustomerId: referral.referrerDotyposCustomerId,
+          existingReferrerByInvitee: existing,
+        });
+        if (decision.kind === "already_attributed") {
+          return yield* fail("already_attributed");
+        }
+        if (decision.kind === "cycle") {
+          return yield* fail("cycle");
+        }
+
+        yield* db
+          .insert(referralAttributions)
+          .values({
+            invitedDotyposCustomerId: identity.dotyposCustomerId,
+            referrerDotyposCustomerId: referral.referrerDotyposCustomerId,
+            promotionCodeId: referral.promotionCodeId,
+          })
+          .pipe(Effect.mapError(() => fail("unavailable")));
+        return { kind: "accepted" } as const;
+      });
+
       const acceptReferral = Effect.fn("ReferralService.acceptReferral")(
         (input: {
           readonly code: unknown;
@@ -671,176 +875,29 @@ export class ReferralService extends Context.Service<
                           identity.dotyposCustomerId
                         );
 
-                        const [inviteeActivity] = yield* db
-                          .select({
-                            deletionRequestedAt: authUser.deletionRequestedAt,
-                          })
-                          .from(authUser)
-                          .where(eq(authUser.id, identity.accountId))
-                          .limit(1)
-                          .pipe(
-                            Effect.mapError(() => fail("account_unavailable"))
-                          );
-                        if (
-                          !inviteeActivity ||
-                          inviteeActivity.deletionRequestedAt !== null
-                        ) {
-                          return yield* fail("account_unavailable");
-                        }
-                        const [currentLink] = yield* db
-                          .select({
-                            dotyposCustomerId:
-                              customerAccounts.dotyposCustomerId,
-                          })
-                          .from(customerAccounts)
-                          .where(eq(customerAccounts.id, identity.accountId))
-                          .limit(1)
-                          .pipe(
-                            Effect.mapError(() => fail("account_unavailable"))
-                          );
-                        if (
-                          currentLink?.dotyposCustomerId !==
-                          identity.dotyposCustomerId
-                        ) {
-                          return yield* fail("account_unavailable");
-                        }
-
-                        const referral = yield* findReferralCode(code).pipe(
-                          Effect.mapError(() => fail("unavailable"))
+                        yield* requireCurrentInviteeLink(identity);
+                        const referral = yield* requireCurrentReferral(
+                          code,
+                          referralTarget.referrerDotyposCustomerId
                         );
-                        if (
-                          !referral ||
-                          referral.referrerDotyposCustomerId !==
-                            referralTarget.referrerDotyposCustomerId ||
-                          !isReferralCodeActive(
-                            referral,
-                            Temporal.Now.instant()
-                          )
-                        ) {
-                          return yield* fail("unavailable");
-                        }
-
                         if (
                           identity.dotyposCustomerId ===
                           referral.referrerDotyposCustomerId
                         ) {
                           return yield* fail("self_referral");
                         }
-
-                        const [owner] = yield* db
-                          .select({ accountId: customerAccounts.id })
-                          .from(customerAccounts)
-                          .innerJoin(
-                            authUser,
-                            eq(authUser.id, customerAccounts.id)
-                          )
-                          .where(
-                            and(
-                              eq(
-                                customerAccounts.dotyposCustomerId,
-                                referral.referrerDotyposCustomerId
-                              ),
-                              isNull(authUser.deletionRequestedAt)
-                            )
-                          )
-                          .limit(1)
-                          .pipe(Effect.mapError(() => fail("unavailable")));
-                        if (!owner || !referrerAccountId) {
-                          return yield* fail("unavailable");
-                        }
-                        const currentReferrerAccountId =
-                          yield* decodeLinkedAccountId(owner.accountId);
-                        if (currentReferrerAccountId !== referrerAccountId) {
-                          return yield* fail("unavailable");
-                        }
-
-                        const [existingAttribution] = yield* db
-                          .select({
-                            referrerDotyposCustomerId:
-                              referralAttributions.referrerDotyposCustomerId,
-                          })
-                          .from(referralAttributions)
-                          .where(
-                            eq(
-                              referralAttributions.invitedDotyposCustomerId,
-                              identity.dotyposCustomerId
-                            )
-                          )
-                          .limit(1)
-                          .pipe(Effect.mapError(() => fail("unavailable")));
-                        if (existingAttribution) {
-                          return existingAttribution.referrerDotyposCustomerId ===
-                            referral.referrerDotyposCustomerId
-                            ? ({ kind: "already_accepted" } as const)
-                            : yield* fail("already_attributed");
-                        }
-
-                        const history = yield* standing
-                          .loadCustomerHistoryInTurn(identity.dotyposCustomerId)
-                          .pipe(Effect.mapError(() => fail("unavailable")));
-                        if (history.hasPreviousPaidBooking) {
-                          return yield* fail("ineligible");
-                        }
-                        const [pendingAttempt] = yield* db
-                          .select({ id: workspaceReservations.id })
-                          .from(workspaceReservations)
-                          .where(
-                            and(
-                              eq(
-                                workspaceReservations.dotyposCustomerId,
-                                identity.dotyposCustomerId
-                              ),
-                              eq(workspaceReservations.paymentState, "pending")
-                            )
-                          )
-                          .limit(1)
-                          .pipe(Effect.mapError(() => fail("unavailable")));
-                        // The invitation stays open until that payment
-                        // settles; a reserved invitation claim always comes
-                        // with such a pending reservation.
-                        if (pendingAttempt) {
-                          return yield* fail("pending_payment");
-                        }
-
-                        const existingRows = yield* db
-                          .select({
-                            invitedDotyposCustomerId:
-                              referralAttributions.invitedDotyposCustomerId,
-                            referrerDotyposCustomerId:
-                              referralAttributions.referrerDotyposCustomerId,
-                          })
-                          .from(referralAttributions)
-                          .pipe(Effect.mapError(() => fail("unavailable")));
-                        const existing = new Map(
-                          existingRows.map((row) => [
-                            row.invitedDotyposCustomerId,
-                            row.referrerDotyposCustomerId,
-                          ])
+                        yield* requireCurrentReferrerAccount(
+                          referral.referrerDotyposCustomerId,
+                          referrerAccountId
                         );
-                        const decision = evaluateReferralAttribution({
-                          invitedCustomerId: identity.dotyposCustomerId,
-                          referrerCustomerId:
-                            referral.referrerDotyposCustomerId,
-                          existingReferrerByInvitee: existing,
-                        });
-                        if (decision.kind === "already_attributed") {
-                          return yield* fail("already_attributed");
-                        }
-                        if (decision.kind === "cycle") {
-                          return yield* fail("cycle");
-                        }
 
-                        yield* db
-                          .insert(referralAttributions)
-                          .values({
-                            invitedDotyposCustomerId:
-                              identity.dotyposCustomerId,
-                            referrerDotyposCustomerId:
-                              referral.referrerDotyposCustomerId,
-                            promotionCodeId: referral.promotionCodeId,
-                          })
-                          .pipe(Effect.mapError(() => fail("unavailable")));
-                        return { kind: "accepted" } as const;
+                        const accepted = yield* findExistingAcceptance(
+                          identity,
+                          referral
+                        );
+                        if (accepted) return accepted;
+                        yield* requireOpenInvitation(identity);
+                        return yield* recordAttribution(identity, referral);
                       })
                     )
                   );

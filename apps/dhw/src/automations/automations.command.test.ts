@@ -11,6 +11,7 @@ import {
   AutomationRunDetail,
   AutomationRunStats,
   AutomationRunSummary,
+  AutomationVersionDetail,
   AutomationVersionSummary,
   CalendarPreview,
   CliAccessToken,
@@ -145,6 +146,24 @@ const version = Schema.decodeUnknownSync(AutomationVersionSummary)({
   active: true,
 });
 
+const versionDetailFor = (fields: object) =>
+  Schema.decodeUnknownSync(AutomationVersionDetail)({
+    ...version,
+    flow: flowFor(hourly),
+    purpose: "operational",
+    templateKey: "workspace",
+    content: {
+      "en-US": { subject: "Welcome", preheader: "", bodyMarkdown: "Hello" },
+    },
+    audienceFilter: {
+      attribute: "locale",
+      _tag: "Condition",
+      operator: "anyOf",
+      value: ["cs-CZ"],
+    },
+    ...fields,
+  });
+
 const run = Schema.decodeUnknownSync(AutomationRunDetail)({
   runId: "run-1",
   campaignId,
@@ -204,6 +223,7 @@ type AutomationApi = Pick<
   | "activateAutomation"
   | "pauseAutomation"
   | "listAutomationVersions"
+  | "getAutomationVersion"
   | "getAutomationRun"
   | "listAutomationRuns"
   | "getAutomationRunStats"
@@ -243,6 +263,9 @@ const makeAutomationLayer = (overrides: Partial<AutomationApi> = {}) => {
       status: "paused" as const,
     })),
     listAutomationVersions: record("listAutomationVersions", () => [version]),
+    getAutomationVersion: record("getAutomationVersion", () =>
+      versionDetailFor({})
+    ),
     getAutomationRun: record("getAutomationRun", () => run),
     listAutomationRuns: record("listAutomationRuns", () => ({
       runs: [run],
@@ -869,6 +892,139 @@ describe("dhw automations lifecycle and runs", () => {
   });
 });
 
+describe("dhw automations show activation", () => {
+  /** The value of the detail's tab-separated line labelled `label`. */
+  const detailValue = (output: ReadonlyArray<string>, label: string) =>
+    output
+      .join("\n")
+      .split("\n")
+      .find((line) => line.startsWith(`${label}\t`))
+      ?.slice(label.length + 1);
+
+  test("describes each activation state, naming the dry run it rests on", async () => {
+    const activationOf = async (activation: object) => {
+      const fake = makeAutomationLayer({
+        getAutomation: () => Effect.succeed(automationFor(hourly, activation)),
+      });
+      await runSuccess(["automations", "show", campaignId], fake.layer);
+      return detailValue(fake.output, "Activation") ?? "";
+    };
+
+    const required = await activationOf({ _tag: "PreviewRequired" });
+    const running = await activationOf({
+      _tag: "PreviewRunning",
+      previewId: "preview-3",
+      unitsDone: 4,
+      unitsTotal: 9,
+    });
+    const ready = await activationOf({
+      _tag: "Ready",
+      previewId: "preview-5",
+      draftHash: "hash-1",
+    });
+    const published = await activationOf({ _tag: "Published" });
+
+    expect(running).toContain("preview-3");
+    expect(running).toContain("4/9");
+    expect(ready).toContain("preview-5");
+    expect(ready).not.toContain("/");
+    for (const description of [required, published]) {
+      expect(description).not.toMatch(/preview-\d/);
+    }
+    expect(new Set([required, running, ready, published]).size).toBe(4);
+  });
+});
+
+describe("dhw automations versions", () => {
+  test("lists each version with its activator, marking only the active one", async () => {
+    const activatorEmail = testEmailAddress("activator");
+    const fake = makeAutomationLayer({
+      listAutomationVersions: () =>
+        Effect.succeed(
+          [
+            { ...version, versionNumber: 2, activatedByEmail: activatorEmail },
+            { ...version, active: false },
+          ].map((summary) =>
+            Schema.decodeUnknownSync(AutomationVersionSummary)(summary)
+          )
+        ),
+    });
+
+    await runSuccess(["automations", "versions", campaignId], fake.layer);
+
+    const [, ...rows] = fake.output.join("\n").split("\n");
+    const [active, inactive] = rows.map((row) => row.split("\t"));
+    expect(rows).toHaveLength(2);
+    expect(active).toEqual([
+      "2",
+      "schedule",
+      timestamp,
+      activatorEmail,
+      expect.stringMatching(/\S/),
+    ]);
+    expect(inactive?.slice(0, 3)).toEqual(["1", "schedule", timestamp]);
+    // A deleted activator still gets a name in its column.
+    expect(inactive?.[3]).toMatch(/\S/);
+    expect(inactive?.[3]).not.toBe("null");
+    expect(inactive?.[4]).toBe("");
+  });
+
+  test("shows one version's details and its frozen flow", async () => {
+    const show = async (detail: ReturnType<typeof versionDetailFor>) => {
+      const fake = makeAutomationLayer({
+        getAutomationVersion: (_accessToken, query) => {
+          fake.calls.push(["getAutomationVersion", query]);
+          return Effect.succeed(detail);
+        },
+      });
+      await runSuccess(
+        ["automations", "versions", campaignId, "1"],
+        fake.layer
+      );
+      expect(fake.calls).toEqual([
+        ["getAutomationVersion", { campaignId, versionNumber: 1 }],
+      ]);
+      const [heading = "", ...lines] = fake.output.join("\n").split("\n");
+      const blank = lines.indexOf("");
+      return {
+        heading: heading.split("\t"),
+        fields: lines.slice(0, blank).map((line) => line.split("\t")),
+        flow: JSON.parse(lines.slice(blank + 1).join("\n")),
+      };
+    };
+    const activatorEmail = testEmailAddress("activator");
+
+    const active = await show(
+      versionDetailFor({
+        activatedByEmail: activatorEmail,
+        audienceId: "audience-1",
+      })
+    );
+    const inactive = await show(versionDetailFor({ active: false }));
+
+    expect(active.heading.slice(1)).toEqual([
+      campaignId,
+      expect.stringMatching(/\S/),
+    ]);
+    expect(active.heading[0]).toContain("1");
+    expect(active.fields.map(([, value]) => value)).toEqual([
+      timestamp,
+      activatorEmail,
+      "operational",
+      "workspace",
+      "audience-1",
+      "hash-1",
+    ]);
+    expect(active.flow).toEqual(flowFor(hourly));
+    expect(inactive.heading[2]).not.toBe(active.heading[2]);
+    // A deleted activator and a missing audience still fill their columns.
+    for (const index of [1, 4]) {
+      expect(inactive.fields[index]?.[1]).toMatch(/\S/);
+      expect(inactive.fields[index]?.[1]).not.toBe("null");
+    }
+  });
+});
+
 describe("dhw automations engine-health", () => {
   test("prints the reconcile lag and a warning code it doesn't know", async () => {
     const fake = makeAutomationLayer({
@@ -891,6 +1047,77 @@ describe("dhw automations engine-health", () => {
     expect(lines).toContain(
       "Warnings\treconcile-stalled, synthetic-later-warning"
     );
+  });
+});
+
+describe("dhw automations engine-health automations", () => {
+  test("prints each automation's lag, entering fire and last fire", async () => {
+    const lastFire = {
+      fireAt: "2026-10-19T09:00:00.000Z",
+      durationSeconds: 42,
+      intervalSeconds: 3600,
+    };
+    const fake = makeAutomationLayer({
+      getAutomationEngineHealth: () =>
+        Effect.succeed(
+          Schema.decodeUnknownSync(AutomationEngineHealth)({
+            lastPlannedAt: null,
+            sweepLagSeconds: null,
+            reconcileLagSeconds: null,
+            deadlineMisses: 0,
+            automations: [
+              {
+                campaignId: "campaign-busy",
+                scheduleLagSeconds: 75,
+                enteringFire: {
+                  fireAt: timestamp,
+                  chunksDone: 3,
+                  chunksTotal: 8,
+                },
+                lastFire: { ...lastFire, fallingBehind: true },
+              },
+              {
+                campaignId: "campaign-steady",
+                scheduleLagSeconds: null,
+                enteringFire: null,
+                lastFire: { ...lastFire, fallingBehind: false },
+              },
+              {
+                campaignId: "campaign-new",
+                scheduleLagSeconds: null,
+                enteringFire: null,
+                lastFire: null,
+              },
+            ],
+          })
+        ),
+    });
+
+    await runSuccess(["automations", "engine-health"], fake.layer);
+
+    const row = (id: string) =>
+      fake.output
+        .join("\n")
+        .split("\n")
+        .find((line) => line.startsWith(`${id}\t`))
+        ?.split("\t") ?? [];
+    const [, busyLag, busyEntering, busyLastFire] = row("campaign-busy");
+    const [, steadyLag, steadyEntering, steadyLastFire] =
+      row("campaign-steady");
+    const [, newLag, newEntering, newLastFire] = row("campaign-new");
+
+    expect(busyLag).toContain("75s");
+    expect(busyEntering).toContain(timestamp);
+    expect(busyEntering).toContain("3/8");
+    expect(steadyLastFire).toContain(lastFire.fireAt);
+    expect(steadyLastFire).toContain("42s");
+    // Falling behind adds a note to the same last-fire summary.
+    expect(busyLastFire?.startsWith(steadyLastFire ?? "")).toBe(true);
+    expect(busyLastFire).not.toBe(steadyLastFire);
+    expect(steadyLag).toMatch(/\S/);
+    expect(steadyLag).not.toMatch(/\d/);
+    expect(newLag).toBe(steadyLag);
+    expect([steadyEntering, newEntering, newLastFire]).toEqual(["", "", ""]);
   });
 });
 

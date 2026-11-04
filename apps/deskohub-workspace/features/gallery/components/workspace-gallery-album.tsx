@@ -7,6 +7,10 @@ import Lightbox from "yet-another-react-lightbox";
 import "yet-another-react-lightbox/styles.css";
 import { type Locale, m } from "@/features/i18n";
 import type { VenuePhoto } from "../types/venue-photo";
+import {
+  galleryAlbumColumns,
+  galleryAlbumSpacing,
+} from "./workspace-gallery-album-layout";
 
 type WorkspaceAlbumPhoto = Photo & VenuePhoto;
 
@@ -45,11 +49,7 @@ export function WorkspaceGalleryAlbum({
   return (
     <>
       <MasonryPhotoAlbum<WorkspaceAlbumPhoto>
-        columns={(containerWidth) => {
-          if (containerWidth < 520) return 1;
-          if (containerWidth < 900) return 2;
-          return 3;
-        }}
+        columns={galleryAlbumColumns}
         componentsProps={{
           button: () => ({
             className:
@@ -104,7 +104,7 @@ export function WorkspaceGalleryAlbum({
             },
           ],
         }}
-        spacing={(containerWidth) => (containerWidth < 640 ? 14 : 18)}
+        spacing={galleryAlbumSpacing}
       />
 
       <Lightbox

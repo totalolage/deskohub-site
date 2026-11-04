@@ -1,5 +1,6 @@
 import { Data, Option, Schema, SchemaGetter } from "effect";
 import {
+  type EmailCustomerField,
   type EmailCustomerSelectionInvalid,
   emailCustomerFieldAtPath,
   emailCustomerFieldCatalogue,
@@ -173,44 +174,44 @@ export type EmailComponentText = {
   readonly decorative: boolean;
 };
 
-const listTexts = (items: DraftTextList | undefined): EmailComponentText[] =>
-  (items ?? []).flatMap((item) => [
-    ...(item.textKey
-      ? [{ textKey: item.textKey, role: "rich" as const, decorative: false }]
-      : []),
-    ...listTexts(item.list?.items),
-  ]);
+const rich = (textKey: string | undefined): EmailComponentText[] =>
+  textKey ? [{ textKey, role: "rich", decorative: false }] : [];
 
 const plain = (textKey: string | undefined): EmailComponentText[] =>
   textKey ? [{ textKey, role: "plain", decorative: false }] : [];
 
+const listTexts = (items: DraftTextList | undefined): EmailComponentText[] =>
+  (items ?? []).flatMap((item) => [
+    ...rich(item.textKey),
+    ...listTexts(item.list?.items),
+  ]);
+
+const fieldLabels = (component: DraftComponent): EmailComponentText[] =>
+  (component.fields ?? []).flatMap((field) => plain(field.labelKey));
+
+const componentTexts: Record<
+  DraftComponent["_tag"],
+  (component: DraftComponent) => EmailComponentText[]
+> = {
+  Paragraph: (component) => rich(component.textKey),
+  Heading: (component) => rich(component.textKey),
+  TextList: (component) => listTexts(component.items),
+  Image: (component) =>
+    component.altKey
+      ? [{ textKey: component.altKey, role: "plain", decorative: true }]
+      : [],
+  Button: (component) => plain(component.labelKey),
+  Offer: (component) => plain(component.labelKey),
+  Record: fieldLabels,
+  List: fieldLabels,
+  Divider: () => [],
+  Spacer: () => [],
+};
+
 /** The translated texts of one component, in render order. */
 export const emailComponentTexts = (
   component: DraftComponent
-): readonly EmailComponentText[] => {
-  switch (component._tag) {
-    case "Paragraph":
-    case "Heading":
-      return component.textKey
-        ? [{ textKey: component.textKey, role: "rich", decorative: false }]
-        : [];
-    case "TextList":
-      return listTexts(component.items);
-    case "Image":
-      return component.altKey
-        ? [{ textKey: component.altKey, role: "plain", decorative: true }]
-        : [];
-    case "Button":
-    case "Offer":
-      return plain(component.labelKey);
-    case "Record":
-    case "List":
-      return (component.fields ?? []).flatMap((field) => plain(field.labelKey));
-    case "Divider":
-    case "Spacer":
-      return [];
-  }
-};
+): readonly EmailComponentText[] => componentTexts[component._tag](component);
 
 const translatedParts = (
   structure: readonly DraftComponent[],
@@ -303,28 +304,45 @@ const publicationCandidate = (draft: EmailDraft): EmailDraft => {
 };
 
 /**
- * The definitions publication keeps, in configured order: every referenced
- * one, and each complete unused one whose name no earlier kept definition
- * has. Unused definitions never block: unfinished or repeated ones drop.
+ * The definitions publication keeps, in configured order, with their
+ * positions: every referenced one, and each complete unused one whose name no
+ * earlier kept definition has. Unused definitions never block: unfinished or
+ * repeated ones drop.
  */
-const retainedDefinitions = (
+const keptDefinitions = (
   definitions: readonly DraftDefinition[],
   referenced: ReadonlySet<string>
-): DraftDefinition[] => {
+): readonly KeptDefinition[] => {
   const names = new Set<string>();
-  return definitions.filter((definition) => {
-    const name = definition.name;
-    const used = name !== undefined && referenced.has(name);
-    const keep =
-      used ||
-      (Option.isSome(publishableDefinition(definition)) &&
-        !names.has(name ?? ""));
-    if (keep) names.add(name ?? "");
-    return keep;
+  return definitions.flatMap((definition, index) => {
+    const name = definition.name ?? "";
+    const publishable = publishableDefinition(definition);
+    const repeated = names.has(name);
+    if (!referenced.has(name) && (Option.isNone(publishable) || repeated))
+      return [];
+    names.add(name);
+    return [{ index, name, definition, publishable, repeated }];
   });
 };
 
+type KeptDefinition = {
+  readonly index: number;
+  readonly name: string;
+  readonly definition: DraftDefinition;
+  readonly publishable: Option.Option<EmailValueDefinition>;
+  /** An earlier kept definition has the same name. */
+  readonly repeated: boolean;
+};
+
+const retainedDefinitions = (
+  definitions: readonly DraftDefinition[],
+  referenced: ReadonlySet<string>
+): DraftDefinition[] =>
+  keptDefinitions(definitions, referenced).map(({ definition }) => definition);
+
 const valueNamePattern = /^[a-z][a-z0-9_]{0,63}$/;
+
+const P = EmailDocumentProblem;
 
 const samePath = (left: readonly string[], right: readonly string[]): boolean =>
   left.length === right.length &&
@@ -341,15 +359,41 @@ const isBlank = (parts: readonly DraftInlinePart[]): boolean =>
 const hasFormatting = (part: DraftInlinePart): boolean =>
   Boolean(part.bold || part.italic || part.link !== undefined);
 
+type CustomerSource = Extract<
+  EmailValueDefinition["source"],
+  { readonly kind: "customer" }
+>;
+
+function selectedSourceField(
+  source: CustomerSource,
+  path: readonly string[]
+): boolean {
+  return Boolean(
+    source.fields?.some((selectedField) => samePath(path, selectedField))
+  );
+}
+
 function validScalarReference(
   definition: EmailValueDefinition,
   field: readonly string[] | undefined
 ): boolean {
-  if (definition.source.kind === "discount")
-    return (
-      field?.length === 1 && (field[0] === "code" || field[0] === "expiresAt")
-    );
-  const source = definition.source;
+  return definition.source.kind === "discount"
+    ? validDiscountReference(field)
+    : validCustomerReference(definition.source, field);
+}
+
+/** A discount exposes only its generated code and expiry. */
+function validDiscountReference(field: readonly string[] | undefined): boolean {
+  return (
+    field?.length === 1 && (field[0] === "code" || field[0] === "expiresAt")
+  );
+}
+
+/** A scalar selection, or a selected scalar field of a record selection. */
+function validCustomerReference(
+  source: CustomerSource,
+  field: readonly string[] | undefined
+): boolean {
   const selected = emailCustomerFieldAtPath(
     emailCustomerFieldCatalogue,
     source.path
@@ -358,105 +402,113 @@ function validScalarReference(
   return (
     selected?.kind === "record" &&
     isEmailCustomerScalar(emailCustomerFieldAtPath(selected, field)) &&
-    Boolean(
-      source.fields?.some((selectedField) => samePath(field, selectedField))
-    )
+    selectedSourceField(source, field)
   );
 }
 
-const componentRequirements = (component: DraftComponent): string[] => {
-  const missing = (field: string, present: boolean) => (present ? [] : [field]);
-  const hasItems = (items: DraftTextList | undefined): boolean =>
-    Boolean(items?.length) &&
-    (items ?? []).every(
-      (item) =>
-        Boolean(item.textKey) &&
-        (!item.list ||
-          (item.list.ordered !== undefined && hasItems(item.list.items)))
-    );
-  switch (component._tag) {
-    case "Paragraph":
-      return missing("textKey", Boolean(component.textKey));
-    case "Heading":
-      return [
-        ...missing("textKey", Boolean(component.textKey)),
-        ...missing("level", component.level !== undefined),
-      ];
-    case "TextList":
-      return [
-        ...missing("ordered", component.ordered !== undefined),
-        ...missing("items", hasItems(component.items)),
-      ];
-    case "Image":
-      return [
-        ...missing("src", Boolean(component.src)),
-        ...missing("altKey", Boolean(component.altKey)),
-      ];
-    case "Button":
-      return [
-        ...missing("labelKey", Boolean(component.labelKey)),
-        ...missing("href", Boolean(component.href)),
-      ];
-    case "Offer":
-      return [
-        ...missing("value", Boolean(component.value)),
-        ...missing("labelKey", Boolean(component.labelKey)),
-        ...missing("href", Boolean(component.href)),
-      ];
-    case "Record":
-      return [
-        ...missing("value", Boolean(component.value)),
-        ...missing(
-          "fields",
-          Boolean(component.fields?.length) &&
-            (component.fields ?? []).every(
-              (field) => Boolean(field.field?.length) && Boolean(field.labelKey)
-            )
-        ),
-      ];
-    case "List":
-      return [
-        ...missing("value", Boolean(component.value)),
-        ...missing(
-          "fields",
-          (component.fields ?? []).every(
-            (field) => Boolean(field.field?.length) && Boolean(field.labelKey)
-          )
-        ),
-        ...missing(
-          "sort",
-          !component.sort ||
-            (component.sort.path !== undefined &&
-              component.sort.direction !== undefined)
-        ),
-      ];
-    case "Divider":
-    case "Spacer":
-      return [];
-  }
+const missing = (field: string, present: boolean): string[] =>
+  present ? [] : [field];
+
+const isCompleteSort = (
+  sort: { readonly path?: unknown; readonly direction?: unknown } | undefined
+): boolean =>
+  !sort || (sort.path !== undefined && sort.direction !== undefined);
+
+function hasListItems(items: DraftTextList | undefined): boolean {
+  return Boolean(items?.length) && (items ?? []).every(isCompleteListItem);
+}
+
+function isCompleteListItem(item: DraftTextList[number]): boolean {
+  return (
+    Boolean(item.textKey) &&
+    (!item.list ||
+      (item.list.ordered !== undefined && hasListItems(item.list.items)))
+  );
+}
+
+const hasLabelledFields = (fields: DraftComponent["fields"]): boolean =>
+  (fields ?? []).every(
+    (field) => Boolean(field.field?.length) && Boolean(field.labelKey)
+  );
+
+/** The settings each component kind needs before it can publish. */
+const componentRequirements: Record<
+  DraftComponent["_tag"],
+  (component: DraftComponent) => string[]
+> = {
+  Paragraph: (component) => missing("textKey", Boolean(component.textKey)),
+  Heading: (component) => [
+    ...missing("textKey", Boolean(component.textKey)),
+    ...missing("level", component.level !== undefined),
+  ],
+  TextList: (component) => [
+    ...missing("ordered", component.ordered !== undefined),
+    ...missing("items", hasListItems(component.items)),
+  ],
+  Image: (component) => [
+    ...missing("src", Boolean(component.src)),
+    ...missing("altKey", Boolean(component.altKey)),
+  ],
+  Button: (component) => [
+    ...missing("labelKey", Boolean(component.labelKey)),
+    ...missing("href", Boolean(component.href)),
+  ],
+  Offer: (component) => [
+    ...missing("value", Boolean(component.value)),
+    ...missing("labelKey", Boolean(component.labelKey)),
+    ...missing("href", Boolean(component.href)),
+  ],
+  Record: (component) => [
+    ...missing("value", Boolean(component.value)),
+    ...missing(
+      "fields",
+      Boolean(component.fields?.length) && hasLabelledFields(component.fields)
+    ),
+  ],
+  List: (component) => [
+    ...missing("value", Boolean(component.value)),
+    ...missing("fields", hasLabelledFields(component.fields)),
+    ...missing("sort", isCompleteSort(component.sort)),
+  ],
+  Divider: () => [],
+  Spacer: () => [],
 };
+
+type DraftSource = NonNullable<DraftDefinition["source"]>;
+
+const isPositiveOrUnset = (count: number | undefined): boolean =>
+  count === undefined || count > 0;
 
 const definitionRequirements = (definition: DraftDefinition): string[] => {
   const source = definition.source;
   if (!source) return ["source"];
-  if (source.kind === "customer")
-    return [
-      ...(source.path?.length ? [] : ["path"]),
-      ...(source.sort &&
-      (source.sort.path === undefined || source.sort.direction === undefined)
-        ? ["sort"]
-        : []),
-    ];
-  return [
-    ...(source.discountId ? [] : ["discountId"]),
-    ...(source.validDays !== undefined && source.validDays > 0
-      ? []
-      : ["validDays"]),
-    ...(source.maxUses === undefined || source.maxUses > 0 ? [] : ["maxUses"]),
-    ...(source.maxUsesPerCustomer === undefined || source.maxUsesPerCustomer > 0
-      ? []
-      : ["maxUsesPerCustomer"]),
-  ];
+  return source.kind === "customer"
+    ? customerSourceRequirements(source)
+    : discountSourceRequirements(source);
+};
+
+const customerSourceRequirements = (source: DraftSource): string[] => [
+  ...missing("path", Boolean(source.path?.length)),
+  ...missing("sort", isCompleteSort(source.sort)),
+];
+
+const discountSourceRequirements = (source: DraftSource): string[] => [
+  ...missing("discountId", Boolean(source.discountId)),
+  ...missing(
+    "validDays",
+    source.validDays !== undefined && source.validDays > 0
+  ),
+  ...missing("maxUses", isPositiveOrUnset(source.maxUses)),
+  ...missing(
+    "maxUsesPerCustomer",
+    isPositiveOrUnset(source.maxUsesPerCustomer)
+  ),
+];
+
+/** The value definitions content may use: kept names, and the configured ones among them. */
+type ValueScope = {
+  readonly kept: ReadonlySet<string>;
+  readonly definitions: ReadonlyMap<string, EmailValueDefinition>;
 };
 
 /**
@@ -478,269 +530,400 @@ export const emailDraftProblems = (
     : [EmailDocumentProblem.DocumentInvalid()];
 };
 
+/**
+ * Problems in a stable order: document identity, value definitions, each
+ * component, languages, then each translation.
+ */
 function draftContentProblems(
   draft: EmailDraft,
   currentLocales: readonly string[]
 ): EmailDocumentProblem[] {
-  const P = EmailDocumentProblem;
-  const problems: EmailDocumentProblem[] = [];
   const structure = draft.structure ?? [];
-  const referenced = referencedEmailValueNames(draft);
+  const repeatedIds = repeatedComponentIds(structure);
+  const duplicateIds = new Set(repeatedIds);
+  const kept = keptDefinitions(
+    draft.values ?? [],
+    referencedEmailValueNames(draft)
+  );
+  const values = valueScope(kept);
+  const translations = draft.translations ?? {};
+  return [
+    ...documentProblems(draft, repeatedIds),
+    ...kept.flatMap(keptDefinitionProblems),
+    ...structure.flatMap((component, index) =>
+      componentProblems(component, index, duplicateIds, values)
+    ),
+    ...currentLocales
+      .filter((locale) => !Object.hasOwn(translations, locale))
+      .map((locale) => P.LanguageMissing({ locale })),
+    ...Object.entries(translations).flatMap(([locale, translation]) =>
+      translationProblems(structure, { locale, translation, values })
+    ),
+  ];
+}
 
-  if (!draft.purpose) problems.push(P.PurposeMissing());
-  if (!draft.templateKey) problems.push(P.TemplateMissing());
-  if (structure.length === 0) problems.push(P.BodyEmpty());
+/** Each component id at every occurrence after its first. */
+const repeatedComponentIds = (
+  structure: readonly DraftComponent[]
+): readonly string[] => {
+  const seen = new Set<string>();
+  return structure.flatMap(({ id }) => {
+    if (!id) return [];
+    const repeated = seen.has(id);
+    seen.add(id);
+    return repeated ? [id] : [];
+  });
+};
 
-  const ids = new Set<string>();
-  for (const component of structure) {
-    if (!component.id) continue;
-    if (ids.has(component.id))
-      problems.push(P.ComponentIdDuplicate({ componentId: component.id }));
-    ids.add(component.id);
-  }
+const documentProblems = (
+  draft: EmailDraft,
+  repeatedIds: readonly string[]
+): EmailDocumentProblem[] => [
+  ...(draft.purpose ? [] : [P.PurposeMissing()]),
+  ...(draft.templateKey ? [] : [P.TemplateMissing()]),
+  ...(draft.structure?.length ? [] : [P.BodyEmpty()]),
+  ...repeatedIds.map((componentId) => P.ComponentIdDuplicate({ componentId })),
+];
 
-  // Definitions publication keeps: referenced ones (checked) and complete unused ones.
+/** The first configured definition of each kept name is the one content uses. */
+const valueScope = (kept: readonly KeptDefinition[]): ValueScope => {
   const definitions = new Map<string, EmailValueDefinition>();
-  const kept = new Set<string>();
-  for (const [index, definition] of (draft.values ?? []).entries()) {
-    const name = definition.name ?? "";
-    const used = referenced.has(name);
-    const publishable = publishableDefinition(definition);
-    if (!used && (Option.isNone(publishable) || kept.has(name))) continue;
-    if (kept.has(name)) problems.push(P.ValueNameDuplicate({ name }));
-    kept.add(name);
+  for (const { name, publishable } of kept)
     if (Option.isSome(publishable) && !definitions.has(name))
       definitions.set(name, publishable.value);
-    if (!valueNamePattern.test(name)) {
-      problems.push(P.ValueNameInvalid({ index, name }));
-      continue;
-    }
-    const missing = definitionRequirements(definition);
-    for (const field of missing)
-      problems.push(P.ValueIncomplete({ index, name, field }));
-    if (missing.length > 0 || Option.isSome(publishable)) continue;
-    const source = definition.source;
-    const decoded = decodeDefinition({ ...definition, name });
-    if (source?.kind === "customer" && Option.isSome(decoded)) {
-      const inspected =
-        decoded.value.source.kind === "customer" &&
-        inspectEmailCustomerSelection(decoded.value.source);
-      if (inspected && isSelectionInvalid(inspected)) {
-        problems.push(
-          P.CustomerSelectionInvalid({ name, reason: inspected.reason })
-        );
-        continue;
-      }
-    }
-    problems.push(P.ValueIncomplete({ index, name, field: "source" }));
-  }
+  return { kept: new Set(kept.map(({ name }) => name)), definitions };
+};
 
-  for (const [index, component] of structure.entries()) {
-    const componentId = component.id;
-    if (!componentId) {
-      problems.push(P.ComponentIncomplete({ index, field: "id" }));
-      continue;
-    }
-    const missing = componentRequirements(component);
-    for (const field of missing)
-      problems.push(P.ComponentIncomplete({ index, componentId, field }));
-    for (const href of component.href === undefined ? [] : [component.href])
-      if (href && !isDestination(href))
-        problems.push(P.DestinationInvalid({ componentId, field: "href" }));
-    for (const [link, href] of Object.entries(component.links ?? {}))
-      if (!isDestination(href))
-        problems.push(
-          P.DestinationInvalid({ componentId, field: `links.${link}` })
-        );
-    if (
-      component._tag === "Image" &&
-      component.src &&
-      URL.parse(component.src)?.protocol !== "https:"
+const keptDefinitionProblems = ({
+  index,
+  name,
+  definition,
+  publishable,
+  repeated,
+}: KeptDefinition): EmailDocumentProblem[] => [
+  ...(repeated ? [P.ValueNameDuplicate({ name })] : []),
+  ...definitionProblems(index, name, definition, publishable),
+];
+
+function definitionProblems(
+  index: number,
+  name: string,
+  definition: DraftDefinition,
+  publishable: Option.Option<EmailValueDefinition>
+): EmailDocumentProblem[] {
+  if (!valueNamePattern.test(name))
+    return [P.ValueNameInvalid({ index, name })];
+  const absent = definitionRequirements(definition);
+  if (absent.length > 0)
+    return absent.map((field) => P.ValueIncomplete({ index, name, field }));
+  if (Option.isSome(publishable)) return [];
+  const reason = invalidSelectionReason({ ...definition, name });
+  return [
+    reason
+      ? P.CustomerSelectionInvalid({ name, reason })
+      : P.ValueIncomplete({ index, name, field: "source" }),
+  ];
+}
+
+/** Why a complete customer definition's selection can't resolve, if it can't. */
+const invalidSelectionReason = (definition: DraftDefinition) =>
+  decodeDefinition(definition).pipe(
+    Option.flatMap(({ source }) =>
+      source.kind === "customer"
+        ? Option.some(inspectEmailCustomerSelection(source))
+        : Option.none()
+    ),
+    Option.filter(isSelectionInvalid),
+    Option.map(({ reason }) => reason),
+    Option.getOrUndefined
+  );
+
+function componentProblems(
+  component: DraftComponent,
+  index: number,
+  duplicateIds: ReadonlySet<string>,
+  values: ValueScope
+): EmailDocumentProblem[] {
+  const componentId = component.id;
+  if (!componentId) return [P.ComponentIncomplete({ index, field: "id" })];
+  const absent = componentRequirements[component._tag](component);
+  const destinations = destinationProblems(component, componentId);
+  // Unreadable settings are reported only when nothing more specific names the component.
+  const unreadable =
+    absent.length === 0 &&
+    destinations.length === 0 &&
+    !duplicateIds.has(componentId) &&
+    Option.isNone(decodeComponent(component));
+  return [
+    ...absent.map((field) =>
+      P.ComponentIncomplete({ index, componentId, field })
+    ),
+    ...destinations,
+    ...(unreadable
+      ? [P.ComponentIncomplete({ index, componentId, field: "settings" })]
+      : []),
+    ...(component.value
+      ? valuedComponentProblems(component, {
+          index,
+          componentId,
+          name: component.value,
+          values,
+        })
+      : []),
+  ];
+}
+
+const destinationProblems = (
+  component: DraftComponent,
+  componentId: string
+): EmailDocumentProblem[] => [
+  ...(component.href && !isDestination(component.href)
+    ? [P.DestinationInvalid({ componentId, field: "href" })]
+    : []),
+  ...Object.entries(component.links ?? {})
+    .filter(([, href]) => !isDestination(href))
+    .map(([link]) =>
+      P.DestinationInvalid({ componentId, field: `links.${link}` })
+    ),
+  ...imageSourceProblems(component, componentId),
+];
+
+const imageSourceProblems = (
+  component: DraftComponent,
+  componentId: string
+): EmailDocumentProblem[] =>
+  component._tag === "Image" &&
+  component.src &&
+  URL.parse(component.src)?.protocol !== "https:"
+    ? [P.ImageSourceInvalid({ componentId })]
+    : [];
+
+/** A component that shows a value, and the value it names. */
+type ValuedComponent = {
+  readonly index: number;
+  readonly componentId: string;
+  readonly name: string;
+  readonly values: ValueScope;
+};
+
+/** An Offer needs a discount; Records and Lists need a matching customer shape. */
+function valuedComponentProblems(
+  component: DraftComponent,
+  valued: ValuedComponent
+): EmailDocumentProblem[] {
+  const { componentId, name, values } = valued;
+  if (!values.kept.has(name))
+    return [P.ValueUnknown({ name, at: { field: "component", componentId } })];
+  const definition = values.definitions.get(name);
+  if (!definition) return [];
+  if (component._tag === "Offer")
+    return definition.source.kind === "discount"
+      ? []
+      : [P.ComponentValueMismatch({ componentId, name, expected: "discount" })];
+  if (definition.source.kind !== "customer")
+    return [
+      P.ComponentValueMismatch({ componentId, name, expected: "customer" }),
+    ];
+  return customerComponentProblems(component, valued, definition.source);
+}
+
+/** The customer shape a Record or List shows; other components check none. */
+const componentShapes: Partial<
+  Record<DraftComponent["_tag"], "record" | "list">
+> = { Record: "record", List: "list" };
+
+function customerComponentProblems(
+  component: DraftComponent,
+  valued: ValuedComponent,
+  source: CustomerSource
+): EmailDocumentProblem[] {
+  const { componentId, name } = valued;
+  const selected = emailCustomerFieldAtPath(
+    emailCustomerFieldCatalogue,
+    source.path
+  );
+  const expected = componentShapes[component._tag];
+  if (expected && selected?.kind !== expected)
+    return [P.ComponentValueMismatch({ componentId, name, expected })];
+  if (!selected) return [];
+  const item = selected.kind === "list" ? selected.element : selected;
+  return [
+    ...(component._tag === "List"
+      ? listBoundProblems(component, valued, source, item)
+      : []),
+    ...componentFieldProblems(component, valued, source, item),
+  ];
+}
+
+function listBoundProblems(
+  component: DraftComponent,
+  { index, componentId, name }: ValuedComponent,
+  source: CustomerSource,
+  item: EmailCustomerField
+): EmailDocumentProblem[] {
+  const sort = component.sort?.path;
+  const limit = component.limit;
+  return [
+    ...(sort !== undefined && !selectedSortField(sort, source, item)
+      ? [P.ListSortInvalid({ componentId, name })]
+      : []),
+    ...(exceedsSourceLimit(limit, source)
+      ? [P.ListLimitExceeded({ componentId, name })]
+      : []),
+    ...(limit !== undefined && limit <= 0
+      ? [P.ComponentIncomplete({ index, componentId, field: "limit" })]
+      : []),
+  ];
+}
+
+const exceedsSourceLimit = (
+  limit: number | undefined,
+  source: CustomerSource
+): boolean =>
+  limit !== undefined && source.limit !== undefined && limit > source.limit;
+
+/** A list sorts by a scalar, which a list of records must also select. */
+const selectedSortField = (
+  path: readonly string[],
+  source: CustomerSource,
+  item: EmailCustomerField
+): boolean =>
+  isEmailCustomerScalar(emailCustomerFieldAtPath(item, path)) &&
+  (item.kind !== "record" || selectedSourceField(source, path));
+
+function componentFieldProblems(
+  component: DraftComponent,
+  { componentId, name }: ValuedComponent,
+  source: CustomerSource,
+  item: EmailCustomerField
+): EmailDocumentProblem[] {
+  const fields = (component.fields ?? []).flatMap(({ field }) =>
+    field?.length ? [field] : []
+  );
+  return [
+    ...(item.kind === "record" && fields.length === 0
+      ? [P.ComponentFieldsRequired({ componentId, name })]
+      : []),
+    ...(fields.some(
+      (field) =>
+        !isEmailCustomerScalar(emailCustomerFieldAtPath(item, field)) ||
+        !selectedSourceField(source, field)
     )
-      problems.push(P.ImageSourceInvalid({ componentId }));
-    if (
-      missing.length === 0 &&
-      problems.every(
-        (problem) =>
-          !("componentId" in problem) || problem.componentId !== componentId
-      ) &&
-      Option.isNone(decodeComponent(component))
-    )
-      problems.push(
-        P.ComponentIncomplete({ index, componentId, field: "settings" })
-      );
-    if (component.value) problems.push(...valueComponentProblems(component));
-  }
+      ? [P.ComponentFieldInvalid({ componentId, name })]
+      : []),
+  ];
+}
 
-  function valueComponentProblems(
-    component: DraftComponent
-  ): EmailDocumentProblem[] {
-    const componentId = component.id ?? "";
-    const name = component.value ?? "";
-    const at: EmailContentLocation = { field: "component", componentId };
-    if (!kept.has(name)) return [P.ValueUnknown({ name, at })];
-    const definition = definitions.get(name);
-    if (!definition) return [];
-    if (component._tag === "Offer")
-      return definition.source.kind === "discount"
-        ? []
-        : [
-            P.ComponentValueMismatch({
-              componentId,
-              name,
-              expected: "discount",
-            }),
-          ];
-    if (definition.source.kind !== "customer")
-      return [
-        P.ComponentValueMismatch({ componentId, name, expected: "customer" }),
-      ];
-    const source = definition.source;
-    const selected = emailCustomerFieldAtPath(
-      emailCustomerFieldCatalogue,
-      source.path
-    );
-    if (component._tag === "Record" && selected?.kind !== "record")
-      return [
-        P.ComponentValueMismatch({ componentId, name, expected: "record" }),
-      ];
-    if (component._tag === "List" && selected?.kind !== "list")
-      return [
-        P.ComponentValueMismatch({ componentId, name, expected: "list" }),
-      ];
-    if (!selected) return [];
-    const item = selected.kind === "list" ? selected.element : selected;
-    const result: EmailDocumentProblem[] = [];
-    const componentFields = (component.fields ?? []).flatMap(({ field }) =>
-      field?.length ? [field] : []
-    );
-    if (component._tag === "List") {
-      const sort = component.sort?.path;
-      if (
-        sort !== undefined &&
-        (!isEmailCustomerScalar(emailCustomerFieldAtPath(item, sort)) ||
-          (item.kind === "record" &&
-            !source.fields?.some((field) => samePath(field, sort))))
-      )
-        result.push(P.ListSortInvalid({ componentId, name }));
-      if (
-        component.limit !== undefined &&
-        source.limit !== undefined &&
-        component.limit > source.limit
-      )
-        result.push(P.ListLimitExceeded({ componentId, name }));
-      if (component.limit !== undefined && component.limit <= 0)
-        result.push(
-          P.ComponentIncomplete({
-            index: structure.indexOf(component),
-            componentId,
-            field: "limit",
-          })
-        );
-    }
-    if (item.kind === "record" && componentFields.length === 0)
-      result.push(P.ComponentFieldsRequired({ componentId, name }));
-    if (
-      componentFields.some(
-        (field) =>
-          !isEmailCustomerScalar(emailCustomerFieldAtPath(item, field)) ||
-          !source.fields?.some((selectedField) =>
-            samePath(field, selectedField)
-          )
-      )
-    )
-      result.push(P.ComponentFieldInvalid({ componentId, name }));
-    return result;
-  }
+/** One language of the draft, checked against the value definitions it may use. */
+type TranslationScope = {
+  readonly locale: string;
+  readonly translation: DraftTranslation;
+  readonly values: ValueScope;
+};
 
-  for (const locale of currentLocales)
-    if (!Object.hasOwn(draft.translations ?? {}, locale))
-      problems.push(P.LanguageMissing({ locale }));
+/** Whether a text takes formatting, and the link keys it may name. */
+type TextRules = {
+  readonly rich: boolean;
+  readonly links: Readonly<Record<string, string>>;
+};
 
-  for (const [locale, translation] of Object.entries(
-    draft.translations ?? {}
-  )) {
-    const subject = translation.subject ?? [];
-    if (subject.length === 0 || isBlank(subject))
-      problems.push(P.SubjectEmpty({ locale }));
-    const checkParts = (
-      parts: readonly DraftInlinePart[],
-      at: EmailContentLocation,
-      rich: boolean,
-      links: Readonly<Record<string, string>>
-    ) => {
-      for (const part of parts) {
-        if (!rich && hasFormatting(part))
-          problems.push(P.FormattingNotAllowed({ at }));
-        else if (part.link !== undefined && !Object.hasOwn(links, part.link))
-          problems.push(P.LinkUnknown({ link: part.link, at }));
-        if (part._tag !== "Value") continue;
-        if (!part.name) {
-          problems.push(P.ValueReferenceIncomplete({ at }));
-          continue;
-        }
-        if (!kept.has(part.name)) {
-          problems.push(P.ValueUnknown({ name: part.name, at }));
-          continue;
-        }
-        const definition = definitions.get(part.name);
-        const field = part.field;
-        if (
-          field !== undefined &&
-          (field.length === 0 || field.some((segment) => !segment))
-        )
-          problems.push(P.ValueReferenceInvalid({ name: part.name, at }));
-        else if (definition && !validScalarReference(definition, field))
-          problems.push(P.ValueReferenceInvalid({ name: part.name, at }));
-      }
-    };
-    checkParts(subject, { locale, field: "subject" }, false, {});
-    checkParts(
+const plainText: TextRules = { rich: false, links: {} };
+
+function translationProblems(
+  structure: readonly DraftComponent[],
+  scope: TranslationScope
+): EmailDocumentProblem[] {
+  const { locale, translation } = scope;
+  const subject = translation.subject ?? [];
+  return [
+    ...(isBlank(subject) ? [P.SubjectEmpty({ locale })] : []),
+    ...partsProblems(subject, { locale, field: "subject" }, plainText, scope),
+    ...partsProblems(
       translation.preheader ?? [],
       { locale, field: "preheader" },
-      false,
-      {}
-    );
-    checkParts(
+      plainText,
+      scope
+    ),
+    ...partsProblems(
       translation.operationalReason ?? [],
       { locale, field: "operationalReason" },
-      false,
-      {}
-    );
-    for (const component of structure) {
-      if (!component.id) continue;
-      for (const text of emailComponentTexts(component)) {
-        const at: EmailContentLocation = {
-          locale,
-          field: "text",
-          componentId: component.id,
-          textKey: text.textKey,
-        };
-        const parts = translation.texts?.[text.textKey];
-        if (!parts) {
-          problems.push(
-            P.TextMissing({
-              locale,
-              componentId: component.id,
-              textKey: text.textKey,
-            })
-          );
-          continue;
-        }
-        if (!text.decorative && isBlank(parts))
-          problems.push(
-            P.TextEmpty({
-              locale,
-              componentId: component.id,
-              textKey: text.textKey,
-            })
-          );
-        checkParts(parts, at, text.role === "rich", component.links ?? {});
-      }
-    }
-  }
-  return problems;
+      plainText,
+      scope
+    ),
+    ...structure.flatMap((component) =>
+      componentTextProblems(component, scope)
+    ),
+  ];
 }
+
+function componentTextProblems(
+  component: DraftComponent,
+  scope: TranslationScope
+): EmailDocumentProblem[] {
+  const componentId = component.id;
+  if (!componentId) return [];
+  const links = component.links ?? {};
+  return emailComponentTexts(component).flatMap((text) => {
+    const { locale } = scope;
+    const { textKey } = text;
+    const place = { locale, componentId, textKey };
+    const parts = scope.translation.texts?.[text.textKey];
+    if (!parts) return [P.TextMissing(place)];
+    return [
+      ...(!text.decorative && isBlank(parts) ? [P.TextEmpty(place)] : []),
+      ...partsProblems(
+        parts,
+        { locale, field: "text", componentId, textKey },
+        { rich: text.role === "rich", links },
+        scope
+      ),
+    ];
+  });
+}
+
+const partsProblems = (
+  parts: readonly DraftInlinePart[],
+  at: EmailContentLocation,
+  rules: TextRules,
+  { values }: TranslationScope
+): EmailDocumentProblem[] =>
+  parts.flatMap((part) => [
+    ...markProblems(part, at, rules),
+    ...(part._tag === "Value" ? valueReferenceProblems(part, at, values) : []),
+  ]);
+
+/** Plain texts take no marks; a link must name one of its component's destinations. */
+function markProblems(
+  part: DraftInlinePart,
+  at: EmailContentLocation,
+  rules: TextRules
+): EmailDocumentProblem[] {
+  if (!rules.rich && hasFormatting(part))
+    return [P.FormattingNotAllowed({ at })];
+  if (part.link !== undefined && !Object.hasOwn(rules.links, part.link))
+    return [P.LinkUnknown({ link: part.link, at })];
+  return [];
+}
+
+function valueReferenceProblems(
+  part: Extract<DraftInlinePart, { readonly _tag: "Value" }>,
+  at: EmailContentLocation,
+  values: ValueScope
+): EmailDocumentProblem[] {
+  const name = part.name;
+  if (!name) return [P.ValueReferenceIncomplete({ at })];
+  if (!values.kept.has(name)) return [P.ValueUnknown({ name, at })];
+  const definition = values.definitions.get(name);
+  const invalid =
+    isMalformedField(part.field) ||
+    (definition !== undefined && !validScalarReference(definition, part.field));
+  return invalid ? [P.ValueReferenceInvalid({ name, at })] : [];
+}
+
+/** A given field path that is empty or has an empty segment. */
+const isMalformedField = (field: readonly string[] | undefined): boolean =>
+  field !== undefined &&
+  (field.length === 0 || field.some((segment) => !segment));
 
 /** English descriptions of every problem that blocks publishing `document`. */
 export const emailPublicationProblems = (

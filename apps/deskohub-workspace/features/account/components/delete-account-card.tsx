@@ -7,7 +7,10 @@ import {
   type AccountExit,
   beginAccountExit,
 } from "@/features/account/account-exit";
-import { deleteCustomerAccount } from "@/features/account/actions";
+import {
+  type CustomerAccountDeletionResult,
+  deleteCustomerAccount,
+} from "@/features/account/actions";
 import { createAuthReturnLifecycle } from "@/features/account/auth-return";
 import { AccountReauthenticationStep } from "@/features/account/components/account-reauthentication-step";
 import type { AccountPasskeys } from "@/features/account/components/passkeys/use-account-passkeys";
@@ -104,9 +107,6 @@ export function DeleteAccountCard({
     }
   };
 
-  const noticeTitle = deletionPending
-    ? m.accountDeletionPendingTitle({}, { locale })
-    : m.accountDeletionTitle({}, { locale });
   const cardHeading = heading ?? m.accountDeletionTitle({}, { locale });
 
   return (
@@ -123,17 +123,7 @@ export function DeleteAccountCard({
       }
       variant="destructive"
     >
-      <div className="rounded-xl border border-rose-100 bg-rose-50 p-4">
-        <h3 className="text-sm font-semibold leading-5 text-rose-800">
-          {noticeTitle}
-        </h3>
-        <div className="mt-2 space-y-2 text-sm leading-5 text-rose-800">
-          {deletionPending && (
-            <p>{m.accountDeletionPendingDescription({}, { locale })}</p>
-          )}
-          <p>{m.accountDeletionDescription({}, { locale })}</p>
-        </div>
-      </div>
+      <DeleteAccountNotice deletionPending={deletionPending} locale={locale} />
 
       <Dialog open={open} onOpenChange={closeDialog}>
         <div className="mt-6 flex @xl:justify-end">
@@ -173,78 +163,149 @@ export function DeleteAccountCard({
               }}
             />
           ) : (
-            <>
-              <DialogHeader>
-                <DialogTitle>
-                  {m.accountDeletionConfirmTitle({}, { locale })}
-                </DialogTitle>
-                <DialogDescription id="delete-account-dialog-description">
-                  {m.accountDeletionConfirmDescription({}, { locale })}
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="mt-5 flex items-start gap-3 rounded-2xl border border-red-900/12 bg-red-50/70 p-4">
-                <Checkbox
-                  id="confirm-account-deletion"
-                  checked={confirmed}
-                  onCheckedChange={(checked) => setConfirmed(checked === true)}
-                />
-                <Label
-                  htmlFor="confirm-account-deletion"
-                  className="cursor-pointer text-sm leading-6 text-navy-blue/78"
-                >
-                  {m.accountDeletionConfirmLabel({}, { locale })}
-                </Label>
-              </div>
-
-              <div
-                aria-live="assertive"
-                className="mt-4 min-h-5 text-sm text-red-700"
-              >
-                {result.data?.status === "failed"
-                  ? m.accountDeletionRetryableError({}, { locale })
-                  : null}
-                {result.data?.status === "refused"
-                  ? m.accountDeletionRefused({}, { locale })
-                  : null}
-                {result.serverError ?? null}
-                {hasErrored &&
-                  result.serverError === undefined &&
-                  m.accountDeletionRequestFailed({}, { locale })}
-              </div>
-
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  disabled={isExecuting}
-                  onClick={() => closeDialog(false)}
-                >
-                  {m.accountDeletionCancel({}, { locale })}
-                </Button>
-                <Button
-                  id="delete-account-confirm"
-                  type="button"
-                  disabled={
-                    !confirmed ||
-                    isExecuting ||
-                    result.data?.status === "refused"
-                  }
-                  tone="danger"
-                  onClick={() => {
-                    accountExit.current = beginAccountExit();
-                    execute({ confirmed: true });
-                  }}
-                >
-                  {isExecuting
-                    ? m.accountDeletionConfirming({}, { locale })
-                    : m.accountDeletionConfirm({}, { locale })}
-                </Button>
-              </DialogFooter>
-            </>
+            <DeleteAccountConfirmation
+              confirmed={confirmed}
+              deletionStatus={result.data?.status}
+              hasErrored={hasErrored}
+              isExecuting={isExecuting}
+              locale={locale}
+              onCancel={() => closeDialog(false)}
+              onConfirm={() => {
+                accountExit.current = beginAccountExit();
+                execute({ confirmed: true });
+              }}
+              onConfirmedChange={setConfirmed}
+              serverError={result.serverError}
+            />
           )}
         </DialogContent>
       </Dialog>
     </AccountSectionPanel>
+  );
+}
+
+function DeleteAccountNotice({
+  deletionPending,
+  locale,
+}: {
+  readonly deletionPending: boolean;
+  readonly locale: Locale;
+}) {
+  return (
+    <div className="rounded-xl border border-rose-100 bg-rose-50 p-4">
+      <h3 className="text-sm font-semibold leading-5 text-rose-800">
+        {deletionPending
+          ? m.accountDeletionPendingTitle({}, { locale })
+          : m.accountDeletionTitle({}, { locale })}
+      </h3>
+      <div className="mt-2 space-y-2 text-sm leading-5 text-rose-800">
+        {deletionPending && (
+          <p>{m.accountDeletionPendingDescription({}, { locale })}</p>
+        )}
+        <p>{m.accountDeletionDescription({}, { locale })}</p>
+      </div>
+    </div>
+  );
+}
+
+type DeletionRequestOutcome = {
+  /** The last attempt's answer; absent before one answers. */
+  readonly deletionStatus: CustomerAccountDeletionResult["status"] | undefined;
+  readonly serverError: string | undefined;
+  /** Whether the last attempt failed, also in transport. */
+  readonly hasErrored: boolean;
+  readonly locale: Locale;
+};
+
+/** The dialog's confirmation step: tick the box, then delete. */
+function DeleteAccountConfirmation({
+  confirmed,
+  isExecuting,
+  onCancel,
+  onConfirm,
+  onConfirmedChange,
+  ...outcome
+}: DeletionRequestOutcome & {
+  readonly confirmed: boolean;
+  readonly isExecuting: boolean;
+  readonly onCancel: () => void;
+  readonly onConfirm: () => void;
+  readonly onConfirmedChange: (confirmed: boolean) => void;
+}) {
+  const { locale } = outcome;
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>
+          {m.accountDeletionConfirmTitle({}, { locale })}
+        </DialogTitle>
+        <DialogDescription id="delete-account-dialog-description">
+          {m.accountDeletionConfirmDescription({}, { locale })}
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="mt-5 flex items-start gap-3 rounded-2xl border border-red-900/12 bg-red-50/70 p-4">
+        <Checkbox
+          id="confirm-account-deletion"
+          checked={confirmed}
+          onCheckedChange={(checked) => onConfirmedChange(checked === true)}
+        />
+        <Label
+          htmlFor="confirm-account-deletion"
+          className="cursor-pointer text-sm leading-6 text-navy-blue/78"
+        >
+          {m.accountDeletionConfirmLabel({}, { locale })}
+        </Label>
+      </div>
+
+      <DeletionRequestFeedback {...outcome} />
+
+      <DialogFooter>
+        <Button
+          type="button"
+          variant="ghost"
+          disabled={isExecuting}
+          onClick={onCancel}
+        >
+          {m.accountDeletionCancel({}, { locale })}
+        </Button>
+        <Button
+          id="delete-account-confirm"
+          type="button"
+          disabled={
+            !confirmed || isExecuting || outcome.deletionStatus === "refused"
+          }
+          tone="danger"
+          onClick={onConfirm}
+        >
+          {isExecuting
+            ? m.accountDeletionConfirming({}, { locale })
+            : m.accountDeletionConfirm({}, { locale })}
+        </Button>
+      </DialogFooter>
+    </>
+  );
+}
+
+/** Announces why the last deletion attempt didn't delete the account. */
+function DeletionRequestFeedback({
+  deletionStatus,
+  serverError,
+  hasErrored,
+  locale,
+}: DeletionRequestOutcome) {
+  return (
+    <div aria-live="assertive" className="mt-4 min-h-5 text-sm text-red-700">
+      {deletionStatus === "failed"
+        ? m.accountDeletionRetryableError({}, { locale })
+        : null}
+      {deletionStatus === "refused"
+        ? m.accountDeletionRefused({}, { locale })
+        : null}
+      {serverError ?? null}
+      {hasErrored &&
+        serverError === undefined &&
+        m.accountDeletionRequestFailed({}, { locale })}
+    </div>
   );
 }

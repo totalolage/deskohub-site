@@ -53,25 +53,8 @@ type SvgPngCanvas = NonNullable<SvgPngBufferOptions["canvas"]>;
 const renderSvgPngCanvas = (image: Buffer, canvas: SvgPngCanvas) =>
   Effect.tryPromise({
     try: () => {
-      const padding = canvas.padding ?? 0;
-      const contentWidth = canvas.width - 2 * padding;
-      const contentHeight = canvas.height - 2 * padding;
-
-      if (
-        !Number.isSafeInteger(canvas.width) ||
-        !Number.isSafeInteger(canvas.height) ||
-        !Number.isSafeInteger(padding) ||
-        canvas.width <= 0 ||
-        canvas.height <= 0 ||
-        padding < 0 ||
-        contentWidth <= 0 ||
-        contentHeight <= 0
-      ) {
-        throw new RangeError(
-          "Canvas dimensions and padding must leave positive pixel dimensions."
-        );
-      }
-
+      const { contentHeight, contentWidth, padding } =
+        measureSvgPngCanvas(canvas);
       const background = canvas.background ?? {
         r: 0,
         g: 0,
@@ -105,6 +88,37 @@ const renderSvgPngCanvas = (image: Buffer, canvas: SvgPngCanvas) =>
         operation: "render-svg",
       }),
   });
+
+/**
+ * Measures the area the content fits into inside the padding, throwing a
+ * RangeError unless every dimension is a whole number of pixels that leaves
+ * room for the content.
+ */
+const measureSvgPngCanvas = (canvas: SvgPngCanvas) => {
+  const padding = canvas.padding ?? 0;
+  const contentWidth = canvas.width - 2 * padding;
+  const contentHeight = canvas.height - 2 * padding;
+
+  if (
+    !isCanvasSize(canvas.width) ||
+    !isCanvasSize(canvas.height) ||
+    !isCanvasPadding(padding) ||
+    contentWidth <= 0 ||
+    contentHeight <= 0
+  ) {
+    throw new RangeError(
+      "Canvas dimensions and padding must leave positive pixel dimensions."
+    );
+  }
+
+  return { contentHeight, contentWidth, padding };
+};
+
+const isCanvasSize = (pixels: number) =>
+  Number.isSafeInteger(pixels) && pixels > 0;
+
+const isCanvasPadding = (pixels: number) =>
+  Number.isSafeInteger(pixels) && pixels >= 0;
 
 const renderSvg = (svg: string | Buffer) =>
   Effect.tryPromise({

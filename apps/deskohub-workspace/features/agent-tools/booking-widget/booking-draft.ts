@@ -62,34 +62,54 @@ const daysBetween = (from: string, to: string) =>
 const addDays = (date: string, days: number) =>
   new Date(Date.parse(date) + days * 86_400_000).toISOString().slice(0, 10);
 
+type BookingPrefill = ShowBookingResult["selection"];
+
+/** The prefilled family when the offerings include it, else the first listed. */
+const getInitialFamily = (
+  offerings: ReadonlyArray<AgentOffering>,
+  requested: BookingPrefill["family"]
+): WorkspaceReservationKind => {
+  const families = getBookingFamilies(offerings);
+  return requested && families.includes(requested)
+    ? requested
+    : (families[0] ?? "cowork");
+};
+
+const getInitialTier = (
+  offerings: ReadonlyArray<AgentOffering>,
+  requested: BookingPrefill["tier"]
+) =>
+  requested ?? getFamilyOfferings(offerings, "cowork")[0]?.tier ?? "open-space";
+
+const getInitialDuration = (
+  offerings: ReadonlyArray<AgentOffering>,
+  requested: BookingPrefill["duration"]
+) =>
+  requested ??
+  getFamilyOfferings(offerings, "meeting-room")[0]?.duration ??
+  "hour:1";
+
+/** The office days from `date` through the prefilled end date, else one. */
+const getInitialDayCount = (
+  date: string,
+  endDate: BookingPrefill["end_date"]
+) => String(endDate ? daysBetween(date, endDate) + 1 : 1);
+
 /** The choices the view opens with: the agent's prefill, else defaults. */
 export const getInitialDraft = ({
   offerings,
   selection,
   today,
 }: BookingStart): BookingDraft => {
-  const families = getBookingFamilies(offerings);
-  const family =
-    selection.family && families.includes(selection.family)
-      ? selection.family
-      : (families[0] ?? "cowork");
   const date = selection.date ?? today;
 
   return {
-    family,
-    tier:
-      selection.tier ??
-      getFamilyOfferings(offerings, "cowork")[0]?.tier ??
-      "open-space",
-    duration:
-      selection.duration ??
-      getFamilyOfferings(offerings, "meeting-room")[0]?.duration ??
-      "hour:1",
+    family: getInitialFamily(offerings, selection.family),
+    tier: getInitialTier(offerings, selection.tier),
+    duration: getInitialDuration(offerings, selection.duration),
     date,
     startTime: selection.start_time ?? "",
-    dayCount: String(
-      selection.end_date ? daysBetween(date, selection.end_date) + 1 : 1
-    ),
+    dayCount: getInitialDayCount(date, selection.end_date),
     seats: String(selection.seats ?? 1),
   };
 };

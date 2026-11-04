@@ -10,6 +10,7 @@ import {
 } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { act, cleanup, renderHook } from "@testing-library/react";
+import { m } from "@/features/i18n";
 import type { PreparePayStateInput } from "@/features/reservation/actions/prepare-pay-state.schema";
 import { normalizedMeetingRoomReservationOrderSchema } from "@/features/reservation/meeting-room-reservation";
 import {
@@ -24,10 +25,15 @@ import {
 
 type PreparePayStateOptions = {
   readonly onSuccess: (result: {
-    readonly data: {
-      readonly status: "pricing_changed";
-      readonly redirectUrl: string;
-    };
+    readonly data?:
+      | {
+          readonly status: "pricing_changed" | "ready";
+          readonly redirectUrl?: string;
+        }
+      | { readonly status: "error"; readonly message: string };
+  }) => void;
+  readonly onError: (result: {
+    readonly error: { readonly serverError?: string };
   }) => void;
   readonly onTransportError: () => void;
 };
@@ -37,10 +43,22 @@ const executeAsync = mock((_input: PreparePayStateInput) =>
 );
 let preparePayStateOptions: PreparePayStateOptions | undefined;
 
+let analyticsAccepted = false;
+const cookieConsent = await import("@/features/cookie-consent");
 mock.module("@/features/cookie-consent", () => ({
-  useVisitorConsent: () => false,
-  visitorConsent: { accepts: () => false },
+  ...cookieConsent,
+  useVisitorConsent: () => analyticsAccepted,
+  visitorConsent: {
+    ...cookieConsent.visitorConsent,
+    accepts: () => analyticsAccepted,
+  },
 }));
+
+const vercelAnalytics = await import("@vercel/analytics/react");
+const track = mock(
+  (..._args: Parameters<typeof vercelAnalytics.track>) => undefined
+);
+mock.module("@vercel/analytics/react", () => ({ ...vercelAnalytics, track }));
 
 mock.module("@/features/reservation/actions/prepare-pay-state", () => ({
   preparePayState: mock(),
@@ -59,6 +77,8 @@ const reservationFor = (startHour: number) =>
     email: testEmailAddress("ada"),
     phone: "+420777777777",
   });
+
+const genericError = m.reservationErrorMessage({}, { locale: "en-US" });
 
 const renderCheckout = () =>
   renderHook(() => useReservationCheckout({ locale: "en-US" }));
@@ -85,6 +105,8 @@ describe("useReservationCheckout", () => {
     workspaceUseAction.mockReset();
     workspaceUseSearchParams.mockReturnValue(new URLSearchParams());
     preparePayStateOptions = undefined;
+    analyticsAccepted = false;
+    track.mockClear();
   });
 
   afterAll(async () => {
@@ -128,5 +150,89 @@ describe("useReservationCheckout", () => {
     });
 
     expect(push).toHaveBeenCalledWith("/en-US/checkout/pay?payState=fresh");
+  });
+
+  test("shows the action's message when preparation fails", () => {
+    const { result } = renderCheckout();
+    const message = m.reservationMeetingRoomUnavailable(
+      {},
+      { locale: "en-US" }
+    );
+
+    act(() => {
+      preparePayStateOptions?.onSuccess({
+        data: { status: "error", message },
+      });
+    });
+
+    expect(result.current.submissionError).toBe(message);
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  test("shows the generic error when a prepared checkout has no pay page", () => {
+    const { result } = renderCheckout();
+
+    act(() => {
+      preparePayStateOptions?.onSuccess({ data: { status: "ready" } });
+    });
+
+    expect(result.current.submissionError).toBe(genericError);
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  test("tracks a started checkout once per submission with analytics consent", () => {
+    analyticsAccepted = true;
+    renderCheckout();
+    const succeed = () =>
+      act(() => {
+        preparePayStateOptions?.onSuccess({
+          data: { status: "ready", redirectUrl: "/en-US/checkout/pay" },
+        });
+      });
+
+    succeed();
+    succeed();
+
+    expect(track).toHaveBeenCalledTimes(1);
+    expect(track.mock.calls[0]?.[0]).toBe("workspace_checkout_started");
+    expect(push).toHaveBeenCalledTimes(2);
+  });
+
+  test("tracks nothing without analytics consent", () => {
+    renderCheckout();
+
+    act(() => {
+      preparePayStateOptions?.onSuccess({
+        data: { status: "ready", redirectUrl: "/en-US/checkout/pay" },
+      });
+    });
+
+    expect(track).not.toHaveBeenCalled();
+    expect(push).toHaveBeenCalledWith("/en-US/checkout/pay");
+  });
+
+  test("shows the server's error, or the generic one without it", () => {
+    const { result } = renderCheckout();
+    const serverError = m.reservationAvailabilityError({}, { locale: "en-US" });
+
+    act(() => {
+      preparePayStateOptions?.onError({ error: { serverError } });
+    });
+    expect(result.current.submissionError).toBe(serverError);
+
+    act(() => {
+      preparePayStateOptions?.onError({ error: {} });
+    });
+    expect(result.current.submissionError).toBe(genericError);
+  });
+
+  test("shows the generic error when the request does not reach the server", () => {
+    const { result } = renderCheckout();
+
+    act(() => {
+      preparePayStateOptions?.onTransportError();
+    });
+
+    expect(result.current.submissionError).toBe(genericError);
   });
 });

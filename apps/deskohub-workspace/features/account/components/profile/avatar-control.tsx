@@ -52,16 +52,6 @@ export function AvatarControl({
     setImageFailed(false);
   }
 
-  const nameParts = [firstName, lastName ?? ""]
-    .map((name) => name.trim())
-    .filter((name) => name.length > 0);
-  const initials = nameParts
-    .map((name) => Array.from(name)[0])
-    .filter((initial): initial is string => initial !== undefined)
-    .join("");
-
-  const showImage = displayAvatar !== null && !imageFailed;
-
   const handleOutcome = (outcome: CustomerAvatarMutationResult) => {
     if (outcome.status === "uploaded") {
       setDisplayAvatar(outcome.avatar);
@@ -144,13 +134,6 @@ export function AvatarControl({
   const isPending = upload.isExecuting || remove.isExecuting;
 
   const serverError = upload.result.serverError ?? remove.result.serverError;
-  const pendingMessage = upload.isExecuting
-    ? m.accountProfileAvatarUploading({}, { locale })
-    : m.accountProfileAvatarRemoving({}, { locale });
-  const settledMessage = status.kind === "idle" ? null : status.message;
-  const statusMessage = isPending
-    ? pendingMessage
-    : (serverError ?? settledMessage);
 
   // Beginning any new mutation clears both stored action results so a
   // previous action's serverError can never mask a later action's outcome,
@@ -185,23 +168,13 @@ export function AvatarControl({
   return (
     <div className="flex w-48 shrink-0 flex-col items-start gap-2">
       <div className="relative size-20">
-        <div
-          aria-hidden="true"
-          className="flex size-20 items-center justify-center rounded-full bg-[linear-gradient(135deg,#cf7253_0%,#00024f_100%)] text-2xl font-bold text-white"
-        >
-          {showImage
-            ? null
-            : initials || <UserRound className="size-9" strokeWidth={1.8} />}
-        </div>
-        {showImage && (
-          // biome-ignore lint/performance/noImgElement: provider-delivered, already-normalized 512px WebP avatar; next/image optimization does not apply
-          <img
-            alt={m.accountProfileAvatarAlt({}, { locale })}
-            className="absolute inset-0 size-20 rounded-full object-cover"
-            onError={() => setImageFailed(true)}
-            src={displayAvatar.url}
-          />
-        )}
+        <AvatarPortrait
+          avatar={displayAvatar}
+          imageFailed={imageFailed}
+          initials={avatarInitials(firstName, lastName)}
+          locale={locale}
+          onImageError={() => setImageFailed(true)}
+        />
         <span className="absolute -right-1 -bottom-1 inline-flex size-10">
           <Button
             aria-label={m.accountProfileAvatarChange({}, { locale })}
@@ -243,19 +216,102 @@ export function AvatarControl({
       <p className="max-w-48 text-xs leading-4 text-[#52647c]">
         {m.accountProfileAvatarHint({}, { locale })}
       </p>
-      <div aria-live="polite" className="min-h-5 text-sm" role="status">
-        {statusMessage && (
-          <p
-            className={
-              serverError || status.kind === "failed"
-                ? "text-red-700"
-                : "text-emerald-800"
-            }
-          >
-            {statusMessage}
-          </p>
-        )}
+      <AvatarStatusRegion
+        failed={Boolean(serverError) || status.kind === "failed"}
+        message={avatarStatusMessage({
+          locale,
+          removing: remove.isExecuting,
+          serverError,
+          status,
+          uploading: upload.isExecuting,
+        })}
+      />
+    </div>
+  );
+}
+
+function avatarInitials(firstName: string, lastName: string | null) {
+  return [firstName, lastName ?? ""]
+    .map((name) => name.trim())
+    .filter((name) => name.length > 0)
+    .map((name) => Array.from(name)[0])
+    .filter((initial): initial is string => initial !== undefined)
+    .join("");
+}
+
+// Shows the avatar image, or the initials (else a placeholder icon) when there
+// is no avatar or its image failed to load.
+function AvatarPortrait({
+  avatar,
+  imageFailed,
+  initials,
+  locale,
+  onImageError,
+}: {
+  readonly avatar: CustomerAvatarView | null;
+  readonly imageFailed: boolean;
+  readonly initials: string;
+  readonly locale: Locale;
+  readonly onImageError: () => void;
+}) {
+  const showImage = avatar !== null && !imageFailed;
+  return (
+    <>
+      <div
+        aria-hidden="true"
+        className="flex size-20 items-center justify-center rounded-full bg-[linear-gradient(135deg,#cf7253_0%,#00024f_100%)] text-2xl font-bold text-white"
+      >
+        {showImage
+          ? null
+          : initials || <UserRound className="size-9" strokeWidth={1.8} />}
       </div>
+      {showImage && (
+        // biome-ignore lint/performance/noImgElement: provider-delivered, already-normalized 512px WebP avatar; next/image optimization does not apply
+        <img
+          alt={m.accountProfileAvatarAlt({}, { locale })}
+          className="absolute inset-0 size-20 rounded-full object-cover"
+          onError={onImageError}
+          src={avatar.url}
+        />
+      )}
+    </>
+  );
+}
+
+// A pending mutation announces itself; otherwise the latest server error or
+// settled outcome stays in the status region.
+function avatarStatusMessage({
+  locale,
+  removing,
+  serverError,
+  status,
+  uploading,
+}: {
+  readonly locale: Locale;
+  readonly removing: boolean;
+  readonly serverError: string | undefined;
+  readonly status: AvatarStatus;
+  readonly uploading: boolean;
+}) {
+  if (uploading) return m.accountProfileAvatarUploading({}, { locale });
+  if (removing) return m.accountProfileAvatarRemoving({}, { locale });
+  return serverError ?? (status.kind === "idle" ? null : status.message);
+}
+
+function AvatarStatusRegion({
+  failed,
+  message,
+}: {
+  readonly failed: boolean;
+  readonly message: string | null;
+}) {
+  return (
+    <div aria-live="polite" className="min-h-5 text-sm" role="status">
+      {message && (
+        <p className={failed ? "text-red-700" : "text-emerald-800"}>
+          {message}
+        </p>
+      )}
     </div>
   );
 }

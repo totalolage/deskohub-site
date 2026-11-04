@@ -27,7 +27,7 @@ mock.module("@/features/emails/admin/editor/image-upload-actions", () => ({
 
 registerWorkspaceComponentTestEnv();
 // React DOM detects the DOM when it loads, so it loads after it.
-const { act, cleanup, fireEvent, render } = await import(
+const { act, cleanup, fireEvent, render, within } = await import(
   "@testing-library/react"
 );
 const { captureCampaignOperations } = await import(
@@ -66,7 +66,14 @@ const initialFields: CampaignComposerFields = {
 
 const renderComposer = async (
   delivery: CampaignDelivery | undefined,
-  locale: Locale = "en-US"
+  locale: Locale = "en-US",
+  {
+    fields = initialFields,
+    readOnly = false,
+  }: {
+    readonly fields?: CampaignComposerFields;
+    readonly readOnly?: boolean;
+  } = {}
 ) => {
   const { CampaignComposer } = await import("./campaign-composer");
   return render(
@@ -81,10 +88,10 @@ const renderComposer = async (
                 id: campaignIdSchema.make("synthetic-campaign"),
                 contentLocales: [],
                 delivery,
-                readOnly: false,
+                readOnly,
               }
         }
-        initialFields={initialFields}
+        initialFields={fields}
         templates={[]}
       />
     </RouteLocaleProvider>
@@ -262,4 +269,84 @@ test("holds the form while a new campaign is created and its page opens", async 
     fireEvent.submit(composerForm);
   });
   expect(operations.requests("createCampaign")).toHaveLength(1);
+});
+
+test("an archived automated campaign offers no save and holds its form", async () => {
+  const view = await renderComposer("automated", "en-US", { readOnly: true });
+
+  expect(
+    view.container.querySelector("button[form='campaign-composer']")
+  ).toBeNull();
+  expect(
+    view.container.querySelector("#campaign-composer")?.hasAttribute("inert")
+  ).toBe(true);
+});
+
+test("a save in flight says it's saving and can't be submitted again", async () => {
+  workspaceUseAction.mockImplementation(
+    () => ({ execute: mock(), isExecuting: true }) as never
+  );
+  const view = await renderComposer("once");
+
+  expect(
+    view.getByRole("button", {
+      name: m.emailCampaignsComposerSaving({}, { locale: "en-US" }),
+    })
+  ).toHaveProperty("disabled", true);
+});
+
+test("each language tab shows whether its content is missing, incomplete, or ready", async () => {
+  const locale = "en-US";
+  const emptyLocale = newCampaignComposerFields.locales["en-US"];
+  const tabStatus = (tab: HTMLElement) => ({
+    required: within(tab).queryByText(
+      m.emailCampaignsComposerLocaleRequired({}, { locale })
+    ),
+    optional: within(tab).queryByText(
+      m.emailCampaignsComposerLocaleOptional({}, { locale })
+    ),
+    oneIssue: within(tab).queryByText(
+      m.emailCampaignsComposerLocaleIssues({ count: 1 }, { locale })
+    ),
+    ready: within(tab).queryByLabelText(
+      m.emailCampaignsComposerLocaleReady({}, { locale })
+    ),
+  });
+  const shown = (status: ReturnType<typeof tabStatus>) =>
+    Object.entries(status)
+      .filter(([, element]) => element !== null)
+      .map(([name]) => name);
+
+  const empty = await renderComposer("once");
+  expect(empty.getAllByRole("tab").map(tabStatus).map(shown)).toEqual([
+    ["required"],
+    ["optional"],
+  ]);
+  cleanup();
+
+  const written = await renderComposer("once", locale, {
+    fields: {
+      ...initialFields,
+      locales: {
+        "cs-CZ": { ...emptyLocale, subject: "Synthetic subject" },
+        "en-US": {
+          ...emptyLocale,
+          subject: "Synthetic subject",
+          body: {
+            type: "doc",
+            content: [
+              {
+                type: "paragraph",
+                content: [{ type: "text", text: "Synthetic body" }],
+              },
+            ],
+          },
+        },
+      },
+    },
+  });
+  expect(written.getAllByRole("tab").map(tabStatus).map(shown)).toEqual([
+    ["oneIssue"],
+    ["ready"],
+  ]);
 });

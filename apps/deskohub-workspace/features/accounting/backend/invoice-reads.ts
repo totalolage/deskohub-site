@@ -201,37 +201,43 @@ export const makeInvoiceReads = Effect.gen(function* () {
   };
 });
 
+interface StoredInvoiceRow {
+  readonly id: string;
+  readonly workspaceReservationId: string | null;
+  readonly paymentAttemptId: string | null;
+  readonly dotyposCustomerId: string;
+  readonly invoiceNumber: string;
+  readonly issuedAt: Temporal.Instant;
+}
+
+interface StoredInvoice {
+  readonly row: StoredInvoiceRow;
+  readonly document: InvoiceDocument;
+}
+
+const matchesInvoiceIdentity = ({ document, row }: StoredInvoice) =>
+  document.dotyposCustomerId === row.dotyposCustomerId &&
+  document.invoiceNumber === row.invoiceNumber &&
+  Temporal.Instant.compare(
+    Temporal.Instant.from(document.issuedAt),
+    row.issuedAt
+  ) === 0;
+
+const matchesInvoiceSource = ({ document, row }: StoredInvoice) =>
+  isManualInvoiceDocument(document)
+    ? document.invoiceId === row.id &&
+      row.workspaceReservationId === null &&
+      row.paymentAttemptId === null
+    : document.workspaceReservationId === row.workspaceReservationId &&
+      document.paymentAttemptId === row.paymentAttemptId;
+
 const validateStoredInvoice = Effect.fn(
   "InvoiceRepository.validateStoredInvoice"
-)(function* (input: {
-  readonly row: {
-    readonly id: string;
-    readonly workspaceReservationId: string | null;
-    readonly paymentAttemptId: string | null;
-    readonly dotyposCustomerId: string;
-    readonly invoiceNumber: string;
-    readonly issuedAt: Temporal.Instant;
-  };
-  readonly document: InvoiceDocument;
-}) {
-  const { document, row } = input;
-  const commonMismatch =
-    document.dotyposCustomerId !== row.dotyposCustomerId ||
-    document.invoiceNumber !== row.invoiceNumber ||
-    Temporal.Instant.compare(
-      Temporal.Instant.from(document.issuedAt),
-      row.issuedAt
-    ) !== 0;
-  const sourceMismatch = isManualInvoiceDocument(document)
-    ? document.invoiceId !== row.id ||
-      row.workspaceReservationId !== null ||
-      row.paymentAttemptId !== null
-    : document.workspaceReservationId !== row.workspaceReservationId ||
-      document.paymentAttemptId !== row.paymentAttemptId;
-  if (commonMismatch || sourceMismatch) {
+)(function* (input: StoredInvoice) {
+  if (!matchesInvoiceIdentity(input) || !matchesInvoiceSource(input)) {
     return yield* new InvoiceStorageError({
       operation: "validate",
-      paymentAttemptId: row.paymentAttemptId ?? row.id,
+      paymentAttemptId: input.row.paymentAttemptId ?? input.row.id,
       message: "Invoice metadata does not match its encrypted document.",
     });
   }

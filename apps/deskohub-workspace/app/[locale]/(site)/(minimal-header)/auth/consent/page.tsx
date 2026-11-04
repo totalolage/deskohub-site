@@ -2,17 +2,19 @@ import { Effect, Option } from "effect";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
-import { offlineAccessAgentScope } from "@/features/account/agent-scopes";
 import { CustomerAgentClientDirectory } from "@/features/account/backend/auth/customer-agent-client-directory.service";
 import { AuthPageShell } from "@/features/account/components/auth-card";
 import { CustomerAgentConsent } from "@/features/account/components/customer-agent-consent";
 import { CustomerAgentNotice } from "@/features/account/components/customer-agent-notice";
 import { readCustomerAgentSession } from "@/features/account/components/customer-agent-session.server";
-import { readCustomerAgentConsentRequest } from "@/features/account/customer-agent-routes";
+import {
+  type CustomerAgentConsentRequest,
+  readCustomerAgentConsentRequest,
+} from "@/features/account/customer-agent-routes";
 import { getAccountSignInPath } from "@/features/account/routes";
 import { currentAdministratorAccess } from "@/features/administrators/backend/current-administrator";
 import { administratorAccessLayer } from "@/features/administrators/server/administrator-access-layer.server";
-import { m } from "@/features/i18n";
+import { type Locale, m } from "@/features/i18n";
 import { getLocalizedPagePath } from "@/features/i18n/routing";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { runWorkspaceEffectOrElse } from "@/shared/backend/workspace-effect";
@@ -20,6 +22,12 @@ import {
   type SearchParamsRecord,
   toURLSearchParams,
 } from "@/shared/utils/search-params";
+import { resolveCustomerAgentConsentOutcome } from "./customer-agent-consent-outcome";
+
+type PendingCustomerAgentConsentRequest = Extract<
+  CustomerAgentConsentRequest,
+  { readonly status: "pending" }
+>;
 
 // Blocking, so sending a signed-out customer to sign in is an HTTP redirect.
 export const instant = false;
@@ -48,6 +56,51 @@ const readAdministrator = (requested: boolean) =>
         })
       )
     : Promise.resolve(false);
+
+/** The agent's client the request names, read for the signed-in customer. */
+const readConsentClient = (clientId: string) =>
+  Effect.flatMap(CustomerAgentClientDirectory, (directory) =>
+    directory.find(clientId)
+  ).pipe(
+    Effect.provide(CustomerAgentClientDirectory.Default),
+    Effect.map(Option.getOrUndefined),
+    runWorkspaceEffectOrElse("account.agent-consent.client", {
+      boundary: "page",
+      failureCode: "customer_agent_client_unavailable",
+      orElse: () => "unavailable" as const,
+    })
+  );
+
+/** The signed-in customer's decision on a pending request, or why not. */
+const renderConsentDecision = async (
+  locale: Locale,
+  request: PendingCustomerAgentConsentRequest
+) => {
+  const [client, administrator] = await Promise.all([
+    readConsentClient(request.clientId),
+    readAdministrator(request.administration),
+  ]);
+  const outcome = resolveCustomerAgentConsentOutcome({
+    request,
+    client,
+    administrator,
+  });
+  return (
+    <AuthPageShell>
+      {"notice" in outcome ? (
+        <CustomerAgentNotice locale={locale} notice={outcome.notice} />
+      ) : (
+        <CustomerAgentConsent
+          locale={locale}
+          client={outcome.client}
+          redirect={request.redirect}
+          scopes={request.scopes}
+          administration={outcome.administration}
+        />
+      )}
+    </AuthPageShell>
+  );
+};
 
 /**
  * The OAuth server's consent step: the signed-in customer decides whether an
@@ -93,58 +146,6 @@ export default async function CustomerAgentConsentPage({
         </AuthPageShell>
       );
     }
-
-    const [client, administrator] = await Promise.all([
-      Effect.flatMap(CustomerAgentClientDirectory, (directory) =>
-        directory.find(request.clientId)
-      ).pipe(
-        Effect.provide(CustomerAgentClientDirectory.Default),
-        Effect.map(Option.getOrUndefined),
-        runWorkspaceEffectOrElse("account.agent-consent.client", {
-          boundary: "page",
-          failureCode: "customer_agent_client_unavailable",
-          orElse: () => "unavailable" as const,
-        })
-      ),
-      readAdministrator(request.administration),
-    ]);
-    if (administrator === "unavailable") {
-      return (
-        <AuthPageShell>
-          <CustomerAgentNotice locale={locale} notice="unavailable" />
-        </AuthPageShell>
-      );
-    }
-    // Nothing is left to allow once administration is dropped.
-    if (
-      request.administration &&
-      !administrator &&
-      request.scopes.every((scope) => scope === offlineAccessAgentScope)
-    ) {
-      return (
-        <AuthPageShell>
-          <CustomerAgentNotice locale={locale} notice="administration-only" />
-        </AuthPageShell>
-      );
-    }
-
-    return (
-      <AuthPageShell>
-        {client === undefined || client === "unavailable" ? (
-          <CustomerAgentNotice
-            locale={locale}
-            notice={client ?? "unknown-request"}
-          />
-        ) : (
-          <CustomerAgentConsent
-            locale={locale}
-            client={client}
-            redirect={request.redirect}
-            scopes={request.scopes}
-            administration={administrator}
-          />
-        )}
-      </AuthPageShell>
-    );
+    return renderConsentDecision(locale, request);
   });
 }

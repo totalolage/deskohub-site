@@ -23,6 +23,7 @@ import { CENSORED_LOG_VALUE } from "@/shared/utils/log-classification";
 import { createCensoredOtelLogger } from "../logging/censorship";
 import {
   createIdentifiedTracingLive,
+  createPostHogTracerProvider,
   createWorkspaceTracerProvider,
   flushLoggerProvider,
   workspaceOTelRegistration,
@@ -276,5 +277,38 @@ describe("flushLoggerProvider", () => {
 
   test("does nothing without a provider", async () => {
     expect(await runFlush(flushLoggerProvider(undefined))).toEqual([]);
+  });
+});
+
+describe("createPostHogTracerProvider", () => {
+  const identity = { serviceName: "workspace-test" };
+
+  test("exports nothing without a project token", () => {
+    expect(
+      createPostHogTracerProvider({
+        ...identity,
+        posthogHost: "https://ingest.posthog.example",
+      })
+    ).toBeUndefined();
+  });
+
+  test("requires the ingest host with a project token", () => {
+    expect(() =>
+      createPostHogTracerProvider({
+        ...identity,
+        posthogProjectToken: "synthetic-project-token",
+      })
+    ).toThrow("POSTHOG_INGEST_HOST is required");
+  });
+
+  test("builds a tracer provider for the project's ingest host", async () => {
+    const provider = createPostHogTracerProvider({
+      ...identity,
+      posthogHost: "https://ingest.posthog.example",
+      posthogProjectToken: "synthetic-project-token",
+    });
+
+    expect(provider?.getTracer("workspace-test")).toBeDefined();
+    await provider?.shutdown();
   });
 });

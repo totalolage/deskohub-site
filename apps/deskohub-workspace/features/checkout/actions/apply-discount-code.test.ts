@@ -5,6 +5,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { Duration } from "effect";
 import { payStateTokenQueryParam } from "@/features/checkout/backend/checkout/pay-state";
 import type { WorkspaceActionOptions } from "@/shared/backend/workspace-action";
+import type { ApplyDiscountCodeInput } from "./apply-discount-code-input";
 import type { ApplyDiscountCodeResult } from "./apply-discount-code-to-pay-state";
 
 mock.module("server-only", () => ({}));
@@ -29,23 +30,27 @@ mock.module("next/navigation", () => ({
 // here the sealed result is stubbed so the redirect routing is what runs.
 mock.module("@/shared/backend/workspace-action", () => ({
   defineWorkspaceAction:
-    (_options: WorkspaceActionOptions<never>, _handler: never) => async () => ({
-      data: operationResult,
-    }),
+    (_options: WorkspaceActionOptions<never>, _handler: never) =>
+    async (input: ApplyDiscountCodeInput) => {
+      actionInputs.push(input);
+      return { data: operationResult };
+    },
   workspaceActionDeadline: Duration.seconds(45),
 }));
 
-let operationResult: ApplyDiscountCodeResult;
+let operationResult: ApplyDiscountCodeResult | undefined;
+const actionInputs: Array<ApplyDiscountCodeInput> = [];
 
 const runForm = async (
-  result: ApplyDiscountCodeResult,
+  result: ApplyDiscountCodeResult | undefined,
   input: {
     readonly locale?: string;
     readonly payStateToken: string;
-    readonly submittedCode?: string;
+    readonly submittedCode?: string | Blob;
   }
 ) => {
   operationResult = result;
+  actionInputs.length = 0;
   redirectMock.mockClear();
   const { applyDiscountCodeForm } = await import("./apply-discount-code");
   const formData = new FormData();
@@ -154,5 +159,62 @@ describe("applyDiscountCodeForm", () => {
     expect(redirectedUrl.startsWith("//")).toBe(false);
     expect(redirectedUrl).not.toContain("evil.example");
     expect(redirectedUrl).toMatch(/^\/[a-z]{2}(-[A-Z]{2})?\/checkout\/pay\?/);
+  });
+
+  test("routes a submission the action returned no result for back with the generic error", async () => {
+    const redirectedUrl = await runForm(undefined, {
+      payStateToken: "original-token",
+    });
+    const url = new URL(redirectedUrl, "https://deskohub.test");
+
+    expect(url.pathname).toBe("/en-US/checkout/pay");
+    expect(url.searchParams.get(payStateTokenQueryParam)).toBe(
+      "original-token"
+    );
+    expect(url.searchParams.get("discountCodeError")).toBe("unavailable");
+  });
+
+  test("redirects an accepted referral to its replacement as is when the marker can't be added", async () => {
+    const freshPayUrl = "/cs-CZ/checkout/pay?payState=fresh-referral-state";
+
+    const redirectedUrl = await runForm(
+      { status: "accepted", freshPayUrl },
+      { payStateToken: "original-token", submittedCode: "RFL12345" }
+    );
+
+    expect(redirectedUrl).toBe(freshPayUrl);
+  });
+
+  test("redirects an unavailable result that carries a replacement to it", async () => {
+    const freshPayUrl = "/en-US/checkout/pay?payState=requested-intent";
+
+    const redirectedUrl = await runForm(
+      { status: "unavailable", freshPayUrl },
+      { payStateToken: "original-token" }
+    );
+
+    expect(redirectedUrl).toBe(freshPayUrl);
+  });
+
+  test("submits the typed code, or an empty one when the field isn't text", async () => {
+    await runForm(
+      { status: "unavailable" },
+      { payStateToken: "original-token", submittedCode: " save20 " }
+    );
+    const [typed] = actionInputs;
+    await runForm(
+      { status: "unavailable" },
+      { payStateToken: "original-token", submittedCode: new Blob(["SAVE20"]) }
+    );
+    const [uploaded] = actionInputs;
+
+    expect([typed, uploaded]).toEqual([
+      {
+        locale: "en-US",
+        payStateToken: "original-token",
+        submittedCode: " save20 ",
+      },
+      { locale: "en-US", payStateToken: "original-token", submittedCode: "" },
+    ]);
   });
 });

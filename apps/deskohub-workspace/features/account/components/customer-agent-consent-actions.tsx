@@ -98,13 +98,14 @@ export function CustomerAgentConsentActions({
   };
 
   const busy = phase === "submitting" || phase === "navigating";
+  const disabled = busy || phase === "expired";
 
   return (
     <>
       <div className="mt-8 flex flex-col gap-3 sm:flex-row-reverse">
         <Button
           className="sm:flex-1"
-          disabled={busy || phase === "expired"}
+          disabled={disabled}
           onClick={() => respond(true)}
           type="button"
         >
@@ -115,7 +116,7 @@ export function CustomerAgentConsentActions({
         </Button>
         <Button
           className="sm:flex-1"
-          disabled={busy || phase === "expired"}
+          disabled={disabled}
           onClick={() => respond(false)}
           type="button"
           variant="secondary"
@@ -126,6 +127,27 @@ export function CustomerAgentConsentActions({
           {m.customerAgentConsentDeny({}, { locale })}
         </Button>
       </div>
+      <ConsentPhaseAnnouncements
+        clientName={clientName}
+        locale={locale}
+        phase={phase}
+      />
+    </>
+  );
+}
+
+/** The progress and failure regions, mounted in every phase. */
+function ConsentPhaseAnnouncements({
+  clientName,
+  locale,
+  phase,
+}: {
+  readonly clientName: string;
+  readonly locale: Locale;
+  readonly phase: ConsentPhase;
+}) {
+  return (
+    <>
       <p className="mt-4 text-sm text-navy-blue/68" role="status">
         {phase === "submitting" &&
           m.customerAgentConsentSubmitting({}, { locale })}

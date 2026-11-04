@@ -7,7 +7,7 @@ import {
   type EmailValueDefinition,
   type EmailValueName,
   type EmailValueSnapshot,
-  emailValueMatchesField,
+  matchesEmailCustomerField,
   WORKSPACE_SITE_TIME_ZONE,
 } from "@deskohub/workspace-admin-api";
 import type { JSONContent } from "@tiptap/core";
@@ -89,7 +89,7 @@ const resolvedValue = (
   const matchesFrozen = Match.valueTags(snapshot, {
     Fallback: () => true,
     Resolved: ({ value }) =>
-      frozen === undefined || emailValueMatchesField(value, frozen),
+      frozen === undefined || matchesEmailCustomerField(value, frozen),
   });
   return matchesFrozen
     ? Result.succeed({ definition, snapshot })

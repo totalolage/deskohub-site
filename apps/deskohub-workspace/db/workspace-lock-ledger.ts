@@ -157,6 +157,22 @@ const lockTimeoutMillis = (wait: Duration.Input) =>
   });
 
 /**
+ * The `lock_timeout` a request's bounded wait sets, if it gives one. A bounded
+ * wait that is not positive and finite is a defect.
+ */
+const requestedLockTimeout = (wait: LockWait | undefined) => {
+  const boundedWait = wait?.boundedWait;
+  if (boundedWait === undefined) return Effect.succeed(Option.none<number>());
+  return Option.match(lockTimeoutMillis(boundedWait), {
+    onNone: () =>
+      Effect.die(
+        new Error("A bounded lock wait must be a positive, finite duration")
+      ),
+    onSome: (millis) => Effect.succeed(Option.some(millis)),
+  });
+};
+
+/**
  * Until enforcement lands, a lock-order violation fails under `bun test` and
  * is logged in production, where the lock is then taken as requested.
  */
@@ -191,19 +207,7 @@ export const takeTransactionLock = ({
   ...lock
 }: TransactionLockRequest): Effect.Effect<void, DatabaseQueryError> =>
   Effect.gen(function* () {
-    const boundedWait = wait?.boundedWait;
-    const timeoutMillis =
-      boundedWait === undefined
-        ? Option.none<number>()
-        : yield* Option.match(lockTimeoutMillis(boundedWait), {
-            onNone: () =>
-              Effect.die(
-                new Error(
-                  "A bounded lock wait must be a positive, finite duration"
-                )
-              ),
-            onSome: (millis) => Effect.succeed(Option.some(millis)),
-          });
+    const timeoutMillis = yield* requestedLockTimeout(wait);
     const sections = yield* HeldSections;
     const current = yield* CurrentTransactionLedger;
     if (Option.isNone(current)) {

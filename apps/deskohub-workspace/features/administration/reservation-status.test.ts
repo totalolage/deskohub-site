@@ -8,6 +8,7 @@ import {
   canCancelReservation,
   getAdministrationReservationLifecycle,
   getAdministrationReservationStatus,
+  getAdministrationReservationStatusNoteFields,
 } from "./reservation-status";
 
 const status = (
@@ -465,6 +466,37 @@ describe("administration reservation lifecycle", () => {
     });
   });
 
+  test("keeps a late payment awaiting recovery review cancelled for attention", () => {
+    expect(
+      getAdministrationReservationLifecycle({
+        fulfillmentState: "not_started",
+        latePaymentRecovery: "review_required",
+        paymentState: "paid",
+        reservationState: "held",
+      })
+    ).toMatchObject({
+      currentStage: "cancelled",
+      condition: "late_payment_recovery_review",
+      reachedStages: ["started", "held", "cancelled"],
+      tone: "attention",
+    });
+  });
+
+  test("keeps queued late-payment recovery on a live hold at the held stage", () => {
+    expect(
+      getAdministrationReservationLifecycle({
+        fulfillmentState: "not_started",
+        latePaymentRecovery: "pending",
+        paymentState: "paid",
+        reservationState: "held",
+      })
+    ).toMatchObject({
+      currentStage: "held",
+      condition: "late_payment_recovery_in_progress",
+      reachedStages: ["started", "held"],
+    });
+  });
+
   test("keeps an active retry held when an older attempt settles late", () => {
     expect(
       getAdministrationReservationLifecycle({
@@ -498,4 +530,23 @@ describe("administration reservation lifecycle", () => {
       expect(lifecycle.reachedStages).not.toContain("cancelled");
     }
   );
+});
+
+describe("administration reservation status note fields", () => {
+  test("pairs a note code with the label the API shows", () => {
+    const fields = getAdministrationReservationStatusNoteFields("needs_refund");
+
+    expect(fields.statusNoteCode).toBe("needs_refund");
+    expect(fields.statusNote).toEqual(expect.any(String));
+    expect(fields.statusNote).not.toBe(
+      getAdministrationReservationStatusNoteFields("refunded").statusNote
+    );
+  });
+
+  test("leaves both fields empty without a note", () => {
+    expect(getAdministrationReservationStatusNoteFields(null)).toEqual({
+      statusNote: null,
+      statusNoteCode: null,
+    });
+  });
 });

@@ -418,6 +418,7 @@ export {
   selectedEmailCustomerShape,
   validateEmailCustomerSelection,
 } from "./email-customer-selection";
+export { matchesEmailCustomerField } from "./email-customer-value-match";
 export {
   EmailId,
   EmailPreparationId,
@@ -438,7 +439,6 @@ export {
 } from "./email-publication";
 export {
   EmailValueSnapshot,
-  emailValueMatchesField,
   emailValueSnapshotForDefinition,
 } from "./email-value-snapshot";
 export {

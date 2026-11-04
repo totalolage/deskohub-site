@@ -4,6 +4,10 @@ import {
   AdministrationRecordLink,
   AdministrationLink as Link,
 } from "@/features/administration/admin-link";
+import type {
+  AdministrationBookingDetail,
+  AdministrationBookingSummary,
+} from "@/features/administration/administration.service";
 import {
   type AdministrationHref,
   administrationHref,
@@ -86,163 +90,189 @@ export async function BookingAdministrationDetail({
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="min-w-0 space-y-6">
-          <section className="rounded-xl border border-navy-blue/10 bg-white p-5 sm:p-6">
-            <h2 className="text-xl">
-              {m.administrationBookingDetailTitle({}, { locale })}
-            </h2>
-            <dl className="mt-5 grid gap-5 text-sm sm:grid-cols-2 lg:grid-cols-3">
-              <AdministrationFact
-                label={m.administrationBookingFactStatus({}, { locale })}
-                value={getAdministrationBookingStatusLabel(
-                  booking.status,
-                  locale
-                )}
-              />
-              <AdministrationFact
-                label={m.administrationBookingFactStarts({}, { locale })}
-                value={formatAdministrationDateTime(booking.startsAt, locale)}
-              />
-              <AdministrationFact
-                label={m.administrationBookingFactEnds({}, { locale })}
-                value={formatAdministrationDateTime(booking.endsAt, locale)}
-              />
-              <AdministrationFact
-                label={m.administrationBookingFactGuests({}, { locale })}
-                value={booking.seats}
-              />
-              <AdministrationFact
-                label={m.administrationBookingFactTable({}, { locale })}
-                value={
-                  booking.tableName ??
-                  m.administrationBookingTableNotAssigned({}, { locale })
-                }
-              />
-              <AdministrationFact
-                label={m.administrationBookingFactLocation({}, { locale })}
-                value={
-                  booking.tableLocation ??
-                  m.administrationBookingLocationNotSpecified({}, { locale })
-                }
-              />
-              {booking.createdAt && (
-                <AdministrationFact
-                  label={m.administrationBookingFactCreated({}, { locale })}
-                  value={formatAdministrationDateTime(
-                    booking.createdAt,
-                    locale
-                  )}
-                />
-              )}
-              {booking.updatedAt && (
-                <AdministrationFact
-                  label={m.administrationBookingFactLastChanged({}, { locale })}
-                  value={formatAdministrationDateTime(
-                    booking.updatedAt,
-                    locale
-                  )}
-                />
-              )}
-            </dl>
-          </section>
-
-          <details className="rounded-xl border border-navy-blue/10 bg-white">
-            <summary className="cursor-pointer px-5 py-4 text-sm font-semibold">
-              {m.administrationBookingReferencesTitle({}, { locale })}
-            </summary>
-            <dl className="grid gap-4 border-t border-navy-blue/10 px-5 py-4 text-sm">
-              <BookingReference
-                label={m.administrationBookingReferenceBooking({}, { locale })}
-                value={references.bookingId}
-              />
-              {references.customerId && (
-                <BookingReference
-                  href={administrationHref(
-                    "/[locale]/admin/customers/[customerId]",
-                    { customerId: references.customerId }
-                  )}
-                  label={m.administrationBookingReferenceCustomer(
-                    {},
-                    { locale }
-                  )}
-                  value={references.customerId}
-                />
-              )}
-              {references.workspaceReservationId && (
-                <BookingReference
-                  href={administrationHref(
-                    "/[locale]/admin/reservations/[reservationId]",
-                    { reservationId: references.workspaceReservationId }
-                  )}
-                  label={m.administrationBookingReferenceReservation(
-                    {},
-                    { locale }
-                  )}
-                  value={references.workspaceReservationId}
-                />
-              )}
-            </dl>
-          </details>
+          <BookingFacts booking={booking} locale={locale} />
+          <BookingReferences locale={locale} references={references} />
         </div>
 
         <aside className="space-y-5 xl:sticky xl:top-24 xl:h-fit">
-          <RelatedBookingEntity
-            title={m.administrationBookingRelatedCustomer({}, { locale })}
-          >
-            {booking.customer && booking.customerId ? (
-              <AdministrationRecordLink
-                href={administrationHref(
-                  "/[locale]/admin/customers/[customerId]",
-                  { customerId: booking.customerId }
-                )}
-              >
-                <span className="block font-semibold">
-                  {getAdministrationCustomerName(booking.customer, locale)}
-                </span>
-                <span className="mt-1 block text-sm text-navy-blue/65">
-                  {booking.customer.email ??
-                    booking.customer.phone ??
-                    m.administrationBookingViewCustomer({}, { locale })}
-                </span>
-              </AdministrationRecordLink>
-            ) : (
-              <p className="px-3 py-3 text-sm text-navy-blue/65">
-                {m.administrationBookingCustomerDetailsMissing({}, { locale })}
-              </p>
-            )}
-          </RelatedBookingEntity>
-
-          <RelatedBookingEntity
-            title={m.administrationBookingRelatedReservation({}, { locale })}
-          >
-            {booking.linkedReservation ? (
-              <AdministrationRecordLink
-                href={administrationHref(
-                  "/[locale]/admin/reservations/[reservationId]",
-                  { reservationId: booking.linkedReservation.id }
-                )}
-              >
-                <span className="block font-semibold">
-                  {getAdministrationReservationProductTitle(
-                    booking.linkedReservation.product,
-                    locale
-                  )}
-                </span>
-                <span className="mt-1 block text-sm text-navy-blue/65">
-                  {m.administrationBookingViewReservationHistory(
-                    {},
-                    { locale }
-                  )}
-                </span>
-              </AdministrationRecordLink>
-            ) : (
-              <p className="px-3 py-3 text-sm text-navy-blue/65">
-                {m.administrationBookingNoLinkedReservation({}, { locale })}
-              </p>
-            )}
-          </RelatedBookingEntity>
+          <RelatedBookingCustomer booking={booking} locale={locale} />
+          <RelatedBookingReservation booking={booking} locale={locale} />
         </aside>
       </div>
     </>
+  );
+}
+
+function BookingFacts({
+  booking,
+  locale,
+}: {
+  readonly booking: AdministrationBookingSummary;
+  readonly locale: Locale;
+}) {
+  return (
+    <section className="rounded-xl border border-navy-blue/10 bg-white p-5 sm:p-6">
+      <h2 className="text-xl">
+        {m.administrationBookingDetailTitle({}, { locale })}
+      </h2>
+      <dl className="mt-5 grid gap-5 text-sm sm:grid-cols-2 lg:grid-cols-3">
+        <AdministrationFact
+          label={m.administrationBookingFactStatus({}, { locale })}
+          value={getAdministrationBookingStatusLabel(booking.status, locale)}
+        />
+        <AdministrationFact
+          label={m.administrationBookingFactStarts({}, { locale })}
+          value={formatAdministrationDateTime(booking.startsAt, locale)}
+        />
+        <AdministrationFact
+          label={m.administrationBookingFactEnds({}, { locale })}
+          value={formatAdministrationDateTime(booking.endsAt, locale)}
+        />
+        <AdministrationFact
+          label={m.administrationBookingFactGuests({}, { locale })}
+          value={booking.seats}
+        />
+        <AdministrationFact
+          label={m.administrationBookingFactTable({}, { locale })}
+          value={
+            booking.tableName ??
+            m.administrationBookingTableNotAssigned({}, { locale })
+          }
+        />
+        <AdministrationFact
+          label={m.administrationBookingFactLocation({}, { locale })}
+          value={
+            booking.tableLocation ??
+            m.administrationBookingLocationNotSpecified({}, { locale })
+          }
+        />
+        {booking.createdAt && (
+          <AdministrationFact
+            label={m.administrationBookingFactCreated({}, { locale })}
+            value={formatAdministrationDateTime(booking.createdAt, locale)}
+          />
+        )}
+        {booking.updatedAt && (
+          <AdministrationFact
+            label={m.administrationBookingFactLastChanged({}, { locale })}
+            value={formatAdministrationDateTime(booking.updatedAt, locale)}
+          />
+        )}
+      </dl>
+    </section>
+  );
+}
+
+function BookingReferences({
+  locale,
+  references,
+}: {
+  readonly locale: Locale;
+  readonly references: AdministrationBookingDetail["references"];
+}) {
+  return (
+    <details className="rounded-xl border border-navy-blue/10 bg-white">
+      <summary className="cursor-pointer px-5 py-4 text-sm font-semibold">
+        {m.administrationBookingReferencesTitle({}, { locale })}
+      </summary>
+      <dl className="grid gap-4 border-t border-navy-blue/10 px-5 py-4 text-sm">
+        <BookingReference
+          label={m.administrationBookingReferenceBooking({}, { locale })}
+          value={references.bookingId}
+        />
+        {references.customerId && (
+          <BookingReference
+            href={administrationHref("/[locale]/admin/customers/[customerId]", {
+              customerId: references.customerId,
+            })}
+            label={m.administrationBookingReferenceCustomer({}, { locale })}
+            value={references.customerId}
+          />
+        )}
+        {references.workspaceReservationId && (
+          <BookingReference
+            href={administrationHref(
+              "/[locale]/admin/reservations/[reservationId]",
+              { reservationId: references.workspaceReservationId }
+            )}
+            label={m.administrationBookingReferenceReservation({}, { locale })}
+            value={references.workspaceReservationId}
+          />
+        )}
+      </dl>
+    </details>
+  );
+}
+
+function RelatedBookingCustomer({
+  booking,
+  locale,
+}: {
+  readonly booking: AdministrationBookingSummary;
+  readonly locale: Locale;
+}) {
+  return (
+    <RelatedBookingEntity
+      title={m.administrationBookingRelatedCustomer({}, { locale })}
+    >
+      {booking.customer && booking.customerId ? (
+        <AdministrationRecordLink
+          href={administrationHref("/[locale]/admin/customers/[customerId]", {
+            customerId: booking.customerId,
+          })}
+        >
+          <span className="block font-semibold">
+            {getAdministrationCustomerName(booking.customer, locale)}
+          </span>
+          <span className="mt-1 block text-sm text-navy-blue/65">
+            {booking.customer.email ??
+              booking.customer.phone ??
+              m.administrationBookingViewCustomer({}, { locale })}
+          </span>
+        </AdministrationRecordLink>
+      ) : (
+        <p className="px-3 py-3 text-sm text-navy-blue/65">
+          {m.administrationBookingCustomerDetailsMissing({}, { locale })}
+        </p>
+      )}
+    </RelatedBookingEntity>
+  );
+}
+
+function RelatedBookingReservation({
+  booking,
+  locale,
+}: {
+  readonly booking: AdministrationBookingSummary;
+  readonly locale: Locale;
+}) {
+  return (
+    <RelatedBookingEntity
+      title={m.administrationBookingRelatedReservation({}, { locale })}
+    >
+      {booking.linkedReservation ? (
+        <AdministrationRecordLink
+          href={administrationHref(
+            "/[locale]/admin/reservations/[reservationId]",
+            { reservationId: booking.linkedReservation.id }
+          )}
+        >
+          <span className="block font-semibold">
+            {getAdministrationReservationProductTitle(
+              booking.linkedReservation.product,
+              locale
+            )}
+          </span>
+          <span className="mt-1 block text-sm text-navy-blue/65">
+            {m.administrationBookingViewReservationHistory({}, { locale })}
+          </span>
+        </AdministrationRecordLink>
+      ) : (
+        <p className="px-3 py-3 text-sm text-navy-blue/65">
+          {m.administrationBookingNoLinkedReservation({}, { locale })}
+        </p>
+      )}
+    </RelatedBookingEntity>
   );
 }
 

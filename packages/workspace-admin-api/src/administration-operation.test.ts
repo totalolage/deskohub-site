@@ -9,10 +9,12 @@ import {
   AdministrationOperationBehavior,
   AdministrationOperationVariants,
   administrationOperations,
+  administrationOperationVariantOf,
   CliOnly,
   changeKeyPaths,
   credentialPaths,
   disclosedCredentials,
+  readOperation,
 } from "./administration-operation";
 import {
   AdministrationAuthentication,
@@ -283,5 +285,40 @@ describe("change keys in operation inputs", () => {
     });
 
     expect(changeKeyPaths(schema)).toEqual([["attemptId"]]);
+  });
+});
+
+describe("administrationOperationVariantOf", () => {
+  const variants = {
+    field: "mutation",
+    discriminator: "_tag",
+    operations: { Create: readOperation, Delete: readOperation },
+  };
+
+  test("reads the declared variant the request body names", () => {
+    expect(
+      administrationOperationVariantOf(variants, {
+        mutation: { _tag: "Delete", id: "synthetic" },
+      })
+    ).toEqual(Option.some("Delete"));
+  });
+
+  test("selects no variant for an undeclared, inherited or malformed name", () => {
+    const inherited = Object.create({ _tag: "Create" });
+    for (const body of [
+      { mutation: { _tag: "Archive" } },
+      { mutation: { _tag: "toString" } },
+      { mutation: { _tag: 1 } },
+      { mutation: inherited },
+      { mutation: null },
+      { mutation: "Create" },
+      Object.create({ mutation: { _tag: "Create" } }),
+      null,
+      "mutation",
+    ]) {
+      expect(administrationOperationVariantOf(variants, body)).toEqual(
+        Option.none()
+      );
+    }
   });
 });

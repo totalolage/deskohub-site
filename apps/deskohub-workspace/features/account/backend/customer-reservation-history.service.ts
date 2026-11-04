@@ -85,29 +85,40 @@ const getReservationProduct = (
   }
 };
 
+/**
+ * The reservation states that settle the status Workspace shows, whatever
+ * the shared Dotypos snapshot says. Workspace records a paid hold's
+ * confirmation itself, so a snapshot taken before it can't show a paid
+ * booking as pending.
+ */
+const statusByReservationState: Partial<
+  Record<ReservationRow["reservationState"], CustomerReservationStatus>
+> = {
+  cancelled: "cancelled",
+  hold_expired: "cancelled",
+  cancellation_failed: "requires-attention",
+  confirmed: "confirmed",
+};
+
+/** The status Workspace's own row settles; a cancellation always wins. */
+const getLocalReservationStatus = (
+  row: ReservationRow | undefined
+): CustomerReservationStatus | undefined => {
+  if (row === undefined) return undefined;
+  const stateStatus = statusByReservationState[row.reservationState];
+  if (stateStatus === "cancelled") return stateStatus;
+  if (row.fulfillmentState === "failed") return "requires-attention";
+  return stateStatus;
+};
+
 const getReservationStatus = (
   reservation: ReservationRecord,
   row: ReservationRow | undefined
 ): CustomerReservationStatus => {
-  if (
-    reservation.status === "CANCELLED" ||
-    row?.reservationState === "cancelled" ||
-    row?.reservationState === "hold_expired"
-  ) {
-    return "cancelled";
-  }
-  if (
-    row?.reservationState === "cancellation_failed" ||
-    row?.fulfillmentState === "failed"
-  ) {
-    return "requires-attention";
-  }
-  // Workspace records a paid hold's confirmation itself, so a shared
-  // snapshot taken before it can't show a paid booking as pending.
-  return reservation.status === "CONFIRMED" ||
-    row?.reservationState === "confirmed"
-    ? "confirmed"
-    : "pending";
+  if (reservation.status === "CANCELLED") return "cancelled";
+  const localStatus = getLocalReservationStatus(row);
+  if (localStatus !== undefined) return localStatus;
+  return reservation.status === "CONFIRMED" ? "confirmed" : "pending";
 };
 
 /**

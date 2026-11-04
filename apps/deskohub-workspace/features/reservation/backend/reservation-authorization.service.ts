@@ -11,7 +11,10 @@ import {
   type ReservationAccessCookieOptions,
 } from "./reservation-access-cookie";
 import { openReservationAccessToken } from "./reservation-access-token";
-import { WorkspaceReservationRepository } from "./workspace-reservation.repository";
+import {
+  type WorkspaceReservation,
+  WorkspaceReservationRepository,
+} from "./workspace-reservation.repository";
 
 /** What a visitor may see of a reservation. */
 type ReservationPermission = "view-status" | "view-access-code";
@@ -98,6 +101,31 @@ export class ReservationAuthorizationService extends Context.Service<
           .isOrderOf({ accountId, orderId })
           .pipe(Effect.orElseSucceed(() => false));
 
+      /**
+       * The active account sees the reservation as its author, or as the
+       * signed-in account linked to the reservation's customer.
+       */
+      const isAuthorOrCustomerOf = Effect.fnUntraced(function* (
+        accountId: CustomerAccountId,
+        reservation: WorkspaceReservation,
+        permission: ReservationPermission
+      ) {
+        if (
+          grants("author", permission) &&
+          reservation.authorAccountId === accountId
+        ) {
+          return true;
+        }
+        if (!grants("customer", permission)) return false;
+
+        const account = yield* ownership.resolve.pipe(Effect.result);
+        return (
+          Result.isSuccess(account) &&
+          account.success.dotyposCustomerId ===
+            (reservation.dotyposCustomerId as DotyposCustomerId)
+        );
+      });
+
       const isAuthorized = Effect.fn(
         "ReservationAuthorizationService.isAuthorized"
       )(function* (input: ReservationAuthorizationInput) {
@@ -126,19 +154,10 @@ export class ReservationAuthorizationService extends Context.Service<
           );
         }
 
-        if (
-          grants("author", input.permission) &&
-          reservation.success.authorAccountId === accountId.success
-        ) {
-          return true;
-        }
-        if (!grants("customer", input.permission)) return false;
-
-        const account = yield* ownership.resolve.pipe(Effect.result);
-        return (
-          Result.isSuccess(account) &&
-          account.success.dotyposCustomerId ===
-            (reservation.success.dotyposCustomerId as DotyposCustomerId)
+        return yield* isAuthorOrCustomerOf(
+          accountId.success,
+          reservation.success,
+          input.permission
         );
       });
 

@@ -151,49 +151,71 @@ export const getReservationAccessCookieName = (
     .update(orderId)
     .digest("base64url")}`;
 
-export const parseCanonicalReservationStatusUrl = (
-  value: string,
-  locale: Locale
-): WorkspaceReservationId | undefined => {
+/**
+ * A same-origin relative URL without a fragment, resolved against a
+ * placeholder origin; anything else isn't canonical.
+ */
+const parseCanonicalRelativeUrl = (value: string) => {
   if (!value.startsWith("/") || value.startsWith("//")) return undefined;
 
   const url = URL.parse(value, "https://deskohub.local");
-  if (!url || url.hash) return undefined;
+  return url && !url.hash ? url : undefined;
+};
 
+/**
+ * The raw locale and decoded reservation id of a
+ * `/{locale}{routePath}/{orderId}` path, or nothing when the path has another
+ * shape or an empty or slash-encoded segment.
+ */
+const readReservationPathSegments = (url: URL, routePath: string) => {
   const path = url.pathname.split("/");
   if (
     path.length !== 5 ||
     path[0] !== "" ||
-    path.slice(2, 4).join("/") !== reservationStatusPath.slice(1)
+    path.slice(2, 4).join("/") !== routePath.slice(1)
   ) {
     return undefined;
   }
 
   const pathLocale = path[1];
   const pathOrderId = decodePathSegment(path[4]);
-  if (!pathLocale || !pathOrderId) return undefined;
+  return pathLocale && pathOrderId
+    ? { locale: pathLocale, orderId: pathOrderId }
+    : undefined;
+};
+
+const decodeReservationStatusPathSegments = Schema.decodeUnknownOption(
+  Schema.Struct({
+    locale: Schema.Literals(locales),
+    orderId: workspaceReservationIdSchema,
+  })
+);
+
+const isCanonicalReservationStatusOutcome = (outcome: string | null) =>
+  outcome === null || outcome === "success" || outcome === "cancelled";
+
+export const parseCanonicalReservationStatusUrl = (
+  value: string,
+  locale: Locale
+): WorkspaceReservationId | undefined => {
+  const url = parseCanonicalRelativeUrl(value);
+  if (!url) return undefined;
+
+  const segments = readReservationPathSegments(url, reservationStatusPath);
+  if (!segments) return undefined;
 
   const parsed = Option.getOrUndefined(
-    Schema.decodeUnknownOption(
-      Schema.Struct({
-        locale: Schema.Literals(locales),
-        orderId: workspaceReservationIdSchema,
-      })
-    )({
-      locale: pathLocale,
-      orderId: pathOrderId,
-    })
+    decodeReservationStatusPathSegments(segments)
   );
-  if (!parsed || parsed.locale !== locale) return undefined;
-
   if (
-    !hasValidCanonicalReservationSearchParams(url, reservationStatusQueryParams)
+    !parsed ||
+    parsed.locale !== locale ||
+    !hasValidCanonicalReservationSearchParams(
+      url,
+      reservationStatusQueryParams
+    ) ||
+    !isCanonicalReservationStatusOutcome(url.searchParams.get("outcome"))
   ) {
-    return undefined;
-  }
-
-  const outcome = url.searchParams.get("outcome");
-  if (outcome !== null && outcome !== "success" && outcome !== "cancelled") {
     return undefined;
   }
 
@@ -204,32 +226,19 @@ export const parseCanonicalReservationAccessUrl = (
   value: string,
   locale: Locale
 ): WorkspaceReservationId | undefined => {
-  if (!value.startsWith("/") || value.startsWith("//")) return undefined;
-
-  const url = URL.parse(value, "https://deskohub.local");
+  const url = parseCanonicalRelativeUrl(value);
   if (
     !url ||
-    url.hash ||
     !hasValidCanonicalReservationSearchParams(url, reservationAccessQueryParams)
   ) {
     return undefined;
   }
 
-  const path = url.pathname.split("/");
-  if (
-    path.length !== 5 ||
-    path[0] !== "" ||
-    path.slice(2, 4).join("/") !== reservationAccessPath.slice(1)
-  ) {
-    return undefined;
-  }
-
-  const pathLocale = path[1];
-  const pathOrderId = decodePathSegment(path[4]);
-  if (!pathLocale || !pathOrderId || pathLocale !== locale) return undefined;
+  const segments = readReservationPathSegments(url, reservationAccessPath);
+  if (!segments || segments.locale !== locale) return undefined;
 
   return Option.getOrUndefined(
-    Schema.decodeOption(workspaceReservationIdSchema)(pathOrderId)
+    Schema.decodeOption(workspaceReservationIdSchema)(segments.orderId)
   );
 };
 
@@ -293,22 +302,16 @@ export const createReservationAccessCookieCapability = Effect.fn(
   }
 );
 
-export const openReservationAccessCookie = Effect.fn(
-  "reservationAccessCookie.open"
-)(function* (
-  input: {
-    readonly value: string;
-    readonly orderId: WorkspaceReservationId;
-  },
-  options: ReservationAccessCookieOptions = {}
-) {
-  const [encodedClaims, encodedSignature, ...extraParts] =
-    input.value.split(".");
-  if (extraParts.length > 0 || !encodedClaims || !encodedSignature) {
-    return yield* invalidCookie();
-  }
+/** The claims and signature parts of a sealed cookie value. */
+const splitSealedCookie = (value: string) => {
+  const [encodedClaims, encodedSignature, ...extraParts] = value.split(".");
+  return extraParts.length > 0 || !encodedClaims || !encodedSignature
+    ? Effect.fail(invalidCookie())
+    : Effect.succeed({ encodedClaims, encodedSignature });
+};
 
-  const claims = yield* Effect.try({
+const decodeCookieClaims = (encodedClaims: string) =>
+  Effect.try({
     try: () =>
       JSON.parse(
         Buffer.from(encodedClaims, "base64url").toString("utf8")
@@ -322,9 +325,13 @@ export const openReservationAccessCookie = Effect.fn(
     ),
     Effect.mapError(() => invalidCookie())
   );
-  const secret = yield* getReservationAccessTokenSecret(options).pipe(
-    Effect.mapError(mapSecretError)
-  );
+
+/** Fails unless the signature is the secret's MAC of the encoded claims. */
+const verifyCookieSignature = Effect.fnUntraced(function* (
+  encodedClaims: string,
+  encodedSignature: string,
+  secret: Buffer
+) {
   const providedSignature = yield* Effect.try({
     try: () => Buffer.from(encodedSignature, "base64url"),
     catch: () => invalidCookie(),
@@ -336,6 +343,25 @@ export const openReservationAccessCookie = Effect.fn(
   ) {
     return yield* invalidCookie();
   }
+});
+
+export const openReservationAccessCookie = Effect.fn(
+  "reservationAccessCookie.open"
+)(function* (
+  input: {
+    readonly value: string;
+    readonly orderId: WorkspaceReservationId;
+  },
+  options: ReservationAccessCookieOptions = {}
+) {
+  const { encodedClaims, encodedSignature } = yield* splitSealedCookie(
+    input.value
+  );
+  const claims = yield* decodeCookieClaims(encodedClaims);
+  const secret = yield* getReservationAccessTokenSecret(options).pipe(
+    Effect.mapError(mapSecretError)
+  );
+  yield* verifyCookieSignature(encodedClaims, encodedSignature, secret);
 
   if (claims.orderId !== input.orderId) {
     return yield* invalidCookie();

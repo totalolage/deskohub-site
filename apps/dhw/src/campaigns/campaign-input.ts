@@ -222,6 +222,69 @@ type ContentPatch = NonNullable<
   AdministrationCampaignUpdateInputType["content"]
 >;
 
+/** Fails when a locale both sets and clears its operational reason. */
+const requireSetOrCleared = (
+  cleared: ReadonlySet<AdministrationCampaignLocaleType>,
+  operationalReasons: LocalizedValues
+) =>
+  Effect.gen(function* () {
+    for (const locale of cleared) {
+      if (operationalReasons.has(locale)) {
+        return yield* new InvalidMutationInputError({
+          message: `${locale} can't both set and clear its operational reason.`,
+        });
+      }
+    }
+  });
+
+/** Fails when a removed locale also has content changes. */
+const requireRemovedUnchanged = (
+  removed: ReadonlySet<AdministrationCampaignLocaleType>,
+  changed: ReadonlySet<AdministrationCampaignLocaleType>
+) =>
+  Effect.gen(function* () {
+    for (const locale of removed) {
+      if (changed.has(locale)) {
+        return yield* new InvalidMutationInputError({
+          message: `${locale} can't be removed and changed in the same update.`,
+        });
+      }
+    }
+  });
+
+/**
+ * One changed locale's patch: only the given fields, with a cleared
+ * operational reason as null.
+ */
+const localeContentChange = ({
+  bodies,
+  cleared,
+  locale,
+  operationalReasons,
+  preheaders,
+  subjects,
+}: {
+  readonly bodies: LocalizedValues;
+  readonly cleared: ReadonlySet<AdministrationCampaignLocaleType>;
+  readonly locale: AdministrationCampaignLocaleType;
+  readonly operationalReasons: LocalizedValues;
+  readonly preheaders: LocalizedValues;
+  readonly subjects: LocalizedValues;
+}): AdministrationCampaignLocaleContentChangeType => {
+  const subject = subjects.get(locale);
+  const preheader = preheaders.get(locale);
+  const bodyMarkdown = bodies.get(locale);
+  const operationalReason = cleared.has(locale)
+    ? null
+    : operationalReasons.get(locale);
+  return {
+    ...(subject !== undefined && { subject }),
+    ...(preheader !== undefined && { preheader }),
+    ...(bodyMarkdown !== undefined && { bodyMarkdown }),
+    ...(operationalReason !== undefined && { operationalReason }),
+  };
+};
+
 /**
  * Builds the `content` patch of a campaign update. Locales without flags stay
  * unchanged, a removed locale maps to null, and a cleared operational reason
@@ -239,13 +302,7 @@ export const makeCampaignContentPatch = (flags: ContentChangeFlags) =>
       "remove-locale",
       flags.removeLocale
     );
-    for (const locale of cleared) {
-      if (operationalReasons.has(locale)) {
-        return yield* new InvalidMutationInputError({
-          message: `${locale} can't both set and clear its operational reason.`,
-        });
-      }
-    }
+    yield* requireSetOrCleared(cleared, operationalReasons);
     const changed = localesOf(
       subjects,
       preheaders,
@@ -253,13 +310,7 @@ export const makeCampaignContentPatch = (flags: ContentChangeFlags) =>
       operationalReasons
     );
     for (const locale of cleared) changed.add(locale);
-    for (const locale of removed) {
-      if (changed.has(locale)) {
-        return yield* new InvalidMutationInputError({
-          message: `${locale} can't be removed and changed in the same update.`,
-        });
-      }
-    }
+    yield* requireRemovedUnchanged(removed, changed);
     if (changed.size === 0 && removed.size === 0) {
       return Option.none<ContentPatch>();
     }
@@ -268,18 +319,14 @@ export const makeCampaignContentPatch = (flags: ContentChangeFlags) =>
       -readonly [Locale in keyof ContentPatch]: ContentPatch[Locale];
     } = {};
     for (const locale of changed) {
-      const subject = subjects.get(locale);
-      const preheader = preheaders.get(locale);
-      const bodyMarkdown = bodies.get(locale);
-      const operationalReason = cleared.has(locale)
-        ? null
-        : operationalReasons.get(locale);
-      patch[locale] = {
-        ...(subject !== undefined && { subject }),
-        ...(preheader !== undefined && { preheader }),
-        ...(bodyMarkdown !== undefined && { bodyMarkdown }),
-        ...(operationalReason !== undefined && { operationalReason }),
-      } satisfies AdministrationCampaignLocaleContentChangeType;
+      patch[locale] = localeContentChange({
+        bodies,
+        cleared,
+        locale,
+        operationalReasons,
+        preheaders,
+        subjects,
+      });
     }
     for (const locale of removed) patch[locale] = null;
     return Option.some<ContentPatch>(patch);

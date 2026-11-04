@@ -23,7 +23,11 @@ import {
 } from "../../backend/audience-evaluation-context";
 import type { AudienceDotyposReads } from "../../backend/audience-facts.service";
 import { CampaignRecipientService } from "../../backend/campaign-recipient.service";
-import type { AutomationWorkUnitId } from "../automation-identifiers";
+import type { CampaignId } from "../../campaign-identifiers";
+import type {
+  AutomationVersionId,
+  AutomationWorkUnitId,
+} from "../automation-identifiers";
 import {
   readsTriggeringVisit,
   triggeringVisitVerdict,
@@ -175,6 +179,172 @@ const isWithdrawable = (decision: IntakeDecision) =>
   decision.outcome !== "failed" && withdrawnByCancellation(decision.event.kind);
 
 /**
+ * Each receipt key once, from its earliest receipted decision (by event
+ * time, then event id), skipping keys the automation already recorded.
+ */
+const firstDecisionPerReceiptKey = (
+  rechecked: readonly IntakeDecision[],
+  taken: ReadonlySet<string>
+) => {
+  const recorded = new Set(taken);
+  return rechecked
+    .filter(isReceipted)
+    .toSorted(
+      (left, right) =>
+        Temporal.Instant.compare(
+          left.event.occurredAt,
+          right.event.occurredAt
+        ) || left.event.id.localeCompare(right.event.id)
+    )
+    .filter(({ dedupKey }) => {
+      if (recorded.has(dedupKey)) return false;
+      recorded.add(dedupKey);
+      return true;
+    });
+};
+
+type ReceiptedDecision = ReturnType<typeof firstDecisionPerReceiptKey>[number];
+
+/**
+ * One version's entry: members start runs with the flow they matched,
+ * unless it no longer decodes; the others record their outcome.
+ */
+const versionEntry = (input: {
+  readonly campaignId: CampaignId;
+  readonly versionId: AutomationVersionId;
+  readonly decisions: readonly ReceiptedDecision[];
+  readonly at: Temporal.Instant;
+  readonly facts: AutomationEvaluationFacts["Service"];
+}): Parameters<typeof enterAutomationRuns>[0] => {
+  const members = input.decisions.filter(({ outcome }) => outcome === "member");
+  const flow = Option.flatMap(
+    Option.fromUndefinedOr(members[0]),
+    ({ flow }) => flow
+  );
+  return {
+    campaignId: input.campaignId,
+    versionId: input.versionId,
+    ...(Option.isSome(flow) && {
+      admitted: {
+        flow: flow.value,
+        occurrences: members.map(occurrenceOf),
+        facts: input.facts,
+      },
+    }),
+    rejected: input.decisions.flatMap((decision) =>
+      decision.outcome === "member"
+        ? []
+        : [{ ...occurrenceOf(decision), disposition: decision.outcome }]
+    ),
+    at: input.at,
+  };
+};
+
+/**
+ * Writes one automation's decisions under its lifecycle lock (§5.4), as
+ * `commitIntakeDecisions` describes. Adds the events whose version in force
+ * changed to `released`.
+ */
+const commitAutomationDecisions = Effect.fnUntraced(function* (input: {
+  readonly campaignId: CampaignId;
+  readonly decisions: readonly IntakeDecision[];
+  readonly retired: ReadonlySet<CustomerEventId>;
+  readonly released: Set<CustomerEventId>;
+  readonly at: Temporal.Instant;
+  readonly facts: AutomationEvaluationFacts["Service"];
+}) {
+  const { campaignId, released } = input;
+  const state = yield* lockAutomationForEngine(campaignId);
+  const acceptingSince = state.acceptingSince;
+  if (state.status !== "active" || acceptingSince === null) return;
+  const versions = yield* loadAutomationVersionActivations(campaignId);
+  const accepted = input.decisions.filter((decision) => {
+    if (
+      input.retired.has(decision.event.id) ||
+      !isAfterOrAt(decision.event.occurredAt, acceptingSince)
+    ) {
+      return false;
+    }
+    const inForce = versionInForce(versions, decision.event.occurredAt);
+    if (Option.isSome(inForce) && inForce.value.id === decision.versionId) {
+      return true;
+    }
+    released.add(decision.event.id);
+    return false;
+  });
+  const cancelled = yield* lockTriggeringReservations(
+    accepted.flatMap((decision) =>
+      isWithdrawable(decision) ? [decision.event.workspaceReservationId] : []
+    )
+  );
+  const rechecked = accepted.map((decision) =>
+    isWithdrawable(decision) &&
+    decision.event.workspaceReservationId !== null &&
+    cancelled.has(decision.event.workspaceReservationId)
+      ? { ...decision, outcome: "withdrawn" as const }
+      : decision
+  );
+  const taken = yield* takenReceiptKeys(
+    campaignId,
+    rechecked.map(({ dedupKey }) => dedupKey)
+  );
+  const receipted = firstDecisionPerReceiptKey(rechecked, taken);
+
+  // Versions enter in activation order, so D4 holds across them.
+  const byVersion = Map.groupBy(receipted, ({ versionId }) => versionId);
+  for (const version of versions) {
+    const decisions = byVersion.get(version.id) ?? [];
+    if (decisions.length === 0) continue;
+    yield* enterAutomationRuns(
+      versionEntry({
+        campaignId,
+        versionId: version.id,
+        decisions,
+        at: input.at,
+        facts: input.facts,
+      })
+    );
+  }
+});
+
+/**
+ * Marks the unit's events processed, except the released ones, which go
+ * back to the planner for replanning.
+ */
+const settleIntakeEvents = Effect.fnUntraced(function* (input: {
+  readonly unitId: AutomationWorkUnitId;
+  readonly eventIds: readonly CustomerEventId[];
+  readonly released: ReadonlySet<CustomerEventId>;
+  readonly at: Temporal.Instant;
+}) {
+  const { db } = yield* WorkspaceTransaction;
+  const processed = input.eventIds.filter((id) => !input.released.has(id));
+  if (processed.length > 0) {
+    yield* db
+      .update(customerEvents)
+      .set({ automationProcessedAt: input.at, automationUnitId: null })
+      .where(
+        and(
+          inArray(customerEvents.id, processed),
+          eq(customerEvents.automationUnitId, input.unitId),
+          isNull(customerEvents.automationProcessedAt)
+        )
+      );
+  }
+  if (input.released.size > 0) {
+    yield* db
+      .update(customerEvents)
+      .set({ automationUnitId: null })
+      .where(
+        and(
+          inArray(customerEvents.id, [...input.released]),
+          eq(customerEvents.automationUnitId, input.unitId)
+        )
+      );
+  }
+});
+
+/**
  * Writes intake decisions in the caller's transaction. First the events'
  * accounts are locked: an event that no longer triggers, a legacy
  * account's since intake read it (D37), is processed with no receipt. Then
@@ -197,7 +367,6 @@ const commitIntakeDecisions = Effect.fn("automationIntake.commit")(
     /** Plans the first step of the runs members start. */
     readonly facts: AutomationEvaluationFacts["Service"];
   }) {
-    const { db } = yield* WorkspaceTransaction;
     const released = new Set<CustomerEventId>();
     const retired = yield* lockTriggeringCustomerEvents(
       input.decisions.map(({ event }) => event)
@@ -207,112 +376,17 @@ const commitIntakeDecisions = Effect.fn("automationIntake.commit")(
     ].sort(([left], [right]) => left.localeCompare(right));
 
     for (const [campaignId, decisions] of byCampaign) {
-      const state = yield* lockAutomationForEngine(campaignId);
-      const acceptingSince = state.acceptingSince;
-      if (state.status !== "active" || acceptingSince === null) continue;
-      const versions = yield* loadAutomationVersionActivations(campaignId);
-      const accepted = decisions.filter((decision) => {
-        if (
-          retired.has(decision.event.id) ||
-          !isAfterOrAt(decision.event.occurredAt, acceptingSince)
-        ) {
-          return false;
-        }
-        const inForce = versionInForce(versions, decision.event.occurredAt);
-        if (Option.isSome(inForce) && inForce.value.id === decision.versionId) {
-          return true;
-        }
-        released.add(decision.event.id);
-        return false;
-      });
-      const cancelled = yield* lockTriggeringReservations(
-        accepted.flatMap((decision) =>
-          isWithdrawable(decision)
-            ? [decision.event.workspaceReservationId]
-            : []
-        )
-      );
-      const rechecked = accepted.map((decision) =>
-        isWithdrawable(decision) &&
-        decision.event.workspaceReservationId !== null &&
-        cancelled.has(decision.event.workspaceReservationId)
-          ? { ...decision, outcome: "withdrawn" as const }
-          : decision
-      );
-      const taken = yield* takenReceiptKeys(
+      yield* commitAutomationDecisions({
         campaignId,
-        rechecked.map(({ dedupKey }) => dedupKey)
-      );
-      const recorded = new Set(taken);
-      const receipted = rechecked
-        .filter(isReceipted)
-        .toSorted(
-          (left, right) =>
-            Temporal.Instant.compare(
-              left.event.occurredAt,
-              right.event.occurredAt
-            ) || left.event.id.localeCompare(right.event.id)
-        )
-        .filter(({ dedupKey }) => {
-          if (recorded.has(dedupKey)) return false;
-          recorded.add(dedupKey);
-          return true;
-        });
-
-      // Versions enter in activation order, so D4 holds across them.
-      const byVersion = Map.groupBy(receipted, ({ versionId }) => versionId);
-      for (const version of versions) {
-        const ofVersion = byVersion.get(version.id) ?? [];
-        if (ofVersion.length === 0) continue;
-        const members = ofVersion.filter(({ outcome }) => outcome === "member");
-        const flow = Option.flatMap(
-          Option.fromUndefinedOr(members[0]),
-          ({ flow }) => flow
-        );
-        yield* enterAutomationRuns({
-          campaignId,
-          versionId: version.id,
-          ...(Option.isSome(flow) && {
-            admitted: {
-              flow: flow.value,
-              occurrences: members.map(occurrenceOf),
-              facts: input.facts,
-            },
-          }),
-          rejected: ofVersion.flatMap((decision) =>
-            decision.outcome === "member"
-              ? []
-              : [{ ...occurrenceOf(decision), disposition: decision.outcome }]
-          ),
-          at: input.at,
-        });
-      }
+        decisions,
+        retired,
+        released,
+        at: input.at,
+        facts: input.facts,
+      });
     }
 
-    const processed = input.eventIds.filter((id) => !released.has(id));
-    if (processed.length > 0) {
-      yield* db
-        .update(customerEvents)
-        .set({ automationProcessedAt: input.at, automationUnitId: null })
-        .where(
-          and(
-            inArray(customerEvents.id, processed),
-            eq(customerEvents.automationUnitId, input.unitId),
-            isNull(customerEvents.automationProcessedAt)
-          )
-        );
-    }
-    if (released.size > 0) {
-      yield* db
-        .update(customerEvents)
-        .set({ automationUnitId: null })
-        .where(
-          and(
-            inArray(customerEvents.id, [...released]),
-            eq(customerEvents.automationUnitId, input.unitId)
-          )
-        );
-    }
+    yield* settleIntakeEvents({ ...input, released });
   }
 );
 
