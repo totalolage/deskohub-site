@@ -1,23 +1,14 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import type { AnyValue, LogRecord } from "@opentelemetry/api-logs";
+import type { AnyValue } from "@opentelemetry/api-logs";
 import { Data, Effect } from "effect";
 import * as workspaceEnv from "@/env";
+import { captureWorkspaceLogs } from "@/shared/testing/workspace-telemetry.test-utils";
 
-const emittedLogRecords: LogRecord[] = [];
+const workspaceLogs = captureWorkspaceLogs();
 const nextServer = await import("next/server");
 
 // Outside a Next request, scheduling the telemetry flush would log a warning.
 mock.module("next/server", () => ({ ...nextServer, after: () => undefined }));
-mock.module("@/instrumentation", () => ({
-  postHogLoggerProvider: {
-    forceFlush: () => Promise.resolve(),
-    getLogger: () => ({
-      emit: (record: LogRecord) => {
-        emittedLogRecords.push(record);
-      },
-    }),
-  },
-}));
 
 const cronSecret = "test-cron-secret";
 let cronEnv: {
@@ -43,7 +34,8 @@ class TestJobError extends Data.TaggedError("TestJobError")<{
 }> {}
 
 const severities = (operation: string) =>
-  emittedLogRecords
+  workspaceLogs
+    .records()
     .filter(({ attributes }) => attributes?.operation === operation)
     .map(({ severityText }) => severityText);
 
@@ -52,10 +44,12 @@ const parseLogged = (value: AnyValue | undefined) => JSON.parse(String(value));
 
 /** The structured fields passed beside the message of the first match. */
 const fieldsAt = (operation: string, severity: string) => {
-  const record = emittedLogRecords.find(
-    ({ attributes, severityText }) =>
-      attributes?.operation === operation && severityText === severity
-  );
+  const record = workspaceLogs
+    .records()
+    .find(
+      ({ attributes, severityText }) =>
+        attributes?.operation === operation && severityText === severity
+    );
   return Array.isArray(record?.body) ? parseLogged(record.body[1]) : undefined;
 };
 
@@ -65,7 +59,7 @@ const cronRequest = (authorization?: string) =>
   });
 
 afterEach(() => {
-  emittedLogRecords.length = 0;
+  workspaceLogs.reset();
   cronEnv = { CRON_SECRET: cronSecret, VERCEL_ENV: "production" };
 });
 
@@ -128,9 +122,11 @@ describe("Workspace cron routes", () => {
     expect(await response.text()).toBe('{"swept":3}');
     expect(runs).toEqual([{ limit: 25 }]);
     expect(severities("test.cron.summary")).toEqual(["info", "info"]);
-    const [started, completed] = emittedLogRecords.filter(
-      ({ attributes }) => attributes?.operation === "test.cron.summary"
-    );
+    const [started, completed] = workspaceLogs
+      .records()
+      .filter(
+        ({ attributes }) => attributes?.operation === "test.cron.summary"
+      );
     expect(parseLogged(started?.attributes?.input)).toEqual({ limit: 25 });
     expect(started?.attributes).not.toHaveProperty("result");
     expect(parseLogged(completed?.attributes?.input)).toEqual({ limit: 25 });

@@ -13,12 +13,6 @@ mock.module("next/server", () => ({
   after: () => undefined,
   connection: () => Promise.resolve(),
 }));
-mock.module("@/instrumentation", () => ({
-  postHogLoggerProvider: {
-    forceFlush: () => Promise.resolve(),
-    getLogger: () => ({ emit: () => undefined }),
-  },
-}));
 
 const { DiscountAdministration, DiscountAdminNotFoundError } = await import(
   "./discount-administration.service"

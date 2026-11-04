@@ -1,24 +1,15 @@
 import { mock } from "bun:test";
-import type { LogRecord } from "@opentelemetry/api-logs";
 import { Effect } from "effect";
 import { mockWorkspaceActionRequest } from "./workspace-action-request.test-utils";
+import { captureWorkspaceLogs } from "./workspace-telemetry.test-utils";
 
-const emittedLogRecords: LogRecord[] = [];
+let workspaceLogs: ReturnType<typeof captureWorkspaceLogs> | undefined;
 let installation: Promise<void> | undefined;
 
 const installActionTelemetryMocks = async () => {
   mock.module("server-only", () => ({}));
   await mockWorkspaceActionRequest();
-  mock.module("@/instrumentation", () => ({
-    postHogLoggerProvider: {
-      forceFlush: () => Promise.resolve(),
-      getLogger: () => ({
-        emit: (record: LogRecord) => {
-          emittedLogRecords.push(record);
-        },
-      }),
-    },
-  }));
+  workspaceLogs = captureWorkspaceLogs();
 
   const {
     defineWorkspaceAction,
@@ -49,7 +40,7 @@ export const mockWorkspaceActionTelemetry = async () => {
   return {
     /** Every telemetry record emitted for one action operation. */
     getOperationLogRecords: (operation: string) =>
-      emittedLogRecords.filter(
+      (workspaceLogs?.records() ?? []).filter(
         ({ attributes }) => attributes?.operation === operation
       ),
   };

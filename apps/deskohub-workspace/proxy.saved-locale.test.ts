@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import type { LogRecord } from "@opentelemetry/api-logs";
 import { Effect } from "effect";
 import { NextRequest } from "next/server";
 import { CustomerAccountAccessError } from "@/features/account/customer-account";
@@ -10,6 +9,7 @@ import { getReservationAccessCookieName } from "@/features/reservation/backend/r
 import { createReservationAccessToken } from "@/features/reservation/backend/reservation-access-token";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { reservationAccessTokenQueryParam } from "@/features/reservation/reservation-access-token";
+import { captureWorkspaceLogs } from "@/shared/testing/workspace-telemetry.test-utils";
 
 // The saved preference goes through the real reader over a fake session read
 // that answers from the request headers the proxy provides.
@@ -41,23 +41,15 @@ mock.module(
   })
 );
 
-const emittedLogRecords: LogRecord[] = [];
-mock.module("@/instrumentation", () => ({
-  postHogLoggerProvider: {
-    forceFlush: () => Promise.resolve(),
-    getLogger: () => ({
-      emit: (record: LogRecord) => {
-        emittedLogRecords.push(record);
-      },
-    }),
-  },
-}));
+const workspaceLogs = captureWorkspaceLogs();
 const reportedVerifyFailures = () =>
-  emittedLogRecords.filter((record) =>
-    JSON.stringify(record).includes(
-      "i18n.locale-bound-continuation.verify-failed"
-    )
-  );
+  workspaceLogs
+    .records()
+    .filter((record) =>
+      JSON.stringify(record).includes(
+        "i18n.locale-bound-continuation.verify-failed"
+      )
+    );
 
 const { proxy } = await import("./proxy");
 
@@ -66,7 +58,7 @@ beforeEach(() => {
   reader.fake.sessionReadFailure = undefined;
   reader.fake.sessionReads.length = 0;
   verifierThrows = false;
-  emittedLogRecords.length = 0;
+  workspaceLogs.reset();
 });
 
 const request = (

@@ -26,12 +26,6 @@ const revalidatePath = mock(
 mock.module("next/cache", () => ({ revalidatePath }));
 
 const request = await mockWorkspaceActionRequest();
-mock.module("@/instrumentation", () => ({
-  postHogLoggerProvider: {
-    forceFlush: () => Promise.resolve(),
-    getLogger: () => ({ emit: () => undefined }),
-  },
-}));
 
 let referralsEnabled = true;
 const areReferralsEnabled = mock(() => Promise.resolve(referralsEnabled));
