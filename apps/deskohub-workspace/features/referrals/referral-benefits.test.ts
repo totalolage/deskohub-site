@@ -404,16 +404,42 @@ describe("pricing the referral phase", () => {
       [ids.invitation, 20_000, 3_000],
       [ids.referrer, 17_000, 850],
     ]);
-    expect(priced.quote).toEqual({
-      product: baseQuote.product,
-      discountableSubtotal: currencyCZK(21_000),
-      discounts: [
-        ...baseQuote.discounts,
-        ...priced.applications.map(({ application }) => application),
-      ],
-      totalDiscount: currencyCZK(4_850),
-      discountedSubtotal: currencyCZK(16_150),
-    });
+    // Signed quotes serialize this shape, so property order matters too.
+    expect(JSON.stringify(priced.quote)).toBe(
+      JSON.stringify({
+        product: baseQuote.product,
+        discountableSubtotal: currencyCZK(21_000),
+        discounts: [
+          {
+            discount: ordinaryCandidate.discount,
+            subtotalBefore: currencyCZK(21_000),
+            amount: currencyCZK(1_000),
+            subtotalAfter: currencyCZK(20_000),
+          },
+          {
+            discount: invitationCandidate.discount,
+            subtotalBefore: currencyCZK(20_000),
+            amount: currencyCZK(3_000),
+            subtotalAfter: currencyCZK(17_000),
+          },
+          {
+            discount: {
+              id: ids.referrer,
+              label: m.checkoutSummaryItemReferralDiscount(
+                { count: "1" },
+                { locale: "en-US" }
+              ),
+              adjustment: { kind: "fixed", amount: currencyCZK(850) },
+            },
+            subtotalBefore: currencyCZK(17_000),
+            amount: currencyCZK(850),
+            subtotalAfter: currencyCZK(16_150),
+          },
+        ],
+        totalDiscount: currencyCZK(4_850),
+        discountedSubtotal: currencyCZK(16_150),
+      })
+    );
   });
 
   test("leaves the quote unchanged without referral candidates", () => {

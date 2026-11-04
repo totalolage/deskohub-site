@@ -13,6 +13,7 @@ import {
 import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import type { ReferralService as ReferralServiceTag } from "@/features/referrals";
+import { ReferralError } from "@/features/referrals/contracts";
 import {
   ReferralServiceMock,
   WithheldReferralService,
@@ -1257,6 +1258,100 @@ describe("DiscountService", () => {
       quote.discounts.map(({ subtotalBefore }) => subtotalBefore.value)
     ).toEqual([10_000, 9_000, 8_100, 6_480, 5_508]);
     expect(quote.discountedSubtotal).toEqual(money(4_957));
+  });
+
+  test("keeps each referral benefit when the other's resolution fails", async () => {
+    const invitedCustomerId = paymentInput.dotyposCustomerId;
+    const promotionCodeId = promotionCodeIdSchema.make("referral-promotion");
+    const invitation: DiscountCandidate = {
+      discount: {
+        id: getReferralBenefitIds(invitedCustomerId).invitation,
+        label: "Invitation discount",
+        adjustment: { kind: "percentage", basisPoints: 1_500 },
+      },
+      provenance: {
+        providerNamespace: "referral-invitation",
+        providerReference: promotionCodeId,
+      },
+      claim: {
+        kind: "referral_invitation",
+        invitedDotyposCustomerId: invitedCustomerId,
+        referrerDotyposCustomerId: "referrer-1" as typeof invitedCustomerId,
+        promotionCodeId,
+      },
+    };
+    const referrer: DiscountCandidate = {
+      discount: {
+        id: getReferralBenefitIds(invitedCustomerId).referrer,
+        label: "Referrer discount",
+        adjustment: { kind: "fixed", amount: money(500) },
+      },
+      provenance: {
+        providerNamespace: "referral-referrer",
+        providerReference: invitedCustomerId,
+      },
+    };
+    const unavailable = Effect.fail(
+      new ReferralError({ reason: "unavailable" })
+    );
+    const providers = Layer.mergeAll(
+      CalendarDiscountProviderMock({
+        discover: () => Effect.succeed(calendarResolution([])),
+      }),
+      CustomerDiscountProviderMock({ resolve: () => Effect.succeed([]) }),
+      PromotionCodeProviderMock({ revalidate: () => Effect.succeed([]) })
+    );
+    const quoteWith = async (
+      overrides: Parameters<typeof ReferralServiceMock>[0]
+    ) => {
+      const logRecords: LogAnnotations[] = [];
+      const logger = Logger.make((options) => {
+        logRecords.push(options.fiber.getRef(References.CurrentLogAnnotations));
+      });
+      const quote = await runWithProviders(
+        Effect.gen(function* () {
+          const discounts = yield* DiscountService;
+          return yield* discounts.quote({
+            ...advertisementInput,
+            dotyposCustomerId: invitedCustomerId,
+          });
+        }).pipe(Effect.provide(Logger.layer([logger]))),
+        providers,
+        allReleaseGatesEnabled,
+        ReferralServiceMock(overrides)
+      );
+      return { quote, logRecords };
+    };
+    const referralFailureLog = expect.objectContaining({
+      discountBoundary: "resolution",
+      discountProvider: "referral",
+      discountOperation: "quote",
+      discountErrorTag: "ReferralError",
+      discountErrorReason: "unavailable",
+    });
+
+    const withoutReferrer = await quoteWith({
+      resolveInvitationCandidate: () => Effect.succeed(invitation),
+      resolveReferrerCandidate: () => unavailable,
+    });
+    expect(
+      withoutReferrer.quote.discounts.map(({ discount }) => discount.id)
+    ).toEqual([getReferralBenefitIds(invitedCustomerId).invitation]);
+    expect(withoutReferrer.logRecords).toContainEqual(referralFailureLog);
+
+    let referrerSubtotal: Money | undefined;
+    const withoutInvitation = await quoteWith({
+      resolveInvitationCandidate: () => unavailable,
+      resolveReferrerCandidate: (input) => {
+        referrerSubtotal = input.remainingSubtotal;
+        return Effect.succeed(referrer);
+      },
+    });
+    expect(referrerSubtotal).toEqual(money(10_000));
+    expect(
+      withoutInvitation.quote.discounts.map(({ discount }) => discount.id)
+    ).toEqual([getReferralBenefitIds(invitedCustomerId).referrer]);
+    expect(withoutInvitation.logRecords).toContainEqual(referralFailureLog);
   });
 
   test("prices the invitation from the checkout's carried referral code", async () => {
