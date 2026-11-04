@@ -245,6 +245,9 @@
   "emailsEditorPreviewUpdated": "The preview is up to date.",
   "emailsEditorPreviewFailed": "The preview couldn't be rendered. Try again.",
   "emailsEditorPreviewSubject": "Subject: {subject}",
+  "emailsEditorRetiredTranslationNotice": "This email still has a translation in {language}, a language the Workspace no longer offers. Remove it before publishing.",
+  "emailsEditorRetiredTranslationRemove": "Remove the {language} translation",
+  "emailsEditorOperationalReasonUnusedHint": "Only operational emails show this reason. Clear it if you don't need it.",
   "emailsEditorImageUploadFailed": "The image could not be uploaded. Try again.",
   "emailsEditorImageUploadUnreadable": "The image could not be read. Try a different file.",
   "emailsEditorImageUploadAnimationTooLarge": "An animated image can be at most {maxMegabytes} MB and {maxMegapixels} megapixels across all its frames. Shorten or shrink the animation."

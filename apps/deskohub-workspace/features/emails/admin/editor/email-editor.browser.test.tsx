@@ -568,3 +568,77 @@ for (const locale of ["en-US", "cs-CZ"] as const) {
     30_000
   );
 }
+
+test.skipIf(!chromiumAvailable)(
+  "lets the author repair a retired language's translation and a reason kept on a marketing email",
+  async () => {
+    const locale = "en-US";
+    const page = await openEditor(locale, {
+      draft: {
+        ...fixtureDraft,
+        translations: {
+          ...fixtureDraft.translations,
+          "en-US": {
+            ...fixtureDraft.translations?.["en-US"],
+            operationalReason: [{ _tag: "Value", name: "gone_value" }],
+          },
+          "de-DE": { subject: [{ _tag: "Text", text: "Hallo" }] },
+        },
+      },
+    });
+    try {
+      // The retired language has no tab; its problems point at its removal.
+      const removeId = emailEditorFieldIds.retiredTranslation("de-DE");
+      const retiredProblem = page
+        .getByRole("region", {
+          name: m.emailsEditorProblemsHeading({}, { locale }),
+        })
+        .getByRole("button", {
+          name: new RegExp(
+            m
+              .emailsEditorPlaceBlockText(
+                { number: 2, language: "de-DE" },
+                { locale }
+              )
+              .replace(/[()]/g, "\\$&")
+          ),
+        })
+        .first();
+      await retiredProblem.click();
+      await page.waitForFunction(
+        (id) => document.activeElement?.id === id,
+        removeId
+      );
+      await page.locator(`[id="${removeId}"]`).click();
+      await page.locator(`[id="${removeId}"]`).waitFor({ state: "detached" });
+      expect((await saveDraft(page)).translations?.["de-DE"]).toBeUndefined();
+
+      // A reason stored on a marketing email stays visible and repairable.
+      await showLanguage(page, locale, "en-US");
+      const reasonId = emailEditorFieldIds.translation(
+        "en-US",
+        "operationalReason"
+      );
+      await summaryItem(
+        page,
+        locale,
+        m.emailsEditorPlaceOperationalReason(
+          { language: m.emailsEditorLanguageEnglish({}, { locale }) },
+          { locale }
+        ),
+        m.emailsEditorProblemValueUnknown({ name: "gone_value" }, { locale })
+      ).click();
+      await page.waitForFunction(
+        (id) => document.activeElement?.id === id,
+        reasonId
+      );
+      await page
+        .getByText(m.emailsEditorOperationalReasonUnusedHint({}, { locale }))
+        .waitFor();
+      expectNoPageErrors(page);
+    } finally {
+      await page.close();
+    }
+  },
+  30_000
+);

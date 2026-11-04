@@ -37,15 +37,21 @@ export type EmailPreviewRenderer = (input: {
 
 const previewDelayMs = 500;
 
-type PreviewState = {
-  readonly preview?: EmailPreview;
-  readonly error?: string;
-  readonly updating: boolean;
-};
+/** The outcome of one preview request. */
+type PreviewResult = {
+  /** The request it answers, to tell a current result from an old one. */
+  readonly request: string;
+  readonly locale: Locale;
+} & (
+  | { readonly preview: EmailPreview; readonly error?: never }
+  | { readonly error: string; readonly preview?: never }
+);
 
 /**
  * The draft as a recipient would see it in the active language, rendered
- * with sample values after editing pauses.
+ * with sample values after editing pauses. Only the latest request's answer
+ * shows; an older one arriving late is dropped, and a failure clears the
+ * old picture rather than leaving it under a new heading.
  */
 export function EmailPreviewPanel({
   renderPreview,
@@ -60,35 +66,38 @@ export function EmailPreviewPanel({
   useWatch({ control });
   const draft = getValues();
   const requestKey = JSON.stringify([activeLocale, draft, values]);
-  // Responses can arrive out of order; only the latest request's applies.
+  // Any change of input outdates the requests already sent.
   const latestRequest = useRef(requestKey);
-  const [state, setState] = useState<PreviewState>({ updating: false });
+  const [result, setResult] = useState<PreviewResult>();
 
   const renderLatest = useEffectEvent(() => {
-    latestRequest.current = requestKey;
     const failed = m.emailsEditorPreviewFailed({}, { locale });
-    const settle = (next: Omit<PreviewState, "updating">) => {
+    const settle = (
+      outcome: { readonly preview: EmailPreview } | { readonly error: string }
+    ) => {
       if (latestRequest.current !== requestKey) return;
-      setState((current) => ({ ...current, ...next, updating: false }));
+      setResult({ request: requestKey, locale: activeLocale, ...outcome });
     };
-    setState((current) => ({ ...current, updating: true }));
     renderPreview({ draft, locale: activeLocale, values }).then(
-      (result) =>
+      (answer) =>
         settle(
-          result.data
-            ? { preview: result.data, error: undefined }
-            : { error: result.serverError ?? failed }
+          answer.data
+            ? { preview: answer.data }
+            : { error: answer.serverError ?? failed }
         ),
       () => settle({ error: failed })
     );
   });
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: requestKey captures the request.
   useEffect(() => {
+    latestRequest.current = requestKey;
     const timer = setTimeout(renderLatest, previewDelayMs);
     return () => clearTimeout(timer);
   }, [requestKey]);
 
+  // Another language's picture never shows under this language's heading.
+  const shown = result?.locale === activeLocale ? result : undefined;
+  const current = result?.request === requestKey;
   const language = emailEditorLanguageName(activeLocale, locale);
   return (
     <section
@@ -105,17 +114,19 @@ export function EmailPreviewPanel({
         {m.emailsEditorPreviewSampleNote({}, { locale })}
       </p>
       <p className="sr-only" role="status">
-        {state.updating
-          ? m.emailsEditorPreviewUpdating({}, { locale })
-          : state.preview && m.emailsEditorPreviewUpdated({}, { locale })}
+        {current
+          ? result.preview && m.emailsEditorPreviewUpdated({}, { locale })
+          : m.emailsEditorPreviewUpdating({}, { locale })}
       </p>
       <div className="mb-2 text-sm" role="alert">
-        {state.error && <p className="text-burned-orange-ink">{state.error}</p>}
+        {shown?.error && (
+          <p className="text-burned-orange-ink">{shown.error}</p>
+        )}
       </div>
-      {state.preview && (
+      {shown?.preview && (
         <p className="mb-2 truncate font-medium text-navy-blue text-sm">
           {m.emailsEditorPreviewSubject(
-            { subject: state.preview.subject },
+            { subject: shown.preview.subject },
             { locale }
           )}
         </p>
@@ -124,7 +135,7 @@ export function EmailPreviewPanel({
         className="h-[640px] w-full rounded-md border border-navy-blue/10 bg-white"
         lang={activeLocale}
         sandbox=""
-        srcDoc={state.preview?.html ?? ""}
+        srcDoc={shown?.preview?.html ?? ""}
         title={m.emailsEditorPreviewFrameTitle({ language }, { locale })}
       />
     </section>

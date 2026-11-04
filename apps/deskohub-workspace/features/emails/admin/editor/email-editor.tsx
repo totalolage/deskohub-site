@@ -22,6 +22,7 @@ import {
   type EmailPreviewValues,
 } from "./email-preview-panel";
 import { EmailProblemSummary } from "./email-problem-summary";
+import { EmailRetiredTranslations } from "./email-retired-translations";
 import { EmailStructureSection } from "./email-structure-section";
 import {
   type EmailEditorDiscount,
@@ -85,6 +86,7 @@ function EmailLanguageTabs() {
   const { locales, activeLocale, setActiveLocale, problems } = useEmailEditor();
   return (
     <section className="rounded-xl border border-navy-blue/10 bg-white p-5">
+      <EmailRetiredTranslations />
       <Tabs
         onValueChange={(value) => setActiveLocale(value as Locale)}
         value={activeLocale}

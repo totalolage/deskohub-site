@@ -247,6 +247,9 @@
   "emailsEditorPreviewUpdated": "Náhled je aktuální.",
   "emailsEditorPreviewFailed": "Náhled se nepodařilo vykreslit. Zkuste to znovu.",
   "emailsEditorPreviewSubject": "Předmět: {subject}",
+  "emailsEditorRetiredTranslationNotice": "E-mail stále obsahuje překlad v jazyce {language}, který Workspace už nenabízí. Před zveřejněním ho odeberte.",
+  "emailsEditorRetiredTranslationRemove": "Odebrat překlad ({language})",
+  "emailsEditorOperationalReasonUnusedHint": "Tento důvod zobrazují jen provozní e-maily. Pokud ho nepotřebujete, smažte ho.",
   "emailsEditorImageUploadFailed": "Obrázek se nepodařilo nahrát. Zkuste to znovu.",
   "emailsEditorImageUploadUnreadable": "Obrázek se nepodařilo načíst. Zkuste jiný soubor.",
   "emailsEditorImageUploadAnimationTooLarge": "Animovaný obrázek může mít nejvýše {maxMegabytes} MB a {maxMegapixels} megapixelů ve všech snímcích dohromady. Animaci zkraťte nebo zmenšete."

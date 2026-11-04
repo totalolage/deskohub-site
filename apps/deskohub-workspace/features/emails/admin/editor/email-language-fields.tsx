@@ -20,6 +20,12 @@ export function EmailLanguageFields({
   const locale = useRouteLocale();
   const { control } = useEmailDraftForm();
   const purpose = useWatch({ control, name: "purpose" });
+  // A reason stored before the email became a marketing one stays editable:
+  // publication still checks it, and clearing it is the author's choice.
+  const storedReason = useWatch({
+    control,
+    name: `translations.${contentLocale}.operationalReason`,
+  });
   return (
     <div className="space-y-4">
       <EmailInlineTextField
@@ -36,7 +42,7 @@ export function EmailLanguageFields({
         mode="plain"
         target={{ kind: "preheader" }}
       />
-      {purpose === "operational" && (
+      {(purpose === "operational" || storedReason !== undefined) && (
         <EmailInlineTextField
           contentLocale={contentLocale}
           fieldId={emailEditorFieldIds.translation(
@@ -47,6 +53,11 @@ export function EmailLanguageFields({
           mode="plain"
           target={{ kind: "operationalReason" }}
         />
+      )}
+      {purpose !== "operational" && storedReason !== undefined && (
+        <p className="-mt-3 text-navy-blue/60 text-xs">
+          {m.emailsEditorOperationalReasonUnusedHint({}, { locale })}
+        </p>
       )}
     </div>
   );

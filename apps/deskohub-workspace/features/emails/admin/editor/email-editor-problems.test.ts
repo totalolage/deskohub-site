@@ -9,6 +9,7 @@ import { emailEditorFieldIds } from "./email-editor-field-ids";
 import {
   emailEditorLanguageProblemCount,
   emailEditorProblems,
+  retiredEmailTranslationLocales,
 } from "./email-editor-problems";
 
 const locale = "en-US";
@@ -123,6 +124,28 @@ describe("emailEditorProblems", () => {
         message: m.emailsEditorProblemValueSource({}, { locale }),
       })
     );
+  });
+
+  test("places a retired language's problems on the control that removes it", () => {
+    const problems = problemsOf({
+      ...fixtureDraft,
+      translations: {
+        ...fixtureDraft.translations,
+        "de-DE": { subject: [] },
+      },
+    });
+    const retired = problems.filter(
+      (problem) =>
+        problem.fieldId === emailEditorFieldIds.retiredTranslation("de-DE")
+    );
+    expect(retired.length).toBeGreaterThan(0);
+    expect(retired.every((problem) => problem.locale === undefined)).toBe(true);
+    expect(
+      retiredEmailTranslationLocales(
+        { translations: { "de-DE": {}, "en-US": {} } },
+        ["cs-CZ", "en-US"]
+      )
+    ).toEqual(["de-DE"]);
   });
 
   test("refuses an image not uploaded through the editor unless it was published", () => {

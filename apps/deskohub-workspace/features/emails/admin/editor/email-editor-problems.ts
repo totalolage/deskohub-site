@@ -170,6 +170,18 @@ export const emailEditorProblems = ({
     };
   };
   const translated = (at: EmailContentLocation): Placed => {
+    const placed = translatedField(at);
+    // A language the Workspace no longer offers has no tab; its problems
+    // point at the control that removes its translation.
+    return at.locale === undefined || currentLocales.includes(at.locale)
+      ? placed
+      : {
+          ...placed,
+          fieldId: emailEditorFieldIds.retiredTranslation(at.locale),
+          locale: undefined,
+        };
+  };
+  const translatedField = (at: EmailContentLocation): Placed => {
     const code = at.locale ?? "";
     switch (at.field) {
       case "subject":
@@ -372,6 +384,19 @@ export const emailEditorProblems = ({
     ).map(image),
   ];
 };
+
+/**
+ * Languages the draft has a translation in that the Workspace no longer
+ * offers, in stored order. Publication still checks them, so the editor
+ * offers to remove them.
+ */
+export const retiredEmailTranslationLocales = (
+  draft: EmailDraftFormValues,
+  currentLocales: readonly string[]
+): readonly string[] =>
+  Object.keys(draft.translations ?? {}).filter(
+    (language) => !currentLocales.includes(language)
+  );
 
 /** Problems the language tab `language` shows, for its badge. */
 export const emailEditorLanguageProblemCount = (
