@@ -952,9 +952,8 @@ describe("DotyposService customer lookup", () => {
     expect(updateAttempts).toBeGreaterThan(1);
   });
 
-  test("fails filling a matched customer Dotypos returned without an id", async () => {
-    const matched = customer({
-      id: undefined,
+  test("rejects a customer lookup that returns a customer without an id", async () => {
+    const { id: _id, ...matched } = customer({
       email: adaAddress,
       lastName: undefined,
     });
@@ -3399,55 +3398,6 @@ describe("DotyposService customer discounts", () => {
       },
     });
   });
-
-  test('accepts "10" and ignores out-of-range discounts', async () => {
-    const discounts: Record<string, string> = {
-      ten: "10",
-      zero: "0",
-      tooHigh: "101",
-    };
-    const fetchMock = mockDotyposFetch((request) => {
-      const url = new URL(request.url);
-      if (url.pathname === "/signin/token") return tokenResponse();
-      const match = url.pathname.match(/\/discount-groups\/(.+)$/);
-      if (match) {
-        const discountGroupId = match[1]!;
-        return Response.json({
-          id: discountGroupId,
-          discountPercent: discounts[discountGroupId],
-        });
-      }
-      return new Response("Not found", { status: 404 });
-    });
-
-    const result = await runWithService(
-      Effect.gen(function* () {
-        const dotypos = yield* DotyposService;
-        return yield* Effect.all([
-          dotypos.getCustomerDiscount(
-            customer({ _discountGroupId: dotyposDiscountGroupId("ten") })
-          ),
-          dotypos.getCustomerDiscount(
-            customer({ _discountGroupId: dotyposDiscountGroupId("zero") })
-          ),
-          dotypos.getCustomerDiscount(
-            customer({ _discountGroupId: dotyposDiscountGroupId("tooHigh") })
-          ),
-        ]);
-      }),
-      fetchMock
-    );
-
-    expect(result).toEqual([
-      {
-        source: "dotypos-discount-group",
-        discountGroupId: dotyposDiscountGroupId("ten"),
-        percent: 10,
-      },
-      undefined,
-      undefined,
-    ]);
-  });
 });
 
 describe("DotyposService reservation listing", () => {
@@ -5723,16 +5673,9 @@ describe("DotyposService ID reads", () => {
         );
 
   test.each(["customers", "reservations"] as const)(
-    "%s handles empty 404s, unidentified records and invalid filters",
+    "%s handles empty 404s and rejects unidentified records and invalid filters",
     async (resource) => {
-      for (const response of [
-        () => Response.json(null, { status: 404 }),
-        () => {
-          const { id, ...unidentified } =
-            resource === "customers" ? customer() : reservation();
-          return Response.json({ data: [unidentified] });
-        },
-      ]) {
+      const readWith = async (response: () => Response) => {
         let attempts = 0;
         const fetchMock = mockDotyposFetch((request) => {
           if (new URL(request.url).pathname === "/signin/token")
@@ -5742,13 +5685,31 @@ describe("DotyposService ID reads", () => {
         });
         const result = await runWithService(
           Effect.flatMap(DotyposService, (dotypos) =>
-            read(dotypos, resource, ["id-0"])
+            read(dotypos, resource, ["id-0"]).pipe(Effect.result)
           ),
           fetchMock
         );
-        expect(result.size).toBe(0);
-        expect(attempts).toBe(1);
+        return { attempts, result };
+      };
+
+      const empty = await readWith(() => Response.json(null, { status: 404 }));
+      expect(empty.result).toMatchObject({ _tag: "Success" });
+      if (empty.result._tag === "Success") {
+        expect(empty.result.success.size).toBe(0);
       }
+      expect(empty.attempts).toBe(1);
+
+      const unidentified = await readWith(() => {
+        const { id: _id, ...record } =
+          resource === "customers" ? customer() : reservation();
+        return Response.json({ data: [record] });
+      });
+      expect(unidentified.result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "DotyposRejected", reason: "invalid-response" },
+      });
+      expect(unidentified.attempts).toBe(1);
+
       let attempts = 0;
       const fetchMock = mockDotyposFetch(() => {
         attempts++;

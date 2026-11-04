@@ -214,27 +214,20 @@ export class AudienceFactsService extends Context.Service<
 
       /** Each visit's booked interval, with the stored details early setup needs. */
       const bookedIntervals = (visits: readonly DotyposReservation[]) =>
-        candidates
-          .earlySetupDetails(
-            visits.flatMap(({ id }) => (id === undefined ? [] : [id]))
-          )
-          .pipe(
-            Effect.mapError(CampaignRecipientResolutionError.database),
-            Effect.flatMap((details) =>
-              Effect.forEach(visits, (visit) =>
-                visitInterval(
-                  visit,
-                  visit.id === undefined ? undefined : details.get(visit.id)
-                ).pipe(
-                  Effect.map((interval) => ({
-                    id: visit.id,
-                    interval,
-                    cancelled: visit.status === "CANCELLED",
-                  }))
-                )
+        candidates.earlySetupDetails(visits.map(({ id }) => id)).pipe(
+          Effect.mapError(CampaignRecipientResolutionError.database),
+          Effect.flatMap((details) =>
+            Effect.forEach(visits, (visit) =>
+              visitInterval(visit, details.get(visit.id)).pipe(
+                Effect.map((interval) => ({
+                  id: visit.id,
+                  interval,
+                  cancelled: visit.status === "CANCELLED",
+                }))
               )
             )
-          );
+          )
+        );
 
       /**
        * The visits dated in the bounds, by ID, with their selected date.

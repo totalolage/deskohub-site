@@ -104,10 +104,10 @@ describe("discount administration customer search", () => {
   const customer = (id: string, overrides: Partial<DotyposCustomer> = {}) =>
     ({ id, firstName: "Jana", lastName: id, ...overrides }) as DotyposCustomer;
 
-  test("reports no match when every found customer is deleted or has no ID", async () => {
+  test("reports no match when every found customer is deleted", async () => {
     const { queries, result } = await searchCustomers([
       customer("deleted", { deleted: true }),
-      customer(""),
+      customer("also-deleted", { deleted: true }),
     ]);
 
     expect(queries).toEqual(["novak"]);

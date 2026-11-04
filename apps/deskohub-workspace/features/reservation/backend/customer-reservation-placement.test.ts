@@ -1,9 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  type DotyposTable,
-  type DotyposTableId,
-  DotyposTableIdSchema,
-} from "@deskohub/dotypos";
+import { type DotyposTable, DotyposTableIdSchema } from "@deskohub/dotypos";
 import type { StoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
 import { getCustomerReservationPlacement } from "./customer-reservation-placement";
 
@@ -35,9 +31,8 @@ const makeTable = (
     ...overrides,
   }) as DotyposTable;
 
-// Provider records can carry padded IDs that the branded constructor rejects.
 const assignedTo = (tableId: string) => ({
-  _tableId: tableId as DotyposTableId,
+  _tableId: DotyposTableIdSchema.make(tableId),
 });
 
 const place = (input: {
@@ -75,7 +70,7 @@ describe("getCustomerReservationPlacement", () => {
         place({
           reservationDetails,
           tables: [makeTable({ name: "  12  " })],
-          tableId: " assigned-table ",
+          tableId: "assigned-table",
         })
       ).toEqual({ table: { mode: "assigned", name: "12" } });
     }
@@ -130,11 +125,6 @@ describe("getCustomerReservationPlacement", () => {
           id: "undisplayed-table",
           name: "Undisplayed desk",
           display: false,
-          tags: ["cowork:open-space"],
-        }),
-        makeTable({
-          id: "   ",
-          name: "Unassignable desk",
           tags: ["cowork:open-space"],
         }),
         makeTable({ id: "reserved-desk", name: "Reserved desk" }),

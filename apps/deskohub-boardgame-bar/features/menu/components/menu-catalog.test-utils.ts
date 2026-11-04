@@ -1,20 +1,45 @@
-import type { Category, Product } from "@deskohub/dotypos/generated";
+import {
+  type DotyposCategory,
+  DotyposCategorySchema,
+  type DotyposProduct,
+  DotyposProductSchema,
+} from "@deskohub/dotypos";
+import { Schema } from "effect";
 
-export const menuCategory = (overrides: Partial<Category> = {}): Category => ({
-  id: "drinks",
-  name: "Drinks",
-  ...overrides,
-});
+/** The fixture fields with overrides applied; an `undefined` override leaves the field out, as Dotypos omits a missing id. */
+const withOverrides = <A extends object>(
+  defaults: A,
+  overrides: Partial<A>
+): A =>
+  Object.fromEntries(
+    Object.entries({ ...defaults, ...overrides }).filter(
+      ([, value]) => value !== undefined
+    )
+  ) as A;
 
-export const menuProduct = (overrides: Partial<Product> = {}): Product => ({
-  id: "lemonade",
-  _categoryId: "drinks",
-  name: "Lemonade",
-  priceWithoutVat: "70",
-  priceWithVat: "85",
-  vat: "21",
-  ...overrides,
-});
+export const menuCategory = (
+  overrides: Partial<typeof DotyposCategorySchema.Encoded> = {}
+): DotyposCategory =>
+  Schema.decodeSync(DotyposCategorySchema)(
+    withOverrides({ id: "drinks", name: "Drinks" }, overrides)
+  );
+
+export const menuProduct = (
+  overrides: Partial<typeof DotyposProductSchema.Encoded> = {}
+): DotyposProduct =>
+  Schema.decodeSync(DotyposProductSchema)(
+    withOverrides(
+      {
+        id: "lemonade",
+        _categoryId: "drinks",
+        name: "Lemonade",
+        priceWithoutVat: "70",
+        priceWithVat: "85",
+        vat: "21",
+      },
+      overrides
+    )
+  );
 
 /**
  * One drinks category whose products cover each optional detail: a measured

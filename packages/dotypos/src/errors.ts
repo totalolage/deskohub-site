@@ -19,7 +19,6 @@ export const DotyposOperation = Schema.Literals([
   "patchCustomer",
   "searchCustomers",
   "getCustomerDiscountGroup",
-  "getCustomerDiscount",
   "getDiscountGroups",
   "setCustomerDiscountGroup",
   "updateCustomerBillingDetails",

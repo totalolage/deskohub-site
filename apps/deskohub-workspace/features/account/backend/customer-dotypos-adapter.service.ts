@@ -1,4 +1,5 @@
 import {
+  customerLifecycle,
   type DotyposConditionalWriteFailure,
   type DotyposCustomer,
   type DotyposCustomerId,
@@ -10,7 +11,6 @@ import {
 import type { UpdateCustomerRequest } from "@deskohub/dotypos/generated";
 import { Context, Data, Effect, Layer, Option } from "effect";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
-import { MissingDotyposId } from "@/shared/backend/missing-dotypos-id";
 import type { CustomerProfile, CustomerProfileInput } from "../contracts";
 
 /** A profile update or reactivation addressed a Dotypos customer that does not exist. */
@@ -22,7 +22,6 @@ class DotyposCustomerMissing extends Data.TaggedError(
 
 export type DotyposCustomerError =
   | DotyposConditionalWriteFailure
-  | MissingDotyposId
   | DotyposCustomerMissing;
 
 /**
@@ -63,12 +62,6 @@ type CreatedCustomerProfile = {
   readonly customerId: DotyposCustomerId;
   readonly profile: CustomerProfile;
 };
-
-const isCustomerProfileExpired = (
-  customer: DotyposCustomer,
-  now: Date = new Date()
-): boolean =>
-  customer.expireDate != null && new Date(customer.expireDate) <= now;
 
 const nonEmpty = (value: string | null | undefined): string | null => {
   const trimmed = value?.trim();
@@ -298,28 +291,10 @@ export class CustomerDotyposAdapter extends Context.Service<
         const customer = yield* dotypos.createCustomer(
           toCustomerDetails(input)
         );
-        if (customer.id) {
-          return {
-            customerId: customer.id,
-            profile: toCustomerProfile(customer),
-          };
-        }
-
-        const reread = yield* Effect.map(
-          findExactEmailCustomer(input.email),
-          classifyExactEmailResult
-        );
-        if (reread.kind === "matched") {
-          return {
-            customerId: reread.customerId,
-            profile: toCustomerProfile(reread.customer),
-          };
-        }
-
-        return yield* new MissingDotyposId({
-          entity: "customer",
-          message: "Dotypos returned a created customer without an id.",
-        });
+        return {
+          customerId: customer.id,
+          profile: toCustomerProfile(customer),
+        };
       });
 
       const findExactEmailCustomer = (email: string) =>
@@ -336,11 +311,13 @@ export class CustomerDotyposAdapter extends Context.Service<
         if (result._tag === "Deleted") return { kind: "unusable" };
 
         const customer = result.customer;
-        if (!customer.id) return { kind: "ambiguous" };
 
         return {
           kind: "matched",
-          state: isCustomerProfileExpired(customer) ? "expired" : "active",
+          state:
+            customerLifecycle(customer, new Date()) === "expired"
+              ? "expired"
+              : "active",
           customerId: customer.id,
           customer,
         };
@@ -425,7 +402,7 @@ export class CustomerDotyposAdapter extends Context.Service<
             customerId,
             payload: expirationPatch(true),
             isApplied: (customer) =>
-              customer.deleted || isCustomerProfileExpired(customer),
+              customerLifecycle(customer, new Date()) !== "active",
           })
       );
 
@@ -436,7 +413,7 @@ export class CustomerDotyposAdapter extends Context.Service<
           customerId,
           payload: expirationPatch(false),
           isApplied: (customer) =>
-            !customer.deleted && !isCustomerProfileExpired(customer),
+            customerLifecycle(customer, new Date()) === "active",
         })
       );
 

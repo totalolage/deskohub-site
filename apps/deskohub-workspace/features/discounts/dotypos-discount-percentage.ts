@@ -1,4 +1,4 @@
-import type { DiscountGroup } from "@deskohub/dotypos/generated";
+import type { DotyposDiscountGroup } from "@deskohub/dotypos";
 import { BigDecimal, Option, Schema, SchemaGetter } from "effect";
 import { discountBasisPointsSchema } from "./contracts";
 
@@ -46,7 +46,7 @@ const dotyposDiscountBasisPointsSchema = Schema.String.check(
   });
 
 export const toDotyposDiscountBasisPoints = (
-  input: DiscountGroup["discountPercent"]
+  input: DotyposDiscountGroup["discountPercent"]
 ) =>
   Option.fromNullishOr(input).pipe(
     Option.map((percentage) => percentage.trim()),

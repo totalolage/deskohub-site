@@ -1,19 +1,14 @@
 import {
+  type DotyposCustomer,
   type DotyposCustomerId,
-  DotyposCustomerIdSchema,
   type DotyposReadFailure,
+  type DotyposReservation,
   type DotyposReservationId,
-  DotyposReservationIdSchema,
   DotyposService,
+  type DotyposTable,
   type DotyposTableId,
-  DotyposTableIdSchema,
   getCustomerDisplayName,
 } from "@deskohub/dotypos";
-import type {
-  Customer as DotyposCustomer,
-  Reservation as DotyposReservation,
-  Table as DotyposTable,
-} from "@deskohub/dotypos/generated";
 import type { NexiOrderId } from "@deskohub/nexi";
 import type {
   AdministrationReservationFamily,
@@ -619,23 +614,12 @@ const safeReservationSelection = {
 
 const toIsoString = (instant: Temporal.Instant) => instant.toString();
 
-const decodeDotyposCustomerId = Schema.decodeUnknownOption(
-  DotyposCustomerIdSchema
-);
-const decodeDotyposReservationId = Schema.decodeUnknownOption(
-  DotyposReservationIdSchema
-);
-const decodeDotyposTableId = Schema.decodeUnknownOption(DotyposTableIdSchema);
 const decodeInstantString = Schema.decodeUnknownOption(instantStringSchema);
 
-const toCustomer = (
-  customer: DotyposCustomer,
-  fallbackId: DotyposCustomerId
-): AdministrationCustomer => {
+const toCustomer = (customer: DotyposCustomer): AdministrationCustomer => {
   const name = getCustomerDisplayName(customer);
   return {
-    id:
-      Option.getOrUndefined(decodeDotyposCustomerId(customer.id)) ?? fallbackId,
+    id: customer.id,
     displayName: name || unnamedCustomerDisplayName,
     hasName: Boolean(name),
     email: customer.email?.trim() || null,
@@ -808,11 +792,8 @@ const countLinkedReservations = (input: {
 }) =>
   new Set(
     input.reservations.flatMap((reservation) => {
-      const id = Option.getOrUndefined(
-        decodeDotyposReservationId(reservation.id)
-      );
-      return id &&
-        input.linkedReservationIds.has(id) &&
+      const id = reservation.id;
+      return input.linkedReservationIds.has(id) &&
         isReservationInRange(
           reservation,
           input.range,
@@ -872,9 +853,7 @@ const toReservationSummary = ({
     id: row.id,
     dotyposReservationId: row.dotyposReservationId,
     customerId: row.dotyposCustomerId,
-    customer: live.customer
-      ? toCustomer(live.customer, row.dotyposCustomerId)
-      : null,
+    customer: live.customer ? toCustomer(live.customer) : null,
     liveDetailsAvailable: Boolean(live.reservation),
     startsAt: Option.match(earlySetup, {
       onNone: () => live.reservation?.startDate ?? null,
@@ -925,20 +904,13 @@ const bookingStatusLabels = {
   CANCELLED: "Cancelled",
 } as const;
 
-type IdentifiedDotyposReservation = DotyposReservation & {
-  readonly id: DotyposReservationId;
-};
-
 /** The table Dotypos lists under a booking's table id, if any. */
 const findBookingTable = (
   tables: readonly DotyposTable[],
   bookingTableId: DotyposReservation["_tableId"]
 ) => {
-  const tableId = Option.getOrUndefined(decodeDotyposTableId(bookingTableId));
-  return tableId
-    ? (tables.find(
-        ({ id }) => Option.getOrUndefined(decodeDotyposTableId(id)) === tableId
-      ) ?? null)
+  return bookingTableId
+    ? (tables.find(({ id }) => id === bookingTableId) ?? null)
     : null;
 };
 
@@ -964,20 +936,18 @@ const toBookingSummary = ({
   row,
   table,
 }: {
-  readonly booking: IdentifiedDotyposReservation;
+  readonly booking: DotyposReservation;
   readonly customer: DotyposCustomer | null;
   readonly row: SafeReservationRow | null;
   readonly table: DotyposTable | null;
 }): AdministrationBookingSummary => {
-  const customerId = Option.getOrUndefined(
-    decodeDotyposCustomerId(booking._customerId)
-  );
-  const tableId = Option.getOrUndefined(decodeDotyposTableId(booking._tableId));
+  const customerId = booking._customerId;
+  const tableId = booking._tableId;
 
   return {
     id: booking.id,
     customerId: customerId ?? null,
-    customer: customerId && customer ? toCustomer(customer, customerId) : null,
+    customer: customerId && customer ? toCustomer(customer) : null,
     startsAt: getBookedStartsAt(booking, row?.reservationDetails),
     endsAt: booking.endDate,
     seats: booking.seats,
@@ -1614,7 +1584,7 @@ export class AdministrationService extends Context.Service<
             : undefined;
           const name =
             customer && author.dotyposCustomerId
-              ? toCustomer(customer, author.dotyposCustomerId)
+              ? toCustomer(customer)
               : { displayName: unnamedCustomerDisplayName, hasName: false };
           return {
             kind: "account",
@@ -1688,11 +1658,7 @@ export class AdministrationService extends Context.Service<
               const reservation = row.dotyposReservationId
                 ? reservationsById.get(row.dotyposReservationId)
                 : undefined;
-              return (
-                Option.getOrUndefined(
-                  decodeDotyposCustomerId(reservation?._customerId)
-                ) ?? row.dotyposCustomerId
-              );
+              return reservation?._customerId ?? row.dotyposCustomerId;
             })
           ),
         ];
@@ -1702,10 +1668,7 @@ export class AdministrationService extends Context.Service<
           const reservation = row.dotyposReservationId
             ? (reservationsById.get(row.dotyposReservationId) ?? null)
             : null;
-          const customerId =
-            Option.getOrUndefined(
-              decodeDotyposCustomerId(reservation?._customerId)
-            ) ?? row.dotyposCustomerId;
+          const customerId = reservation?._customerId ?? row.dotyposCustomerId;
           return {
             live: {
               reservation,
@@ -1871,14 +1834,9 @@ export class AdministrationService extends Context.Service<
             Effect.map(
               (reservations) =>
                 new Map(
-                  reservations.flatMap((reservation) => {
-                    const reservationId = Option.getOrUndefined(
-                      decodeDotyposReservationId(reservation.id)
-                    );
-                    return reservationId
-                      ? [[reservationId, reservation] as const]
-                      : [];
-                  })
+                  reservations.map(
+                    (reservation) => [reservation.id, reservation] as const
+                  )
                 )
             ),
             Effect.catch(
@@ -1954,14 +1912,6 @@ export class AdministrationService extends Context.Service<
                 : "startDateDescending",
           })
           .pipe(
-            Effect.map((reservations) =>
-              reservations.flatMap((reservation) => {
-                const id = Option.getOrUndefined(
-                  decodeDotyposReservationId(reservation.id)
-                );
-                return id ? [{ ...reservation, id }] : [];
-              })
-            ),
             Effect.catch(
               recoverProviderRead(
                 policy,
@@ -2471,14 +2421,9 @@ export class AdministrationService extends Context.Service<
           // start, so the read starts that much earlier and the bookings'
           // stored details decide their booked start, date, and order.
           const range = { from: input.date, to: input.date };
-          const heldBookings = (yield* dotypos.listReservations({
+          const heldBookings = yield* dotypos.listReservations({
             ...getAdministrationReservationHeldRangeBounds(range),
             order: "startDateAscending",
-          })).flatMap((booking) => {
-            const id = Option.getOrUndefined(
-              decodeDotyposReservationId(booking.id)
-            );
-            return id ? [{ ...booking, id }] : [];
           });
           const earlySetupDetails = yield* loadEarlySetupDetails(
             db,
@@ -2524,12 +2469,9 @@ export class AdministrationService extends Context.Service<
           const bookingIds = pageBookings.map(({ id }) => id);
           const customerIds = [
             ...new Set(
-              pageBookings.flatMap((booking) => {
-                const customerId = Option.getOrUndefined(
-                  decodeDotyposCustomerId(booking._customerId)
-                );
-                return customerId ? [customerId] : [];
-              })
+              pageBookings.flatMap((booking) =>
+                booking._customerId ? [booking._customerId] : []
+              )
             ),
           ];
           const { customersById, rows, tables } = yield* Effect.all(
@@ -2560,31 +2502,20 @@ export class AdministrationService extends Context.Service<
             )
           );
           const tablesById = new Map(
-            tables.flatMap((table) => {
-              const tableId = Option.getOrUndefined(
-                decodeDotyposTableId(table.id)
-              );
-              return tableId ? [[tableId, table] as const] : [];
-            })
+            tables.map((table) => [table.id, table] as const)
           );
 
           return {
             items: pageBookings.map((booking) =>
               toBookingSummary({
                 booking,
-                customer: Option.match(
-                  decodeDotyposCustomerId(booking._customerId),
-                  {
-                    onNone: () => null,
-                    onSome: (customerId) =>
-                      customersById.get(customerId) ?? null,
-                  }
-                ),
+                customer: booking._customerId
+                  ? (customersById.get(booking._customerId) ?? null)
+                  : null,
                 row: rowsByBookingId.get(booking.id) ?? null,
-                table: Option.match(decodeDotyposTableId(booking._tableId), {
-                  onNone: () => null,
-                  onSome: (tableId) => tablesById.get(tableId) ?? null,
-                }),
+                table: booking._tableId
+                  ? (tablesById.get(booking._tableId) ?? null)
+                  : null,
               })
             ),
             page: pagination.page,
@@ -2775,7 +2706,7 @@ export class AdministrationService extends Context.Service<
         return rows.map((row): AdministrationCustomerSummary => {
           const customer = customersById.get(row.customerId);
           return {
-            customer: customer ? toCustomer(customer, row.customerId) : null,
+            customer: customer ? toCustomer(customer) : null,
             customerId: row.customerId,
             marketingConsent: row.marketingConsent,
             reservationCount: Number(row.reservationCount),
@@ -3114,12 +3045,9 @@ export class AdministrationService extends Context.Service<
           } satisfies AdministrationCustomerReservationActivity;
         }
 
-        const reservationIds = reservations.flatMap((reservation) => {
-          const id = Option.getOrUndefined(
-            decodeDotyposReservationId(reservation.id)
-          );
-          return id ? [id] : [];
-        });
+        const reservationIds = reservations.map(
+          (reservation) => reservation.id
+        );
         const linkedRows =
           reservationIds.length === 0
             ? []
@@ -3317,9 +3245,7 @@ export class AdministrationService extends Context.Service<
         ];
         const earlySetupDetails = yield* loadEarlySetupDetails(
           db,
-          held.flatMap((reservation) =>
-            Option.toArray(decodeDotyposReservationId(reservation.id))
-          )
+          held.map((reservation) => reservation.id)
         );
         return {
           items: held.filter((reservation) =>
@@ -3379,7 +3305,7 @@ export class AdministrationService extends Context.Service<
             customers: metric.ids.slice(0, 3).map((customerId) => {
               const customer = customersById.get(customerId);
               return {
-                customer: customer ? toCustomer(customer, customerId) : null,
+                customer: customer ? toCustomer(customer) : null,
                 customerId,
               };
             }),
@@ -3488,8 +3414,7 @@ const getCompletedCustomerBooking = ({
   readonly reservation: DotyposReservation;
 }) => {
   if (reservation.status !== "CONFIRMED") return undefined;
-  const id = Option.getOrUndefined(decodeDotyposReservationId(reservation.id));
-  const row = id ? linkedReservations.get(id) : undefined;
+  const row = linkedReservations.get(reservation.id);
   if (!row || getAdministrationReservationStatus(row).group !== "complete") {
     return undefined;
   }
@@ -3629,14 +3554,10 @@ const getQualifyingCustomerBooking = (
   reservation: DotyposReservation,
   input: CustomerBookingCandidates
 ) => {
-  const reservationId = Option.getOrUndefined(
-    decodeDotyposReservationId(reservation.id)
-  );
-  const fallbackCustomerId = reservationId
-    ? input.customerIdsByReservationId.get(reservationId)
-    : undefined;
+  const reservationId = reservation.id;
+  const fallbackCustomerId =
+    input.customerIdsByReservationId.get(reservationId);
   if (
-    !reservationId ||
     !fallbackCustomerId ||
     reservation.status !== "CONFIRMED" ||
     !input.qualifyingReservationIds.has(reservationId) ||
@@ -3645,9 +3566,7 @@ const getQualifyingCustomerBooking = (
     return undefined;
 
   return {
-    customerId:
-      Option.getOrUndefined(decodeDotyposCustomerId(reservation._customerId)) ??
-      fallbackCustomerId,
+    customerId: reservation._customerId ?? fallbackCustomerId,
     startsAt: getBookedStart(
       reservation,
       input.earlySetupDetails.get(reservationId)

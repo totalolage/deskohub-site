@@ -19,7 +19,7 @@ export const toReservationRecord = ({
   endDate,
   seats,
 }: ReservationRecord): ReservationRecord => ({
-  ...(id !== undefined && { id }),
+  id,
   status,
   ...(_tableId !== undefined && { _tableId }),
   startDate,

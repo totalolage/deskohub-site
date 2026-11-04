@@ -1,8 +1,8 @@
+import type { DotyposDiscountGroup } from "@deskohub/dotypos";
 import {
   type DotyposDiscountGroupId,
   DotyposDiscountGroupIdSchema,
 } from "@deskohub/dotypos";
-import type { DiscountGroup as DotyposDiscountGroup } from "@deskohub/dotypos/generated";
 import { Option, Schema } from "effect";
 import { toDotyposDiscountBasisPoints } from "../dotypos-discount-percentage";
 import type { AdminDiscountGroup } from "./discount-administration.service";

@@ -92,7 +92,7 @@ export type DotyposDiscountGroupId = typeof DotyposDiscountGroupIdSchema.Type;
 
 export const DotyposReservationSchema = Schema.Struct({
   ...GeneratedReservationSchema.fields,
-  id: Schema.optionalKey(DotyposReservationIdSchema),
+  id: DotyposReservationIdSchema,
   _branchId: DotyposBranchIdSchema,
   _cloudId: DotyposCloudIdSchema,
   _customerId: Schema.optionalKey(DotyposCustomerIdSchema),
@@ -107,7 +107,7 @@ export type DotyposReservation = typeof DotyposReservationSchema.Type;
 
 export const DotyposCustomerSchema = Schema.Struct({
   ...GeneratedCustomerSchema.fields,
-  id: Schema.optionalKey(DotyposCustomerIdSchema),
+  id: DotyposCustomerIdSchema,
   _cloudId: DotyposCloudIdSchema,
   _discountGroupId: Schema.optionalKey(
     Schema.NullOr(DotyposDiscountGroupIdSchema)
@@ -132,7 +132,7 @@ export type DotyposDiscountGroup = typeof DotyposDiscountGroupSchema.Type;
 
 export const DotyposTableSchema = Schema.Struct({
   ...GeneratedTableSchema.fields,
-  id: Schema.optionalKey(DotyposTableIdSchema),
+  id: DotyposTableIdSchema,
   _branchId: Schema.optionalKey(DotyposBranchIdSchema),
   _cloudId: DotyposCloudIdSchema,
   _sellerId: Schema.optionalKey(Schema.NullOr(DotyposSellerIdSchema)),

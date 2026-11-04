@@ -142,50 +142,6 @@ paths:
                   - $ref: '#/components/schemas/ErrorResponse'
                   - type: "null"
 
-    put:
-      tags:
-        - Reservations
-      summary: Replace or create reservations
-      operationId: replaceReservations
-      parameters:
-        - name: cloudId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Cloud ID
-        - $ref: '#/components/parameters/IfMatchParam'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: array
-              items:
-                $ref: '#/components/schemas/Reservation'
-              maxItems: 100
-      responses:
-        '200':
-          description: Reservations replaced successfully
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Reservation'
-        '400':
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
   /clouds/{cloudId}/reservations/{reservationId}:
     get:
       tags:
@@ -413,48 +369,6 @@ paths:
       responses:
         '200':
           description: Customers created successfully
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Customer'
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-    put:
-      tags:
-        - Customers
-      summary: Replace or create customers
-      operationId: replaceCustomers
-      parameters:
-        - name: cloudId
-          in: path
-          required: true
-          schema:
-            type: string
-        - $ref: '#/components/parameters/IfMatchParam'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: array
-              items:
-                $ref: '#/components/schemas/Customer'
-      responses:
-        '200':
-          description: Customers replaced successfully
           content:
             application/json:
               schema:
@@ -1563,6 +1477,7 @@ components:
     Reservation:
       type: object
       required:
+        - id
         - _branchId
         - _cloudId
         - seats
@@ -1673,6 +1588,7 @@ components:
     Customer:
       type: object
       required:
+        - id
         - _cloudId
         - deleted
         - display
@@ -2082,6 +1998,7 @@ components:
     Table:
       type: object
       required:
+        - id
         - _cloudId
         - name
       properties:

@@ -41,9 +41,7 @@ export const SharedReservationRecordsLive = Layer.succeed(ReservationRecords, {
       loadSharedCustomerReservationRecords(customerId)
     ).pipe(
       Effect.flatMap((listed) => {
-        const listedIds = new Set(
-          listed.flatMap((reservation) => reservation.id ?? [])
-        );
+        const listedIds = new Set(listed.map((reservation) => reservation.id));
         return listSharedByIds(
           recordedIds.filter((id) => !listedIds.has(id))
         ).pipe(Effect.map((unlisted) => [...listed, ...unlisted]));

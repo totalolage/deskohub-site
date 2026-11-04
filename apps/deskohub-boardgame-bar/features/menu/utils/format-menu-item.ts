@@ -1,4 +1,4 @@
-import type { Category, Product } from "@deskohub/dotypos/generated";
+import type { DotyposCategory, DotyposProduct } from "@deskohub/dotypos";
 import type { Locale } from "@/features/i18n";
 import { getLocalizedText } from "@/shared/utils/localization";
 
@@ -27,7 +27,7 @@ export interface FormattedCategory {
  * @returns Formatted menu item with localized text
  */
 export function formatMenuItem(
-  product: Product,
+  product: DotyposProduct,
   locale: Locale
 ): FormattedMenuItem {
   // Get localized name and description if available
@@ -58,7 +58,7 @@ export function formatMenuItem(
  * @returns Formatted category with localized text
  */
 export function formatCategory(
-  category: Category,
+  category: DotyposCategory,
   locale: Locale
 ): FormattedCategory {
   // Get localized category name if available

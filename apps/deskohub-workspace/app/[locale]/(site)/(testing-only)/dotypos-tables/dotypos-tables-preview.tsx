@@ -8,7 +8,7 @@ type DotyposTablesPreviewProps = {
   readonly tables: readonly Table[];
 };
 
-const getTableKey = (table: Table) => table.id ?? table.name;
+const getTableKey = (table: Table) => table.id;
 
 const getTableClassName = (table: Table, selectedTable: Table | undefined) => {
   const selected =
@@ -62,7 +62,7 @@ function TableIdentityFacts({ table }: { readonly table: Table }) {
       <dt className="text-stone-500">Name</dt>
       <dd className="font-semibold">{table.name}</dd>
       <dt className="text-stone-500">ID</dt>
-      <dd className="break-all">{table.id ?? "-"}</dd>
+      <dd className="break-all">{table.id}</dd>
       <dt className="text-stone-500">Type</dt>
       <dd>{table.type ?? "GENERIC"}</dd>
       <dt className="text-stone-500">Location</dt>
