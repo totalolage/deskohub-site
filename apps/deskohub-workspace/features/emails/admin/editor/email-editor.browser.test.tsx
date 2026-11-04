@@ -2,7 +2,12 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type Browser, chromium, type Page } from "@playwright/test";
+import {
+  type Browser,
+  chromium,
+  type Locator,
+  type Page,
+} from "@playwright/test";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 import { browserModuleStubPlugin } from "@/shared/testing/browser-module-stubs.test-utils";
@@ -62,10 +67,32 @@ afterAll(async () => {
   if (directory) await rm(directory, { recursive: true, force: true });
 });
 
-/** Opens the harness in `locale` with `draft` and waits for the editor. */
+const uploadedImageUrl = `https://res.cloudinary.com/cloud/image/upload/v1/${authorization.publicId}.png`;
+// A synthetic 1×1 picture.
+const picture = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+  "base64"
+);
+
+const pageErrorsOf = new WeakMap<Page, readonly string[]>();
+
+/** Fails the scenario if the page threw, even where the UI recovered. */
+const expectNoPageErrors = (page: Page) =>
+  expect(pageErrorsOf.get(page) ?? []).toEqual([]);
+
+/**
+ * Opens the harness in `locale` with `draft` and waits for the editor. The
+ * routed Cloudinary answers an upload with `storedPublicId`.
+ */
 const openEditor = async (
   locale: Locale,
-  draft: EmailDraftFormValues = fixtureDraft
+  {
+    draft = fixtureDraft,
+    storedPublicId = authorization.publicId,
+  }: {
+    readonly draft?: EmailDraftFormValues;
+    readonly storedPublicId?: string;
+  } = {}
 ): Promise<Page> => {
   if (!browser) throw new Error("Chromium did not launch");
   const page = await browser.newPage({
@@ -74,8 +101,22 @@ const openEditor = async (
   page.setDefaultTimeout(5000);
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
+  pageErrorsOf.set(page, pageErrors);
   await page.route("**/*", (route) => {
-    if (route.request().url().startsWith(origin))
+    const url = route.request().url();
+    if (url === authorization.url)
+      return route.fulfill({
+        contentType: "application/json",
+        headers: { "access-control-allow-origin": "*" },
+        body: JSON.stringify({
+          public_id: storedPublicId,
+          secure_url: uploadedImageUrl,
+          width: 1068,
+        }),
+      });
+    if (url === uploadedImageUrl)
+      return route.fulfill({ contentType: "image/png", body: picture });
+    if (url.startsWith(origin))
       return route.fulfill({
         contentType: "text/html",
         body: `<!doctype html><html lang="${locale}"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="editor-root" data-locale="${locale}"></div></body></html>`,
@@ -102,12 +143,21 @@ const openEditor = async (
   return page;
 };
 
-const screenshot = async (page: Page, name: string) => {
+/** Waits until no enter or exit animation is still running. */
+const settleAnimations = (page: Page) =>
+  page.waitForFunction(() =>
+    document
+      .getAnimations()
+      .every((animation) => animation.playState !== "running")
+  );
+
+const screenshot = async (page: Page, name: string, part?: Locator) => {
   if (!screenshotDirectory) return;
-  await page.screenshot({
-    path: join(screenshotDirectory, `${name}.png`),
-    fullPage: true,
-  });
+  await settleAnimations(page);
+  const path = join(screenshotDirectory, `${name}.png`);
+  await (part
+    ? part.screenshot({ path })
+    : page.screenshot({ path, fullPage: true }));
 };
 
 const summaryItem = (
@@ -194,6 +244,7 @@ for (const locale of ["en-US", "cs-CZ"] as const) {
         expect(saved.saved.translations["cs-CZ"].texts).toEqual(
           fixtureDraft.translations?.["cs-CZ"]?.texts
         );
+        expectNoPageErrors(page);
       } finally {
         await page.close();
       }
@@ -202,5 +253,318 @@ for (const locale of ["en-US", "cs-CZ"] as const) {
   );
 }
 
-// Keeps the authorization fixture referenced until the upload scenario lands.
-void authorization;
+/** The saved draft after pressing the harness's save button. */
+const saveDraft = async (page: Page): Promise<EmailDraftFormValues> => {
+  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  const result = JSON.parse(
+    (await page.getByTestId("saved").textContent()) ?? "{}"
+  );
+  expect(result.invalid).toBeUndefined();
+  return result.saved;
+};
+
+const showLanguage = (page: Page, locale: Locale, language: string) =>
+  page
+    .getByRole("tab", {
+      name: new RegExp(
+        language === "en-US"
+          ? m.emailsEditorLanguageEnglish({}, { locale })
+          : m.emailsEditorLanguageCzech({}, { locale })
+      ),
+    })
+    .click();
+
+for (const locale of ["en-US", "cs-CZ"] as const) {
+  test.skipIf(!chromiumAvailable)(
+    `marks the unused value, searches customer fields and turns a deleted used value's references red in the ${locale} editor`,
+    async () => {
+      const page = await openEditor(locale);
+      try {
+        const values = page.getByRole("region", {
+          name: m.emailsEditorValuesHeading({}, { locale }),
+        });
+        const unused = m.emailsEditorValuesUnused({}, { locale });
+        expect(
+          await page
+            .locator(`[id="${emailEditorFieldIds.value(2)}"]`)
+            .textContent()
+        ).toContain(unused);
+        expect(
+          await page
+            .locator(`[id="${emailEditorFieldIds.value(0)}"]`)
+            .textContent()
+        ).not.toContain(unused);
+
+        await values
+          .getByRole("button", {
+            name: m.emailsEditorValuesAddCustomer({}, { locale }),
+          })
+          .click();
+        const search = page.getByPlaceholder(
+          m.emailsEditorValuesPickerSearch({}, { locale })
+        );
+        await search.fill("displayName");
+        await page
+          .getByRole("option", { name: /profile\.customer\.displayName/ })
+          .waitFor();
+        expect(
+          await page.getByRole("option", { name: /activity\./ }).count()
+        ).toBe(0);
+        // The picker is portaled; capture the viewport around it.
+        await search.evaluate((element) =>
+          element.scrollIntoView({ block: "center" })
+        );
+        await settleAnimations(page);
+        if (screenshotDirectory)
+          await page.screenshot({
+            path: join(screenshotDirectory, `values-picker-${locale}.png`),
+          });
+        await search.press("Escape");
+
+        const subjectChip = (language: string) =>
+          page.locator(
+            `[id="${emailEditorFieldIds.translation(language, "subject")}"] [data-name="customer_name"]`
+          );
+        expect(
+          await subjectChip("cs-CZ").getAttribute("data-missing")
+        ).toBeNull();
+        await values
+          .getByRole("button", {
+            name: m.emailsEditorValuesDelete(
+              { name: "customer_name" },
+              { locale }
+            ),
+          })
+          .click();
+        // Every use is now an unknown value, in every language.
+        const unknown = m.emailsEditorProblemValueUnknown(
+          { name: "customer_name" },
+          { locale }
+        );
+        for (const language of ["en-US", "cs-CZ"])
+          await summaryItem(
+            page,
+            locale,
+            m.emailsEditorPlaceSubject(
+              {
+                language:
+                  language === "en-US"
+                    ? m.emailsEditorLanguageEnglish({}, { locale })
+                    : m.emailsEditorLanguageCzech({}, { locale }),
+              },
+              { locale }
+            ),
+            unknown
+          ).waitFor();
+        await subjectChip("cs-CZ")
+          .and(page.locator("[data-missing]"))
+          .waitFor();
+        expect(
+          await page
+            .locator(
+              `[id="${emailEditorFieldIds.translation("cs-CZ", "subject")}"]`
+            )
+            .getAttribute("aria-invalid")
+        ).toBe("true");
+        // The draft still saves without the definition.
+        const saved = await saveDraft(page);
+        expect(saved.values?.map((definition) => definition.name)).toEqual([
+          "welcome_offer",
+          "unused_count",
+        ]);
+        expectNoPageErrors(page);
+      } finally {
+        await page.close();
+      }
+    },
+    30_000
+  );
+}
+
+test.skipIf(!chromiumAvailable)(
+  "keeps translated texts lossless through the inline editors and follows host resets",
+  async () => {
+    const locale = "en-US";
+    const page = await openEditor(locale);
+    try {
+      await showLanguage(page, locale, "en-US");
+      const intro = page.locator(
+        `[id="${emailEditorFieldIds.text("en-US", "paragraph-1-text")}"]`
+      );
+      await intro.locator('[data-name="customer_name"]').waitFor();
+      expect(await intro.locator("strong").textContent()).toBe("our spaces");
+
+      const subject = page.locator(
+        `[id="${emailEditorFieldIds.translation("en-US", "subject")}"]`
+      );
+      await subject.click();
+      await page.keyboard.press("End");
+      await page.keyboard.type("!");
+
+      const preheaderId = emailEditorFieldIds.translation("en-US", "preheader");
+      const preheader = page.locator(`[id="${preheaderId}"]`);
+      await preheader.click();
+      await page.keyboard.press("End");
+      await page.keyboard.type(", code ");
+      await preheader
+        .locator("xpath=ancestor::*[.//*[@role='toolbar']][1]")
+        .getByRole("button", {
+          name: m.emailsEditorInlineValueInsert({}, { locale }),
+        })
+        .click();
+      await page
+        .getByPlaceholder(m.emailsEditorInlineValueSearch({}, { locale }))
+        .fill("welcome_offer.code");
+      await page.keyboard.press("Enter");
+      await preheader.locator('[data-name="welcome_offer"]').waitFor();
+
+      const saved = await saveDraft(page);
+      const english = saved.translations?.["en-US"];
+      expect(english?.subject).toEqual([
+        { _tag: "Text", text: "Hello " },
+        { _tag: "Value", name: "customer_name" },
+        { _tag: "Text", text: "!" },
+      ]);
+      expect(english?.preheader).toEqual([
+        { _tag: "Text", text: "A synthetic update, code " },
+        { _tag: "Value", name: "welcome_offer", field: ["code"] },
+      ]);
+      // Texts the author didn't touch keep every part and mark.
+      expect(english?.texts).toEqual({
+        ...fixtureDraft.translations?.["en-US"]?.texts,
+      });
+
+      await page
+        .getByRole("button", { name: "Reset draft", exact: true })
+        .click();
+      await preheader.locator('[data-name="welcome_offer"]').waitFor({
+        state: "detached",
+      });
+      expect(await subject.textContent()).not.toContain("!");
+      expect((await saveDraft(page)).translations?.["en-US"]).toEqual(
+        fixtureDraft.translations?.["en-US"]
+      );
+      expectNoPageErrors(page);
+    } finally {
+      await page.close();
+    }
+  },
+  30_000
+);
+
+for (const { name, storedPublicId, accepted } of [
+  {
+    name: "accepts an upload stored under the authorized public ID",
+    storedPublicId: authorization.publicId,
+    accepted: true,
+  },
+  {
+    name: "refuses an upload Cloudinary stored under another public ID",
+    storedPublicId: "email-campaigns/preview/someone-else",
+    accepted: false,
+  },
+]) {
+  test.skipIf(!chromiumAvailable)(
+    `${name} through the image block`,
+    async () => {
+      const locale = "en-US";
+      const page = await openEditor(locale, { storedPublicId });
+      try {
+        await page
+          .getByRole("button", {
+            name: m.emailsEditorStructureAddBlock({}, { locale }),
+          })
+          .click();
+        const imageItem = page.getByRole("menuitem", {
+          name: m.emailsEditorBlockImage({}, { locale }),
+          exact: true,
+        });
+        await imageItem.waitFor();
+        await imageItem.click();
+        const chooser = page.waitForEvent("filechooser");
+        await page
+          .getByRole("button", {
+            name: m.emailsEditorBlockImageUpload({}, { locale }),
+          })
+          .click();
+        await (await chooser).setFiles({
+          name: "synthetic.png",
+          mimeType: "image/png",
+          buffer: picture,
+        });
+        const images = () =>
+          saveDraft(page).then((saved) =>
+            (saved.structure ?? []).filter(
+              (component) => component._tag === "Image"
+            )
+          );
+        if (accepted) {
+          await page
+            .getByRole("button", {
+              name: m.emailsEditorBlockImageReplace({}, { locale }),
+            })
+            .waitFor();
+          expect((await images())[0]?.src).toBe(uploadedImageUrl);
+          // An editor upload from the account is allowed to publish.
+          expect(
+            await page
+              .getByText(m.emailsEditorProblemImageNotAllowed({}, { locale }))
+              .count()
+          ).toBe(0);
+        } else {
+          await page
+            .getByRole("alert")
+            .filter({
+              hasText: m.emailsEditorImageUploadFailed({}, { locale }),
+            })
+            .waitFor();
+          expect((await images())[0]?.src).toBeUndefined();
+        }
+        expectNoPageErrors(page);
+      } finally {
+        await page.close();
+      }
+    },
+    30_000
+  );
+}
+
+for (const locale of ["en-US", "cs-CZ"] as const) {
+  test.skipIf(!chromiumAvailable)(
+    `previews the active language with sample values in the ${locale} editor`,
+    async () => {
+      const page = await openEditor(locale);
+      try {
+        await showLanguage(page, locale, "en-US");
+        const preview = page.getByRole("region", {
+          name: new RegExp(m.emailsEditorPreviewHeading({}, { locale })),
+        });
+        const frame = page.frameLocator(
+          `iframe[title="${m.emailsEditorPreviewFrameTitle(
+            { language: m.emailsEditorLanguageEnglish({}, { locale }) },
+            { locale }
+          )}"]`
+        );
+        await frame.getByText("Welcome back").waitFor();
+        expect(await preview.textContent()).toContain(
+          m.emailsEditorPreviewSampleNote({}, { locale })
+        );
+        await screenshot(page, `preview-${locale}`, preview);
+        await showLanguage(page, locale, "cs-CZ");
+        await page
+          .frameLocator(
+            `iframe[title="${m.emailsEditorPreviewFrameTitle(
+              { language: m.emailsEditorLanguageCzech({}, { locale }) },
+              { locale }
+            )}"]`
+          )
+          .getByText("Vítejte zpět")
+          .waitFor();
+        expectNoPageErrors(page);
+      } finally {
+        await page.close();
+      }
+    },
+    30_000
+  );
+}

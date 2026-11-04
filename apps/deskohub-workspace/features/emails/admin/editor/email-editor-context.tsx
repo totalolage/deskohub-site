@@ -88,7 +88,10 @@ export function EmailEditorProvider({
   const [activeLocale, setActiveLocale] = useState<Locale>(
     () => locales[0] ?? locale
   );
-  const [pendingFocus, setPendingFocus] = useState<string>();
+  // A new object per request, so asking for the same field again refocuses it.
+  const [focusRequest, setFocusRequest] = useState<{
+    readonly fieldId: string;
+  }>();
   const publishedSources = useMemo(
     () => new Set(publishedImageSources),
     [publishedImageSources]
@@ -108,12 +111,10 @@ export function EmailEditorProvider({
     problemsByField.set(problem.fieldId, messages);
   }
 
-  useEffect(() => {
-    if (!pendingFocus) return;
-    const stop = focusWhenMounted(pendingFocus);
-    setPendingFocus(undefined);
-    return stop;
-  }, [pendingFocus]);
+  useEffect(
+    () => focusRequest && focusWhenMounted(focusRequest.fieldId),
+    [focusRequest]
+  );
 
   const state: EmailEditorState = {
     locales,
@@ -125,7 +126,7 @@ export function EmailEditorProvider({
     focusProblem: (problem) => {
       if (problem.locale && locales.includes(problem.locale as Locale))
         setActiveLocale(problem.locale as Locale);
-      if (problem.fieldId) setPendingFocus(problem.fieldId);
+      if (problem.fieldId) setFocusRequest({ fieldId: problem.fieldId });
     },
   };
   return <EmailEditorContext value={state}>{children}</EmailEditorContext>;

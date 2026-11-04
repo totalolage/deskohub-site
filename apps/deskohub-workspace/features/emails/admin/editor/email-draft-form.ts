@@ -57,7 +57,11 @@ export const useEmailDraftForm = () =>
 /**
  * A fresh identifier for a block, a translated text, a link destination or a
  * list item. Identifiers only need to be unique within one email; a random
- * suffix keeps blocks added in parallel editing sessions apart.
+ * suffix keeps blocks added in parallel editing sessions apart. Works on
+ * plain http too, such as a development server reached over the network.
  */
 export const newEmailEditorKey = (prefix: string): string =>
-  `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
+  // `crypto.randomUUID` exists only in secure contexts; random values don't.
+  `${prefix}-${Array.from(crypto.getRandomValues(new Uint8Array(4)), (byte) =>
+    byte.toString(16).padStart(2, "0")
+  ).join("")}`;
