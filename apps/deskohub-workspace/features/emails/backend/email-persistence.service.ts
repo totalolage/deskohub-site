@@ -8,7 +8,7 @@ import {
   emailDocumentForPublication,
   requiredEmailValueNames,
 } from "@deskohub/workspace-admin-api";
-import { desc, eq, sql } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -18,6 +18,12 @@ import {
   emailVersions,
 } from "@/db/schema/emails";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
+import { campaignImageCloudName } from "@/features/email-campaigns/body/campaign-image-account";
+import {
+  disallowedEmailImages,
+  type EmailImageNotAllowed,
+  emailImages,
+} from "@/features/emails/body/email-image-policy";
 import { locales } from "@/features/i18n";
 import { currentInstant } from "@/shared/utils/temporal";
 
@@ -46,7 +52,7 @@ export interface IEmailPersistence {
     emailId: EmailId
   ) => Effect.Effect<
     EmailVersionRow,
-    EmailPersistenceFailure | EmailPublicationInvalid
+    EmailPersistenceFailure | EmailPublicationInvalid | EmailImageNotAllowed
   >;
   readonly getVersion: (
     versionId: EmailVersionId
@@ -113,10 +119,24 @@ export class EmailPersistence extends Context.Service<
               );
               const [latest] = yield* db
                 .select({
-                  number: sql<number>`coalesce(max(${emailVersions.versionNumber}), 0)::integer`,
+                  number: emailVersions.versionNumber,
+                  document: emailVersions.document,
                 })
                 .from(emailVersions)
-                .where(eq(emailVersions.emailId, emailId));
+                .where(eq(emailVersions.emailId, emailId))
+                .orderBy(desc(emailVersions.versionNumber))
+                .limit(1);
+              // Only the previous publication vouches for an image; drafts never do.
+              const [disallowed] = disallowedEmailImages(
+                document,
+                yield* campaignImageCloudName,
+                new Set(
+                  latest
+                    ? emailImages(latest.document).map(({ source }) => source)
+                    : []
+                )
+              );
+              if (disallowed) return yield* disallowed;
               const publication: typeof emailVersions.$inferInsert = {
                 emailId,
                 versionNumber: (latest?.number ?? 0) + 1,

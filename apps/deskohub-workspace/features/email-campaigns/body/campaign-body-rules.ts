@@ -69,7 +69,7 @@ export const isCampaignLinkHref = (
  * Images must be delivered from our own Cloudinary account, `imageCloudName`.
  * Without one configured, no image source qualifies.
  */
-const isCampaignImageSource = (
+export const isCampaignImageSource = (
   source: CampaignBodyAttributeValue | undefined,
   imageCloudName: Option.Option<string>
 ): source is string => {
