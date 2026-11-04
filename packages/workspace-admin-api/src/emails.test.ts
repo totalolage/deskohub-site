@@ -9,14 +9,16 @@ import {
   validateEmailCustomerSelection,
 } from "./email-customer-selection";
 import { EmailValueName } from "./email-identifiers";
+import {
+  emailDocumentForPublication,
+  requiredEmailValueNames,
+} from "./email-publication";
 import { emailValueSnapshotForDefinition } from "./email-value-snapshot";
 import {
   EmailDocument,
   EmailDraft,
   type EmailTranslation,
   EmailValueDefinition,
-  emailDocumentForPublication,
-  requiredEmailValueNames,
 } from "./emails";
 import { AdministrationCustomerDetail } from "./workspace-admin-api";
 

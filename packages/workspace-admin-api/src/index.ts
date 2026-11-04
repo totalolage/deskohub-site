@@ -425,6 +425,18 @@ export {
   EmailVersionId,
 } from "./email-identifiers";
 export {
+  type EmailComponentText,
+  type EmailContentLocation,
+  EmailDocumentProblem,
+  emailComponentTexts,
+  emailDocumentForPublication,
+  emailDraftProblems,
+  emailPublicationProblems,
+  englishEmailDocumentProblem,
+  referencedEmailValueNames,
+  requiredEmailValueNames,
+} from "./email-publication";
+export {
   EmailValueSnapshot,
   emailValueSnapshotForDefinition,
 } from "./email-value-snapshot";
@@ -434,11 +446,10 @@ export {
   EmailDocument,
   EmailDraft,
   EmailInlinePart,
+  type EmailTextListItem,
+  type EmailTextListLevel,
   EmailTranslation,
   EmailValueDefinition,
-  emailDocumentForPublication,
-  emailPublicationProblems,
-  requiredEmailValueNames,
 } from "./emails";
 export {
   type OperationInvoke,
