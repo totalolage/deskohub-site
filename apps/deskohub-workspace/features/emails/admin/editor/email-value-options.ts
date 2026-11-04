@@ -94,6 +94,19 @@ export const selectedEmailCustomerFieldPaths = (
     ? (definition.source.fields ?? []).filter((path) => path.length > 0)
     : [];
 
+/**
+ * The paths a list definition's items can sort by: the items themselves, the
+ * empty path, for a list of scalars, else the record fields it selects.
+ */
+export const emailListSortPaths = (
+  definition: EmailDraftValueDefinition
+): readonly EmailCustomerFieldPath[] => {
+  const selected = selectedEmailCustomerField(definition);
+  return selected?.kind === "list" && isEmailCustomerScalar(selected.element)
+    ? [[]]
+    : selectedEmailCustomerFieldPaths(definition);
+};
+
 /** A value a text can show: a scalar definition, or one field of one. */
 export type EmailScalarValueOption = {
   readonly name: string;

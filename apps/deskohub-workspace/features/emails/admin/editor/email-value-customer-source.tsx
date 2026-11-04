@@ -1,9 +1,6 @@
 "use client";
 
-import {
-  type EmailCustomerField,
-  isEmailCustomerScalar,
-} from "@deskohub/workspace-admin-api";
+import type { EmailCustomerField } from "@deskohub/workspace-admin-api";
 import { m } from "@/features/administration/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Checkbox } from "@/shared/components/ui/checkbox";
@@ -29,6 +26,7 @@ import {
   type EmailCustomerFieldPath,
   emailCustomerFieldPathLabel,
   emailCustomerScalarPaths,
+  emailListSortPaths,
   selectedEmailCustomerField,
   selectedEmailCustomerFieldPaths,
 } from "./email-value-options";
@@ -121,23 +119,18 @@ function EmailValueRecordFields({
 function EmailValueListSort({
   definition,
   index,
-  item,
   onChange,
   source,
 }: {
   readonly definition: EmailDraftValueDefinition;
   readonly index: number;
-  readonly item: EmailCustomerField;
   readonly onChange: (source: EmailDraftValueSource) => void;
   readonly source: EmailDraftValueSource;
 }) {
   const locale = useRouteLocale();
   const sortId = emailEditorFieldIds.valueSetting(index, "sort");
   const sortProblems = useEmailFieldProblems(sortId);
-  // A list of scalars sorts by its items themselves, the empty path.
-  const sortPaths = isEmailCustomerScalar(item)
-    ? [[]]
-    : selectedEmailCustomerFieldPaths(definition);
+  const sortPaths = emailListSortPaths(definition);
   const sortPath = source.sort?.path;
   const variant = sortProblems.invalid ? "error" : "default";
 
@@ -234,13 +227,11 @@ function EmailValueListSort({
 function EmailValueListOrder({
   definition,
   index,
-  item,
   onChange,
   source,
 }: {
   readonly definition: EmailDraftValueDefinition;
   readonly index: number;
-  readonly item: EmailCustomerField;
   readonly onChange: (source: EmailDraftValueSource) => void;
   readonly source: EmailDraftValueSource;
 }) {
@@ -255,7 +246,6 @@ function EmailValueListOrder({
       <EmailValueListSort
         definition={definition}
         index={index}
-        item={item}
         onChange={onChange}
         source={source}
       />
@@ -294,9 +284,7 @@ export function EmailValueCustomerSource({
       {item.kind === "record" && (
         <EmailValueRecordFields {...settings} item={item} />
       )}
-      {field.kind === "list" && (
-        <EmailValueListOrder {...settings} item={item} />
-      )}
+      {field.kind === "list" && <EmailValueListOrder {...settings} />}
     </>
   );
 }

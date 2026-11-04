@@ -1,6 +1,5 @@
 "use client";
 
-import { isEmailCustomerScalar } from "@deskohub/workspace-admin-api";
 import { Plus, Trash2 } from "lucide-react";
 import { useWatch } from "react-hook-form";
 import { m } from "@/features/administration/i18n";
@@ -34,6 +33,7 @@ import {
   type EmailCustomerFieldPath,
   type EmailValueKind,
   emailCustomerFieldPathLabel,
+  emailListSortPaths,
   emailValueKind,
   selectedEmailCustomerField,
   selectedEmailCustomerFieldPaths,
@@ -219,15 +219,6 @@ function ValueBlockFields({
  * The paths a list sorts by: its chosen record fields, or the empty path of
  * the items themselves for a list of scalars.
  */
-const listSortPaths = (
-  definition: EmailDraftValueDefinition
-): readonly EmailCustomerFieldPath[] => {
-  const selected = selectedEmailCustomerField(definition);
-  return selected?.kind === "list" && isEmailCustomerScalar(selected.element)
-    ? [[]]
-    : selectedEmailCustomerFieldPaths(definition);
-};
-
 /** The path a list block sorts its items by, and the direction once it sorts. */
 function ListBlockSort({
   component,
@@ -240,7 +231,7 @@ function ListBlockSort({
 }) {
   const locale = useRouteLocale();
   const sortId = emailEditorFieldIds.componentSetting(component.id, "sort");
-  const paths = definition ? listSortPaths(definition) : [];
+  const paths = definition ? emailListSortPaths(definition) : [];
   const sort = component.sort;
   const current = sort?.path;
   const currentValue = current && pathValue(current);
