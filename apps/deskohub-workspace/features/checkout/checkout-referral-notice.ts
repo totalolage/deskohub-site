@@ -1,8 +1,7 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import type { AppliedDiscount } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
-import { getReferralInvitationDiscountId } from "@/features/referrals/discount-identifiers";
-import { referralInvitationDiscountBasisPoints } from "@/features/referrals/program";
+import { recognizeReferralBenefit } from "@/features/referrals/referral-benefits";
 
 export const checkoutReferralAppliedQueryParam = "referralApplied" as const;
 const checkoutReferralAppliedMarker = "1";
@@ -43,9 +42,10 @@ export const hasCheckoutReferralAppliedNotice = ({
   readonly dotyposCustomerId: DotyposCustomerId;
 }) =>
   marker === checkoutReferralAppliedMarker &&
-  discounts.some(
-    ({ discount }) =>
-      discount.id === getReferralInvitationDiscountId(dotyposCustomerId) &&
-      discount.adjustment.kind === "percentage" &&
-      discount.adjustment.basisPoints === referralInvitationDiscountBasisPoints
-  );
+  discounts.some(({ discount }) => {
+    const recognition = recognizeReferralBenefit({
+      dotyposCustomerId,
+      discount,
+    });
+    return recognition.kind === "invitation" && recognition.offersProgramRate;
+  });

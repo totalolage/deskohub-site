@@ -8,7 +8,10 @@ import type { PromotionCodeId } from "@/features/discounts/persistence-contracts
 import type { getPromotionTiming } from "@/features/discounts/promotion-code";
 import type { DiscountClaimInstruction } from "@/features/discounts/provider";
 import { type Locale, m } from "@/features/i18n";
-import { getReferralInvitationDiscountId } from "@/features/referrals/discount-identifiers";
+import {
+  getReferralInvitationLabel,
+  recognizeReferralBenefit,
+} from "@/features/referrals/referral-benefits";
 import { type Money, moneyEquals } from "@/shared/money/money";
 
 // Compares the benefit a payment attempt accepted with what its claim may
@@ -71,21 +74,17 @@ export const referralInvitationBenefitChanged = (input: {
   readonly application: AppliedDiscount;
   readonly locale: Locale;
 }) => {
-  const adjustment = input.application.discount.adjustment;
+  const recognition = recognizeReferralBenefit({
+    dotyposCustomerId: input.claim.invitedDotyposCustomerId,
+    discount: input.application.discount,
+  });
   return (
     input.claim.invitedDotyposCustomerId ===
       input.claim.referrerDotyposCustomerId ||
-    input.application.discount.id !==
-      getReferralInvitationDiscountId(input.claim.invitedDotyposCustomerId) ||
+    recognition.kind !== "invitation" ||
+    !recognition.offersProgramRate ||
     input.application.discount.label !==
-      m.checkoutSummaryItemReferralInvitationDiscount(
-        {},
-        {
-          locale: input.locale,
-        }
-      ) ||
-    adjustment.kind !== "percentage" ||
-    adjustment.basisPoints !== 1_500 ||
+      getReferralInvitationLabel(input.locale) ||
     input.application.amount.value <= 0
   );
 };

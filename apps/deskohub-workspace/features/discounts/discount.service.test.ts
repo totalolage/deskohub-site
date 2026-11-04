@@ -14,13 +14,10 @@ import type { WorkspaceProductIdentity } from "@/features/checkout/product-ident
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import type { ReferralService as ReferralServiceTag } from "@/features/referrals";
 import {
-  getReferralInvitationDiscountId,
-  getReferralReferrerDiscountId,
-} from "@/features/referrals/discount-identifiers";
-import {
   ReferralServiceMock,
   WithheldReferralService,
 } from "@/features/referrals/referral.service.mock";
+import { getReferralBenefitIds } from "@/features/referrals/referral-benefits";
 import { CalendarDiscountProviderMock } from "./calendar-discount-provider.service.mock";
 import { getDiscountCommitmentPayload } from "./commitment";
 import { PromotionCodeProviderMock } from "./promotion-code-provider.service.mock";
@@ -1184,7 +1181,7 @@ describe("DiscountService", () => {
     const promotionCodeId = promotionCodeIdSchema.make("referral-promotion");
     const invitation: DiscountCandidate = {
       discount: {
-        id: getReferralInvitationDiscountId(invitedCustomerId),
+        id: getReferralBenefitIds(invitedCustomerId).invitation,
         label: "Invitation discount",
         adjustment: { kind: "percentage", basisPoints: 1_500 },
       },
@@ -1201,7 +1198,7 @@ describe("DiscountService", () => {
     };
     const referrer: DiscountCandidate = {
       discount: {
-        id: getReferralReferrerDiscountId(invitedCustomerId),
+        id: getReferralBenefitIds(invitedCustomerId).referrer,
         label: "Referrer discount",
         adjustment: { kind: "fixed", amount: money(551) },
       },
@@ -1253,8 +1250,8 @@ describe("DiscountService", () => {
       "sale",
       "customer",
       "code",
-      getReferralInvitationDiscountId(invitedCustomerId),
-      getReferralReferrerDiscountId(invitedCustomerId),
+      getReferralBenefitIds(invitedCustomerId).invitation,
+      getReferralBenefitIds(invitedCustomerId).referrer,
     ]);
     expect(
       quote.discounts.map(({ subtotalBefore }) => subtotalBefore.value)
@@ -1336,7 +1333,7 @@ describe("DiscountService", () => {
     };
     const invitation: DiscountCandidate = {
       discount: {
-        id: getReferralInvitationDiscountId(invitedCustomerId),
+        id: getReferralBenefitIds(invitedCustomerId).invitation,
         label: "Invitation discount",
         adjustment: { kind: "percentage", basisPoints: 1_500 },
       },
@@ -1359,7 +1356,7 @@ describe("DiscountService", () => {
         const amount = money(Math.round(input.remainingSubtotal.value / 20));
         return Effect.succeed({
           discount: {
-            id: getReferralReferrerDiscountId(invitedCustomerId),
+            id: getReferralBenefitIds(invitedCustomerId).referrer,
             label: "Referral discount (1 eligible people)",
             adjustment: { kind: "fixed", amount },
           },
@@ -1405,8 +1402,8 @@ describe("DiscountService", () => {
 
     expect(referrerSubtotal).toEqual(money(8_500));
     expect(result.quote.discounts.map(({ discount }) => discount.id)).toEqual([
-      getReferralInvitationDiscountId(invitedCustomerId),
-      getReferralReferrerDiscountId(invitedCustomerId),
+      getReferralBenefitIds(invitedCustomerId).invitation,
+      getReferralBenefitIds(invitedCustomerId).referrer,
       voucherCandidate.discount.id,
     ]);
     expect(result.quote.discounts.map(({ amount }) => amount)).toEqual([
@@ -1434,8 +1431,8 @@ describe("DiscountService", () => {
       referralService
     );
     expect(quoted.discounts.map(({ discount }) => discount.id)).toEqual([
-      getReferralInvitationDiscountId(invitedCustomerId),
-      getReferralReferrerDiscountId(invitedCustomerId),
+      getReferralBenefitIds(invitedCustomerId).invitation,
+      getReferralBenefitIds(invitedCustomerId).referrer,
       voucherCandidate.discount.id,
     ]);
     expect(quoted.discounts.map(({ amount }) => amount.value)).toEqual([
@@ -1459,8 +1456,8 @@ describe("DiscountService", () => {
       referralService
     );
     expect(customerQuote.discounts.map(({ discount }) => discount.id)).toEqual([
-      getReferralInvitationDiscountId(invitedCustomerId),
-      getReferralReferrerDiscountId(invitedCustomerId),
+      getReferralBenefitIds(invitedCustomerId).invitation,
+      getReferralBenefitIds(invitedCustomerId).referrer,
       voucherCandidate.discount.id,
     ]);
     expect(customerQuote.discounts.map(({ amount }) => amount.value)).toEqual([
@@ -1523,8 +1520,8 @@ describe("DiscountService", () => {
           ...paymentInput,
           displayedDiscountIds: [
             discountId("code"),
-            getReferralInvitationDiscountId(invitedCustomerId),
-            getReferralReferrerDiscountId(invitedCustomerId),
+            getReferralBenefitIds(invitedCustomerId).invitation,
+            getReferralBenefitIds(invitedCustomerId).referrer,
           ],
           referralCode,
         });
@@ -1554,7 +1551,7 @@ describe("DiscountService", () => {
     const promotionCodeId = promotionCodeIdSchema.make("tiny-referral");
     const invitation: DiscountCandidate = {
       discount: {
-        id: getReferralInvitationDiscountId(invitedCustomerId),
+        id: getReferralBenefitIds(invitedCustomerId).invitation,
         label: "Invitation discount",
         adjustment: { kind: "percentage", basisPoints: 1_500 },
       },

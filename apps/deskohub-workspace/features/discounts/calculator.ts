@@ -5,8 +5,10 @@ import {
 } from "@/features/checkout/product-identity";
 import {
   type Money,
+  moneyEquals,
   moneyWithValue,
   nonNegativeMoneyCodec,
+  sameMoneyUnit,
 } from "@/shared/money/money";
 import type { AppliedDiscount, Discount, DiscountQuote } from "./contracts";
 import { DiscountCalculationError } from "./errors";
@@ -293,5 +295,24 @@ const toPublicDiscount = (discount: Discount): Discount => ({
   }),
 });
 
-const applyBasisPoints = (value: number, basisPoints: number) =>
+/** The share of a minor-unit value, rounded half up to a whole minor unit. */
+export const applyBasisPoints = (value: number, basisPoints: number) =>
   Number((BigInt(value) * BigInt(basisPoints) + BigInt(5000)) / BigInt(10_000));
+
+/**
+ * Whether an application takes no more than its subtotal, in the subtotal's
+ * unit, and leaves exactly the difference.
+ */
+export const isApplicationArithmeticConsistent = (
+  application: AppliedDiscount
+) => {
+  const { subtotalBefore, amount, subtotalAfter } = application;
+  return (
+    sameMoneyUnit(subtotalBefore, amount) &&
+    subtotalBefore.value >= amount.value &&
+    moneyEquals(subtotalAfter, {
+      ...subtotalBefore,
+      value: subtotalBefore.value - amount.value,
+    })
+  );
+};

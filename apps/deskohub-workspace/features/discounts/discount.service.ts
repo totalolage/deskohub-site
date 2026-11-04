@@ -3,10 +3,7 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import type { Locale } from "@/features/i18n";
 import { ReferralService } from "@/features/referrals";
-import {
-  getReferralInvitationDiscountId,
-  getReferralReferrerDiscountId,
-} from "@/features/referrals/discount-identifiers";
+import { listReferralBenefitIds } from "@/features/referrals/referral-benefits";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
@@ -938,13 +935,8 @@ const selectDiscountCandidates = (input: {
   });
 };
 
-const getReferralDiscountIds = (dotyposCustomerId: DotyposCustomerId) => [
-  getReferralInvitationDiscountId(dotyposCustomerId),
-  getReferralReferrerDiscountId(dotyposCustomerId),
-];
-
 const getOrdinaryDiscountIds = (input: DisplayedDiscountAffirmationInput) => {
-  const referralIds = new Set(getReferralDiscountIds(input.dotyposCustomerId));
+  const referralIds = new Set(listReferralBenefitIds(input.dotyposCustomerId));
   return input.displayedDiscountIds.filter(
     (discountId) => !referralIds.has(discountId)
   );
@@ -954,7 +946,7 @@ const removeReferralDiscounts = (
   quote: DiscountQuote,
   dotyposCustomerId: DotyposCustomerId
 ): DiscountQuote => {
-  const referralIds = new Set(getReferralDiscountIds(dotyposCustomerId));
+  const referralIds = new Set(listReferralBenefitIds(dotyposCustomerId));
   const firstReferral = quote.discounts.find(({ discount }) =>
     referralIds.has(discount.id)
   );

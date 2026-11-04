@@ -10,12 +10,12 @@ import {
   getDiscountCommitmentPayload,
 } from "@/features/discounts/commitment";
 import {
-  getReferralInvitationDiscountId,
-  getReferralReferrerDiscountId,
-} from "@/features/referrals/discount-identifiers";
-import { referralInvitationDiscountBasisPoints } from "@/features/referrals/program";
-import { calculateReferrerDiscountAmount } from "@/features/referrals/referrer-discount";
+  getReferralBenefitIds,
+  matchesReferrerFormula,
+  recognizeCommittedReferralBenefit,
+} from "@/features/referrals/referral-benefits";
 import { type Money, moneyEquals, sameMoneyUnit } from "@/shared/money/money";
+import { haveSameJsonEncoding } from "@/shared/utils/json-equal";
 
 export const isExpectedReferralQuoteAddition = (input: {
   readonly previous: ReservationQuote;
@@ -23,8 +23,8 @@ export const isExpectedReferralQuoteAddition = (input: {
   readonly commitment: DiscountCommitment;
   readonly dotyposCustomerId: DotyposCustomerId;
 }): boolean => {
-  const invitationId = getReferralInvitationDiscountId(input.dotyposCustomerId);
-  const referrerId = getReferralReferrerDiscountId(input.dotyposCustomerId);
+  const { invitation: invitationId, referrer: referrerId } =
+    getReferralBenefitIds(input.dotyposCustomerId);
   const referralIds = new Set([invitationId, referrerId]);
   const previousNonReferralDiscounts = withoutReferralApplications(
     input.previous,
@@ -117,12 +117,12 @@ const haveSameBasePricing = (input: {
   readonly previousNonReferralDiscounts: readonly AppliedDiscount[];
   readonly currentNonReferralDiscounts: readonly AppliedDiscount[];
 }) =>
-  areEqual(input.previous.items, input.current.items) &&
+  haveSameJsonEncoding(input.previous.items, input.current.items) &&
   moneyEquals(
     input.previous.payment.undiscountedPrice,
     input.current.payment.undiscountedPrice
   ) &&
-  areEqual(
+  haveSameJsonEncoding(
     input.previousNonReferralDiscounts,
     input.currentNonReferralDiscounts
   );
@@ -176,7 +176,7 @@ const isUnchangedCurrentInvitation = (input: {
   readonly previousInvitation: AppliedDiscount;
   readonly currentInvitation: AppliedDiscount;
 }) =>
-  areEqual(input.previousInvitation, input.currentInvitation) &&
+  haveSameJsonEncoding(input.previousInvitation, input.currentInvitation) &&
   isCurrentInvitationApplication({
     application: input.currentInvitation,
     commitment: input.commitment,
@@ -236,11 +236,8 @@ const isReferrerRecalculation = (input: {
   });
   return (
     eligibleInviteeCount !== undefined &&
-    isReferrerApplicationForCount(
-      input.previousReferrer,
-      eligibleInviteeCount
-    ) &&
-    isReferrerApplicationForCount(input.currentReferrer, eligibleInviteeCount)
+    matchesReferrerFormula(input.previousReferrer, eligibleInviteeCount) &&
+    matchesReferrerFormula(input.currentReferrer, eligibleInviteeCount)
   );
 };
 
@@ -268,84 +265,19 @@ const isExpectedNewInvitationApplication = (input: {
   readonly application: AppliedDiscount;
   readonly commitment: DiscountCommitment;
   readonly dotyposCustomerId: DotyposCustomerId;
-}) => {
-  const commitmentApplication = findCommitmentApplication(
-    input.commitment,
-    input.application.discount.id
-  );
-  const adjustment = input.application.discount.adjustment;
-  return (
-    adjustment.kind === "percentage" &&
-    adjustment.basisPoints === referralInvitationDiscountBasisPoints &&
-    hasCurrentInvitationProvenance({
-      commitmentApplication,
-      application: input.application,
-      dotyposCustomerId: input.dotyposCustomerId,
-    }) &&
-    input.application.discount.expiresAt === undefined &&
-    input.application.discount.countdownStartsAt === undefined &&
-    isApplicationMathValid(input.application) &&
-    input.application.amount.value ===
-      applyBasisPoints(
-        input.application.subtotalBefore.value,
-        referralInvitationDiscountBasisPoints
-      )
-  );
-};
+}) =>
+  isCurrentInvitationApplication(input) &&
+  input.application.discount.expiresAt === undefined &&
+  input.application.discount.countdownStartsAt === undefined;
 
+/** The customer's committed invitation, taking exactly the program rate. */
 const isCurrentInvitationApplication = (input: {
   readonly application: AppliedDiscount;
   readonly commitment: DiscountCommitment;
   readonly dotyposCustomerId: DotyposCustomerId;
 }) => {
-  const adjustment = input.application.discount.adjustment;
-  return (
-    adjustment.kind === "percentage" &&
-    adjustment.basisPoints === referralInvitationDiscountBasisPoints &&
-    hasCurrentInvitationProvenance({
-      commitmentApplication: findCommitmentApplication(
-        input.commitment,
-        input.application.discount.id
-      ),
-      application: input.application,
-      dotyposCustomerId: input.dotyposCustomerId,
-    }) &&
-    isApplicationMathValid(input.application) &&
-    input.application.amount.value ===
-      applyBasisPoints(
-        input.application.subtotalBefore.value,
-        referralInvitationDiscountBasisPoints
-      )
-  );
-};
-
-const isApplicationMathValid = (application: AppliedDiscount) => {
-  const { subtotalBefore, amount, subtotalAfter } = application;
-  return (
-    sameMoneyUnit(subtotalBefore, amount) &&
-    subtotalBefore.value >= amount.value &&
-    moneyEquals(subtotalAfter, {
-      ...subtotalBefore,
-      value: subtotalBefore.value - amount.value,
-    })
-  );
-};
-
-const isReferrerApplicationForCount = (
-  application: AppliedDiscount,
-  eligibleInviteeCount: number
-) => {
-  const adjustment = application.discount.adjustment;
-  const expectedAmount = calculateReferrerDiscountAmount({
-    eligibleInviteeCount,
-    remainingSubtotal: application.subtotalBefore,
-  });
-  return (
-    adjustment.kind === "fixed" &&
-    moneyEquals(adjustment.amount, application.amount) &&
-    moneyEquals(expectedAmount, application.amount) &&
-    isApplicationMathValid(application)
-  );
+  const recognition = recognizeCommittedApplication(input);
+  return recognition.kind === "invitation" && recognition.matchesProgram;
 };
 
 const sameReferrerDiscountIdentity = (
@@ -359,72 +291,34 @@ const sameReferrerDiscountIdentity = (
     expiresAt: discount.expiresAt ?? null,
     countdownStartsAt: discount.countdownStartsAt ?? null,
   });
-  return areEqual(getIdentity(previous), getIdentity(current));
+  return haveSameJsonEncoding(getIdentity(previous), getIdentity(current));
 };
 
+/** The eligible-invitee count of the customer's committed referrer application. */
 const getCurrentReferrerCount = (input: {
   readonly application: AppliedDiscount;
   readonly commitment: DiscountCommitment;
   readonly dotyposCustomerId: DotyposCustomerId;
 }) => {
-  const referrer = findCurrentReferrerProvenance({
-    ...input,
-    commitmentApplication: findCommitmentApplication(
+  const recognition = recognizeCommittedApplication(input);
+  return recognition.kind === "referrer"
+    ? recognition.eligibleInviteeCount
+    : undefined;
+};
+
+const recognizeCommittedApplication = (input: {
+  readonly application: AppliedDiscount;
+  readonly commitment: DiscountCommitment;
+  readonly dotyposCustomerId: DotyposCustomerId;
+}) =>
+  recognizeCommittedReferralBenefit({
+    dotyposCustomerId: input.dotyposCustomerId,
+    application: input.application,
+    committed: findCommitmentApplication(
       input.commitment,
       input.application.discount.id
     ),
   });
-  const count = referrer?.eligibleInviteeCount;
-  return count !== undefined && Number.isSafeInteger(count) && count > 0
-    ? count
-    : undefined;
-};
-
-/** The committed referrer details, when they prove this customer's own referrer application. */
-const findCurrentReferrerProvenance = (input: {
-  readonly commitmentApplication: CommitmentApplication | undefined;
-  readonly application: AppliedDiscount;
-  readonly dotyposCustomerId: DotyposCustomerId;
-}) => {
-  const { commitmentApplication } = input;
-  if (
-    input.application.discount.id !==
-      getReferralReferrerDiscountId(input.dotyposCustomerId) ||
-    commitmentApplication?.application === undefined ||
-    !areEqual(commitmentApplication.application, input.application) ||
-    commitmentApplication.provenance.providerNamespace !== "referral-referrer"
-  ) {
-    return undefined;
-  }
-  const details = commitmentApplication.provenance.details;
-  return details &&
-    "referralReferrer" in details &&
-    details.referralReferrer.referrerDotyposCustomerId ===
-      input.dotyposCustomerId
-    ? details.referralReferrer
-    : undefined;
-};
-
-const hasCurrentInvitationProvenance = (input: {
-  readonly commitmentApplication: CommitmentApplication | undefined;
-  readonly application: AppliedDiscount;
-  readonly dotyposCustomerId: DotyposCustomerId;
-}) => {
-  const details = input.commitmentApplication?.provenance.details;
-  return (
-    input.commitmentApplication !== undefined &&
-    areEqual(input.commitmentApplication.application, input.application) &&
-    input.application.discount.id ===
-      getReferralInvitationDiscountId(input.dotyposCustomerId) &&
-    input.commitmentApplication.provenance.providerNamespace ===
-      "referral-invitation" &&
-    input.commitmentApplication.provenance.providerReference.length > 0 &&
-    details !== undefined &&
-    "referralInvitation" in details &&
-    details.referralInvitation.invitedDotyposCustomerId ===
-      input.dotyposCustomerId
-  );
-};
 
 const areReferralApplicationsInSequence = (input: {
   readonly quote: ReservationQuote;
@@ -437,7 +331,7 @@ const areReferralApplicationsInSequence = (input: {
   const subtotalAfterOrdinaryDiscounts =
     input.nonReferralDiscounts.at(-1)?.subtotalAfter ?? productSubtotal;
   if (
-    !areEqual(
+    !haveSameJsonEncoding(
       input.quote.payment.discounts,
       listApplicationsInPricingOrder(input)
     )
@@ -515,9 +409,3 @@ const findCommitmentApplication = (
   getDiscountCommitmentPayload(commitment).applications.find(
     ({ application }) => application.discount.id === discountId
   );
-
-const applyBasisPoints = (value: number, basisPoints: number) =>
-  Number((BigInt(value) * BigInt(basisPoints) + 5_000n) / 10_000n);
-
-const areEqual = <A>(left: A, right: A) =>
-  JSON.stringify(left) === JSON.stringify(right);

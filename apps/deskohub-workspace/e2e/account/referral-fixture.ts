@@ -18,7 +18,7 @@ import {
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import { canonicalPromotionCodeSchema } from "@/features/discounts/contracts";
 import { parseReferralCode } from "@/features/referrals/client";
-import { getReferralReferrerDiscountId } from "@/features/referrals/discount-identifiers";
+import { getReferralBenefitIds } from "@/features/referrals/referral-benefits";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import type {
@@ -268,9 +268,9 @@ export const seedWorkspaceE2EReferrerSavings = (input: {
             paymentAttemptId: attempt.id,
             productIdentity: { kind: "cowork" },
             provenance: { inviteeCount: 1, kind: "referral-referrer" },
-            publicDiscountId: getReferralReferrerDiscountId(
+            publicDiscountId: getReferralBenefitIds(
               input.referrerDotyposCustomerId
-            ),
+            ).referrer,
             sequence: 0,
             subtotalAfterCurrency: "CZK",
             subtotalAfterExponent: 2,

@@ -36,10 +36,7 @@ import {
   type CheckoutReferralEvaluation,
   ReferralError,
 } from "@/features/referrals/contracts";
-import {
-  getReferralInvitationDiscountId,
-  getReferralReferrerDiscountId,
-} from "@/features/referrals/discount-identifiers";
+import { getReferralBenefitIds } from "@/features/referrals/referral-benefits";
 import { calculateReferrerDiscountAmount } from "@/features/referrals/referrer-discount";
 import type { WorkspaceReservation } from "@/features/reservation/backend/workspace-reservation.repository";
 import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
@@ -94,8 +91,9 @@ const referrerDotyposCustomerId = dotyposCustomerIdSchema.make(
 const promotionCodeId = promotionCodeIdSchema.make(
   "checkout-referral-service-test-code"
 );
-const invitationDiscountId = getReferralInvitationDiscountId(dotyposCustomerId);
-const referrerDiscountId = getReferralReferrerDiscountId(dotyposCustomerId);
+const invitationDiscountId =
+  getReferralBenefitIds(dotyposCustomerId).invitation;
+const referrerDiscountId = getReferralBenefitIds(dotyposCustomerId).referrer;
 const ordinaryDiscountId = discountIdSchema.make(
   "checkout-referral-service-test-ordinary-code"
 );
