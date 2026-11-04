@@ -94,6 +94,10 @@ describe("checkout lookup key write format", () => {
         new RegExp(`^${activeKid}:[a-f0-9]{64}$`)
       );
     }
+    // Known answer, so rows already stored keep matching.
+    expect(sessionKeysUnder(originalKey).current).toBe(
+      "original:bf71172ef598f9c07c71f113138c420f13e9a8dde7966a89b586e7334316185f"
+    );
   });
 
   test("still accepts the ring-keyed key that earlier workers stored", () => {

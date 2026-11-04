@@ -169,3 +169,48 @@ describe("auth return state", () => {
     }
   );
 });
+
+describe("auth return state token format", () => {
+  // Sealed before the sealed state codec was reworked; tokens in flight on
+  // sign-in return paths must keep opening.
+  const goldenKeys = [
+    runSync(
+      parseSealedStateKey("golden", Buffer.alloc(32, 9).toString("base64url"))
+    ),
+  ];
+  const issuedAt = () => new Date("2026-06-01T10:00:00.000Z");
+  const beforeExpiry = () => new Date("2026-06-01T10:29:00.000Z");
+  const goldenState = makeAuthReturnState("golden-contact", contactSchema);
+  /** Sealed with a random IV (all bytes 7). */
+  const goldenToken =
+    "eyJraWQiOiJnb2xkZW4iLCJwdXJwb3NlIjoiYXV0aC1yZXR1cm46Z29sZGVuLWNvbnRhY3QiLCJ6aXAiOiJERUYifQ.BwcHBwcHBwcHBwcH.8u1HUSQgTUs9JZjE3w8gNGzySmbRvsBxKb4hpkNGsymT7o6YfJ_oZbENgJ_GrPzhVlsu12XM4QdMmKo_DSnu0qP8_vw_TmO144g.m91uBX7Vagghx_s2jE-EHQ";
+  /** Sealed with a synthetic IV. */
+  const stableGoldenToken =
+    "eyJraWQiOiJnb2xkZW4iLCJwdXJwb3NlIjoiYXV0aC1yZXR1cm46Z29sZGVuLWNvbnRhY3QiLCJ6aXAiOiJERUYifQ.qSULXz5f46eJZDn1.CyOAuTszJr9Qv0b5FBfhyatUJlbyWkNMcXL11IuqMjZMXR2vzOOADam3vE72mPkOcOI0o4zN-Yz7TnUlGgckLArtPtGYZ4EuSt4.-Gmh24i2EyynF94M0EdhVA";
+
+  test("seals deterministically to the pinned bytes", () => {
+    expect(
+      runSync(
+        goldenState.seal(
+          { name: "Golden Fixture" },
+          { keys: goldenKeys, now: issuedAt, syntheticIv: true }
+        )
+      )
+    ).toBe(stableGoldenToken);
+  });
+
+  test("opens pinned tokens until they expire", () => {
+    for (const token of [goldenToken, stableGoldenToken]) {
+      expect(
+        runSync(
+          goldenState.open(token, { keys: goldenKeys, now: beforeExpiry })
+        )
+      ).toEqual({ name: "Golden Fixture" });
+      expect(
+        Result.isFailure(
+          runSync(Effect.result(goldenState.open(token, { keys: goldenKeys })))
+        )
+      ).toBe(true);
+    }
+  });
+});
