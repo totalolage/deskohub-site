@@ -8,8 +8,8 @@ import type { CampaignBodyNode } from "../../body/campaign-body-document";
  * loads React DOM, which must see happy-dom to handle input events.
  */
 export const loadCampaignBodyEditorHarness = async () => {
-  mock.module("@/features/email-campaigns/admin/editor/actions", () => ({
-    authorizeCampaignImageUpload: async () => ({}),
+  mock.module("@/features/emails/admin/editor/image-upload-actions", () => ({
+    authorizeEmailImageUpload: async () => ({}),
   }));
   const testing = await import("@testing-library/react");
   const { CampaignBodyEditor } = await import("./campaign-body-editor");

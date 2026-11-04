@@ -1494,5 +1494,9 @@
   "faqQuestionBar": "What is Deskohub Bar?",
   "faqAnswerBar": "A board game bar right next to the coworking space, with hundreds of games. Drop in after work for a drink and a game.",
   "faqQuestionRules": "What are the house rules?",
-  "faqAnswerRules": "The <operatingRules>operating rules</operatingRules> set out the rules for using the space."
+  "faqAnswerRules": "The <operatingRules>operating rules</operatingRules> set out the rules for using the space.",
+  "emailContentOfferCodeLabel": "Your discount code",
+  "emailContentOfferValidUntil": "The code is valid until {date}.",
+  "emailContentYes": "Yes",
+  "emailContentNo": "No"
 }

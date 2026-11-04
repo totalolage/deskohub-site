@@ -20,6 +20,10 @@ import {
 } from "lucide-react";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { m } from "@/features/administration/i18n";
+import {
+  type EmailImageUploadStage,
+  uploadEmailImage,
+} from "@/features/emails/admin/editor/email-image-upload";
 import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { runWorkspaceBrowserEffectUntilAbort } from "@/shared/browser/workspace-browser-effect";
@@ -54,10 +58,6 @@ import {
   isCampaignImageAlignment,
   isCampaignImageWidth,
 } from "../../body/campaign-image";
-import {
-  type CampaignImageUploadStage,
-  uploadCampaignImage,
-} from "./campaign-image-upload";
 import { normalizeCampaignLinkHref } from "./campaign-link-href";
 import { CtaButtonDialog, type CtaButtonValues } from "./cta-button-dialog";
 
@@ -721,7 +721,7 @@ function ImageUploadControl({
   const fileInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string>();
   // The editor takes no other image until this one is in or has failed.
-  const [stage, setStage] = useState<CampaignImageUploadStage>();
+  const [stage, setStage] = useState<EmailImageUploadStage>();
   const progress =
     stage &&
     (stage === "shrinking"
@@ -742,7 +742,7 @@ function ImageUploadControl({
     if (!lifetime.current) return;
     setError(undefined);
     setStage("uploading");
-    void uploadCampaignImage(file, locale, (next) =>
+    void uploadEmailImage(file, locale, (next) =>
       Effect.sync(() => setStage(next))
     ).pipe(
       Effect.flatMap((uploaded) =>
