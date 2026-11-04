@@ -7,7 +7,7 @@ import { Data, Effect, Match, Schema } from "effect";
 import { Text } from "react-email";
 import { WorkspaceCampaignFooter } from "@/emails/_components/workspace-campaign-footer";
 import { type Locale, m } from "@/features/i18n";
-import { getRuntimeMarketingPreferencesAccessUrl } from "@/features/legal/marketing-preferences-access-url";
+import { getRuntimeMarketingPreferencesPlaceholderUrl } from "@/features/legal/marketing-preferences-access-url";
 import {
   type EmailKind,
   emailKindTags,
@@ -47,12 +47,6 @@ export const campaignEmailKind: EmailKind<CampaignEmailRecipient> = {
 const campaignTestEmailCategory = "email-campaign-test";
 
 const testSubjectPrefix = "[TEST]";
-
-/**
- * Stands in for a recipient's marketing preferences token where there is no
- * recipient: previews and test emails.
- */
-const placeholderPreferencesToken = "preview";
 
 type RenderedCampaignEmail = {
   readonly subject: string;
@@ -119,7 +113,7 @@ const placeholderFooter = (input: {
 }) =>
   Match.value(input.purpose).pipe(
     Match.when("marketing", () =>
-      getRuntimeMarketingPreferencesAccessUrl(placeholderPreferencesToken).pipe(
+      getRuntimeMarketingPreferencesPlaceholderUrl.pipe(
         Effect.map((marketingPreferencesUrl) =>
           WorkspaceCampaignFooter.Marketing({ marketingPreferencesUrl })
         )

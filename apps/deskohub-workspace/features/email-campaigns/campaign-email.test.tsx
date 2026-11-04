@@ -2,8 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect } from "effect";
+import { env } from "@/env";
 import { m } from "@/features/i18n";
-import { getRuntimeMarketingPreferencesAccessUrl } from "@/features/legal/marketing-preferences-access-url";
+import { getRuntimeMarketingPreferencesPlaceholderUrl } from "@/features/legal/marketing-preferences-access-url";
 import type { CampaignBodyNode } from "./body/campaign-body-document";
 import type {
   CampaignLocaleContent,
@@ -147,7 +148,26 @@ const delivery = (audience: CampaignDeliveryAudience) =>
 const attribute = (url: string) => url.replaceAll("&", "&amp;");
 
 const placeholderPreferencesUrl = () =>
-  Effect.runPromise(getRuntimeMarketingPreferencesAccessUrl("preview"));
+  Effect.runPromise(getRuntimeMarketingPreferencesPlaceholderUrl);
+
+const syntheticBypassSecret = "synthetic-campaign-bypass-secret";
+
+/** Runs `run` on a preview deployment that has an automation bypass secret. */
+const withPreviewBypassSecret = async <A,>(run: () => Promise<A>) => {
+  const previous = {
+    VERCEL_ENV: env.VERCEL_ENV,
+    VERCEL_AUTOMATION_BYPASS_SECRET: env.VERCEL_AUTOMATION_BYPASS_SECRET,
+  };
+  Object.assign(env, {
+    VERCEL_ENV: "preview",
+    VERCEL_AUTOMATION_BYPASS_SECRET: syntheticBypassSecret,
+  });
+  try {
+    return await run();
+  } finally {
+    Object.assign(env, previous);
+  }
+};
 
 const operationalReason = "Píšeme vám kvůli změně provozní doby.";
 
@@ -212,6 +232,15 @@ describe("campaign email preview", () => {
     expect(email.html).not.toContain(
       m.emailCampaignOperationalFooter({}, { locale: "cs-CZ" })
     );
+  });
+
+  test("keeps the preview protection bypass out of a marketing preview", async () => {
+    const email = await withPreviewBypassSecret(() => render("marketing"));
+
+    for (const body of [email.html, email.text]) {
+      expect(body).not.toContain(syntheticBypassSecret);
+      expect(body).not.toContain("x-vercel-protection-bypass");
+    }
   });
 
   test("gives an operational preview a reason line and no preferences link", async () => {
@@ -298,6 +327,19 @@ describe("campaign test email", () => {
       `href="${attribute(await placeholderPreferencesUrl())}"`
     );
     expect(email.headers).toBeUndefined();
+  });
+
+  test("keeps the preview protection bypass out of a marketing test email whose body providers log", async () => {
+    const email = await withPreviewBypassSecret(() =>
+      message(testOccasion("marketing"))
+    );
+
+    expect(email.sensitiveContent).toBe(false);
+    expect(email.text).toContain(code);
+    for (const body of [email.html, email.text]) {
+      expect(body).not.toContain(syntheticBypassSecret);
+      expect(body).not.toContain("x-vercel-protection-bypass");
+    }
   });
 
   test("keeps the confirmation code out of production provider logs", async () => {
