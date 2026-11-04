@@ -48,18 +48,17 @@ type PreviewResult = {
 );
 
 /**
- * The draft as a recipient would see it in the active language, rendered
- * with sample values after editing pauses. Only the latest request's answer
- * shows; an older one arriving late is dropped, and a failure clears the
- * old picture rather than leaving it under a new heading.
+ * Renders the draft in the active language with sample values after editing
+ * pauses. Only the latest request's answer counts; an older one arriving late
+ * is dropped, and a failure replaces the old picture.
  */
-export function EmailPreviewPanel({
+const useEmailPreview = ({
   renderPreview,
   values,
 }: {
   readonly renderPreview: EmailPreviewRenderer;
-  readonly values?: EmailPreviewValues;
-}) {
+  readonly values: EmailPreviewValues | undefined;
+}) => {
   const locale = useRouteLocale();
   const { activeLocale } = useEmailEditor();
   const { control, getValues } = useEmailDraftForm();
@@ -95,9 +94,70 @@ export function EmailPreviewPanel({
     return () => clearTimeout(timer);
   }, [requestKey]);
 
-  // Another language's picture never shows under this language's heading.
-  const shown = result?.locale === activeLocale ? result : undefined;
-  const current = result?.request === requestKey;
+  return {
+    activeLocale,
+    // Another language's picture never shows under this language's heading.
+    shown: result?.locale === activeLocale ? result : undefined,
+    current: result?.request === requestKey,
+  };
+};
+
+/** The preview's failure, its subject line and the email in a sandboxed frame. */
+function EmailPreviewPicture({
+  contentLocale,
+  language,
+  shown,
+}: {
+  readonly contentLocale: Locale;
+  /** The name of `contentLocale` in the administrator's language. */
+  readonly language: string;
+  readonly shown: PreviewResult | undefined;
+}) {
+  const locale = useRouteLocale();
+  return (
+    <>
+      <div className="mb-2 text-sm" role="alert">
+        {shown?.error && (
+          <p className="text-burned-orange-ink">{shown.error}</p>
+        )}
+      </div>
+      {shown?.preview && (
+        <p className="mb-2 truncate font-medium text-navy-blue text-sm">
+          {m.emailsEditorPreviewSubject(
+            { subject: shown.preview.subject },
+            { locale }
+          )}
+        </p>
+      )}
+      <iframe
+        className="h-[640px] w-full rounded-md border border-navy-blue/10 bg-white"
+        lang={contentLocale}
+        sandbox=""
+        srcDoc={shown?.preview?.html ?? ""}
+        title={m.emailsEditorPreviewFrameTitle({ language }, { locale })}
+      />
+    </>
+  );
+}
+
+/**
+ * The draft as a recipient would see it in the active language, rendered
+ * with sample values after editing pauses. Only the latest request's answer
+ * shows; an older one arriving late is dropped, and a failure clears the
+ * old picture rather than leaving it under a new heading.
+ */
+export function EmailPreviewPanel({
+  renderPreview,
+  values,
+}: {
+  readonly renderPreview: EmailPreviewRenderer;
+  readonly values?: EmailPreviewValues;
+}) {
+  const locale = useRouteLocale();
+  const { activeLocale, shown, current } = useEmailPreview({
+    renderPreview,
+    values,
+  });
   const language = emailEditorLanguageName(activeLocale, locale);
   return (
     <section
@@ -115,28 +175,13 @@ export function EmailPreviewPanel({
       </p>
       <p className="sr-only" role="status">
         {current
-          ? result.preview && m.emailsEditorPreviewUpdated({}, { locale })
+          ? shown?.preview && m.emailsEditorPreviewUpdated({}, { locale })
           : m.emailsEditorPreviewUpdating({}, { locale })}
       </p>
-      <div className="mb-2 text-sm" role="alert">
-        {shown?.error && (
-          <p className="text-burned-orange-ink">{shown.error}</p>
-        )}
-      </div>
-      {shown?.preview && (
-        <p className="mb-2 truncate font-medium text-navy-blue text-sm">
-          {m.emailsEditorPreviewSubject(
-            { subject: shown.preview.subject },
-            { locale }
-          )}
-        </p>
-      )}
-      <iframe
-        className="h-[640px] w-full rounded-md border border-navy-blue/10 bg-white"
-        lang={activeLocale}
-        sandbox=""
-        srcDoc={shown?.preview?.html ?? ""}
-        title={m.emailsEditorPreviewFrameTitle({ language }, { locale })}
+      <EmailPreviewPicture
+        contentLocale={activeLocale}
+        language={language}
+        shown={shown}
       />
     </section>
   );

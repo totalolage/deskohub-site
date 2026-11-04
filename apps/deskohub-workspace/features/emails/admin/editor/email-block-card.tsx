@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
+import type { ComponentType } from "react";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
@@ -11,7 +12,7 @@ import { EmailBlockImageSettings } from "./email-block-image";
 import { EmailBlockRichTextSettings } from "./email-block-rich-text";
 import { EmailBlockTextListSettings } from "./email-block-text-list";
 import { EmailBlockValueSettings } from "./email-block-value-settings";
-import type { EmailDraftComponent } from "./email-draft-form";
+import type { EmailDraftComponentTag } from "./email-draft-form";
 import {
   EmailFieldProblems,
   useEmailFieldProblems,
@@ -46,56 +47,32 @@ export const emailBlockActionId = (
   action: "move-up" | "move-down" | "remove"
 ) => `${emailEditorFieldIds.component(componentId)}-${action}`;
 
-/** The settings and texts one block kind has. */
-function EmailBlockBody({
-  component,
-  contentLocale,
-  index,
-}: {
-  readonly component: EmailDraftComponent;
-  readonly contentLocale: Locale;
-  readonly index: number;
-}) {
+/** What a block without settings of its own shows instead. */
+function EmailBlockNoSettings() {
   const locale = useRouteLocale();
-  switch (component._tag) {
-    case "Paragraph":
-    case "Heading":
-      return (
-        <EmailBlockRichTextSettings
-          contentLocale={contentLocale}
-          index={index}
-        />
-      );
-    case "TextList":
-      return (
-        <EmailBlockTextListSettings
-          contentLocale={contentLocale}
-          index={index}
-        />
-      );
-    case "Image":
-      return (
-        <EmailBlockImageSettings contentLocale={contentLocale} index={index} />
-      );
-    case "Button":
-      return (
-        <EmailBlockButtonSettings contentLocale={contentLocale} index={index} />
-      );
-    case "Record":
-    case "List":
-    case "Offer":
-      return (
-        <EmailBlockValueSettings contentLocale={contentLocale} index={index} />
-      );
-    case "Divider":
-    case "Spacer":
-      return (
-        <p className="text-navy-blue/60 text-sm">
-          {m.emailsEditorBlockNoSettings({}, { locale })}
-        </p>
-      );
-  }
+  return (
+    <p className="text-navy-blue/60 text-sm">
+      {m.emailsEditorBlockNoSettings({}, { locale })}
+    </p>
+  );
 }
+
+/** The settings and texts of each block kind, by the block's tag. */
+const emailBlockSettings = {
+  Paragraph: EmailBlockRichTextSettings,
+  Heading: EmailBlockRichTextSettings,
+  TextList: EmailBlockTextListSettings,
+  Image: EmailBlockImageSettings,
+  Button: EmailBlockButtonSettings,
+  Record: EmailBlockValueSettings,
+  List: EmailBlockValueSettings,
+  Offer: EmailBlockValueSettings,
+  Divider: EmailBlockNoSettings,
+  Spacer: EmailBlockNoSettings,
+} as const satisfies Record<
+  EmailDraftComponentTag,
+  ComponentType<{ readonly contentLocale: Locale; readonly index: number }>
+>;
 
 /**
  * One block of the body: its kind and number, buttons that move or remove
@@ -128,6 +105,7 @@ export function EmailBlockCard({
     { locale }
   );
   const headingId = `${fieldId}-heading`;
+  const BlockSettings = emailBlockSettings[component._tag];
   const actions = [
     {
       action: "move-up",
@@ -194,11 +172,7 @@ export function EmailBlockCard({
         </header>
         <div className="@container space-y-4 px-4 py-4">
           <EmailFieldProblems fieldId={fieldId} />
-          <EmailBlockBody
-            component={component}
-            contentLocale={contentLocale}
-            index={index}
-          />
+          <BlockSettings contentLocale={contentLocale} index={index} />
         </div>
       </div>
     </li>

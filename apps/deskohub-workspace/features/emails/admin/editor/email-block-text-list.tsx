@@ -36,6 +36,7 @@ import {
   updateEmailTextListLevel,
 } from "./email-block-text-list-items";
 import {
+  type EmailDraftComponent,
   type EmailDraftTextListItems,
   newEmailEditorKey,
 } from "./email-draft-form";
@@ -245,105 +246,100 @@ function TextListLevel({
 }
 
 /**
- * A text list's numbering, its items with their texts in `contentLocale`,
- * and its link destinations. Items move, nest under the item before them
- * and move back out with keyboard-operable buttons.
+ * Each move's change to the items, and the controls that keep focus on the
+ * moved item: its own button, else the opposite one when the move took the
+ * item to an end of its level.
  */
-export function EmailBlockTextListSettings({
+const itemMoves = {
+  "move-up": {
+    apply: (items, path) => moveEmailTextListItem(items, path, -1),
+    focus: ["move-up", "move-down"],
+  },
+  "move-down": {
+    apply: (items, path) => moveEmailTextListItem(items, path, 1),
+    focus: ["move-down", "move-up"],
+  },
+  indent: {
+    // The item joins the level under the item before it, numbered like the
+    // level it leaves.
+    apply: (items, path, ordered) =>
+      indentEmailTextListItem(
+        items,
+        path,
+        path.length > 1
+          ? (emailTextListItemAt(items, path.slice(0, -1))?.list?.ordered ??
+              false)
+          : ordered
+      ),
+    focus: ["indent", "outdent"],
+  },
+  outdent: {
+    apply: (items, path) => outdentEmailTextListItem(items, path),
+    focus: ["outdent", "indent"],
+  },
+} as const satisfies Record<
+  EmailTextListItemMove,
+  {
+    readonly apply: (
+      items: EmailDraftTextListItems,
+      path: EmailTextListItemPath,
+      /** Whether the block's own items are numbered. */
+      ordered: boolean
+    ) => EmailDraftTextListItems;
+    readonly focus: readonly ItemAction[];
+  }
+>;
+
+/**
+ * What the rows of a text list block do to its items; focus follows each
+ * change to the control it concerns, else to the items group.
+ */
+const textListItemOperations = ({
+  component,
   contentLocale,
-  index,
+  focusAfterChange,
+  itemsId,
+  removeTexts,
+  update,
 }: {
+  readonly component: EmailDraftComponent;
   readonly contentLocale: Locale;
-  readonly index: number;
-}) {
-  const locale = useRouteLocale();
-  const [component, update] = useEmailBlock(index);
-  const removeTexts = useRemoveEmailTexts();
-  const focusAfterChange = useEmailFocusAfterChange();
-  const orderedFieldId = emailEditorFieldIds.componentSetting(
-    component?.id ?? "",
-    "ordered"
-  );
-  const itemsId = emailEditorFieldIds.componentSetting(
-    component?.id ?? "",
-    "items"
-  );
-  const orderedProblems = useEmailFieldProblems(orderedFieldId);
-  const itemsProblems = useEmailFieldProblems(itemsId);
-  if (!component?.id) return null;
-  const componentId = component.id;
+  readonly focusAfterChange: (candidates: readonly string[]) => void;
+  readonly itemsId: string;
+  readonly removeTexts: (textKeys: readonly string[]) => void;
+  readonly update: (next: EmailDraftComponent) => void;
+}): ItemOperations => {
   const items = component.items ?? [];
-  const ordered = component.ordered ?? false;
   const setItems = (next: EmailDraftTextListItems) =>
     update({ ...component, items: next });
-
-  const operations: ItemOperations = {
+  return {
     itemsId,
     identity: (path) => emailTextListItemIdentity(items, path),
     contentLocale,
     links: component.links,
     run: (action, path) => {
+      if (action === "remove") {
+        const item = emailTextListItemAt(items, path);
+        setItems(removeEmailTextListItem(items, path));
+        removeTexts(emailTextListTextKeys(item ? [item] : []));
+        focusAfterChange([itemsId]);
+        return;
+      }
+      const move = itemMoves[action];
+      const next = move.apply(items, path, component.ordered ?? false);
+      setItems(next);
       // Focus follows the item to its new place, where its controls may be
       // named differently when its text key repeats.
-      const focusMoved = (
-        next: EmailDraftTextListItems,
-        move: EmailTextListItemMove,
-        ...controls: ItemAction[]
-      ) => {
-        setItems(next);
-        const identity = emailTextListItemIdentity(
-          next,
-          emailTextListItemPathAfter(items, path, move)
-        );
-        focusAfterChange([
-          ...controls.map((control) =>
-            itemControlId(itemsId, identity, control)
-          ),
-          itemsId,
-        ]);
-      };
-      switch (action) {
-        case "move-up":
-          return focusMoved(
-            moveEmailTextListItem(items, path, -1),
-            action,
-            "move-up",
-            "move-down"
-          );
-        case "move-down":
-          return focusMoved(
-            moveEmailTextListItem(items, path, 1),
-            action,
-            "move-down",
-            "move-up"
-          );
-        case "indent": {
-          const levelOrdered =
-            path.length > 1
-              ? (emailTextListItemAt(items, path.slice(0, -1))?.list?.ordered ??
-                false)
-              : ordered;
-          return focusMoved(
-            indentEmailTextListItem(items, path, levelOrdered),
-            action,
-            "indent",
-            "outdent"
-          );
-        }
-        case "outdent":
-          return focusMoved(
-            outdentEmailTextListItem(items, path),
-            action,
-            "outdent",
-            "indent"
-          );
-        case "remove": {
-          const item = emailTextListItemAt(items, path);
-          setItems(removeEmailTextListItem(items, path));
-          removeTexts(emailTextListTextKeys(item ? [item] : []));
-          return focusAfterChange([itemsId]);
-        }
-      }
+      const identity = emailTextListItemIdentity(
+        next,
+        emailTextListItemPathAfter(items, path, action)
+      );
+      focusAfterChange([
+        ...move.focus.map((control) =>
+          itemControlId(itemsId, identity, control)
+        ),
+        itemsId,
+      ]);
     },
     add: (levelPath) => {
       const textKey = newEmailEditorKey("text");
@@ -364,45 +360,103 @@ export function EmailBlockTextListSettings({
         )
       ),
   };
+};
+
+/** Whether a text list block numbers its items, and from which number. */
+function TextListNumbering({
+  component,
+  componentId,
+  update,
+}: {
+  readonly component: EmailDraftComponent;
+  readonly componentId: string;
+  readonly update: (next: EmailDraftComponent) => void;
+}) {
+  const locale = useRouteLocale();
+  const orderedFieldId = emailEditorFieldIds.componentSetting(
+    componentId,
+    "ordered"
+  );
+  const { controlProps } = useEmailFieldProblems(orderedFieldId);
+  const ordered = component.ordered ?? false;
+  return (
+    <div className="flex flex-wrap items-start gap-4">
+      <div className="space-y-1.5">
+        <div className="flex h-9 items-center gap-2">
+          <Switch
+            {...controlProps}
+            checked={ordered}
+            id={orderedFieldId}
+            onCheckedChange={(next) =>
+              update(
+                withEmailSetting(
+                  { ...component, ordered: next },
+                  "start",
+                  next ? component.start : undefined
+                )
+              )
+            }
+          />
+          <Label className="text-navy-blue text-xs" htmlFor={orderedFieldId}>
+            {m.emailsEditorBlockListOrdered({}, { locale })}
+          </Label>
+        </div>
+        <EmailFieldProblems fieldId={orderedFieldId} />
+      </div>
+      {ordered && (
+        <EmailBlockNumberSetting
+          fieldId={emailEditorFieldIds.componentSetting(componentId, "start")}
+          hint={m.emailsEditorBlockListStartHint({}, { locale })}
+          label={m.emailsEditorBlockListStart({}, { locale })}
+          min={0}
+          onChange={(start) =>
+            update(withEmailSetting(component, "start", start))
+          }
+          value={component.start}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * A text list's numbering, its items with their texts in `contentLocale`,
+ * and its link destinations. Items move, nest under the item before them
+ * and move back out with keyboard-operable buttons.
+ */
+export function EmailBlockTextListSettings({
+  contentLocale,
+  index,
+}: {
+  readonly contentLocale: Locale;
+  readonly index: number;
+}) {
+  const locale = useRouteLocale();
+  const [component, update] = useEmailBlock(index);
+  const removeTexts = useRemoveEmailTexts();
+  const focusAfterChange = useEmailFocusAfterChange();
+  const itemsId = emailEditorFieldIds.componentSetting(
+    component?.id ?? "",
+    "items"
+  );
+  const itemsProblems = useEmailFieldProblems(itemsId);
+  if (!component?.id) return null;
+  const operations = textListItemOperations({
+    component,
+    contentLocale,
+    focusAfterChange,
+    itemsId,
+    removeTexts,
+    update,
+  });
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start gap-4">
-        <div className="space-y-1.5">
-          <div className="flex h-9 items-center gap-2">
-            <Switch
-              {...orderedProblems.controlProps}
-              checked={ordered}
-              id={orderedFieldId}
-              onCheckedChange={(next) =>
-                update(
-                  withEmailSetting(
-                    { ...component, ordered: next },
-                    "start",
-                    next ? component.start : undefined
-                  )
-                )
-              }
-            />
-            <Label className="text-navy-blue text-xs" htmlFor={orderedFieldId}>
-              {m.emailsEditorBlockListOrdered({}, { locale })}
-            </Label>
-          </div>
-          <EmailFieldProblems fieldId={orderedFieldId} />
-        </div>
-        {ordered && (
-          <EmailBlockNumberSetting
-            fieldId={emailEditorFieldIds.componentSetting(componentId, "start")}
-            hint={m.emailsEditorBlockListStartHint({}, { locale })}
-            label={m.emailsEditorBlockListStart({}, { locale })}
-            min={0}
-            onChange={(start) =>
-              update(withEmailSetting(component, "start", start))
-            }
-            value={component.start}
-          />
-        )}
-      </div>
+      <TextListNumbering
+        component={component}
+        componentId={component.id}
+        update={update}
+      />
       <fieldset
         {...itemsProblems.controlProps}
         className="space-y-3 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-burned-orange"
@@ -412,7 +466,11 @@ export function EmailBlockTextListSettings({
         <legend className="mb-2 font-semibold text-navy-blue text-xs">
           {m.emailsEditorBlockListItems({}, { locale })}
         </legend>
-        <TextListLevel items={items} levelPath={[]} operations={operations} />
+        <TextListLevel
+          items={component.items ?? []}
+          levelPath={[]}
+          operations={operations}
+        />
         <Button
           onClick={() => operations.add([])}
           size="sm"
