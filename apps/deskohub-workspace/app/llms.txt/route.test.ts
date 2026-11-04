@@ -1,12 +1,12 @@
 import "@/shared/testing/workspace-test-env";
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
-import { Effect, Layer } from "effect";
-import { SiteToolsFeatureFlagService } from "@/features/agent-tools/site-tools-feature-flag.service";
+import { Effect, Layer, Option } from "effect";
 import { advertisedCatalogOfferings } from "@/features/checkout/public-offerings.test-utils";
 import { DiscountReleaseGateService } from "@/features/discounts/discount-release-gate.service";
+import { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend";
 import type { Locale } from "@/features/i18n";
-import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
+import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
 import { PublishedPublicPagesService } from "@/features/public-pages/backend";
 import {
   type PublicPage,
@@ -27,8 +27,7 @@ mock.module("@/features/checkout/backend/checkout/public-offerings", () => ({
   ...publicOfferings,
   loadPublicPriceList: (locale: Locale) =>
     Effect.gen(function* () {
-      const officeFlag = yield* OfficeReservationFeatureFlagService;
-      const officeOpen = yield* officeFlag.isEnabled;
+      const officeOpen = yield* OfficeReleaseGate.isOpen;
       return {
         advertisedOn: Temporal.Now.plainDateISO(),
         offerings: advertisedCatalogOfferings({
@@ -59,19 +58,25 @@ Object.assign(DiscountReleaseGateService, {
     discountCodes: false,
   }),
 });
-// The flag service's own tests cover the release; here the site tools are
+// The release gate's own tests cover the release; here the site tools are
 // on for every visitor.
-const originalSiteToolsLive = SiteToolsFeatureFlagService.Live;
-Object.assign(SiteToolsFeatureFlagService, {
-  Live: Layer.succeed(SiteToolsFeatureFlagService, {
-    isEnabled: Effect.succeed(true),
-    release: Effect.succeed("on"),
+const originalFeatureFlagsDefault = WorkspaceFeatureFlagService.Default;
+Object.assign(WorkspaceFeatureFlagService, {
+  Default: WorkspaceFeatureFlagService.from({
+    evaluateFlags: () => Effect.die("evaluateFlags should not be called"),
+    isEnabled: (key) => Effect.die(`isEnabled(${key}) should not be called`),
+    constantValue: (key) =>
+      key === "webmcp_site_tools"
+        ? Effect.succeed(Option.some(true))
+        : Effect.die(`constantValue(${key}) should not be called`),
   }),
 });
 afterAll(() => {
   Object.assign(PublishedPublicPagesService, { Live: originalLive });
   Object.assign(DiscountReleaseGateService, { Live: originalGatesLive });
-  Object.assign(SiteToolsFeatureFlagService, { Live: originalSiteToolsLive });
+  Object.assign(WorkspaceFeatureFlagService, {
+    Default: originalFeatureFlagsDefault,
+  });
 });
 
 const { GET } = await import("./route");

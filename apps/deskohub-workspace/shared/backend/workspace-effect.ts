@@ -1,16 +1,21 @@
 import { NextEffect } from "@deskohub/next-effect";
+import { NodeHttpServer } from "@effect/platform-node";
 import { waitUntil } from "@vercel/functions";
-import { Cause, Data, Effect, Exit, Layer, Result } from "effect";
+import { Cause, Data, Effect, Exit, identity, Layer, Result } from "effect";
+import { HttpRouter } from "effect/unstable/http";
 import { unstable_rethrow } from "next/navigation";
 import { after } from "next/server";
-import { postHogLoggerProvider } from "@/instrumentation";
 import {
-  createWorkspaceOtelLoggerLive,
-  WorkspaceLoggerLive,
-} from "./logging/censorship";
-import { flushPostHogLogs } from "./logging/posthog-otel";
-import { WorkspaceTracingLive } from "./observability/workspace-tracing";
+  flushServerAnalytics,
+  isServerAnalyticsEnabled,
+} from "./analytics/analytics-event-delivery.service";
+import {
+  flushWorkspaceLogs,
+  WorkspaceObservabilityLive,
+  workspaceLoggerProvider,
+} from "./observability/workspace-telemetry";
 import { runStandaloneWorkspaceEffect } from "./standalone-workspace-effect";
+import { withAnonymousVisitor } from "./workspace-request-context";
 
 export type WorkspaceEffectBoundary =
   | "action"
@@ -51,23 +56,51 @@ class WorkspaceTelemetryError extends Data.TaggedError(
 
 export const runWorkspaceEffect =
   (operation: string, options: RunWorkspaceEffectOptions = {}) =>
-  <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => {
-    const run = workspaceRuntime.run(
-      effect.pipe(
-        Effect.annotateLogs({
-          boundary: options.boundary ?? "run",
-          operation,
-        })
-      ),
-      { signal: options.signal }
-    );
-    // Next.js hands background `use cache` revalidations to `waitUntil` only
-    // once the shell is ready, so a revalidation started by a later-streamed
-    // boundary can outlive the response. The suspended instance then fires
-    // the run's timers on its next invocation as spurious timeouts.
-    waitUntil(run.then(ignoreSettlement, ignoreSettlement));
-    return run;
-  };
+  <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>
+    runWorkspaceExit(operation, options, effect).then(NextEffect.settle);
+
+/**
+ * How a run sends the telemetry it records. A run that serves a response
+ * flushes after the response; work that no response follows, such as a task
+ * or work already running after the response, waits for the flush before it
+ * settles.
+ */
+type TelemetryFlushTiming = "after-response" | "before-settling";
+
+/**
+ * The `Exit` of a Workspace run, a runtime that could not be built included.
+ * Never rejects.
+ */
+const runWorkspaceExit = <A, E>(
+  operation: string,
+  options: RunWorkspaceEffectOptions,
+  effect: Effect.Effect<A, E, never>,
+  flushTiming: TelemetryFlushTiming = "after-response"
+) => {
+  const exit = workspaceRuntime.runExit(
+    effect.pipe(
+      flushTiming === "before-settling"
+        ? Effect.ensuring(flushTelemetry)
+        : identity,
+      Effect.annotateLogs({
+        boundary: options.boundary ?? "run",
+        operation,
+      })
+    ),
+    { signal: options.signal }
+  );
+  // Next.js hands background `use cache` revalidations to `waitUntil` only
+  // once the shell is ready, so a revalidation started by a later-streamed
+  // boundary can outlive the response. The suspended instance then fires
+  // the run's timers on its next invocation as spurious timeouts.
+  waitUntil(exit.then(ignoreSettlement));
+  if (flushTiming === "after-response") {
+    // Scheduled now, in the caller's request context, which the run's fibers
+    // may not keep.
+    flushAfterResponse(exit);
+  }
+  return exit;
+};
 
 const ignoreSettlement = () => undefined;
 
@@ -120,43 +153,46 @@ export const runWorkspaceEffectOrElse =
         Effect.exit
       );
 
-    // A rejection after the shared runtime entered the program can only be
-    // an interruption: the program itself settles every failure as an Exit.
-    let entered = false;
-    const exit = await Effect.sync(() => {
-      entered = true;
-    })
-      .pipe(
-        Effect.andThen(answerFailure(effect)),
-        runWorkspaceEffect(operation, options)
-      )
-      .then(
-        (exit) => exit,
-        (cause: unknown) => {
-          if (entered || options.signal?.aborted) throw cause;
-          // The shared runtime could not be built: answer through the
-          // standalone logger, or unlogged if that logger fails too.
-          return answerFailure(Effect.die(cause))
-            .pipe(runStandaloneWorkspaceEffect(operation))
-            .then(
-              (exit) => exit,
-              () =>
-                Result.match(answerOnce(cause), {
-                  onSuccess: Exit.succeed,
-                  onFailure: Exit.fail,
-                })
-            );
-        }
-      );
-    if (Exit.isSuccess(exit)) return exit.value;
+    // The shared runtime could not be built: answer through the standalone
+    // logger, or unlogged if that logger fails too.
+    const answerRuntimeBuildFailure = (cause: unknown) =>
+      answerFailure(Effect.die(cause))
+        .pipe(runStandaloneWorkspaceEffect(operation))
+        .then(
+          (exit) => exit,
+          () =>
+            Result.match(answerOnce(cause), {
+              onSuccess: Exit.succeed,
+              onFailure: Exit.fail,
+            })
+        );
 
-    for (const failure of causeFailures(exit.cause)) {
-      unstable_rethrow(failure);
+    const settleAnswer = <A, E>(
+      exit: Exit.Exit<A, E | WorkspaceFallbackRejection>
+    ) =>
+      NextEffect.settle(
+        Exit.mapError(exit, (failure) =>
+          failure instanceof WorkspaceFallbackRejection
+            ? failure.cause
+            : failure
+        )
+      );
+
+    const run = await runWorkspaceExit(
+      operation,
+      options,
+      answerFailure(effect)
+    );
+    if (Exit.isSuccess(run)) return settleAnswer(run.value);
+    // The program settles every failure it may answer as its value, so any
+    // other failure of the run is an interruption, Next.js control flow, or a
+    // shared runtime that could not be built.
+    if (options.signal?.aborted || !isRecoverableCause(run.cause)) {
+      return NextEffect.settle(Exit.failCause(run.cause));
     }
-    const failure = Cause.squash(exit.cause);
-    throw failure instanceof WorkspaceFallbackRejection
-      ? failure.cause
-      : failure;
+    return settleAnswer(
+      await answerRuntimeBuildFailure(Cause.squash(run.cause))
+    );
   };
 
 const causeFailures = (cause: Cause.Cause<unknown>) =>
@@ -222,22 +258,37 @@ export const defineWorkspaceTask =
     handler: (...args: Args) => Effect.Effect<A, E, never>
   ) =>
   (...args: Args): Promise<A> =>
-    Effect.suspend(() => handler(...args)).pipe(
-      Effect.ensuring(flushTelemetry),
-      runWorkspaceEffect(operation, { boundary: "task" })
-    );
+    // No response follows a task, so it sends its telemetry before it
+    // settles.
+    runWorkspaceExit(
+      operation,
+      { boundary: "task" },
+      Effect.suspend(() => handler(...args)).pipe(withAnonymousVisitor),
+      "before-settling"
+    ).then(NextEffect.settle);
 
 /**
  * Schedules `effect` to run with `runWorkspaceEffect` after the current
- * response is sent, so the request never waits for it. A failure to schedule
- * is logged, never raised.
+ * response is sent, so the request never waits for it. The work serves no
+ * visitor, even where Next.js still exposes the request, and sends its
+ * telemetry before it settles. A failure to schedule is logged, never
+ * raised.
  */
 export const runWorkspaceEffectAfterResponse = <A, E>(
   operation: string,
   effect: Effect.Effect<A, E, never>
 ) =>
   Effect.try({
-    try: () => after(() => effect.pipe(runWorkspaceEffect(operation))),
+    try: () =>
+      after(() =>
+        runWorkspaceExit(
+          operation,
+          {},
+          effect.pipe(withAnonymousVisitor),
+          // A flush scheduled now would run beside this work, not after it.
+          "before-settling"
+        ).then(NextEffect.settle)
+      ),
     catch: (cause) =>
       new WorkspaceTelemetryError({
         cause,
@@ -253,28 +304,14 @@ export const runWorkspaceEffectAfterResponse = <A, E>(
     Effect.ignore
   );
 
-export const scheduleWorkspaceTelemetryFlush = () =>
-  postHogLoggerProvider
-    ? runWorkspaceEffectAfterResponse("telemetry.flush", flushTelemetry)
-    : Effect.void;
-
-export const WorkspaceObservabilityLive = Layer.merge(
-  postHogLoggerProvider
-    ? createWorkspaceOtelLoggerLive(postHogLoggerProvider)
-    : WorkspaceLoggerLive,
-  WorkspaceTracingLive
-);
-
 /**
- * Process-wide memo map for Workspace runtimes. Runtimes that build their
- * layers with it reuse layers another runtime has already built, such as
- * `WorkspaceObservabilityLive`.
+ * Process-wide memo map of the Workspace runtime. Each run forks it, so a run
+ * reuses what the runtime built, such as `WorkspaceObservabilityLive`.
  */
-export const workspaceMemoMap = Layer.makeMemoMapUnsafe();
+const workspaceMemoMap = Layer.makeMemoMapUnsafe();
 
 // Built on first run and kept for the life of the process. It is never
-// disposed: telemetry is flushed per request through `after()` and per task
-// through `Effect.ensuring`, not by closing a layer scope.
+// disposed: each run flushes the telemetry it recorded, not a layer scope.
 const workspaceRuntime = NextEffect.make({
   layer: WorkspaceObservabilityLive,
   memoMap: workspaceMemoMap,
@@ -282,8 +319,96 @@ const workspaceRuntime = NextEffect.make({
 
 // Telemetry is best effort: an unexpected flush defect must not fail the
 // request or task it follows.
-const flushTelemetry = flushPostHogLogs({
-  provider: postHogLoggerProvider,
-}).pipe(
-  Effect.ignoreCause({ log: "Warn", message: "PostHog log flush failed" })
+const flushTelemetry = Effect.all(
+  [
+    flushWorkspaceLogs.pipe(
+      Effect.ignoreCause({ log: "Warn", message: "PostHog log flush failed" })
+    ),
+    flushServerAnalytics.pipe(
+      Effect.ignoreCause({
+        log: "Warn",
+        message: "Server analytics flush failed",
+      })
+    ),
+  ],
+  { concurrency: "unbounded", discard: true }
 );
+
+// Runs the flush in the runtime directly: a Workspace run would schedule
+// another flush when it ends.
+const runTelemetryFlush = () =>
+  workspaceRuntime.runExit(
+    flushTelemetry.pipe(
+      Effect.annotateLogs({ boundary: "run", operation: "telemetry.flush" })
+    )
+  );
+
+const sendsTelemetry = () =>
+  isServerAnalyticsEnabled || workspaceLoggerProvider() !== undefined;
+
+/**
+ * Flushes the telemetry of the work `settled` stands for after the current
+ * response is sent and that work has settled, so the flush also covers work
+ * that outlives the response, such as a background `use cache` revalidation.
+ * Where Next.js has no response to follow, such as outside a request or
+ * inside a prerender without `waitUntil`, the flush starts once the work
+ * settles and the platform keeps the invocation alive for it. Skipped when
+ * the process sends no telemetry. Never throws or waits for the flush.
+ */
+const flushAfterResponse = (settled: Promise<unknown>) => {
+  const enabled = Result.try(sendsTelemetry);
+  if (Result.isFailure(enabled) || !enabled.success) return;
+  const flushOnceSettled = () =>
+    settled.then(runTelemetryFlush, runTelemetryFlush);
+  if (Result.isFailure(Result.try(() => after(flushOnceSettled)))) {
+    waitUntil(flushOnceSettled());
+  }
+};
+
+// Built into the runtime's memo map whether a run or a handler needs it
+// first, so both log and trace through one instance.
+const SharedWorkspaceObservabilityLive = Layer.fromBuild((_, scope) =>
+  Layer.buildWithMemoMap(WorkspaceObservabilityLive, workspaceMemoMap, scope)
+);
+
+/**
+ * Serves an Effect HTTP API to web `Request`s with the Workspace's censoring
+ * logger and tracer and Node's HTTP services. The API runs outside the
+ * Workspace runtime, with the runtime's observability instance: its layer
+ * builds once, on the first request, and like the runtime is never disposed;
+ * a failed build stays cached. Each handler builds with its own fork of the
+ * runtime's memo map, so its router, routes, and global middleware serve only
+ * its requests, even when another handler uses the same Layer objects, and
+ * what it builds stays out of Workspace runs and other handlers. Share a
+ * capability across handlers and runs with `shareAcrossRequests`. Effect's
+ * own request logger is off; log a failure's cause before mapping it to a
+ * cause-less public error.
+ */
+export const toWorkspaceWebHandler = <A, E>(
+  api: Layer.Layer<
+    A,
+    E,
+    | HttpRouter.HttpRouter
+    | Layer.Success<typeof NodeHttpServer.layerHttpServices>
+  >
+): ((request: Request) => Promise<Response>) => {
+  const { handler } = HttpRouter.toWebHandler(
+    Layer.merge(api, SharedWorkspaceObservabilityLive).pipe(
+      Layer.provide(NodeHttpServer.layerHttpServices)
+    ),
+    {
+      disableLogger: true,
+      // A Layer that registers routes or middleware memoizes with the router
+      // it was built for, so a memo map handlers shared would leave a later
+      // handler's router without them.
+      memoMap: Layer.forkMemoMapUnsafe(workspaceMemoMap),
+    }
+  );
+  return (request) => {
+    const response = handler(request);
+    // The handler runs outside the Workspace runtime, so it schedules the
+    // flush a run would.
+    flushAfterResponse(response);
+    return response;
+  };
+};

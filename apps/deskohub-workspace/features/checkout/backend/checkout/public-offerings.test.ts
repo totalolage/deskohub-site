@@ -8,7 +8,7 @@ import type { AdvertisedPriceRequest } from "@/features/checkout/advertised-pric
 import { workspaceMeetingRoomCatalog } from "@/features/checkout/meeting-room-product-catalog";
 import { workspaceCoworkCurrentTiers } from "@/features/checkout/product-catalog";
 import { calendarSaleDiscountServiceLayer } from "@/features/discounts/calendar-sale.test-utils";
-import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
+import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
 import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
 import { getCoworkDateAdvertisedPriceRequests } from "@/features/reservation/cowork-advertised-price";
 import { getMeetingRoomDurationAdvertisedPriceRequests } from "@/features/reservation/meeting-room-advertised-price";
@@ -47,9 +47,7 @@ const saleLayer = (input: {
         })
       )
     ),
-    Layer.succeed(OfficeReservationFeatureFlagService, {
-      isEnabled: Effect.succeed(true),
-    }),
+    OfficeReleaseGate.fromDecision(true),
     Layer.succeed(AdvisoryAvailabilityInventory, {
       tables: Effect.succeed([]),
       listActiveReservationsOverlapping: () => Effect.succeed([]),

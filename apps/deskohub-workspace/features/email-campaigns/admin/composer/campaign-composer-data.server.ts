@@ -10,10 +10,7 @@ import type {
   CampaignLocaleContent,
   CampaignTemplateKey,
 } from "../../body/campaign-content";
-import {
-  CampaignEmailFooter,
-  renderCampaignEmail,
-} from "../../body/render-campaign-email";
+import { renderCampaignEmailPreview } from "../../campaign-email";
 import { loadAudienceOptions } from "../audiences/audience-page-data.server";
 import {
   campaignOperationCapabilities,
@@ -85,13 +82,11 @@ const loadTemplates = (locale: Locale) =>
   invokeCampaignOperation("listCampaignTemplates", {}).pipe(
     Effect.flatMap((templates) =>
       Effect.forEach(templates, (template) =>
-        renderCampaignEmail({
+        renderCampaignEmailPreview({
           templateKey: template.key,
+          purpose: "marketing",
           locale: "en-US",
           content: templateSampleContent,
-          footer: CampaignEmailFooter.Marketing({
-            marketingPreferencesUrl: "https://deskohub.cz",
-          }),
         }).pipe(
           Effect.map(
             ({ html }): CampaignComposerTemplate => ({

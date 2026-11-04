@@ -23,13 +23,12 @@ import {
 import { captureRecordedSignInCompletion } from "@/features/account/sign-in-analytics";
 import type { PostHogFeatureFlagDefinitions } from "@/features/feature-flags/generated/contract";
 import { applyFeatureFlagOverrides } from "@/features/feature-flags/react";
-import type { DeploymentEnvironment } from "@/shared/backend/config/deployment-request-timeout";
 import {
   deliverWorkspaceBrowserLogs,
   discardWorkspaceBrowserLogs,
   type WorkspaceBrowserLogRecord,
 } from "@/shared/browser/workspace-browser-logs";
-import { isConsentCategoryAcceptedInCookie } from "@/shared/utils/consent-cookie";
+import type { DeploymentEnvironment } from "@/shared/deployment/deployment-stage";
 import {
   createPostHogSessionClearCookieStrings,
   createPostHogSessionCookieStrings,
@@ -41,10 +40,6 @@ import {
   discardAnalyticsEvents,
 } from "../analytics-events";
 import {
-  CONSENT_UPDATED_EVENT,
-  CONSENT_UPDATED_STORAGE_KEY,
-} from "../utils/consent-event";
-import {
   createPostHogConfig,
   isPostHogTelemetryHostAllowed,
 } from "../utils/posthog-config";
@@ -54,6 +49,7 @@ import {
   getPostHogAccountDistinctId,
 } from "../utils/posthog-identity";
 import { createPostHogPageUrl } from "../utils/posthog-url";
+import { type VisitorConsentChange, visitorConsent } from "../visitor-consent";
 
 // The SDK stays out of the initial bundle and loads only once analytics
 // consent lets it initialize.
@@ -206,49 +202,24 @@ function PostHogClient({
   }, []);
 
   useEffect(() => {
-    type ConsentSyncSource = "explicit" | "focus" | "storage";
-
-    const syncConsentFromCookie = (source: ConsentSyncSource) => {
+    const syncConsent = (change: VisitorConsentChange) => {
       const wasConsented = getCurrentAnalyticsConsent();
-      const consented = readAnalyticsConsentCookie();
+      const consented = visitorConsent.accepts("analytics");
       analyticsConsentSignal = consented;
 
+      // A consent given here, or newly given in another tab, re-verifies the
+      // account before identifying; a focus check only reconciles.
       const shouldRefreshIdentity =
         consented &&
-        (source === "explicit" || (source === "storage" && !wasConsented));
+        (change === "local" || (change === "other-tab" && !wasConsented));
       if (shouldRefreshIdentity) {
-        void refreshAnalyticsAccountIdentity().catch(() => undefined);
+        void refreshAnalyticsAccountIdentity();
       }
 
       reconcilePostHogIdentity(consented);
     };
 
-    const handleConsentUpdated = () => {
-      syncConsentFromCookie("explicit");
-    };
-
-    const handleConsentStorage = (event: StorageEvent) => {
-      if (event.key !== CONSENT_UPDATED_STORAGE_KEY) return;
-      syncConsentFromCookie("storage");
-    };
-    const handleFocus = () => syncConsentFromCookie("focus");
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState !== "visible") return;
-      handleFocus();
-    };
-
-    window.addEventListener(CONSENT_UPDATED_EVENT, handleConsentUpdated);
-    window.addEventListener("storage", handleConsentStorage);
-    window.addEventListener("focus", handleFocus);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      window.removeEventListener(CONSENT_UPDATED_EVENT, handleConsentUpdated);
-      window.removeEventListener("storage", handleConsentStorage);
-      window.removeEventListener("focus", handleFocus);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
+    return visitorConsent.subscribe(syncConsent);
   }, []);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: loadAttempt re-runs the SDK load after a failed chunk fetch.
@@ -413,7 +384,7 @@ function reconcilePostHogIdentity(consented = getCurrentAnalyticsConsent()) {
   // Events and browser logs held while analytics is paused never outlive its
   // consent. The cookie decides: the consent signal reads as withdrawn until
   // the consent state hydrates.
-  if (!analyticsTelemetryHostAllowed || !readAnalyticsConsentCookie()) {
+  if (!analyticsTelemetryHostAllowed || !visitorConsent.accepts("analytics")) {
     discardAnalyticsEvents();
     discardWorkspaceBrowserLogs();
   }
@@ -643,12 +614,5 @@ function capturePostHogPageviewIfNeeded(pathname = analyticsPathname) {
 }
 
 function getCurrentAnalyticsConsent() {
-  const consentFromCookie = readAnalyticsConsentCookie();
-  return analyticsConsentSignal && consentFromCookie === true;
-}
-
-function readAnalyticsConsentCookie(): boolean {
-  if (globalThis.document === undefined) return false;
-
-  return isConsentCategoryAcceptedInCookie(document.cookie, "analytics");
+  return analyticsConsentSignal && visitorConsent.accepts("analytics");
 }

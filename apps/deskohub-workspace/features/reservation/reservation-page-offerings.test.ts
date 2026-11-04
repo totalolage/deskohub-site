@@ -1,15 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-import type {
-  AdvertisedPriceRequest,
-  PreloadedAdvertisedPrice,
-} from "@/features/checkout/advertised-price";
-import {
-  buildCoworkCheckoutSummary,
-  buildCoworkReservationQuote,
-} from "@/features/checkout/checkout-quote.test-utils";
-import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
-import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-office";
+import { Schema } from "effect";
 import { workspaceMeetingRoomProductsByDurationKey } from "@/features/checkout/meeting-room-product-catalog";
 import {
   getWorkspaceOfficeAccessPrice,
@@ -18,13 +8,16 @@ import {
   getWorkspaceProductCoffeeLinePriceForTier,
   workspaceProductWorkstationAddonPrice,
 } from "@/features/checkout/product-catalog";
-import { buildOfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
-import { discountIdSchema } from "@/features/discounts/contracts";
 import { getCoworkDateAdvertisedPriceRequests } from "@/features/reservation/cowork-advertised-price";
 import { getMeetingRoomDurationAdvertisedPriceRequests } from "@/features/reservation/meeting-room-advertised-price";
 import { getOfficeAdvertisedPriceRequest } from "@/features/reservation/office-advertised-price";
 import { currencyCZK } from "@/shared/money/currencies";
 import { plainDateStringSchema } from "@/shared/utils/temporal";
+import {
+  advertiseCowork,
+  advertiseMeetingRoom,
+  advertiseOffice,
+} from "./advertised-price.test-utils";
 import {
   getCoworkPageOfferings,
   getMeetingRoomPageOfferings,
@@ -33,75 +26,13 @@ import {
 
 const date = "2099-07-30";
 
-const halfPriceSale = (
-  subtotal: { readonly value: number },
-  expiresAt?: string
-) => {
-  const half = currencyCZK(subtotal.value / 2);
-  return {
-    discountableSubtotal: currencyCZK(subtotal.value),
-    discounts: [
-      {
-        discount: {
-          id: Schema.decodeUnknownSync(discountIdSchema)("summer-sale"),
-          label: "Summer sale",
-          adjustment: { kind: "percentage" as const, basisPoints: 5000 },
-          ...(expiresAt && { expiresAt }),
-        },
-        subtotalBefore: currencyCZK(subtotal.value),
-        amount: half,
-        subtotalAfter: half,
-      },
-    ],
-    totalDiscount: half,
-    discountedSubtotal: half,
-  };
-};
-
-/** The cowork price the server advertises for a request, with Open Space at half price. */
-const advertiseCowork = (
-  request: AdvertisedPriceRequest
-): PreloadedAdvertisedPrice => {
-  if (request.reservation.kind !== "cowork") {
-    throw new Error("Expected a cowork request");
-  }
-  const { details } = request.reservation;
-  const order =
-    details.entryTier === "open-space"
-      ? { entryTier: "open-space" as const, coffee: details.coffee }
-      : {
-          entryTier: "reserved-desk" as const,
-          coffee: true,
-          ...(details.workstation && { monitorOption: "2x27-qhd" as const }),
-        };
-  const options =
-    details.entryTier === "open-space"
-      ? {
-          discountQuote: {
-            product: { kind: "cowork" as const, tier: "open-space" as const },
-            ...halfPriceSale(getWorkspaceProductByTier("open-space").price),
-          },
-        }
-      : {};
-
-  return {
-    request,
-    advertisedPrice: {
-      kind: "cowork",
-      quote: buildCoworkReservationQuote(order, options),
-      summary: buildCoworkCheckoutSummary(order, options),
-      advertisedPriceToken: "sealed",
-    },
-  };
-};
-
 describe("getCoworkPageOfferings", () => {
   test("advertises each tier at the price its card shows, beside the catalog price", () => {
     const [openSpace, reservedDesk] = getCoworkPageOfferings({
       advertisedPrices: getCoworkDateAdvertisedPriceRequests({
         date,
         locale: "en-US",
-      }).map(advertiseCowork),
+      }).map((request) => advertiseCowork(request)),
       coffee: false,
       date,
       locale: "en-US",
@@ -151,7 +82,7 @@ describe("getCoworkPageOfferings", () => {
       advertisedPrices: getCoworkDateAdvertisedPriceRequests({
         date: "2099-07-31",
         locale: "en-US",
-      }).map(advertiseCowork),
+      }).map((request) => advertiseCowork(request)),
       coffee: false,
       date,
       locale: "en-US",
@@ -173,35 +104,12 @@ describe("getMeetingRoomPageOfferings", () => {
     );
     if (!fourHours) throw new Error("Expected a four-hour request");
     const { price } = workspaceMeetingRoomProductsByDurationKey["hour:4"];
-    // The sale's booking window ends at Prague midnight starting 2 August.
-    const sale = halfPriceSale(price, "2099-08-01T22:00:00.000Z");
-    const quote = {
-      fingerprint: "meeting-room-hour-4-sale",
-      items: [
-        {
-          type: "meeting-room" as const,
-          duration: fourHours.reservation.details.duration,
-          amount: price,
-        },
-      ] as const,
-      payment: {
-        expectedPrice: sale.discountedSubtotal,
-        undiscountedPrice: price,
-        discounts: sale.discounts,
-      },
-    };
-
     const offerings = getMeetingRoomPageOfferings({
       advertisedPrices: [
-        {
-          request: fourHours,
-          advertisedPrice: {
-            kind: "meeting-room",
-            quote,
-            summary: getMeetingRoomCheckoutSummary(quote),
-            advertisedPriceToken: "sealed",
-          },
-        },
+        // The sale's booking window ends at Prague midnight starting 2 August.
+        advertiseMeetingRoom(fourHours, {
+          saleExpiresAt: "2099-08-01T22:00:00.000Z",
+        }),
       ],
       locale: "en-US",
       startDateTime,
@@ -237,22 +145,11 @@ describe("getOfficePageOfferings", () => {
       ...selection,
       locale: "en-US",
     });
-    const quote = Effect.runSync(
-      buildOfficeReservationQuote(request.reservation.details)
-    );
+    const preloaded = advertiseOffice(request);
+    const { quote } = preloaded.advertisedPrice;
 
     const [office] = getOfficePageOfferings({
-      advertisedPrices: [
-        {
-          request,
-          advertisedPrice: {
-            kind: "office",
-            quote,
-            summary: getOfficeCheckoutSummary(quote),
-            advertisedPriceToken: "sealed",
-          },
-        },
-      ],
+      advertisedPrices: [preloaded],
       locale: "en-US",
       seatCapacity: 4,
       selection,

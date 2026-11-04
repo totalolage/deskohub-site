@@ -716,14 +716,14 @@ describe("analytics account identity", () => {
     expect(analyticsIdentity.getAnalyticsAccountIdentity()).toEqual({
       status: "pending",
     });
-    await expect(refresh).rejects.toBe(failure);
+    await expect(refresh).resolves.toBeUndefined();
 
     expect(analyticsIdentity.getAnalyticsAccountIdentity()).toEqual({
       status: "unavailable",
     });
   });
 
-  test("consumes an asynchronously rejected refetch and rejects the caller refresh", async () => {
+  test("consumes an asynchronously rejected refetch without rejecting the caller refresh", async () => {
     unsubscribe = analyticsIdentity.subscribeAnalyticsAccountIdentity(
       () => undefined
     );
@@ -739,7 +739,7 @@ describe("analytics account identity", () => {
 
     const refresh = analyticsIdentity.refreshAnalyticsAccountIdentity();
 
-    await expect(refresh).rejects.toBe(failure);
+    await expect(refresh).resolves.toBeUndefined();
     expect(analyticsIdentity.getAnalyticsAccountIdentity()).toEqual({
       status: "unavailable",
     });
@@ -825,7 +825,7 @@ describe("analytics account identity", () => {
 
       await expect(
         analyticsIdentity.refreshAnalyticsAccountIdentity()
-      ).rejects.toBe(failure);
+      ).resolves.toBeUndefined();
       await settleLogs();
       expect(analyticsIdentity.getAnalyticsAccountIdentity()).toEqual({
         status: "unavailable",
@@ -834,7 +834,7 @@ describe("analytics account identity", () => {
 
       await expect(
         analyticsIdentity.refreshAnalyticsAccountIdentity()
-      ).rejects.toBe(failure);
+      ).resolves.toBeUndefined();
       await settleLogs();
       expect(records).toEqual([refreshFailureLog, refreshFailureLog]);
       expect(JSON.stringify(records)).not.toContain(customerEmail);
@@ -905,7 +905,7 @@ describe("analytics account identity", () => {
       try {
         await expect(
           analyticsIdentity.refreshAnalyticsAccountIdentity()
-        ).rejects.toBe(failure);
+        ).resolves.toBeUndefined();
         await settleLogs();
 
         expect(sinkCalls).toBe(1);

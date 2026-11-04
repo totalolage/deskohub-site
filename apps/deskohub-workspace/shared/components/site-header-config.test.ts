@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { Effect } from "effect";
+import { MeetingRoomPageReleaseGate } from "@/features/meeting-room/backend/meeting-room-page-release-gate";
+import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
 
 const isMeetingRoomPageEnabled = mock();
 const isOfficePageEnabled = mock();
@@ -20,19 +23,25 @@ mock.module(
 );
 
 mock.module(
-  "@/features/meeting-room/backend/meeting-room-page-feature-flag",
-  () => ({ isMeetingRoomPageEnabled })
-);
-const officeFeatureFlag = await import(
-  "@/features/office/backend/office-reservation-feature-flag.server"
-);
-mock.module(
-  "@/features/office/backend/office-reservation-feature-flag.server",
+  "@/features/meeting-room/backend/meeting-room-page-release-gate.server",
   () => ({
-    ...officeFeatureFlag,
-    isOfficePageEnabled,
+    isMeetingRoomPageEnabled,
+    MeetingRoomPageReleaseGateRequest:
+      MeetingRoomPageReleaseGate.fromEvaluation(
+        Effect.promise(() => isMeetingRoomPageEnabled())
+      ),
   })
 );
+const officeFeatureFlag = await import(
+  "@/features/office/backend/office-release-gate.server"
+);
+mock.module("@/features/office/backend/office-release-gate.server", () => ({
+  ...officeFeatureFlag,
+  isOfficePageEnabled,
+  OfficeReleaseGateRequest: OfficeReleaseGate.fromEvaluation(
+    Effect.promise(() => isOfficePageEnabled())
+  ),
+}));
 
 describe("getSiteHeaderConfig", () => {
   beforeEach(() => {

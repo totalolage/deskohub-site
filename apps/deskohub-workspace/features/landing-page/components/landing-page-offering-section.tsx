@@ -6,8 +6,8 @@ import {
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
 import { type Locale, m } from "@/features/i18n";
-import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";
-import { isOfficePageEnabled } from "@/features/office/backend/office-reservation-feature-flag.server";
+import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-release-gate.server";
+import { isOfficePageEnabled } from "@/features/office/backend/office-release-gate.server";
 import {
   getCoworkReservationPath,
   getMeetingRoomReservationPath,

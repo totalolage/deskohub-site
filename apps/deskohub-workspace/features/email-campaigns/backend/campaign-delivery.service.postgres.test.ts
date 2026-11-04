@@ -15,7 +15,7 @@ import { resendSimulatorAddress, testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { customerMarketingConsents } from "@/db/schema";
-import { campaignEmailKind } from "../campaign-email-message";
+import { campaignEmailKind } from "../campaign-email";
 import type { CampaignId } from "../campaign-identifiers";
 import type { CampaignDeliveryEvent } from "./campaign-delivery-status.service";
 import {

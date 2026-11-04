@@ -19,8 +19,8 @@ import { testEmailAddress } from "@deskohub/test-email";
 import { getQueriesForElement } from "@testing-library/react";
 import { Context, Effect, Layer, Logger, Option } from "effect";
 import type { ReservationAuthor } from "@/features/account/backend/reservation-author-directory.service";
-import { SeatingMapFeatureFlagServiceMock } from "@/features/feature-flags/backend/seating-map-feature-flag.service.mock";
 import { type Locale, m } from "@/features/i18n";
+import { SeatingMapReleaseGate } from "@/features/reservation/backend/seating-map-release-gate";
 import {
   type WorkspaceReservation,
   WorkspaceReservationRepository,
@@ -289,9 +289,7 @@ const loadOpenSpaceReservationFromSyntheticSnapshot = async () => {
                 return Effect.succeed(tables);
               }),
             }),
-            SeatingMapFeatureFlagServiceMock({
-              isEnabled: Effect.succeed(false),
-            })
+            SeatingMapReleaseGate.fromDecision(false)
           )
         )
       )

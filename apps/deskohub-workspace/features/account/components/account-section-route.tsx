@@ -11,9 +11,9 @@ import {
   isAccountPageSection,
   isAccountSectionReleased,
 } from "@/features/account/sections";
-import { arePasskeysEnabled } from "@/features/account/server/account-feature-flag.server";
+import { arePasskeysEnabled } from "@/features/account/server/account-release-gates.server";
 import { type Locale, m } from "@/features/i18n";
-import { areReferralsEnabled } from "@/features/referrals/referral-feature-flag.server";
+import { areReferralsEnabled } from "@/features/referrals/referral-release-gate.server";
 import { getRequestPathname } from "@/shared/backend/utils/request-pathname";
 
 export function getAccountSectionMetadata(

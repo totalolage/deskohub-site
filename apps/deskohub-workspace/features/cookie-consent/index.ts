@@ -1,2 +1,2 @@
-export type { ConsentCategory } from "./config/consent-config";
-export { useCookieConsent } from "./hooks/use-cookie-consent";
+export type { ConsentCategory } from "./visitor-consent";
+export { useVisitorConsent, visitorConsent } from "./visitor-consent";

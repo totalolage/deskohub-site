@@ -13,11 +13,7 @@ import type {
   ValidationErrors,
   ValidationErrorsFormat,
 } from "next-safe-action";
-import {
-  type ExecuteOptions,
-  type ExecuteRun,
-  execute,
-} from "./internal/executor";
+import { type ExecuteOptions, execute } from "./internal/executor";
 import { makeSharedLayerProvider } from "./internal/shared-layer";
 
 type SchemaInput<S extends StandardSchemaV1> = StandardSchemaV1.InferInput<S>;
@@ -40,7 +36,6 @@ export interface EffectActionArgs<
 
 interface EffectActionBaseOptions {
   readonly mapError?: (error: unknown) => unknown;
-  readonly run?: ExecuteRun;
 }
 
 interface EffectActionRunnableOptions extends EffectActionBaseOptions {
@@ -58,12 +53,9 @@ export type EffectActionOptions<R = never, LE = never> =
   | EffectActionRunnableOptions
   | EffectActionLayerOptions<R, LE>;
 
-const getExecuteOptions = <E>(
+const getExecuteOptions = (
   options: EffectActionBaseOptions
-): ExecuteOptions<E> =>
-  options.run
-    ? { mapError: options.mapError, run: options.run }
-    : { mapError: options.mapError };
+): ExecuteOptions<unknown> => ({ mapError: options.mapError });
 
 type SafeActionValidationErrors<
   ErrorsFormat extends ValidationErrorsFormat | undefined,

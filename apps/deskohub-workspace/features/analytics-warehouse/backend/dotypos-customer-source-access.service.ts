@@ -2,7 +2,7 @@ import "server-only";
 
 import { Context, Layer, Option, Redacted } from "effect";
 import { env } from "@/env";
-import type { DeploymentEnvironment } from "@/shared/backend/config/deployment-request-timeout";
+import type { DeploymentEnvironment } from "@/shared/deployment/deployment-stage";
 
 interface IDotyposCustomerSourceAccess {
   /** The token PostHog must present, or none while the source is disabled. */

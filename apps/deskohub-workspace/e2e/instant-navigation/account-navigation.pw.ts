@@ -3,6 +3,7 @@ import { expect, type Page, test } from "@playwright/test";
 import { m } from "@/features/i18n";
 import { captureAccountReview } from "../account/review-screenshots";
 import { enablePreviewAccess } from "../preview-access";
+import { waitForReactClickHandler } from "../react-handlers";
 import {
   expectPublicSiteShell,
   prefetchRoute,
@@ -48,6 +49,7 @@ test.describe("client navigation", () => {
     const accountLink = page
       .getByRole("banner")
       .getByRole("link", { name: "Account" });
+    await waitForReactClickHandler(page, accountLink);
     await accountLink.click();
 
     await expectAnonymousSignIn(page);

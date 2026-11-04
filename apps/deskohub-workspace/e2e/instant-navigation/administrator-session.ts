@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import type { Browser } from "@playwright/test";
-import { Effect, Layer, Schema } from "effect";
+import { type Browser, test as base } from "@playwright/test";
+import { Effect, Schema } from "effect";
 import { env } from "../../env";
 import {
   readWorkspaceE2EAccountJournal,
@@ -17,8 +17,7 @@ import { openAdminSession } from "../admin-case";
 import type { E2EBrowserSession } from "../browser-session";
 import { getDatasourceConfig } from "../config";
 import { makeWorkspaceE2EEnvironment } from "../e2e-env";
-import type { WorkspaceE2EError } from "../errors";
-import { E2EDatabase } from "../integrations/database.service";
+import type { E2EDatabase } from "../integrations/database.service";
 import {
   type WorkspaceE2ERunId,
   workspaceE2ERunIdSchema,
@@ -28,6 +27,7 @@ import {
   workspaceDir,
   writeJsonAtomically,
 } from "../runtime";
+import { type E2EEffectRunner, withE2ERuntime } from "../runtime-fixture";
 import { workspaceE2ETimeouts } from "../timeouts";
 import { requireBaseUrl } from "./navigation-test-helpers";
 
@@ -64,11 +64,7 @@ export const instantNavigationAdministratorSkipReason =
     ? "Administration navigation signs in a seeded administrator and needs a protected preview target (WORKSPACE_E2E_BASE_URL) and its E2E database"
     : undefined;
 
-/**
- * The E2E environment and preview database the administrator setup, the
- * signed-in tests, and the teardown share.
- */
-export const makeInstantNavigationAdministratorRuntime = () => {
+const makeInstantNavigationAdministratorTarget = () => {
   const environment = makeWorkspaceE2EEnvironment();
   const datasourceConfig = getDatasourceConfig(environment);
   assertSafeDatabaseUrl(
@@ -76,18 +72,50 @@ export const makeInstantNavigationAdministratorRuntime = () => {
     "WORKSPACE_E2E_DATABASE_URL_UNPOOLED",
     environment.WORKSPACE_E2E_DATABASE_ALLOWLIST
   );
-  const layer = WorkspaceE2EAccountResourceService.layer(datasourceConfig).pipe(
-    Layer.provideMerge(E2EDatabase.layer(datasourceConfig))
-  );
-  const runPromise = <A>(
-    effect: Effect.Effect<
-      A,
-      WorkspaceE2EError,
-      E2EDatabase | WorkspaceE2EAccountResourceService
-    >
-  ) => Effect.runPromise(effect.pipe(Effect.provide(layer)));
-  return { datasourceConfig, environment, runPromise };
+  return { datasourceConfig, environment };
 };
+
+type InstantNavigationAdministratorRuntime = ReturnType<
+  typeof makeInstantNavigationAdministratorTarget
+> & {
+  readonly runEffect: E2EEffectRunner<
+    E2EDatabase | WorkspaceE2EAccountResourceService
+  >;
+};
+
+/**
+ * `administratorRuntime` is the E2E environment and preview database the
+ * administrator setup, the signed-in tests, and the teardown share: one
+ * runtime, with one database pool, per Playwright worker. It reads the
+ * environment when a test first uses it, so skip the file, or the test in a
+ * hook, before then. `administrator` gives every test its own browser
+ * session, signed in as the administrator the setup project seeded with its
+ * own short-lived session.
+ */
+export const instantNavigationAdministratorTest = base.extend<
+  { readonly administrator: E2EBrowserSession },
+  { readonly administratorRuntime: InstantNavigationAdministratorRuntime }
+>({
+  administrator: async ({ administratorRuntime, baseURL, browser }, use) =>
+    withInstantNavigationAdministratorSession(
+      { baseURL, browser, runtime: administratorRuntime },
+      use
+    ),
+  administratorRuntime: [
+    async ({ browserName: _browserName }, use) => {
+      const target = makeInstantNavigationAdministratorTarget();
+      await withE2ERuntime(
+        {
+          layer: WorkspaceE2EAccountResourceService.layerWithDatabase(
+            target.datasourceConfig
+          ),
+        },
+        (runEffect) => use({ ...target, runEffect })
+      );
+    },
+    { scope: "worker" },
+  ],
+});
 
 const administratorRunSchema = Schema.Struct({
   runId: workspaceE2ERunIdSchema,
@@ -122,15 +150,15 @@ export const readInstantNavigationAdministratorRunId = async (): Promise<
  * short-lived session, under the admin failure policy (`openAdminSession`).
  * The session closes once `use` settles.
  */
-export const withInstantNavigationAdministratorSession = async (
+const withInstantNavigationAdministratorSession = async (
   input: {
     readonly baseURL: string | undefined;
     readonly browser: Browser;
+    readonly runtime: InstantNavigationAdministratorRuntime;
   },
   use: (session: E2EBrowserSession) => Promise<void>
 ) => {
-  const { environment, runPromise } =
-    makeInstantNavigationAdministratorRuntime();
+  const { environment, runEffect } = input.runtime;
   const journal = await readWorkspaceE2EAccountJournal(
     instantNavigationAdministratorJournalOwner.ownerId,
     instantNavigationAdministratorJournalOwner.journalDirectory
@@ -142,7 +170,7 @@ export const withInstantNavigationAdministratorSession = async (
     );
   }
   const baseURL = requireBaseUrl(input.baseURL);
-  await runPromise(
+  await runEffect(
     Effect.scoped(
       Effect.gen(function* () {
         const { origin, session } = yield* openAdminSession({

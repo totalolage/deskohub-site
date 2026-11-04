@@ -11,9 +11,10 @@ import {
   getDatasourceConfig,
 } from "../config";
 import { makeE2EEnvironment, makeWorkspaceE2EEnvironment } from "../e2e-env";
-import type { WorkspaceE2EError } from "../errors";
+import { workspaceE2EError } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
 import { assertSafeDatabaseUrl } from "../runtime";
+import { type E2EEffectRunner, withE2ERuntime } from "../runtime-fixture";
 import { workspaceE2ETimeouts } from "../timeouts";
 
 /**
@@ -70,24 +71,26 @@ export const seededAccountSkipReason =
     ? undefined
     : "Seeded accounts need a protected preview (WORKSPACE_E2E_BASE_URL and its E2E database) or the next dev server this suite starts on a disposable WORKSPACE_TEST_DATABASE_URL database");
 
-/** Runs an E2E database effect against the local server's database. */
-export const runWithLocalDatabase = <A>(
-  effect: Effect.Effect<A, WorkspaceE2EError, E2EDatabase>
-) => {
-  if (localFixtureSkipReason !== undefined || localDatabaseUrl === undefined) {
-    throw new Error(localFixtureSkipReason);
-  }
-  return Effect.runPromise(
-    effect.pipe(
-      Effect.provide(
-        E2EDatabase.layer({
-          databaseUrlUnpooled: localDatabaseUrl,
-          timeouts: workspaceE2ETimeouts,
-        })
+/**
+ * The local server's database. Built on its first use, so a fixture over it
+ * costs nothing in a test that skips; without a local database it fails then
+ * with the skip reason.
+ */
+export const localDatabaseLayer = Layer.suspend(() =>
+  localFixtureSkipReason === undefined && localDatabaseUrl !== undefined
+    ? E2EDatabase.layer({
+        databaseUrlUnpooled: localDatabaseUrl,
+        timeouts: workspaceE2ETimeouts,
+      })
+    : Layer.effect(
+        E2EDatabase,
+        Effect.fail(
+          workspaceE2EError(
+            localFixtureSkipReason ?? "The audit has no local database"
+          )
+        )
       )
-    )
-  );
-};
+);
 
 type SeededAccountTarget = {
   readonly datasourceConfig: DatasourceConfig;
@@ -138,21 +141,30 @@ const resolveSeededAccountTarget = (origin: string): SeededAccountTarget => {
   return { datasourceConfig, secret: { value: secrets.secrets[0].value } };
 };
 
+export type SeededAccountRuntime = SeededAccountTarget & {
+  /** The audited deployment's origin. */
+  readonly origin: string;
+  readonly runEffect: E2EEffectRunner<
+    E2EDatabase | WorkspaceE2EAccountResourceService
+  >;
+};
+
 /**
- * Runs the E2E fixtures that seed, sign in, and reconcile synthetic accounts
- * against the audited deployment's database and Dotypos sandbox.
+ * Runs `use` with the runtime of the E2E fixtures that seed, sign in, and
+ * reconcile synthetic accounts against the audited deployment's database and
+ * Dotypos sandbox. Resolves the target first, so it throws without one.
  */
-export const makeSeededAccountRuntime = (origin: string) => {
-  const { datasourceConfig, secret } = resolveSeededAccountTarget(origin);
-  const layer = WorkspaceE2EAccountResourceService.layer(datasourceConfig).pipe(
-    Layer.provideMerge(E2EDatabase.layer(datasourceConfig))
+export const withSeededAccountRuntime = <A>(
+  origin: string,
+  use: (runtime: SeededAccountRuntime) => Promise<A>
+) => {
+  const target = resolveSeededAccountTarget(origin);
+  return withE2ERuntime(
+    {
+      layer: WorkspaceE2EAccountResourceService.layerWithDatabase(
+        target.datasourceConfig
+      ),
+    },
+    (runEffect) => use({ ...target, origin, runEffect })
   );
-  const runPromise = <A>(
-    effect: Effect.Effect<
-      A,
-      WorkspaceE2EError,
-      E2EDatabase | WorkspaceE2EAccountResourceService
-    >
-  ) => Effect.runPromise(effect.pipe(Effect.provide(layer)));
-  return { datasourceConfig, runPromise, secret };
 };

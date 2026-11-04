@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Exit, Layer } from "effect";
 import { ReferralServiceWithoutData } from "@/features/referrals/referral.service.mock";
-import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
+import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { DiscountService, makeDiscountServiceLayer } from "./discount.service";
 import { DiscountReleaseGateService } from "./discount-release-gate.service";
 
@@ -40,12 +40,12 @@ const quoteInRequest = (
     Effect.provide(
       discountsLive.pipe(
         Layer.provide(
-          Layer.succeed(ReferralFeatureFlagService, {
-            isEnabled: Effect.sync(() => {
+          ReferralReleaseGate.fromEvaluation(
+            Effect.sync(() => {
               consulted.push(request);
               return released;
-            }),
-          })
+            })
+          )
         )
       )
     ),

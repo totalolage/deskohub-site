@@ -5,9 +5,7 @@ import {
   CliSessionUnauthorized,
   CurrentAdministrationCaller,
 } from "@deskohub/workspace-admin-api";
-import { NodeHttpServer } from "@effect/platform-node";
 import { Data, Effect, Layer, Match, Option, Redacted } from "effect";
-import { HttpRouter } from "effect/unstable/http";
 import {
   CustomerAgentAuthorization,
   type CustomerAgentAuthorizationError,
@@ -23,10 +21,7 @@ import {
 } from "@/features/admin-cli/workspace-admin-api.server";
 import { AdministratorAgentAuthorization } from "@/features/administrators/backend/administrator-agent-authorization.service";
 import { AdministratorAssistantConnections } from "@/features/administrators/backend/administrator-assistant-connections.service";
-import {
-  WorkspaceObservabilityLive,
-  workspaceMemoMap,
-} from "@/shared/backend/workspace-effect";
+import { toWorkspaceWebHandler } from "@/shared/backend/workspace-effect";
 import { assistantAccessEnded } from "./administration-assistant-refusal";
 
 /** The token's client isn't known, or names nothing to record. */
@@ -182,25 +177,15 @@ export const makeAdministrationAssistantApiLayer = () =>
  * Answers an administration API request an administrator's AI assistant
  * makes through its tools, in process. No route serves it.
  */
-export const handleAssistantAdministrationRequest: (
-  request: Request
-) => Promise<Response> = HttpRouter.toWebHandler(
-  Layer.mergeAll(
-    provideWorkspaceAdminApiServices(
-      makeAdministrationAssistantApiLayer()
-    ).pipe(
-      Layer.provide(
-        Layer.mergeAll(
-          CustomerAgentAuthorization.Default,
-          AdministratorAgentAuthorization.Live,
-          CustomerAgentClientDirectory.Server,
-          AdministratorAssistantConnections.Live
-        )
+export const handleAssistantAdministrationRequest = toWorkspaceWebHandler(
+  provideWorkspaceAdminApiServices(makeAdministrationAssistantApiLayer()).pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        CustomerAgentAuthorization.Default,
+        AdministratorAgentAuthorization.Live,
+        CustomerAgentClientDirectory.Server,
+        AdministratorAssistantConnections.Live
       )
-    ),
-    // As for the CLI's handler: this runs outside the route's Effect runtime,
-    // and the Workspace memo map reuses the route runtime's instances.
-    WorkspaceObservabilityLive
-  ).pipe(Layer.provide(NodeHttpServer.layerHttpServices)),
-  { disableLogger: true, memoMap: workspaceMemoMap }
-).handler;
+    )
+  )
+);

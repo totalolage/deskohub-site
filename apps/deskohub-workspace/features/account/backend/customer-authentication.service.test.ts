@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Logger } from "effect";
+import { RequestHeadersError } from "@/shared/backend/utils/request-headers";
 import type { CustomerAccountAccessError } from "../customer-account";
 import {
   CustomerAuthentication,
@@ -393,19 +394,28 @@ describe("CustomerAuthentication session-read failure diagnostics", () => {
   });
 });
 
+/** The failure `currentRequestHeaders` raises when Next's store rejects. */
+const requestHeadersFailure = (cause: unknown) =>
+  Effect.fail(
+    new RequestHeadersError({
+      message: "Could not load the current request headers.",
+      cause,
+    })
+  );
+
 describe("CustomerAuthentication authority-read phase diagnostics", () => {
   // The installed `next/headers` rejects with exactly this error outside a
   // request scope (verified against next@16.3.1).
   const withPhases = (
     overrides: Partial<
-      Pick<AuthorityPhases, "readRequestHeaders" | "loadAuthority">
+      Pick<AuthorityPhases, "requestHeaders" | "loadAuthority">
     >
   ) => {
     capturedWarnings.length = 0;
     return runCurrentUserCapturingLogs({
       readBetterAuthSecretsRaw: () => configuredSecretsRaw,
       readCurrentSession: makeAuthoritySessionRead({
-        readRequestHeaders: async () => new Headers({ host: "workspace.test" }),
+        requestHeaders: Effect.succeed(new Headers({ host: "workspace.test" })),
         loadAuthority: async () => ({
           auth: {
             api: {
@@ -441,10 +451,10 @@ describe("CustomerAuthentication authority-read phase diagnostics", () => {
             },
           };
         },
-        readRequestHeaders: async () => {
+        requestHeaders: Effect.sync(() => {
           order.push("request-headers");
           return new Headers({ host: "workspace.test" });
-        },
+        }),
       }),
     });
 
@@ -457,7 +467,7 @@ describe("CustomerAuthentication authority-read phase diagnostics", () => {
   test("attributes a frozen foreign rejection without mutating it", async () => {
     const frozen = Object.freeze(nextRequestScopeError("headers"));
     const outcome = await withPhases({
-      readRequestHeaders: () => Promise.reject(frozen),
+      requestHeaders: requestHeadersFailure(frozen),
     });
 
     expect(Object.isFrozen(frozen)).toBe(true);
@@ -477,7 +487,7 @@ describe("CustomerAuthentication authority-read phase diagnostics", () => {
 
   test("attributes a rejected primitive as unknown category without carrying it", async () => {
     const outcome = await withPhases({
-      readRequestHeaders: () => Promise.reject("auth resolver offline"),
+      requestHeaders: requestHeadersFailure("auth resolver offline"),
     });
 
     expect(outcome._tag).toBe("Failure");
@@ -516,7 +526,7 @@ describe("CustomerAuthentication authority-read phase diagnostics", () => {
     }
 
     const outcome = await withPhases({
-      readRequestHeaders: () => Promise.reject(afterPhaseError),
+      requestHeaders: requestHeadersFailure(afterPhaseError),
     });
     expect(outcome._tag).toBe("Failure");
     if (outcome._tag === "Failure") {

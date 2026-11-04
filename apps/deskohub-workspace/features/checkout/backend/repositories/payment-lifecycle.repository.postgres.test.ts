@@ -74,8 +74,7 @@ import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backen
 import { type Locale, m } from "@/features/i18n";
 import { getReferralInvitationDiscountId } from "@/features/referrals/discount-identifiers";
 import { ReferralService } from "@/features/referrals/referral.service";
-import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
-import { ReferralFeatureFlagServiceMock } from "@/features/referrals/referral-feature-flag.service.mock";
+import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import type { Money } from "@/shared/money/money";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
@@ -100,7 +99,7 @@ type Admission = {
 };
 
 const referralFeatureFlag = (enabled: boolean) =>
-  ReferralFeatureFlagServiceMock({ isEnabled: Effect.succeed(enabled) });
+  ReferralReleaseGate.fromDecision(enabled);
 
 /**
  * The referral flag as a paid transition's run would see it: off, or failing
@@ -110,7 +109,7 @@ const withheldReferralFlags = [
   ["off", referralFeatureFlag(false)],
   [
     "unreadable",
-    ReferralFeatureFlagService.Default.pipe(
+    ReferralReleaseGate.Default.pipe(
       Layer.provide(
         WorkspaceFeatureFlagServiceMock({
           isEnabled: () =>

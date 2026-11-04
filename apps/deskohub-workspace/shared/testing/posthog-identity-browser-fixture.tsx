@@ -5,8 +5,8 @@ import { Schema } from "effect";
 import posthog from "posthog-js";
 import { useCallback, useEffect } from "react";
 import { createRoot } from "react-dom/client";
+import { signOutOfAccount } from "@/features/account/account-exit";
 import {
-  beginAnalyticsAccountTransition,
   completeAnalyticsAccountSignOut,
   getAnalyticsAccountIdentity,
   refreshAnalyticsAccountIdentity,
@@ -16,8 +16,10 @@ import {
   PostHogAnalytics,
   PostHogProvider,
 } from "@/features/cookie-consent/components/posthog-analytics";
-import { useCookieConsent } from "@/features/cookie-consent/hooks/use-cookie-consent";
-import { dispatchConsentUpdatedEvent } from "@/features/cookie-consent/utils/consent-event";
+import {
+  announceVisitorConsentChange,
+  useVisitorConsent,
+} from "@/features/cookie-consent/visitor-consent";
 import {
   CONSENT_COOKIE_NAME,
   getAcceptedConsentCategoriesFromCookie,
@@ -137,15 +139,16 @@ const readIdentityState = (): FixtureIdentityState => ({
   status: getAnalyticsAccountIdentity().status,
 });
 
-const readConsentState = (): FixtureConsentState => ({
-  analyticsAccepted: getAcceptedConsentCategoriesFromCookie(
+const readConsentState = (): FixtureConsentState => {
+  const acceptedCategories = getAcceptedConsentCategoriesFromCookie(
     document.cookie
-  ).includes("analytics"),
-  cookiePresent: getConsentCookieValuesFromCookie(document.cookie).length > 0,
-  necessaryAccepted: getAcceptedConsentCategoriesFromCookie(
-    document.cookie
-  ).includes("necessary"),
-});
+  );
+  return {
+    analyticsAccepted: acceptedCategories.includes("analytics"),
+    cookiePresent: getConsentCookieValuesFromCookie(document.cookie).length > 0,
+    necessaryAccepted: acceptedCategories.includes("necessary"),
+  };
+};
 
 const readStringPostHogProperty = (name: string) => {
   try {
@@ -252,39 +255,16 @@ const removeConsentCookie = () => {
   document.cookie = `${CONSENT_COOKIE_NAME}=; Max-Age=0; Path=/`;
 };
 
-// This control covers the account-domain lifecycle used by SignOutButton, not
-// the button's UI click behavior.
-const signOut = async () => {
-  beginAnalyticsAccountTransition();
-
-  try {
-    const result = await authClient.signOut();
-    if (result.error) {
-      void refreshAnalyticsAccountIdentity({ settleTransition: true }).catch(
-        () => undefined
-      );
-      return false;
-    }
-
-    completeAnalyticsAccountSignOut();
-    return true;
-  } catch {
-    void refreshAnalyticsAccountIdentity({ settleTransition: true }).catch(
-      () => undefined
-    );
-    return false;
-  }
-};
+// This control runs the account sign-out SignOutButton uses, without the
+// button's UI click behavior or page leave.
+const signOut = async () => (await signOutOfAccount()) === "signed-out";
 
 export function PostHogIdentityBrowserFixture() {
-  const { isAccepted } = useCookieConsent();
-  const analyticsAccepted = isAccepted("analytics");
+  const analyticsAccepted = useVisitorConsent("analytics");
 
   const setAnalyticsConsent = useCallback((accepted: boolean) => {
     writeAnalyticsConsentCookie(accepted);
-    dispatchConsentUpdatedEvent(
-      accepted ? ["necessary", "analytics"] : ["necessary"]
-    );
+    announceVisitorConsentChange();
   }, []);
 
   useEffect(() => {

@@ -1,97 +1,112 @@
 import { describe, expect, test } from "bun:test";
 import {
   getAcceptedConsentCategoriesFromCookie,
-  getAcceptedConsentCategoriesFromCookieValue,
   isConsentCategoryAcceptedInCookie,
   type UnexpectedConsentCookieReason,
 } from "./consent-cookie";
 
+const cookieWithCategories = (...categories: readonly unknown[]) =>
+  `cc_cookie=${encodeURIComponent(JSON.stringify({ categories }))}`;
+
+const readReasons = (cookie: string) => {
+  const reasons: UnexpectedConsentCookieReason[] = [];
+  const accepted = getAcceptedConsentCategoriesFromCookie(cookie, {
+    onUnexpectedValue: (reason) => reasons.push(reason),
+  });
+  return { accepted, reasons };
+};
+
 describe("getAcceptedConsentCategoriesFromCookie", () => {
   test("reads accepted categories from the CookieConsent cookie", () => {
-    const cookie = `foo=bar; cc_cookie=${encodeURIComponent(
-      JSON.stringify({ categories: ["analytics", "necessary"] })
-    )}`;
+    const cookie = `foo=bar; ${cookieWithCategories("analytics", "necessary")}`;
 
     expect(getAcceptedConsentCategoriesFromCookie(cookie)).toEqual([
-      "analytics",
       "necessary",
+      "analytics",
     ]);
   });
 
-  test("ignores invalid or unknown values", () => {
-    const cookie = `cc_cookie=${encodeURIComponent(
-      JSON.stringify({ categories: ["analytics", "unknown", 1] })
-    )}`;
-
-    const reasons: UnexpectedConsentCookieReason[] = [];
-
-    expect(
-      getAcceptedConsentCategoriesFromCookie(cookie, {
-        onUnexpectedValue: (reason) => reasons.push(reason),
-      })
-    ).toEqual(["analytics"]);
-
-    expect(reasons).toEqual(["unknown_category", "invalid_category_type"]);
+  test("returns nothing without a consent cookie", () => {
+    expect(readReasons("foo=bar")).toEqual({ accepted: [], reasons: [] });
   });
 
-  test("warns when the consent cookie shape is unexpected", () => {
-    const reasons: UnexpectedConsentCookieReason[] = [];
+  test("treats an emptied copy as declining without a diagnostic", () => {
+    expect(readReasons("cc_cookie=")).toEqual({ accepted: [], reasons: [] });
+  });
 
+  test("reads a copy with an invalid or unknown entry as declined", () => {
     expect(
-      getAcceptedConsentCategoriesFromCookieValue("not-json", {
-        onUnexpectedValue: (reason) => reasons.push(reason),
-      })
-    ).toEqual([]);
+      readReasons(cookieWithCategories("analytics", "unknown", 1))
+    ).toEqual({
+      accepted: [],
+      reasons: ["unknown_category", "invalid_category_type"],
+    });
+  });
+
+  test("reports an unexpected cookie shape", () => {
+    expect(readReasons("cc_cookie=not-json")).toEqual({
+      accepted: [],
+      reasons: ["invalid_json"],
+    });
     expect(
-      getAcceptedConsentCategoriesFromCookieValue(
-        JSON.stringify({ categories: "analytics" }),
-        { onUnexpectedValue: (reason) => reasons.push(reason) }
+      readReasons(
+        `cc_cookie=${encodeURIComponent(JSON.stringify({ categories: "analytics" }))}`
       )
-    ).toEqual([]);
-
-    expect(reasons).toEqual(["invalid_json", "invalid_categories_type"]);
+    ).toEqual({ accepted: [], reasons: ["invalid_categories_type"] });
   });
 
   test("reads raw JSON values and URI-encoded JSON values", () => {
     const categories = JSON.stringify({ categories: ["marketing"] });
 
-    expect(getAcceptedConsentCategoriesFromCookieValue(categories)).toEqual([
-      "marketing",
-    ]);
     expect(
-      getAcceptedConsentCategoriesFromCookieValue(
-        encodeURIComponent(categories)
+      getAcceptedConsentCategoriesFromCookie(`cc_cookie=${categories}`)
+    ).toEqual(["marketing"]);
+    expect(
+      getAcceptedConsentCategoriesFromCookie(
+        `cc_cookie=${encodeURIComponent(categories)}`
       )
     ).toEqual(["marketing"]);
   });
 
   test("reports a JSON null value as an unexpected value type", () => {
-    const reasons: UnexpectedConsentCookieReason[] = [];
-
-    expect(
-      getAcceptedConsentCategoriesFromCookieValue("null", {
-        onUnexpectedValue: (reason) => reasons.push(reason),
-      })
-    ).toEqual([]);
-    expect(reasons).toEqual(["invalid_value_type"]);
+    expect(readReasons("cc_cookie=null")).toEqual({
+      accepted: [],
+      reasons: ["invalid_value_type"],
+    });
   });
 
   test("reports malformed URI encoding as invalid JSON", () => {
-    const reasons: UnexpectedConsentCookieReason[] = [];
-
     expect(
-      getAcceptedConsentCategoriesFromCookieValue("%7B%E0%A4%A", {
-        onUnexpectedValue: (reason) => reasons.push(reason),
-      })
-    ).toEqual([]);
-    expect(reasons).toEqual(["invalid_json"]);
+      readReasons(`cc_cookie=${encodeURIComponent("%7B%E0%A4%A")}`)
+    ).toEqual({ accepted: [], reasons: ["invalid_json"] });
+  });
+
+  test("keeps only the categories every copy accepts", () => {
+    const cookie = [
+      cookieWithCategories("necessary", "analytics", "marketing"),
+      cookieWithCategories("necessary", "marketing"),
+    ].join("; ");
+
+    expect(getAcceptedConsentCategoriesFromCookie(cookie)).toEqual([
+      "necessary",
+      "marketing",
+    ]);
+  });
+
+  test("reads every copy as declined when any copy is malformed", () => {
+    const cookie = [
+      cookieWithCategories("necessary", "analytics"),
+      "cc_cookie=not-json",
+    ].join("; ");
+
+    expect(readReasons(cookie)).toEqual({
+      accepted: [],
+      reasons: ["invalid_json"],
+    });
   });
 });
 
 describe("isConsentCategoryAcceptedInCookie", () => {
-  const cookieWithCategories = (...categories: readonly string[]) =>
-    `cc_cookie=${encodeURIComponent(JSON.stringify({ categories }))}`;
-
   test("returns false when there is no consent cookie", () => {
     expect(isConsentCategoryAcceptedInCookie("", "analytics")).toBe(false);
   });

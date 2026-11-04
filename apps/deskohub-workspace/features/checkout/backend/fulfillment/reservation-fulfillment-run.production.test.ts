@@ -61,8 +61,8 @@ const { CustomerEmailLocaleService, ReservationAuthorDirectory } = await import(
 const noReservationAuthors = Layer.mock(ReservationAuthorDirectory, {
   describe: () => Effect.succeed(new Map()),
 });
-const { PostHogEventService } = await import(
-  "@/shared/backend/analytics/posthog-event.service"
+const { recordCheckoutAnalytics } = await import(
+  "@/features/checkout/backend/analytics/checkout-analytics.service.mock"
 );
 
 describe("ReservationFulfillment.run production email acceptance", () => {
@@ -153,9 +153,7 @@ describe("ReservationFulfillment.run production email acceptance", () => {
                   Effect.succeed("access-code")
                 ),
               }),
-              Layer.mock(PostHogEventService, {
-                capture: mock(() => Effect.void),
-              }),
+              recordCheckoutAnalytics().layer,
               Layer.mock(ReservationInvoiceService, {
                 processByPaymentAttemptId: processInvoice,
               })
@@ -269,9 +267,7 @@ describe("ReservationFulfillment.run production email acceptance", () => {
                   Effect.succeed("access-code")
                 ),
               }),
-              Layer.mock(PostHogEventService, {
-                capture: mock(() => Effect.void),
-              }),
+              recordCheckoutAnalytics().layer,
               Layer.mock(ReservationInvoiceService, {
                 processByPaymentAttemptId: processInvoice,
               })
@@ -393,9 +389,7 @@ describe("ReservationFulfillment.run production email acceptance", () => {
                   Effect.succeed("access-code")
                 ),
               }),
-              Layer.mock(PostHogEventService, {
-                capture: mock(() => Effect.void),
-              }),
+              recordCheckoutAnalytics().layer,
               Layer.mock(ReservationInvoiceService, {
                 processByPaymentAttemptId: mock(() =>
                   Effect.die("production acceptance must not process invoices")
@@ -551,9 +545,7 @@ describe("ReservationFulfillment.run production email acceptance", () => {
                   Effect.succeed("access-code")
                 ),
               }),
-              Layer.mock(PostHogEventService, {
-                capture: mock(() => Effect.void),
-              }),
+              recordCheckoutAnalytics().layer,
               Layer.mock(ReservationInvoiceService, {
                 processByPaymentAttemptId: mock(() =>
                   Effect.die("production acceptance must not process invoices")
@@ -690,9 +682,7 @@ describe("ReservationFulfillment.run production email acceptance", () => {
                   Effect.succeed("access-code")
                 ),
               }),
-              Layer.mock(PostHogEventService, {
-                capture: mock(() => Effect.void),
-              }),
+              recordCheckoutAnalytics().layer,
               Layer.mock(ReservationInvoiceService, {
                 processByPaymentAttemptId: mock(() =>
                   Effect.die("production acceptance must not process invoices")
@@ -802,9 +792,7 @@ describe("ReservationFulfillment.run production email acceptance", () => {
                   Effect.succeed("access-code")
                 ),
               }),
-              Layer.mock(PostHogEventService, {
-                capture: mock(() => Effect.void),
-              }),
+              recordCheckoutAnalytics().layer,
               Layer.mock(ReservationInvoiceService, {
                 processByPaymentAttemptId: mock(() =>
                   Effect.die("production acceptance must not process invoices")

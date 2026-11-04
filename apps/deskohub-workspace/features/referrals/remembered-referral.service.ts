@@ -6,8 +6,8 @@ import {
   canonicalPromotionCodeSchema,
 } from "@/features/discounts/contracts";
 import { getRequestCookies } from "@/shared/backend/utils/request-cookies";
-import { getRequestHeaders } from "@/shared/backend/utils/request-headers";
 import { catchRecoverableCause } from "@/shared/backend/workspace-effect";
+import { currentRequestHeaders } from "@/shared/backend/workspace-request-context";
 import type { ReferralCode } from "./client";
 import { ReferralService } from "./referral.service";
 import {
@@ -16,7 +16,7 @@ import {
   referralCodeCookieName,
   setReferralCodeCookie,
 } from "./referral-code-cookie";
-import { ReferralFeatureFlagService } from "./referral-feature-flag.service";
+import { ReferralReleaseGate } from "./referral-release-gate";
 
 /**
  * Whose referral the remembered code serves. Booking for someone else never
@@ -149,12 +149,12 @@ interface ReferralCodeJar {
 
 function makeRememberedReferral(jar: ReferralCodeJar) {
   return Effect.gen(function* () {
-    const release = yield* ReferralFeatureFlagService;
+    const release = yield* ReferralReleaseGate;
     const referrals = yield* ReferralService;
     const contacts = yield* CustomerAccountContactService;
 
     // A withheld program ignores the remembered code.
-    const read = release.isEnabled.pipe(
+    const read = release.isOpen.pipe(
       Effect.flatMap((released) =>
         released
           ? jar.read.pipe(Effect.map(parseSharedReferralCode))
@@ -240,7 +240,7 @@ function makeRememberedReferral(jar: ReferralCodeJar) {
       remember: Effect.fn("RememberedReferral.remember")(function* (
         code: CanonicalPromotionCode
       ) {
-        if (!(yield* release.isEnabled)) return;
+        if (!(yield* release.isOpen)) return;
         const referralCode = parseSharedReferralCode(code);
         if (referralCode !== undefined) yield* jar.write(referralCode);
       }),
@@ -283,7 +283,7 @@ function nextCookieJar(): ReferralCodeJar {
       secure: boolean
     ) => unknown
   ) =>
-    Effect.all([getRequestCookies, getRequestHeaders]).pipe(
+    Effect.all([getRequestCookies, currentRequestHeaders]).pipe(
       Effect.mapError((cause) => new RememberedReferralError({ cause })),
       Effect.flatMap(([jar, headers]) =>
         Effect.try({

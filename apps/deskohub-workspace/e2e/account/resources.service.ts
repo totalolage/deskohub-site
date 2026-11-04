@@ -163,6 +163,12 @@ export class WorkspaceE2EAccountResourceService extends Context.Service<
         });
       })
     );
+
+  /** The service with the one E2E database pool it shares with its callers. */
+  static layerWithDatabase = (datasourceConfig: DatasourceConfig) =>
+    WorkspaceE2EAccountResourceService.layer(datasourceConfig).pipe(
+      Layer.provideMerge(E2EDatabase.layer(datasourceConfig))
+    );
 }
 
 const readReservationOwnerEmail = (

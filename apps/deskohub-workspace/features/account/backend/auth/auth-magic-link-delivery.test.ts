@@ -12,7 +12,6 @@ const resendSends: {
   readonly subject: string;
   readonly text: string;
 }[] = [];
-const emitWorkspaceLog = mock(() => undefined);
 
 mock.module("next/server", () => ({
   after: (callback: () => unknown) => {
@@ -36,13 +35,6 @@ mock.module("resend", () => ({
         return { data: { id: "synthetic-email-id" }, error: null };
       },
     };
-  },
-}));
-
-mock.module("@/instrumentation", () => ({
-  postHogLoggerProvider: {
-    forceFlush: () => Promise.resolve(),
-    getLogger: () => ({ emit: emitWorkspaceLog }),
   },
 }));
 

@@ -4,7 +4,7 @@ language js(typescript, jsx)
 file($name, $body) where {
   $name <: r".*apps/deskohub-workspace/.*\.(?:ts|tsx)$",
   not $name <: r".*\.(?:test|test-utils)\.(?:ts|tsx)$",
-  not $name <: r".*apps/deskohub-workspace/shared/(?:backend/(?:standalone-workspace-effect|workspace-action|workspace-effect)|browser/workspace-browser-effect)\.ts$",
+  not $name <: r".*apps/deskohub-workspace/shared/(?:backend/(?:share-across-requests|standalone-workspace-effect|workspace-effect)|browser/workspace-browser-effect)\.ts$",
   $body <: r"(?s).*next-effect.*",
   $body <: contains bubble {
     or {

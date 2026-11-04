@@ -1,5 +1,5 @@
 import { Duration } from "effect";
-import type { DeploymentEnvironment } from "./deployment-request-timeout";
+import type { DeploymentEnvironment } from "@/shared/deployment/deployment-stage";
 import { getGoogleCalendarRequestTimeout } from "./google-calendar.config";
 
 /**

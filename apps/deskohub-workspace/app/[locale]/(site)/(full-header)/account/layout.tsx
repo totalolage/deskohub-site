@@ -2,11 +2,11 @@ import { connection } from "next/server";
 import { type ReactNode, Suspense } from "react";
 import { AccountLayoutShell } from "@/features/account/components/account-layout-shell";
 import { AccountLoading } from "@/features/account/components/account-loading";
-import { arePasskeysEnabled } from "@/features/account/server/account-feature-flag.server";
+import { arePasskeysEnabled } from "@/features/account/server/account-release-gates.server";
 import { isCustomerSignedIn } from "@/features/account/server/customer-session.server";
 import type { Locale } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import { areReferralsEnabled } from "@/features/referrals/referral-feature-flag.server";
+import { areReferralsEnabled } from "@/features/referrals/referral-release-gate.server";
 import { PageNavigationBoundary } from "@/shared/components/page-navigation-boundary";
 
 type AccountLayoutProps = {

@@ -7,7 +7,7 @@ import {
 } from "@opentelemetry/sdk-trace-base";
 import { Cause, Effect, Exit, Layer } from "effect";
 import { createCensoredOtelSpanExporter } from "../../shared/backend/logging/censorship";
-import { createTracingLive } from "../../shared/backend/observability/otel-tracing";
+import { createTracingLive } from "../../shared/backend/observability/telemetry-sinks";
 import { CENSORED_LOG_VALUE } from "../../shared/utils/log-classification";
 import { makeWorkspaceE2EDateAllocation } from "../allocation";
 import { makeTestE2EEnvironment } from "../e2e-env.test-fixture";

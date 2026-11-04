@@ -3,18 +3,13 @@
 import { useRef, useState } from "react";
 import {
   type ConsentCategory,
-  useCookieConsent,
+  useVisitorConsent,
+  visitorConsent,
 } from "@/features/cookie-consent";
 import { type Locale, m } from "@/features/i18n";
 import { PreferenceRow } from "@/shared/components/ui/preference-row";
 import { Switch } from "@/shared/components/ui/switch";
-
-const consentCategories: ConsentCategory[] = [
-  "necessary",
-  "analytics",
-  "marketing",
-  "preferences",
-];
+import { consentCategories } from "@/shared/utils/consent-cookie";
 
 const categoryMessageGetters = {
   necessary: {
@@ -40,12 +35,11 @@ export interface CookieSettingsProps {
 }
 
 export function CookieSettings({ locale }: CookieSettingsProps) {
-  const { acceptCategory, rejectCategory, isAccepted } = useCookieConsent();
   const preferences = {
     necessary: true,
-    analytics: isAccepted("analytics"),
-    marketing: isAccepted("marketing"),
-    preferences: isAccepted("preferences"),
+    analytics: useVisitorConsent("analytics"),
+    marketing: useVisitorConsent("marketing"),
+    preferences: useVisitorConsent("preferences"),
   } satisfies Record<ConsentCategory, boolean>;
   const [pendingCategories, setPendingCategories] = useState<
     ReadonlySet<ConsentCategory>
@@ -64,8 +58,8 @@ export function CookieSettings({ locale }: CookieSettingsProps) {
     void Promise.resolve().then(async () => {
       try {
         await (nextChecked
-          ? acceptCategory(category)
-          : rejectCategory(category));
+          ? visitorConsent.accept(category)
+          : visitorConsent.reject(category));
       } catch {
         setErroredCategory(category);
       } finally {
