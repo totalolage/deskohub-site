@@ -21,8 +21,8 @@ import {
 mock.module("../campaign-operations.actions", () => ({
   runCampaignOperation: mock(),
 }));
-mock.module("../editor/actions", () => ({
-  authorizeCampaignImageUpload: mock(),
+mock.module("@/features/emails/admin/editor/image-upload-actions", () => ({
+  authorizeEmailImageUpload: mock(),
 }));
 
 registerWorkspaceComponentTestEnv();

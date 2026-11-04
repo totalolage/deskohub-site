@@ -1,5 +1,10 @@
 import { Data, Effect, Option, Result, Schema } from "effect";
 import { m } from "@/features/administration/i18n";
+import type { CampaignImageUploadAuthorization } from "@/features/email-campaigns/backend/campaign-image.service";
+import {
+  campaignImageMaxWidth,
+  isCampaignImageWidth,
+} from "@/features/email-campaigns/body/campaign-image";
 import type { Locale } from "@/features/i18n";
 import {
   downscaleImage,
@@ -8,12 +13,7 @@ import {
 import { type ImageSize, readImageSize } from "@/shared/browser/image-size";
 import { reportWorkspaceBrowserFailure } from "@/shared/browser/workspace-browser-logs";
 import { imageFrameCount } from "@/shared/utils/image-animation";
-import type { CampaignImageUploadAuthorization } from "../../backend/campaign-image.service";
-import {
-  campaignImageMaxWidth,
-  isCampaignImageWidth,
-} from "../../body/campaign-image";
-import { authorizeCampaignImageUpload } from "./actions";
+import { authorizeEmailImageUpload } from "./image-upload-actions";
 
 /**
  * The largest image the Deskohub Cloudinary account takes, the `media_limits`
@@ -21,13 +21,13 @@ import { authorizeCampaignImageUpload } from "./actions";
  * `maxAnimationPixels`. The editor shrinks a larger still picture before it
  * uploads, so the admin never has to.
  */
-export const campaignImageUploadLimits = {
+export const emailImageUploadLimits = {
   maxBytes: 10 * 1024 * 1024,
   maxPixels: 25_000_000,
   maxAnimationPixels: 50_000_000,
 } as const;
 
-type CampaignImagePreparation = "upload" | "shrink" | "refuse";
+type EmailImagePreparation = "upload" | "shrink" | "refuse";
 
 /**
  * What the editor does with a file before Cloudinary takes it: uploads it as
@@ -36,7 +36,7 @@ type CampaignImagePreparation = "upload" | "shrink" | "refuse";
  * browser can't read may still be one Cloudinary reads, such as HEIC, so only
  * its bytes count.
  */
-export const campaignImagePreparation = ({
+export const emailImagePreparation = ({
   bytes,
   size,
   frames,
@@ -44,8 +44,8 @@ export const campaignImagePreparation = ({
   readonly bytes: number;
   readonly size: Option.Option<ImageSize>;
   readonly frames: number;
-}): CampaignImagePreparation => {
-  const { maxBytes, maxPixels, maxAnimationPixels } = campaignImageUploadLimits;
+}): EmailImagePreparation => {
+  const { maxBytes, maxPixels, maxAnimationPixels } = emailImageUploadLimits;
   const pixels = Option.match(size, {
     onNone: () => 0,
     onSome: ({ width, height }) => width * height,
@@ -59,51 +59,51 @@ export const campaignImagePreparation = ({
 };
 
 /** Cloudinary refused the file: it isn't a picture it can store. */
-class CampaignImageRejectedError extends Data.TaggedError(
-  "CampaignImageRejectedError"
+class EmailImageRejectedError extends Data.TaggedError(
+  "EmailImageRejectedError"
 ) {}
 
 /** The file is an animation above the account's limits. */
-class CampaignImageTooLargeError extends Data.TaggedError(
-  "CampaignImageTooLargeError"
+class EmailImageTooLargeError extends Data.TaggedError(
+  "EmailImageTooLargeError"
 ) {}
 
 /** The upload didn't complete, or its answer isn't the image authorized. */
-export class CampaignImageUploadError extends Data.TaggedError(
-  "CampaignImageUploadError"
+export class EmailImageUploadError extends Data.TaggedError(
+  "EmailImageUploadError"
 )<{ readonly cause?: unknown }> {}
 
 /** An authorization was refused, with the admin message why. */
-class CampaignImageAuthorizationError extends Data.TaggedError(
-  "CampaignImageAuthorizationError"
+class EmailImageAuthorizationError extends Data.TaggedError(
+  "EmailImageAuthorizationError"
 )<{ readonly message: string }> {}
 
 /** The fields of Cloudinary's upload answer the editor uses. */
-const StoredCampaignImage = Schema.Struct({
+const StoredEmailImage = Schema.Struct({
   public_id: Schema.String,
   secure_url: Schema.String,
   width: Schema.Finite,
 });
 
 /** A stored body image, ready to insert. */
-export interface UploadedCampaignImage {
+export interface UploadedEmailImage {
   readonly url: string;
   readonly width: number;
 }
 
 const authorize = (locale: Locale) =>
   Effect.tryPromise({
-    try: () => authorizeCampaignImageUpload(undefined),
-    catch: (cause) => new CampaignImageUploadError({ cause }),
+    try: () => authorizeEmailImageUpload(undefined),
+    catch: (cause) => new EmailImageUploadError({ cause }),
   }).pipe(
     Effect.flatMap((result) =>
       Effect.fromOption(Option.fromNullishOr(result?.data)).pipe(
         Effect.mapError(
           () =>
-            new CampaignImageAuthorizationError({
+            new EmailImageAuthorizationError({
               message:
                 result?.serverError ??
-                m.emailCampaignsImageUploadFailed({}, { locale }),
+                m.emailsEditorImageUploadFailed({}, { locale }),
             })
         )
       )
@@ -114,15 +114,15 @@ const authorize = (locale: Locale) =>
  * Posts the file straight to Cloudinary with the signed fields. Cloudinary
  * answers 400 for a file it can't store as an image.
  */
-export const sendCampaignImage = ({
+export const sendEmailImage = ({
   image,
   authorization,
 }: {
   readonly image: Blob;
   readonly authorization: CampaignImageUploadAuthorization;
 }): Effect.Effect<
-  UploadedCampaignImage,
-  CampaignImageRejectedError | CampaignImageUploadError
+  UploadedEmailImage,
+  EmailImageRejectedError | EmailImageUploadError
 > =>
   Effect.tryPromise({
     try: (signal) => {
@@ -133,59 +133,59 @@ export const sendCampaignImage = ({
       form.set("file", image);
       return fetch(authorization.url, { method: "POST", body: form, signal });
     },
-    catch: (cause) => new CampaignImageUploadError({ cause }),
+    catch: (cause) => new EmailImageUploadError({ cause }),
   }).pipe(
     Effect.filterOrFail(
       (response) => response.status !== 400,
-      () => new CampaignImageRejectedError()
+      () => new EmailImageRejectedError()
     ),
     Effect.filterOrFail(
       (response) => response.ok,
-      (response) => new CampaignImageUploadError({ cause: response.status })
+      (response) => new EmailImageUploadError({ cause: response.status })
     ),
     Effect.flatMap((response) =>
       Effect.tryPromise({
         try: () => response.json(),
-        catch: (cause) => new CampaignImageUploadError({ cause }),
+        catch: (cause) => new EmailImageUploadError({ cause }),
       })
     ),
     Effect.flatMap((answer) =>
-      Schema.decodeUnknownEffect(StoredCampaignImage)(answer).pipe(
-        Effect.mapError((cause) => new CampaignImageUploadError({ cause }))
+      Schema.decodeUnknownEffect(StoredEmailImage)(answer).pipe(
+        Effect.mapError((cause) => new EmailImageUploadError({ cause }))
       )
     ),
     Effect.filterOrFail(
       (stored) =>
         stored.public_id === authorization.publicId &&
         isCampaignImageWidth(stored.width),
-      () => new CampaignImageUploadError({ cause: "unexpected-image" })
+      () => new EmailImageUploadError({ cause: "unexpected-image" })
     ),
     Effect.map((stored) => ({ url: stored.secure_url, width: stored.width })),
     Effect.withSpan("sendCampaignImage")
   );
 
 /** What the editor is doing with the image, to tell the admin. */
-export type CampaignImageUploadStage = "shrinking" | "uploading";
+export type EmailImageUploadStage = "shrinking" | "uploading";
 
 const uploadFailureCode = "email-campaigns.admin.image-upload.failed";
 
 /** Reports which stage the upload has reached. */
-type CampaignImageUploadProgress = (
-  stage: CampaignImageUploadStage
+type EmailImageUploadProgress = (
+  stage: EmailImageUploadStage
 ) => Effect.Effect<void>;
 
 /** The file the admin chose, and where the upload reports its stage. */
-interface ChosenCampaignImage {
+interface ChosenEmailImage {
   readonly file: File;
-  readonly onStage: CampaignImageUploadProgress;
+  readonly onStage: EmailImageUploadProgress;
 }
 
-const shrinkCampaignImage = ({ file, onStage }: ChosenCampaignImage) =>
+const shrinkEmailImage = ({ file, onStage }: ChosenEmailImage) =>
   onStage("shrinking").pipe(
     Effect.andThen(
       downscaleImage(file, {
-        maxBytes: campaignImageUploadLimits.maxBytes,
-        maxPixels: campaignImageUploadLimits.maxPixels,
+        maxBytes: emailImageUploadLimits.maxBytes,
+        maxPixels: emailImageUploadLimits.maxPixels,
         maxWidth: campaignImageMaxWidth,
       })
     ),
@@ -195,7 +195,7 @@ const shrinkCampaignImage = ({ file, onStage }: ChosenCampaignImage) =>
 const readFrameCount = (file: Blob) =>
   Effect.tryPromise({
     try: () => file.arrayBuffer(),
-    catch: (cause) => new CampaignImageUploadError({ cause }),
+    catch: (cause) => new EmailImageUploadError({ cause }),
   }).pipe(Effect.map((buffer) => imageFrameCount(new Uint8Array(buffer))));
 
 /**
@@ -203,34 +203,34 @@ const readFrameCount = (file: Blob) =>
  * when it's a still picture above the account's limits. An animation above
  * them is refused.
  */
-const prepareCampaignImage = (
-  input: ChosenCampaignImage
+const prepareEmailImage = (
+  input: ChosenEmailImage
 ): Effect.Effect<
   Blob,
-  ImageDecodeError | CampaignImageTooLargeError | CampaignImageUploadError
+  ImageDecodeError | EmailImageTooLargeError | EmailImageUploadError
 > =>
   Effect.all({
     size: readImageSize(input.file),
     frames: readFrameCount(input.file),
   }).pipe(
     Effect.map(({ size, frames }) =>
-      campaignImagePreparation({ bytes: input.file.size, size, frames })
+      emailImagePreparation({ bytes: input.file.size, size, frames })
     ),
     Effect.flatMap(
       (
         preparation
-      ): Effect.Effect<Blob, ImageDecodeError | CampaignImageTooLargeError> =>
+      ): Effect.Effect<Blob, ImageDecodeError | EmailImageTooLargeError> =>
         preparations[preparation](input)
     )
   );
 
 const preparations = {
-  upload: ({ file }: ChosenCampaignImage) => Effect.succeed<Blob>(file),
-  shrink: shrinkCampaignImage,
-  refuse: () => Effect.fail(new CampaignImageTooLargeError()),
+  upload: ({ file }: ChosenEmailImage) => Effect.succeed<Blob>(file),
+  shrink: shrinkEmailImage,
+  refuse: () => Effect.fail(new EmailImageTooLargeError()),
 } satisfies Record<
-  CampaignImagePreparation,
-  (input: ChosenCampaignImage) => Effect.Effect<Blob, unknown>
+  EmailImagePreparation,
+  (input: ChosenEmailImage) => Effect.Effect<Blob, unknown>
 >;
 
 /**
@@ -241,39 +241,39 @@ const preparations = {
  * animation above the limits, or a file neither the browser nor Cloudinary
  * can read, is the admin's to change.
  */
-export const uploadCampaignImage = (
+export const uploadEmailImage = (
   file: File,
   locale: Locale,
-  onStage: CampaignImageUploadProgress
-): Effect.Effect<Result.Result<UploadedCampaignImage, string>> =>
+  onStage: EmailImageUploadProgress
+): Effect.Effect<Result.Result<UploadedEmailImage, string>> =>
   Effect.Do.pipe(
     Effect.bind("authorization", () => authorize(locale)),
-    Effect.bind("image", () => prepareCampaignImage({ file, onStage })),
-    Effect.flatMap(sendCampaignImage),
+    Effect.bind("image", () => prepareEmailImage({ file, onStage })),
+    Effect.flatMap(sendEmailImage),
     Effect.map(Result.succeed),
     Effect.catchTags({
       ImageDecodeError: () => unreadable(locale),
-      CampaignImageTooLargeError: () => animationTooLarge(locale),
-      CampaignImageRejectedError: () => unreadable(locale),
-      CampaignImageAuthorizationError: ({ message }) =>
+      EmailImageTooLargeError: () => animationTooLarge(locale),
+      EmailImageRejectedError: () => unreadable(locale),
+      EmailImageAuthorizationError: ({ message }) =>
         Effect.succeed(Result.fail(message)),
-      CampaignImageUploadError: (failure) => uploadFailed(locale, failure),
+      EmailImageUploadError: (failure) => uploadFailed(locale, failure),
     }),
     Effect.catchDefect((cause) =>
-      uploadFailed(locale, new CampaignImageUploadError({ cause }))
+      uploadFailed(locale, new EmailImageUploadError({ cause }))
     )
   );
 
 const unreadable = (locale: Locale) =>
   Effect.succeed(
-    Result.fail(m.emailCampaignsImageUploadUnreadable({}, { locale }))
+    Result.fail(m.emailsEditorImageUploadUnreadable({}, { locale }))
   );
 
 const animationTooLarge = (locale: Locale) => {
-  const { maxBytes, maxAnimationPixels } = campaignImageUploadLimits;
+  const { maxBytes, maxAnimationPixels } = emailImageUploadLimits;
   return Effect.succeed(
     Result.fail(
-      m.emailCampaignsImageUploadAnimationTooLarge(
+      m.emailsEditorImageUploadAnimationTooLarge(
         {
           maxMegabytes: maxBytes / (1024 * 1024),
           maxMegapixels: maxAnimationPixels / 1_000_000,
@@ -284,7 +284,7 @@ const animationTooLarge = (locale: Locale) => {
   );
 };
 
-const uploadFailed = (locale: Locale, failure: CampaignImageUploadError) =>
+const uploadFailed = (locale: Locale, failure: EmailImageUploadError) =>
   reportWorkspaceBrowserFailure(uploadFailureCode, failure).pipe(
-    Effect.as(Result.fail(m.emailCampaignsImageUploadFailed({}, { locale })))
+    Effect.as(Result.fail(m.emailsEditorImageUploadFailed({}, { locale })))
   );
