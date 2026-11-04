@@ -2,10 +2,12 @@ import { expect, test } from "bun:test";
 import {
   DotyposCustomerIdSchema,
   DotyposReservationIdSchema,
+  DotyposService,
 } from "@deskohub/dotypos";
 import type { DiscountGroup } from "@deskohub/dotypos/generated";
 import { Temporal } from "@js-temporal/polyfill";
-import { Effect } from "effect";
+import { Effect, Layer, Logger, Tracer } from "effect";
+import { HttpClient } from "effect/unstable/http";
 import {
   hasPreviousPaidBooking,
   hasPriorConfirmedDotyposBooking,
@@ -15,6 +17,7 @@ import { workspaceE2ETimeouts } from "../timeouts";
 import {
   cancelDotyposReservation,
   dotyposTimestampMatches,
+  getDotyposLayer,
   readDotyposReservationStatus,
   selectE2EDotyposDiscountGroup,
   waitForCancelledDotyposReservationStatuses,
@@ -276,6 +279,110 @@ test("the reservation-transition fixture does not leave unknown confirmed referr
     server.stop(true);
   }
 }, 20_000);
+
+test("Dotypos service logs and request spans stay out of E2E output", async () => {
+  const reservationId = DotyposReservationIdSchema.make("987654321012345678");
+  const server = Bun.serve({
+    port: 0,
+    fetch: (request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") {
+        return Response.json({ accessToken: "access-token" });
+      }
+      if (request.method === "DELETE") {
+        return new Response(null, { status: 200 });
+      }
+      return new Response("Not found", { status: 404 });
+    },
+  });
+
+  try {
+    const config: DatasourceConfig = {
+      databaseUrl: "postgres://localhost/fake",
+      databaseUrlUnpooled: "postgres://localhost/fake",
+      dotypos: {
+        apiTimeout: 1_000,
+        apiUrl: `http://127.0.0.1:${server.port}`,
+        branchId: "11111111",
+        clientId: "e2e-client",
+        clientSecret: "e2e-client-secret",
+        cloudId: "cloud-id",
+        employeeId: "22222222",
+        refreshToken: "e2e-refresh-token",
+      },
+      expectedCurrency: "CZK",
+      nexiApiOrigin: "https://xpaysandbox.nexigroup.com",
+      timeouts: workspaceE2ETimeouts,
+    };
+    const cancel = Effect.gen(function* () {
+      const dotypos = yield* DotyposService;
+      yield* dotypos.cancelReservation(reservationId);
+    });
+    const captureOutput = async (
+      run: (captureLogs: Layer.Layer<never>) => Effect.Effect<void, unknown>
+    ) => {
+      const logLines: string[] = [];
+      const spanValues: string[] = [];
+      const captureLogger = Logger.make((options) => {
+        logLines.push(Logger.formatLogFmt.log(options));
+      });
+      const tracer = Tracer.make({
+        span: (options) => ({
+          _tag: "Span" as const,
+          name: options.name,
+          spanId: "test-span-id",
+          traceId: "test-trace-id",
+          parent: options.parent,
+          annotations: options.annotations,
+          attributes: new Map<string, unknown>(),
+          links: options.links,
+          sampled: true,
+          kind: options.kind,
+          status: { _tag: "Started", startTime: 0n } as Tracer.SpanStatus,
+          end: () => {},
+          attribute: (_key, value) => {
+            spanValues.push(String(value));
+          },
+          event: (name, _startTime, attributes) => {
+            spanValues.push(name, JSON.stringify(attributes ?? {}));
+          },
+          addLinks: () => {},
+        }),
+      });
+      await Effect.runPromise(
+        run(Logger.layer([captureLogger])).pipe(
+          Effect.provide(Layer.succeed(Tracer.Tracer, tracer))
+        )
+      );
+      return { logLines, spanValues };
+    };
+    const carriesReservationId = (values: readonly string[]) =>
+      values.some((value) => value.includes(reservationId));
+
+    // Control: the service's own logs and request spans carry the ID.
+    const serviceOutput = await captureOutput((captureLogs) =>
+      cancel.pipe(
+        Effect.provide(captureLogs),
+        Effect.provideService(HttpClient.TracerDisabledWhen, () => false),
+        Effect.provide(getDotyposLayer(config))
+      )
+    );
+    expect(carriesReservationId(serviceOutput.logLines)).toBe(true);
+    expect(carriesReservationId(serviceOutput.spanValues)).toBe(true);
+
+    // The runner's loggers and tracer receive none of it.
+    const runnerOutput = await captureOutput((captureLogs) =>
+      cancel.pipe(
+        Effect.provide(getDotyposLayer(config)),
+        Effect.provide(captureLogs)
+      )
+    );
+    expect(runnerOutput.logLines).toEqual([]);
+    expect(carriesReservationId(runnerOutput.spanValues)).toBe(false);
+  } finally {
+    server.stop(true);
+  }
+});
 
 test("matches ISO Dotypos timestamps to the selected meeting-room instant", () => {
   expect(

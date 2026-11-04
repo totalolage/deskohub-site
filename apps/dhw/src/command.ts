@@ -120,7 +120,7 @@ const versionCommand = Command.make("version", {}, () =>
   )
 ).pipe(
   Command.withDescription(
-    "Show CLI version and build target; shared administration contracts ship with this version"
+    "Show CLI version and build target for the bundled administration contracts"
   )
 );
 

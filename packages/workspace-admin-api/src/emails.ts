@@ -56,6 +56,7 @@ export const EmailValueDefinition = Schema.Struct({
   source: Schema.Union([EmailCustomerSelection, EmailDiscountSelection]),
   fallback: Schema.optionalKey(Schema.Record(key, Schema.String)),
   customerShape: Schema.optionalKey(EmailCustomerField),
+  customerSortShape: Schema.optionalKey(EmailCustomerField),
 });
 export type EmailValueDefinition = typeof EmailValueDefinition.Type;
 
@@ -178,6 +179,7 @@ export const EmailDraft = Schema.Struct({
         name: Schema.optionalKey(Schema.String),
         source: Schema.optionalKey(draftSource),
         customerShape: Schema.optionalKey(EmailCustomerField),
+        customerSortShape: Schema.optionalKey(EmailCustomerField),
         fallback: Schema.optionalKey(Schema.Record(key, Schema.String)),
       })
     )
@@ -220,7 +222,25 @@ export const emailDocumentForPublication = (
           values: document.values.map((definition) => {
             if (definition.source.kind !== "customer") return definition;
             const shape = selectedEmailCustomerShape(definition.source);
-            return shape ? { ...definition, customerShape: shape } : definition;
+            const selected = emailCustomerFieldAtPath(
+              emailCustomerFieldCatalogue,
+              definition.source.path,
+              { inheritPresence: false }
+            );
+            const sortShape =
+              definition.source.sort && selected?.kind === "list"
+                ? emailCustomerFieldAtPath(
+                    selected.element,
+                    definition.source.sort.path
+                  )
+                : undefined;
+            return shape
+              ? {
+                  ...definition,
+                  customerShape: shape,
+                  ...(sortShape ? { customerSortShape: sortShape } : {}),
+                }
+              : definition;
           }),
         })),
         encode: SchemaGetter.transform((document) => document),

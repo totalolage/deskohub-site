@@ -53,8 +53,8 @@ const everyone = {
 describe.skipIf(!database)("AutomationTimerPlanning on Postgres", () => {
   const postgres = database!;
   const campaignIds: CampaignId[] = [];
-  const layer = AutomationTimerPlanning.Default.pipe(
-    Layer.provide(postgres.layer)
+  const layer = Layer.suspend(() =>
+    AutomationTimerPlanning.Default.pipe(Layer.provide(postgres.layer))
   );
   const plan = (when = at) =>
     Effect.runPromise(

@@ -23,6 +23,7 @@ import {
   getMeetingRoomAvailabilityQuery,
   type WorkspaceAvailability,
 } from "@/features/reservation/workspace-availability";
+import { ReviewAccounts } from "@/features/review-accounts";
 import { CustomerLastReservationService } from "./customer-last-reservation.service";
 import {
   AvailabilityQueryInvalid,
@@ -189,6 +190,7 @@ describe("loadReservationCheckoutAccount", () => {
   const originalResolverLive = CustomerAccountResolver.Live;
   const originalLastReservationsLive = CustomerLastReservationService.Live;
   const originalMarketingConsentsLive = MarketingConsentLedger.Live;
+  const originalReviewAccountsLive = ReviewAccounts.Live;
 
   CustomerAccountContactService.Live = Layer.mock(
     CustomerAccountContactService,
@@ -207,6 +209,9 @@ describe("loadReservationCheckoutAccount", () => {
   MarketingConsentLedger.Live = Layer.mock(MarketingConsentLedger, {
     status: () => Effect.succeed("absent"),
   });
+  ReviewAccounts.Live = Layer.mock(ReviewAccounts, {
+    isReviewAccount: () => Effect.succeed(false),
+  });
 
   beforeEach(() => {
     currentAccount = Effect.succeed({ status: "linked", ...account });
@@ -224,6 +229,7 @@ describe("loadReservationCheckoutAccount", () => {
     CustomerAccountResolver.Live = originalResolverLive;
     CustomerLastReservationService.Live = originalLastReservationsLive;
     MarketingConsentLedger.Live = originalMarketingConsentsLive;
+    ReviewAccounts.Live = originalReviewAccountsLive;
   });
 
   test("reads a signed-out visitor without loading a profile", async () => {

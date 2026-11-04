@@ -1448,6 +1448,15 @@ export class AdministrationService extends Context.Service<
       AdministrationCustomerActivity,
       EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
     >;
+    /** Same bounded history as the dashboard, failing instead of degrading provider reads. */
+    readonly loadCustomerActivityStrict: (
+      customerId: DotyposCustomerId
+    ) => Effect.Effect<
+      AdministrationCustomerActivity,
+      | EffectDrizzleQueryError
+      | WorkspaceReservationDetailsMalformedError
+      | AdministrationListSourceUnavailableError
+    >;
     readonly loadCustomerReservationActivity: (
       customerId: DotyposCustomerId
     ) => Effect.Effect<
@@ -2858,7 +2867,10 @@ export class AdministrationService extends Context.Service<
 
       const loadCustomerActivity = Effect.fn(
         "AdministrationService.loadCustomerActivity"
-      )(function* (customerId: DotyposCustomerId) {
+      )(function* <E = never>(
+        customerId: DotyposCustomerId,
+        policy: ProviderFailurePolicy<E> = degradeOnProviderFailure
+      ) {
         const { attemptRowsWithSentinel, marketingConsentRows, recentRows } =
           yield* Effect.all(
             {
@@ -2951,7 +2963,7 @@ export class AdministrationService extends Context.Service<
           revenueRows,
         } = yield* Effect.all(
           {
-            reservations: enrichRows(rows),
+            reservations: enrichRows(rows, undefined, policy),
             reservationCountRows: db
               .select({ value: count() })
               .from(workspaceReservations)
@@ -3410,6 +3422,11 @@ export class AdministrationService extends Context.Service<
         exportCustomers,
         loadCustomerReservations,
         loadCustomerActivity,
+        loadCustomerActivityStrict: Effect.fn(
+          "AdministrationService.loadCustomerActivityStrict"
+        )((customerId) =>
+          loadCustomerActivity(customerId, failOnProviderFailure)
+        ),
         loadCustomerReservationActivity,
         loadReservationActivity,
         listOrders: paymentAdministration.listOrders,
