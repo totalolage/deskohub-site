@@ -1,7 +1,9 @@
+import { writeFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 import { m } from "@/features/i18n";
 import { captureAccountReview } from "../account/review-screenshots";
 import { dismissLegalCookieConsent } from "../legal-cookie-consent";
+import { watchPageDiagnostics } from "../page-diagnostics";
 import { enablePreviewAccess } from "../preview-access";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
@@ -41,35 +43,62 @@ const cookieCategoryTitles = {
   preferences: m.cookieSettingsPreferencesTitle({}, { locale }),
 } as const;
 
+const anonymousRenderTest = test.extend<{ navigationDiagnostics: undefined }>({
+  navigationDiagnostics: [
+    async ({ page }, use, testInfo) => {
+      const diagnostics = watchPageDiagnostics(page, {
+        Documents: (_url, type) => type === "document",
+        "App scripts": (url, type) =>
+          type === "script" && url.pathname.startsWith("/_next/static/"),
+        "Temporal polyfill": (url) => url.pathname === "/polyfills/temporal.js",
+        "Other scripts": (_url, type) => type === "script",
+        "Other resources": () => true,
+      });
+      await use(undefined);
+      // Fixture teardown runs after a whole-test timeout, before page disposal.
+      if (testInfo.status !== testInfo.expectedStatus) {
+        const path = testInfo.outputPath(
+          "anonymous-navigation-diagnostics.json"
+        );
+        await writeFile(path, JSON.stringify(diagnostics.summary(), null, 2));
+        await testInfo.attach("anonymous-navigation-diagnostics", {
+          path,
+          contentType: "application/json",
+        });
+      }
+    },
+    { auto: true },
+  ],
+});
+
 test.beforeEach(async ({ baseURL, context }) => {
   await preparePublicLegalBrowser(context);
   await enablePreviewAccess(context, baseURL);
 });
 
 for (const viewport of renderViewports) {
-  test(`renders anonymous public account legal at ${viewport.name}`, async ({
-    baseURL,
-    context,
-    page,
-  }) => {
-    await expectNoAuthSessionCookie(context);
-    await page.setViewportSize(viewport);
-    await page.goto(publicAccountLegalPath, {
-      timeout: workspaceE2ETimeouts.browserNavigation,
-      waitUntil: "load",
-    });
-    await expect(page).toHaveURL(
-      new URL(publicAccountLegalPath, requireBaseUrl(baseURL)).toString()
-    );
+  anonymousRenderTest(
+    `renders anonymous public account legal at ${viewport.name}`,
+    async ({ baseURL, context, page }) => {
+      await expectNoAuthSessionCookie(context);
+      await page.setViewportSize(viewport);
+      await page.goto(publicAccountLegalPath, {
+        timeout: workspaceE2ETimeouts.browserNavigation,
+        waitUntil: "load",
+      });
+      await expect(page).toHaveURL(
+        new URL(publicAccountLegalPath, requireBaseUrl(baseURL)).toString()
+      );
 
-    await dismissLegalCookieConsent(page, locale);
-    await expectPublicAccountLegal(page);
-    await captureAccountReview(
-      page,
-      reviewDestination(baseURL),
-      publicLegalReviewTargetByViewport[viewport.name]
-    );
-  });
+      await dismissLegalCookieConsent(page, locale);
+      await expectPublicAccountLegal(page);
+      await captureAccountReview(
+        page,
+        reviewDestination(baseURL),
+        publicLegalReviewTargetByViewport[viewport.name]
+      );
+    }
+  );
 }
 
 test("redirects legacy cookie settings to public account legal", async ({

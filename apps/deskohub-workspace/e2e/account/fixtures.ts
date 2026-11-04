@@ -20,6 +20,10 @@ import {
   cancelDotyposReservation,
   getDotyposLayer,
 } from "../integrations/dotypos";
+import {
+  recordReservationIntent,
+  recordReservationResult,
+} from "../reservation-intents";
 import { assert, log } from "../runtime";
 
 const syntheticBilling = {
@@ -215,6 +219,11 @@ const createSyntheticReservationAt = (
     }
     const startsAt = new Date(input.startsAtMillis);
     const endsAt = new Date(input.startsAtMillis + 2 * 60 * 60 * 1000);
+    const intent = yield* recordReservationIntent({
+      owner: { customerId: input.customerId },
+      startDate: startsAt,
+      endDate: endsAt,
+    });
     const reservation = yield* dotypos.createReservation({
       customerId: input.customerId,
       endDate: endsAt,
@@ -223,6 +232,7 @@ const createSyntheticReservationAt = (
       status: "CONFIRMED",
       tableId: table.id,
     });
+    yield* recordReservationResult(intent, { reservationId: reservation.id });
     log("Synthetic Dotypos reservation created");
     return {
       endsAt: Temporal.Instant.fromEpochMilliseconds(endsAt.getTime()),
