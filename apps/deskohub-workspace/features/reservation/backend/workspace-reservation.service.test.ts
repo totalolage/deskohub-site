@@ -6,7 +6,7 @@ import { DotyposService } from "@deskohub/dotypos";
 import type { Customer, Reservation, Table } from "@deskohub/dotypos/generated";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer, Option } from "effect";
-import { SeatingMapFeatureFlagServiceMock } from "@/features/feature-flags/backend/seating-map-feature-flag.service.mock";
+import { SeatingMapReleaseGate } from "@/features/reservation/backend/seating-map-release-gate";
 import {
   type WorkspaceReservation,
   WorkspaceReservationRepository,
@@ -120,9 +120,7 @@ const detailsEffect = (input: {
           Layer.mergeAll(
             Layer.mock(WorkspaceReservationRepository, repository),
             Layer.mock(DotyposService, dotypos),
-            SeatingMapFeatureFlagServiceMock({
-              isEnabled: Effect.succeed(input.seatingMapEnabled ?? true),
-            })
+            SeatingMapReleaseGate.fromDecision(input.seatingMapEnabled ?? true)
           )
         )
       )
@@ -162,9 +160,7 @@ const accessTargetEffect = (input: {
               ),
               getTables: mock(() => Effect.succeed([])),
             }),
-            SeatingMapFeatureFlagServiceMock({
-              isEnabled: Effect.succeed(false),
-            })
+            SeatingMapReleaseGate.fromDecision(false)
           )
         )
       )

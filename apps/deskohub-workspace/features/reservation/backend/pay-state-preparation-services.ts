@@ -1,18 +1,17 @@
 import { EmailRecipientDomainService } from "@deskohub/email/backend/recipient-domain.service";
 import { Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
+import { CheckoutAnalytics } from "@/features/checkout/backend/analytics";
 import { CheckoutPricingService } from "@/features/checkout/backend/checkout";
 import { ReservationHoldCleanupScheduleService } from "@/features/checkout/backend/holds";
 import { WorkspaceTableAssignmentService } from "@/features/checkout/backend/reservation";
-import { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend";
 import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
-import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
+import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
 import { ReferralService } from "@/features/referrals";
-import { ReferralFeatureFlagRequest } from "@/features/referrals/referral-feature-flag.server";
+import { ReferralReleaseGateRequest } from "@/features/referrals/referral-release-gate.server";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { ReviewAccounts, ReviewSandbox } from "@/features/review-accounts";
-import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 
 /**
@@ -35,11 +34,9 @@ export const payStatePreparationServices = Layer.mergeAll(
     Layer.provide(WorkspaceDotyposLayer)
   ),
   ReservationHoldCleanupScheduleService.Live,
-  PostHogEventService.Live,
+  CheckoutAnalytics.Live,
   WorkspaceDotyposLayer,
   CheckoutPricingService.Live,
   ReferralService.Live,
-  OfficeReservationFeatureFlagService.Default.pipe(
-    Layer.provide(WorkspaceFeatureFlagService.Default)
-  )
-).pipe(Layer.provideMerge(ReferralFeatureFlagRequest));
+  OfficeReleaseGate.Live
+).pipe(Layer.provideMerge(ReferralReleaseGateRequest));

@@ -43,7 +43,8 @@ const decodePlainDate = Schema.decodeUnknownSync(plainDateStringSchema);
 const originalFetch = globalThis.fetch;
 
 mock.module("@/features/cookie-consent", () => ({
-  useCookieConsent: () => ({ isAccepted: () => false }),
+  useVisitorConsent: () => false,
+  visitorConsent: { accepts: () => false },
 }));
 
 mock.module("@/features/reservation/actions/get-advertised-price", () => ({

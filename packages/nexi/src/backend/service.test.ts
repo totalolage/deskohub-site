@@ -14,7 +14,8 @@ import {
   type PaymentVerificationResult,
 } from "../types";
 import { mapNexiClientError, NexiGeneratedClient } from "./api";
-import { getNexiRequestWorstCaseDuration, NexiService } from "./service";
+import { getNexiRequestWorstCaseDuration } from "./request-policy";
+import { NexiService } from "./service";
 
 const adaEmail = testEmailAddress("ada");
 const mustNotLeakEmail = testEmailAddress("must-not-leak");

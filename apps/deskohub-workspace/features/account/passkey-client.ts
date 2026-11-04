@@ -4,7 +4,10 @@ import { Option, Schema } from "effect";
 import { getSignInDestination } from "@/features/account/routes";
 import type { Locale } from "@/features/i18n";
 import { authClient } from "./auth.client";
-import { forgetEmailSignInRequest } from "./email-sign-in-request";
+import {
+  completeBrowserSignIn,
+  leaveForSignInDestination,
+} from "./browser-sign-in-completion";
 import { rememberPasskeyOnThisBrowser } from "./passkey-prompt";
 import { requestPasskeySignIn } from "./passkey-sign-in";
 import type {
@@ -14,7 +17,6 @@ import type {
   PasskeyCreationResult,
   PasskeySignInResult,
 } from "./passkeys";
-import { recordSignInCompletion } from "./sign-in-analytics";
 
 /*
  * Maps Better Auth passkey responses onto the screens' outcome unions. The
@@ -139,17 +141,13 @@ export const signInWithPasskey = async ({
   );
   const result = toPasskeySignInResult(response);
   if (result !== "signed-in") return result;
-  const accountId = "data" in response ? response.data?.user.id : undefined;
-  if (accountId !== undefined) rememberPasskeyOnThisBrowser(accountId);
-  recordSignInCompletion("passkey");
-  // A signed-in tab must not show a pending code step after a sign-out.
-  forgetEmailSignInRequest();
+  completeBrowserSignIn({
+    method: "passkey",
+    accountId: "data" in response ? response.data?.user.id : undefined,
+  });
   if (signal?.aborted) return "cancelled";
-  try {
-    window.location.replace(getSignInDestination(locale, returnTo));
-  } catch {
-    // The document is already leaving or the browser blocked navigation.
-  }
+  // A blocked navigation leaves the signed-in customer on the page.
+  leaveForSignInDestination(getSignInDestination(locale, returnTo));
   return result;
 };
 

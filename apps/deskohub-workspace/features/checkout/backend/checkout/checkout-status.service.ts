@@ -21,10 +21,6 @@ import {
   getWorkspaceTableMap,
   type WorkspaceTableMap,
 } from "@/features/checkout/workspace-table-map";
-import {
-  SeatingMapFeatureFlagService,
-  WorkspaceFeatureFlagService,
-} from "@/features/feature-flags/backend";
 import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
 import { SharedAvailabilityInventoryLive } from "@/features/reservation/backend/availability-inventory-cache.server";
 import {
@@ -38,6 +34,7 @@ import {
   getOpenSpaceTableNames,
   getReservationTableName,
 } from "@/features/reservation/backend/reservation-table";
+import { SeatingMapReleaseGate } from "@/features/reservation/backend/seating-map-release-gate";
 import type { WorkspaceReservationDetailsMalformedError } from "@/features/reservation/backend/stored-reservation-details.server";
 import {
   type WorkspaceReservation,
@@ -407,7 +404,7 @@ const implementation = Effect.gen(function* () {
   const records = yield* ReservationRecords;
   const inventory = yield* AdvisoryAvailabilityInventory;
   const finalization = yield* ProviderPaymentFinalizationService;
-  const seatingMapFeatureFlag = yield* SeatingMapFeatureFlagService;
+  const seatingMap = yield* SeatingMapReleaseGate;
 
   const reconstructSummary = Effect.fn(
     "CheckoutStatusService.reconstructSummary"
@@ -459,7 +456,7 @@ const implementation = Effect.gen(function* () {
               ),
               Effect.orElseSucceed(() => [])
             ),
-            seatingMapFeatureFlag.isEnabled,
+            seatingMap.isOpen,
           ],
           { concurrency: "inherit" }
         );
@@ -951,11 +948,7 @@ export class CheckoutStatusService extends Context.Service<
       Layer.provide(WorkspaceDatabase.Default),
       Layer.provide(WorkspaceDotyposLayer),
       Layer.provide(SharedAvailabilityInventoryLive),
-      Layer.provide(
-        SeatingMapFeatureFlagService.Default.pipe(
-          Layer.provide(WorkspaceFeatureFlagService.Default)
-        )
-      )
+      Layer.provide(SeatingMapReleaseGate.Live)
     );
 
   static Live = this.withRecords(ReservationRecords.Live);

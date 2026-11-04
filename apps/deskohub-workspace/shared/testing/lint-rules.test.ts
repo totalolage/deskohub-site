@@ -673,6 +673,7 @@ const rules: { name: string; diagnostic: string; module: string; cases: Row[] }[
       ["permits the browser runner", 'export const refresh = () => Effect.void.pipe(runWorkspaceBrowserEffect("account.refresh"));\n', false],
       ["permits the server runner", 'export const refresh = () => Effect.void.pipe(runWorkspaceEffect("account.refresh"));\n', false],
       ["permits test modules", 'export const refresh = () => Effect.runPromise(Effect.void);\n', false, `${account}/refresh-identity.test.ts`],
+      ["permits React server fixtures", 'export const refresh = () => Effect.runPromise(Effect.void);\n', false, `${account}/refresh-identity.rsc-fixture.ts`],
     ],
   },
   {
@@ -684,7 +685,8 @@ const rules: { name: string; diagnostic: string; module: string; cases: Row[] }[
       ["permits the browser runner", 'import { NextEffect } from "@deskohub/next-effect";\n', false, browserRunner],
       ["permits the server runner", 'import { NextEffect } from "@deskohub/next-effect";\n', false, "apps/deskohub-workspace/shared/backend/workspace-effect.ts"],
       ["permits the standalone runner", 'import { NextEffect } from "@deskohub/next-effect";\n', false, "apps/deskohub-workspace/shared/backend/standalone-workspace-effect.ts"],
-      ["permits the action boundary", 'import { EffectAction } from "@deskohub/next-effect/effect-action";\n', false, "apps/deskohub-workspace/shared/backend/workspace-action.ts"],
+      ["permits the shared-layer module", 'import { NextEffect } from "@deskohub/next-effect";\n', false, "apps/deskohub-workspace/shared/backend/share-across-requests.ts"],
+      ["rejects the action boundary", 'import { EffectAction } from "@deskohub/next-effect/effect-action";\n', true, "apps/deskohub-workspace/shared/backend/workspace-action.ts"],
     ],
   },
   {

@@ -1,6 +1,9 @@
-import { Effect, type Layer } from "effect";
-import { execute } from "./internal/executor";
-import { makeSharedLayerProvider } from "./internal/shared-layer";
+import { Effect, type Exit, type Layer } from "effect";
+import { type ExecuteOptions, executeExit, settle } from "./internal/executor";
+import {
+  makeSharedLayerProvider,
+  shareAcrossRequests,
+} from "./internal/shared-layer";
 
 interface NextEffectBaseOptions {
   readonly mapError?: (error: unknown) => unknown;
@@ -21,28 +24,53 @@ export type NextEffectOptions<R = never, LE = never> =
   | NextEffectRunnableOptions
   | NextEffectLayerOptions<R, LE>;
 
+interface NextEffectRunOptions {
+  /** Interrupts the run when it aborts. */
+  readonly signal?: AbortSignal;
+}
+
 export interface NextEffectRuntime<R> {
+  /**
+   * Resolves with the Effect's value. Rejects as `NextEffect.settle` throws,
+   * for a failure of the run or of building the runtime's layer alike.
+   */
   readonly run: <A, E>(
     effect: Effect.Effect<A, E, R>,
-    options?: { readonly signal?: AbortSignal }
+    options?: NextEffectRunOptions
   ) => Promise<A>;
+  /**
+   * Resolves with the run's `Exit`, after `mapError`. A failure to build the
+   * runtime's layer is a failure of this `Exit` too. Never rejects.
+   */
+  readonly runExit: <A, E>(
+    effect: Effect.Effect<A, E, R>,
+    options?: NextEffectRunOptions
+  ) => Promise<Exit.Exit<A, unknown>>;
   readonly page: <Props, A, E>(
     component: (props: Props) => Effect.Effect<A, E, R>
   ) => (props: Props) => Promise<A>;
 }
 
 function makeRuntime<R>(
-  runEffect: <A, E>(
-    effect: Effect.Effect<A, E, R>,
-    options?: { readonly signal?: AbortSignal }
-  ) => Promise<A>
+  runExit: NextEffectRuntime<R>["runExit"]
 ): NextEffectRuntime<R> {
+  const run: NextEffectRuntime<R>["run"] = (effect, options) =>
+    runExit(effect, options).then(settle);
+
   return {
-    run: runEffect,
-    page: (component) => (props) =>
-      runEffect(Effect.suspend(() => component(props))),
+    run,
+    runExit,
+    page: (component) => (props) => run(Effect.suspend(() => component(props))),
   };
 }
+
+const getExecuteOptions = (
+  options: NextEffectBaseOptions,
+  runOptions: NextEffectRunOptions | undefined
+): ExecuteOptions<unknown> => ({
+  mapError: options.mapError,
+  signal: runOptions?.signal,
+});
 
 function make(options?: NextEffectRunnableOptions): NextEffectRuntime<never>;
 function make<R, LE>(
@@ -57,21 +85,17 @@ function make<R, LE>(
       options.memoMap
     );
     return makeRuntime<R>((effect, runOptions) =>
-      execute(provideLayer(effect), {
-        mapError: options.mapError,
-        signal: runOptions?.signal,
-      })
+      executeExit(provideLayer(effect), getExecuteOptions(options, runOptions))
     );
   }
 
   return makeRuntime<never>((effect, runOptions) =>
-    execute(effect, {
-      mapError: options.mapError,
-      signal: runOptions?.signal,
-    })
+    executeExit(effect, getExecuteOptions(options, runOptions))
   );
 }
 
 export const NextEffect = {
   make,
+  settle,
+  shareAcrossRequests,
 };

@@ -22,7 +22,7 @@ posthog-cli api call --json query-logs \
 
 `posthog-cli` 0.8.4 advertises `hasMore` and `nextCursor` but returns only `results`. When `logs-count` exceeds 1,000, split the date range until each `query-logs` call is complete.
 
-Keep the production filter: Logs carry both `preview` and `production` values in `deployment.environment.name`. `severityLevels` matches lowercase `severity_text` exactly. The Workspace logger sets these in [`workspace-service.ts`](../../../../apps/deskohub-workspace/shared/backend/observability/workspace-service.ts), [`censorship.ts`](../../../../apps/deskohub-workspace/shared/backend/logging/censorship.ts), and [`posthog-otel.ts`](../../../../apps/deskohub-workspace/shared/backend/logging/posthog-otel.ts). Each row's stable `uuid` goes in the GitHub issue marker.
+Keep the production filter: Logs carry both `preview` and `production` values in `deployment.environment.name`. `severityLevels` matches lowercase `severity_text` exactly. The Workspace logger sets these in [`telemetry-sinks.ts`](../../../../apps/deskohub-workspace/shared/backend/observability/telemetry-sinks.ts) and [`censorship.ts`](../../../../apps/deskohub-workspace/shared/backend/logging/censorship.ts). Each row's stable `uuid` goes in the GitHub issue marker.
 
 ## Query thrown errors
 

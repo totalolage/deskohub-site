@@ -5,6 +5,22 @@ Code: `features/account/analytics-identity.ts`,
 `features/cookie-consent/components/posthog-analytics.tsx`, and
 `features/cookie-consent/utils/` (`posthog-config.ts`, `posthog-identity.ts`).
 
+## Visitor consent
+
+- `features/cookie-consent/visitor-consent.ts` owns browser consent: read it
+  through `visitorConsent.accepts` or `useVisitorConsent` (false on the server
+  and during hydration), and listen with `visitorConsent.subscribe`, never by
+  parsing `cc_cookie` or adding `consentUpdated`, `storage`, or focus
+  listeners. The browser and the server (`shared/backend/analytics/visitor-identity.ts`)
+  share the strict reader in `shared/utils/consent-cookie.ts`: a category
+  counts only when every cookie copy is well-formed and accepts it.
+- `ConsentBanner` alone runs vanilla-cookieconsent and maps categories to
+  Google consent mode (`utils/google-consent-mode.ts`). After each saved
+  consent it queues one `gtag` update per optional category, then fires the
+  synchronous `consentUpdated` app event and cross-tab ping; the
+  `consent_update` dataLayer event follows in a microtask, for first consent
+  and changes only. Externally managed tags rely on that order.
+
 ## Account identity contract
 
 - The account analytics boundary publishes only `pending`, `unavailable`,
@@ -65,7 +81,7 @@ Preview (including CI E2E), development, and production share one PostHog
 project so feature flags live in one place. Tags, not separate projects, set
 non-production traffic apart:
 
-- Every server event (`posthog-event.service.ts`), browser event, and browser
+- Every server event (`server-analytics.service.ts`), browser event, and browser
   log carries `deployment.environment.name`, set to the `VERCEL_ENV` value
   (`production`, `preview`, or `development`). The root layout passes the
   server's `env.VERCEL_ENV` to `ConsentAwareAnalytics` as
@@ -93,13 +109,19 @@ non-production traffic apart:
 - Pause analytics while auth is `pending` or `unavailable`, and don't repeat
   resets while authority is uncertain. A failed logout refreshes authority and
   doesn't reset early.
-- Callers use `beginAnalyticsAccountTransition`,
-  `completeAnalyticsAccountSignOut`, and `refreshAnalyticsAccountIdentity`.
-  A plain refresh keeps an unresolved mutation barrier, so focus refreshes and
-  `SessionRefresh` can't resume analytics mid-mutation. A failed logout or
-  deletion, or a completed outcome that didn't delete the account, calls
-  `refreshAnalyticsAccountIdentity({ settleTransition: true })`. Confirmed
-  success calls `completeAnalyticsAccountSignOut`.
+- Account exits go through `features/account/account-exit.ts`, which owns
+  the transition order. Sign-out calls `signOutOfAccount` and leaves the page
+  only on `"signed-out"`. Deletion calls `beginAccountExit()` on confirm, then
+  the handle's `left()` on a deleted outcome, before leaving the page, or
+  `stayed()` for any other outcome or a failed request. The first call
+  settles the exit; later calls do nothing. `left` runs
+  `completeAnalyticsAccountSignOut`, and `stayed` runs
+  `refreshAnalyticsAccountIdentity({ settleTransition: true })`. Don't call
+  the analytics transition primitives from components or fixtures.
+- A plain `refreshAnalyticsAccountIdentity()` keeps an unresolved mutation
+  barrier, so focus refreshes and `SessionRefresh` can't resume analytics
+  mid-mutation. It never rejects: a failed refresh publishes `unavailable` and
+  reports its own failure log, so callers neither catch nor report it.
 - Refresh authoritative session state on mount, focus or visibility recovery,
   and cross-tab auth signals. Publish `pending` during the refresh and
   `unavailable` after an authority failure.
@@ -169,8 +191,8 @@ non-production traffic apart:
 
 ## Reservation and payment lifecycle events
 
-`features/checkout/backend/analytics/posthog-lifecycle-events.ts` sends
-`reservation started`, `reservation completed`, `reservation fulfilled`,
+`CheckoutAnalytics` (`features/checkout/backend/analytics/checkout-analytics.service.ts`)
+sends `reservation started`, `reservation completed`, `reservation fulfilled`,
 `reservation abandoned`, `payment started`, `payment completed`,
 `payment failed`, and `payment abandoned` regardless of consent. Their legal
 basis is legitimate interest in measuring the reservation and payment funnel
@@ -182,8 +204,14 @@ Section 2's automated-traffic paragraph also discloses that they carry the
 traffic category and the name of a recognized assistant.
 
 - The distinct ID is the Workspace reservation ID, and every event sets
-  `$process_person_profile: false`. The event UUID is
-  `<reservation or payment attempt ID>:<event>`.
+  `$process_person_profile: false`. The capture hands `posthog-node` the
+  event UUID `<reservation or payment attempt ID>:<event>`, but the SDK sends
+  a random UUIDv7 in place of any value that isn't a UUID, so PostHog doesn't
+  deduplicate a repeated capture by it.
+- The event names live in `features/checkout/reservation-lifecycle-events.ts`,
+  which the administration's reservation history
+  (`features/administration/posthog-reservation-history.ts`) reads them back
+  by. Add or rename an event there, never as a string in either module.
 - Allowed properties: `reservation_id`; on payment events also
   `payment_attempt_id`, `revenue` (major units), `currency`, and `provider`;
   `failure_reason` on `payment failed`; `agent_category` and, when
@@ -216,6 +244,30 @@ traffic category and the name of a recognized assistant.
   `distinct_id` once the deletion has run (PostHog deletes event data
   asynchronously, on weekends on Cloud). Recheck after the reservation
   settles, since an open reservation can still emit events.
+
+## Server capture
+
+- Server events go out only through typed domain operations:
+  `CheckoutAnalytics` and `AgentTrafficEvents`
+  (`shared/backend/agent-traffic/agent-traffic-events.ts`). Their inputs
+  take only the identifiers the event may carry. Each wraps
+  `ServerAnalytics` (`shared/backend/analytics/server-analytics.service.ts`),
+  whose subject policy sets the distinct ID, UUID, agent fields,
+  `$session_id`, and `$process_person_profile: false`: a `record` subject
+  (reservation lifecycle), the request's consented `visitor` (skipped
+  without one), or `anonymous` (a random distinct ID per event). Don't call
+  `ServerAnalytics` from anywhere else; add a domain operation instead.
+- Capture never fails the work it's part of and never waits for PostHog: it
+  queues the event on one `posthog-node` client per process
+  (`analytics-event-delivery.service.ts`), separate from the feature-flag
+  client. Every Workspace run's telemetry flush sends the queue: after the
+  response for pages, actions, routes, and web handlers, and before settling
+  for tasks and work that already runs after the response, such as agent
+  traffic events. The client's `waitUntil` hook keeps the invocation alive
+  until its debounced flush for an event a flush misses.
+- In tests, provide `recordCheckoutAnalytics()` or `recordServerAnalytics()`
+  (the adjacent `*.service.mock.ts` files): the real subject policy over a
+  delivery that records each event as PostHog would receive it.
 
 ## Agent traffic
 

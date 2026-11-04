@@ -1,9 +1,8 @@
 import "../../shared/polyfills/temporal";
 
-import { test } from "@playwright/test";
-import { Cause, Exit } from "effect";
+import { Cause, Effect, Exit } from "effect";
 import { log } from "../runtime";
-import { makeAgentEvalRuntime, makeAgentEvalSettings } from "./environment";
+import { agentEvalTest as test } from "./fixtures";
 import {
   formatAgentEvalSummaryMarkdown,
   summarizeAgentEvalResults,
@@ -19,25 +18,24 @@ import {
 // Teardown of the setup project: runs after every eval, passed or failed.
 // Each run cleans up after itself; this repeats the idempotent cleanup for
 // runs that were interrupted, then writes the run set's results table.
-test("reconcile run accounts and summarize results", async () => {
+test("reconcile run accounts and summarize results", async ({
+  agentEvalSettings: settings,
+  runEffect,
+}) => {
   const runSet = await readAgentEvalRunSet().catch(() => undefined);
   if (!runSet) return;
-  const settings = makeAgentEvalSettings();
-  const runtime = makeAgentEvalRuntime(settings.datasourceConfig);
   const failures: unknown[] = [];
-  try {
-    for (const ownerId of await listAgentEvalJournalOwners(runSet.runSetId)) {
-      const exit = await runtime.runPromiseExit(
+  for (const ownerId of await listAgentEvalJournalOwners(runSet.runSetId)) {
+    const exit = await runEffect(
+      Effect.exit(
         reconcileAgentEvalRun(
           settings.datasourceConfig,
           runSet.runSetId,
           ownerId
         )
-      );
-      if (Exit.isFailure(exit)) failures.push(Cause.squash(exit.cause));
-    }
-  } finally {
-    await runtime.dispose();
+      )
+    );
+    if (Exit.isFailure(exit)) failures.push(Cause.squash(exit.cause));
   }
 
   const summary = summarizeAgentEvalResults(

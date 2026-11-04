@@ -39,7 +39,7 @@ If a real response fails generated decoding, fix the OpenAPI schema and regenera
 
 ## Request timeouts
 
-- Prefer waiting for a slow Dotypos answer over failing the flow. The per-request timeout defaults to `dotyposApiTimeoutDefaultMilliseconds` (30 seconds, `@deskohub/dotypos/api-timeout`), and E2E uses the same value. Any budget that wraps a Dotypos call, such as an E2E finalizer, must leave room for at least one full per-request timeout.
+- Prefer waiting for a slow Dotypos answer over failing the flow. The per-request timeout defaults to `dotyposApiTimeoutDefaultMilliseconds` (30 seconds, `@deskohub/dotypos/api-timeout`), and E2E uses the same value. Any budget that wraps a Dotypos call, such as an E2E finalizer, must leave room for at least one full per-request timeout. `getDotyposRequestWorstCase(apiTimeout)` gives `once` (one attempt), `retried` (every retry spent), `sequential(calls, each)` and `pagedLoad(pages)` for such budgets. A paginated list load keeps the pages it has read, so its retries resend only the failed page and share one budget across pages; `pagedLoad` grows with the page count, and an `"unknown"` page count has no finite bound, so cap such a load with its own deadline.
 - A page whose `maxDuration` can't fit the per-request timeout plus retries caps its own Dotypos reads with `Effect.timeoutOrElse` and renders a degraded state. The reservation status page (`maxDuration = 60`) and access page (`maxDuration = 30`) cap theirs at 8 seconds. The cap bounds only the Dotypos reads; later steps, such as Igloohome issuance, can still run past `maxDuration`. Leave the shared default unchanged for these pages.
 
 ## Failure outcomes

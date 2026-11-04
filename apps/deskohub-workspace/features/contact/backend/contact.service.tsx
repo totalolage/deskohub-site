@@ -5,18 +5,16 @@ import {
 } from "@deskohub/email/backend/service";
 import type { EmailMessage } from "@deskohub/email/types/email.types";
 import { Context, Effect, Layer } from "effect";
-import { ContactBusinessEmail } from "@/emails/contact-business";
-import { ContactConfirmationEmail } from "@/emails/contact-confirmation";
-import type { WorkspaceEmailDetail } from "@/emails/workspace-email-detail";
 import { type Locale, m } from "@/features/i18n";
-import { renderWorkspaceEmail } from "@/shared/backend/email/render-react-email";
 import {
   internalWorkspaceEmailRecipientFor,
-  internalWorkspaceEmailSubject,
   workspaceEmailRecipient,
 } from "@/shared/backend/email/workspace-email-recipients";
 import { StorageError } from "@/shared/backend/errors";
-import { workspaceSiteConstants } from "@/shared/utils";
+import {
+  renderContactBusinessEmail,
+  renderContactConfirmationEmail,
+} from "./contact-emails";
 
 interface ContactSubmission {
   name: string;
@@ -33,53 +31,6 @@ export interface IContactService {
     locale: Locale
   ) => Effect.Effect<ContactSubmission, StorageError>;
 }
-
-const businessNotificationLocale: Locale = "cs-CZ";
-
-const formatSubmissionDate = (submittedAt: string, locale: Locale) =>
-  new Date(submittedAt).toLocaleString(locale, {
-    dateStyle: "full",
-    timeStyle: "short",
-    timeZone: workspaceSiteConstants.location.timeZone,
-  });
-
-const getBusinessSubject = (name: string) =>
-  internalWorkspaceEmailSubject(
-    m.contactEmailBusinessSubject(
-      { name },
-      { locale: businessNotificationLocale }
-    )
-  );
-
-const getConfirmationSubject = (locale: Locale) =>
-  m.contactEmailConfirmationSubject({}, { locale });
-
-const createContactEmailDetails = (
-  submission: ContactSubmission,
-  formattedDate: string,
-  locale: Locale
-): WorkspaceEmailDetail[] => [
-  {
-    label: m.contactEmailNameLabel({}, { locale }),
-    value: submission.name,
-  },
-  {
-    label: m.contactEmailEmailLabel({}, { locale }),
-    value: submission.email,
-  },
-  ...(submission.phone
-    ? [
-        {
-          label: m.contactEmailPhoneLabel({}, { locale }),
-          value: submission.phone,
-        },
-      ]
-    : []),
-  {
-    label: m.contactEmailSubmittedAtLabel({}, { locale }),
-    value: formattedDate,
-  },
-];
 
 const toContactStorageError = (locale: Locale) => (cause: EmailSendError) =>
   new StorageError({
@@ -112,35 +63,13 @@ export class ContactService extends Context.Service<
             yield* Effect.annotateLogsScoped({ submission });
             yield* Effect.logInfo("Workspace contact submission prepared");
 
-            const businessSubject = getBusinessSubject(data.name);
-            const businessHeading = m.contactEmailBusinessHeading(
-              {},
-              { locale: businessNotificationLocale }
-            );
-            const businessEmail = yield* renderWorkspaceEmail(
-              <ContactBusinessEmail
-                details={createContactEmailDetails(
-                  submission,
-                  formatSubmissionDate(
-                    submission.submittedAt,
-                    businessNotificationLocale
-                  ),
-                  businessNotificationLocale
-                )}
-                heading={businessHeading}
-                locale={businessNotificationLocale}
-                message={data.message}
-                messageHeading={m.contactEmailMessageHeading(
-                  {},
-                  { locale: businessNotificationLocale }
-                )}
-                preview={businessSubject}
-              />
+            const businessEmail = yield* renderContactBusinessEmail(
+              submission
             ).pipe(Effect.mapError(toContactStorageError(locale)));
             const businessEmailMessage: EmailMessage = {
               from: emailConfig.defaultFrom,
               to: internalWorkspaceEmailRecipientFor(data.email),
-              subject: businessSubject,
+              subject: businessEmail.subject,
               html: businessEmail.html,
               text: businessEmail.text,
               replyTo: {
@@ -177,21 +106,9 @@ export class ContactService extends Context.Service<
               "Workspace contact business email send succeeded"
             );
 
-            const confirmationSubject = getConfirmationSubject(locale);
             yield* Effect.gen(function* () {
-              const confirmationEmail = yield* renderWorkspaceEmail(
-                <ContactConfirmationEmail
-                  body={m.contactEmailCustomerBody({}, { locale })}
-                  followUp={m.contactEmailCustomerFollowUp(
-                    { email: workspaceSiteConstants.contact.infoEmail },
-                    { locale }
-                  )}
-                  heading={m.contactEmailCustomerHeading({}, { locale })}
-                  locale={locale}
-                  message={data.message}
-                  preview={confirmationSubject}
-                />
-              );
+              const confirmationEmail =
+                yield* renderContactConfirmationEmail(submission);
               const confirmationMessage: EmailMessage = {
                 from: emailConfig.defaultFrom,
                 to: {
@@ -199,7 +116,7 @@ export class ContactService extends Context.Service<
                   name: data.name,
                 },
                 replyTo: workspaceEmailRecipient,
-                subject: confirmationSubject,
+                subject: confirmationEmail.subject,
                 html: confirmationEmail.html,
                 text: confirmationEmail.text,
                 tags: ["workspace-contact-confirmation"],

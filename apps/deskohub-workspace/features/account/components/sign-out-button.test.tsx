@@ -11,33 +11,15 @@ import {
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 
-type SignOutResult = {
-  readonly error: null | {
-    readonly message?: string;
-    readonly status?: number;
-  };
-};
+type SignOutOutcome = "signed-out" | "failed";
 
-const analyticsEvents: string[] = [];
-const beginAnalyticsAccountTransition = mock(() => {
-  analyticsEvents.push("begin");
-});
-const completeAnalyticsAccountSignOut = mock(() => {
-  analyticsEvents.push("complete");
-});
-const refreshAnalyticsAccountIdentity = mock(() => Promise.resolve());
-const signOut = mock(
-  (): Promise<SignOutResult> => Promise.resolve({ error: null })
+const events: string[] = [];
+const signOutOfAccount = mock(
+  (): Promise<SignOutOutcome> => Promise.resolve("signed-out")
 );
 
-mock.module("@/features/account/analytics-identity", () => ({
-  beginAnalyticsAccountTransition,
-  completeAnalyticsAccountSignOut,
-  refreshAnalyticsAccountIdentity,
-}));
-
-mock.module("@/features/account/auth.client", () => ({
-  authClient: { signOut },
+mock.module("@/features/account/account-exit", () => ({
+  signOutOfAccount,
 }));
 
 registerWorkspaceComponentTestEnv();
@@ -118,12 +100,9 @@ function restoreNavigation() {
 
 beforeEach(() => {
   window.location.href = "http://localhost/account";
-  analyticsEvents.length = 0;
-  beginAnalyticsAccountTransition.mockClear();
-  completeAnalyticsAccountSignOut.mockClear();
-  refreshAnalyticsAccountIdentity.mockClear();
-  signOut.mockClear();
-  signOut.mockImplementation(() => Promise.resolve({ error: null }));
+  events.length = 0;
+  signOutOfAccount.mockClear();
+  signOutOfAccount.mockImplementation(() => Promise.resolve("signed-out"));
   window.confirm = originalConfirm;
 });
 
@@ -162,25 +141,24 @@ test("rejects a dirty sign-out before auth mutation or navigation", async () => 
   });
 
   expect(confirm).toHaveBeenCalledTimes(1);
-  expect(beginAnalyticsAccountTransition).not.toHaveBeenCalled();
-  expect(signOut).not.toHaveBeenCalled();
+  expect(signOutOfAccount).not.toHaveBeenCalled();
   expect(assigned).toBeNull();
 });
 
 test("allows one unload after deferred sign-out succeeds", async () => {
   const confirm = mock(() => true);
   window.confirm = confirm;
-  let resolveSignOut!: (result: { error: null }) => void;
-  const pendingSignOut = new Promise<{ error: null }>((resolve) => {
+  let resolveSignOut!: (outcome: SignOutOutcome) => void;
+  const pendingSignOut = new Promise<SignOutOutcome>((resolve) => {
     resolveSignOut = resolve;
   });
-  signOut.mockImplementationOnce(() => {
-    analyticsEvents.push("request");
+  signOutOfAccount.mockImplementationOnce(() => {
+    events.push("sign-out");
     return pendingSignOut;
   });
   let assigned: string | null = null;
   window.location.assign = ((href: string) => {
-    analyticsEvents.push("navigation");
+    events.push("navigation");
     assigned = href;
   }) as typeof window.location.assign;
 
@@ -201,40 +179,29 @@ test("allows one unload after deferred sign-out succeeds", async () => {
   });
 
   expect(confirm).toHaveBeenCalledTimes(1);
-  expect(analyticsEvents.slice(0, 2)).toEqual(["begin", "request"]);
-  expect(signOut).toHaveBeenCalledTimes(1);
+  expect(events).toEqual(["sign-out"]);
+  expect(signOutOfAccount).toHaveBeenCalledTimes(1);
   expect((button as HTMLButtonElement).disabled).toBe(true);
   expect(assigned).toBeNull();
   expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
 
   await act(async () => {
-    resolveSignOut({ error: null });
+    resolveSignOut("signed-out");
     await pendingSignOut;
   });
 
   expect(assigned).toBe("/cs-CZ");
-  expect(analyticsEvents).toEqual([
-    "begin",
-    "request",
-    "complete",
-    "navigation",
-  ]);
-  expect(completeAnalyticsAccountSignOut).toHaveBeenCalledTimes(1);
-  expect(refreshAnalyticsAccountIdentity).not.toHaveBeenCalled();
+  expect(events).toEqual(["sign-out", "navigation"]);
   expect(dispatchBeforeUnload().defaultPrevented).toBe(false);
   expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
   expect(confirm).toHaveBeenCalledTimes(1);
 });
 
-test("does not navigate when sign-out resolves with a 503 error", async () => {
+test("does not navigate when sign-out fails", async () => {
   const navigation = installNavigation();
   const confirm = mock(() => true);
   window.confirm = confirm;
-  signOut.mockImplementationOnce(() =>
-    Promise.resolve({
-      error: { message: "service unavailable", status: 503 },
-    })
-  );
+  signOutOfAccount.mockImplementationOnce(() => Promise.resolve("failed"));
   let assigned: string | null = null;
   window.location.assign = ((href: string) => {
     assigned = href;
@@ -256,13 +223,7 @@ test("does not navigate when sign-out resolves with a 503 error", async () => {
     await Promise.resolve();
   });
 
-  expect(signOut).toHaveBeenCalledTimes(1);
-  expect(beginAnalyticsAccountTransition).toHaveBeenCalledTimes(1);
-  expect(completeAnalyticsAccountSignOut).not.toHaveBeenCalled();
-  expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(1);
-  expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledWith({
-    settleTransition: true,
-  });
+  expect(signOutOfAccount).toHaveBeenCalledTimes(1);
   expect(assigned).toBeNull();
   expect((button as HTMLButtonElement).disabled).toBe(false);
   expect(view.getByRole("alert").textContent).toBe(
@@ -290,79 +251,12 @@ test("does not navigate when sign-out resolves with a 503 error", async () => {
   expect(draft.value).toBe("later draft");
 });
 
-test("restores the button after a rejected sign-out without exposing the error", async () => {
-  const navigation = installNavigation();
-  const confirm = mock(() => true);
-  window.confirm = confirm;
-  let rejectSignOut!: (error: Error) => void;
-  const rejectedSignOut = new Promise<SignOutResult>((_, reject) => {
-    rejectSignOut = reject;
-  });
-  signOut.mockImplementationOnce(() => rejectedSignOut);
-  let assigned: string | null = null;
-  window.location.assign = ((href: string) => {
-    assigned = href;
-  }) as typeof window.location.assign;
-
-  const { SignOutButton } = await import("./sign-out-button");
-  const view = render(
-    <UnsavedChangesProvider>
-      <DirtyForm />
-      <SignOutButton locale="cs-CZ" />
-    </UnsavedChangesProvider>
-  );
-  const button = view.getByRole("button", {
-    name: m.accountSignOut({}, { locale: "cs-CZ" }),
-  });
-
-  await act(async () => {
-    fireEvent.click(button);
-    rejectSignOut(new Error("raw provider failure"));
-    await rejectedSignOut.catch(() => undefined);
-  });
-
-  expect(signOut).toHaveBeenCalledTimes(1);
-  expect(beginAnalyticsAccountTransition).toHaveBeenCalledTimes(1);
-  expect(completeAnalyticsAccountSignOut).not.toHaveBeenCalled();
-  expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(1);
-  expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledWith({
-    settleTransition: true,
-  });
-  expect(assigned).toBeNull();
-  expect((button as HTMLButtonElement).disabled).toBe(false);
-  expect(view.getByRole("alert").textContent).toBe(
-    m.accountSignOutFailed({}, { locale: "cs-CZ" })
-  );
-  expect(view.getByRole("alert").textContent).not.toContain(
-    "raw provider failure"
-  );
-  expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
-
-  const draft = view.getByLabelText("Dirty form") as HTMLInputElement;
-  await act(async () => {
-    fireEvent.change(draft, { target: { value: "later draft" } });
-  });
-  confirm.mockReturnValue(false);
-  const navigate = dispatchNavigate(
-    navigation,
-    new URL("/cs-CZ", window.location.href).href,
-    true,
-    "traverse"
-  );
-
-  expect(navigate.defaultPrevented).toBe(true);
-  expect(confirm).toHaveBeenCalledTimes(2);
-  expect(draft.value).toBe("later draft");
-});
-
 test("retries a failed sign-out and navigates after the next success", async () => {
   const confirm = mock(() => true);
   window.confirm = confirm;
-  signOut
-    .mockImplementationOnce(() =>
-      Promise.resolve({ error: { status: 503, message: "unavailable" } })
-    )
-    .mockImplementationOnce(() => Promise.resolve({ error: null }));
+  signOutOfAccount
+    .mockImplementationOnce(() => Promise.resolve("failed"))
+    .mockImplementationOnce(() => Promise.resolve("signed-out"));
   let assigned: string | null = null;
   window.location.assign = ((href: string) => {
     assigned = href;
@@ -386,19 +280,14 @@ test("retries a failed sign-out and navigates after the next success", async () 
 
   expect((button as HTMLButtonElement).disabled).toBe(false);
   expect(view.getByRole("alert")).toBeTruthy();
-  expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(1);
-  expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledWith({
-    settleTransition: true,
-  });
+  expect(assigned).toBeNull();
 
   await act(async () => {
     fireEvent.click(button);
     await Promise.resolve();
   });
 
-  expect(signOut).toHaveBeenCalledTimes(2);
-  expect(beginAnalyticsAccountTransition).toHaveBeenCalledTimes(2);
-  expect(completeAnalyticsAccountSignOut).toHaveBeenCalledTimes(1);
+  expect(signOutOfAccount).toHaveBeenCalledTimes(2);
   expect(assigned).toBe("/en-US");
   expect((button as HTMLButtonElement).disabled).toBe(true);
   expect(view.queryByRole("alert")).toBeNull();

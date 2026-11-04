@@ -1,7 +1,8 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
 import { enablePreviewAccess } from "../preview-access";
 import { auditedLocales, openSettledPage } from "./accessibility-audit";
 import { localFixtureSkipReason, sandboxSkipReason } from "./audit-target";
+import { accessibilityTest as test } from "./fixtures";
 import {
   openSignIn,
   reservationForm,
@@ -51,12 +52,15 @@ for (const locale of auditedLocales) {
   });
 
   for (const outcome of statusOutcomes) {
-    test(`${locale} ${outcome} reservation status`, async ({ page }) => {
+    test(`${locale} ${outcome} reservation status`, async ({
+      localDatabase,
+      page,
+    }) => {
       test.skip(
         outcome !== "not_found" && localFixtureSkipReason !== undefined,
         localFixtureSkipReason
       );
-      await withStatusOutcome(page, locale, outcome, () =>
+      await withStatusOutcome({ localDatabase, locale, outcome, page }, () =>
         expect(page.getByRole("main")).toMatchAriaSnapshot({
           name: `${locale}-status-${outcome}.aria.yml`,
         })

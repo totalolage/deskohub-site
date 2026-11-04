@@ -2,40 +2,32 @@ import "@/shared/testing/workspace-test-env";
 
 import { expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
-import {
-  type CapturePostHogEventInput,
-  PostHogEventService,
-} from "@/shared/backend/analytics/posthog-event.service";
-import { captureAgentTrafficEvent } from "./agent-traffic-events";
+import { recordServerAnalytics } from "@/shared/backend/analytics/server-analytics.service.mock";
+import { AgentTrafficEvents } from "./agent-traffic-events";
 
-const captureEvents = async (count: number) => {
-  const captures: CapturePostHogEventInput[] = [];
+test("captures agent traffic without a person", async () => {
+  const recorder = recordServerAnalytics();
   const timestamp = Temporal.Instant.from("2099-06-17T12:00:00.000Z");
+  const event = {
+    event: "agent page request",
+    traffic: { category: "ai_user_agent", name: "claude" },
+    properties: { route: "/reservation/cowork", locale: "en-US" },
+    timestamp,
+  } as const;
+
   await Effect.runPromise(
-    Effect.forEach(Array.from({ length: count }), () =>
-      captureAgentTrafficEvent({
-        event: "agent page request",
-        traffic: { category: "ai_user_agent", name: "claude" },
-        properties: { route: "/reservation/cowork", locale: "en-US" },
-        timestamp,
-      })
+    Effect.flatMap(AgentTrafficEvents, (events) =>
+      Effect.all([events.record(event), events.record(event)])
     ).pipe(
       Effect.provide(
-        Layer.succeed(PostHogEventService, {
-          alias: () => Effect.die("agent traffic never aliases"),
-          capture: (input) => Effect.sync(() => captures.push(input)),
-        })
+        AgentTrafficEvents.Default.pipe(Layer.provide(recorder.layer))
       )
     )
   );
-  return { captures, timestamp };
-};
 
-test("captures agent traffic without a person", async () => {
-  const { captures, timestamp } = await captureEvents(2);
-
-  expect(captures).toHaveLength(2);
-  expect(captures[0]).toMatchObject({
+  const [first, second] = recorder.messages;
+  expect(recorder.messages).toHaveLength(2);
+  expect(first).toMatchObject({
     event: "agent page request",
     properties: {
       route: "/reservation/cowork",
@@ -46,8 +38,8 @@ test("captures agent traffic without a person", async () => {
     },
     timestamp,
   });
-  expect(captures[0].properties).not.toHaveProperty("$session_id");
+  expect(first?.properties).not.toHaveProperty("$session_id");
   // Each event stands alone: no shared distinct ID links two requests.
-  expect(captures[0].distinctId).not.toBe(captures[1].distinctId);
-  expect(captures[0].uuid).not.toBe(captures[1].uuid);
+  expect(first?.distinctId).not.toBe(second?.distinctId);
+  expect(first?.uuid).not.toBe(second?.uuid);
 });

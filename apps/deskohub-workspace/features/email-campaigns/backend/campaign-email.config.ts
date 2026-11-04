@@ -4,7 +4,7 @@ import type { EmailRecipient } from "@deskohub/email";
 import { EMAIL_TEST_DOMAIN } from "@deskohub/test-email";
 import { Context, Effect, Layer } from "effect";
 import { env } from "@/env";
-import type { DeploymentEnvironment } from "@/shared/backend/config/deployment-request-timeout";
+import type { DeploymentEnvironment } from "@/shared/deployment/deployment-stage";
 import { workspaceSiteConstants } from "@/shared/utils";
 import { CampaignEmailNotConfigured } from "../errors";
 

@@ -1,12 +1,8 @@
 "use client";
 
-import { skipToken, useQuery } from "@tanstack/react-query";
-import {
-  type MeetingRoomStartTimes,
-  type MeetingRoomStartTimesQuery,
-  workspaceAvailabilityKeys,
-} from "@/features/reservation/workspace-availability";
-import { loadMeetingRoomStartTimes } from "@/features/reservation/workspace-availability-client";
+import { useQuery } from "@tanstack/react-query";
+import type { MeetingRoomStartTimesQuery } from "@/features/reservation/workspace-availability";
+import { meetingRoomStartTimesQueryOptions } from "@/features/reservation/workspace-availability-client";
 
 /**
  * The free meeting-room starts on the selected date for the selected
@@ -19,16 +15,4 @@ export const useMeetingRoomStartTimes = ({
 }: {
   readonly query: MeetingRoomStartTimesQuery | undefined;
   readonly replacementToken?: string;
-}) =>
-  useQuery<MeetingRoomStartTimes>({
-    queryKey: [
-      ...workspaceAvailabilityKeys.meetingRoomStartTimes(query),
-      replacementToken ?? null,
-    ],
-    queryFn: query
-      ? ({ signal }) =>
-          loadMeetingRoomStartTimes({ query, replacementToken, signal })
-      : skipToken,
-    retry: (failureCount) => failureCount < 3,
-    staleTime: 30_000,
-  });
+}) => useQuery(meetingRoomStartTimesQueryOptions({ query, replacementToken }));

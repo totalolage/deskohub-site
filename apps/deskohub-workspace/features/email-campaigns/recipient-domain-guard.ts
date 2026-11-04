@@ -1,6 +1,6 @@
 import { isTestEmailRecipient } from "@deskohub/email/backend/test-recipients";
 import { Effect } from "effect";
-import type { DeploymentEnvironment } from "@/shared/backend/config/deployment-request-timeout";
+import type { DeploymentEnvironment } from "@/shared/deployment/deployment-stage";
 import { CampaignRecipientsOutsideTestDomain } from "./errors";
 
 /**

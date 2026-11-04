@@ -1,10 +1,10 @@
 import type { User as BetterAuthUser } from "better-auth";
 import { Context, Data, Effect, Layer, Option, Schema } from "effect";
-import { headers } from "next/headers";
 import { env } from "@/env";
 import { type Locale, locales } from "@/features/i18n";
 import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
-import { CurrentWorkspaceRequestHeaders } from "@/shared/backend/workspace-request-context";
+import type { RequestHeadersError } from "@/shared/backend/utils/request-headers";
+import { currentRequestHeaders } from "@/shared/backend/workspace-request-context";
 import {
   CustomerAccountAccessError,
   CustomerAccountFailureCause,
@@ -232,7 +232,7 @@ interface AuthoritySessionModule {
 }
 
 interface AuthoritySessionPhases {
-  readonly readRequestHeaders: () => Promise<Headers>;
+  readonly requestHeaders: Effect.Effect<Headers, RequestHeadersError>;
   readonly loadAuthority: () => Promise<AuthoritySessionModule>;
 }
 
@@ -247,10 +247,11 @@ const readAuthoritySession = (
       })
     ),
     Effect.bind("requestHeaders", () =>
-      Effect.tryPromise({
-        try: () => phases.readRequestHeaders(),
-        catch: AuthorityStageFailure.at("request-headers"),
-      })
+      phases.requestHeaders.pipe(
+        Effect.mapError((failure) =>
+          AuthorityStageFailure.at("request-headers")(failure.cause)
+        )
+      )
     ),
     Effect.flatMap(({ authority, requestHeaders }) =>
       Effect.tryPromise({
@@ -369,17 +370,12 @@ export class CustomerAuthentication extends Context.Service<
     });
 
   static Default = Layer.succeed(this, {
-    currentUser: Effect.flatMap(CurrentWorkspaceRequestHeaders, (captured) =>
-      readAuthoritativeSession({
-        readBetterAuthSecretsRaw: () => env.BETTER_AUTH_SECRETS,
-        session: readAuthoritySession({
-          // Actions and routes capture headers at their request boundary.
-          // RSC callers without that boundary still use Next's request store.
-          readRequestHeaders: () =>
-            captured ? Promise.resolve(captured) : headers(),
-          loadAuthority: () => import("@/features/account/server/auth.server"),
-        }),
-      }).pipe(Effect.flatMap(decodeCustomerAccountSession))
-    ),
+    currentUser: readAuthoritativeSession({
+      readBetterAuthSecretsRaw: () => env.BETTER_AUTH_SECRETS,
+      session: readAuthoritySession({
+        requestHeaders: currentRequestHeaders,
+        loadAuthority: () => import("@/features/account/server/auth.server"),
+      }),
+    }).pipe(Effect.flatMap(decodeCustomerAccountSession)),
   });
 }

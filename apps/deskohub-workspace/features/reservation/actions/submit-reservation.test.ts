@@ -3,7 +3,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
-import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
+import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
 
@@ -79,11 +79,11 @@ const runSubmitReservation = async (options?: {
         }),
         contacts,
         referrals,
-        ReferralFeatureFlagService.fromDecision(true),
+        ReferralReleaseGate.fromDecision(true),
         RememberedReferral.inMemory(cookie).pipe(
           Layer.provide(
             Layer.mergeAll(
-              ReferralFeatureFlagService.fromDecision(true),
+              ReferralReleaseGate.fromDecision(true),
               referrals,
               contacts
             )

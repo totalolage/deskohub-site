@@ -1,0 +1,8 @@
+{
+  "name": "@deskohub/agent-skills",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "lint": "biome check package.json --config-path ../biome.json --vcs-root .."
+  }
+}

@@ -2,7 +2,7 @@ import { describe, expect, mock, test } from "bun:test";
 
 const areSiteToolsEnabled = mock(() => Promise.resolve(false));
 
-mock.module("./site-tools-feature-flag.server", () => ({
+mock.module("./site-tools-release-gate.server", () => ({
   areSiteToolsEnabled,
 }));
 mock.module("@/features/feature-flags/backend/global-release.server", () => ({

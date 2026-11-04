@@ -1,8 +1,7 @@
 import { getAuthenticatorName } from "@better-auth/passkey";
 import { Context, Effect, Layer, Schema } from "effect";
-import { headers } from "next/headers";
 import type { AccountPasskey } from "@/features/account/passkeys";
-import { CurrentWorkspaceRequestHeaders } from "@/shared/backend/workspace-request-context";
+import { currentRequestHeaders } from "@/shared/backend/workspace-request-context";
 import {
   type CustomerAccountAccessError,
   customerAccountUnavailable,
@@ -47,20 +46,19 @@ export class CustomerPasskeys extends Context.Service<
   ICustomerPasskeys
 >()("@deskohub-workspace/account/CustomerPasskeys") {
   static Default = Layer.succeed(this, {
-    list: Effect.flatMap(CurrentWorkspaceRequestHeaders, (captured) =>
-      Effect.tryPromise({
-        try: async () => {
-          const { auth } = await import(
-            "@/features/account/server/auth.server"
-          );
-          return auth.api.listPasskeys({
-            // Actions and routes capture headers at their request boundary.
-            headers: captured ?? (await headers()),
-          });
-        },
-        catch: passkeysUnavailable,
-      })
-    ).pipe(
+    list: currentRequestHeaders.pipe(
+      Effect.mapError(passkeysUnavailable),
+      Effect.flatMap((requestHeaders) =>
+        Effect.tryPromise({
+          try: async () => {
+            const { auth } = await import(
+              "@/features/account/server/auth.server"
+            );
+            return auth.api.listPasskeys({ headers: requestHeaders });
+          },
+          catch: passkeysUnavailable,
+        })
+      ),
       Effect.flatMap((rows) =>
         decodePasskeyRows(rows).pipe(Effect.mapError(passkeysUnavailable))
       ),

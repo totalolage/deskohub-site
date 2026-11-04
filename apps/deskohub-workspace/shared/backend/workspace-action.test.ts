@@ -13,11 +13,6 @@ import { testEmailAddress } from "@deskohub/test-email";
 import { context, trace } from "@opentelemetry/api";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import {
-  InMemoryLogRecordExporter,
-  LoggerProvider,
-  SimpleLogRecordProcessor,
-} from "@opentelemetry/sdk-logs";
-import {
   BasicTracerProvider,
   InMemorySpanExporter,
   SimpleSpanProcessor,
@@ -26,6 +21,7 @@ import { Duration, Effect, Schema } from "effect";
 import { redirect } from "next/navigation";
 import { m as administrationMessages } from "@/features/administration/i18n";
 import { type Locale, m } from "@/features/i18n";
+import { captureWorkspaceLogs } from "@/shared/testing/workspace-telemetry.test-utils";
 
 let actionHeaderReads = 0;
 let actionRequestHeaders: Record<string, string> = {};
@@ -34,7 +30,7 @@ let failHeaderReads = false;
 let overrideHeaderRead = (_read: number): Promise<never> | undefined =>
   undefined;
 let scheduledTelemetryFlushes = 0;
-const logExporter = new InMemoryLogRecordExporter();
+const workspaceLogs = captureWorkspaceLogs();
 
 mock.module("server-only", () => ({}));
 mock.module("./bot-protection/bot-protection.runtime", () => ({
@@ -47,11 +43,6 @@ mock.module("next/server", () => ({
   after: () => {
     scheduledTelemetryFlushes += 1;
   },
-}));
-mock.module("@/instrumentation", () => ({
-  postHogLoggerProvider: new LoggerProvider({
-    processors: [new SimpleLogRecordProcessor({ exporter: logExporter })],
-  }),
 }));
 
 mock.module("next/headers", () => ({
@@ -205,6 +196,22 @@ describe("Workspace actions", () => {
     expect(result?.data).toEqual(traffic);
   });
 
+  test("schedules a telemetry flush after each run of an action", async () => {
+    const { defineWorkspaceAction } = await import("./workspace-action");
+    const action = defineWorkspaceAction(
+      {
+        operation: "test.action-flush",
+        schema: Schema.toStandardSchemaV1(Schema.String),
+      },
+      () => Effect.succeed("done")
+    );
+    scheduledTelemetryFlushes = 0;
+
+    await expect(action("input")).resolves.toMatchObject({ data: "done" });
+    // One for the action's locale lookup and one for its handler.
+    expect(scheduledTelemetryFlushes).toBe(2);
+  });
+
   test("schedules a telemetry flush for validation failures", async () => {
     const { defineWorkspaceAction } = await import("./workspace-action");
     const action = defineWorkspaceAction(
@@ -219,7 +226,8 @@ describe("Workspace actions", () => {
     await expect(action(42)).resolves.toMatchObject({
       validationErrors: expect.any(Object),
     });
-    expect(scheduledTelemetryFlushes).toBe(1);
+    // One for the action's locale lookup and one for the failure's log.
+    expect(scheduledTelemetryFlushes).toBe(2);
   });
 
   test("preserves public failures", async () => {
@@ -468,7 +476,7 @@ describe("Workspace actions", () => {
     let consoleError: ReturnType<typeof spyOn<Console, "error">>;
 
     beforeEach(() => {
-      logExporter.reset();
+      workspaceLogs.reset();
       consoleError = spyOn(console, "error").mockImplementation(() => {});
     });
     afterEach(() => {
@@ -492,8 +500,8 @@ describe("Workspace actions", () => {
       );
     /** The "Action failed" records sent to PostHog. */
     const telemetryFailureLogs = (operation: string) =>
-      logExporter
-        .getFinishedLogRecords()
+      workspaceLogs
+        .records()
         .filter(
           ({ attributes, body }) =>
             attributes?.operation === operation && body === "Action failed"
@@ -508,8 +516,8 @@ describe("Workspace actions", () => {
     const expectRedacted = () => {
       expect(
         JSON.stringify(
-          logExporter
-            .getFinishedLogRecords()
+          workspaceLogs
+            .records()
             .map(({ attributes, body }) => ({ attributes, body }))
         )
       ).not.toContain(sensitiveValue);

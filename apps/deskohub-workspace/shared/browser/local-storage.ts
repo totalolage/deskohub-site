@@ -21,3 +21,27 @@ export const writeLocalStorageItem = (
 ): void => {
   writeItem(key, value);
 };
+
+const writeSignal = Option.liftThrowable((key: string) =>
+  globalThis.localStorage.setItem(key, crypto.randomUUID())
+);
+
+/**
+ * Best-effort nudge for this browser's other tabs: writes a fresh random nonce
+ * under `key`, which fires their `storage` event. The value carries nothing.
+ */
+export const signalOtherTabs = (key: string): void => {
+  writeSignal(key);
+};
+
+/** Calls `onSignal` whenever another tab runs `signalOtherTabs(key)`. */
+export const subscribeOtherTabSignal = (
+  key: string,
+  onSignal: () => void
+): (() => void) => {
+  const handleStorage = (event: StorageEvent) => {
+    if (event.key === key) onSignal();
+  };
+  globalThis.addEventListener("storage", handleStorage);
+  return () => globalThis.removeEventListener("storage", handleStorage);
+};

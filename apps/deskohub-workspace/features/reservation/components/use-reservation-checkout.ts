@@ -8,7 +8,7 @@ import {
   createCheckoutAttemptId,
   createCheckoutSessionId,
 } from "@/features/checkout/checkout-identifiers";
-import { useCookieConsent } from "@/features/cookie-consent";
+import { visitorConsent } from "@/features/cookie-consent";
 import { captureAnalyticsEvent } from "@/features/cookie-consent/analytics-events";
 import { type Locale, m } from "@/features/i18n";
 import { preparePayState } from "@/features/reservation/actions/prepare-pay-state";
@@ -49,7 +49,6 @@ export function useReservationCheckout({
 }: UseReservationCheckoutOptions) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isAccepted } = useCookieConsent();
   const hasTrackedSuccessfulSubmission = useRef(false);
   const lastSubmittedReservationRef = useRef<string | null>(null);
   const [checkoutSessionId] = useState(
@@ -65,10 +64,10 @@ export function useReservationCheckout({
   );
   const capturePrePaymentOutcome = useCallback(
     (outcome: ReservationPrePaymentOutcome) => {
-      if (!isAccepted("analytics")) return;
+      if (!visitorConsent.accepts("analytics")) return;
       captureAnalyticsEvent("pre-payment outcome", { outcome });
     },
-    [isAccepted]
+    []
   );
   const {
     executeAsync: prepareCheckout,
@@ -87,7 +86,10 @@ export function useReservationCheckout({
         return;
       }
 
-      if (!hasTrackedSuccessfulSubmission.current && isAccepted("analytics")) {
+      if (
+        !hasTrackedSuccessfulSubmission.current &&
+        visitorConsent.accepts("analytics")
+      ) {
         hasTrackedSuccessfulSubmission.current = true;
         track("workspace_checkout_started", analyticsProperties);
       }

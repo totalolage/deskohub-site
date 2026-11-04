@@ -61,12 +61,6 @@ mock.module("next/server", () => ({
   after: () => undefined,
   connection: async () => undefined,
 }));
-mock.module("@/instrumentation", () => ({
-  postHogLoggerProvider: {
-    forceFlush: () => Promise.resolve(),
-    getLogger: () => ({ emit: () => undefined }),
-  },
-}));
 mock.module("next/headers", () => ({
   cookies: async () => ({ get: () => undefined, getAll: () => [] }),
   headers: async () => new Headers({ referer: "https://deskohub.test/en-US" }),

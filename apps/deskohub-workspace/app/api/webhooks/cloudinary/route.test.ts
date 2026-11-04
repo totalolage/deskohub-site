@@ -2,22 +2,15 @@ import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, expect, mock, spyOn, test } from "bun:test";
 import type { VerifiedCloudinaryWebhook } from "@deskohub/cloudinary/server";
-import type { LoggerProvider } from "@opentelemetry/api-logs";
 import { Effect, Layer } from "effect";
 import { NextResponse } from "next/server";
+import { captureWorkspaceLogs } from "@/shared/testing/workspace-telemetry.test-utils";
 import { cloudinaryTags } from "@/shared/utils/cache-tags";
 
 const publicIdSentinel = "cloudinary-public-id-log-sentinel";
 const assetIdSentinel = "cloudinary-asset-id-log-sentinel";
 const secureUrlSentinel = "https://asset-log-sentinel.example.test/image.jpg";
-type EmittedLog = Parameters<
-  ReturnType<LoggerProvider["getLogger"]>["emit"]
->[0];
-
-const emittedLogs: EmittedLog[] = [];
-const emitLog = mock((record: EmittedLog) => {
-  emittedLogs.push(record);
-});
+const workspaceLogs = captureWorkspaceLogs();
 
 type VerifyCloudinaryWebhookRequest = (
   request: Request
@@ -41,17 +34,10 @@ mock.module("next/server", () => ({
   after: () => undefined,
 }));
 
-mock.module("@/instrumentation", () => ({
-  postHogLoggerProvider: {
-    forceFlush: () => Promise.resolve(),
-    getLogger: () => ({ emit: emitLog }),
-  },
-}));
-
 const { POST } = await import("./route");
 
 beforeEach(() => {
-  emittedLogs.length = 0;
+  workspaceLogs.reset();
   revalidateTag.mockClear();
   verifyCloudinaryWebhookRequest.mockClear();
   verifyCloudinaryWebhookRequest.mockImplementation(() =>
@@ -87,6 +73,7 @@ test("does not log webhook asset data and still invalidates gallery caches", asy
     consoleInfo.mockRestore();
   }
 
+  const emittedLogs = workspaceLogs.records();
   expect(emittedLogs.length).toBeGreaterThan(0);
 
   const capturedLogs = JSON.stringify({ emittedLogs, capturedConsoleLogs });

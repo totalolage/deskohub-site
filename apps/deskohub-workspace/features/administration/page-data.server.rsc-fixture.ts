@@ -7,7 +7,6 @@ import "@/shared/testing/flight-request-storage";
 import { afterAll, afterEach, describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import React, { Suspense } from "react";
-import { mockAdministratorAccess } from "@/features/administrators/server/administrator-access.test-utils";
 import type {
   AdministrationOverview,
   AdministrationOverviewSource,
@@ -31,6 +30,11 @@ mock.module("next/server", () => ({
   connection: () => Promise.resolve(),
 }));
 
+// Imported after the Next.js stubs: its chain reaches `next/navigation`,
+// which cannot load under the react-server condition.
+const { mockAdministratorAccess } = await import(
+  "@/features/administrators/server/administrator-access.test-utils"
+);
 const access = mockAdministratorAccess("administration-rsc-fixture");
 let sourceCalls = 0;
 let overviewCalls = 0;

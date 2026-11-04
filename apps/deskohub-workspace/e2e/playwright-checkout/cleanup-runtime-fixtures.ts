@@ -1,29 +1,40 @@
 import { test as base } from "@playwright/test";
-import { Effect, Layer, ManagedRuntime } from "effect";
+import { Layer } from "effect";
 import { WorkspaceE2EAccountResourceService } from "../account/resources.service";
 import { getDatasourceConfig } from "../config";
 import { makeWorkspaceE2EEnvironment } from "../e2e-env";
-import { E2EDatabase } from "../integrations/database.service";
+import type { E2EDatabase } from "../integrations/database.service";
 import { addDatabaseUrlRedactions } from "../runtime";
+import { type E2EEffectRunner, withE2ERuntime } from "../runtime-fixture";
 import {
   type E2ERunContext,
   E2ERunContextService,
   E2ETelemetryService,
 } from "../services/telemetry";
-import { makeE2ETelemetryRuntime, runE2EEffect } from "../telemetry-runtime";
 import { readWorkspaceE2ERunContext } from "./run-context";
-import { readExternalParentSpan } from "./trace-parent";
 
 type CleanupRuntimeFixtures = {
   readonly environment: ReturnType<typeof makeWorkspaceE2EEnvironment>;
   readonly runContext: E2ERunContext;
-  readonly runEffect: <A, E>(
-    effect: Effect.Effect<
-      A,
-      E,
-      E2EDatabase | E2ETelemetryService | WorkspaceE2EAccountResourceService
-    >
-  ) => Promise<A>;
+  readonly runEffect: E2EEffectRunner<
+    E2EDatabase | E2ETelemetryService | WorkspaceE2EAccountResourceService
+  >;
+};
+
+// Cleanup must finish without provider-permit connectivity, so its runtime
+// holds only the E2E database, account resources, and telemetry.
+const makeCleanupRuntimeLive = (
+  environment: ReturnType<typeof makeWorkspaceE2EEnvironment>,
+  runContext: E2ERunContext
+) => {
+  const datasourceConfig = getDatasourceConfig(environment);
+  addDatabaseUrlRedactions(datasourceConfig.databaseUrlUnpooled);
+  return Layer.mergeAll(
+    WorkspaceE2EAccountResourceService.layerWithDatabase(datasourceConfig),
+    E2ETelemetryService.Default.pipe(
+      Layer.provideMerge(E2ERunContextService.layerValue(runContext))
+    )
+  );
 };
 
 export const cleanupTest = base.extend<
@@ -41,40 +52,14 @@ export const cleanupTest = base.extend<
     { scope: "worker" },
   ],
   runEffect: [
-    async ({ environment, runContext }, use) => {
-      const datasourceConfig = getDatasourceConfig(environment);
-      addDatabaseUrlRedactions(datasourceConfig.databaseUrlUnpooled);
-      const telemetry = makeE2ETelemetryRuntime(environment);
-      const layer = Layer.mergeAll(
-        WorkspaceE2EAccountResourceService.layer(datasourceConfig).pipe(
-          Layer.provideMerge(E2EDatabase.layer(datasourceConfig))
-        ),
-        E2ETelemetryService.Default.pipe(
-          Layer.provideMerge(E2ERunContextService.layerValue(runContext))
-        )
-      ).pipe(Layer.provideMerge(telemetry.tracingLayer));
-      const runtime = ManagedRuntime.make(layer);
-      const parentSpan = readExternalParentSpan(
-        environment.WORKSPACE_E2E_TRACE_PARENT
-      );
-      const runEffect = <A, E>(
-        effect: Effect.Effect<
-          A,
-          E,
-          E2EDatabase | E2ETelemetryService | WorkspaceE2EAccountResourceService
-        >
-      ) =>
-        runtime.runPromise(
-          parentSpan ? effect.pipe(Effect.withParentSpan(parentSpan)) : effect
-        );
-
-      try {
-        await use(runEffect);
-      } finally {
-        await runtime.dispose();
-        await runE2EEffect(Effect.void, telemetry);
-      }
-    },
+    async ({ environment, runContext }, use) =>
+      withE2ERuntime(
+        {
+          layer: makeCleanupRuntimeLive(environment, runContext),
+          tracing: environment,
+        },
+        use
+      ),
     { scope: "worker" },
   ],
 });

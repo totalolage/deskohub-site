@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
+import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import type {
   CustomerProfileInput,
   ProfileCompletionReferralOutcome,
@@ -44,8 +44,7 @@ export const completeNewCustomerProfile = Effect.fn(
     readonly prefilledCode: string | undefined;
   }
 ) {
-  const featureFlag = yield* ReferralFeatureFlagService;
-  const request = (yield* featureFlag.isEnabled)
+  const request = (yield* ReferralReleaseGate.isOpen)
     ? yield* prepareSignupReferral(referral)
     : ({ kind: "none" } as const);
   if (request.kind === "unavailable") {

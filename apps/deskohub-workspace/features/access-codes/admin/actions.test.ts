@@ -11,7 +11,7 @@ import {
 import { Context, Effect, Layer, Schema } from "effect";
 import { m } from "@/features/administration/i18n";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
-import { mockAdministratorAccess } from "@/features/administrators/server/administrator-access.test-utils";
+import { mockAdministrationActionRequest } from "@/shared/testing/workspace-action-request.test-utils";
 
 interface StubCreateCall {
   readonly attemptId: AdministrationStandaloneAccessCodeAttemptId;
@@ -27,7 +27,9 @@ interface StubCreateCall {
     | undefined;
 }
 
-const access = mockAdministratorAccess("fixture-operator");
+const { access } = await mockAdministrationActionRequest({
+  administrator: "fixture-operator",
+});
 const actor = access.administrator;
 
 const serviceCreateCalls: StubCreateCall[] = [];
@@ -57,23 +59,6 @@ mock.module("@/features/access-codes", () => ({
       ),
     }
   ),
-}));
-
-mock.module("next/server", () => ({
-  after: () => undefined,
-  connection: () => Promise.resolve(),
-}));
-
-mock.module("@/instrumentation", () => ({
-  postHogLoggerProvider: {
-    forceFlush: () => Promise.resolve(),
-    getLogger: () => ({ emit: () => undefined }),
-  },
-}));
-
-mock.module("next/headers", () => ({
-  cookies: async () => ({ get: () => undefined, getAll: () => [] }),
-  headers: async () => new Headers({ referer: "https://deskohub.test/en-US" }),
 }));
 
 const attemptId = Schema.decodeSync(

@@ -12,6 +12,7 @@ import { locales } from "@/features/i18n";
 import { coworkAdvertisedPriceReservationSchema } from "@/features/reservation/cowork-reservation";
 import { meetingRoomAdvertisedPriceReservationSchema } from "@/features/reservation/meeting-room-reservation";
 import { officeAdvertisedPriceReservationSchema } from "@/features/reservation/office-reservation";
+import type { Money } from "@/shared/money/money";
 
 const advertisedPriceRequestBaseSchema = Schema.Struct({
   locale: Schema.Literals(locales),
@@ -89,10 +90,14 @@ export type OfficeAdvertisedPriceRequest =
 export const advertisedPriceRequestEquals = Schema.toEquivalence(
   advertisedPriceRequestSchema
 );
+export type CoworkAdvertisedPrice = typeof coworkAdvertisedPriceSchema.Type;
+export type MeetingRoomAdvertisedPrice =
+  typeof meetingRoomAdvertisedPriceSchema.Type;
+export type OfficeAdvertisedPrice = typeof officeAdvertisedPriceSchema.Type;
 export type AdvertisedPrice =
-  | typeof coworkAdvertisedPriceSchema.Type
-  | typeof meetingRoomAdvertisedPriceSchema.Type
-  | typeof officeAdvertisedPriceSchema.Type;
+  | CoworkAdvertisedPrice
+  | MeetingRoomAdvertisedPrice
+  | OfficeAdvertisedPrice;
 export type PreloadedAdvertisedPrice = {
   readonly request: AdvertisedPriceRequest;
   readonly advertisedPrice: AdvertisedPrice;
@@ -116,6 +121,21 @@ export const getAdvertisedProductItem = (
         "product" in item &&
         getWorkspaceProductKey(item.product) === getWorkspaceProductKey(product)
     );
+
+/** The amount a product's order line advertises, with its price before the sale. */
+export const getAdvertisedProductAmount = (
+  advertisedPrice: AdvertisedPrice,
+  product: WorkspaceProductIdentity
+): { readonly amount: Money; readonly originalAmount?: Money } | undefined => {
+  const item = getAdvertisedProductItem(advertisedPrice, product);
+  if (!item) return undefined;
+
+  return {
+    amount: item.amount,
+    ...("originalAmount" in item &&
+      item.originalAmount && { originalAmount: item.originalAmount }),
+  };
+};
 
 export const advertisedPriceKeys = {
   all: ["advertised-price"] as const,

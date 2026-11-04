@@ -3,11 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "workspaces": [
+    ".agents",
     "apps/*",
     "packages/*"
   ],
   "type": "module",
   "scripts": {
+    "coverage": "bun packages/test-coverage/src/collect-coverage.ts",
     "prepare": "effect-tsgo patch --typescript --no-oxlint"
   },
   "devDependencies": {
