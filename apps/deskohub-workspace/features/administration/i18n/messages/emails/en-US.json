@@ -1,0 +1,4 @@
+{
+  "emailsActionTimedOut": "The server took too long to respond. Try again.",
+  "emailsActionFailedUnexpectedly": "Something went wrong on the server. Try again."
+}
