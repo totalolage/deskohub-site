@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Result, Schema } from "effect";
 import {
   type EmailDocumentProblem,
@@ -70,7 +71,7 @@ const richDocument = {
       altKey: "image_alt",
       align: "left",
       width: 320,
-      href: "mailto:hello@deskohub.test",
+      href: `mailto:${testEmailAddress("hello")}`,
     },
     {
       _tag: "Offer",
