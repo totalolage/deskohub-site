@@ -54,12 +54,11 @@ const withImage = (source: string): EmailDraft => ({
 describe.skipIf(!database)("email publication on disposable Postgres", () => {
   if (!database) return;
   const { pool } = database;
-  const layer = EmailPersistence.Default.pipe(
-    Layer.provide(database.layer),
-    Layer.provide(
-      ConfigProvider.layer(
-        ConfigProvider.fromUnknown({ NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: cloud })
-      )
+  // Publication reads the image account when it runs, in the caller's context.
+  const layer = Layer.mergeAll(
+    EmailPersistence.Default.pipe(Layer.provide(database.layer)),
+    ConfigProvider.layer(
+      ConfigProvider.fromUnknown({ NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: cloud })
     )
   );
   const run = <A, E>(effect: Effect.Effect<A, E, EmailPersistence>) =>
