@@ -101,15 +101,17 @@ type CampaignSender = {
   readonly replyTo: EmailRecipient;
 };
 
-const operationalFooter = (content: CampaignLocaleContent) =>
+const operationalFooter = (content: {
+  readonly operationalReason?: string | undefined;
+}) =>
   WorkspaceCampaignFooter.Operational({
     operationalReason: content.operationalReason,
   });
 
 /** The footer of an email that has no recipient's preferences link. */
-const placeholderFooter = (input: {
+export const campaignPlaceholderFooter = (input: {
   readonly purpose: CampaignPurpose;
-  readonly content: CampaignLocaleContent;
+  readonly operationalReason?: string | undefined;
 }) =>
   Match.value(input.purpose).pipe(
     Match.when("marketing", () =>
@@ -119,9 +121,7 @@ const placeholderFooter = (input: {
         )
       )
     ),
-    Match.when("operational", () =>
-      Effect.succeed(operationalFooter(input.content))
-    ),
+    Match.when("operational", () => Effect.succeed(operationalFooter(input))),
     Match.exhaustive
   );
 
@@ -176,7 +176,10 @@ export const renderCampaignEmailPreview = Effect.fn(
 ) {
   const { subject, html, text } = yield* renderCampaign({
     ...input,
-    footer: yield* placeholderFooter(input),
+    footer: yield* campaignPlaceholderFooter({
+      purpose: input.purpose,
+      operationalReason: input.content.operationalReason,
+    }),
   });
   return { subject, html, text } satisfies RenderedCampaignEmail;
 });
@@ -203,7 +206,10 @@ export const campaignEmailMessage = Effect.fn("campaignEmailMessage")(
     const { sender, deploymentEnvironment } = input;
     return yield* Match.valueTags(input.occasion, {
       Test: ({ to, purpose, code }) =>
-        placeholderFooter({ purpose, content: input.content }).pipe(
+        campaignPlaceholderFooter({
+          purpose,
+          operationalReason: input.content.operationalReason,
+        }).pipe(
           Effect.flatMap((footer) =>
             renderCampaign({ ...input, footer, confirmationCode: code })
           ),

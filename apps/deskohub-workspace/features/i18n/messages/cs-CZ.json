@@ -1505,5 +1505,9 @@
   "faqQuestionBar": "Co je Deskohub Bar?",
   "faqAnswerBar": "Deskoherní bar hned vedle coworkingu se stovkami deskových her. Můžeš tam zajít po práci na drink a partii.",
   "faqQuestionRules": "Jaká u vás platí pravidla?",
-  "faqAnswerRules": "Pravidla pro pobyt v prostoru najdeš v <operatingRules>provozním řádu</operatingRules>."
+  "faqAnswerRules": "Pravidla pro pobyt v prostoru najdeš v <operatingRules>provozním řádu</operatingRules>.",
+  "emailContentOfferCodeLabel": "Tvůj slevový kód",
+  "emailContentOfferValidUntil": "Kód platí do {date}.",
+  "emailContentYes": "Ano",
+  "emailContentNo": "Ne"
 }

@@ -4,4 +4,8 @@ export {
   CustomerValueUnauthorized,
   CustomerValueUnavailable,
 } from "./customer-value-source.service";
-export { CustomerValues } from "./customer-values.service";
+export {
+  CustomerValues,
+  compareSortKeys,
+  valueAtPath,
+} from "./customer-values.service";
