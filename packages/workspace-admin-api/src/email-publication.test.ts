@@ -705,6 +705,25 @@ describe("publication problems", () => {
       "Invalid scalar value customer (operationalReason, cs-CZ).",
       "Invalid scalar value customer (body, text body, cs-CZ).",
     ]);
+    expect(
+      problems({
+        ...document,
+        translations: {
+          "cs-CZ": {
+            subject: [...text, value("subject")],
+            preheader: [value("preheader")],
+            operationalReason: [value("reason")],
+            texts: { body: [value("body")] },
+          },
+          "en-US": translation,
+        },
+      })
+    ).toEqual([
+      "Unknown value subject (subject, cs-CZ).",
+      "Unknown value preheader (preheader, cs-CZ).",
+      "Unknown value reason (operationalReason, cs-CZ).",
+      "Unknown value body (body, text body, cs-CZ).",
+    ]);
   });
 
   test.each<[string, readonly string[] | undefined, boolean]>([
