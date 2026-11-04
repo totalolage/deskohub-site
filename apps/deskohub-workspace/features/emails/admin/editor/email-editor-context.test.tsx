@@ -23,23 +23,29 @@ afterAll(unregisterWorkspaceComponentTestEnv);
 const settingsFieldId = "email-settings-field";
 const languageFieldId = (language: Locale) => `email-${language}-field`;
 
-/** A field that mounts after its first render, as a rich text editor does. */
+/** A field that mounts a moment after its language shows, as a rich text editor does. */
 function LateField({ id }: { readonly id: string }) {
   const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    const timer = setTimeout(() => setMounted(true));
+    return () => clearTimeout(timer);
+  }, []);
   return mounted && <input id={id} />;
 }
 
 let editor: ReturnType<typeof useEmailEditor>;
 /** Shows the active language's field, and a field every language shares. */
 function Fields() {
-  editor = useEmailEditor();
+  const state = useEmailEditor();
+  useEffect(() => {
+    editor = state;
+  });
   return (
     <>
       <input id={settingsFieldId} />
       <LateField
-        id={languageFieldId(editor.activeLocale)}
-        key={editor.activeLocale}
+        id={languageFieldId(state.activeLocale)}
+        key={state.activeLocale}
       />
     </>
   );
@@ -91,20 +97,25 @@ test("asking for the same field again focuses it again", async () => {
   await waitFor(() => expect(focused()).toBe(settingsFieldId));
 });
 
-test("a problem without a field shows its language and leaves focus alone", () => {
+test("a problem without a field shows its language and leaves focus where it was", async () => {
   renderEditor();
+  act(() => document.getElementById(settingsFieldId)?.focus());
   act(() =>
     editor.focusProblem(problem({ fieldId: undefined, locale: "en-US" }))
   );
   expect(editor.activeLocale).toBe("en-US");
-  expect(focused()).not.toBe(settingsFieldId);
+  await waitFor(() =>
+    expect(document.getElementById(languageFieldId("en-US"))).not.toBeNull()
+  );
+  expect(focused()).toBe(settingsFieldId);
 });
 
-test("a problem of the whole email changes nothing", () => {
+test("a problem of the whole email changes neither the language nor focus", () => {
   renderEditor();
+  act(() => document.getElementById(settingsFieldId)?.focus());
   act(() =>
     editor.focusProblem(problem({ fieldId: undefined, locale: undefined }))
   );
   expect(editor.activeLocale).toBe("cs-CZ");
-  expect(focused()).toBe(document.body.id);
+  expect(focused()).toBe(settingsFieldId);
 });
