@@ -23,6 +23,7 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
+import type { SignedInAccountState } from "./signed-in-account";
 
 const adaAddress = testEmailAddress("ada");
 
@@ -216,7 +217,28 @@ const { AccountLayoutShell, useAccountLayout } = await import(
 );
 const { ReservationHistory } = await import("./reservation-history");
 
-const reservations = <ReservationHistory history={history} locale={locale} />;
+const renderedReservations = {
+  count: history.groups.current.length,
+  history: <ReservationHistory history={history} locale={locale} />,
+};
+
+type LinkedAccountState = Extract<
+  SignedInAccountState,
+  { readonly kind: "linked" }
+>;
+
+const linkedState = (
+  overrides: Partial<Omit<LinkedAccountState, "kind">> = {}
+): LinkedAccountState => ({
+  kind: "linked",
+  deletion: "offered",
+  email: adaAddress,
+  profile,
+  avatar: hiddenAvatarPresentation,
+  referralsEnabled: true,
+  reservations: renderedReservations,
+  ...overrides,
+});
 
 function withAccountLayout(
   children: React.ReactNode,
@@ -249,14 +271,14 @@ function ActivityAccountSectionProbe() {
   );
 }
 
-describe("LinkedAccount", () => {
+describe("SignedInAccount for a linked account", () => {
   test("leaves reservation history, and its Intl dates, out of the client bundle", async () => {
     // Node and browsers space Intl dates differently (Node's narrow no-break
     // spaces against Chromium's plain ones), so dates formatted again in the
     // client tree fail hydration of the server HTML. The page renders the
     // history on the server and passes it in.
     const build = await Bun.build({
-      entrypoints: [join(import.meta.dir, "linked-account.tsx")],
+      entrypoints: [join(import.meta.dir, "signed-in-account.tsx")],
       metafile: true,
       packages: "external",
       target: "browser",
@@ -264,9 +286,9 @@ describe("LinkedAccount", () => {
 
     expect(build.success).toBe(true);
     const inputs = Object.keys(build.metafile?.inputs ?? {});
-    expect(inputs.some((input) => input.endsWith("/linked-account.tsx"))).toBe(
-      true
-    );
+    expect(
+      inputs.some((input) => input.endsWith("/signed-in-account.tsx"))
+    ).toBe(true);
     expect(
       inputs.filter((input) => input.endsWith("/reservation-history.tsx"))
     ).toEqual([]);
@@ -291,18 +313,10 @@ describe("LinkedAccount", () => {
   });
 
   test("mounts each panel once and keeps one profile form across navigation", async () => {
-    const { LinkedAccount } = await import("./linked-account");
+    const { SignedInAccount } = await import("./signed-in-account");
     const view = render(
       withAccountLayout(
-        <LinkedAccount
-          referralsEnabled
-          avatarPresentation={hiddenAvatarPresentation}
-          email={adaAddress}
-          reservationCount={history.groups.current.length}
-          reservations={reservations}
-          locale="en-US"
-          profile={profile}
-        />
+        <SignedInAccount locale="en-US" state={linkedState()} />
       )
     );
     const sectionNavigation = within(
@@ -394,7 +408,7 @@ describe("LinkedAccount", () => {
   });
 
   test("publishes the rounded-up referral discount as a navigation badge, hidden at 0%", async () => {
-    const { LinkedAccount } = await import("./linked-account");
+    const { SignedInAccount } = await import("./signed-in-account");
     const { parseReferralCode } = await import("@/features/referrals/client");
     const code = parseReferralCode("RFL12345");
     if (code === undefined) throw new Error("Invalid referral test code");
@@ -410,15 +424,9 @@ describe("LinkedAccount", () => {
     });
     const renderLinked = (discount: string) =>
       withAccountLayout(
-        <LinkedAccount
-          referralsEnabled
-          avatarPresentation={hiddenAvatarPresentation}
-          email={adaAddress}
-          reservationCount={history.groups.current.length}
-          reservations={reservations}
+        <SignedInAccount
           locale="en-US"
-          profile={profile}
-          referrals={referralsWith(discount)}
+          state={linkedState({ referrals: referralsWith(discount) })}
         />
       );
     const referralBadge = () =>
@@ -441,7 +449,7 @@ describe("LinkedAccount", () => {
   });
 
   test("leaves legal to its own page in every section", async () => {
-    const { LinkedAccount } = await import("./linked-account");
+    const { SignedInAccount } = await import("./signed-in-account");
 
     for (const section of [
       "reservations",
@@ -453,15 +461,7 @@ describe("LinkedAccount", () => {
       workspacePathname = `/en-US/account/${section}`;
       const view = render(
         withAccountLayout(
-          <LinkedAccount
-            referralsEnabled
-            avatarPresentation={hiddenAvatarPresentation}
-            email={adaAddress}
-            reservationCount={history.groups.current.length}
-            reservations={reservations}
-            locale="en-US"
-            profile={profile}
-          />
+          <SignedInAccount locale="en-US" state={linkedState()} />
         )
       );
 
@@ -476,21 +476,13 @@ describe("LinkedAccount", () => {
   ] as const)(
     "does not retain private legal content when public legal replaces it for %s",
     async (locale, privatePathname, publicLegalPathname) => {
-      const { LinkedAccount } = await import("./linked-account");
+      const { SignedInAccount } = await import("./signed-in-account");
       const { PublicAccountLegal } = await import("./public-account-legal");
 
       workspacePathname = privatePathname;
       const privateAccount = (
         <div data-testid="cached-private-account">
-          <LinkedAccount
-            referralsEnabled
-            avatarPresentation={hiddenAvatarPresentation}
-            email={adaAddress}
-            reservationCount={history.groups.current.length}
-            reservations={reservations}
-            locale={locale}
-            profile={profile}
-          />
+          <SignedInAccount locale={locale} state={linkedState()} />
           <ActivityAccountSectionProbe />
         </div>
       );
@@ -547,7 +539,7 @@ describe("LinkedAccount", () => {
     const { UnsavedChangesProvider } = await import(
       "@/shared/components/unsaved-changes-guard"
     );
-    const { LinkedAccount } = await import("./linked-account");
+    const { SignedInAccount } = await import("./signed-in-account");
     const originalConfirm = window.confirm;
     const confirmDiscardChanges = mock(() => false);
     window.confirm = confirmDiscardChanges;
@@ -556,15 +548,7 @@ describe("LinkedAccount", () => {
       const view = render(
         <UnsavedChangesProvider>
           {withAccountLayout(
-            <LinkedAccount
-              referralsEnabled
-              avatarPresentation={hiddenAvatarPresentation}
-              email={adaAddress}
-              reservationCount={history.groups.current.length}
-              reservations={reservations}
-              locale="en-US"
-              profile={profile}
-            />
+            <SignedInAccount locale="en-US" state={linkedState()} />
           )}
         </UnsavedChangesProvider>
       );
@@ -622,21 +606,13 @@ describe("LinkedAccount", () => {
     const { UnsavedChangesProvider } = await import(
       "@/shared/components/unsaved-changes-guard"
     );
-    const { LinkedAccount } = await import("./linked-account");
+    const { SignedInAccount } = await import("./signed-in-account");
     workspacePathname = "/en-US/account/profile";
 
     const renderAccount = () => (
       <UnsavedChangesProvider>
         {withAccountLayout(
-          <LinkedAccount
-            referralsEnabled
-            avatarPresentation={hiddenAvatarPresentation}
-            email={adaAddress}
-            reservationCount={history.groups.current.length}
-            reservations={reservations}
-            locale="en-US"
-            profile={profile}
-          />
+          <SignedInAccount locale="en-US" state={linkedState()} />
         )}
       </UnsavedChangesProvider>
     );
@@ -688,31 +664,28 @@ describe("LinkedAccount", () => {
 
   test("shows no referral screen, badge, or completion notice while the program is withheld", async () => {
     workspacePathname = "/en-US/account/referrals";
-    const { LinkedAccount } = await import("./linked-account");
+    const { SignedInAccount } = await import("./signed-in-account");
     const { parseReferralCode } = await import("@/features/referrals/client");
     const code = parseReferralCode("RFL12345");
     if (code === undefined) throw new Error("Invalid referral test code");
     const view = render(
       <AccountLayoutShell locale="en-US" referralsEnabled={false} signedIn>
-        <LinkedAccount
-          avatarPresentation={hiddenAvatarPresentation}
-          email={adaAddress}
-          reservationCount={history.groups.current.length}
-          reservations={reservations}
+        <SignedInAccount
           locale="en-US"
-          profile={profile}
-          referrals={{
-            summary: {
-              code,
-              inviteeCount: 5,
-              eligibleInviteeCount: 3,
-              discount: "14.2625",
-              savings: [],
+          state={linkedState({
+            referralsEnabled: false,
+            referrals: {
+              summary: {
+                code,
+                inviteeCount: 5,
+                eligibleInviteeCount: 3,
+                discount: "14.2625",
+                savings: [],
+              },
+              shareUrl: "https://workspace.example/account?ref=RFL12345",
             },
-            shareUrl: "https://workspace.example/account?ref=RFL12345",
-          }}
-          referralsEnabled={false}
-          signupReferral={{ status: "applied" }}
+            signupReferral: { status: "applied" },
+          })}
         />
       </AccountLayoutShell>
     );
@@ -738,7 +711,7 @@ describe("LinkedAccount", () => {
     const { UnsavedChangesProvider } = await import(
       "@/shared/components/unsaved-changes-guard"
     );
-    const { LinkedAccount } = await import("./linked-account");
+    const { SignedInAccount } = await import("./signed-in-account");
     const originalConfirm = window.confirm;
     const confirm = mock(() => false);
     window.confirm = confirm;
@@ -747,15 +720,7 @@ describe("LinkedAccount", () => {
       const view = render(
         <UnsavedChangesProvider>
           {withAccountLayout(
-            <LinkedAccount
-              referralsEnabled
-              avatarPresentation={hiddenAvatarPresentation}
-              email={adaAddress}
-              reservationCount={history.groups.current.length}
-              reservations={reservations}
-              locale="en-US"
-              profile={profile}
-            />
+            <SignedInAccount locale="en-US" state={linkedState()} />
           )}
         </UnsavedChangesProvider>
       );
@@ -804,34 +769,30 @@ describe("LinkedAccount", () => {
   });
 
   test("lists the account's passkeys under Sign-in & security while passkeys are on", async () => {
-    const { LinkedAccount } = await import("./linked-account");
+    const { SignedInAccount } = await import("./signed-in-account");
     const view = render(
       withAccountLayout(
-        <LinkedAccount
-          referralsEnabled
-          avatarPresentation={hiddenAvatarPresentation}
-          email={adaAddress}
-          reservationCount={history.groups.current.length}
-          reservations={reservations}
+        <SignedInAccount
           locale="en-US"
-          passkeys={{
-            accountId: "account-1",
-            passkeys: [
-              {
-                id: "passkey-1",
-                name: "Work laptop",
-                provider: "Google Password Manager",
-                createdAt: "2026-10-14T16:40:00.000Z",
-              },
-              {
-                id: "passkey-2",
-                name: undefined,
-                provider: undefined,
-                createdAt: "2026-10-15T08:00:00.000Z",
-              },
-            ],
-          }}
-          profile={profile}
+          state={linkedState({
+            passkeys: {
+              accountId: "account-1",
+              passkeys: [
+                {
+                  id: "passkey-1",
+                  name: "Work laptop",
+                  provider: "Google Password Manager",
+                  createdAt: "2026-10-14T16:40:00.000Z",
+                },
+                {
+                  id: "passkey-2",
+                  name: undefined,
+                  provider: undefined,
+                  createdAt: "2026-10-15T08:00:00.000Z",
+                },
+              ],
+            },
+          })}
         />,
         { passkeysEnabled: true }
       )
@@ -863,18 +824,10 @@ describe("LinkedAccount", () => {
   });
 
   test("shows no Sign-in & security panel without passkey settings", async () => {
-    const { LinkedAccount } = await import("./linked-account");
+    const { SignedInAccount } = await import("./signed-in-account");
     const view = render(
       withAccountLayout(
-        <LinkedAccount
-          referralsEnabled
-          avatarPresentation={hiddenAvatarPresentation}
-          email={adaAddress}
-          reservationCount={history.groups.current.length}
-          reservations={reservations}
-          locale="en-US"
-          profile={profile}
-        />
+        <SignedInAccount locale="en-US" state={linkedState()} />
       )
     );
 
