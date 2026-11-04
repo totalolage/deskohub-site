@@ -246,51 +246,6 @@ function TextListLevel({
 }
 
 /**
- * Each move's change to the items, and the controls that keep focus on the
- * moved item: its own button, else the opposite one when the move took the
- * item to an end of its level.
- */
-const itemMoves = {
-  "move-up": {
-    apply: (items, path) => moveEmailTextListItem(items, path, -1),
-    focus: ["move-up", "move-down"],
-  },
-  "move-down": {
-    apply: (items, path) => moveEmailTextListItem(items, path, 1),
-    focus: ["move-down", "move-up"],
-  },
-  indent: {
-    // The item joins the level under the item before it, numbered like the
-    // level it leaves.
-    apply: (items, path, ordered) =>
-      indentEmailTextListItem(
-        items,
-        path,
-        path.length > 1
-          ? (emailTextListItemAt(items, path.slice(0, -1))?.list?.ordered ??
-              false)
-          : ordered
-      ),
-    focus: ["indent", "outdent"],
-  },
-  outdent: {
-    apply: (items, path) => outdentEmailTextListItem(items, path),
-    focus: ["outdent", "indent"],
-  },
-} as const satisfies Record<
-  EmailTextListItemMove,
-  {
-    readonly apply: (
-      items: EmailDraftTextListItems,
-      path: EmailTextListItemPath,
-      /** Whether the block's own items are numbered. */
-      ordered: boolean
-    ) => EmailDraftTextListItems;
-    readonly focus: readonly ItemAction[];
-  }
->;
-
-/**
  * What the rows of a text list block do to its items; focus follows each
  * change to the control it concerns, else to the items group.
  */
@@ -325,8 +280,46 @@ const textListItemOperations = ({
         focusAfterChange([itemsId]);
         return;
       }
-      const move = itemMoves[action];
-      const next = move.apply(items, path, component.ordered ?? false);
+      // Each move's change to the items, and the controls that keep focus on
+      // the moved item: its own button, else the opposite one when the move
+      // took the item to an end of its level.
+      const move = (
+        {
+          "move-up": {
+            items: () => moveEmailTextListItem(items, path, -1),
+            focus: ["move-up", "move-down"],
+          },
+          "move-down": {
+            items: () => moveEmailTextListItem(items, path, 1),
+            focus: ["move-down", "move-up"],
+          },
+          indent: {
+            // The item opens a level under the item before it, numbered like
+            // the level it leaves.
+            items: () =>
+              indentEmailTextListItem(
+                items,
+                path,
+                path.length > 1
+                  ? (emailTextListItemAt(items, path.slice(0, -1))?.list
+                      ?.ordered ?? false)
+                  : (component.ordered ?? false)
+              ),
+            focus: ["indent", "outdent"],
+          },
+          outdent: {
+            items: () => outdentEmailTextListItem(items, path),
+            focus: ["outdent", "indent"],
+          },
+        } as const satisfies Record<
+          EmailTextListItemMove,
+          {
+            readonly items: () => EmailDraftTextListItems;
+            readonly focus: readonly ItemAction[];
+          }
+        >
+      )[action];
+      const next = move.items();
       setItems(next);
       // Focus follows the item to its new place, where its controls may be
       // named differently when its text key repeats.

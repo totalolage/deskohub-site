@@ -12,7 +12,10 @@ import { EmailBlockImageSettings } from "./email-block-image";
 import { EmailBlockRichTextSettings } from "./email-block-rich-text";
 import { EmailBlockTextListSettings } from "./email-block-text-list";
 import { EmailBlockValueSettings } from "./email-block-value-settings";
-import type { EmailDraftComponentTag } from "./email-draft-form";
+import type {
+  EmailDraftComponent,
+  EmailDraftComponentTag,
+} from "./email-draft-form";
 import {
   EmailFieldProblems,
   useEmailFieldProblems,
@@ -57,22 +60,35 @@ function EmailBlockNoSettings() {
   );
 }
 
-/** The settings and texts of each block kind, by the block's tag. */
-const emailBlockSettings = {
-  Paragraph: EmailBlockRichTextSettings,
-  Heading: EmailBlockRichTextSettings,
-  TextList: EmailBlockTextListSettings,
-  Image: EmailBlockImageSettings,
-  Button: EmailBlockButtonSettings,
-  Record: EmailBlockValueSettings,
-  List: EmailBlockValueSettings,
-  Offer: EmailBlockValueSettings,
-  Divider: EmailBlockNoSettings,
-  Spacer: EmailBlockNoSettings,
-} as const satisfies Record<
-  EmailDraftComponentTag,
-  ComponentType<{ readonly contentLocale: Locale; readonly index: number }>
->;
+/** The settings and texts one block kind has. */
+function EmailBlockBody({
+  component,
+  contentLocale,
+  index,
+}: {
+  readonly component: EmailDraftComponent;
+  readonly contentLocale: Locale;
+  readonly index: number;
+}) {
+  const Settings = (
+    {
+      Paragraph: EmailBlockRichTextSettings,
+      Heading: EmailBlockRichTextSettings,
+      TextList: EmailBlockTextListSettings,
+      Image: EmailBlockImageSettings,
+      Button: EmailBlockButtonSettings,
+      Record: EmailBlockValueSettings,
+      List: EmailBlockValueSettings,
+      Offer: EmailBlockValueSettings,
+      Divider: EmailBlockNoSettings,
+      Spacer: EmailBlockNoSettings,
+    } as const satisfies Record<
+      EmailDraftComponentTag,
+      ComponentType<{ readonly contentLocale: Locale; readonly index: number }>
+    >
+  )[component._tag];
+  return <Settings contentLocale={contentLocale} index={index} />;
+}
 
 /**
  * One block of the body: its kind and number, buttons that move or remove
@@ -105,7 +121,6 @@ export function EmailBlockCard({
     { locale }
   );
   const headingId = `${fieldId}-heading`;
-  const BlockSettings = emailBlockSettings[component._tag];
   const actions = [
     {
       action: "move-up",
@@ -172,7 +187,11 @@ export function EmailBlockCard({
         </header>
         <div className="@container space-y-4 px-4 py-4">
           <EmailFieldProblems fieldId={fieldId} />
-          <BlockSettings contentLocale={contentLocale} index={index} />
+          <EmailBlockBody
+            component={component}
+            contentLocale={contentLocale}
+            index={index}
+          />
         </div>
       </div>
     </li>
