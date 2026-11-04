@@ -56,6 +56,7 @@ Account cases run serially in `account-auth` from the catalog in `e2e/account/ca
 - Capacity and one-redemption-per-customer cases first complete a real zero-total checkout, then try the consumed code.
 - The voucher case issues credit for two zero-total reservations, spends it twice, checks two `voucher_redemptions` rows totaling the issued credit, and then expects the unavailable error. Its fixture derives issued credit from earlier applications so reruns keep audit history.
 - Customer fixtures come from the normal Dotypos customer API. The runner picks an active partial-percentage group, derives the expected discount from its real percentage, and assigns customers with an ETag-protected patch. Cases change only their own customer's group, never the group definition.
+- Reach Dotypos only through `getDotyposLayer` (`e2e/integrations/dotypos.ts`), provided around the operation. It drops the service's Effect logs and HTTP client spans, whose annotations and request URLs carry customer, table, and reservation IDs, so they never reach CI output or E2E traces. Never provide `DotyposService` another way in the runner.
 
 Browser E2E proves customer-visible behavior and the persisted lifecycle state:
 
