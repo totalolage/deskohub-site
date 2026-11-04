@@ -120,6 +120,22 @@ test("explains values while the email has none", () => {
   expect(view.queryByRole("list")).toBeNull();
 });
 
+test("groups the customer fields by kind and sorts each group by path", async () => {
+  const view = renderSection();
+  await openCustomerPicker(view);
+  const groups = view.getAllByRole("group");
+  expect(groups).toHaveLength(3);
+  for (const group of groups) {
+    const paths = within(group)
+      .getAllByRole("option")
+      .map((option) => option.getAttribute("data-value"));
+    expect(paths.length).toBeGreaterThan(0);
+    expect(paths).toEqual(
+      paths.toSorted((left = "", right = "") => left.localeCompare(right, "en"))
+    );
+  }
+});
+
 test("adds a customer scalar value picked by search and keyboard", async () => {
   const view = renderSection();
   const input = await openCustomerPicker(view);

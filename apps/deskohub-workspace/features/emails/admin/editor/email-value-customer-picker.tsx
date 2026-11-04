@@ -34,6 +34,19 @@ const groups = [
   readonly heading: typeof m.emailsEditorValuesGroupList;
 }[];
 
+/** Each kind's fields by path, so related fields sit together in order. */
+const fieldsOfKind = (kind: EmailCustomerFieldOption["kind"]) =>
+  emailCustomerFieldOptions
+    .filter((option) => option.kind === kind)
+    .map(({ path }) => ({ path, label: emailCustomerFieldPathLabel(path) }))
+    .sort((left, right) => left.label.localeCompare(right.label, "en"));
+
+const fieldsByKind = {
+  scalar: fieldsOfKind("scalar"),
+  record: fieldsOfKind("record"),
+  list: fieldsOfKind("list"),
+} as const;
+
 /**
  * A searchable list of every customer field a value can select, grouped by
  * what the field yields. `trigger` renders the button that opens it.
@@ -78,34 +91,31 @@ export function EmailValueCustomerPicker({
                 heading={heading({}, { locale })}
                 className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-navy-blue/55 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.08em]"
               >
-                {emailCustomerFieldOptions
-                  .filter((option) => option.kind === kind)
-                  .map(({ path }) => {
-                    const label = emailCustomerFieldPathLabel(path);
-                    return (
-                      <CommandItem
-                        key={label}
-                        value={label}
-                        keywords={[label]}
-                        selected={label === selected}
-                        onSelect={() => {
-                          picked.current = true;
-                          onSelect(path);
-                          setOpen(false);
-                        }}
+                {fieldsByKind[kind].map(({ path, label }) => {
+                  return (
+                    <CommandItem
+                      key={label}
+                      value={label}
+                      keywords={[label]}
+                      selected={label === selected}
+                      onSelect={() => {
+                        picked.current = true;
+                        onSelect(path);
+                        setOpen(false);
+                      }}
+                    >
+                      <span className="min-w-0 flex-1 truncate font-mono text-[13px]">
+                        {label}
+                      </span>
+                      <Badge
+                        className="shrink-0 px-1.5 py-0 text-[11px]"
+                        variant="subtle"
                       >
-                        <span className="min-w-0 flex-1 truncate font-mono text-[13px]">
-                          {label}
-                        </span>
-                        <Badge
-                          className="shrink-0 px-1.5 py-0 text-[11px]"
-                          variant="subtle"
-                        >
-                          {emailValueKindLabel(kind, locale)}
-                        </Badge>
-                      </CommandItem>
-                    );
-                  })}
+                        {emailValueKindLabel(kind, locale)}
+                      </Badge>
+                    </CommandItem>
+                  );
+                })}
               </CommandGroup>
             ))}
           </CommandList>
