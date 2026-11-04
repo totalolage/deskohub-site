@@ -19,15 +19,22 @@ const isAttributePath = Schema.is(Schema.Array(Schema.String));
  */
 export const emailInlineValueReference = (
   attrs: JSONContent["attrs"]
-): { readonly name?: string; readonly field?: readonly string[] } => ({
-  ...(isAttributeText(attrs?.name) && { name: attrs.name }),
-  ...(isAttributePath(attrs?.field) && { field: [...attrs.field] }),
-});
+): { readonly name?: string; readonly field?: readonly string[] } => {
+  const name = attrs?.name;
+  const field = attrs?.field;
+  return {
+    ...(isAttributeText(name) && { name }),
+    ...(isAttributePath(field) && { field: [...field] }),
+  };
+};
 
 /** The link key a link mark's attributes hold. */
 export const emailInlineLinkKey = (
   attrs: JSONContent["attrs"]
-): string | undefined => (isAttributeText(attrs?.key) ? attrs.key : undefined);
+): string | undefined => {
+  const key = attrs?.key;
+  return isAttributeText(key) ? key : undefined;
+};
 
 type EmailInlineMarks = {
   readonly bold?: boolean;
@@ -105,7 +112,9 @@ export const emailInlinePartsEqual = (
   JSON.stringify(normalizeEmailInlineParts(a)) ===
   JSON.stringify(normalizeEmailInlineParts(b));
 
-const tipTapMarks = (marks: EmailInlineMarks): JSONContent[] => [
+const tipTapMarks = (
+  marks: EmailInlineMarks
+): NonNullable<JSONContent["marks"]> => [
   ...(marks.bold ? [{ type: "bold" }] : []),
   ...(marks.italic ? [{ type: "italic" }] : []),
   ...(marks.link !== undefined
