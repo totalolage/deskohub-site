@@ -146,14 +146,14 @@ export const makeReferralReferrerCandidate = (input: {
  * application. The caller resolves each candidate and decides what a failed
  * resolution means.
  */
-export const priceReferralBenefits = <EI, RI, ER, RR>(input: {
-  readonly baseQuote: DiscountQuote;
-  readonly invitation: Effect.Effect<DiscountCandidate | undefined, EI, RI>;
-  readonly referrer: (
-    remainingSubtotal: Money
-  ) => Effect.Effect<DiscountCandidate | undefined, ER, RR>;
-}) =>
-  Effect.gen(function* () {
+export const priceReferralBenefits = Effect.fn("ReferralBenefits.price")(
+  function* <EI, RI, ER, RR>(input: {
+    readonly baseQuote: DiscountQuote;
+    readonly invitation: Effect.Effect<DiscountCandidate | undefined, EI, RI>;
+    readonly referrer: (
+      remainingSubtotal: Money
+    ) => Effect.Effect<DiscountCandidate | undefined, ER, RR>;
+  }) {
     const invitation = yield* input.invitation;
     const invited = yield* appendDiscountCalculation({
       baseQuote: input.baseQuote,
@@ -168,7 +168,8 @@ export const priceReferralBenefits = <EI, RI, ER, RR>(input: {
       quote: referred.quote,
       applications: [...invited.applications, ...referred.applications],
     } satisfies DiscountCalculation;
-  }).pipe(Effect.withSpan("ReferralBenefits.price"));
+  }
+);
 
 export type ReferralBenefitRecognition =
   | { readonly kind: "invitation"; readonly offersProgramRate: boolean }
