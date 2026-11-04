@@ -3,7 +3,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { REGEXP_ONLY_DIGITS } from "input-otp";
 import { CheckCircle2, Loader2 } from "lucide-react";
-import { useRef, useState } from "react";
+import { type RefObject, useRef, useState } from "react";
 import type {
   SignInCodeVerification,
   SignInEmailFailure,
@@ -109,43 +109,15 @@ export function SignInCodeStep({
   const dead = isDeadCode(status);
   const verifying = status === "verifying";
   const verified = status === "verified";
+  // While a code is checked or after it worked, nothing else may start.
+  const settling = verifying || verified;
   const invalid = status === "wrong";
-  const resendDisabled =
-    cooldownSeconds > 0 || resendStatus === "sending" || verifying || verified;
-
-  const resendFailed =
-    resendStatus !== "idle" &&
-    resendStatus !== "sending" &&
-    resendStatus !== "sent";
-  // A rejected resend outranks the earlier code result so it is seen and
-  // announced; checking another code clears it.
-  const statusMessage = resendFailed
-    ? signInEmailFailureMessage(resendStatus, locale)
-    : {
-        idle:
-          resendStatus === "sent"
-            ? m.accountSignInCodeResent({}, { locale })
-            : null,
-        verifying: m.accountSignInCodeVerifying({}, { locale }),
-        verified: verifiedMessage,
-        wrong: m.accountSignInCodeInvalid({}, { locale }),
-        expired: m.accountSignInCodeExpired({}, { locale }),
-        "too-many-attempts": m.accountSignInCodeTooManyAttempts({}, { locale }),
-        automated: m.accountSignInAutomatedRequest({}, { locale }),
-        failed: m.accountSignInCodeFailed({}, { locale }),
-      }[status];
-  const statusTone = resendFailed
-    ? "error"
-    : {
-        idle: "neutral",
-        verifying: "neutral",
-        verified: "success",
-        wrong: "error",
-        expired: "error",
-        "too-many-attempts": "error",
-        automated: "error",
-        failed: "error",
-      }[status];
+  const { message: statusMessage, tone: statusTone } = codeStepStatus({
+    locale,
+    resendStatus,
+    status,
+    verifiedMessage,
+  });
 
   return (
     <div className="mt-8">
@@ -165,7 +137,7 @@ export function SignInCodeStep({
         value={code}
         onChange={setCode}
         onComplete={submitCode}
-        disabled={dead || verifying || verified}
+        disabled={dead || settling}
         aria-invalid={invalid}
         aria-describedby="account-sign-in-code-status"
         containerClassName="mt-2 w-full max-w-[22rem] gap-2 sm:gap-3"
@@ -219,41 +191,133 @@ export function SignInCodeStep({
         {statusMessage}
       </div>
 
-      <div className="mt-6 flex flex-wrap items-center gap-3">
-        <Button
-          ref={resendRef}
-          id="account-sign-in-code-resend"
-          type="button"
-          variant={dead ? "primary" : "secondary"}
-          disabled={resendDisabled}
-          aria-busy={resendStatus === "sending"}
-          onClick={sendNewEmail}
-        >
-          {resendStatus === "sending" && (
-            <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
-          )}
-          {cooldownSeconds > 0
-            ? m.accountSignInCodeResendCooldown(
-                { seconds: cooldownSeconds },
-                { locale }
-              )
-            : m.accountSignInCodeResend({}, { locale })}
-        </Button>
-        {onUseDifferentEmail && (
-          <Button
-            type="button"
-            variant="link"
-            disabled={verifying || verified}
-            onClick={onUseDifferentEmail}
-          >
-            {m.accountSignInCodeChangeEmail({}, { locale })}
-          </Button>
-        )}
-      </div>
+      <CodeStepEmailControls
+        cooldownSeconds={cooldownSeconds}
+        dead={dead}
+        locale={locale}
+        onResend={sendNewEmail}
+        onUseDifferentEmail={onUseDifferentEmail}
+        resendRef={resendRef}
+        resendStatus={resendStatus}
+        settling={settling}
+      />
 
       <p className="mt-6 border-t border-navy-blue/10 pt-5 text-sm leading-6 text-navy-blue/60">
         {m.accountSignInCodeLinkHint({}, { locale })}
       </p>
+    </div>
+  );
+}
+
+// A rejected resend outranks the earlier code result so it is seen and
+// announced; checking another code clears it.
+function codeStepStatus({
+  locale,
+  resendStatus,
+  status,
+  verifiedMessage,
+}: {
+  readonly locale: Locale;
+  readonly resendStatus: ResendStatus;
+  readonly status: CodeStatus;
+  readonly verifiedMessage: string;
+}): {
+  readonly message: string | null;
+  readonly tone: "neutral" | "success" | "error";
+} {
+  if (
+    resendStatus !== "idle" &&
+    resendStatus !== "sending" &&
+    resendStatus !== "sent"
+  ) {
+    return {
+      message: signInEmailFailureMessage(resendStatus, locale),
+      tone: "error",
+    };
+  }
+  return {
+    message: {
+      idle:
+        resendStatus === "sent"
+          ? m.accountSignInCodeResent({}, { locale })
+          : null,
+      verifying: m.accountSignInCodeVerifying({}, { locale }),
+      verified: verifiedMessage,
+      wrong: m.accountSignInCodeInvalid({}, { locale }),
+      expired: m.accountSignInCodeExpired({}, { locale }),
+      "too-many-attempts": m.accountSignInCodeTooManyAttempts({}, { locale }),
+      automated: m.accountSignInAutomatedRequest({}, { locale }),
+      failed: m.accountSignInCodeFailed({}, { locale }),
+    }[status],
+    tone: (
+      {
+        idle: "neutral",
+        verifying: "neutral",
+        verified: "success",
+        wrong: "error",
+        expired: "error",
+        "too-many-attempts": "error",
+        automated: "error",
+        failed: "error",
+      } as const
+    )[status],
+  };
+}
+
+/**
+ * The ways on from a code: a new email once the cooldown is over (the main
+ * action once the code is dead), and changing the address where offered.
+ */
+function CodeStepEmailControls({
+  cooldownSeconds,
+  dead,
+  locale,
+  onResend,
+  onUseDifferentEmail,
+  resendRef,
+  resendStatus,
+  settling,
+}: {
+  readonly cooldownSeconds: number;
+  readonly dead: boolean;
+  readonly locale: Locale;
+  readonly onResend: () => void;
+  readonly onUseDifferentEmail: (() => void) | undefined;
+  readonly resendRef: RefObject<HTMLButtonElement | null>;
+  readonly resendStatus: ResendStatus;
+  readonly settling: boolean;
+}) {
+  return (
+    <div className="mt-6 flex flex-wrap items-center gap-3">
+      <Button
+        ref={resendRef}
+        id="account-sign-in-code-resend"
+        type="button"
+        variant={dead ? "primary" : "secondary"}
+        disabled={cooldownSeconds > 0 || resendStatus === "sending" || settling}
+        aria-busy={resendStatus === "sending"}
+        onClick={onResend}
+      >
+        {resendStatus === "sending" && (
+          <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+        )}
+        {cooldownSeconds > 0
+          ? m.accountSignInCodeResendCooldown(
+              { seconds: cooldownSeconds },
+              { locale }
+            )
+          : m.accountSignInCodeResend({}, { locale })}
+      </Button>
+      {onUseDifferentEmail && (
+        <Button
+          type="button"
+          variant="link"
+          disabled={settling}
+          onClick={onUseDifferentEmail}
+        >
+          {m.accountSignInCodeChangeEmail({}, { locale })}
+        </Button>
+      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import type { CSSProperties, KeyboardEventHandler } from "react";
+import type { CSSProperties, KeyboardEventHandler, ReactElement } from "react";
 import type { Table } from "./generated";
 
 type TableType = NonNullable<Table["type"]>;
@@ -89,122 +89,182 @@ const getShapeBox = (shape: TableShape) => {
   return { width: shape.width, height: shape.height };
 };
 
+type TableMapTableStyles = Pick<
+  TableMapProps,
+  | "tableStyle"
+  | "tableLabelStyle"
+  | "tableShapeInlineStyle"
+  | "tableLabelInlineStyle"
+>;
+
+type PositionedTable = ReturnType<typeof positionTable>;
+
+type Point = { readonly x: number; readonly y: number };
+
+/** The table's shape, styles, and parsed position on the map. */
+const positionTable = (table: Table, styles: TableMapTableStyles) => {
+  const shape = tableShapes[table.type ?? "GENERIC"];
+  const box = getShapeBox(shape);
+
+  return {
+    table,
+    shape,
+    className: styles.tableStyle(table),
+    labelClassName: styles.tableLabelStyle?.(table),
+    shapeStyle: styles.tableShapeInlineStyle?.(table),
+    labelStyle: styles.tableLabelInlineStyle?.(table),
+    x: parseTableNumber(table.positionX),
+    y: parseTableNumber(table.positionY),
+    rotation: parseTableNumber(table.rotation),
+    width: box.width,
+    height: box.height,
+  };
+};
+
+const getTableBounds = (table: PositionedTable): Bounds => ({
+  minX: table.x - table.width / 2 - padding,
+  minY: table.y - table.height / 2 - padding,
+  maxX: table.x + table.width / 2 + padding,
+  maxY: table.y + table.height / 2 + padding,
+});
+
+/** The padded box around every table and the room; a unit box when empty. */
+const getContentBounds = (
+  tables: readonly PositionedTable[],
+  roomLayout: TableMapRoomLayout | undefined
+): Bounds => {
+  const bounds = [
+    ...tables.map(getTableBounds),
+    ...(roomLayout ? [getRoomLayoutBounds(roomLayout)] : []),
+  ];
+  if (!bounds.length) return { minX: 0, minY: 0, maxX: 1, maxY: 1 };
+
+  return {
+    minX: Math.min(...bounds.map((box) => box.minX)),
+    minY: Math.min(...bounds.map((box) => box.minY)),
+    maxX: Math.max(...bounds.map((box) => box.maxX)),
+    maxY: Math.max(...bounds.map((box) => box.maxY)),
+  };
+};
+
+const getBoundsCenter = (bounds: Bounds): Point => ({
+  x: (bounds.minX + bounds.maxX) / 2,
+  y: (bounds.minY + bounds.maxY) / 2,
+});
+
+const getTableKey = ({ table, x, y }: PositionedTable) =>
+  table.id ?? `${table.name}-${x}-${y}`;
+
+function renderTableGeometry(
+  positionedTable: PositionedTable,
+  onTableClick: TableMapProps["onTableClick"]
+) {
+  const { table, shape, className, shapeStyle, x, y, rotation } =
+    positionedTable;
+
+  return (
+    <g
+      key={getTableKey(positionedTable)}
+      transform={`translate(${x} ${y})`}
+      {...getInteractionProps(table, onTableClick)}
+    >
+      <g transform={`rotate(${rotation})`}>
+        {renderShape(shape, className, shapeStyle)}
+      </g>
+    </g>
+  );
+}
+
+/** Wraps the map geometry in the output rotation around the content center. */
+function rotateGeometry(
+  geometry: readonly ReactElement[],
+  outputRotation: number,
+  center: Point
+) {
+  if (!outputRotation) return geometry;
+
+  return [
+    <g
+      key="output-rotation"
+      transform={`rotate(${formatSvgNumber(outputRotation)} ${formatSvgNumber(center.x)} ${formatSvgNumber(center.y)})`}
+    >
+      {geometry}
+    </g>,
+  ];
+}
+
+/** An upright label at the table's position after the output rotation. */
+function renderTableLabel(
+  positionedTable: PositionedTable,
+  labelRotation: ReturnType<typeof getRotation> | undefined,
+  center: Point
+) {
+  const { table, labelClassName, labelStyle, x, y } = positionedTable;
+  const labelPosition = labelRotation
+    ? rotatePoint(
+        x,
+        y,
+        center.x,
+        center.y,
+        labelRotation.cos,
+        labelRotation.sin
+      )
+    : { x, y };
+
+  return (
+    <text
+      key={`${getTableKey(positionedTable)}-label`}
+      x={Number(formatSvgNumber(labelPosition.x))}
+      y={Number(formatSvgNumber(labelPosition.y))}
+      className={labelClassName}
+      style={labelStyle}
+      textAnchor="middle"
+      dominantBaseline="middle"
+      pointerEvents="none"
+    >
+      {table.name}
+    </text>
+  );
+}
+
+const formatViewBox = (bounds: Bounds) =>
+  `${formatSvgNumber(bounds.minX)} ${formatSvgNumber(bounds.minY)} ${formatSvgNumber(bounds.maxX - bounds.minX)} ${formatSvgNumber(bounds.maxY - bounds.minY)}`;
+
 export function TableMap({
   tables,
   width,
   height,
   rotation,
   style,
-  tableStyle,
-  tableLabelStyle,
-  tableShapeInlineStyle,
-  tableLabelInlineStyle,
   roomLayout,
   onTableClick,
   ariaLabel = "Dotypos table map",
+  ...tableStyles
 }: TableMapProps) {
-  const positionedTables = tables.map((table) => {
-    const shape = tableShapes[table.type ?? "GENERIC"];
-    const box = getShapeBox(shape);
-
-    return {
-      table,
-      shape,
-      className: tableStyle(table),
-      labelClassName: tableLabelStyle?.(table),
-      shapeStyle: tableShapeInlineStyle?.(table),
-      labelStyle: tableLabelInlineStyle?.(table),
-      x: parseTableNumber(table.positionX),
-      y: parseTableNumber(table.positionY),
-      rotation: parseTableNumber(table.rotation),
-      width: box.width,
-      height: box.height,
-    };
-  });
-
-  const bounds = [
-    ...positionedTables.map((table) => ({
-      minX: table.x - table.width / 2 - padding,
-      minY: table.y - table.height / 2 - padding,
-      maxX: table.x + table.width / 2 + padding,
-      maxY: table.y + table.height / 2 + padding,
-    })),
-    ...(roomLayout ? [getRoomLayoutBounds(roomLayout)] : []),
-  ];
-
-  const contentBounds = {
-    minX: bounds.length ? Math.min(...bounds.map((box) => box.minX)) : 0,
-    minY: bounds.length ? Math.min(...bounds.map((box) => box.minY)) : 0,
-    maxX: bounds.length ? Math.max(...bounds.map((box) => box.maxX)) : 1,
-    maxY: bounds.length ? Math.max(...bounds.map((box) => box.maxY)) : 1,
-  } satisfies Bounds;
+  const positionedTables = tables.map((table) =>
+    positionTable(table, tableStyles)
+  );
+  const contentBounds = getContentBounds(positionedTables, roomLayout);
   const outputRotation = getOutputRotation(rotation);
   const viewBoxBounds = outputRotation
     ? getRotatedBounds(contentBounds, outputRotation)
     : contentBounds;
-  const centerX = (contentBounds.minX + contentBounds.maxX) / 2;
-  const centerY = (contentBounds.minY + contentBounds.maxY) / 2;
-
+  const center = getBoundsCenter(contentBounds);
   const labelRotation = outputRotation
     ? getRotation(outputRotation)
     : undefined;
-  const tableGeometry = positionedTables.map(
-    ({ table, shape, className, shapeStyle, x, y, rotation }) => (
-      <g
-        key={table.id ?? `${table.name}-${x}-${y}`}
-        transform={`translate(${x} ${y})`}
-        {...getInteractionProps(table, onTableClick)}
-      >
-        <g transform={`rotate(${rotation})`}>
-          {renderShape(shape, className, shapeStyle)}
-        </g>
-      </g>
-    )
-  );
   const geometry = [
     ...(roomLayout ? [renderRoomLayout(roomLayout)] : []),
-    ...tableGeometry,
+    ...positionedTables.map((table) =>
+      renderTableGeometry(table, onTableClick)
+    ),
   ];
-  const rotatedGeometry = outputRotation
-    ? [
-        <g
-          key="output-rotation"
-          transform={`rotate(${formatSvgNumber(outputRotation)} ${formatSvgNumber(centerX)} ${formatSvgNumber(centerY)})`}
-        >
-          {geometry}
-        </g>,
-      ]
-    : geometry;
-  const tableLabels = positionedTables.map(
-    ({ table, labelClassName, labelStyle, x, y }) => {
-      const labelPosition = labelRotation
-        ? rotatePoint(
-            x,
-            y,
-            centerX,
-            centerY,
-            labelRotation.cos,
-            labelRotation.sin
-          )
-        : { x, y };
-
-      return (
-        <text
-          key={`${table.id ?? `${table.name}-${x}-${y}`}-label`}
-          x={Number(formatSvgNumber(labelPosition.x))}
-          y={Number(formatSvgNumber(labelPosition.y))}
-          className={labelClassName}
-          style={labelStyle}
-          textAnchor="middle"
-          dominantBaseline="middle"
-          pointerEvents="none"
-        >
-          {table.name}
-        </text>
-      );
-    }
-  );
-  const renderedChildren = [...rotatedGeometry, ...tableLabels];
+  const renderedChildren = [
+    ...rotateGeometry(geometry, outputRotation, center),
+    ...positionedTables.map((table) =>
+      renderTableLabel(table, labelRotation, center)
+    ),
+  ];
 
   return (
     <svg
@@ -214,7 +274,7 @@ export function TableMap({
       width={width}
       height={height}
       style={style}
-      viewBox={`${formatSvgNumber(viewBoxBounds.minX)} ${formatSvgNumber(viewBoxBounds.minY)} ${formatSvgNumber(viewBoxBounds.maxX - viewBoxBounds.minX)} ${formatSvgNumber(viewBoxBounds.maxY - viewBoxBounds.minY)}`}
+      viewBox={formatViewBox(viewBoxBounds)}
     >
       {renderedChildren}
     </svg>
@@ -230,8 +290,7 @@ const getOutputRotation = (rotation: number | undefined) => {
 };
 
 function getRotatedBounds(bounds: Bounds, rotation: number): Bounds {
-  const centerX = (bounds.minX + bounds.maxX) / 2;
-  const centerY = (bounds.minY + bounds.maxY) / 2;
+  const { x: centerX, y: centerY } = getBoundsCenter(bounds);
   const { cos, sin } = getRotation(rotation);
   const points = [
     rotatePoint(bounds.minX, bounds.minY, centerX, centerY, cos, sin),

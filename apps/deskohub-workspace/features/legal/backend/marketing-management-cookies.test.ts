@@ -12,7 +12,9 @@ const set = mock(
     else values.set(name, value);
   }
 );
+const nextHeaders = await import("next/headers");
 mock.module("next/headers", () => ({
+  ...nextHeaders,
   cookies: async () => ({
     get: (name: string) => {
       const value = values.get(name);
@@ -77,6 +79,28 @@ describe("marketing request cookie adapter", () => {
       pending: undefined,
       session: undefined,
     });
+  });
+
+  test("reads each token independently without writing", async () => {
+    values.set(marketingManagementCookieNames.pending, "pending-token");
+    expect(await run((cookies) => cookies.read)).toEqual({
+      pending: "pending-token",
+      session: undefined,
+    });
+    values.set(marketingManagementCookieNames.session, "session-token");
+    expect(await run((cookies) => cookies.read)).toEqual({
+      pending: "pending-token",
+      session: "session-token",
+    });
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  test("clears both cookies with host-only deletion options", async () => {
+    await run((cookies) => cookies.clear);
+    expect(set.mock.calls).toEqual([
+      [marketingManagementCookieNames.pending, "", { ...secure, maxAge: 0 }],
+      [marketingManagementCookieNames.session, "", { ...secure, maxAge: 0 }],
+    ]);
   });
 
   test("reads while rendering but reduces a forbidden write to a safe typed failure", async () => {

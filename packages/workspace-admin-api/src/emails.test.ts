@@ -16,6 +16,7 @@ import {
   type EmailTranslation,
   EmailValueDefinition,
   emailDocumentForPublication,
+  emailPublicationProblems,
   requiredEmailValueNames,
 } from "./emails";
 import { AdministrationCustomerDetail } from "./workspace-admin-api";
@@ -615,6 +616,387 @@ test("unfinished inline values round-trip in drafts and cannot publish", () => {
       })
     ).toThrow();
   }
+});
+
+describe("publication problems", () => {
+  const locales = ["cs-CZ", "en-US"];
+  const problems = (input: unknown, current: readonly string[] = locales) =>
+    emailPublicationProblems(
+      Schema.decodeUnknownSync(EmailDocument)(input),
+      current
+    );
+  const bothLanguages = (overrides: object) => ({
+    "cs-CZ": { ...translation, ...overrides },
+    "en-US": { ...translation, ...overrides },
+  });
+  const email = {
+    name: "email",
+    source: { kind: "customer", path: ["profile", "customer", "email"] },
+  };
+  const customer = {
+    name: "customer",
+    source: {
+      kind: "customer",
+      path: ["profile", "customer"],
+      fields: [["displayName"]],
+    },
+  };
+  const reservations = {
+    name: "reservations",
+    source: {
+      kind: "customer",
+      path: ["activity", "reservations"],
+      fields: [["id"], ["startsAt"]],
+      limit: 3,
+    },
+  };
+  const discount = {
+    name: "discount",
+    source: {
+      kind: "discount",
+      discountId: "01900000-0000-7000-8000-000000000001",
+      validDays: 30,
+    },
+  };
+  const value = (name: string, field?: readonly string[]) => ({
+    _tag: "Value",
+    name,
+    ...(field && { field }),
+  });
+  const bodyField = (...field: string[]) => ({ field, labelKey: "body" });
+
+  test("a complete document has none", () => {
+    expect(problems(document)).toEqual([]);
+  });
+
+  test("reports duplicate names and ids, an empty body, and missing languages in that order", () => {
+    expect(
+      problems({ ...document, structure: [], values: [email, email] }, [
+        "cs-CZ",
+        "de-DE",
+        "en-US",
+        "sk-SK",
+      ])
+    ).toEqual([
+      "Duplicate value names.",
+      "Body is empty.",
+      "Missing language: de-DE.",
+      "Missing language: sk-SK.",
+    ]);
+    expect(
+      problems({
+        ...document,
+        structure: [document.structure[0], document.structure[0]],
+      })
+    ).toEqual(["Duplicate component ids."]);
+  });
+
+  test("reports invalid customer selections, even unused ones", () => {
+    expect(
+      problems({
+        ...document,
+        values: [
+          email,
+          { name: "nowhere", source: { kind: "customer", path: ["nope"] } },
+          { name: "bare", source: { kind: "customer", path: ["profile"] } },
+        ],
+      })
+    ).toEqual([
+      "Invalid customer selection: nowhere.",
+      "Invalid customer selection: bare.",
+    ]);
+  });
+
+  test("a subject needs a value or nonblank text", () => {
+    expect(
+      problems({
+        ...document,
+        values: [email],
+        translations: {
+          "cs-CZ": { ...translation, subject: [] },
+          "en-US": {
+            ...translation,
+            subject: [
+              { _tag: "Text", text: "  " },
+              { _tag: "Text", text: "" },
+            ],
+          },
+        },
+      })
+    ).toEqual(["Empty subject: cs-CZ.", "Empty subject: en-US."]);
+    expect(
+      problems({
+        ...document,
+        values: [email],
+        translations: bothLanguages({ subject: [value("email")] }),
+      })
+    ).toEqual([]);
+  });
+
+  test("reports missing and empty texts per language and text key", () => {
+    expect(
+      problems({
+        ...document,
+        structure: [
+          { _tag: "Paragraph", id: "body", textKey: "body" },
+          { _tag: "Heading", id: "title", textKey: "title", level: 1 },
+        ],
+        values: [email],
+        translations: {
+          "cs-CZ": {
+            ...translation,
+            texts: { body: [{ _tag: "Text", text: " " }] },
+          },
+          "en-US": { ...translation, texts: { body: [value("email")] } },
+        },
+      })
+    ).toEqual([
+      "Empty text body: cs-CZ.",
+      "Missing text title: cs-CZ.",
+      "Empty text title: cs-CZ.",
+      "Missing text title: en-US.",
+      "Empty text title: en-US.",
+    ]);
+  });
+
+  test("an image's alt text may be empty unless another component shares its key", () => {
+    const image = {
+      _tag: "Image",
+      id: "image",
+      src: "https://workspace.deskohub.test/image.png",
+      altKey: "alt",
+    };
+    expect(
+      problems({
+        ...document,
+        structure: [...document.structure, image],
+        translations: {
+          "cs-CZ": { ...translation, texts: { body: text, alt: [] } },
+          "en-US": translation,
+        },
+      })
+    ).toEqual(["Missing text alt: en-US."]);
+    expect(
+      problems({
+        ...document,
+        structure: [...document.structure, { ...image, altKey: "body" }],
+        translations: bothLanguages({ texts: { body: [] } }),
+      })
+    ).toEqual([
+      "Empty text body: cs-CZ.",
+      "Empty text body: cs-CZ.",
+      "Empty text body: en-US.",
+      "Empty text body: en-US.",
+    ]);
+  });
+
+  test("checks inline values in subject, preheader, reason, then texts", () => {
+    expect(
+      problems({
+        ...document,
+        translations: {
+          "cs-CZ": {
+            subject: [...text, value("subject")],
+            preheader: [value("preheader")],
+            operationalReason: [value("reason")],
+            texts: { body: [value("body")] },
+          },
+          "en-US": translation,
+        },
+      })
+    ).toEqual([
+      "Invalid scalar value subject: cs-CZ.",
+      "Invalid scalar value preheader: cs-CZ.",
+      "Invalid scalar value reason: cs-CZ.",
+      "Invalid scalar value body: cs-CZ.",
+    ]);
+  });
+
+  test.each<[string, readonly string[] | undefined, boolean]>([
+    ["discount", ["code"], true],
+    ["discount", ["expiresAt"], true],
+    ["discount", undefined, false],
+    ["discount", ["validDays"], false],
+    ["discount", ["code", "extra"], false],
+    ["email", undefined, true],
+    ["email", ["domain"], false],
+    ["customer", undefined, false],
+    ["customer", ["displayName"], true],
+    ["customer", ["email"], false],
+    ["customer", ["missing"], false],
+    ["reservations", undefined, false],
+    ["reservations", ["id"], false],
+  ])("an inline %s value at %p is valid: %p", (name, field, valid) => {
+    expect(
+      problems({
+        ...document,
+        values: [email, customer, reservations, discount],
+        translations: bothLanguages({ subject: [value(name, field)] }),
+      })
+    ).toEqual(
+      valid
+        ? []
+        : [
+            `Invalid scalar value ${name}: cs-CZ.`,
+            `Invalid scalar value ${name}: en-US.`,
+          ]
+    );
+  });
+
+  test("matches each valued component to its value's source", () => {
+    const offer = {
+      _tag: "Offer",
+      id: "offer",
+      labelKey: "body",
+      href: "https://workspace.deskohub.test/",
+    };
+    expect(
+      problems({
+        ...document,
+        values: [email, customer, reservations, discount],
+        structure: [
+          { ...offer, id: "ghost", value: "ghost" },
+          { ...offer, id: "offer-customer", value: "customer" },
+          { ...offer, id: "offer-discount", value: "discount" },
+          {
+            _tag: "Record",
+            id: "record-discount",
+            value: "discount",
+            fields: [bodyField("code")],
+          },
+          {
+            _tag: "Record",
+            id: "record-list",
+            value: "reservations",
+            fields: [bodyField("id")],
+          },
+          { _tag: "List", id: "list-record", value: "customer" },
+          {
+            _tag: "Record",
+            id: "record-scalar",
+            value: "email",
+            fields: [bodyField("id")],
+          },
+          {
+            _tag: "Record",
+            id: "record",
+            value: "customer",
+            fields: [bodyField("displayName")],
+          },
+        ],
+      })
+    ).toEqual([
+      "Unknown value: ghost.",
+      "Offer requires a discount: customer.",
+      "Structured component requires customer data: discount.",
+      "Wrong component value shape: reservations.",
+      "Wrong component value shape: customer.",
+      "Wrong component value shape: email.",
+    ]);
+  });
+
+  test("reports a valued component whose selection points nowhere as a wrong shape", () => {
+    expect(
+      problems({
+        ...document,
+        values: [
+          { name: "nowhere", source: { kind: "customer", path: ["x"] } },
+        ],
+        structure: [
+          ...document.structure,
+          { _tag: "List", id: "list", value: "nowhere" },
+        ],
+      })
+    ).toEqual([
+      "Invalid customer selection: nowhere.",
+      "Wrong component value shape: nowhere.",
+    ]);
+  });
+
+  test("keeps list sorting, limits, and fields within the selected source", () => {
+    const list = {
+      _tag: "List",
+      id: "list",
+      value: "reservations",
+      fields: [bodyField("id")],
+    };
+    const listProblems = (overrides: object) =>
+      problems({
+        ...document,
+        values: [reservations],
+        structure: [...document.structure, { ...list, ...overrides }],
+      });
+
+    expect(
+      listProblems({ sort: { path: ["id"], direction: "asc" }, limit: 3 })
+    ).toEqual([]);
+    expect(
+      listProblems({ sort: { path: ["status"], direction: "asc" } })
+    ).toEqual(["Unselected list sort field: reservations."]);
+    expect(
+      listProblems({ sort: { path: ["createdAt"], direction: "asc" } })
+    ).toEqual(["Unselected list sort field: reservations."]);
+    expect(listProblems({ limit: 4 })).toEqual([
+      "List component limit exceeds selected source: reservations.",
+    ]);
+    const { fields: _, ...fieldless } = list;
+    expect(
+      problems({
+        ...document,
+        values: [reservations],
+        structure: [...document.structure, fieldless],
+      })
+    ).toEqual(["Record fields required: reservations."]);
+    expect(
+      listProblems({
+        sort: { path: ["missing"], direction: "desc" },
+        limit: 9,
+        fields: [bodyField("id"), bodyField("createdAt")],
+      })
+    ).toEqual([
+      "Unselected list sort field: reservations.",
+      "List component limit exceeds selected source: reservations.",
+      "Unselected component field: reservations.",
+    ]);
+    expect(listProblems({ fields: [bodyField("status")] })).toEqual([
+      "Unselected component field: reservations.",
+    ]);
+  });
+
+  test("an unbounded source accepts any list limit", () => {
+    const { limit: _, ...unbounded } = reservations.source;
+    expect(
+      problems({
+        ...document,
+        values: [{ ...reservations, source: unbounded }],
+        structure: [
+          ...document.structure,
+          {
+            _tag: "List",
+            id: "list",
+            value: "reservations",
+            fields: [bodyField("id")],
+            limit: 50,
+          },
+        ],
+      })
+    ).toEqual([]);
+  });
+
+  test("record components need selected scalar fields", () => {
+    const record = { _tag: "Record", id: "record", value: "customer" };
+    const recordProblems = (fields: readonly object[]) =>
+      problems({
+        ...document,
+        values: [customer],
+        structure: [...document.structure, { ...record, fields }],
+      });
+
+    expect(recordProblems([bodyField("displayName")])).toEqual([]);
+    expect(recordProblems([bodyField("email")])).toEqual([
+      "Unselected component field: customer.",
+    ]);
+  });
 });
 
 test("publication freezes source sorting separately from projected customer fields", () => {

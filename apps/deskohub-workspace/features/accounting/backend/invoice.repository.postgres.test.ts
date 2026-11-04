@@ -8,12 +8,11 @@ import {
 } from "@deskohub/dotypos";
 import { NexiOrderIdSchema } from "@deskohub/nexi";
 import { testEmailAddress } from "@deskohub/test-email";
-import { asc, eq, inArray, like, sql } from "drizzle-orm";
-import { Effect, Layer, Schema } from "effect";
+import { asc, eq, sql } from "drizzle-orm";
+import { Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   accountingDocumentSnapshots,
-  invoiceEmailDeliveries,
   invoiceNumberCounters,
   invoices,
   manualInvoiceActors,
@@ -41,13 +40,10 @@ import {
   buildCoworkReservationQuote,
   type CoworkReservationQuoteOrder,
 } from "@/features/checkout/checkout-quote.test-utils";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import {
-  type FixtureAccount,
-  workspaceFixtures,
-} from "@/shared/testing/workspace-fixtures.test-utils";
-import {
-  connectWorkspacePostgresTestDatabase,
-  type WorkspacePostgresTestDatabase,
+  createWorkspacePostgresSuiteDatabase,
+  type WorkspacePostgresSuiteDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { temporalInstantToIsoString } from "@/shared/utils/temporal";
 import { AccountingDocumentSnapshotRepository } from "./accounting-document-snapshot.repository";
@@ -63,10 +59,12 @@ import {
   InvoiceRepository,
 } from "./invoice.repository";
 
-const testDatabase = await connectWorkspacePostgresTestDatabase();
+// Listing reads every invoice in the table, so the suite owns its database:
+// invoices other suites commit, under other keys, never reach it.
+const testDatabase =
+  await createWorkspacePostgresSuiteDatabase("invoice_repository");
+afterAll(() => testDatabase?.close());
 
-// Every fixture invoice carries this prefix so cleanup never touches invoices
-// other suites leave in the shared disposable database.
 const fixtureCustomerPrefix = "invoice-repository-customer-";
 
 const testKey: AccountingSnapshotKey = {
@@ -292,6 +290,50 @@ const createAdditionalFailedAttempt = async (fixture: PaidFixture) => {
   return paymentAttemptId;
 };
 
+class RolledBackFixture extends Data.TaggedError("RolledBackFixture")<{
+  readonly value: unknown;
+}> {}
+
+// Runs the operation in a transaction that always rolls back, so the invoices
+// and counter changes it makes never reach the shared database.
+const runRepositoryRolledBack = <A, E>(
+  operation: (
+    repository: IInvoiceRepository,
+    database: Pick<WorkspaceDatabase["Service"], "db">
+  ) => Effect.Effect<A, E>,
+  keys?: IAccountingSnapshotKeyService
+) =>
+  runRepository(
+    (repository) =>
+      Effect.flatMap(WorkspaceDatabase, ({ db, transaction }) =>
+        transaction(
+          operation(repository, { db }).pipe(
+            Effect.flatMap((value) => new RolledBackFixture({ value }))
+          )
+        )
+      ).pipe(
+        Effect.provide(testDatabase!.layer),
+        Effect.catchTag("RolledBackFixture", ({ value }) =>
+          Effect.succeed(value as A)
+        )
+      ),
+    keys
+  );
+
+const makeManualInvoiceInput = (actor: string) =>
+  Schema.decodeUnknownSync(manualInvoiceInputSchema)({
+    invoiceId: randomUUID(),
+    dotyposCustomerId: `${fixtureCustomerPrefix}${randomUUID()}`,
+    buyer: personalInvoiceBuyer,
+    deliveryEmail: testEmailAddress("manual-invoice-integration"),
+    locale: "en-US",
+    serviceDate: "2099-01-01",
+    payment: { status: "paid", date: "2099-01-01" },
+    currency: "CZK",
+    lines: [{ description: "Synthetic line", price: "100.00" }],
+    provenance: { source: "admin-ui", actor },
+  });
+
 const getFixtureFulfillmentState = ({
   fulfilled,
   paid,
@@ -304,8 +346,8 @@ const getFixtureFulfillmentState = ({
   return "not_started" as const;
 };
 
-// The suite runs alone against its database (`--parallel=1`), so the
-// counters only move through the issuances each test performs.
+// The suite owns its database, so the counters only move through the
+// issuances each test performs.
 const readCounters = () =>
   Effect.runPromise(
     testDatabase!.db
@@ -319,65 +361,10 @@ const readCounters = () =>
 const sequenceOf = (invoiceNumber: InvoiceNumber) =>
   Number(invoiceNumber.slice(invoiceNumber.lastIndexOf("-") + 1));
 
-// Issued invoices are immutable, so removing fixtures takes the same
-// exclusive lock and trigger toggle an operator would need.
-const deleteFixtureInvoices = () =>
-  Effect.runPromise(
-    Effect.flatMap(WorkspaceDatabase, ({ db, transaction }) =>
-      transaction(
-        Effect.gen(function* () {
-          yield* db.execute(
-            sql`lock table ${invoices} in access exclusive mode`
-          );
-          yield* db.execute(
-            sql`alter table ${invoices} disable trigger invoices_immutable`
-          );
-          const fixtureInvoices = db
-            .select({ id: invoices.id })
-            .from(invoices)
-            .where(
-              like(invoices.dotyposCustomerId, `${fixtureCustomerPrefix}%`)
-            );
-          yield* db
-            .delete(invoiceEmailDeliveries)
-            .where(inArray(invoiceEmailDeliveries.invoiceId, fixtureInvoices));
-          yield* db
-            .delete(manualInvoiceActors)
-            .where(inArray(manualInvoiceActors.invoiceId, fixtureInvoices));
-          yield* db
-            .delete(invoices)
-            .where(
-              like(invoices.dotyposCustomerId, `${fixtureCustomerPrefix}%`)
-            );
-          yield* db.execute(
-            sql`alter table ${invoices} enable trigger invoices_immutable`
-          );
-        })
-      )
-    ).pipe(Effect.provide(testDatabase!.layer))
-  );
-
 describe.skipIf(!testDatabase)(
   "InvoiceRepository on disposable Postgres",
   () => {
-    const postgres = testDatabase as WorkspacePostgresTestDatabase;
-    const testAccounts: FixtureAccount[] = [];
-
-    afterAll(async () => {
-      await deleteFixtureInvoices();
-      await Effect.runPromise(
-        workspaceFixtures(postgres.db).deleteAccounts(testAccounts)
-      );
-      const remaining = await postgres.pool.query(
-        "select 1 from invoices where dotypos_customer_id like $1 limit 1",
-        [`${fixtureCustomerPrefix}%`]
-      );
-      const trigger = await postgres.pool.query<{ tgenabled: string }>(
-        "select tgenabled from pg_trigger where tgname = 'invoices_immutable'"
-      );
-      expect(remaining.rowCount).toBe(0);
-      expect(trigger.rows).toEqual([{ tgenabled: "O" }]);
-    });
+    const postgres = testDatabase as WorkspacePostgresSuiteDatabase;
 
     test("issues one encrypted, immutable invoice for concurrent requests", async () => {
       const fixture = await createPaidFixture();
@@ -532,7 +519,6 @@ describe.skipIf(!testDatabase)(
       const issuer = await Effect.runPromise(
         workspaceFixtures(postgres.db).account("invoice-repository-issuer")
       );
-      testAccounts.push(issuer);
       const input = Schema.decodeUnknownSync(manualInvoiceInputSchema)({
         invoiceId: randomUUID(),
         dotyposCustomerId: `${fixtureCustomerPrefix}${randomUUID()}`,
@@ -629,6 +615,116 @@ describe.skipIf(!testDatabase)(
       );
       expect(invoiceRows.rows).toEqual([]);
       expect(actorRows.rows).toEqual([]);
+    });
+
+    test("suggests the variable symbol of the next number in the issue year", async () => {
+      const numberingYear = getInvoiceNumberingYear(Temporal.Now.instant());
+
+      const suggestions = await runRepositoryRolledBack((repository, { db }) =>
+        Effect.gen(function* () {
+          yield* db
+            .delete(invoiceNumberCounters)
+            .where(eq(invoiceNumberCounters.numberingYear, numberingYear));
+          const first = yield* repository.getSuggestedVariableSymbol();
+          yield* db
+            .insert(invoiceNumberCounters)
+            .values({ numberingYear, lastSequence: 41 });
+          const next = yield* repository.getSuggestedVariableSymbol();
+          return { first, next };
+        })
+      );
+
+      expect(suggestions).toEqual({
+        first: `${numberingYear}000001`,
+        next: `${numberingYear}000042`,
+      });
+    });
+
+    test("lists who issued each manual invoice, and through what", async () => {
+      const issuer = await Effect.runPromise(
+        workspaceFixtures(postgres.db).account("invoice-provenance-issuer")
+      );
+      const input = makeManualInvoiceInput(issuer.email);
+      const reservationFixture = await createPaidFixture();
+      const reservationInvoice = await issue(
+        reservationFixture.paymentAttemptId
+      );
+
+      await runRepository((repository) =>
+        repository.issueManual({ ...input, issuedBy: issuer })
+      );
+      const provenance = await runRepository((repository) =>
+        repository.listManualInvoiceProvenance()
+      );
+      const listed = await runRepository((repository) => repository.list());
+
+      expect(provenance).toContainEqual({
+        invoiceId: input.invoiceId,
+        provenance: { source: "admin-ui", actor: issuer.email },
+      });
+      expect(
+        provenance.some(
+          ({ invoiceId }) => invoiceId === reservationInvoice.invoice.id
+        )
+      ).toBe(false);
+      expect(listed.map(({ id }) => id)).toEqual(
+        expect.arrayContaining([input.invoiceId, reservationInvoice.invoice.id])
+      );
+    });
+
+    test("refuses to read an invoice whose metadata does not match its document", async () => {
+      const issuer = await Effect.runPromise(
+        workspaceFixtures(postgres.db).account("invoice-mismatch-issuer")
+      );
+      const input = makeManualInvoiceInput(issuer.email);
+      const copiedInvoiceId = randomUUID();
+
+      const error = await runRepositoryRolledBack((repository, { db }) =>
+        Effect.gen(function* () {
+          yield* repository.issueManual({ ...input, issuedBy: issuer });
+          yield* db.execute(sql`
+            insert into ${invoices} (
+              id, workspace_reservation_id, payment_attempt_id,
+              dotypos_customer_id, invoice_number, numbering_year,
+              numbering_sequence, key_id, encrypted_document, issued_at
+            )
+            select ${copiedInvoiceId}, null, null, dotypos_customer_id,
+              'WS-FV-' || numbering_year || '-999999', numbering_year, 999999,
+              key_id, encrypted_document, issued_at
+            from ${invoices}
+            where id = ${input.invoiceId}
+          `);
+          return yield* Effect.flip(repository.findById(copiedInvoiceId));
+        })
+      );
+
+      expect(error).toMatchObject({
+        _tag: "InvoiceStorageError",
+        operation: "validate",
+        paymentAttemptId: copiedInvoiceId,
+      });
+    });
+
+    test("refuses to number an invoice without an active encryption key", async () => {
+      const fixture = await createPaidFixture();
+      const before = await readCounters();
+
+      const error = await issueFailure(fixture.paymentAttemptId, {
+        ...makeKeyService(),
+        getActive: Effect.fail(
+          new AccountingSnapshotKeyError({
+            keyId: testKey.id,
+            message: "Synthetic active key is unavailable.",
+          })
+        ),
+      });
+
+      expect(error).toMatchObject({
+        _tag: "InvoiceStorageError",
+        operation: "encrypt",
+        paymentAttemptId: fixture.paymentAttemptId,
+      });
+      expect(await readCounters()).toEqual(before);
     });
 
     test("rolls the number back when the invoice insert fails", async () => {

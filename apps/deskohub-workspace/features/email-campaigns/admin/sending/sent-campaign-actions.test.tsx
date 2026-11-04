@@ -9,6 +9,7 @@ import {
   test,
 } from "bun:test";
 import { cleanup, fireEvent, render } from "@testing-library/react";
+import { m } from "@/features/administration/i18n";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import {
   workspaceRouterPush,
@@ -179,6 +180,73 @@ describe("SentCampaignActions", () => {
 
     expect(view.container.textContent).toContain(message);
     expect(view.container.textContent).not.toContain("English port message");
+  });
+
+  test("duplicates the campaign and opens the copy", () => {
+    const view = render(
+      <SentCampaignActions
+        campaignId={campaignId}
+        retryable
+        unconfirmedCount={0}
+      />
+    );
+
+    fireEvent.click(
+      view.getByRole("button", {
+        name: m.emailCampaignsSentDuplicate({}, { locale: "en-US" }),
+      })
+    );
+
+    const [request] = operations.requests("duplicateCampaign");
+    expect(request).toEqual({
+      operation: "duplicateCampaign",
+      input: { campaignId, requestId: expect.any(String) },
+    });
+    const duplicating = view.getByRole("button", {
+      name: m.emailCampaignsSentDuplicating({}, { locale: "en-US" }),
+    });
+    expect(duplicating.hasAttribute("disabled")).toBe(true);
+    expect(
+      view
+        .getByRole("button", { name: retryLabels["en-US"] })
+        .hasAttribute("disabled")
+    ).toBe(true);
+
+    operations.respond("duplicateCampaign", {
+      _tag: "Success",
+      output: { id: "synthetic-campaign-copy" },
+    });
+
+    expect(workspaceRouterPush).toHaveBeenLastCalledWith(
+      "/en-US/admin/email-campaigns/synthetic-campaign-copy"
+    );
+  });
+
+  test("reports a duplicate that failed", () => {
+    const view = render(
+      <SentCampaignActions
+        campaignId={campaignId}
+        retryable={false}
+        unconfirmedCount={0}
+      />
+    );
+
+    fireEvent.click(
+      view.getByRole("button", {
+        name: m.emailCampaignsSentDuplicate({}, { locale: "en-US" }),
+      })
+    );
+    operations.respond("duplicateCampaign", {
+      _tag: "Failure",
+      category: "OperationConflict",
+      code: "a-code-without-copy",
+      message: "English port message",
+    });
+
+    expect(view.getByRole("alert").textContent).toBe(
+      m.emailCampaignsSentDuplicateFailed({}, { locale: "en-US" })
+    );
+    expect(view.getByRole("status").textContent).toBe("");
   });
 
   test("labels the actions in the Czech admin locale", () => {

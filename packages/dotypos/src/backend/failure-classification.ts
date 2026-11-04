@@ -83,6 +83,16 @@ const classifyStatus = (
     message: "Dotypos API request failed",
   };
   if (status < 400) return rejectedOrUncertain(kind, fields);
+  if (status >= 500) return unavailableOrUncertain(kind, "server", fields);
+  return classifyClientErrorStatus(status, kind, fields);
+};
+
+/** A 4xx answer: Dotypos refused the request without applying it. */
+const classifyClientErrorStatus = (
+  status: number,
+  kind: DotyposRequestKind,
+  fields: DotyposFailureFields & { readonly httpStatus: number }
+): DotyposAttemptFailure => {
   if (status === 401 || status === 403) {
     return new DotyposRejected({ ...fields, reason: "unauthorized" });
   }
@@ -95,7 +105,6 @@ const classifyStatus = (
   if (status === 429) {
     return new DotyposUnavailable({ ...fields, reason: "rate-limited" });
   }
-  if (status >= 500) return unavailableOrUncertain(kind, "server", fields);
   return new DotyposRejected({ ...fields, reason: "invalid-request" });
 };
 

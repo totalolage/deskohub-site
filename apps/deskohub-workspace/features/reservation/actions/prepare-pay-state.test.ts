@@ -14,7 +14,7 @@ import { EmailRecipientDomainServiceMock } from "@deskohub/email/backend/recipie
 import { testEmailAddress } from "@deskohub/test-email";
 import { eq } from "drizzle-orm";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Duration, Effect, Layer, Schema } from "effect";
+import { Duration, Effect, Fiber, Layer, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -124,6 +124,25 @@ const meetingRoomReservationInput = {
   email: testEmailAddressForAda,
   phone: "+420 777 777 777",
 };
+
+/**
+ * Runs `effect` on a TestClock that advances a second at a time until it
+ * finishes, so a wait for an in-flight reservation runs out its 40-second
+ * window at once. The stubs answer without real-time timers.
+ */
+const withSecondSleeps = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+  Effect.gen(function* () {
+    const fiber = yield* Effect.forkChild(effect);
+    while (fiber.pollUnsafe() === undefined) {
+      // Lets the event loop settle real async work, such as Pay-state
+      // sealing, between steps.
+      yield* Effect.promise(
+        () => new Promise<void>((resolve) => setImmediate(resolve))
+      );
+      yield* TestClock.adjust("1 second");
+    }
+    return yield* Fiber.join(fiber);
+  }).pipe(Effect.provide(TestClock.layer()));
 
 const withInstant = <A, E, R>(
   instant: Temporal.Instant,
@@ -428,6 +447,8 @@ const runReusableReservationScenario = async (input: {
     readonly clientId: string;
     readonly selectionKey: string;
   };
+  /** Lets waits for in-flight reservations run out their window at once. */
+  readonly instantSleeps?: boolean;
 }) => {
   const prepareFromReservationForm = await loadReservationFormPreparation();
   const { prepareWorkspacePayState } = await import("./prepare-pay-state");
@@ -651,9 +672,14 @@ const runReusableReservationScenario = async (input: {
           Effect.provide(BotProtectionServiceMock({ verifyHuman }))
         )
   ).pipe(Effect.provide(testLayer));
+  const timedPreparation = input.instantSleeps
+    ? withSecondSleeps(
+        TestClock.setTime(Date.now()).pipe(Effect.andThen(bookingPreparation))
+      )
+    : bookingPreparation;
   const result = await (input.now
-    ? withInstant(input.now, bookingPreparation)
-    : bookingPreparation
+    ? withInstant(input.now, timedPreparation)
+    : timedPreparation
   ).pipe(Effect.result, Effect.runPromise);
 
   return {
@@ -2117,6 +2143,47 @@ describe("prepareWorkspacePayState", () => {
         expect(scenario.createDraft).not.toHaveBeenCalled();
       });
 
+      test.each([
+        ["the live hold it settles into", "settled"],
+        ["the latest row when it disappears", "gone"],
+      ] as const)(
+        "waits out the latest hold's in-flight creation, then resumes %s",
+        async (_label, settlement) => {
+          const initial = await makeInitialAgentHold();
+          const findById = mock(() =>
+            Effect.succeed(settlement === "settled" ? initial.held : null)
+          );
+          const retry = await runAgentAt(
+            Temporal.Instant.from("2026-10-20T12:12:00Z"),
+            {
+              findLatestByAgentSelectionKey: mock(() =>
+                Effect.succeed([
+                  { ...initial.held, reservationState: "creating_hold" },
+                ])
+              ),
+              findById,
+              findByAttemptKeys: mock((keys: readonly string[]) =>
+                Effect.succeed(
+                  keys.includes(initial.held.checkoutAttemptKey)
+                    ? initial.held
+                    : null
+                )
+              ),
+              createDraft: initial.createDraft,
+              createReservation: initial.createReservation,
+              claimSupersessionCancellation:
+                initial.claimSupersessionCancellation,
+            }
+          );
+
+          expect(findById).toHaveBeenCalledWith(initial.held.id);
+          expect(retry.result?.orderId).toBe(initial.held.id);
+          expect(initial.createReservation).toHaveBeenCalledTimes(1);
+          expect(initial.createDraft).toHaveBeenCalledTimes(1);
+          expect(initial.claimSupersessionCancellation).not.toHaveBeenCalled();
+        }
+      );
+
       test("reuses the live hold when an identical request repeats across the old 10-minute boundary", async () => {
         const { initial, retry } = await runLiveHoldRetry(
           Temporal.Instant.from("2026-10-20T12:10:01Z")
@@ -3489,6 +3556,208 @@ describe("prepareWorkspacePayState", () => {
         dotyposCustomerId: claimConflictReservation.dotyposCustomerId,
       })
     );
+  });
+
+  describe("an attempt that already has a reservation", () => {
+    const freshDraft = () =>
+      mock((input) =>
+        Effect.succeed(
+          makeReusableReservation({
+            id: "new-reservation-id",
+            reservationState: "draft",
+            dotyposReservationId: null,
+            checkoutSessionKey: input.checkoutSessionKey,
+            checkoutAttemptKey: input.checkoutAttemptKey,
+            dotyposCustomerId: input.dotyposCustomerId,
+            reservationHoldExpiresAt: input.reservationHoldExpiresAt,
+          })
+        )
+      );
+    const attemptUnavailable = {
+      _tag: "PublicSafeActionError",
+      cause: { _tag: "CheckoutAttemptUnavailableError" },
+    };
+
+    test("resumes the attempt's own draft without reading its session", async () => {
+      const scenario = await runReusableReservationScenario({
+        findByAttemptKeys: mock(() =>
+          Effect.succeed(
+            makeReusableReservation({
+              id: "own-draft-id",
+              reservationState: "draft",
+              dotyposReservationId: null,
+            })
+          )
+        ),
+      });
+
+      expect(scenario.result).toMatchObject({
+        status: "ready",
+        orderId: "own-draft-id",
+      });
+      expect(scenario.createDraft).not.toHaveBeenCalled();
+      expect(scenario.claimHoldCreation).toHaveBeenCalledWith("own-draft-id");
+    });
+
+    test("moves an attempt whose reservation ended into the attempt's own session", async () => {
+      const attemptKeyLookups: unknown[] = [];
+      const createDraft = freshDraft();
+      const scenario = await runReusableReservationScenario({
+        findByAttemptKeys: mock((keys) => {
+          attemptKeyLookups.push(keys);
+          return Effect.succeed(
+            attemptKeyLookups.length === 1
+              ? makeReusableReservation({
+                  reservationState: "confirmed",
+                  paymentState: "paid",
+                })
+              : null
+          );
+        }),
+        createDraft,
+      });
+
+      expect(scenario.result).toMatchObject({
+        status: "ready",
+        orderId: "new-reservation-id",
+      });
+      expect(attemptKeyLookups).toHaveLength(2);
+      expect(attemptKeyLookups[1]).not.toEqual(attemptKeyLookups[0]);
+      expect(createDraft).toHaveBeenCalledTimes(1);
+    });
+
+    test("refuses an ended attempt that is already in its own session", async () => {
+      const scenario = await runReusableReservationScenario({
+        checkoutSessionId: "attempt-id",
+        checkoutAttemptId: "attempt-id",
+        findByAttemptKeys: mock(() =>
+          Effect.succeed(
+            makeReusableReservation({
+              reservationState: "confirmed",
+              paymentState: "paid",
+            })
+          )
+        ),
+      });
+
+      expect(scenario.error).toMatchObject(attemptUnavailable);
+      expect(scenario.createDraft).not.toHaveBeenCalled();
+      expect(scenario.claimHoldCreation).not.toHaveBeenCalled();
+    });
+
+    test("refuses an attempt whose unpaid hold has lapsed", async () => {
+      const scenario = await runReusableReservationScenario({
+        findByAttemptKeys: mock(() =>
+          Effect.succeed(
+            makeReusableReservation({
+              reservationHoldExpiresAt: Temporal.Instant.from(
+                "2020-07-01T12:00:00.000Z"
+              ),
+            })
+          )
+        ),
+      });
+
+      expect(scenario.error).toMatchObject(attemptUnavailable);
+      expect(scenario.findById).not.toHaveBeenCalled();
+      expect(scenario.createDraft).not.toHaveBeenCalled();
+      expect(scenario.claimHoldCreation).not.toHaveBeenCalled();
+    });
+
+    test("refuses an attempt whose hold creation is still in flight once the wait runs out", async () => {
+      const scenario = await runReusableReservationScenario({
+        instantSleeps: true,
+        findByAttemptKeys: mock(() =>
+          Effect.succeed(
+            makeReusableReservation({ reservationState: "creating_hold" })
+          )
+        ),
+        findById: mock(() =>
+          Effect.succeed(
+            makeReusableReservation({ reservationState: "creating_hold" })
+          )
+        ),
+      });
+
+      expect(scenario.error).toMatchObject(attemptUnavailable);
+      expect(scenario.findById).toHaveBeenCalledWith("existing-reservation-id");
+      expect(scenario.createDraft).not.toHaveBeenCalled();
+    });
+
+    test("refuses a session whose current draft stays unsettled once the wait runs out", async () => {
+      const scenario = await runReusableReservationScenario({
+        instantSleeps: true,
+        findByAttemptKeys: mock(() => Effect.succeed(null)),
+        findCurrentByCheckoutSessionKey: mock(() =>
+          Effect.succeed(
+            makeReusableReservation({
+              id: "session-draft-id",
+              reservationState: "draft",
+            })
+          )
+        ),
+        findById: mock(() =>
+          Effect.succeed(
+            makeReusableReservation({
+              id: "session-draft-id",
+              reservationState: "draft",
+            })
+          )
+        ),
+      });
+
+      expect(scenario.error).toMatchObject(attemptUnavailable);
+      expect(scenario.claimSupersessionCancellation).not.toHaveBeenCalled();
+      expect(scenario.createDraft).not.toHaveBeenCalled();
+    });
+
+    test("reuses the hold a concurrent request created after it claimed the draft's hold creation", async () => {
+      const conflictReservation = makeReusableReservation({
+        id: "claim-conflict-reservation-id",
+        dotyposCustomerId: "conflict-customer-id",
+      });
+      const scenario = await runReusableReservationScenario({
+        findByAttemptKeys: mock(() => Effect.succeed(null)),
+        createDraft: freshDraft(),
+        claimHoldCreation: mock(() => Effect.succeed(false)),
+        findById: mock(() => Effect.succeed(conflictReservation)),
+      });
+
+      expect(scenario.result).toMatchObject({
+        status: "ready",
+        orderId: "claim-conflict-reservation-id",
+      });
+      expect(scenario.findById).toHaveBeenCalledWith("new-reservation-id");
+      expect(scenario.quoteForCustomer).toHaveBeenLastCalledWith(
+        expect.objectContaining({ dotyposCustomerId: "conflict-customer-id" })
+      );
+      expect(scenario.updateReservationDetails).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "claim-conflict-reservation-id" })
+      );
+      expect(scenario.createReservation).not.toHaveBeenCalled();
+      expect(scenario.enqueueCleanup).not.toHaveBeenCalled();
+    });
+
+    test("reports a hold creation another request claimed without leaving a usable hold", async () => {
+      const { m } = await import("@/features/i18n");
+      const scenario = await runReusableReservationScenario({
+        findByAttemptKeys: mock(() => Effect.succeed(null)),
+        createDraft: freshDraft(),
+        claimHoldCreation: mock(() => Effect.succeed(false)),
+        findById: mock(() =>
+          Effect.succeed(
+            makeReusableReservation({ reservationState: "cancelled" })
+          )
+        ),
+      });
+
+      expect(scenario.result).toEqual({
+        status: "error",
+        message: m.reservationErrorMessage({}, { locale: "en-US" }),
+      });
+      expect(scenario.updateReservationDetails).not.toHaveBeenCalled();
+      expect(scenario.createReservation).not.toHaveBeenCalled();
+    });
   });
 
   test("re-queries the attempt after another request completes session supersession", async () => {

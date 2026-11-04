@@ -209,20 +209,25 @@ const extractStoredDiscountId = (
   );
 };
 
+const toCalendarSaleEventMetadataInput = (event: GoogleCalendarEvent) => ({
+  eventReference: event.id ?? event.iCalUID ?? "",
+  title: event.summary ?? "",
+  ...toCalendarSaleEventDateRange(event),
+});
+
+const toCalendarSaleEventDateRange = (event: GoogleCalendarEvent) => ({
+  startDate: event.start?.date ?? "",
+  endDate: event.end?.date ?? "",
+  isAllDay:
+    event.start?.dateTime === undefined && event.end?.dateTime === undefined,
+});
+
 const decodeCalendarSaleEventMetadata = (input: {
   readonly event: GoogleCalendarEvent;
 }) =>
   Schema.decodeUnknownEffect(calendarSaleEventMetadataSchema, {
     errors: "all",
-  })({
-    eventReference: input.event.id ?? input.event.iCalUID ?? "",
-    title: input.event.summary ?? "",
-    startDate: input.event.start?.date ?? "",
-    endDate: input.event.end?.date ?? "",
-    isAllDay:
-      input.event.start?.dateTime === undefined &&
-      input.event.end?.dateTime === undefined,
-  }).pipe(
+  })(toCalendarSaleEventMetadataInput(input.event)).pipe(
     Effect.mapError(
       (cause) =>
         new CalendarSaleConfigurationError({

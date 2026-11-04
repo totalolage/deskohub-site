@@ -34,53 +34,65 @@ type CoworkAvailabilitySelection = Pick<
   "date" | "entryTier" | "monitorOption"
 >;
 
-/**
- * What the availability of a cowork form's queries (see
- * `getCoworkAvailabilityQueries`) allows for the current selection. Each
- * query's availability counts only once it settled for the current query.
- */
-export const evaluateCoworkSelectionAvailability = (
-  {
-    range,
-    selection,
-    workstationRequirement,
-  }: {
-    /** The selected tier's calendar range. */
-    readonly range: WorkspaceAvailabilityState;
-    /** The selected offer on the selected date. */
-    readonly selection: WorkspaceAvailabilityState;
-    /** Whether a Reserved Desk needs a workstation on the selected date. */
-    readonly workstationRequirement: WorkspaceAvailabilityState;
-  },
+type CoworkAvailabilityQueries = {
+  /** The selected tier's calendar range. */
+  readonly range: WorkspaceAvailabilityState;
+  /** The selected offer on the selected date. */
+  readonly selection: WorkspaceAvailabilityState;
+  /** Whether a Reserved Desk needs a workstation on the selected date. */
+  readonly workstationRequirement: WorkspaceAvailabilityState;
+};
+
+/** The selected date's monitor options and the workstation it requires. */
+const evaluateCoworkWorkstation = (
+  { selection, workstationRequirement }: CoworkAvailabilityQueries,
   { date, entryTier, monitorOption }: CoworkAvailabilitySelection
 ) => {
-  const rangeAvailability = range.availability;
-  const selectedAvailability = selection.availability;
   const requirementAvailability = workstationRequirement.availability;
-
   const unavailableMonitorOptions: ReadonlySet<WorkspaceProductMonitorOption> =
     new Set(requirementAvailability?.unavailableMonitorOptions ?? []);
   const firstAvailableMonitorOption = getAllowedMonitorOptionsForCoworkTier(
     entryTier
   ).find((option) => !unavailableMonitorOptions.has(option));
-  const requiredMonitorOption =
-    entryTier === "reserved-desk" &&
-    date &&
-    requirementAvailability?.reservedDeskWorkstationRequiredDates.includes(date)
-      ? firstAvailableMonitorOption
-      : undefined;
-  const isSelectedMonitorUnavailable = Boolean(
-    monitorOption && unavailableMonitorOptions.has(monitorOption)
-  );
-  const isSelectedOfferUnavailable =
-    Boolean(
-      selectedAvailability &&
-        date &&
-        !isCoworkOfferAvailable(selectedAvailability, { date, entryTier })
-    ) || isSelectedMonitorUnavailable;
-  const isWorkstationNormalizationPending = Boolean(
-    requiredMonitorOption && (!monitorOption || isSelectedMonitorUnavailable)
-  );
+  const isReservedDesk = entryTier === "reserved-desk";
+
+  return {
+    /** Whether the selected date's monitor options settled. */
+    settled: requirementAvailability !== null,
+    unavailableMonitorOptions,
+    /**
+     * The monitor option a Reserved Desk takes when the selected date has
+     * no bare desk left, so it needs a workstation.
+     */
+    requiredMonitorOption:
+      isReservedDesk &&
+      date &&
+      requirementAvailability?.reservedDeskWorkstationRequiredDates.includes(
+        date
+      )
+        ? firstAvailableMonitorOption
+        : undefined,
+    isSelectedMonitorUnavailable: Boolean(
+      monitorOption && unavailableMonitorOptions.has(monitorOption)
+    ),
+    /**
+     * Whether both selected-date queries settled for a Reserved Desk, so
+     * the form may normalize the workstation to them.
+     */
+    normalizable:
+      isReservedDesk &&
+      selection.availability !== null &&
+      requirementAvailability !== null,
+  };
+};
+
+/** The dates, tiers, and notices the selected tier's calendar shows. */
+const evaluateCoworkCalendar = (
+  { range, selection }: CoworkAvailabilityQueries,
+  { date, entryTier }: CoworkAvailabilitySelection
+) => {
+  const rangeAvailability = range.availability;
+  const selectedAvailability = selection.availability;
 
   return {
     /**
@@ -106,41 +118,78 @@ export const evaluateCoworkSelectionAvailability = (
     selectedDateNotices: (selectedAvailability?.notices ?? []).filter(
       (notice) => notice.date === date
     ),
-    workstation: {
-      /** Whether the selected date's monitor options settled. */
-      settled: requirementAvailability !== null,
-      unavailableMonitorOptions,
-      /**
-       * The monitor option a Reserved Desk takes when the selected date has
-       * no bare desk left, so it needs a workstation.
-       */
-      requiredMonitorOption,
-      isSelectedMonitorUnavailable,
-      /**
-       * Whether both selected-date queries settled for a Reserved Desk, so
-       * the form may normalize the workstation to them.
-       */
-      normalizable:
-        entryTier === "reserved-desk" &&
-        selectedAvailability !== null &&
-        requirementAvailability !== null,
-    },
-    checkout: {
-      isPending:
-        selection.isPending ||
-        workstationRequirement.isPending ||
-        range.isPending ||
-        isWorkstationNormalizationPending,
-      isError:
-        (selection.isError || workstationRequirement.isError) &&
-        !(selection.isPending || workstationRequirement.isPending),
-      unavailable: isSelectedOfferUnavailable
-        ? ({
-            kind: "cowork",
-            entryTier,
-          } satisfies WorkspaceCoworkAvailabilityTarget)
-        : undefined,
-    },
+  };
+};
+
+/** Whether the selected date's availability rules out the selected offer. */
+const isSelectedCoworkOfferUnavailable = (
+  selectedAvailability: WorkspaceAvailabilityState["availability"],
+  { date, entryTier }: CoworkAvailabilitySelection
+) =>
+  Boolean(
+    selectedAvailability &&
+      date &&
+      !isCoworkOfferAvailable(selectedAvailability, { date, entryTier })
+  );
+
+/** Whether checkout waits on the queries, or on adding a workstation. */
+const isCoworkCheckoutPending = (
+  { range, selection, workstationRequirement }: CoworkAvailabilityQueries,
+  workstation: ReturnType<typeof evaluateCoworkWorkstation>,
+  monitorOption: CoworkAvailabilitySelection["monitorOption"]
+) =>
+  selection.isPending ||
+  workstationRequirement.isPending ||
+  range.isPending ||
+  Boolean(
+    workstation.requiredMonitorOption &&
+      (!monitorOption || workstation.isSelectedMonitorUnavailable)
+  );
+
+/** The checkout state the availability leaves for the selected offer. */
+const evaluateCoworkCheckout = (
+  queries: CoworkAvailabilityQueries,
+  workstation: ReturnType<typeof evaluateCoworkWorkstation>,
+  current: CoworkAvailabilitySelection
+) => {
+  const { selection, workstationRequirement } = queries;
+  const isSelectedOfferUnavailable =
+    isSelectedCoworkOfferUnavailable(selection.availability, current) ||
+    workstation.isSelectedMonitorUnavailable;
+
+  return {
+    isPending: isCoworkCheckoutPending(
+      queries,
+      workstation,
+      current.monitorOption
+    ),
+    isError:
+      (selection.isError || workstationRequirement.isError) &&
+      !(selection.isPending || workstationRequirement.isPending),
+    unavailable: isSelectedOfferUnavailable
+      ? ({
+          kind: "cowork",
+          entryTier: current.entryTier,
+        } satisfies WorkspaceCoworkAvailabilityTarget)
+      : undefined,
+  };
+};
+
+/**
+ * What the availability of a cowork form's queries (see
+ * `getCoworkAvailabilityQueries`) allows for the current selection. Each
+ * query's availability counts only once it settled for the current query.
+ */
+export const evaluateCoworkSelectionAvailability = (
+  queries: CoworkAvailabilityQueries,
+  current: CoworkAvailabilitySelection
+) => {
+  const workstation = evaluateCoworkWorkstation(queries, current);
+
+  return {
+    ...evaluateCoworkCalendar(queries, current),
+    workstation,
+    checkout: evaluateCoworkCheckout(queries, workstation, current),
   };
 };
 

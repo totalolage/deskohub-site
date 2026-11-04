@@ -51,7 +51,7 @@ const runRequireCurrent = (input: {
   readonly candidate?: WorkspaceReservationRow | null;
   readonly current?: WorkspaceReservationRow | null;
   readonly dotyposStatus?: "NEW" | "CANCELLED" | "CONFIRMED";
-  readonly checkoutSessionId?: string;
+  readonly checkoutSessionId?: string | null;
 }) => {
   const candidate =
     input.candidate === undefined ? reservation() : input.candidate;
@@ -80,9 +80,11 @@ const runRequireCurrent = (input: {
       const payable = yield* PayableReservationService;
       return yield* payable.requireCurrent({
         orderId: "reservation-id",
-        checkoutSessionId: checkoutSessionIdSchema.make(
-          input.checkoutSessionId ?? checkoutSessionId
-        ),
+        ...(input.checkoutSessionId !== null && {
+          checkoutSessionId: checkoutSessionIdSchema.make(
+            input.checkoutSessionId ?? checkoutSessionId
+          ),
+        }),
       });
     }).pipe(Effect.provide(layer), withKeyRing, Effect.runPromise),
   };
@@ -136,5 +138,66 @@ describe("PayableReservationService", () => {
       })
     );
     expect(getReservationStatus).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    {
+      name: "a pay state without a checkout session",
+      run: { checkoutSessionId: null },
+      reason: "missing_checkout_session",
+    },
+    {
+      name: "a missing order",
+      run: { candidate: null },
+      reason: "missing_reservation",
+    },
+    {
+      name: "a session with no current reservation",
+      run: { current: null },
+      reason: "not_current",
+    },
+    {
+      name: "a reservation that is no longer held",
+      run: { candidate: reservation({ reservationState: "confirming" }) },
+      reason: "not_held",
+    },
+    {
+      name: "a hold that has expired",
+      run: {
+        candidate: reservation({
+          reservationHoldExpiresAt: Temporal.Now.instant().subtract({
+            seconds: 1,
+          }),
+        }),
+      },
+      reason: "expired",
+    },
+    {
+      name: "a hold without its Dotypos reservation",
+      run: { candidate: reservation({ dotyposReservationId: null }) },
+      reason: "missing_dotypos_reservation",
+    },
+  ] as const)(
+    "rejects $name without calling Dotypos",
+    async ({ run, reason }) => {
+      const { getReservationStatus, result } = runRequireCurrent(run);
+
+      await expect(result).rejects.toEqual(
+        new PayableReservationUnavailableError({
+          orderId: "reservation-id",
+          reason,
+        })
+      );
+      expect(getReservationStatus).not.toHaveBeenCalled();
+    }
+  );
+
+  test("accepts a held reservation without a recorded hold expiry", async () => {
+    const { getReservationStatus, result } = runRequireCurrent({
+      candidate: reservation({ reservationHoldExpiresAt: null }),
+    });
+
+    await expect(result).resolves.toMatchObject({ id: "reservation-id" });
+    expect(getReservationStatus).toHaveBeenCalledWith("dotypos-reservation-id");
   });
 });

@@ -59,6 +59,49 @@ export type LocaleBoundContinuation =
 const pageParam = (searchParams: Pick<URLSearchParams, "get">, param: string) =>
   searchParams.get(param) || undefined;
 
+type ContinuationCandidate = {
+  readonly locale: Locale;
+  readonly route: string;
+  readonly searchParams: Pick<URLSearchParams, "get">;
+};
+
+/**
+ * A Pay state on the Pay page, or on a reservation page that restores an
+ * edited reservation of the matching kind.
+ */
+const findPayStateContinuation = ({
+  locale,
+  route,
+  searchParams,
+}: ContinuationCandidate): LocaleBoundContinuation | undefined => {
+  const token = pageParam(searchParams, payStateTokenQueryParam);
+  if (!token) return undefined;
+  if (route === checkoutPayPath) return { kind: "pay-state", locale, token };
+  const reservationKind = restorationPages[route];
+  return reservationKind
+    ? { kind: "pay-state", locale, reservationKind, token }
+    : undefined;
+};
+
+/** The single path segment after the invoice route, when there is one. */
+const invoiceOrderId = (route: string) => {
+  if (!route.startsWith(`${reservationInvoicePath}/`)) return undefined;
+  const orderId = route.slice(reservationInvoicePath.length + 1);
+  return /^[^/]+$/.test(orderId) ? orderId : undefined;
+};
+
+const findInvoiceContinuation = ({
+  locale,
+  route,
+  searchParams,
+}: ContinuationCandidate): LocaleBoundContinuation | undefined => {
+  const token = pageParam(searchParams, reservationAccessTokenQueryParam);
+  const orderId = invoiceOrderId(route);
+  return token && orderId
+    ? { kind: "reservation-invoice", locale, orderId, token }
+    : undefined;
+};
+
 /**
  * The continuation a URL claims to carry: a supported route with a non-empty
  * first value of its signed parameter, as the page reads it. This only matches the URL's shape and reads
@@ -73,25 +116,14 @@ export const findLocaleBoundContinuation = ({
 }): LocaleBoundContinuation | undefined => {
   const locale = getLocaleFromPathname(pathname, locales);
   if (!locale) return undefined;
-  const route = stripLocaleFromPathname(pathname, locales);
-
-  const payState = pageParam(searchParams, payStateTokenQueryParam);
-  if (payState && route === checkoutPayPath) {
-    return { kind: "pay-state", locale, token: payState };
-  }
-  const reservationKind = restorationPages[route];
-  if (payState && reservationKind) {
-    return { kind: "pay-state", locale, reservationKind, token: payState };
-  }
-
-  const accessToken = pageParam(searchParams, reservationAccessTokenQueryParam);
-  const orderId = route.startsWith(`${reservationInvoicePath}/`)
-    ? route.slice(reservationInvoicePath.length + 1)
-    : undefined;
-  if (accessToken && orderId && /^[^/]+$/.test(orderId)) {
-    return { kind: "reservation-invoice", locale, orderId, token: accessToken };
-  }
-  return undefined;
+  const candidate = {
+    locale,
+    route: stripLocaleFromPathname(pathname, locales),
+    searchParams,
+  };
+  return (
+    findPayStateContinuation(candidate) ?? findInvoiceContinuation(candidate)
+  );
 };
 
 /**

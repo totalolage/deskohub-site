@@ -3,6 +3,7 @@ import { testEmailAddress } from "@deskohub/test-email";
 import { Schema } from "effect";
 import { type ComponentProps, useState } from "react";
 import { useForm } from "react-hook-form";
+import type { SiteToolReservationForm } from "@/features/agent-tools/webmcp/use-prepare-reservation-site-tool";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import { m } from "@/features/i18n";
 import { workspaceRouterRefresh } from "@/shared/testing/workspace-component-module-mocks";
@@ -11,36 +12,70 @@ import {
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 import type { ReservationExistingCustomerForm } from "../reservation-existing-customer";
+import type { useReservationCheckout } from "./use-reservation-checkout";
 
 const adaEmail = testEmailAddress("ada");
 const graceEmail = testEmailAddress("grace");
 
-const startCheckout = mock();
+type CheckoutDetails = Parameters<
+  ReturnType<typeof useReservationCheckout>["startCheckout"]
+>[0];
+
+const startCheckout = mock(
+  async (_details: CheckoutDetails) =>
+    ({ status: "error", message: "Started" }) as const
+);
 const verifyEmail = mock();
+const capturePrePaymentOutcome = mock((_outcome: string) => undefined);
+const clearSubmissionError = mock(() => undefined);
+const setSubmissionError = mock((_message: string) => undefined);
+const clearEmailVerificationError = mock(() => undefined);
 let initialStep: "selection" | "contact" = "contact";
+let checkoutState: {
+  hasPreparedPayRedirect?: boolean;
+  isPreparingCheckout?: boolean;
+  isSubmittingCheckout?: boolean;
+  preparedCheckout?: unknown;
+  submissionError?: string;
+} = {};
+let emailVerificationState: { error?: string; isVerifying?: boolean } = {};
+let siteTool: SiteToolReservationForm | undefined;
 
 mock.module("./use-reservation-checkout", () => ({
   useReservationCheckout: () => ({
-    capturePrePaymentOutcome: mock(),
-    clearSubmissionError: mock(),
+    capturePrePaymentOutcome,
+    clearSubmissionError,
     hasPreparedPayRedirect: false,
     isPreparingCheckout: false,
     isSubmittingCheckout: false,
     preparedCheckout: undefined,
-    setSubmissionError: mock(),
+    setSubmissionError,
     startCheckout,
     submissionError: undefined,
+    ...checkoutState,
   }),
 }));
 
 mock.module("./use-checkout-email-verification", () => ({
   useCheckoutEmailVerification: () => ({
-    clearError: mock(),
+    clearError: clearEmailVerificationError,
     error: undefined,
     isVerifying: false,
     verify: verifyEmail,
+    ...emailVerificationState,
   }),
 }));
+
+// The site tool's form is the same submission path the button takes; tests
+// call it directly to read each submission's outcome.
+mock.module(
+  "@/features/agent-tools/webmcp/use-prepare-reservation-site-tool",
+  () => ({
+    usePrepareReservationSiteTool: (form: SiteToolReservationForm) => {
+      siteTool = form;
+    },
+  })
+);
 
 // The step lives in the URL; the component test keeps it in state.
 mock.module("./use-reservation-checkout-step", () => ({
@@ -81,8 +116,13 @@ function Harness({
   availability = { isPending: false },
   checkoutCustomer = { status: "signed-out" },
   date = "2026-10-20",
+  fromSearchParams = () => ({}),
+  requiresName = false,
   values,
 }: {
+  /** Validates the name with a resolver, as a family's schema does. */
+  readonly requiresName?: boolean;
+  readonly fromSearchParams?: CheckoutFormProps["selection"]["fromSearchParams"];
   readonly advertisedPrice: Pick<
     CheckoutFormProps["advertisedPrice"],
     "isError" | "token" | "sale"
@@ -101,6 +141,15 @@ function Harness({
       ? checkoutCustomer.existingCustomer.contact
       : undefined;
   const form = useForm<HarnessValues>({
+    ...(requiresName && {
+      resolver: async (values: HarnessValues) =>
+        values.name
+          ? { values, errors: {} }
+          : {
+              values: {},
+              errors: { name: { type: "required", message: "Enter a name" } },
+            },
+    }),
     defaultValues: {
       billing: { purpose: "personal", invoice: "none" },
       date,
@@ -131,7 +180,7 @@ function Harness({
       }
       locale="en-US"
       selectionSummary={selectionSummary}
-      selection={{ kind: "cowork", fromSearchParams: () => ({}) }}
+      selection={{ kind: "cowork", fromSearchParams }}
     >
       <input
         aria-label="Reservation date"
@@ -218,8 +267,15 @@ describe("ReservationCheckoutForm", () => {
     cleanup();
     startCheckout.mockClear();
     verifyEmail.mockClear();
+    capturePrePaymentOutcome.mockClear();
+    clearSubmissionError.mockClear();
+    setSubmissionError.mockClear();
+    clearEmailVerificationError.mockClear();
     workspaceRouterRefresh.mockClear();
     initialStep = "contact";
+    checkoutState = {};
+    emailVerificationState = {};
+    siteTool = undefined;
   });
 
   afterAll(async () => {
@@ -641,5 +697,370 @@ describe("ReservationCheckoutForm", () => {
     expect(view.queryByRole("link", { name: "Privacy Policy" })).toBeNull();
     expect(getMarketingConsentCheckbox(view)).toBeNull();
     expect(getSubmitButton(view)).toBeNull();
+  });
+
+  describe("submission outcomes", () => {
+    const submit = (marketingConsentSource?: "site_tool") =>
+      act(async () => siteTool?.submit(marketingConsentSource));
+
+    test("returns a checkout already prepared without checking again", async () => {
+      const prepared = {
+        status: "ready",
+        redirectUrl: "/en-US/checkout/pay",
+        expiresAt: "2099-01-01T00:00:00Z",
+      };
+      checkoutState = { preparedCheckout: prepared };
+      render(
+        <Harness
+          advertisedPrice={{ isError: false, token: undefined }}
+          checkoutCustomer={linked()}
+        />
+      );
+
+      expect(await submit()).toBe(prepared as never);
+      expect(clearSubmissionError).not.toHaveBeenCalled();
+      expect(capturePrePaymentOutcome).not.toHaveBeenCalled();
+      expect(startCheckout).not.toHaveBeenCalled();
+    });
+
+    test("names the invalid fields and returns a stale selection to its step", async () => {
+      const view = render(
+        <Harness
+          advertisedPrice={signedPrice}
+          checkoutCustomer={linked()}
+          date=""
+        />
+      );
+
+      expect(await submit()).toEqual({
+        status: "invalid",
+        fields: [{ name: "date", message: "Pick a date" }],
+      });
+      expect(capturePrePaymentOutcome.mock.calls).toEqual([["validation"]]);
+      expect(getContinueButton(view)).not.toBeNull();
+    });
+
+    test("stays on the contact step for an invalid contact field", async () => {
+      const view = render(
+        <Harness advertisedPrice={signedPrice} requiresName />
+      );
+
+      expect(await submit()).toEqual({
+        status: "invalid",
+        fields: [{ name: "name", message: "Enter a name" }],
+      });
+      expect(getSubmitButton(view)).not.toBeNull();
+      expect(verifyEmail).not.toHaveBeenCalled();
+    });
+
+    test("rejects someone else's mismatched email confirmation first", async () => {
+      render(
+        <Harness
+          advertisedPrice={{ isError: false, token: undefined }}
+          availability={{ isPending: false, unavailableMessage: "Taken" }}
+          checkoutCustomer={linked({ initialMode: "contact" })}
+          values={{
+            ...existingCustomer.otherContact,
+            emailConfirmation: adaEmail,
+          }}
+        />
+      );
+
+      expect(await submit()).toEqual({
+        status: "invalid",
+        fields: [
+          {
+            name: "emailConfirmation",
+            message: m.contactValidationEmailConfirmationMismatch({}, en),
+          },
+        ],
+      });
+      expect(clearSubmissionError).toHaveBeenCalledTimes(1);
+      expect(clearEmailVerificationError).toHaveBeenCalledTimes(1);
+      expect(capturePrePaymentOutcome.mock.calls).toEqual([["validation"]]);
+      expect(setSubmissionError).not.toHaveBeenCalled();
+    });
+
+    test("reports a selection that became unavailable before the price", async () => {
+      render(
+        <Harness
+          advertisedPrice={{ isError: false, token: undefined }}
+          availability={{ isPending: false, unavailableMessage: "Taken" }}
+          checkoutCustomer={linked()}
+        />
+      );
+
+      expect(await submit()).toEqual({ status: "error", message: "Taken" });
+      expect(capturePrePaymentOutcome.mock.calls).toEqual([
+        ["availability_changed"],
+      ]);
+      expect(setSubmissionError.mock.calls).toEqual([["Taken"]]);
+      expect(startCheckout).not.toHaveBeenCalled();
+    });
+
+    test("fails without a signed price", async () => {
+      render(
+        <Harness
+          advertisedPrice={{ isError: true, token: undefined }}
+          checkoutCustomer={linked()}
+        />
+      );
+
+      const message = m.reservationErrorMessage({}, en);
+      expect(await submit()).toEqual({ status: "error", message });
+      expect(capturePrePaymentOutcome.mock.calls).toEqual([
+        ["transport_error"],
+      ]);
+      expect(setSubmissionError.mock.calls).toEqual([[message]]);
+      expect(startCheckout).not.toHaveBeenCalled();
+    });
+
+    test("verifies a signed-out customer's email instead of checking out", async () => {
+      render(
+        <Harness
+          advertisedPrice={signedPrice}
+          values={{
+            name: "Ada Lovelace",
+            email: adaEmail,
+            phone: "+420777777777",
+          }}
+        />
+      );
+
+      expect(await submit("site_tool")).toEqual({
+        status: "email-verification",
+      });
+      expect(verifyEmail).toHaveBeenCalledTimes(1);
+      expect(startCheckout).not.toHaveBeenCalled();
+      expect(capturePrePaymentOutcome).not.toHaveBeenCalled();
+    });
+
+    test("labels the consent the site tool gave and returns the started checkout", async () => {
+      render(
+        <Harness
+          advertisedPrice={signedPrice}
+          checkoutCustomer={linked()}
+          values={{ marketingConsent: true }}
+        />
+      );
+
+      expect(await submit("site_tool")).toEqual({
+        status: "error",
+        message: "Started",
+      });
+      expect(startCheckout.mock.calls).toEqual([
+        [
+          {
+            advertisedPriceToken: "signed-price",
+            customer: "account",
+            marketingConsent: true,
+            marketingConsentSource: "site_tool",
+            reservation: {
+              email: adaEmail,
+              name: "Ada Lovelace",
+              phone: "+420777777777",
+            },
+          },
+        ],
+      ]);
+    });
+
+    test("sends a declined consent without a source", async () => {
+      render(
+        <Harness advertisedPrice={signedPrice} checkoutCustomer={linked()} />
+      );
+
+      await submit("site_tool");
+
+      expect(startCheckout.mock.calls[0]?.[0]).toEqual({
+        advertisedPriceToken: "signed-price",
+        customer: "account",
+        marketingConsent: false,
+        reservation: {
+          email: adaEmail,
+          name: "Ada Lovelace",
+          phone: "+420777777777",
+        },
+      });
+    });
+
+    test("books someone else without the account or consent", async () => {
+      render(
+        <Harness
+          advertisedPrice={signedPrice}
+          checkoutCustomer={linked({ initialMode: "contact" })}
+          values={{
+            ...existingCustomer.otherContact,
+            emailConfirmation: graceEmail,
+            marketingConsent: true,
+          }}
+        />
+      );
+
+      await submit("site_tool");
+
+      expect(startCheckout.mock.calls[0]?.[0]).toEqual({
+        advertisedPriceToken: "signed-price",
+        reservation: existingCustomer.otherContact,
+      });
+    });
+  });
+
+  describe("site tool", () => {
+    test("reports readiness from availability and the price", () => {
+      const view = render(<Harness advertisedPrice={signedPrice} />);
+      expect(siteTool?.readiness).toEqual({
+        isPending: false,
+        priceError: false,
+        unavailableMessage: undefined,
+      });
+      expect(siteTool).toMatchObject({
+        asksMarketingConsent: true,
+        kind: "cowork",
+        locale: "en-US",
+      });
+
+      for (const [props, isPending] of [
+        [{ availability: { isPending: true } }, true],
+        [{ advertisedPrice: { ...signedPrice, isFetching: true } }, true],
+        [{ advertisedPrice: { isError: false, token: undefined } }, true],
+        [{ advertisedPrice: { isError: true, token: undefined } }, false],
+      ] as const) {
+        view.rerender(<Harness advertisedPrice={signedPrice} {...props} />);
+        expect(siteTool?.readiness.isPending).toBe(isPending);
+      }
+      expect(siteTool?.readiness.priceError).toBe(true);
+
+      view.rerender(
+        <Harness
+          advertisedPrice={signedPrice}
+          availability={{ isPending: false, unavailableMessage: "Taken" }}
+        />
+      );
+      expect(siteTool?.readiness.unavailableMessage).toBe("Taken");
+    });
+
+    test("reads and gives marketing consent on the form", () => {
+      const view = render(<Harness advertisedPrice={signedPrice} />);
+
+      expect(siteTool?.hasMarketingConsent()).toBe(false);
+      act(() => siteTool?.giveMarketingConsent());
+      expect(siteTool?.hasMarketingConsent()).toBe(true);
+      expect(
+        getMarketingConsentCheckbox(view)?.getAttribute("data-state")
+      ).toBe("checked");
+    });
+
+    test("applies a link's selection and says whether anything changed", () => {
+      const fromSearchParams = mock((searchParams: URLSearchParams) => ({
+        date: searchParams.get("date") ?? undefined,
+      }));
+      render(
+        <Harness
+          advertisedPrice={signedPrice}
+          fromSearchParams={fromSearchParams as never}
+        />
+      );
+      const dateField = () =>
+        document.querySelector<HTMLInputElement>(
+          'input[aria-label="Reservation date"]'
+        );
+
+      let changed: boolean | undefined;
+      act(() => {
+        changed = siteTool?.applySelection(
+          new URLSearchParams({ date: "2026-10-20" })
+        );
+      });
+      expect(changed).toBe(false);
+
+      act(() => {
+        changed = siteTool?.applySelection(
+          new URLSearchParams({ date: "2026-10-25" })
+        );
+      });
+      expect(changed).toBe(true);
+      expect(dateField()?.value).toBe("2026-10-25");
+    });
+  });
+
+  describe("submit button", () => {
+    test("disables while checkout is busy or the selection unconfirmed", () => {
+      const view = render(
+        <Harness advertisedPrice={signedPrice} checkoutCustomer={linked()} />
+      );
+      expect(getSubmitButton(view).disabled).toBe(false);
+
+      for (const state of [
+        { checkout: { isSubmittingCheckout: true } },
+        { checkout: { hasPreparedPayRedirect: true } },
+        { emailVerification: { isVerifying: true } },
+      ]) {
+        checkoutState = state.checkout ?? {};
+        emailVerificationState = state.emailVerification ?? {};
+        view.rerender(
+          <Harness advertisedPrice={signedPrice} checkoutCustomer={linked()} />
+        );
+        expect(getSubmitButton(view).disabled).toBe(true);
+      }
+      checkoutState = {};
+      emailVerificationState = {};
+
+      for (const props of [
+        { availability: { isPending: true } },
+        { advertisedPrice: { ...signedPrice, isFetching: true } },
+        { advertisedPrice: { isError: true, token: "stale-price" } },
+      ]) {
+        view.rerender(
+          <Harness
+            advertisedPrice={signedPrice}
+            checkoutCustomer={linked()}
+            {...props}
+          />
+        );
+        expect(getSubmitButton(view).disabled).toBe(true);
+      }
+    });
+
+    test("shows a checkout or email verification error", () => {
+      checkoutState = { submissionError: "Checkout failed" };
+      emailVerificationState = { error: "Email failed" };
+      const view = render(<Harness advertisedPrice={signedPrice} />);
+      expect(view.getByRole("alert").textContent).toBe("Checkout failed");
+
+      checkoutState = {};
+      view.rerender(<Harness advertisedPrice={signedPrice} />);
+      expect(view.getByRole("alert").textContent).toBe("Email failed");
+    });
+
+    test("marks the price as loading only before a first price", () => {
+      const view = render(
+        <Harness advertisedPrice={{ ...signedPrice, isFetching: true }} />
+      );
+      expect(getSubmitButton(view).dataset.reservationPriceLoading).toBe(
+        "false"
+      );
+
+      view.rerender(
+        <Harness
+          advertisedPrice={{
+            isError: false,
+            isFetching: true,
+            token: undefined,
+          }}
+        />
+      );
+      expect(getSubmitButton(view).dataset.reservationPriceLoading).toBe(
+        "true"
+      );
+    });
+  });
+
+  test("shows the Pay page's skeleton while checkout is prepared", () => {
+    checkoutState = { isPreparingCheckout: true };
+    const view = render(<Harness advertisedPrice={signedPrice} />);
+
+    expect(view.container.querySelector("form")).toBeNull();
+    expect(view.container.innerHTML).not.toBe("");
   });
 });

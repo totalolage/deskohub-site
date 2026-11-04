@@ -177,6 +177,36 @@ const changedBody = ({
   return undefined;
 };
 
+/** The locale's body after a change: a new body under the saving rules. */
+const changedLocaleBody = (
+  locale: Locale,
+  current: CampaignLocaleContent | undefined,
+  change: CampaignLocaleContentChange
+): Effect.Effect<
+  CampaignBodyDocument | undefined,
+  CampaignBodyDocumentInvalid | CampaignBodyMarkdownInvalid
+> => {
+  const bodyInput = changedBody(change);
+  return bodyInput === undefined
+    ? Effect.succeed(current?.body)
+    : readBody(finishedBodyRules, locale, bodyInput);
+};
+
+/** The preheader after a change; a locale without one has an empty one. */
+const changedPreheader = (
+  current: CampaignLocaleContent | undefined,
+  change: CampaignLocaleContentChange
+): string => change.preheader ?? current?.preheader ?? "";
+
+/** The reason after a change; null restores the default reason line. */
+const changedOperationalReason = (
+  current: CampaignLocaleContent | undefined,
+  change: CampaignLocaleContentChange
+): string | undefined =>
+  change.operationalReason === undefined
+    ? current?.operationalReason
+    : (change.operationalReason ?? undefined);
+
 /**
  * Merges one locale's change into its current content. Omitted fields keep
  * their value, a null `operationalReason` restores the default reason line,
@@ -188,24 +218,14 @@ const applyLocaleChange = Effect.fn("applyCampaignLocaleChange")(function* (
   current: CampaignLocaleContent | undefined,
   change: CampaignLocaleContentChange
 ) {
-  const bodyInput = changedBody(change);
-  const body =
-    bodyInput === undefined
-      ? current?.body
-      : yield* readBody(finishedBodyRules, locale, bodyInput);
+  const body = yield* changedLocaleBody(locale, current, change);
   const subject = change.subject ?? current?.subject;
   if (body === undefined || subject === undefined) {
     return yield* new CampaignLocaleContentMissing({ campaignId, locale });
   }
   return localeContent(
-    {
-      subject,
-      preheader: change.preheader ?? current?.preheader ?? "",
-      body,
-    },
-    change.operationalReason === undefined
-      ? current?.operationalReason
-      : (change.operationalReason ?? undefined)
+    { subject, preheader: changedPreheader(current, change), body },
+    changedOperationalReason(current, change)
   );
 });
 

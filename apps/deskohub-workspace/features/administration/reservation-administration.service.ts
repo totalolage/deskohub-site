@@ -6,8 +6,14 @@ import { WorkspaceCheckoutNetworkDetailsService } from "@/features/checkout/back
 import { WorkspaceReservationEmailService } from "@/features/checkout/backend/fulfillment/workspace-reservation-email.service";
 import { administrationForcedPaymentCancellationFailureCode } from "@/features/checkout/backend/repositories/payment-lifecycle.repository";
 import { SeatingMapReleaseGate } from "@/features/reservation/backend/seating-map-release-gate";
-import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
-import { WorkspaceReservationService } from "@/features/reservation/backend/workspace-reservation.service";
+import {
+  type WorkspaceReservation,
+  WorkspaceReservationRepository,
+} from "@/features/reservation/backend/workspace-reservation.repository";
+import {
+  type WorkspaceReservationDetails,
+  WorkspaceReservationService,
+} from "@/features/reservation/backend/workspace-reservation.service";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { WorkspaceEmailLayer } from "@/shared/backend/config/email.config";
@@ -45,14 +51,18 @@ export class ReservationAdministrationError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
+type ReservationCancellationInput = {
+  readonly accessGrantUpdatedAt: string | null;
+  readonly force?: boolean;
+  readonly providerCredentialRemoved: boolean;
+  readonly reservationId: WorkspaceReservationId;
+  readonly sendCancellationEmail: boolean;
+};
+
 interface IReservationAdministrationService {
-  readonly cancel: (input: {
-    readonly accessGrantUpdatedAt: string | null;
-    readonly force?: boolean;
-    readonly providerCredentialRemoved: boolean;
-    readonly reservationId: WorkspaceReservationId;
-    readonly sendCancellationEmail: boolean;
-  }) => Effect.Effect<
+  readonly cancel: (
+    input: ReservationCancellationInput
+  ) => Effect.Effect<
     ReservationCancellationResult,
     ReservationAdministrationError
   >;
@@ -69,6 +79,130 @@ export class ReservationAdministrationService extends Context.Service<
       const emails = yield* WorkspaceReservationEmailService;
       const reservations = yield* WorkspaceReservationRepository;
       const reservationDetails = yield* WorkspaceReservationService;
+
+      const claimCancellation = Effect.fnUntraced(function* (
+        input: ReservationCancellationInput,
+        current: WorkspaceReservation,
+        forcedPendingPayment: boolean
+      ) {
+        const pendingPaymentCancellation = getPendingPaymentCancellation(
+          current,
+          forcedPendingPayment
+        );
+        const claimed = yield* reservations
+          .claimAdministrationCancellation({
+            accessGrantUpdatedAt: input.accessGrantUpdatedAt,
+            id: current.id,
+            ...(pendingPaymentCancellation && {
+              pendingPaymentCancellation,
+            }),
+            providerCredentialRemoved: input.providerCredentialRemoved,
+            staleCancellingBefore: Temporal.Now.instant().subtract({
+              milliseconds: ADMINISTRATION_CANCELLATION_RETRY_AFTER_MS,
+            }),
+          })
+          .pipe(
+            Effect.mapError((cause) =>
+              cancellationFailed(
+                "claim_failed",
+                "The reservation could not be claimed for cancellation.",
+                cause
+              )
+            )
+          );
+        if (!claimed) {
+          return yield* new ReservationAdministrationError({
+            code: "not_cancellable",
+            reason: "changed",
+            message:
+              "The reservation changed while cancellation was starting, or an active door PIN still needs removal. Refresh and try again.",
+          });
+        }
+        return claimed;
+      });
+
+      /**
+       * Cancels the reservation in Dotypos. When that fails, a reservation
+       * Dotypos already reports as cancelled counts as done; otherwise the
+       * claim is marked failed.
+       */
+      const cancelInDotypos = Effect.fnUntraced(function* (
+        current: WorkspaceReservation,
+        details: WorkspaceReservationDetails,
+        claimed: WorkspaceReservation,
+        administrationForceCancellation: boolean
+      ) {
+        yield* dotypos.cancelReservation(details.dotyposReservationId).pipe(
+          Effect.catch(
+            Effect.fn(function* (cause) {
+              const cancelled = yield* reservationDetails
+                .getReservation(current.id)
+                .pipe(
+                  Effect.map((latest) => latest.providerStatus === "CANCELLED"),
+                  Effect.orElseSucceed(() => false)
+                );
+              if (cancelled) return;
+
+              yield* reservations
+                .markAdministrationCancellationFailed({
+                  id: claimed.id,
+                  claimedAt: claimed.updatedAt,
+                  failureCode: getCancellationFailureCode(
+                    administrationForceCancellation,
+                    "admin_dotypos_cancel_failed"
+                  ),
+                })
+                .pipe(Effect.ignore);
+              return yield* Effect.fail(cause);
+            })
+          ),
+          Effect.mapError((cause) =>
+            cancellationFailed(
+              "dotypos_failed",
+              "Dotypos could not cancel the reservation.",
+              cause
+            )
+          )
+        );
+      });
+
+      /** Records the completed cancellation, or marks the claim failed when that write fails. */
+      const recordCancellation = Effect.fnUntraced(function* (
+        claimed: WorkspaceReservation,
+        administrationForceCancellation: boolean
+      ) {
+        yield* reservations
+          .markAdministrationCancelled({
+            id: claimed.id,
+            cancelledAt: Temporal.Now.instant(),
+            claimedAt: claimed.updatedAt,
+            failureCode: getCancellationFailureCode(
+              administrationForceCancellation,
+              null
+            ),
+          })
+          .pipe(
+            Effect.tapError(() =>
+              reservations
+                .markAdministrationCancellationFailed({
+                  id: claimed.id,
+                  claimedAt: claimed.updatedAt,
+                  failureCode: getCancellationFailureCode(
+                    administrationForceCancellation,
+                    "admin_local_cancel_failed"
+                  ),
+                })
+                .pipe(Effect.ignore)
+            ),
+            Effect.mapError((cause) =>
+              cancellationFailed(
+                "record_failed",
+                "The completed cancellation could not be recorded.",
+                cause
+              )
+            )
+          );
+      });
 
       return {
         cancel: Effect.fn("ReservationAdministrationService.cancel")(
@@ -110,28 +244,7 @@ export class ReservationAdministrationService extends Context.Service<
                 forcedPendingPayment
               )
             ) {
-              if (current.fulfillmentState === "awaiting_delivery") {
-                return yield* new ReservationAdministrationError({
-                  code: "not_cancellable",
-                  reason: "delivery_in_progress",
-                  message:
-                    "The confirmation email is still being delivered. Try again after delivery completes.",
-                });
-              }
-              if (current.fulfillmentState === "processing") {
-                return yield* new ReservationAdministrationError({
-                  code: "not_cancellable",
-                  reason: "confirmation_in_progress",
-                  message:
-                    "The reservation is being confirmed. Try again after confirmation finishes.",
-                });
-              }
-              return yield* new ReservationAdministrationError({
-                code: "not_cancellable",
-                reason: "invalid_state",
-                message:
-                  "The reservation cannot be cancelled in its current state.",
-              });
+              return yield* getUncancellableReservationError(current);
             }
 
             const details = yield* reservationDetails
@@ -145,134 +258,28 @@ export class ReservationAdministrationService extends Context.Service<
                   )
                 )
               );
-            if (
-              details.providerStatus === "CANCELLED" &&
-              !["cancelling", "cancellation_failed"].includes(
-                current.reservationState
-              )
-            ) {
-              return yield* new ReservationAdministrationError({
-                code: "not_cancellable",
-                reason: "cancelled_in_dotypos",
-                message:
-                  "Dotypos already reports this reservation as cancelled. Use the recovery workflow instead.",
-              });
-            }
-            if (current.paymentState === "pending") {
-              if (!forcedPendingPayment || !current.activePaymentAttemptId) {
-                return yield* new ReservationAdministrationError({
-                  code: "not_cancellable",
-                  reason: "pending_payment",
-                  message:
-                    "The reservation has a pending payment. Retry with force only after reviewing the provider payment.",
-                });
-              }
-            }
-            const pendingPaymentCancellation =
-              forcedPendingPayment && current.activePaymentAttemptId
-                ? {
-                    paymentAttemptId: current.activePaymentAttemptId,
-                    failureCode:
-                      administrationForcedPaymentCancellationFailureCode,
-                  }
-                : undefined;
-            const claimed = yield* reservations
-              .claimAdministrationCancellation({
-                accessGrantUpdatedAt: input.accessGrantUpdatedAt,
-                id: current.id,
-                ...(pendingPaymentCancellation && {
-                  pendingPaymentCancellation,
-                }),
-                providerCredentialRemoved: input.providerCredentialRemoved,
-                staleCancellingBefore: Temporal.Now.instant().subtract({
-                  milliseconds: ADMINISTRATION_CANCELLATION_RETRY_AFTER_MS,
-                }),
-              })
-              .pipe(
-                Effect.mapError((cause) =>
-                  cancellationFailed(
-                    "claim_failed",
-                    "The reservation could not be claimed for cancellation.",
-                    cause
-                  )
-                )
-              );
-            if (!claimed) {
-              return yield* new ReservationAdministrationError({
-                code: "not_cancellable",
-                reason: "changed",
-                message:
-                  "The reservation changed while cancellation was starting, or an active door PIN still needs removal. Refresh and try again.",
-              });
-            }
+            const refusal = getProviderStateRefusal(
+              current,
+              details,
+              forcedPendingPayment
+            );
+            if (refusal) return yield* refusal;
+            const claimed = yield* claimCancellation(
+              input,
+              current,
+              forcedPendingPayment
+            );
 
             if (details.providerStatus !== "CANCELLED") {
-              yield* dotypos
-                .cancelReservation(details.dotyposReservationId)
-                .pipe(
-                  Effect.catch(
-                    Effect.fn(function* (cause) {
-                      const cancelled = yield* reservationDetails
-                        .getReservation(current.id)
-                        .pipe(
-                          Effect.map(
-                            (latest) => latest.providerStatus === "CANCELLED"
-                          ),
-                          Effect.orElseSucceed(() => false)
-                        );
-                      if (cancelled) return;
-
-                      yield* reservations
-                        .markAdministrationCancellationFailed({
-                          id: claimed.id,
-                          claimedAt: claimed.updatedAt,
-                          failureCode: administrationForceCancellation
-                            ? administrationForcedPaymentCancellationFailureCode
-                            : "admin_dotypos_cancel_failed",
-                        })
-                        .pipe(Effect.ignore);
-                      return yield* Effect.fail(cause);
-                    })
-                  ),
-                  Effect.mapError((cause) =>
-                    cancellationFailed(
-                      "dotypos_failed",
-                      "Dotypos could not cancel the reservation.",
-                      cause
-                    )
-                  )
-                );
+              yield* cancelInDotypos(
+                current,
+                details,
+                claimed,
+                administrationForceCancellation
+              );
             }
 
-            yield* reservations
-              .markAdministrationCancelled({
-                id: claimed.id,
-                cancelledAt: Temporal.Now.instant(),
-                claimedAt: claimed.updatedAt,
-                failureCode: administrationForceCancellation
-                  ? administrationForcedPaymentCancellationFailureCode
-                  : null,
-              })
-              .pipe(
-                Effect.tapError(() =>
-                  reservations
-                    .markAdministrationCancellationFailed({
-                      id: claimed.id,
-                      claimedAt: claimed.updatedAt,
-                      failureCode: administrationForceCancellation
-                        ? administrationForcedPaymentCancellationFailureCode
-                        : "admin_local_cancel_failed",
-                    })
-                    .pipe(Effect.ignore)
-                ),
-                Effect.mapError((cause) =>
-                  cancellationFailed(
-                    "record_failed",
-                    "The completed cancellation could not be recorded.",
-                    cause
-                  )
-                )
-              );
+            yield* recordCancellation(claimed, administrationForceCancellation);
 
             return {
               outcome: "cancelled",
@@ -341,3 +348,88 @@ const cancellationFailed = (
     message,
     cause,
   });
+
+/** Why a reservation that can't be cancelled in its current state is refused. */
+const getUncancellableReservationError = (
+  current: Pick<WorkspaceReservation, "fulfillmentState">
+) => {
+  if (current.fulfillmentState === "awaiting_delivery") {
+    return new ReservationAdministrationError({
+      code: "not_cancellable",
+      reason: "delivery_in_progress",
+      message:
+        "The confirmation email is still being delivered. Try again after delivery completes.",
+    });
+  }
+  if (current.fulfillmentState === "processing") {
+    return new ReservationAdministrationError({
+      code: "not_cancellable",
+      reason: "confirmation_in_progress",
+      message:
+        "The reservation is being confirmed. Try again after confirmation finishes.",
+    });
+  }
+  return new ReservationAdministrationError({
+    code: "not_cancellable",
+    reason: "invalid_state",
+    message: "The reservation cannot be cancelled in its current state.",
+  });
+};
+
+/**
+ * Refuses a cancellation Dotypos already made outside Workspace, or one a
+ * pending payment blocks unless the operator forced it for an active attempt.
+ */
+const getProviderStateRefusal = (
+  current: Pick<
+    WorkspaceReservation,
+    "activePaymentAttemptId" | "paymentState" | "reservationState"
+  >,
+  details: Pick<WorkspaceReservationDetails, "providerStatus">,
+  forcedPendingPayment: boolean
+) => {
+  if (
+    details.providerStatus === "CANCELLED" &&
+    !["cancelling", "cancellation_failed"].includes(current.reservationState)
+  ) {
+    return new ReservationAdministrationError({
+      code: "not_cancellable",
+      reason: "cancelled_in_dotypos",
+      message:
+        "Dotypos already reports this reservation as cancelled. Use the recovery workflow instead.",
+    });
+  }
+  if (
+    current.paymentState === "pending" &&
+    (!forcedPendingPayment || !current.activePaymentAttemptId)
+  ) {
+    return new ReservationAdministrationError({
+      code: "not_cancellable",
+      reason: "pending_payment",
+      message:
+        "The reservation has a pending payment. Retry with force only after reviewing the provider payment.",
+    });
+  }
+  return undefined;
+};
+
+/** The pending payment a forced cancellation terminalizes with its claim. */
+const getPendingPaymentCancellation = (
+  current: Pick<WorkspaceReservation, "activePaymentAttemptId">,
+  forcedPendingPayment: boolean
+) =>
+  forcedPendingPayment && current.activePaymentAttemptId
+    ? {
+        paymentAttemptId: current.activePaymentAttemptId,
+        failureCode: administrationForcedPaymentCancellationFailureCode,
+      }
+    : undefined;
+
+/** A forced cancellation keeps its own failure code on every outcome. */
+const getCancellationFailureCode = <Code extends string | null>(
+  administrationForceCancellation: boolean,
+  code: Code
+) =>
+  administrationForceCancellation
+    ? administrationForcedPaymentCancellationFailureCode
+    : code;

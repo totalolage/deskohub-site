@@ -28,7 +28,10 @@ import {
   FormMessage,
 } from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
-import { audienceSingleLocale } from "../../audience-filter";
+import {
+  type AudienceFilter,
+  audienceSingleLocale,
+} from "../../audience-filter";
 import type { CampaignAudienceId } from "../../campaign-identifiers";
 import {
   type AudienceValueLookups,
@@ -105,6 +108,15 @@ export function AudienceEditorPage({
   );
 }
 
+/** The form's starting values: the audience's, or a blank one with no filters. */
+const audienceFormDefaults = (audience: AudienceEditorData | undefined) =>
+  ({
+    title: audience?.title ?? "",
+    filter: asRootGroup(
+      audience?.filter ?? { _tag: "Group", operator: "and", filters: [] }
+    ),
+  }) satisfies AudienceFormValues;
+
 function AudienceForm({
   audience,
   lookups,
@@ -116,18 +128,12 @@ function AudienceForm({
   const locale = useRouteLocale();
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const form = useForm({
-    defaultValues: {
-      title: audience?.title ?? "",
-      filter: asRootGroup(
-        audience?.filter ?? { _tag: "Group", operator: "and", filters: [] }
-      ),
-    } satisfies AudienceFormValues,
+    defaultValues: audienceFormDefaults(audience),
     mode: "onSubmit",
     reValidateMode: "onChange",
     resolver: effectSchemaResolver(createAudienceFormSchema(locale)),
   });
   const filter = useWatch({ control: form.control, name: "filter" });
-  const singleLocale = audienceSingleLocale(filter);
 
   const showSaveFailure = (message: string) =>
     setFeedback({ kind: "error", message });
@@ -220,35 +226,10 @@ function AudienceForm({
               />
             )}
           />
-          <div className="rounded-lg bg-navy-blue/[0.04] px-4 py-3">
-            <p className="font-semibold text-[0.7rem] text-navy-blue/55 uppercase tracking-[0.12em]">
-              {m.emailCampaignsAudienceEditorSummaryHeading({}, { locale })}
-            </p>
-            <p className="mt-1 text-sm leading-6">
-              {m.emailCampaignsAudienceEditorSummary(
-                {
-                  summary: describeAudienceFilter(filter, locale, lookups),
-                },
-                { locale }
-              )}
-            </p>
-            {singleLocale ? (
-              <p className="mt-1 text-navy-blue/62 text-sm">
-                {singleLocaleNotes[singleLocale]({}, { locale })}
-              </p>
-            ) : null}
-          </div>
+          <AudienceFilterSummary filter={filter} lookups={lookups} />
         </section>
 
-        {feedback ? (
-          <AdministrationAlert
-            className="font-semibold"
-            role={feedback.kind === "error" ? "alert" : "status"}
-            status={feedback.kind}
-          >
-            {feedback.message}
-          </AdministrationAlert>
-        ) : null}
+        <AudienceFormFeedback feedback={feedback} />
 
         <div className="flex items-center justify-end gap-3 border-navy-blue/10 border-t pt-5">
           <Button asChild variant="ghost">
@@ -270,6 +251,55 @@ function AudienceForm({
       </form>
     </Form>
   );
+}
+
+/** What the filter reaches, and which content a one-locale audience needs. */
+function AudienceFilterSummary({
+  filter,
+  lookups,
+}: {
+  readonly filter: AudienceFilter;
+  readonly lookups: AudienceValueLookups;
+}) {
+  const locale = useRouteLocale();
+  const singleLocale = audienceSingleLocale(filter);
+  return (
+    <div className="rounded-lg bg-navy-blue/[0.04] px-4 py-3">
+      <p className="font-semibold text-[0.7rem] text-navy-blue/55 uppercase tracking-[0.12em]">
+        {m.emailCampaignsAudienceEditorSummaryHeading({}, { locale })}
+      </p>
+      <p className="mt-1 text-sm leading-6">
+        {m.emailCampaignsAudienceEditorSummary(
+          {
+            summary: describeAudienceFilter(filter, locale, lookups),
+          },
+          { locale }
+        )}
+      </p>
+      {singleLocale ? (
+        <p className="mt-1 text-navy-blue/62 text-sm">
+          {singleLocaleNotes[singleLocale]({}, { locale })}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/** The last save's outcome: an alert for a failure, a status for success. */
+function AudienceFormFeedback({
+  feedback,
+}: {
+  readonly feedback: Feedback | null;
+}) {
+  return feedback ? (
+    <AdministrationAlert
+      className="font-semibold"
+      role={feedback.kind === "error" ? "alert" : "status"}
+      status={feedback.kind}
+    >
+      {feedback.message}
+    </AdministrationAlert>
+  ) : null;
 }
 
 function ArchiveAudienceControl({

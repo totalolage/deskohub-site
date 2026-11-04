@@ -952,6 +952,79 @@ describe("DotyposService customer lookup", () => {
     expect(updateAttempts).toBeGreaterThan(1);
   });
 
+  test("fails filling a matched customer Dotypos returned without an id", async () => {
+    const matched = customer({
+      id: undefined,
+      email: adaAddress,
+      lastName: undefined,
+    });
+    const requests: string[] = [];
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      requests.push(`${request.method} ${url.pathname}`);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers") {
+        return Response.json({ data: [matched] });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const error = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.findOrCreateCustomer(
+          { firstName: "Ada", lastName: "Lovelace", email: adaAddress },
+          { lookupFields: ["email"] }
+        );
+      }).pipe(Effect.flip),
+      fetchMock
+    );
+
+    expect(error).toMatchObject({
+      _tag: "DotyposRejected",
+      operation: "findOrCreateCustomer",
+      request: "customers.lookup",
+      reason: "invalid-response",
+    });
+    expect(requests.filter((line) => !line.startsWith("GET"))).toEqual([
+      "POST /signin/token",
+    ]);
+  });
+
+  test.each([
+    ["an email", { firstName: "Ada", phone: "+420 601 111 222" }],
+    ["a phone", { firstName: "Ada", email: adaAddress }],
+  ])(
+    "refuses to create a customer without %s after finding no match",
+    async (_, customerData) => {
+      const requests: string[] = [];
+      const fetchMock = mockDotyposFetch((request) => {
+        const url = new URL(request.url);
+        requests.push(`${request.method} ${url.pathname}`);
+        if (url.pathname === "/signin/token") return tokenResponse();
+        if (url.pathname === "/clouds/cloud-id/customers") {
+          return Response.json({ data: [] });
+        }
+        return new Response("Not found", { status: 404 });
+      });
+
+      const error = await runWithService(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos.findOrCreateCustomer(customerData);
+        }).pipe(Effect.flip),
+        fetchMock
+      );
+
+      expect(error).toMatchObject({
+        _tag: "DotyposRejected",
+        operation: "findOrCreateCustomer",
+        reason: "invalid-request",
+      });
+      expect(requests).not.toContain("POST /clouds/cloud-id/customers");
+    }
+  );
+
   test("keeps provider error details out of createCustomer logs", async () => {
     const logs: CapturedLog[] = [];
     const providerDescription = `firstName=Ada; lastName=Lovelace; email=${adaSecretAddress}; phone=+420 777 123 456; ${"x".repeat(700)}`;

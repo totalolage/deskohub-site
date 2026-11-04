@@ -1,22 +1,9 @@
 "use client";
 
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
-import {
-  type ComponentProps,
-  createContext,
-  use,
-  useRef,
-  useState,
-} from "react";
+import { type ComponentProps, createContext, use, useState } from "react";
 import { cn } from "@/shared/utils/index";
-
-type TooltipTouchTap = {
-  /** Starts a trigger press; only touch presses toggle the tooltip on tap. */
-  readonly press: (pointerType: string) => void;
-  readonly cancelPress: () => void;
-  /** Settles the latest touch press when its click arrives. */
-  readonly tap: (clickDetail: number) => void;
-};
+import { type TooltipTouchTap, useTooltipTouchTap } from "./tooltip-touch-tap";
 
 const TooltipTouchTapContext = createContext<TooltipTouchTap | null>(null);
 
@@ -40,42 +27,17 @@ function Tooltip({
 }: ComponentProps<typeof TooltipPrimitive.Root>) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen);
   const open = openProp ?? uncontrolledOpen;
-  /** Open state the trigger's latest touch press settles on when it taps. */
-  const tapOpen = useRef<boolean | undefined>(undefined);
-  /** Whether Radix's close on the tap's click is being ignored. */
-  const isApplyingTap = useRef(false);
   const setOpen = (nextOpen: boolean) => {
     setUncontrolledOpen(nextOpen);
     onOpenChange?.(nextOpen);
   };
-  const touchTap: TooltipTouchTap = {
-    cancelPress: () => {
-      tapOpen.current = undefined;
-    },
-    press: (pointerType) => {
-      tapOpen.current = pointerType === "touch" ? !open : undefined;
-    },
-    tap: (clickDetail) => {
-      const nextOpen = tapOpen.current;
-      tapOpen.current = undefined;
-      // Keyboard activation clicks report no detail and keep Radix's behavior.
-      if (nextOpen === undefined || clickDetail === 0) return;
-      setOpen(nextOpen);
-      // Radix's own click handler runs after the trigger's in the same dispatch.
-      isApplyingTap.current = true;
-      queueMicrotask(() => {
-        isApplyingTap.current = false;
-      });
-    },
-  };
+  const { onRadixOpenChange, touchTap } = useTooltipTouchTap(open, setOpen);
 
   return (
     <TooltipTouchTapContext value={touchTap}>
       <TooltipPrimitive.Root
         {...props}
-        onOpenChange={(nextOpen) => {
-          if (!isApplyingTap.current) setOpen(nextOpen);
-        }}
+        onOpenChange={onRadixOpenChange}
         open={open}
       />
     </TooltipTouchTapContext>

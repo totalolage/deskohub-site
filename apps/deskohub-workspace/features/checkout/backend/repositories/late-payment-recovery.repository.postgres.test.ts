@@ -1027,5 +1027,431 @@ describe.skipIf(!testDatabase)(
       expect(attempt?.state).toBe("expired");
       expect(recoveries[0]?.state).toBe("processing");
     });
+
+    const expectStateError = (
+      result: Awaited<ReturnType<typeof runResult>>,
+      operation: "start" | "settle"
+    ) => {
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        expect(result.failure).toBeInstanceOf(LatePaymentRecoveryStateError);
+        expect(result.failure).toMatchObject({
+          operation: `LatePaymentRecoveryRepository.${operation}`,
+        });
+      }
+    };
+
+    const reviewInput = (checkout: {
+      readonly reservationId: WorkspaceReservationId;
+      readonly paymentAttemptId: PaymentAttemptId;
+    }) => ({
+      paymentAttemptId: checkout.paymentAttemptId,
+      workspaceReservationId: checkout.reservationId,
+      failureCode: "late_payment_review_test",
+      completedAt: Temporal.Now.instant(),
+    });
+
+    test("finds no recovery for an attempt or reservation without one", async () => {
+      const checkout = await insertLatePaidCheckout({
+        reservationState: "held",
+        holdExpiresAt: Temporal.Now.instant().add({ minutes: 5 }),
+      });
+
+      expect(
+        await run((repository) =>
+          repository.findByPaymentAttemptId(checkout.paymentAttemptId)
+        )
+      ).toBeNull();
+      expect(
+        await run((repository) =>
+          repository.findLatestByWorkspaceReservationId(checkout.reservationId)
+        )
+      ).toBeNull();
+      expect(
+        await run((repository) =>
+          repository.claim({
+            paymentAttemptId: checkout.paymentAttemptId,
+            staleProcessingBefore: Temporal.Now.instant(),
+          })
+        )
+      ).toBeNull();
+    });
+
+    test("an unknown reservation has no newer checkout-session reservation", async () => {
+      expect(
+        await run((repository) =>
+          repository.hasNewerActiveReservation(
+            crypto.randomUUID() as WorkspaceReservationId
+          )
+        )
+      ).toBe(false);
+    });
+
+    test("recovery start refuses an unknown reservation", async () => {
+      const result = await runResult((repository) =>
+        repository.start({
+          paymentAttemptId: paymentAttemptIdSchema.make(
+            `late-attempt-missing-${crypto.randomUUID()}`
+          ),
+          workspaceReservationId: crypto.randomUUID() as WorkspaceReservationId,
+          providerStatus: "EXECUTED",
+          verifiedPaidAt: Temporal.Now.instant(),
+        })
+      );
+
+      expectStateError(result, "start");
+    });
+
+    test("recovery start refuses an attempt that is not terminal, or another reservation's attempt", async () => {
+      const checkout = await insertLatePaidCheckout({
+        reservationState: "held",
+        holdExpiresAt: Temporal.Now.instant().add({ minutes: 5 }),
+      });
+      const other = await insertLatePaidCheckout({
+        reservationState: "held",
+        holdExpiresAt: Temporal.Now.instant().add({ minutes: 5 }),
+      });
+      await Effect.runPromise(
+        testDatabase.db
+          .update(paymentAttempts)
+          .set({ state: "pending", failureCode: null })
+          .where(eq(paymentAttempts.id, checkout.paymentAttemptId))
+      );
+
+      const pendingResult = await runResult((repository) =>
+        repository.start({
+          paymentAttemptId: checkout.paymentAttemptId,
+          workspaceReservationId: checkout.reservationId,
+          providerStatus: "EXECUTED",
+          verifiedPaidAt: Temporal.Now.instant(),
+        })
+      );
+      const foreignResult = await runResult((repository) =>
+        repository.start({
+          paymentAttemptId: other.paymentAttemptId,
+          workspaceReservationId: checkout.reservationId,
+          providerStatus: "EXECUTED",
+          verifiedPaidAt: Temporal.Now.instant(),
+        })
+      );
+
+      expectStateError(pendingResult, "start");
+      expectStateError(foreignResult, "start");
+      expect((await readRows(checkout)).recoveries).toEqual([]);
+      expect((await readRows(other)).recoveries).toEqual([]);
+    });
+
+    test("recovery start refuses a reservation without its Dotypos reservation", async () => {
+      const checkout = await insertLatePaidCheckout({
+        reservationState: "held",
+        holdExpiresAt: Temporal.Now.instant().add({ minutes: 5 }),
+      });
+      await Effect.runPromise(
+        testDatabase.db
+          .update(workspaceReservations)
+          .set({ dotyposReservationId: null, reservationState: "draft" })
+          .where(eq(workspaceReservations.id, checkout.reservationId))
+      );
+
+      const result = await runResult((repository) =>
+        repository.start({
+          paymentAttemptId: checkout.paymentAttemptId,
+          workspaceReservationId: checkout.reservationId,
+          providerStatus: "EXECUTED",
+          verifiedPaidAt: Temporal.Now.instant(),
+        })
+      );
+
+      expectStateError(result, "start");
+      expect((await readRows(checkout)).recoveries).toEqual([]);
+    });
+
+    test("a later start without a webhook returns the recovery and keeps its webhook event", async () => {
+      const checkout = await insertLatePaidCheckout({
+        reservationState: "held",
+        holdExpiresAt: Temporal.Now.instant().add({ minutes: 5 }),
+      });
+      const first = await run((repository) =>
+        repository.start({
+          paymentAttemptId: checkout.paymentAttemptId,
+          workspaceReservationId: checkout.reservationId,
+          webhookEventId: NexiWebhookEventIdSchema.make("webhook-first"),
+          providerStatus: "EXECUTED",
+          verifiedPaidAt: Temporal.Now.instant(),
+        })
+      );
+
+      const again = await run((repository) =>
+        repository.start({
+          paymentAttemptId: checkout.paymentAttemptId,
+          workspaceReservationId: checkout.reservationId,
+          providerStatus: "EXECUTED",
+          verifiedPaidAt: Temporal.Now.instant(),
+        })
+      );
+      const webhookAgain = await run((repository) =>
+        repository.start({
+          paymentAttemptId: checkout.paymentAttemptId,
+          workspaceReservationId: checkout.reservationId,
+          webhookEventId: NexiWebhookEventIdSchema.make("webhook-second"),
+          providerStatus: "EXECUTED",
+          verifiedPaidAt: Temporal.Now.instant(),
+        })
+      );
+
+      expect(again).toEqual(first);
+      expect(webhookAgain).toEqual(first);
+      const { attempt } = await readRows(checkout);
+      expect(attempt?.lastWebhookEventId).toBeNull();
+      expect(
+        await run((repository) =>
+          repository.findLatestByWorkspaceReservationId(checkout.reservationId)
+        )
+      ).toEqual(first);
+    });
+
+    test("settlement refuses an unknown reservation or a checkout without a recovery", async () => {
+      const checkout = await insertLatePaidCheckout({
+        reservationState: "held",
+        holdExpiresAt: Temporal.Now.instant().add({ minutes: 5 }),
+      });
+
+      const unknownReservation = await runResult((repository) =>
+        repository.requireReview({
+          ...reviewInput(checkout),
+          workspaceReservationId: crypto.randomUUID() as WorkspaceReservationId,
+        })
+      );
+      const withoutRecovery = await runResult((repository) =>
+        repository.requireReview(reviewInput(checkout))
+      );
+
+      expectStateError(unknownReservation, "settle");
+      expectStateError(withoutRecovery, "settle");
+      const { reservation, attempt } = await readRows(checkout);
+      expect(reservation?.paymentState).toBe("expired");
+      expect(attempt?.state).toBe("expired");
+    });
+
+    test("an unclaimed recovery cannot settle", async () => {
+      const checkout = await insertLatePaidCheckout({
+        reservationState: "held",
+        holdExpiresAt: Temporal.Now.instant().add({ minutes: 5 }),
+      });
+      await run((repository) =>
+        repository.start({
+          paymentAttemptId: checkout.paymentAttemptId,
+          workspaceReservationId: checkout.reservationId,
+          providerStatus: "EXECUTED",
+          verifiedPaidAt: Temporal.Now.instant(),
+        })
+      );
+
+      const result = await runResult((repository) =>
+        repository.requireReview(reviewInput(checkout))
+      );
+
+      expectStateError(result, "settle");
+      const { attempt, recoveries } = await readRows(checkout);
+      expect(attempt?.state).toBe("expired");
+      expect(recoveries[0]?.state).toBe("pending");
+    });
+
+    test("review marks the payment paid, keeps the booking state, and repeats as a no-op", async () => {
+      const checkout = await insertLatePaidCheckout({
+        reservationState: "held",
+        holdExpiresAt: Temporal.Now.instant().add({ minutes: 5 }),
+      });
+      await startAndClaim({ ...checkout, webhookEventId: "webhook-review" });
+      const input = reviewInput(checkout);
+
+      await run((repository) => repository.requireReview(input));
+      const settled = await readRows(checkout);
+      await run((repository) =>
+        repository.requireReview({
+          ...input,
+          completedAt: Temporal.Now.instant().add({ minutes: 1 }),
+        })
+      );
+      const refund = await runResult((repository) =>
+        repository.requireRefund(input)
+      );
+
+      expect(settled.reservation?.paymentState).toBe("paid");
+      expect(settled.reservation?.reservationState).toBe("held");
+      expect(settled.reservation?.reservationConfirmedAt).toBeNull();
+      expect(settled.reservation?.failureCode).toBe(input.failureCode);
+      expect(settled.reservation?.paidAt?.toString()).toBe(
+        settled.recoveries[0]?.verifiedPaidAt.toString()
+      );
+      expect(settled.attempt?.state).toBe("paid");
+      expect(settled.attempt?.refundState).toBe("not_required");
+      expect(settled.attempt?.lastWebhookEventId).toBe(
+        NexiWebhookEventIdSchema.make("webhook-review")
+      );
+      expect(settled.recoveries[0]).toMatchObject({
+        state: "review_required",
+        recoveredDotyposReservationId: null,
+        failureCode: input.failureCode,
+      });
+      expectStateError(refund, "settle");
+      expect(await readRows(checkout)).toEqual(settled);
+      expect(await readCustomerEvents(checkout.reservationId)).toEqual([]);
+    });
+
+    test("a refund for the active attempt marks the refund required and the reservation paid", async () => {
+      const checkout = await insertLatePaidCheckout({
+        reservationState: "cancelled",
+        holdExpiresAt: Temporal.Now.instant().subtract({ minutes: 30 }),
+      });
+      await startAndClaim(checkout);
+
+      await run((repository) =>
+        repository.requireRefund({
+          ...reviewInput(checkout),
+          failureCode: "late_payment_reservation_unavailable",
+        })
+      );
+
+      const { reservation, attempt, recoveries } = await readRows(checkout);
+      expect(attempt?.state).toBe("paid");
+      expect(attempt?.refundState).toBe("required");
+      expect(attempt?.lastWebhookEventId).toBeNull();
+      expect(reservation?.paymentState).toBe("paid");
+      expect(reservation?.reservationState).toBe("cancelled");
+      expect(reservation?.failureCode).toBe(
+        "late_payment_reservation_unavailable"
+      );
+      expect(recoveries[0]).toMatchObject({
+        state: "refund_required",
+        recoveredDotyposReservationId: null,
+      });
+    });
+
+    test("only the active attempt can recover or be reviewed", async () => {
+      const checkout = await insertLatePaidCheckout({
+        reservationState: "held",
+        holdExpiresAt: Temporal.Now.instant().add({ minutes: 30 }),
+      });
+      await startAndClaim({ ...checkout, webhookEventId: "webhook-inactive" });
+      await Effect.runPromise(
+        testDatabase.db
+          .update(workspaceReservations)
+          .set({ activePaymentAttemptId: null })
+          .where(eq(workspaceReservations.id, checkout.reservationId))
+      );
+
+      const recovered = await runResult((repository) =>
+        repository.completeUsingOriginalReservation({
+          paymentAttemptId: checkout.paymentAttemptId,
+          workspaceReservationId: checkout.reservationId,
+          reservationState: "confirmed",
+          completedAt: Temporal.Now.instant(),
+        })
+      );
+      const reviewed = await runResult((repository) =>
+        repository.requireReview(reviewInput(checkout))
+      );
+
+      expectStateError(recovered, "settle");
+      expectStateError(reviewed, "settle");
+      const { attempt, recoveries } = await readRows(checkout);
+      expect(attempt?.state).toBe("expired");
+      expect(recoveries[0]?.state).toBe("processing");
+    });
+
+    test("a replacement cannot attach while the original reservation is still held", async () => {
+      const checkout = await insertLatePaidCheckout({
+        reservationState: "held",
+        holdExpiresAt: Temporal.Now.instant().add({ minutes: 30 }),
+      });
+      await startAndClaim({ ...checkout, webhookEventId: "webhook-held-swap" });
+
+      const result = await runResult((repository) =>
+        repository.completeWithReplacement({
+          paymentAttemptId: checkout.paymentAttemptId,
+          workspaceReservationId: checkout.reservationId,
+          recoveredDotyposReservationId: DotyposReservationIdSchema.make(
+            `dotypos-replacement-${checkout.id}`
+          ),
+          reservationState: "confirmed",
+          completedAt: Temporal.Now.instant(),
+        })
+      );
+
+      expectStateError(result, "settle");
+      const { reservation, recoveries } = await readRows(checkout);
+      expect(reservation?.dotyposReservationId).toBe(
+        checkout.dotyposReservationId
+      );
+      expect(recoveries[0]?.state).toBe("processing");
+    });
+
+    test("a held replacement booking attaches without a confirmation time", async () => {
+      const checkout = await insertLatePaidCheckout({
+        reservationState: "cancellation_failed",
+        holdExpiresAt: Temporal.Now.instant().subtract({ minutes: 30 }),
+      });
+      await startAndClaim({ ...checkout, webhookEventId: "webhook-held-new" });
+      const replacementId = DotyposReservationIdSchema.make(
+        `dotypos-replacement-${checkout.id}`
+      );
+      const completedAt = Temporal.Now.instant();
+
+      await run((repository) =>
+        repository.completeWithReplacement({
+          paymentAttemptId: checkout.paymentAttemptId,
+          workspaceReservationId: checkout.reservationId,
+          recoveredDotyposReservationId: replacementId,
+          reservationState: "held",
+          completedAt,
+        })
+      );
+
+      const { reservation, recoveries } = await readRows(checkout);
+      expect(reservation).toMatchObject({
+        dotyposReservationId: replacementId,
+        reservationState: "held",
+        reservationConfirmedAt: null,
+        reservationCancelledAt: null,
+        reservationHoldExpiredAt: null,
+        paymentState: "paid",
+        failureCode: null,
+      });
+      expect(reservation?.reservationCreatedAt?.toString()).toBe(
+        toStoredInstant(completedAt).toString()
+      );
+      expect(recoveries[0]?.recoveredDotyposReservationId).toBe(replacementId);
+      expect(await readCustomerEvents(checkout.reservationId)).toEqual([]);
+    });
+
+    test("a late payment whose attempt is no longer terminal cannot settle", async () => {
+      const checkout = await insertLatePaidCheckout({
+        reservationState: "held",
+        holdExpiresAt: Temporal.Now.instant().add({ minutes: 30 }),
+      });
+      await startAndClaim({ ...checkout, webhookEventId: "webhook-reopened" });
+      await Effect.runPromise(
+        testDatabase.db
+          .update(paymentAttempts)
+          .set({ state: "created", failureCode: null })
+          .where(eq(paymentAttempts.id, checkout.paymentAttemptId))
+      );
+
+      const result = await runResult((repository) =>
+        repository.completeUsingOriginalReservation({
+          paymentAttemptId: checkout.paymentAttemptId,
+          workspaceReservationId: checkout.reservationId,
+          reservationState: "confirmed",
+          completedAt: Temporal.Now.instant(),
+        })
+      );
+
+      expectStateError(result, "settle");
+      const { reservation, attempt, recoveries } = await readRows(checkout);
+      expect(attempt?.state).toBe("created");
+      expect(reservation?.paymentState).toBe("expired");
+      expect(recoveries[0]?.state).toBe("processing");
+    });
   }
 );

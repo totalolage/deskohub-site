@@ -512,6 +512,38 @@ describe("dhw campaigns create and update", () => {
     ]);
   });
 
+  test("sends only the given settings, without content", async () => {
+    const { calls, layer } = makeCampaignLayer();
+
+    await run(
+      [
+        "--json",
+        "campaigns",
+        "update",
+        "campaign-1",
+        "--purpose",
+        "marketing",
+        "--template",
+        "workspace",
+        "--audience",
+        "audience-2",
+      ],
+      layer
+    ).pipe(Effect.runPromise);
+
+    expect(calls).toEqual([
+      [
+        "updateCampaign",
+        "campaign-1",
+        {
+          purpose: "marketing",
+          templateKey: "workspace",
+          audienceId: "audience-2",
+        },
+      ],
+    ]);
+  });
+
   test.each([
     [[], "Nothing to update"],
     [

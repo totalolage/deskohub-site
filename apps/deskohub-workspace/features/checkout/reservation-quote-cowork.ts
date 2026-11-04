@@ -92,6 +92,49 @@ const getCoworkReservationWorkstationSelected = (
   reservation.workstation ??
   (reservation.monitorOption !== undefined && reservation.monitorOption !== "");
 
+const getCoworkCoffeeQuoteItem = (
+  tier: WorkspaceCoworkProductTier
+): CoworkCoffeeQuoteItem => ({
+  type: "coffee",
+  amount: getWorkspaceProductCoffeeLinePriceForTier(tier),
+});
+
+/**
+ * The paid add-on each tier prices. Current tiers price coffee (open space)
+ * or a workstation (reserved desk) when selected. Historical tiers keep
+ * their original addon composition for decodable legacy quotes: Basic paid
+ * for coffee when selected, Plus and Profi had it included.
+ */
+const coworkAddonQuoteItemByTier: Readonly<
+  Record<
+    WorkspaceCoworkProductTier,
+    (
+      reservation: CoworkReservationQuoteInput
+    ) => CoworkAddonQuoteItem | undefined
+  >
+> = {
+  "open-space": (reservation) =>
+    reservation.coffee ? getCoworkCoffeeQuoteItem("open-space") : undefined,
+  "reserved-desk": (reservation) =>
+    getCoworkReservationWorkstationSelected(reservation)
+      ? { type: "workstation", amount: workspaceProductWorkstationAddonPrice }
+      : undefined,
+  basic: (reservation) =>
+    reservation.coffee ? getCoworkCoffeeQuoteItem("basic") : undefined,
+  plus: () => getCoworkCoffeeQuoteItem("plus"),
+  profi: () => getCoworkCoffeeQuoteItem("profi"),
+};
+
+const getCoworkQuoteItems = (
+  productItem: CoworkProductQuoteItem,
+  addonItem: CoworkAddonQuoteItem | undefined
+): CoworkQuoteItems => {
+  if (addonItem === undefined) return [productItem];
+  return addonItem.type === "coffee"
+    ? [productItem, addonItem]
+    : [productItem, addonItem];
+};
+
 export const getCoworkReservationQuote = Effect.fn("getCoworkReservationQuote")(
   function* (
     reservation: CoworkReservationQuoteInput,
@@ -105,48 +148,9 @@ export const getCoworkReservationQuote = Effect.fn("getCoworkReservationQuote")(
       tier: reservation.entryTier,
       amount: productPrice,
     };
-    let addonItem: CoworkAddonQuoteItem | undefined;
-
-    if (reservation.entryTier === "open-space" && reservation.coffee) {
-      addonItem = {
-        type: "coffee",
-        amount: getWorkspaceProductCoffeeLinePriceForTier("open-space"),
-      };
-    }
-
-    if (
-      reservation.entryTier === "reserved-desk" &&
-      getCoworkReservationWorkstationSelected(reservation)
-    ) {
-      addonItem = {
-        type: "workstation",
-        amount: workspaceProductWorkstationAddonPrice,
-      };
-    }
-
-    // Historical tiers keep their original addon composition for decodable
-    // legacy quotes: Basic paid for coffee when selected, Plus and Profi had
-    // it included.
-    if (
-      (reservation.entryTier === "basic" && reservation.coffee) ||
-      reservation.entryTier === "plus" ||
-      reservation.entryTier === "profi"
-    ) {
-      addonItem = {
-        type: "coffee",
-        amount: getWorkspaceProductCoffeeLinePriceForTier(
-          reservation.entryTier
-        ),
-      };
-    }
-
-    let items: CoworkQuoteItems = [productItem];
-    if (addonItem?.type === "coffee") {
-      items = [productItem, addonItem];
-    }
-    if (addonItem?.type === "workstation") {
-      items = [productItem, addonItem];
-    }
+    const addonItem =
+      coworkAddonQuoteItemByTier[reservation.entryTier](reservation);
+    const items = getCoworkQuoteItems(productItem, addonItem);
     const addonAmounts = addonItem ? [addonItem.amount] : [];
     const undiscountedPrice = yield* Effect.fromResult(
       sumMoney([productItem.amount, ...addonAmounts])

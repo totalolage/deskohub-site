@@ -19,18 +19,21 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
+import { describeCampaignOperationFailure } from "../../campaign-operation-failure";
 import type { AutomatedCampaign } from "../automated-campaign.server";
 import {
   activeVersionFixture,
   automationDetailFixture,
   fixtureCampaignId,
 } from "./automation-detail.test-utils";
+import { automationDryRunFixture } from "./automation-dry-run.test-utils";
+import { dryRunJobFailureCopy } from "./automation-failure-copy";
 
 const locale = "en-US";
 /** The settled dry run job the page reads, by its status alone. */
 type SettledDryRun = Pick<AutomationDryRun, "status" | "errorCode">;
 const loadAutomationDryRun = mock(
-  async (): Promise<SettledDryRun | undefined> => undefined
+  async (): Promise<SettledDryRun | AutomationDryRun | undefined> => undefined
 );
 
 mock.module("@/features/i18n/server/request-locale", () => ({
@@ -62,7 +65,7 @@ const renderPage = async (automation: AutomationDetail) =>
       {
         await AutomationPreviewPage({
           automated: {
-            campaign: {} as AutomatedCampaign["campaign"],
+            campaign: { content: {} } as AutomatedCampaign["campaign"],
             automation,
           },
         })
@@ -213,4 +216,112 @@ describe("AutomationPreviewPage activation gate", () => {
       expect(shown.polling).toBeNull();
     }
   );
+
+  test.each([
+    [
+      "schedule",
+      {
+        kind: "schedule",
+        frequency: { maxFiresPerHour: 1, firesMoreThanHourly: false },
+      },
+      m.emailAutomationActivationExplainSchedule,
+    ],
+    [
+      "event",
+      { kind: "account-created", frequency: null },
+      m.emailAutomationActivationExplainReplay,
+    ],
+  ] as const)(
+    "explains what a %s trigger's dry run evaluates",
+    async (_, trigger, explanation) => {
+      const view = await renderPage(automationDetailFixture({ trigger }));
+
+      expect(view.getByText(explanation({}, { locale }))).not.toBeNull();
+    }
+  );
+
+  test("explains why the failed job stopped", async () => {
+    loadAutomationDryRun.mockImplementation(async () => ({
+      status: "failed",
+      errorCode: null,
+    }));
+    const view = await renderPage(
+      automationDetailFixture({ activation: running })
+    );
+
+    expect(
+      view.getByText(m.emailAutomationActivationJobFailed({}, { locale }))
+    ).not.toBeNull();
+    expect(
+      view.getByText(
+        describeCampaignOperationFailure(
+          { code: "" },
+          dryRunJobFailureCopy,
+          locale
+        )
+      )
+    ).not.toBeNull();
+    expect(
+      view.queryByText(m.emailAutomationActivationJobSuperseded({}, { locale }))
+    ).toBeNull();
+  });
+
+  test("says a newer job superseded this one", async () => {
+    loadAutomationDryRun.mockImplementation(async () => ({
+      status: "superseded",
+      errorCode: null,
+    }));
+    const view = await renderPage(automationDetailFixture());
+
+    expect(
+      view.getByText(m.emailAutomationActivationJobSuperseded({}, { locale }))
+    ).not.toBeNull();
+    expect(
+      view.queryByText(m.emailAutomationActivationJobFailed({}, { locale }))
+    ).toBeNull();
+  });
+
+  test("shows a completed dry run's results, and a settled one's not", async () => {
+    const resultsTitle = m.emailAutomationActivationResultsTitle(
+      {},
+      { locale }
+    );
+    loadAutomationDryRun.mockImplementation(async () =>
+      automationDryRunFixture()
+    );
+    const completed = await renderPage(
+      automationDetailFixture({ activation: ready })
+    );
+    expect(completed.queryByText(resultsTitle)).not.toBeNull();
+    cleanup();
+
+    loadAutomationDryRun.mockImplementation(async () =>
+      automationDryRunFixture({ status: "failed" })
+    );
+    const failed = await renderPage(automationDetailFixture());
+    expect(failed.queryByText(resultsTitle)).toBeNull();
+  });
+
+  test("starts the progress bar empty before the job counts its units", async () => {
+    const view = await renderPage(
+      automationDetailFixture({
+        activation: { ...running, unitsDone: 0, unitsTotal: 0 },
+      })
+    );
+    const bar = controls(view).progress?.firstElementChild as HTMLElement;
+
+    expect(bar.style.width).toBe("0%");
+    expect(view.getByRole("status").textContent).toBe(
+      m.emailAutomationActivationProgress({ done: 0, total: 0 }, { locale })
+    );
+  });
+
+  test("says how far a running job got", async () => {
+    const view = await renderPage(
+      automationDetailFixture({ activation: running })
+    );
+    const bar = controls(view).progress?.firstElementChild as HTMLElement;
+
+    expect(bar.style.width).toBe("30%");
+  });
 });

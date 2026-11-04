@@ -7,7 +7,10 @@ import { useAccountLayout } from "@/features/account/components/account-layout-s
 import { CustomerAgentConnectionsSection } from "@/features/account/components/customer-agent-connections/customer-agent-connections-section";
 import { DeleteAccountCard } from "@/features/account/components/delete-account-card";
 import { SignInSecuritySection } from "@/features/account/components/passkeys/sign-in-security-section";
-import { useAccountPasskeys } from "@/features/account/components/passkeys/use-account-passkeys";
+import {
+  type AccountPasskeys,
+  useAccountPasskeys,
+} from "@/features/account/components/passkeys/use-account-passkeys";
 import { ProfileCompletionReferralNotice } from "@/features/account/components/profile-completion-referral-notice";
 import { ProfileForm } from "@/features/account/components/profile-form";
 import { ReferralScreen } from "@/features/account/components/referral-screen";
@@ -88,16 +91,27 @@ export function SignedInAccount(props: SignedInAccountProps) {
   );
 }
 
-function SignedInAccountSections({ locale, state }: SignedInAccountProps) {
-  const {
-    activeSection,
-    changeSection,
-    setReferralBadge,
-    setReservationCount,
-  } = useAccountLayout();
-  const accountPasskeys = useAccountPasskeys(state.passkeys);
-  const reservations = "reservations" in state ? state.reservations : undefined;
-  const reservationCount = reservations?.count;
+type LinkedAccountState = Extract<
+  SignedInAccountState,
+  { readonly kind: "linked" }
+>;
+
+type AccountWithoutProfileState = Exclude<
+  SignedInAccountState,
+  { readonly kind: "linked" }
+>;
+
+/**
+ * Publishes the account's reservation count and, while the referral program
+ * is released, its earned discount to the account navigation.
+ */
+function usePublishedAccountNavigation(
+  state: SignedInAccountState,
+  locale: Locale
+) {
+  const { setReferralBadge, setReservationCount } = useAccountLayout();
+  const reservationCount =
+    "reservations" in state ? state.reservations?.count : undefined;
   const referralBadge =
     state.kind === "linked" && state.referralsEnabled
       ? referralNavigationBadge(state.referrals, locale)
@@ -119,69 +133,32 @@ function SignedInAccountSections({ locale, state }: SignedInAccountProps) {
     );
     return () => setReferralBadge(undefined);
   }, [referralBadgeLabel, referralBadgeText, setReferralBadge]);
+}
+
+function SignedInAccountSections({ locale, state }: SignedInAccountProps) {
+  const { activeSection } = useAccountLayout();
+  const accountPasskeys = useAccountPasskeys(state.passkeys);
+  usePublishedAccountNavigation(state, locale);
 
   // A pending deletion only confirms the deletion.
   const signInSecurity =
     state.deletion === "pending" ? undefined : accountPasskeys;
-  const sessionSectionActive =
-    (signInSecurity !== undefined && activeSection === "security") ||
-    (state.assistants !== undefined && activeSection === "assistants");
-  const deletion = (heading?: string) =>
-    state.deletion !== "withheld" && (
-      <DeleteAccountCard
-        deletionPending={state.deletion === "pending"}
-        email={state.email}
-        heading={heading}
-        locale={locale}
-        passkeys={accountPasskeys}
-      />
-    );
 
   return (
     <>
       {state.kind === "linked" ? (
-        <>
-          {state.rememberedReferralCodeUsed && <ForgetRememberedReferralCode />}
-          {state.referralsEnabled && (
-            <ProfileCompletionReferralNotice
-              locale={locale}
-              outcome={state.signupReferral}
-            />
-          )}
-          <div hidden={activeSection !== "reservations"}>
-            {state.reservations.history}
-          </div>
-          {state.referralsEnabled && (
-            <div hidden={activeSection !== "referrals"}>
-              <ReferralScreen locale={locale} referrals={state.referrals} />
-            </div>
-          )}
-          <div
-            hidden={activeSection !== "profile" && activeSection !== "billing"}
-          >
-            <ProfileForm
-              avatarPresentation={state.avatar}
-              email={state.email}
-              locale={locale}
-              mode="edit"
-              onSectionChange={changeSection}
-              profile={state.profile}
-              section={activeSection === "billing" ? "billing" : "profile"}
-            />
-          </div>
-        </>
+        <LinkedAccountPanels locale={locale} state={state} />
       ) : (
-        <div hidden={sessionSectionActive}>
-          <div className="grid items-start gap-6">
-            {reservations && (
-              <div hidden={activeSection !== "reservations"}>
-                {reservations.history}
-              </div>
-            )}
-            <ProfileNotice locale={locale} state={state} />
-            {deletion()}
-          </div>
-        </div>
+        <AccountWithoutProfilePanels
+          accountPasskeys={accountPasskeys}
+          locale={locale}
+          sessionSectionActive={isSessionSectionActive(
+            activeSection,
+            signInSecurity !== undefined,
+            state.assistants !== undefined
+          )}
+          state={state}
+        />
       )}
 
       {signInSecurity && (
@@ -203,10 +180,128 @@ function SignedInAccountSections({ locale, state }: SignedInAccountProps) {
 
       {state.kind === "linked" && (
         <div hidden={activeSection !== "danger"}>
-          {deletion(accountSectionLabel("danger", locale))}
+          <AccountDeletion
+            accountPasskeys={accountPasskeys}
+            heading={accountSectionLabel("danger", locale)}
+            locale={locale}
+            state={state}
+          />
         </div>
       )}
     </>
+  );
+}
+
+/** Whether a session section the account has, security or assistants, is open. */
+const isSessionSectionActive = (
+  activeSection: ReturnType<typeof useAccountLayout>["activeSection"],
+  hasSignInSecurity: boolean,
+  hasAssistants: boolean
+) =>
+  (hasSignInSecurity && activeSection === "security") ||
+  (hasAssistants && activeSection === "assistants");
+
+/** The account deletion card, unless deletion is withheld. */
+function AccountDeletion({
+  accountPasskeys,
+  heading,
+  locale,
+  state,
+}: {
+  readonly accountPasskeys: AccountPasskeys | undefined;
+  readonly heading?: string;
+  readonly locale: Locale;
+  readonly state: SignedInAccountState;
+}) {
+  if (state.deletion === "withheld") return null;
+
+  return (
+    <DeleteAccountCard
+      deletionPending={state.deletion === "pending"}
+      email={state.email}
+      heading={heading}
+      locale={locale}
+      passkeys={accountPasskeys}
+    />
+  );
+}
+
+/** A linked account's reservations, referrals, and profile. */
+function LinkedAccountPanels({
+  locale,
+  state,
+}: {
+  readonly locale: Locale;
+  readonly state: LinkedAccountState;
+}) {
+  const { activeSection, changeSection } = useAccountLayout();
+
+  return (
+    <>
+      {state.rememberedReferralCodeUsed && <ForgetRememberedReferralCode />}
+      {state.referralsEnabled && (
+        <ProfileCompletionReferralNotice
+          locale={locale}
+          outcome={state.signupReferral}
+        />
+      )}
+      <div hidden={activeSection !== "reservations"}>
+        {state.reservations.history}
+      </div>
+      {state.referralsEnabled && (
+        <div hidden={activeSection !== "referrals"}>
+          <ReferralScreen locale={locale} referrals={state.referrals} />
+        </div>
+      )}
+      <div hidden={activeSection !== "profile" && activeSection !== "billing"}>
+        <ProfileForm
+          avatarPresentation={state.avatar}
+          email={state.email}
+          locale={locale}
+          mode="edit"
+          onSectionChange={changeSection}
+          profile={state.profile}
+          section={activeSection === "billing" ? "billing" : "profile"}
+        />
+      </div>
+    </>
+  );
+}
+
+/**
+ * The reservations, profile notice, and deletion of an account without a
+ * profile, hidden while a session section is open.
+ */
+function AccountWithoutProfilePanels({
+  accountPasskeys,
+  locale,
+  sessionSectionActive,
+  state,
+}: {
+  readonly accountPasskeys: AccountPasskeys | undefined;
+  readonly locale: Locale;
+  readonly sessionSectionActive: boolean;
+  readonly state: AccountWithoutProfileState;
+}) {
+  const { activeSection } = useAccountLayout();
+  const reservations = "reservations" in state ? state.reservations : undefined;
+
+  return (
+    <div hidden={sessionSectionActive}>
+      <div className="grid items-start gap-6">
+        {reservations && (
+          <div hidden={activeSection !== "reservations"}>
+            {reservations.history}
+          </div>
+        )}
+        <ProfileNotice locale={locale} state={state} />
+        <AccountDeletion
+          accountPasskeys={accountPasskeys}
+          locale={locale}
+          state={state}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -235,7 +330,7 @@ function ProfileNotice({
   state,
 }: {
   readonly locale: Locale;
-  readonly state: Exclude<SignedInAccountState, { readonly kind: "linked" }>;
+  readonly state: AccountWithoutProfileState;
 }) {
   switch (state.kind) {
     case "authenticated-unavailable":

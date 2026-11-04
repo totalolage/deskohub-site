@@ -15,6 +15,7 @@ import { WorkspaceReservationDetailsMalformedError } from "@/features/reservatio
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { CustomerValueSource } from "./customer-value-source.service";
+import { CustomerValues } from "./customer-values.service";
 
 const customerId = "synthetic-customer";
 const actor = {
@@ -118,6 +119,82 @@ describe("CustomerValueSource", () => {
       failure: { _tag: "CustomerValueUnauthorized" },
     });
     expect(calls).toBe(1);
+  });
+
+  test("delivery reads need no request actor and never consult administrator grants", async () => {
+    let grantChecks = 0;
+    const layer = CustomerValueSource.Delivery.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(DiscountAdministration, {
+            loadCustomerProfile: () => Effect.succeed(profile),
+          } as never),
+          Layer.mock(AdministrationService, {
+            loadCustomerActivityStrict: () => Effect.succeed(activity),
+          } as never)
+        )
+      )
+    );
+    expect(await runProfile(layer as never, false)).toMatchObject({
+      _tag: "Success",
+    });
+    // The administrator layer still refuses the same anonymous read.
+    const administrator = sourceLayer({
+      allowed: () => {
+        grantChecks++;
+        return true;
+      },
+    });
+    expect(await runProfile(administrator, false)).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "CustomerValueUnauthorized" },
+    });
+    expect(grantChecks).toBe(0);
+  });
+
+  test("one runtime keeps administrator reads checked while its delivery reads need no actor", async () => {
+    const dependencies = Layer.mergeAll(
+      Layer.mock(AccountRoleGrants, { has: () => Effect.succeed(true) }),
+      Layer.mock(DiscountAdministration, {
+        loadCustomerProfile: () => Effect.succeed(profile),
+      } as never),
+      Layer.mock(AdministrationService, {
+        loadCustomerActivityStrict: () => Effect.succeed(activity),
+      } as never)
+    );
+    const resolve = Effect.flatMap(CustomerValues, (values) =>
+      values.resolve({
+        customerId,
+        definition: {
+          name: "contact",
+          source: { kind: "customer", path: ["profile", "customer", "email"] },
+        },
+        locale: "en-US",
+      })
+    ).pipe(Effect.result);
+    const [before, delivery, after] = await Effect.all([
+      resolve,
+      resolve.pipe(Effect.provide(CustomerValues.Delivery)),
+      resolve,
+    ]).pipe(
+      Effect.provide(
+        CustomerValues.Default.pipe(Layer.provide(CustomerValueSource.Default))
+      ),
+      Effect.provide(dependencies),
+      Effect.runPromise
+    );
+    expect(before).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "CustomerValueUnauthorized" },
+    });
+    expect(delivery).toMatchObject({
+      _tag: "Success",
+      success: profile.customer.email,
+    });
+    expect(after).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "CustomerValueUnauthorized" },
+    });
   });
 
   test("reads the real administration profile path with synthetic Dotypos and storage", async () => {
@@ -270,6 +347,97 @@ describe("CustomerValueSource", () => {
     expect(JSON.stringify(result)).not.toContain(
       "Internal-only synthetic label"
     );
+  });
+
+  test("serializes claim and voucher dates whether or not they are set", async () => {
+    const at = Temporal.Instant.from("2026-10-01T10:00:00Z");
+    const later = Temporal.Instant.from("2026-10-02T10:00:00Z");
+    const claim = (id: string, settledAt: "redeemed" | "released") => ({
+      id,
+      dotyposCustomerId: customerId,
+      state: settledAt,
+      paymentAttemptId: "synthetic-payment-attempt",
+      workspaceReservationId: "synthetic-reservation",
+      appliedAmount: null,
+      reservationExpiresAt: later,
+      reservedAt: at,
+      redeemedAt: settledAt === "redeemed" ? later : null,
+      releasedAt: settledAt === "released" ? later : null,
+      releaseReason: null,
+    });
+    const voucher = (id: string, validFrom: Temporal.Instant | null) => ({
+      id,
+      code: `SYNTHETIC_VOUCHER_${id.slice(-1)}`,
+      enabled: true,
+      validFrom,
+      validUntil: validFrom ? null : later,
+      audienceSize: 1,
+      reservedUses: 0,
+      redeemedUses: 0,
+      releasedUses: 0,
+      createdAt: at,
+      updatedAt: at,
+      issuedCredit: { value: 10_000, exponent: 2, currency: "CZK" },
+      remainingCredit: { value: 10_000, exponent: 2, currency: "CZK" },
+      eligible: true,
+    });
+    const voucherIds = [
+      "019b0000-0000-7000-8000-000000000011",
+      "019b0000-0000-7000-8000-000000000012",
+    ] as const;
+    const result = await runProfile(
+      sourceLayer({
+        loadProfile: () =>
+          Effect.succeed({
+            ...profile,
+            claims: [
+              {
+                ...claim("synthetic-claim-1", "redeemed"),
+                codeId: "019b0000-0000-7000-8000-000000000001",
+              },
+              {
+                ...claim("synthetic-claim-2", "released"),
+                codeId: "019b0000-0000-7000-8000-000000000001",
+              },
+            ],
+            vouchers: [
+              voucher(voucherIds[0], at),
+              voucher(voucherIds[1], null),
+            ],
+            voucherClaims: [
+              {
+                ...claim("synthetic-voucher-claim-1", "redeemed"),
+                voucherId: voucherIds[0],
+              },
+              {
+                ...claim("synthetic-voucher-claim-2", "released"),
+                voucherId: voucherIds[1],
+              },
+            ],
+          }),
+      })
+    );
+    const settled = {
+      reservationExpiresAt: later.toString(),
+      reservedAt: at.toString(),
+    };
+    expect(result).toMatchObject({
+      _tag: "Success",
+      success: {
+        claims: [
+          { ...settled, redeemedAt: later.toString(), releasedAt: null },
+          { ...settled, redeemedAt: null, releasedAt: later.toString() },
+        ],
+        vouchers: [
+          { validFrom: at.toString(), validUntil: null },
+          { validFrom: null, validUntil: later.toString() },
+        ],
+        voucherClaims: [
+          { ...settled, redeemedAt: later.toString(), releasedAt: null },
+          { ...settled, redeemedAt: null, releasedAt: later.toString() },
+        ],
+      },
+    });
   });
 
   test("rejects malformed source data instead of returning it as missing", async () => {

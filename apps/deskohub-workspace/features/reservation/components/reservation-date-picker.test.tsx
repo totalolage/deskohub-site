@@ -1,11 +1,18 @@
 import { afterAll, afterEach, describe, expect, mock, test } from "bun:test";
 import { useState } from "react";
 import "@/shared/polyfills/temporal";
+import { m } from "@/features/i18n";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 import type { ReservationDatePickerProps } from "./reservation-date-picker";
+
+const dateLabel = "Reservation date";
+const calendarButtonLabel = m.reservationDateCalendarButtonLabel(
+  { field: dateLabel },
+  { locale: "en-US" }
+);
 
 // React DOM detects input events and Radix picks its layout-effect hook when
 // they load, so the DOM must exist before either is imported.
@@ -28,7 +35,7 @@ function ControlledPicker({
 
   return (
     <ReservationDatePicker
-      ariaLabel="Reservation date"
+      ariaLabel={dateLabel}
       locale="en-US"
       name="date"
       onChange={(nextValue) => {
@@ -85,7 +92,7 @@ describe("ReservationDatePicker typed date", () => {
     expect(description()).toBe("Format: MM/DD/YYYY or YYYY-MM-DD");
     expect(
       view.getByRole("button", {
-        name: "Reservation date: choose from the calendar",
+        name: calendarButtonLabel,
       })
     ).not.toBeNull();
   });
@@ -173,6 +180,33 @@ describe("ReservationDatePicker typed date", () => {
 
     typeDate("3. 7. 2099");
     expect(hiddenInput()).toBe("2099-07-03");
+  });
+
+  test("clears the date when the text is emptied", () => {
+    const { hiddenInput, input, onBlur, onValue, typeDate } = renderPicker({
+      initialValue: "2099-06-10",
+    });
+
+    typeDate("  ");
+
+    expect(onValue).toHaveBeenLastCalledWith("");
+    expect(hiddenInput()).toBe("");
+    expect(input.getAttribute("aria-invalid")).toBe("false");
+    expect(onBlur).toHaveBeenCalledTimes(1);
+  });
+
+  test("keeps an available prefilled date when its text is left unchanged", () => {
+    const { hiddenInput, input, onBlur, onValue } = renderPicker({
+      initialValue: "2099-06-10",
+      minimum: "2099-06-01",
+    });
+
+    fireEvent.focusOut(input);
+
+    expect(onValue).not.toHaveBeenCalled();
+    expect(hiddenInput()).toBe("2099-06-10");
+    expect(input.value).toBe("6/10/2099");
+    expect(onBlur).toHaveBeenCalledTimes(1);
   });
 
   test("commits typed text on Enter, before the form submits", () => {
@@ -316,7 +350,7 @@ describe("ReservationDatePicker typed date", () => {
 
     fireEvent.click(
       view.getByRole("button", {
-        name: "Reservation date: choose from the calendar",
+        name: calendarButtonLabel,
       })
     );
     const day = await waitFor(() => {
@@ -332,6 +366,32 @@ describe("ReservationDatePicker typed date", () => {
 
     expect(hiddenInput()).toBe("2099-06-18");
     expect(input.value).toBe("6/18/2099");
+  });
+
+  test("keeps the date when the calendar's selected day is picked again", async () => {
+    const { hiddenInput, input, onValue, view } = renderPicker({
+      initialValue: "2099-06-10",
+    });
+
+    fireEvent.click(
+      view.getByRole("button", {
+        name: calendarButtonLabel,
+      })
+    );
+    const selectedDay = await waitFor(() => {
+      const button = document.querySelector<HTMLButtonElement>(
+        '[data-day="2099-06-10"] button'
+      );
+      if (!button) throw new Error("calendar did not open");
+      return button;
+    });
+    act(() => {
+      selectedDay.click();
+    });
+
+    expect(onValue).not.toHaveBeenCalled();
+    expect(hiddenInput()).toBe("2099-06-10");
+    expect(input.getAttribute("aria-expanded")).toBe("true");
   });
 
   test("Down Arrow opens the calendar on the typed date", async () => {

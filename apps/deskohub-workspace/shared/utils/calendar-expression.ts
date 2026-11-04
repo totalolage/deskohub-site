@@ -54,15 +54,14 @@ const isoWeekday = (weekday: CalendarWeekday) =>
   calendarWeekdays.indexOf(weekday) + 1;
 
 /**
- * `Cron` steps time of day, months and Prague DST. It receives day-of-month
- * or weekday sets only when they alone constrain the day, so its OR rule for
- * both never applies; `dayMatches` checks every day field anyway.
+ * The day-of-month and weekday sets `Cron` receives: each only when it alone
+ * constrains the day, and day-of-month only when it lists no "last".
  */
-const toCron = (
-  expression: CalendarExpression,
-  tz: DateTime.TimeZone = cronTimeZone
-) => {
-  const { daysOfMonth, weekdays, weekdayOccurrences } = expression;
+const cronDayFields = ({
+  daysOfMonth,
+  weekdays,
+  weekdayOccurrences,
+}: CalendarExpression) => {
   const numberedDays =
     daysOfMonth?.every((day) => day !== "last") &&
     !weekdays &&
@@ -71,40 +70,59 @@ const toCron = (
       : [];
   const cronWeekdays =
     weekdays && numberedDays.length === 0 ? weekdays.map(cronWeekday) : [];
-  return Cron.make({
+  return { days: numberedDays, weekdays: cronWeekdays };
+};
+
+/**
+ * `Cron` steps time of day, months and Prague DST. It receives day-of-month
+ * or weekday sets only when they alone constrain the day, so its OR rule for
+ * both never applies; `dayMatches` checks every day field anyway.
+ */
+const toCron = (
+  expression: CalendarExpression,
+  tz: DateTime.TimeZone = cronTimeZone
+) =>
+  Cron.make({
     seconds: [0],
     minutes: expression.minutes ?? [0],
     hours: expression.hours ?? (expression.minutes ? [] : [0]),
-    days: numberedDays,
+    ...cronDayFields(expression),
     months: expression.months ?? [],
-    weekdays: cronWeekdays,
     tz,
   });
-};
 
-/** Whether a Prague calendar day satisfies every given day, week and month field. */
-const dayMatches = (
+type DayFieldTest = (
   expression: CalendarExpression,
   date: Temporal.PlainDate
-): boolean =>
-  (expression.weekdays?.some(
-    (weekday) => isoWeekday(weekday) === date.dayOfWeek
-  ) ??
-    true) &&
-  (expression.daysOfMonth?.some((day) =>
-    day === "last" ? date.day === date.daysInMonth : date.day === day
-  ) ??
-    true) &&
-  (expression.weekdayOccurrences?.some(
-    ({ occurrence, weekday }) =>
-      isoWeekday(weekday) === date.dayOfWeek &&
-      (occurrence === "last"
-        ? date.day + 7 > date.daysInMonth
-        : Math.ceil(date.day / 7) === occurrence)
-  ) ??
-    true) &&
-  (expression.weeksOfYear?.includes(date.weekOfYear ?? 0) ?? true) &&
-  (expression.months?.includes(date.month) ?? true);
+) => boolean;
+
+/**
+ * Each day, week and month field's test of a Prague calendar day. A field the
+ * expression doesn't give holds every day.
+ */
+const dayFieldTests: readonly DayFieldTest[] = [
+  ({ weekdays }, date) =>
+    weekdays?.some((weekday) => isoWeekday(weekday) === date.dayOfWeek) ?? true,
+  ({ daysOfMonth }, date) =>
+    daysOfMonth?.some((day) =>
+      day === "last" ? date.day === date.daysInMonth : date.day === day
+    ) ?? true,
+  ({ weekdayOccurrences }, date) =>
+    weekdayOccurrences?.some(
+      ({ occurrence, weekday }) =>
+        isoWeekday(weekday) === date.dayOfWeek &&
+        (occurrence === "last"
+          ? date.day + 7 > date.daysInMonth
+          : Math.ceil(date.day / 7) === occurrence)
+    ) ?? true,
+  ({ weeksOfYear }, date) =>
+    weeksOfYear?.includes(date.weekOfYear ?? 0) ?? true,
+  ({ months }, date) => months?.includes(date.month) ?? true,
+];
+
+/** Whether a Prague calendar day satisfies every given day, week and month field. */
+const dayMatches: DayFieldTest = (expression, date) =>
+  dayFieldTests.every((test) => test(expression, date));
 
 /** The ISO week or the month containing `date`, as a comparable key. */
 const periodGroup = (grain: "week" | "month", date: Temporal.PlainDate) =>

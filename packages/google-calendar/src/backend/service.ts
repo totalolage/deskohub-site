@@ -23,7 +23,9 @@ import {
   GoogleCalendarChannelIdSchema,
   type GoogleCalendarEvent,
   type GoogleCalendarEventDateTime,
+  type GoogleCalendarEventId,
   GoogleCalendarEventIdSchema,
+  type GoogleCalendarICalUid,
   GoogleCalendarICalUidSchema,
   type GoogleCalendarId,
   type GoogleCalendarListEventsInput,
@@ -317,26 +319,49 @@ const toGoogleCalendarEvent = (event: calendar_v3.Schema$Event) =>
     );
 
     const result: GoogleCalendarEvent = {
-      ...(Option.isSome(id) && { id: id.value }),
-      ...(Option.isSome(iCalUID) && { iCalUID: iCalUID.value }),
-      ...(event.htmlLink && { htmlLink: event.htmlLink }),
-      ...(Option.isSome(recurringEventId) && {
-        recurringEventId: recurringEventId.value,
+      ...toGoogleCalendarEventIdentity({
+        id,
+        iCalUID,
+        htmlLink: event.htmlLink,
+        recurringEventId,
       }),
-      ...(event.status && { status: event.status }),
-      ...(event.summary && { summary: event.summary }),
-      ...(event.description && { description: event.description }),
-      ...(event.start && { start: toGoogleCalendarEventDateTime(event.start) }),
-      ...(event.end && { end: toGoogleCalendarEventDateTime(event.end) }),
-      ...(event.originalStartTime && {
-        originalStartTime: toGoogleCalendarEventDateTime(
-          event.originalStartTime
-        ),
-      }),
+      ...toGoogleCalendarEventDetails(event),
     };
 
     return result;
   });
+
+/** The event's decoded identifiers and link, omitting the absent ones. */
+const toGoogleCalendarEventIdentity = ({
+  id,
+  iCalUID,
+  htmlLink,
+  recurringEventId,
+}: {
+  readonly id: Option.Option<GoogleCalendarEventId>;
+  readonly iCalUID: Option.Option<GoogleCalendarICalUid>;
+  readonly htmlLink: calendar_v3.Schema$Event["htmlLink"];
+  readonly recurringEventId: Option.Option<GoogleCalendarEventId>;
+}) => ({
+  ...(Option.isSome(id) && { id: id.value }),
+  ...(Option.isSome(iCalUID) && { iCalUID: iCalUID.value }),
+  ...(htmlLink && { htmlLink }),
+  ...(Option.isSome(recurringEventId) && {
+    recurringEventId: recurringEventId.value,
+  }),
+});
+
+/** The event's status, text and times, omitting the absent ones. */
+const toGoogleCalendarEventDetails = (event: calendar_v3.Schema$Event) => ({
+  ...(event.status && { status: event.status }),
+  ...(event.summary && { summary: event.summary }),
+  ...(event.description && { description: event.description }),
+  ...(event.start && { start: toGoogleCalendarEventDateTime(event.start) }),
+  ...(event.end && { end: toGoogleCalendarEventDateTime(event.end) }),
+  ...(event.originalStartTime && {
+    originalStartTime: toGoogleCalendarEventDateTime(event.originalStartTime),
+  }),
+});
 
 const toGoogleCalendarEventDateTime = (
   input: calendar_v3.Schema$EventDateTime

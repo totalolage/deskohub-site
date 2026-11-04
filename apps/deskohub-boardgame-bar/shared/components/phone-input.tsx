@@ -1,15 +1,18 @@
 "use client";
 
-import { type CountryCode, isValidPhoneNumber } from "libphonenumber-js";
-import { Check, Phone, X } from "lucide-react";
+import type { CountryCode } from "libphonenumber-js";
+import { Phone } from "lucide-react";
 import * as React from "react";
 import { useLocale } from "@/features/i18n/utils/use-locale";
 import { Input } from "@/shared/components/ui/input";
 import { cn } from "@/shared/utils";
 import {
-  formatPhoneNumber,
-  normalizePhoneNumber,
-} from "@/shared/utils/phone-formatting";
+  adoptsControlledPhoneValue,
+  phoneInputVariant,
+  phoneNumberFormattedOnBlur,
+  phoneNumberValidity,
+} from "./phone-number-entry";
+import { PhoneValidityIcon } from "./phone-validity-icon";
 
 export interface PhoneInputProps
   extends Omit<
@@ -47,36 +50,31 @@ export const PhoneInput = React.forwardRef<HTMLInputElement, PhoneInputProps>(
 
     // Update display value when value prop changes
     React.useEffect(() => {
-      if (!isFocused && value !== displayValue) {
+      if (adoptsControlledPhoneValue({ value, displayValue, isFocused })) {
         setDisplayValue(value);
       }
     }, [value, isFocused, displayValue]);
 
     // Validate and notify parent of normalized value
     React.useEffect(() => {
-      if (displayValue?.trim()) {
-        const normalized = normalizePhoneNumber(displayValue, countryCode);
-        const valid = isValidPhoneNumber(displayValue, countryCode);
-        setIsValid(valid);
+      const validity = phoneNumberValidity(displayValue, countryCode);
+      setIsValid(validity.isValid);
 
-        if (onNormalizedChange) {
-          onNormalizedChange(normalized);
-        }
-      } else {
-        setIsValid(null);
-        if (onNormalizedChange) {
-          onNormalizedChange(null);
-        }
+      if (onNormalizedChange) {
+        onNormalizedChange(validity.normalized);
       }
     }, [displayValue, countryCode, onNormalizedChange]);
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const newValue = e.target.value;
+    const showValue = (newValue: string) => {
       setDisplayValue(newValue);
 
       if (onChange) {
         onChange(newValue);
       }
+    };
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      showValue(e.target.value);
     };
 
     const handleFocus = () => {
@@ -87,21 +85,16 @@ export const PhoneInput = React.forwardRef<HTMLInputElement, PhoneInputProps>(
       setIsFocused(false);
 
       // Format the number on blur if it's valid
-      if (formatOnBlur && displayValue?.trim()) {
-        const normalized = normalizePhoneNumber(displayValue, countryCode);
-        if (normalized) {
-          const formatted = formatPhoneNumber(normalized, locale);
-          setDisplayValue(formatted);
-          if (onChange) {
-            onChange(formatted);
-          }
-        }
+      if (!formatOnBlur) return;
+      const formatted = phoneNumberFormattedOnBlur(
+        displayValue,
+        countryCode,
+        locale
+      );
+      if (formatted !== null) {
+        showValue(formatted);
       }
     };
-
-    // Determine the actual variant based on validation
-    const effectiveVariant =
-      variant || (isValid === false ? "error" : "default");
 
     return (
       <div className="relative">
@@ -114,7 +107,7 @@ export const PhoneInput = React.forwardRef<HTMLInputElement, PhoneInputProps>(
             onChange={handleChange}
             onFocus={handleFocus}
             onBlur={handleBlur}
-            variant={effectiveVariant}
+            variant={phoneInputVariant(variant, isValid)}
             className={cn(
               "pl-9",
               showValidation && isValid !== null && "pr-9",
@@ -123,19 +116,7 @@ export const PhoneInput = React.forwardRef<HTMLInputElement, PhoneInputProps>(
             {...props}
           />
           {showValidation && isValid !== null && (
-            <div className="absolute right-3 top-1/2 -translate-y-1/2">
-              {isValid ? (
-                <Check
-                  className="h-4 w-4 text-green-500"
-                  aria-label="Valid phone number"
-                />
-              ) : (
-                <X
-                  className="h-4 w-4 text-red-500"
-                  aria-label="Invalid phone number"
-                />
-              )}
-            </div>
+            <PhoneValidityIcon isValid={isValid} />
           )}
         </div>
       </div>

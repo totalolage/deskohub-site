@@ -8,7 +8,7 @@ import {
   emailAutomationScheduleMinutes,
 } from "@deskohub/workspace-admin-api";
 import { ChevronDown, Plus, X } from "lucide-react";
-import { useId, useState } from "react";
+import { type ReactNode, useId, useState } from "react";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
@@ -456,6 +456,123 @@ function WeekdayOccurrencesPicker({
   );
 }
 
+/** What every part's value picker gets from its row. */
+type PartPickerInput = {
+  readonly expression: CalendarExpression;
+  readonly set: <Part extends CalendarPart>(
+    name: Part,
+    value: PartValue<Part>
+  ) => void;
+  readonly label: string;
+  readonly locale: Locale;
+  readonly usage: CalendarUsage;
+  readonly minutesErrorId: string | undefined;
+};
+
+/**
+ * The value picker that suits each part. Called rather than rendered, so a
+ * row that switches part keeps the element tree a switch would give it.
+ */
+const partValuePickers = {
+  minutes: ({ expression, set, usage, minutesErrorId }) => (
+    <MinutesPicker
+      value={expression.minutes ?? partDefaults.minutes}
+      onChange={(value) => set("minutes", value)}
+      usage={usage}
+      errorId={minutesErrorId}
+    />
+  ),
+  hours: ({ expression, set, label }) => (
+    <PartToggles
+      label={label}
+      className="grid grid-cols-6 @2xl:grid-cols-12"
+      options={Array.from({ length: 24 }, (_, hour) => ({
+        value: hour,
+        label: twoDigits(hour),
+        name: `${twoDigits(hour)}:00`,
+      }))}
+      selected={expression.hours ?? []}
+      onChange={(value) => set("hours", value)}
+    />
+  ),
+  weekdays: ({ expression, set, label, locale }) => (
+    <PartToggles
+      label={label}
+      className="grid max-w-sm grid-cols-7"
+      options={calendarWeekdays.map((weekday) => ({
+        value: weekday,
+        label: weekdayName(weekday, locale),
+      }))}
+      selected={expression.weekdays ?? []}
+      onChange={(value) => set("weekdays", value)}
+    />
+  ),
+  daysOfMonth: ({ expression, set, label, locale }) => (
+    <PartToggles<number | "last">
+      label={label}
+      // A month sheet: seven columns, with "last" filling the fifth row.
+      className="grid max-w-sm grid-cols-7"
+      options={[
+        ...Array.from({ length: 31 }, (_, index) => ({
+          value: index + 1,
+          label: String(index + 1),
+        })),
+        {
+          value: "last" as const,
+          label: m.emailAutomationFlowCalendarLastDay({}, { locale }),
+          className: "col-span-4",
+        },
+      ]}
+      selected={expression.daysOfMonth ?? []}
+      onChange={(value) => set("daysOfMonth", value)}
+    />
+  ),
+  weekdayOccurrences: ({ expression, set }) => (
+    <WeekdayOccurrencesPicker
+      value={expression.weekdayOccurrences ?? partDefaults.weekdayOccurrences}
+      onChange={(value) => set("weekdayOccurrences", value)}
+    />
+  ),
+  weeksOfYear: ({ expression, set, locale }) => {
+    const weeks = expression.weeksOfYear ?? partDefaults.weeksOfYear;
+    return (
+      <TypedValues
+        values={weeks}
+        labelOf={(week) =>
+          m.emailAutomationFlowCalendarWeekValue({ week }, { locale })
+        }
+        min={1}
+        max={53}
+        inputLabel={m.emailAutomationFlowCalendarWeekOther({}, { locale })}
+        addLabel={m.emailAutomationFlowCalendarWeekAdd({}, { locale })}
+        removable={weeks.length > 1}
+        onAdd={(week) => {
+          const next = withNumber(weeks, week);
+          if (next) set("weeksOfYear", next);
+        }}
+        onRemove={(week) => {
+          const next = nonEmpty(weeks.filter((current) => current !== week));
+          if (next) set("weeksOfYear", next);
+        }}
+      />
+    );
+  },
+  months: ({ expression, set, label, locale }) => (
+    <PartToggles
+      label={label}
+      className="grid grid-cols-6 @2xl:grid-cols-12"
+      options={Array.from({ length: 12 }, (_, index) => ({
+        value: index + 1,
+        label: monthName(index + 1, locale),
+      }))}
+      selected={expression.months ?? []}
+      onChange={(value) => set("months", value)}
+    />
+  ),
+} satisfies {
+  readonly [Part in CalendarPart]: (input: PartPickerInput) => ReactNode;
+};
+
 /** The value picker that suits one part. */
 function PartValuePicker({
   part,
@@ -475,111 +592,14 @@ function PartValuePicker({
     onChange({ ...expression, [name]: value });
   const label = m.emailAutomationFlowCalendarPart({ part }, { locale });
 
-  switch (part) {
-    case "minutes":
-      return (
-        <MinutesPicker
-          value={expression.minutes ?? partDefaults.minutes}
-          onChange={(value) => set("minutes", value)}
-          usage={usage}
-          errorId={minutesErrorId}
-        />
-      );
-    case "hours":
-      return (
-        <PartToggles
-          label={label}
-          className="grid grid-cols-6 @2xl:grid-cols-12"
-          options={Array.from({ length: 24 }, (_, hour) => ({
-            value: hour,
-            label: twoDigits(hour),
-            name: `${twoDigits(hour)}:00`,
-          }))}
-          selected={expression.hours ?? []}
-          onChange={(value) => set("hours", value)}
-        />
-      );
-    case "weekdays":
-      return (
-        <PartToggles
-          label={label}
-          className="grid max-w-sm grid-cols-7"
-          options={calendarWeekdays.map((weekday) => ({
-            value: weekday,
-            label: weekdayName(weekday, locale),
-          }))}
-          selected={expression.weekdays ?? []}
-          onChange={(value) => set("weekdays", value)}
-        />
-      );
-    case "daysOfMonth":
-      return (
-        <PartToggles<number | "last">
-          label={label}
-          // A month sheet: seven columns, with "last" filling the fifth row.
-          className="grid max-w-sm grid-cols-7"
-          options={[
-            ...Array.from({ length: 31 }, (_, index) => ({
-              value: index + 1,
-              label: String(index + 1),
-            })),
-            {
-              value: "last" as const,
-              label: m.emailAutomationFlowCalendarLastDay({}, { locale }),
-              className: "col-span-4",
-            },
-          ]}
-          selected={expression.daysOfMonth ?? []}
-          onChange={(value) => set("daysOfMonth", value)}
-        />
-      );
-    case "weekdayOccurrences":
-      return (
-        <WeekdayOccurrencesPicker
-          value={
-            expression.weekdayOccurrences ?? partDefaults.weekdayOccurrences
-          }
-          onChange={(value) => set("weekdayOccurrences", value)}
-        />
-      );
-    case "weeksOfYear": {
-      const weeks = expression.weeksOfYear ?? partDefaults.weeksOfYear;
-      return (
-        <TypedValues
-          values={weeks}
-          labelOf={(week) =>
-            m.emailAutomationFlowCalendarWeekValue({ week }, { locale })
-          }
-          min={1}
-          max={53}
-          inputLabel={m.emailAutomationFlowCalendarWeekOther({}, { locale })}
-          addLabel={m.emailAutomationFlowCalendarWeekAdd({}, { locale })}
-          removable={weeks.length > 1}
-          onAdd={(week) => {
-            const next = withNumber(weeks, week);
-            if (next) set("weeksOfYear", next);
-          }}
-          onRemove={(week) => {
-            const next = nonEmpty(weeks.filter((current) => current !== week));
-            if (next) set("weeksOfYear", next);
-          }}
-        />
-      );
-    }
-    case "months":
-      return (
-        <PartToggles
-          label={label}
-          className="grid grid-cols-6 @2xl:grid-cols-12"
-          options={Array.from({ length: 12 }, (_, index) => ({
-            value: index + 1,
-            label: monthName(index + 1, locale),
-          }))}
-          selected={expression.months ?? []}
-          onChange={(value) => set("months", value)}
-        />
-      );
-  }
+  return partValuePickers[part]({
+    expression,
+    set,
+    label,
+    locale,
+    usage,
+    minutesErrorId,
+  });
 }
 
 /**

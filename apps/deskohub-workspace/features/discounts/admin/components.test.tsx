@@ -37,6 +37,7 @@ const { act, cleanup, fireEvent, render, waitFor, within } = await import(
 const refresh = mock();
 const back = mock();
 const replace = mock();
+const push = mock();
 const emptyReservationActivity = {
   from: "2025-08-25",
   to: "2026-08-24",
@@ -49,6 +50,7 @@ mock.module("next/navigation", () => ({
     back,
     refresh,
     replace,
+    push,
   }),
   // The administration's export control runs browser Effects, whose runner
   // rethrows only Next control flow, which these tests never raise.
@@ -224,6 +226,7 @@ describe("discount administration pages", () => {
     back.mockClear();
     refresh.mockClear();
     replace.mockClear();
+    push.mockClear();
     workspaceUseAction.mockReset();
     workspaceUseAction.mockReturnValue({
       execute: mock(),
@@ -312,6 +315,271 @@ describe("discount administration pages", () => {
     expect(
       within(table).getByRole("button", { name: "Smazat SUMMER10" })
     ).toBeDefined();
+  });
+
+  describe("vouchers collection", () => {
+    const voucher: DiscountAdminDashboard["vouchers"][number] = {
+      id: "019c91dd-c560-7e55-b9d8-c95065efd56d" as VoucherTableItem["id"],
+      code: "GIFT100",
+      issuedCredit: { value: 10_000, exponent: 2, currency: "CZK" },
+      remainingCredit: { value: 5000, exponent: 2, currency: "CZK" },
+      enabled: true,
+      validFrom: Temporal.Instant.from("2026-08-01T08:00:00Z"),
+      validUntil: Temporal.Instant.from("2026-09-01T08:00:00Z"),
+      audienceSize: 0,
+      reservedUses: 0,
+      redeemedUses: 0,
+      releasedUses: 0,
+      createdAt: Temporal.Instant.from("2026-07-01T08:00:00Z"),
+      updatedAt: Temporal.Instant.from("2026-07-02T08:00:00Z"),
+    };
+    const validityInputs = (container: HTMLElement) =>
+      ["validFrom", "validUntil"].map(
+        (name) =>
+          (container.querySelector(`input[name="${name}"]`) as HTMLInputElement)
+            .value
+      );
+
+    test("shows the empty state instead of a table without vouchers", async () => {
+      const { VouchersAdministrationCollection } = await import("./components");
+      const view = render(
+        <VouchersAdministrationCollection
+          dashboard={dashboard}
+          locale="en-US"
+        />
+      );
+
+      expect(view.queryByRole("table")).toBeNull();
+      expect(view.getByRole("heading", { level: 2 })).toBeDefined();
+    });
+
+    test("hands each voucher's validity window to its editor in Prague time", async () => {
+      const { VouchersAdministrationCollection } = await import("./components");
+      const view = render(
+        <VouchersAdministrationCollection
+          dashboard={{
+            ...dashboard,
+            vouchers: [
+              voucher,
+              {
+                ...voucher,
+                id: "019c91dd-c560-7e55-b9d8-c95065efd57d" as VoucherTableItem["id"],
+                code: "OPEN200",
+                validFrom: null,
+                validUntil: null,
+              },
+            ],
+          }}
+          locale="en-US"
+        />
+      );
+      const table = view.getByRole("table");
+      expect(within(table).getAllByRole("row")).toHaveLength(3);
+
+      const { m } = await import("@/features/administration/i18n");
+      const editButton = (name: string) =>
+        within(table).getByRole("button", {
+          name: m.discountsEditItemLabel({ name }, { locale: "en-US" }),
+        });
+
+      fireEvent.click(editButton("GIFT100"));
+      expect(validityInputs(view.container)).toEqual([
+        "2026-08-01T10:00",
+        "2026-09-01T10:00",
+      ]);
+
+      fireEvent.click(editButton("OPEN200"));
+      expect(validityInputs(view.container)).toEqual(["", ""]);
+    });
+  });
+
+  describe("calendar sales collection", () => {
+    const [associatedEvent] = dashboard.calendar.events;
+    const calendarEvent = (
+      overrides: Partial<DiscountAdminDashboard["calendar"]["events"][number]>
+    ) => ({ ...associatedEvent, ...overrides });
+
+    test("warns instead of listing sales when the calendar is unavailable", async () => {
+      const { SalesAdministrationCollection } = await import("./components");
+      const view = render(
+        <SalesAdministrationCollection
+          dashboard={{
+            ...dashboard,
+            calendar: { ...dashboard.calendar, unavailable: true },
+          }}
+          locale="en-US"
+        />
+      );
+
+      expect(view.queryByRole("table")).toBeNull();
+      expect(view.getByRole("link").getAttribute("href")).toBe(
+        dashboard.calendar.calendarUrl
+      );
+    });
+
+    test("shows the empty state without calendar sales", async () => {
+      const { SalesAdministrationCollection } = await import("./components");
+      const view = render(
+        <SalesAdministrationCollection
+          dashboard={{
+            ...dashboard,
+            calendar: { ...dashboard.calendar, events: [] },
+          }}
+          locale="en-US"
+        />
+      );
+
+      expect(view.queryByRole("table")).toBeNull();
+      expect(view.queryByRole("alert")).toBeNull();
+    });
+
+    test("formats all-day, timed and unreadable sale dates on the server", async () => {
+      const { formatAdministrationDateTime, formatAdministrationPlainDate } =
+        await import("@/features/administration/formatters");
+      const { SalesAdministrationCollection } = await import("./components");
+      const view = render(
+        <SalesAdministrationCollection
+          dashboard={{
+            ...dashboard,
+            calendar: {
+              ...dashboard.calendar,
+              events: [
+                calendarEvent({ start: "2026-08-01", end: "2026-08-02" }),
+                calendarEvent({
+                  eventReference: undefined,
+                  title: "Timed sale",
+                  start: "2026-08-03T08:00:00Z",
+                  end: "soon",
+                }),
+              ],
+            },
+          }}
+          locale="cs-CZ"
+        />
+      );
+      const [, allDayRow, timedRow] = within(
+        view.getByRole("table")
+      ).getAllByRole("row");
+
+      expect(allDayRow?.textContent).toContain(
+        `${formatAdministrationPlainDate("2026-08-01", "cs-CZ")} → ${formatAdministrationPlainDate("2026-08-02", "cs-CZ")}`
+      );
+      expect(timedRow?.textContent).toContain(
+        `${formatAdministrationDateTime("2026-08-03T08:00:00Z", "cs-CZ")} → `
+      );
+      expect(timedRow?.textContent).not.toContain("soon");
+    });
+
+    test("badges, labels and sorts each sale by its discount association", async () => {
+      const { m } = await import("@/features/administration/i18n");
+      const { formatDiscountProductTargets } = await import(
+        "./product-target-options"
+      );
+      const { SalesAdministrationCollection } = await import("./components");
+      const [discount] = dashboard.discounts;
+      const listedDiscount = {
+        ...discount,
+        labels: { "cs-CZ": "letní sleva", "en-US": "summer discount" },
+      };
+      const unlistedDiscountId =
+        "019c91dd-c560-7e55-b9d8-c95065efd59d" as typeof discount.id;
+      const view = render(
+        <SalesAdministrationCollection
+          dashboard={{
+            ...dashboard,
+            discounts: [listedDiscount],
+            calendar: {
+              ...dashboard.calendar,
+              events: [
+                calendarEvent({
+                  eventReference: undefined,
+                  title: "Listed sale",
+                  association: {
+                    kind: "associated",
+                    discountId: discount.id,
+                    discountLabel: "stale label",
+                  },
+                }),
+                calendarEvent({
+                  eventReference: undefined,
+                  title: "Missing discount sale",
+                  association: {
+                    kind: "missing-discount",
+                    discountId: unlistedDiscountId,
+                  },
+                }),
+                calendarEvent({
+                  eventReference: undefined,
+                  title: "Bare sale",
+                  association: { kind: "missing-description" },
+                }),
+                calendarEvent({
+                  eventReference: undefined,
+                  title: "Invalid sale",
+                  association: { kind: "invalid-description" },
+                }),
+                calendarEvent({
+                  eventReference: undefined,
+                  title: "Unlisted sale",
+                  association: {
+                    kind: "associated",
+                    discountId: unlistedDiscountId,
+                    discountLabel: "autumn discount",
+                  },
+                }),
+              ],
+            },
+          }}
+          locale="en-US"
+        />
+      );
+      const table = view.getByRole("table");
+      const rowText = (title: string) =>
+        within(table)
+          .getAllByRole("row")
+          .find((row) => row.textContent?.includes(title))?.textContent;
+      const message = (format: typeof m.discountsCalendarAssociated) =>
+        format({}, { locale: "en-US" });
+
+      expect(rowText("Listed sale")).toContain(
+        message(m.discountsCalendarAssociated)
+      );
+      expect(rowText("Listed sale")).toContain("summer discount");
+      expect(rowText("Listed sale")).not.toContain("stale label");
+      expect(rowText("Listed sale")).toContain(
+        formatDiscountProductTargets(listedDiscount.products, "en-US")
+      );
+      expect(rowText("Unlisted sale")).toContain("autumn discount");
+      expect(rowText("Missing discount sale")).toContain(
+        message(m.discountsCalendarDiscountNotFound)
+      );
+      expect(rowText("Invalid sale")).toContain(
+        message(m.discountsCalendarInvalidDescription)
+      );
+      expect(rowText("Bare sale")).toContain(
+        message(m.discountsCalendarMissingDiscountId)
+      );
+
+      fireEvent.click(
+        within(table).getByRole("button", {
+          name: message(m.discountsColumnAssociation),
+        })
+      );
+      await waitFor(() =>
+        expect(
+          within(table)
+            .getAllByRole("row")
+            .slice(1)
+            .map((row) => row.querySelector("p")?.textContent)
+        ).toEqual([
+          "Unlisted sale",
+          "Invalid sale",
+          "Bare sale",
+          "Missing discount sale",
+          "Listed sale",
+        ])
+      );
+    });
   });
 
   test("formats code counts and cowork tier targets in the operator's locale", async () => {
@@ -1454,6 +1722,118 @@ describe("discount administration pages", () => {
 
     fireEvent.input(labelEn(), { target: { value: "Summer promo" } });
     expect(view.queryByRole("status")).toBeNull();
+  });
+
+  describe("deleting", () => {
+    const originalConfirm = globalThis.confirm;
+    const confirmDeletion = mock(() => true);
+
+    beforeEach(() => {
+      confirmDeletion.mockReset();
+      confirmDeletion.mockReturnValue(true);
+      globalThis.confirm = confirmDeletion;
+    });
+
+    afterEach(() => {
+      globalThis.confirm = originalConfirm;
+    });
+
+    const voucher: VoucherTableItem = {
+      id: "019c91dd-c560-7e55-b9d8-c95065efd58d" as VoucherTableItem["id"],
+      code: "GIFT100",
+      issuedCredit: { value: 10_000, exponent: 2, currency: "CZK" },
+      remainingCredit: { value: 10_000, exponent: 2, currency: "CZK" },
+      enabled: true,
+      validFrom: null,
+      validUntil: null,
+      audienceSize: 0,
+      reservedUses: 0,
+      redeemedUses: 0,
+    };
+
+    test("deletes a voucher only after confirmation and then leaves for the redirect", async () => {
+      const captured = captureWorkspaceActions();
+      const { m } = await import("@/features/administration/i18n");
+      const { VoucherEditor } = await import("./admin-tables");
+      const view = render(
+        <VoucherEditor
+          deletable
+          deleteRedirect="/admin/vouchers"
+          voucher={voucher}
+        />
+      );
+      const deleteButton = view.getByRole("button", {
+        name: m.discountsDeleteItemLabel(
+          { name: "GIFT100" },
+          { locale: "en-US" }
+        ),
+      });
+      const { execute, options } = captured("delete-voucher");
+
+      confirmDeletion.mockReturnValue(false);
+      fireEvent.click(deleteButton);
+      expect(confirmDeletion).toHaveBeenCalledTimes(1);
+      expect(execute).not.toHaveBeenCalled();
+
+      confirmDeletion.mockReturnValue(true);
+      fireEvent.click(deleteButton);
+      expect(execute).toHaveBeenCalledWith({
+        kind: "delete-voucher",
+        id: voucher.id,
+      });
+
+      // A settled request without a result changes nothing.
+      act(() => options.onSuccess({}));
+      expect(push).not.toHaveBeenCalled();
+      expect(refresh).not.toHaveBeenCalled();
+
+      act(() => options.onSuccess({ data: { notice: "Voucher deleted." } }));
+      expect(push).toHaveBeenCalledWith("/en-US/admin/vouchers");
+      expect(refresh).toHaveBeenCalledTimes(1);
+    });
+
+    test("shows why a delete failed and clears it on the next attempt", async () => {
+      const captured = captureWorkspaceActions();
+      const { m } = await import("@/features/administration/i18n");
+      const { CodesAdministrationCollection } = await import("./components");
+      const view = render(
+        <CodesAdministrationCollection dashboard={dashboard} locale="en-US" />
+      );
+      const deleteButton = view.getByRole("button", {
+        name: m.discountsDeleteItemLabel(
+          { name: "SUMMER10" },
+          { locale: "en-US" }
+        ),
+      });
+
+      fireEvent.click(deleteButton);
+      const { execute, options } = captured("delete-code");
+      expect(execute).toHaveBeenCalledWith({
+        kind: "delete-code",
+        id: dashboard.codes[0]?.id,
+      });
+
+      act(() => options.onError({ error: { serverError: "Code is in use." } }));
+      expect(view.getByRole("alert").textContent).toBe("Code is in use.");
+
+      act(() => options.onError({ error: {} }));
+      expect(view.getByRole("alert").textContent).toBe(
+        m.discountsDeleteFailed({}, { locale: "en-US" })
+      );
+
+      act(() => options.onTransportError());
+      expect(view.getByRole("alert").textContent).toBe(
+        m.discountsDeleteFailedRetry({}, { locale: "en-US" })
+      );
+
+      fireEvent.click(deleteButton);
+      expect(view.queryByRole("alert")).toBeNull();
+
+      // Without a redirect, a deleted row only refreshes the list.
+      act(() => options.onSuccess({ data: { notice: "Code deleted." } }));
+      expect(refresh).toHaveBeenCalledTimes(1);
+      expect(push).not.toHaveBeenCalled();
+    });
   });
 
   test("rejects a carried-over currency outside the catalog with the action's validation banner", async () => {

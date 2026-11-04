@@ -16,6 +16,8 @@ import {
   useState,
 } from "react";
 import {
+  type FieldErrors,
+  type UseFormRegister,
   type UseFormRegisterReturn,
   type UseFormReturn,
   useForm,
@@ -250,15 +252,12 @@ function ContactFormBody({
     void form.handleSubmit(() => execute(formData))(event);
   };
 
+  const pending = formState.isSubmitting || actionIsExecuting;
   const hasClientValidationError =
     formState.isSubmitted && !formState.isSubmitSuccessful;
   const resultMessage = hasClientValidationError
     ? m.contactValidationReviewMessage({}, { locale })
     : state.message;
-  const message =
-    formState.isSubmitting || actionIsExecuting ? undefined : resultMessage;
-  const isSuccessMessage =
-    !hasClientValidationError && state.status === "success";
 
   return (
     <form
@@ -269,67 +268,16 @@ function ContactFormBody({
       ref={formRef}
     >
       <input type="hidden" name="locale" value={locale} />
-      <div className="space-y-5">
-        <div className="grid gap-5 md:grid-cols-2">
-          <Field
-            name="name"
-            registration={register("name")}
-            label={m.contactNameLabel({}, { locale })}
-            placeholder={m.contactNamePlaceholder({}, { locale })}
-            defaultValue={defaultValues?.name}
-            error={formState.errors.name?.message ?? state.fieldErrors?.name}
-            autoComplete="name"
-            maxLength={100}
-            minLength={2}
-            required
-          />
-          <Field
-            name="phone"
-            registration={register("phone")}
-            label={m.contactPhoneLabel({}, { locale })}
-            placeholder={m.contactPhonePlaceholder({}, { locale })}
-            defaultValue={defaultValues?.phone}
-            error={formState.errors.phone?.message ?? state.fieldErrors?.phone}
-            autoComplete="tel"
-            maxLength={20}
-            type="tel"
-          />
-        </div>
-
-        <Field
-          name="email"
-          registration={register("email")}
-          type="email"
-          label={m.contactEmailLabel({}, { locale })}
-          placeholder={m.contactEmailPlaceholder({}, { locale })}
-          defaultValue={defaultValues?.email}
-          error={formState.errors.email?.message ?? state.fieldErrors?.email}
-          autoComplete="email"
-          maxLength={255}
-          required
-        />
-
-        <Field
-          name="message"
-          registration={register("message")}
-          label={m.contactMessageLabel({}, { locale })}
-          placeholder={m.contactMessagePlaceholder({}, { locale })}
-          defaultValue={defaultValues?.message}
-          error={
-            formState.errors.message?.message ?? state.fieldErrors?.message
-          }
-          multiline
-          maxLength={1000}
-          minLength={10}
-          required
-        />
-      </div>
+      <ContactFormFields
+        clientErrors={formState.errors}
+        defaultValues={defaultValues}
+        locale={locale}
+        register={register}
+        serverErrors={state.fieldErrors}
+      />
 
       <div className="space-y-3 pt-2">
-        <SubmitButton
-          locale={locale}
-          pending={formState.isSubmitting || actionIsExecuting}
-        />
+        <SubmitButton locale={locale} pending={pending} />
 
         <p className="text-sm leading-6 text-navy-blue/62">
           {m.contactPrivacyNoteBefore({}, { locale })}{" "}
@@ -345,21 +293,114 @@ function ContactFormBody({
           {m.contactPrivacyNoteAfter({}, { locale })}
         </p>
 
-        {!!message && (
-          <p
-            aria-live="polite"
-            className={cn(
-              "rounded-2xl border px-4 py-3 text-sm leading-6",
-              isSuccessMessage
-                ? "border-aquamarine-green/30 bg-aquamarine-green/10 text-aquamarine-ink"
-                : "border-burned-orange/20 bg-burned-orange/8 text-burned-orange-ink"
-            )}
-          >
-            {message}
-          </p>
-        )}
+        <ContactFormResultMessage
+          isSuccess={!hasClientValidationError && state.status === "success"}
+          message={pending ? undefined : resultMessage}
+        />
       </div>
     </form>
+  );
+}
+
+type ContactFieldErrors = {
+  readonly clientErrors: FieldErrors<ContactFormValues>;
+  readonly serverErrors: ContactFormState["fieldErrors"];
+};
+
+/** A field's client validation error first, then the server's. */
+const getContactFieldError = (
+  { clientErrors, serverErrors }: ContactFieldErrors,
+  name: keyof ContactFormValues
+) => clientErrors[name]?.message ?? serverErrors?.[name];
+
+function ContactFormFields({
+  defaultValues = {},
+  locale,
+  register,
+  ...errors
+}: ContactFieldErrors & {
+  readonly defaultValues?: ContactFormInitialValues;
+  readonly locale: Locale;
+  readonly register: UseFormRegister<ContactFormValues>;
+}) {
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-5 md:grid-cols-2">
+        <Field
+          name="name"
+          registration={register("name")}
+          label={m.contactNameLabel({}, { locale })}
+          placeholder={m.contactNamePlaceholder({}, { locale })}
+          defaultValue={defaultValues.name}
+          error={getContactFieldError(errors, "name")}
+          autoComplete="name"
+          maxLength={100}
+          minLength={2}
+          required
+        />
+        <Field
+          name="phone"
+          registration={register("phone")}
+          label={m.contactPhoneLabel({}, { locale })}
+          placeholder={m.contactPhonePlaceholder({}, { locale })}
+          defaultValue={defaultValues.phone}
+          error={getContactFieldError(errors, "phone")}
+          autoComplete="tel"
+          maxLength={20}
+          type="tel"
+        />
+      </div>
+
+      <Field
+        name="email"
+        registration={register("email")}
+        type="email"
+        label={m.contactEmailLabel({}, { locale })}
+        placeholder={m.contactEmailPlaceholder({}, { locale })}
+        defaultValue={defaultValues.email}
+        error={getContactFieldError(errors, "email")}
+        autoComplete="email"
+        maxLength={255}
+        required
+      />
+
+      <Field
+        name="message"
+        registration={register("message")}
+        label={m.contactMessageLabel({}, { locale })}
+        placeholder={m.contactMessagePlaceholder({}, { locale })}
+        defaultValue={defaultValues.message}
+        error={getContactFieldError(errors, "message")}
+        multiline
+        maxLength={1000}
+        minLength={10}
+        required
+      />
+    </div>
+  );
+}
+
+function ContactFormResultMessage({
+  isSuccess,
+  message,
+}: {
+  readonly isSuccess: boolean;
+  readonly message: string | undefined;
+}) {
+  return (
+    !!message && (
+      <p
+        aria-live="polite"
+        className={cn(
+          "rounded-2xl border px-4 py-3 text-sm leading-6",
+          isSuccess
+            ? "border-aquamarine-green/30 bg-aquamarine-green/10 text-aquamarine-ink"
+            : "border-burned-orange/20 bg-burned-orange/8 text-burned-orange-ink"
+        )}
+      >
+        {message}
+      </p>
+    )
   );
 }
 
