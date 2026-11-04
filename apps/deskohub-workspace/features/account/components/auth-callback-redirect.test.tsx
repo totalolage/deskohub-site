@@ -2,6 +2,7 @@ import {
   afterAll,
   afterEach,
   beforeAll,
+  beforeEach,
   describe,
   expect,
   mock,
@@ -20,22 +21,22 @@ const VALID_ATTEMPT_ID = "550e8400-e29b-41d4-a716-446655440000";
 const handOffReturn = mock((_options: { readonly attemptId: string }) =>
   Promise.resolve(false)
 );
-const recordSignInCompletion = mock(
-  (_method: "link" | "code", _options?: { readonly keepRecorded?: boolean }) =>
-    undefined
-);
 
 mock.module("@/shared/browser/return-window", () => ({ handOffReturn }));
-mock.module("@/features/account/sign-in-analytics", () => ({
-  recordSignInCompletion,
-}));
 
 const { AuthCallbackRedirect } = await import("./auth-callback-redirect");
+const { observeSignInAnalytics, offersPasskeyPrompt } = await import(
+  "@/features/account/browser-sign-in-completion.test-utils"
+);
+const { recordSignInCompletion } = await import(
+  "@/features/account/sign-in-analytics"
+);
 const { encodeAuthCallbackReturn, signInCallbackReturnParam } = await import(
   "@/features/account/routes"
 );
 
 let originalReplace: typeof window.location.replace;
+let analytics: ReturnType<typeof observeSignInAnalytics>;
 let originalClose: typeof window.close;
 let originalClosed: PropertyDescriptor | undefined;
 let originalSearch: PropertyDescriptor | undefined;
@@ -81,19 +82,24 @@ const renderAndFlush = async (locale: "en-US" | "cs-CZ", returning = false) => {
 describe("AuthCallbackRedirect", () => {
   beforeAll(() => {
     registerWorkspaceComponentTestEnv();
+    window.happyDOM.setURL("https://deskohub.test/en-US/auth/callback");
     originalReplace = window.location.replace;
     originalClose = window.close;
     originalClosed = Object.getOwnPropertyDescriptor(window, "closed");
     originalSearch = Object.getOwnPropertyDescriptor(window.location, "search");
   });
 
+  beforeEach(() => {
+    analytics = observeSignInAnalytics();
+  });
+
   afterEach(() => {
     cleanup();
+    analytics.stop();
     sessionStorage.clear();
+    localStorage.clear();
     handOffReturn.mockReset();
     handOffReturn.mockImplementation(() => Promise.resolve(false));
-    recordSignInCompletion.mockReset();
-    recordSignInCompletion.mockImplementation(() => undefined);
     window.location.replace = originalReplace;
     window.close = originalClose;
     if (originalClosed) Object.defineProperty(window, "closed", originalClosed);
@@ -185,7 +191,7 @@ describe("AuthCallbackRedirect", () => {
     expect(handOffReturn).toHaveBeenCalledWith({
       attemptId: VALID_ATTEMPT_ID,
     });
-    expect(recordSignInCompletion).not.toHaveBeenCalled();
+    expect(analytics.takeRecordedSignInMethod()).toBeUndefined();
     expect(close).toHaveBeenCalledTimes(1);
     expect(replace).not.toHaveBeenCalled();
   });
@@ -201,7 +207,7 @@ describe("AuthCallbackRedirect", () => {
 
     await renderAndFlush("en-US");
 
-    expect(recordSignInCompletion).not.toHaveBeenCalled();
+    expect(analytics.takeRecordedSignInMethod()).toBeUndefined();
     expect(close).toHaveBeenCalledTimes(1);
     expect(replace).toHaveBeenCalledWith("/en-US/account");
   });
@@ -215,23 +221,19 @@ describe("AuthCallbackRedirect", () => {
     );
     const close = mock(() => undefined);
     window.close = close as typeof window.close;
-    const effects: string[] = [];
-    recordSignInCompletion.mockImplementation(() => {
-      effects.push("record");
-    });
+    // The sign-in is recorded before the document goes.
+    const recordedAtNavigation: unknown[] = [];
     const replace = mock((_href: string) => {
-      effects.push("navigate");
+      recordedAtNavigation.push(analytics.takeRecordedSignInMethod());
     });
     window.location.replace = replace as typeof window.location.replace;
 
     await renderAndFlush("en-US");
 
     expect(close).not.toHaveBeenCalled();
-    expect(recordSignInCompletion).toHaveBeenCalledWith("link", {
-      keepRecorded: true,
-    });
     expect(replace).toHaveBeenCalledWith("/en-US/account");
-    expect(effects).toEqual(["record", "navigate"]);
+    expect(recordedAtNavigation).toEqual(["link"]);
+    expect(await offersPasskeyPrompt("account-1")).toBe(true);
     // This tab is signed in: a pending code step must not come back.
     expect(sessionStorage.getItem(codeRequestStorageKey)).toBeNull();
   });
@@ -247,7 +249,7 @@ describe("AuthCallbackRedirect", () => {
     await renderAndFlush("en-US");
 
     expect(handOffReturn).not.toHaveBeenCalled();
-    expect(recordSignInCompletion).not.toHaveBeenCalled();
+    expect(analytics.takeRecordedSignInMethod()).toBeUndefined();
     expect(sessionStorage.getItem(codeRequestStorageKey)).toBe("pending");
     expect(close).not.toHaveBeenCalled();
     expect(replace).toHaveBeenCalledWith("/en-US/account");
@@ -275,22 +277,27 @@ describe("AuthCallbackRedirect", () => {
     handOffReturn.mockImplementationOnce(() => {
       throw new Error("handoff unavailable");
     });
-    const effects: string[] = [];
-    recordSignInCompletion.mockImplementation(() => {
-      effects.push("record");
-    });
+    const recordedAtNavigation: unknown[] = [];
     const replace = mock((_href: string) => {
-      effects.push("navigate");
+      recordedAtNavigation.push(analytics.takeRecordedSignInMethod());
     });
     window.location.replace = replace as typeof window.location.replace;
 
     await renderAndFlush("en-US");
 
-    expect(recordSignInCompletion).toHaveBeenCalledWith("link", {
-      keepRecorded: true,
-    });
     expect(replace).toHaveBeenCalledWith("/en-US/account");
-    expect(effects).toEqual(["record", "navigate"]);
+    expect(recordedAtNavigation).toEqual(["link"]);
+  });
+
+  test("keeps the code record of a typed code passing through", async () => {
+    recordSignInCompletion("code");
+    window.location.replace = mock(
+      (_href: string) => undefined
+    ) as typeof window.location.replace;
+
+    await renderAndFlush("en-US");
+
+    expect(analytics.takeRecordedSignInMethod()).toBe("code");
   });
 
   describe("with a return target", () => {

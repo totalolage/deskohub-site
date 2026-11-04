@@ -16,7 +16,8 @@ import type {
   DiscountGroup,
   Reservation,
 } from "@deskohub/dotypos/generated";
-import { Effect, Layer, Option, Schema } from "effect";
+import { Effect, Layer, Logger, Option, Schema } from "effect";
+import { HttpClient } from "effect/unstable/http";
 import { splitCustomerName } from "@/features/checkout/backend/reservation/dotypos-customer-policy";
 import {
   workspaceMeetingRoomReservationTableTag,
@@ -445,10 +446,9 @@ export const readDotyposReservationStatus = (
   config: DatasourceConfig,
   dotyposReservationId: DotyposReservationId
 ) =>
-  Effect.gen(function* () {
-    const dotypos = yield* DotyposService;
-    return yield* dotypos.getReservationStatus(dotyposReservationId);
-  }).pipe(
+  Effect.flatMap(DotyposService, (dotypos) =>
+    dotypos.getReservationStatus(dotyposReservationId)
+  ).pipe(
     Effect.provide(getDotyposLayer(config)),
     Effect.mapError((cause) =>
       toWorkspaceE2EError("read Dotypos reservation status", cause)
@@ -612,7 +612,21 @@ export const loadDotyposOfficeSeatCapacity = (
     )
   );
 
+/**
+ * Provides the Dotypos service to an E2E operation without its Effect logs or
+ * HTTP client spans. The service annotates its logs with customer, table, and
+ * reservation IDs for production diagnostics, and its request URLs carry the
+ * same IDs, while E2E logs land in CI output and E2E spans in shared traces.
+ * The runner reports Dotypos work through its own redacted messages instead.
+ */
 export const getDotyposLayer = (config: DatasourceConfig) =>
+  Layer.mergeAll(
+    dotyposServiceLayer(config),
+    Logger.layer([]),
+    Layer.succeed(HttpClient.TracerDisabledWhen, () => true)
+  );
+
+const dotyposServiceLayer = (config: DatasourceConfig) =>
   DotyposService.Live.pipe(
     Layer.provide(
       Layer.succeed(DotyposRuntimeConfig, {

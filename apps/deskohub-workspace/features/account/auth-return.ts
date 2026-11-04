@@ -10,13 +10,13 @@ import { listenForReturn } from "@/shared/browser/return-window";
 import { parseSameOriginPath } from "@/shared/utils/same-origin-path";
 import { authClient } from "./auth.client";
 import {
-  forgetEmailSignInRequest,
-  rememberEmailSignInRequest,
-} from "./email-sign-in-request";
-import { noteEmailSignInForPasskeyPrompt } from "./passkey-prompt";
+  type BrowserSignInCompletion,
+  completeBrowserSignIn,
+  leaveForSignInDestination,
+} from "./browser-sign-in-completion";
+import { rememberEmailSignInRequest } from "./email-sign-in-request";
 import {
   captureSignInCodeRejection,
-  recordSignInCompletion,
   type SignInCodeRejectionReason,
 } from "./sign-in-analytics";
 
@@ -271,13 +271,6 @@ const hasAuthenticatedSession = (
 // Refocusing is best effort and must not change the navigation result.
 const focusWindow = Option.liftThrowable(() => globalThis.window?.focus?.());
 
-const requestNavigation = Option.liftThrowable((path: string): boolean => {
-  const replace = globalThis.window?.location?.replace;
-  if (!Predicate.isFunction(replace)) return false;
-  replace.call(globalThis.window.location, path);
-  return true;
-});
-
 // Return-window cleanup is best effort.
 const runCleanup = Option.liftThrowable((cleanup: () => void) => cleanup());
 
@@ -309,18 +302,26 @@ export const createAuthReturnLifecycle = ({
   let currentCallbackURL = callbackURLFor(undefined);
   let verifiedCallbackURL: string | undefined;
   let passwordCallbackURL: string | undefined;
-  // Every continuation (link hand-off, typed code, session check) leaves the
-  // page at most once.
+  // Every continuation (link hand-off, typed code, password, session check)
+  // leaves the page at most once, and only the first one that leaves
+  // completes the sign-in.
   let leaving = false;
 
-  const leaveFor = (path: string, { focus }: { readonly focus: boolean }) => {
+  const leaveFor = (
+    path: string,
+    {
+      completion,
+      focus,
+    }: {
+      readonly completion?: BrowserSignInCompletion;
+      readonly focus: boolean;
+    }
+  ) => {
     if (leaving) return true;
-    leaving = Option.getOrElse(requestNavigation(path), () => false);
-    if (!leaving) return false;
-    // A signed-in tab must not show this code step again after a sign-out.
-    forgetEmailSignInRequest();
-    if (focus) focusWindow();
-    return true;
+    if (completion !== undefined) completeBrowserSignIn(completion);
+    leaving = leaveForSignInDestination(path);
+    if (leaving && focus) focusWindow();
+    return leaving;
   };
 
   const dispose = () => {
@@ -346,12 +347,14 @@ export const createAuthReturnLifecycle = ({
           if (signal.aborted || requestEpoch !== requestId || !signedIn) {
             return false;
           }
-          // The link tab hands off and closes, so this tab records it.
-          if (!requireFreshSession) {
-            recordSignInCompletion("link");
-            noteEmailSignInForPasskeyPrompt();
-          }
-          return leaveFor(destination, { focus: true });
+          // The link tab hands off and closes, so this tab completes the
+          // sign-in; a reauthentication only continues.
+          return leaveFor(destination, {
+            completion: requireFreshSession
+              ? undefined
+              : { method: "link", via: "hand-off" },
+            focus: true,
+          });
         },
         ttlMs: RETURN_LISTENER_TTL_MS,
       })
@@ -466,14 +469,12 @@ export const createAuthReturnLifecycle = ({
     return "verified";
   };
 
-  const continueWithVerifiedCode = () => {
-    if (verifiedCallbackURL === undefined) return false;
-    if (!leaving) {
-      recordSignInCompletion("code");
-      noteEmailSignInForPasskeyPrompt();
-    }
-    return leaveFor(verifiedCallbackURL, { focus: false });
-  };
+  const continueWithVerifiedCode = () =>
+    verifiedCallbackURL !== undefined &&
+    leaveFor(verifiedCallbackURL, {
+      completion: { method: "code" },
+      focus: false,
+    });
 
   const signInWithPassword = async (
     email: string,

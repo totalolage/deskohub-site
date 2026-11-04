@@ -1,16 +1,18 @@
 "use client";
 
 import { useEffect } from "react";
-import { forgetEmailSignInRequest } from "@/features/account/email-sign-in-request";
-import { noteEmailSignInForPasskeyPrompt } from "@/features/account/passkey-prompt";
+import {
+  completeBrowserSignIn,
+  leaveForSignInDestination,
+} from "@/features/account/browser-sign-in-completion";
 import {
   getSignInDestination,
   readAuthCallbackReturnTo,
   signInAttemptParam,
   signInCallbackReturnParam,
 } from "@/features/account/routes";
-import { recordSignInCompletion } from "@/features/account/sign-in-analytics";
 import type { Locale } from "@/features/i18n";
+import { leaveDocument } from "@/shared/browser/document-navigation";
 import { handOffReturn } from "@/shared/browser/return-window";
 import { AuthCallbackLoading } from "./auth-callback-loading";
 
@@ -43,22 +45,16 @@ export function AuthCallbackRedirect({
     }
     // Anyone can craft this URL, so the return target is validated again.
     const destination = getSignInDestination(locale, returnTo);
+    // A failed sign-in, or one another tab took over, leaves this tab's
+    // pending request alone.
     const leaveForDestination = () => {
-      if (!active) return;
-      try {
-        window.location.replace(destination);
-      } catch {
-        // The document is already leaving or the browser blocked navigation.
-      }
+      if (active) leaveDocument(destination, { replace: true });
     };
-    // No other tab took the hand-off, so this tab finishes the sign-in. A
-    // typed code passes through here too and has already recorded itself.
+    // No other tab took the hand-off, so this tab finishes the sign-in.
     const completeSignIn = () => {
       if (!active) return;
-      recordSignInCompletion("link", { keepRecorded: true });
-      noteEmailSignInForPasskeyPrompt();
-      forgetEmailSignInRequest();
-      leaveForDestination();
+      completeBrowserSignIn({ method: "link", via: "callback" });
+      leaveForSignInDestination(destination);
     };
 
     if (hasError) {
