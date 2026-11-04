@@ -67,7 +67,7 @@ export type PreparedRecipient = Data.TaggedEnum<{
     readonly reason: EmailPreparationFailureReason;
     readonly valueName: EmailValueName | undefined;
   };
-  /** Not sealed. Delivery may retry later; codes already issued stay with this preparation. */
+  /** Recorded but not sealed. Delivery may retry later; codes already issued stay with this preparation. */
   Unavailable: Prepared & {
     readonly reason: EmailValuesUnavailable["reason"];
     readonly valueName: EmailValueName;
@@ -259,38 +259,48 @@ export class EmailRecipientPreparation extends Context.Service<
           )
         );
 
-      /** An interrupted attempt reports the durable state, which another attempt may have sealed. */
+      /**
+       * Records an exhausted attempt on the open preparation. Another attempt
+       * may have sealed it meanwhile; then its sealed result is reported.
+       */
       const interrupted = (
         prepared: Prepared,
         { reason, valueName }: EmailValuesUnavailable
       ) =>
-        current(prepared).pipe(
-          Effect.flatMap((latest) =>
-            Match.value(latest.preparation).pipe(
-              Match.discriminatorsExhaustive("state")({
-                selected: () =>
-                  Effect.succeed(
-                    PreparedRecipient.Unavailable({
-                      ...latest,
-                      reason,
-                      valueName,
-                    })
-                  ),
-                preparing: () =>
-                  Effect.succeed(
-                    PreparedRecipient.Unavailable({
-                      ...latest,
-                      reason,
-                      valueName,
-                    })
-                  ),
-                ready: () => recorded(latest),
-                skipped: () => recorded(latest),
-                failed: () => recorded(latest),
-              })
+        recipients
+          .recordUnavailable(prepared.preparation.id, { reason, valueName })
+          .pipe(
+            Effect.flatMap((preparation) =>
+              Match.value(preparation).pipe(
+                Match.discriminatorsExhaustive("state")({
+                  selected: () =>
+                    Effect.succeed(
+                      PreparedRecipient.Unavailable({
+                        preparation,
+                        version: prepared.version,
+                        reason,
+                        valueName,
+                      })
+                    ),
+                  preparing: () =>
+                    Effect.succeed(
+                      PreparedRecipient.Unavailable({
+                        preparation,
+                        version: prepared.version,
+                        reason,
+                        valueName,
+                      })
+                    ),
+                  ready: () =>
+                    recorded({ preparation, version: prepared.version }),
+                  skipped: () =>
+                    recorded({ preparation, version: prepared.version }),
+                  failed: () =>
+                    recorded({ preparation, version: prepared.version }),
+                })
+              )
             )
-          )
-        );
+          );
 
       const generate = (
         prepared: Prepared

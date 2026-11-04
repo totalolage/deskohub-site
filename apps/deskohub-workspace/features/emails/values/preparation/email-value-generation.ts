@@ -14,6 +14,7 @@ import {
   Predicate,
   Schedule,
 } from "effect";
+import type { EmailPreparationUnavailableReason } from "@/db/schema/emails";
 import type { EmailPreparationOutcome } from "@/features/emails/backend";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { CustomerValues } from "../customer";
@@ -35,12 +36,13 @@ export class EmailValuesIncomplete extends Data.TaggedError(
 
 /**
  * A temporary source or issuance failure outlasted its retries. Preparation
- * stays open, so a later delivery retry resumes from the stored values.
+ * records it and stays open, so a later delivery retry resumes from the
+ * stored values.
  */
 export class EmailValuesUnavailable extends Data.TaggedError(
   "EmailValuesUnavailable"
 )<{
-  readonly reason: "customer-unavailable" | "issuance-unavailable";
+  readonly reason: EmailPreparationUnavailableReason;
   readonly valueName: EmailValueName;
 }> {}
 

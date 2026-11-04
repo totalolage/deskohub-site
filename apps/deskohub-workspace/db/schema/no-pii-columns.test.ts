@@ -51,6 +51,10 @@ const allowedColumns = new Map([
     "public.email_preparations.outcome_value_name",
     "named recipient value definition key",
   ],
+  [
+    "public.email_preparations.unavailable_value_name",
+    "named recipient value definition key",
+  ],
   // Better Auth owns the login email; AGENTS.md permits it in the auth schema.
   ["auth.user.email", "Better Auth login email"],
   ["auth.user.email_verified", "Better Auth login email verification flag"],

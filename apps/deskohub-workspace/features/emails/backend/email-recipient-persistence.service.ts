@@ -8,7 +8,7 @@ import {
   type EmailVersionId,
   emailValueSnapshotForDefinition,
 } from "@deskohub/workspace-admin-api";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -21,6 +21,7 @@ import {
   type EmailPreparationFailureReason,
   type EmailPreparationRow,
   type EmailPreparationSkipReason,
+  type EmailPreparationUnavailableReason,
   emailDiscountIssuances,
   emailPreparations,
   emailValueSnapshots,
@@ -29,6 +30,7 @@ import {
 import type { DatabaseQueryError } from "@/db/sql-constraint";
 import type { CampaignSendId } from "@/features/email-campaigns/campaign-identifiers";
 import { canonicalJson } from "@/shared/utils/canonical-json";
+import { currentInstant } from "@/shared/utils/temporal";
 
 export class EmailPreparationConflict extends Data.TaggedError(
   "EmailPreparationConflict"
@@ -108,6 +110,18 @@ export interface IEmailRecipientPersistence {
     outcome: EmailPreparationOutcome
   ) => Effect.Effect<EmailPreparationRow, RecipientPersistenceFailure>;
   /** CAS plus the database transition guard fences cleanup from any later delivery. */
+  /**
+   * Records that a temporary failure outlasted an attempt's retries, on a
+   * preparation that stays open for a later retry. A preparation another
+   * attempt sealed meanwhile is returned unchanged.
+   */
+  readonly recordUnavailable: (
+    preparationId: EmailPreparationId,
+    unavailable: {
+      readonly reason: EmailPreparationUnavailableReason;
+      readonly valueName: EmailValueName;
+    }
+  ) => Effect.Effect<EmailPreparationRow, RecipientPersistenceFailure>;
   readonly recordDeliveryOutcome: (
     preparationId: EmailPreparationId,
     expected: EmailDeliveryOutcome,
@@ -329,6 +343,41 @@ export class EmailRecipientPersistence extends Context.Service<
               return sealed!;
             })
           );
+        }),
+        recordUnavailable: Effect.fn(
+          "EmailRecipientPersistence.recordUnavailable"
+        )(function* (
+          preparationId: EmailPreparationId,
+          unavailable: {
+            readonly reason: EmailPreparationUnavailableReason;
+            readonly valueName: EmailValueName;
+          }
+        ) {
+          const [recorded] = yield* db
+            .update(emailPreparations)
+            .set({
+              unavailableReason: unavailable.reason,
+              unavailableValueName: unavailable.valueName,
+              unavailableAt: yield* currentInstant,
+            })
+            .where(
+              and(
+                eq(emailPreparations.id, preparationId),
+                inArray(emailPreparations.state, ["selected", "preparing"])
+              )
+            )
+            .returning();
+          if (recorded) return recorded;
+          const [current] = yield* db
+            .select()
+            .from(emailPreparations)
+            .where(eq(emailPreparations.id, preparationId));
+          if (!current)
+            return yield* new EmailPreparationConflict({
+              preparationId,
+              reason: "not-found",
+            });
+          return current;
         }),
         recordDeliveryOutcome: Effect.fn(
           "EmailRecipientPersistence.recordDeliveryOutcome"

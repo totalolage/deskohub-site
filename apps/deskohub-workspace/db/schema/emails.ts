@@ -94,6 +94,18 @@ export type EmailPreparationOutcomeReason =
   | EmailPreparationSkipReason
   | EmailPreparationFailureReason;
 
+/**
+ * A temporary source or issuance failure that outlasted preparation's
+ * retries. It is recorded on the still-open preparation, so a later retry
+ * can resume it.
+ */
+export const emailPreparationUnavailableReasons = [
+  "customer-unavailable",
+  "issuance-unavailable",
+] as const;
+export type EmailPreparationUnavailableReason =
+  (typeof emailPreparationUnavailableReasons)[number];
+
 export type EmailDeliveryOutcome =
   | "pending"
   | "delivering"
@@ -132,6 +144,13 @@ export const emailPreparations = pgTable(
     outcomeReason:
       text("outcome_reason").$type<EmailPreparationOutcomeReason>(),
     outcomeValueName: text("outcome_value_name").$type<EmailValueName>(),
+    // The latest exhausted attempt; a later attempt may still seal the preparation.
+    unavailableReason:
+      text("unavailable_reason").$type<EmailPreparationUnavailableReason>(),
+    unavailableValueName: text(
+      "unavailable_value_name"
+    ).$type<EmailValueName>(),
+    unavailableAt: instant("unavailable_at"),
     deliveryOutcome: text("delivery_outcome")
       .notNull()
       .$type<EmailDeliveryOutcome>()
@@ -159,6 +178,10 @@ export const emailPreparations = pgTable(
     check(
       "email_preparations_outcome_check",
       sql`(case ${t.state} when 'skipped' then ${t.outcomeReason} is not null and ${t.outcomeReason} in (${quotedSqlList(emailPreparationOutcomeReasons.skipped)}) when 'failed' then ${t.outcomeReason} is not null and ${t.outcomeReason} in (${quotedSqlList(emailPreparationOutcomeReasons.failed)}) else ${t.outcomeReason} is null end) and (${t.outcomeValueName} is null or ${t.outcomeReason} is not null)`
+    ),
+    check(
+      "email_preparations_unavailable_check",
+      sql`(${t.unavailableReason} is null and ${t.unavailableValueName} is null and ${t.unavailableAt} is null) or (${t.unavailableReason} in (${quotedSqlList(emailPreparationUnavailableReasons)}) and ${t.unavailableValueName} is not null and ${t.unavailableAt} is not null)`
     ),
     check(
       "email_preparations_delivery_check",

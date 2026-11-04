@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "63ae14ba-ca17-477c-9c16-804e8d8c55c6",
+  "id": "546a9b17-e8ee-4d8f-ba95-0a28f9e24e59",
   "prevIds": [
     "07449eda-ada9-4a23-a4d2-b8333a8541d6"
   ],
@@ -4827,6 +4827,45 @@
       "generated": null,
       "identity": null,
       "name": "outcome_value_name",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "email_preparations"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "unavailable_reason",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "email_preparations"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "unavailable_value_name",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "email_preparations"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "unavailable_at",
       "entityType": "columns",
       "schema": "public",
       "table": "email_preparations"
@@ -16641,6 +16680,13 @@
     {
       "value": "(case \"state\" when 'skipped' then \"outcome_reason\" is not null and \"outcome_reason\" in ('missing-language', 'missing-customer', 'missing-value') when 'failed' then \"outcome_reason\" is not null and \"outcome_reason\" in ('customer-rejected', 'customer-unauthorized', 'discount-unavailable', 'invalid-value') else \"outcome_reason\" is null end) and (\"outcome_value_name\" is null or \"outcome_reason\" is not null)",
       "name": "email_preparations_outcome_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "email_preparations"
+    },
+    {
+      "value": "(\"unavailable_reason\" is null and \"unavailable_value_name\" is null and \"unavailable_at\" is null) or (\"unavailable_reason\" in ('customer-unavailable', 'issuance-unavailable') and \"unavailable_value_name\" is not null and \"unavailable_at\" is not null)",
+      "name": "email_preparations_unavailable_check",
       "entityType": "checks",
       "schema": "public",
       "table": "email_preparations"

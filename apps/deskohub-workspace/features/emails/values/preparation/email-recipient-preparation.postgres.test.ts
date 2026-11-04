@@ -29,6 +29,7 @@ import { EmailDiscountValues } from "../discount/email-discount-values.service";
 import { EmailRecipientPreparation } from "./email-recipient-preparation.service";
 import { EmailPreparationRetry } from "./email-value-generation";
 import { EmailValueSamples } from "./email-value-samples.service";
+import { syntheticEmailCustomer } from "./synthetic-email-customer";
 
 const database =
   await createWorkspacePostgresSuiteDatabase("email_preparation");
@@ -309,7 +310,9 @@ describe.skipIf(!database)(
       ).rows,
       preparation: (
         await pool.query(
-          "select state, outcome_reason, outcome_value_name from email_preparations where id = $1",
+          `select state, outcome_reason, outcome_value_name, unavailable_reason,
+                  unavailable_value_name, unavailable_at is not null as unavailable_recorded
+             from email_preparations where id = $1`,
           [preparationId]
         )
       ).rows[0],
@@ -418,7 +421,7 @@ describe.skipIf(!database)(
         valueName: contact,
       });
       const rows = await storedRows(skipped.preparation.id);
-      expect(rows.preparation).toEqual({
+      expect(rows.preparation).toMatchObject({
         state: "skipped",
         outcome_reason: "missing-value",
         outcome_value_name: contact,
@@ -514,7 +517,14 @@ describe.skipIf(!database)(
       // One attempt plus two retries.
       expect(sourceCalls).toBe(3);
       const partial = await storedRows(interrupted.preparation.id);
-      expect(partial.preparation.state).toBe("selected");
+      expect(partial.preparation).toEqual({
+        state: "selected",
+        outcome_reason: null,
+        outcome_value_name: null,
+        unavailable_reason: "customer-unavailable",
+        unavailable_value_name: contact,
+        unavailable_recorded: true,
+      });
       expect(partial.snapshots).toEqual([offer]);
       const [code] = await codesFor(input.dotyposCustomerId);
 
@@ -541,7 +551,9 @@ describe.skipIf(!database)(
         valueName: contact,
       });
       expect(sourceCalls).toBe(1);
-      expect((await storedRows(failed.preparation.id)).preparation).toEqual({
+      expect(
+        (await storedRows(failed.preparation.id)).preparation
+      ).toMatchObject({
         state: "failed",
         outcome_reason: "customer-rejected",
         outcome_value_name: contact,
@@ -584,7 +596,12 @@ describe.skipIf(!database)(
           valueName: offer,
         });
         const rows = await storedRows(exhausted.preparation.id);
-        expect(rows.preparation.state).toBe("selected");
+        expect(rows.preparation).toMatchObject({
+          state: "selected",
+          unavailable_reason: "issuance-unavailable",
+          unavailable_value_name: offer,
+          unavailable_recorded: true,
+        });
         expect(rows.snapshots).toEqual([contact]);
         expect(await codesFor(outage.dotyposCustomerId)).toEqual([]);
       } finally {
@@ -810,7 +827,7 @@ describe.skipIf(!database)(
       expect([...sample.values.keys()]).toEqual([contact, offer]);
       expect(sample.values.get(contact)).toEqual({
         _tag: "Resolved",
-        value: "sample.customer@example.com",
+        value: syntheticEmailCustomer.profile?.customer.email,
       });
       expect(sample.values.get(offer).value.code).toBe(emailDiscountSampleCode);
       expect(sourceCalls).toBe(0);
