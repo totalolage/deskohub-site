@@ -72,31 +72,33 @@ describe.skipIf(!database)("automation planner", () => {
     ).then((rows) => unitIds.map((id) => rows.find((row) => row.id === id)));
 
   /** Plans the same sweep page on every run, as overlapping planners would. */
-  const repeatedSweepPage = Layer.effect(
-    AutomationSweepPlanning,
-    Effect.map(WorkspaceDatabase, ({ transaction }) => ({
-      plan: (at) =>
-        transaction(
-          planAutomationUnits(
-            [
-              {
-                kind: "sweep-page",
-                key: "sweep-page:test:window:1",
-                subject: { label: "window" },
-                requestCost: 1,
-              },
-            ],
-            at
-          )
-        ).pipe(
-          Effect.map(({ planned, replanned }) => ({
-            sweepPagesPlanned: planned,
-            sweepPagesReplanned: replanned.length,
-            eventsReconciled: 0,
-          }))
-        ),
-    }))
-  ).pipe(Layer.provide(postgres.layer));
+  const repeatedSweepPage = Layer.suspend(() =>
+    Layer.effect(
+      AutomationSweepPlanning,
+      Effect.map(WorkspaceDatabase, ({ transaction }) => ({
+        plan: (at) =>
+          transaction(
+            planAutomationUnits(
+              [
+                {
+                  kind: "sweep-page",
+                  key: "sweep-page:test:window:1",
+                  subject: { label: "window" },
+                  requestCost: 1,
+                },
+              ],
+              at
+            )
+          ).pipe(
+            Effect.map(({ planned, replanned }) => ({
+              sweepPagesPlanned: planned,
+              sweepPagesReplanned: replanned.length,
+              eventsReconciled: 0,
+            }))
+          ),
+      }))
+    ).pipe(Layer.provide(postgres.layer))
+  );
 
   beforeEach(async () => {
     await postgres.pool.query(

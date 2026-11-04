@@ -21,6 +21,8 @@
         "env.ts",
         // Public reusable-email service API during the additive rollout, before delivery switches.
         "features/emails/backend/index.ts",
+        // Public customer-value resolver consumed by recipient preparation.
+        "features/emails/values/customer/index.ts",
         // Public discount-value issuance consumed by recipient preparation and delivery cleanup.
         "features/emails/values/discount/index.ts",
         // Command-line scripts run by path from package.json, CI, or the skills.
