@@ -2,6 +2,11 @@ import "@/shared/polyfills/temporal";
 import { describe, expect, mock, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Result, Schema } from "effect";
+import type { SealedStateKeys } from "@/shared/backend/sealed-state-keys.service";
+import {
+  runSealedState,
+  syntheticSealedStateKeyRing,
+} from "@/shared/testing/sealed-state-keys.test-utils";
 
 mock.module("server-only", () => ({}));
 
@@ -9,7 +14,6 @@ const {
   buildSignedPayState,
   getPayStateRestartKind,
   openPayState,
-  parsePayStateKey,
   sealPayStateForUrl,
   signedPayStateSchema,
 } = await import("./pay-state");
@@ -24,11 +28,11 @@ const { openAdvertisedPriceState, sealAdvertisedPriceState } = await import(
  * state codec was reworked; a change here breaks every token in flight.
  */
 
-const runSync = <A, E>(effect: Effect.Effect<A, E>) => Effect.runSync(effect);
-
-const goldenKey = runSync(
-  parsePayStateKey("golden", Buffer.alloc(32, 9).toString("base64url"))
-);
+const goldenKey = syntheticSealedStateKeyRing(["golden", 9]);
+const run = <A, E>(
+  effect: Effect.Effect<A, E, SealedStateKeys>,
+  options: { readonly at?: Date } = {}
+) => runSealedState(effect, { keys: goldenKey, ...options });
 const issuedAt = new Date("2026-06-01T10:00:00.000Z");
 const beforeExpiry = () => new Date("2026-06-01T10:09:00.000Z");
 const afterExpiry = () => new Date("2026-06-01T10:10:00.000Z");
@@ -168,7 +172,7 @@ describe("Pay state token format", () => {
   test("issues and seals an agent's stable Pay link to the pinned URL", () => {
     const pinned =
       Schema.decodeUnknownSync(signedPayStateSchema)(encodedPayState);
-    const state = runSync(
+    const state = run(
       buildSignedPayState(
         {
           locale: pinned.locale,
@@ -178,12 +182,10 @@ describe("Pay state token format", () => {
           bookedAt: pinned.bookedAt,
           checkoutSessionId: pinned.checkoutSessionId,
         } as Parameters<typeof buildSignedPayState>[0],
-        { keys: [goldenKey], now: () => issuedAt }
+        { issuedAt: Temporal.Instant.from(issuedAt.toISOString()) }
       )
     );
-    const sealed = runSync(
-      sealPayStateForUrl(state, { keys: [goldenKey], syntheticIv: true })
-    );
+    const sealed = run(sealPayStateForUrl(state, { deterministic: true }));
 
     expect(toJson(state)).toEqual(toJson(pinned));
     expect(sealed.token).toBe(stablePayStateToken);
@@ -196,30 +198,21 @@ describe("Pay state token format", () => {
 
   test("opens pinned tokens until they expire", () => {
     for (const token of [payStateToken, stablePayStateToken]) {
-      const opened = runSync(
-        openPayState(token, { keys: [goldenKey], now: beforeExpiry })
-      );
+      const opened = run(openPayState(token), { at: beforeExpiry() });
       expect(Schema.encodeUnknownSync(signedPayStateSchema)(opened)).toEqual(
         encodedPayState
       );
 
-      const expired = runSync(
-        Effect.result(
-          openPayState(token, { keys: [goldenKey], now: afterExpiry })
-        )
-      );
+      const expired = run(Effect.result(openPayState(token)), {
+        at: afterExpiry(),
+      });
       expect(Result.isFailure(expired) && expired.failure.code).toBe("expired");
     }
   });
 
   test("reads the reservation kind of an expired pinned token", () => {
     expect(
-      runSync(
-        getPayStateRestartKind(payStateToken, {
-          keys: [goldenKey],
-          now: afterExpiry,
-        })
-      )
+      run(getPayStateRestartKind(payStateToken), { at: afterExpiry() })
     ).toBe("cowork");
   });
 });
@@ -230,32 +223,20 @@ describe("advertised price state token format", () => {
       advertisedPriceStateToken,
       stableAdvertisedPriceStateToken,
     ]) {
-      const opened = runSync(
-        openAdvertisedPriceState(token, {
-          keys: [goldenKey],
-          now: beforeExpiry,
-        })
-      );
+      const opened = run(openAdvertisedPriceState(token), {
+        at: beforeExpiry(),
+      });
       expect(toJson(opened)).toEqual(encodedAdvertisedPriceState);
       expect(
-        runSync(
-          sealAdvertisedPriceState(opened, {
-            keys: [goldenKey],
-            syntheticIv: true,
-          })
-        )
+        run(sealAdvertisedPriceState(opened, { deterministic: true }))
       ).toBe(stableAdvertisedPriceStateToken);
     }
   });
 
   test("rejects a pinned token once it expires", () => {
-    const expired = runSync(
-      Effect.result(
-        openAdvertisedPriceState(advertisedPriceStateToken, {
-          keys: [goldenKey],
-          now: afterExpiry,
-        })
-      )
+    const expired = run(
+      Effect.result(openAdvertisedPriceState(advertisedPriceStateToken)),
+      { at: afterExpiry() }
     );
     expect(Result.isFailure(expired) && expired.failure.code).toBe("expired");
   });

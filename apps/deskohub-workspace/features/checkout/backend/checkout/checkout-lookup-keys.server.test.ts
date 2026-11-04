@@ -3,7 +3,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
-import { ConfigProvider, Effect, Schema } from "effect";
+import { Effect, Schema } from "effect";
 import {
   type CheckoutSessionId,
   checkoutAttemptIdSchema,
@@ -11,6 +11,7 @@ import {
 } from "@/features/checkout/checkout-identifiers";
 import type { ReservationBillingSelectionInput } from "@/features/reservation/reservation-billing";
 import { reservationOrderSchema } from "@/features/reservation/reservation-order";
+import { SealedStateKeys } from "@/shared/backend/sealed-state-keys.service";
 import {
   deriveRingKeyedCheckoutAttemptKey,
   deriveRingKeyedCheckoutSessionKey,
@@ -41,12 +42,9 @@ const rotatedKey = `rotated:${syntheticKey(2)}`;
 
 const withKeyRing =
   (keyRing: string) =>
-  <A, E>(effect: Effect.Effect<A, E>) =>
+  <A, E>(effect: Effect.Effect<A, E, SealedStateKeys>) =>
     effect.pipe(
-      Effect.provideService(
-        ConfigProvider.ConfigProvider,
-        ConfigProvider.fromUnknown({ CHECKOUT_PAY_STATE_KEYS: keyRing })
-      ),
+      Effect.provide(SealedStateKeys.fromConfiguration(keyRing)),
       Effect.runSync
     );
 

@@ -13,6 +13,7 @@ import {
   getCoworkReservationPath,
   getReservationStartPath,
 } from "@/features/reservation/routes";
+import { TestSealedStateKeys } from "@/shared/testing/sealed-state-keys.test-utils";
 import type { SearchParamsRecord } from "@/shared/utils";
 import { instantStringSchema } from "@/shared/utils/temporal";
 
@@ -186,7 +187,7 @@ const sealCoworkPayState = ({
         ...state,
         ...(changedKeys && { changedKeys }),
       });
-    })
+    }).pipe(Effect.provide(TestSealedStateKeys))
   );
 
 const distantDate = "2099-06-20";

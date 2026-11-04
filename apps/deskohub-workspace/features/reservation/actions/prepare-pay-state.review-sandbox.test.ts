@@ -49,6 +49,7 @@ import {
   ReviewSandbox,
 } from "@/features/review-accounts";
 import { CurrentVisitorIdentity } from "@/shared/backend/workspace-request-context";
+import { TestSealedStateKeys } from "@/shared/testing/sealed-state-keys.test-utils";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type { PreparePayStateInput } from "./prepare-pay-state.schema";
@@ -103,7 +104,9 @@ const advertisedPriceToken = async (reservationDate: string) => {
         ...quote,
         fingerprint: getReservationQuoteFingerprint(advertised.details, quote),
       },
-    }).pipe(Effect.flatMap(sealAdvertisedPriceState))
+    })
+      .pipe(Effect.provide(TestSealedStateKeys))
+      .pipe(Effect.flatMap(sealAdvertisedPriceState))
   );
 };
 

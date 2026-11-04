@@ -10,6 +10,7 @@ import {
 } from "@/features/discounts/contracts";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
+import { TestSealedStateKeys } from "@/shared/testing/sealed-state-keys.test-utils";
 import { CheckoutPricingServiceMock } from "./checkout-pricing.service.mock";
 
 mock.module("server-only", () => ({}));
@@ -49,7 +50,8 @@ describe("buildAdvertisedPrice", () => {
 
     const result = await buildAdvertisedPrice(input).pipe(
       Effect.provide(
-        Layer.merge(
+        Layer.mergeAll(
+          TestSealedStateKeys,
           CheckoutPricingServiceMock({ quoteAdvertisement }),
           OfficeReleaseGate.Default.pipe(
             Layer.provide(
@@ -118,7 +120,8 @@ describe("buildAdvertisedPrice", () => {
 
     const result = await buildAdvertisedPrice(input).pipe(
       Effect.provide(
-        Layer.merge(
+        Layer.mergeAll(
+          TestSealedStateKeys,
           CheckoutPricingServiceMock({ quoteAdvertisement }),
           OfficeReleaseGate.Default.pipe(
             Layer.provide(
@@ -133,7 +136,7 @@ describe("buildAdvertisedPrice", () => {
     );
     const state = await openAdvertisedPriceState(
       result.advertisedPriceToken
-    ).pipe(Effect.runPromise);
+    ).pipe(Effect.provide(TestSealedStateKeys), Effect.runPromise);
 
     expect(quoteAdvertisement).toHaveBeenCalledWith({
       reservation: input.reservation,
@@ -182,7 +185,8 @@ describe("buildAdvertisedPrice", () => {
 
     const result = await buildAdvertisedPrice(input).pipe(
       Effect.provide(
-        Layer.merge(
+        Layer.mergeAll(
+          TestSealedStateKeys,
           CheckoutPricingServiceMock({ quoteAdvertisement }),
           OfficeReleaseGate.Default.pipe(
             Layer.provide(
@@ -197,7 +201,7 @@ describe("buildAdvertisedPrice", () => {
     );
     const state = await openAdvertisedPriceState(
       result.advertisedPriceToken
-    ).pipe(Effect.runPromise);
+    ).pipe(Effect.provide(TestSealedStateKeys), Effect.runPromise);
 
     expect(quoteAdvertisement).toHaveBeenCalledWith(
       expect.objectContaining({ submittedCode })
