@@ -132,13 +132,20 @@ export class CustomerValueSource extends Context.Service<
           ({ customerId }: { readonly customerId: DotyposCustomerId }) =>
             authorize.pipe(
               Effect.andThen(() =>
-                administration
-                  .loadCustomerActivityStrict(customerId)
-                  .pipe(
-                    Effect.mapError(
-                      () => new CustomerValueUnavailable({ source: "activity" })
+                administration.loadCustomerActivityStrict(customerId).pipe(
+                  Effect.mapError((error) =>
+                    Match.value(error).pipe(
+                      Match.tagsExhaustive({
+                        WorkspaceReservationDetailsMalformedError: () =>
+                          new CustomerValueRejected({ reason: "invalid-data" }),
+                        AdministrationListSourceUnavailableError: () =>
+                          new CustomerValueUnavailable({ source: "activity" }),
+                        EffectDrizzleQueryError: () =>
+                          new CustomerValueUnavailable({ source: "activity" }),
+                      })
                     )
                   )
+                )
               ),
               Effect.flatMap((activity) =>
                 Schema.decodeUnknownEffect(AdministrationCustomerActivity)(
