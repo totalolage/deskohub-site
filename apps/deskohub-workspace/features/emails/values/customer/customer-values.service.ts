@@ -292,7 +292,7 @@ const selectCustomerValue = (
 };
 
 /** Sorting/limits apply to the administration's bounded history, never the customer's complete history. */
-const compareSortKeys = (
+export const compareSortKeys = (
   left: SortKey,
   right: SortKey,
   direction: "asc" | "desc"
@@ -325,7 +325,8 @@ const sortKeyTypeRank = (value: Exclude<SortKey, null>) => {
   return 2;
 };
 
-const valueAtPath = (
+/** The JSON value at a record path, or undefined when a segment is missing or not a record. */
+export const valueAtPath = (
   root: Schema.Json,
   path: readonly string[]
 ): Schema.Json | undefined => {

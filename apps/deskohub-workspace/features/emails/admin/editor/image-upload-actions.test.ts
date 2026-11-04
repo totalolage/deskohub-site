@@ -5,7 +5,7 @@ import { Context, Effect, Layer } from "effect";
 import { mockAdministrationActionRequest } from "@/shared/testing/workspace-action-request.test-utils";
 
 const { access } = await mockAdministrationActionRequest({
-  administrator: "campaign-image-upload",
+  administrator: "email-image-upload",
   referer: "https://deskohub.test/en-US/admin",
 });
 
@@ -31,16 +31,16 @@ mock.module(
   })
 );
 
-const { authorizeCampaignImageUpload } = await import("./actions");
+const { authorizeEmailImageUpload } = await import("./image-upload-actions");
 
 beforeEach(() => {
   access.set("administrator");
   authorizations.mockClear();
 });
 
-describe("authorizeCampaignImageUpload", () => {
+describe("authorizeEmailImageUpload", () => {
   test("authorizes an administrator's upload", async () => {
-    const result = await authorizeCampaignImageUpload();
+    const result = await authorizeEmailImageUpload();
 
     expect(result?.data).toEqual(authorization);
     expect(authorizations).toHaveBeenCalledTimes(1);
@@ -51,7 +51,7 @@ describe("authorizeCampaignImageUpload", () => {
     async (caller) => {
       access.set(caller);
 
-      const result = await authorizeCampaignImageUpload();
+      const result = await authorizeEmailImageUpload();
 
       expect(result?.data).toBeUndefined();
       expect(result?.serverError).toEqual(expect.any(String));
