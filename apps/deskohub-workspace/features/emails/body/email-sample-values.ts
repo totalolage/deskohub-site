@@ -2,12 +2,14 @@ import {
   type EmailCustomerField,
   type EmailDocument,
   type EmailValueDefinition,
-  type EmailValueSnapshot,
+  EmailValueSnapshot,
   requiredEmailValueNames,
   selectedEmailCustomerShape as selectedEmailCustomerFields,
 } from "@deskohub/workspace-admin-api";
 import { Match, type Schema } from "effect";
 import { sampleEmailDiscountValue } from "@/features/emails/values/discount";
+
+const [ResolvedSnapshot, FallbackSnapshot] = EmailValueSnapshot.members;
 
 /** How many items a sample list shows when its selection sets no limit. */
 const sampleListLength = 2;
@@ -70,27 +72,23 @@ const sampleSnapshot = (
   locale: string,
   now: Temporal.Instant
 ): EmailValueSnapshot => {
-  const fallback = {
-    _tag: "Fallback",
+  const fallback = FallbackSnapshot.make({
     text: definition.fallback?.[locale] ?? `[${definition.name}]`,
-  } as const;
+  });
   return Match.value(definition.source).pipe(
     Match.discriminatorsExhaustive("kind")({
-      discount: (source) => ({
-        _tag: "Resolved" as const,
-        value: sampleEmailDiscountValue(source, now),
-      }),
+      discount: (source) =>
+        ResolvedSnapshot.make({ value: sampleEmailDiscountValue(source, now) }),
       customer: (source) => {
         const field = emailCustomerValueField(definition);
         return field
-          ? {
-              _tag: "Resolved" as const,
+          ? ResolvedSnapshot.make({
               value: sampleOfField(
                 field,
                 source.path.at(-1) ?? definition.name,
                 Math.min(source.limit ?? sampleListLength, sampleListLength)
               ),
-            }
+            })
           : fallback;
       },
     })
