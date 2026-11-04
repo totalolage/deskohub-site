@@ -1,16 +1,13 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { Effect, Exit, Option } from "effect";
-import type { CampaignImageUploadAuthorization } from "../../backend/campaign-image.service";
+import type { CampaignImageUploadAuthorization } from "@/features/email-campaigns/backend/campaign-image.service";
 
-mock.module("@/features/email-campaigns/admin/editor/actions", () => ({
-  authorizeCampaignImageUpload: mock(),
+mock.module("@/features/emails/admin/editor/image-upload-actions", () => ({
+  authorizeEmailImageUpload: mock(),
 }));
 
-const {
-  campaignImagePreparation,
-  campaignImageUploadLimits,
-  sendCampaignImage,
-} = await import("./campaign-image-upload");
+const { emailImagePreparation, emailImageUploadLimits, sendEmailImage } =
+  await import("@/features/emails/admin/editor/email-image-upload");
 
 const authorization: CampaignImageUploadAuthorization = {
   url: "https://api.cloudinary.test/v1_1/cloud/image/upload",
@@ -40,7 +37,7 @@ const answer = (status: number, body: CloudinaryAnswer) =>
   fetchSpy.mockResolvedValue(Response.json(body, { status }));
 
 const send = (file = new Blob([new Uint8Array(3)], { type: "image/png" })) =>
-  Effect.runPromiseExit(sendCampaignImage({ image: file, authorization }));
+  Effect.runPromiseExit(sendEmailImage({ image: file, authorization }));
 
 const failureTag = (exit: Exit.Exit<unknown, { readonly _tag: string }>) =>
   Exit.isFailure(exit)
@@ -49,14 +46,14 @@ const failureTag = (exit: Exit.Exit<unknown, { readonly _tag: string }>) =>
       )
     : [];
 
-describe("campaignImagePreparation", () => {
-  const { maxBytes, maxPixels, maxAnimationPixels } = campaignImageUploadLimits;
+describe("emailImagePreparation", () => {
+  const { maxBytes, maxPixels, maxAnimationPixels } = emailImageUploadLimits;
   const sized = (width: number, height: number) =>
     Option.some({ width, height });
 
   test("leaves an image within the account's limits to Cloudinary", () => {
     expect(
-      campaignImagePreparation({
+      emailImagePreparation({
         bytes: maxBytes,
         size: sized(5000, maxPixels / 5000),
         frames: 1,
@@ -66,14 +63,14 @@ describe("campaignImagePreparation", () => {
 
   test("shrinks a still file above the byte limit, even one the browser can't read", () => {
     expect(
-      campaignImagePreparation({
+      emailImagePreparation({
         bytes: maxBytes + 1,
         size: sized(800, 600),
         frames: 1,
       })
     ).toBe("shrink");
     expect(
-      campaignImagePreparation({
+      emailImagePreparation({
         bytes: maxBytes + 1,
         size: Option.none(),
         frames: 1,
@@ -83,7 +80,7 @@ describe("campaignImagePreparation", () => {
 
   test("shrinks a still picture above the pixel limit", () => {
     expect(
-      campaignImagePreparation({
+      emailImagePreparation({
         bytes: 1024,
         size: sized(5001, maxPixels / 5000),
         frames: 1,
@@ -93,13 +90,13 @@ describe("campaignImagePreparation", () => {
 
   test("leaves a small picture the browser can't read to Cloudinary", () => {
     expect(
-      campaignImagePreparation({ bytes: 1024, size: Option.none(), frames: 1 })
+      emailImagePreparation({ bytes: 1024, size: Option.none(), frames: 1 })
     ).toBe("upload");
   });
 
   test("leaves an animation within the limits to Cloudinary", () => {
     expect(
-      campaignImagePreparation({
+      emailImagePreparation({
         bytes: maxBytes,
         size: sized(1000, 1000),
         frames: maxAnimationPixels / 1_000_000,
@@ -109,14 +106,14 @@ describe("campaignImagePreparation", () => {
 
   test("refuses an animation above the byte limit instead of shrinking it", () => {
     expect(
-      campaignImagePreparation({
+      emailImagePreparation({
         bytes: maxBytes + 1,
         size: sized(400, 300),
         frames: 2,
       })
     ).toBe("refuse");
     expect(
-      campaignImagePreparation({
+      emailImagePreparation({
         bytes: maxBytes + 1,
         size: Option.none(),
         frames: 2,
@@ -126,7 +123,7 @@ describe("campaignImagePreparation", () => {
 
   test("refuses an animation whose frames together exceed the pixel limit", () => {
     expect(
-      campaignImagePreparation({
+      emailImagePreparation({
         bytes: 1024,
         size: sized(1000, 1000),
         frames: maxAnimationPixels / 1_000_000 + 1,
@@ -135,7 +132,7 @@ describe("campaignImagePreparation", () => {
   });
 });
 
-describe("sendCampaignImage", () => {
+describe("sendEmailImage", () => {
   test("posts the signed fields and the file straight to Cloudinary", async () => {
     answer(200, storedImage);
     const file = new Blob([new Uint8Array(3)], { type: "image/png" });
@@ -163,19 +160,19 @@ describe("sendCampaignImage", () => {
   test("reports a file Cloudinary refuses as unreadable", async () => {
     answer(400, { error: { message: "Invalid image file" } });
 
-    expect(failureTag(await send())).toEqual(["CampaignImageRejectedError"]);
+    expect(failureTag(await send())).toEqual(["EmailImageRejectedError"]);
   });
 
   test("reports any other refusal as a failed upload", async () => {
     answer(503, { error: { message: "Service unavailable" } });
 
-    expect(failureTag(await send())).toEqual(["CampaignImageUploadError"]);
+    expect(failureTag(await send())).toEqual(["EmailImageUploadError"]);
   });
 
   test("reports an unreachable Cloudinary as a failed upload", async () => {
     fetchSpy.mockRejectedValue(new TypeError("Failed to fetch"));
 
-    expect(failureTag(await send())).toEqual(["CampaignImageUploadError"]);
+    expect(failureTag(await send())).toEqual(["EmailImageUploadError"]);
   });
 
   test.each([
@@ -185,6 +182,6 @@ describe("sendCampaignImage", () => {
   ])("refuses an answer with %s", async (_, change) => {
     answer(200, { ...storedImage, ...change });
 
-    expect(failureTag(await send())).toEqual(["CampaignImageUploadError"]);
+    expect(failureTag(await send())).toEqual(["EmailImageUploadError"]);
   });
 });

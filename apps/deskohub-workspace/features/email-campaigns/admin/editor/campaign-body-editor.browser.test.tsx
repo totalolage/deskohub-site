@@ -39,8 +39,8 @@ beforeAll(async () => {
     outdir: directory,
     plugins: [
       browserModuleStubPlugin({
-        "./actions":
-          "export const authorizeCampaignImageUpload = async () => ({});",
+        "./image-upload-actions":
+          "export const authorizeEmailImageUpload = async () => ({});",
       }),
     ],
     target: "browser",

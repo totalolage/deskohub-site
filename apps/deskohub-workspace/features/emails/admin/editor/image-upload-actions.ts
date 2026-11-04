@@ -4,16 +4,16 @@ import { Schema } from "effect";
 import { m } from "@/features/administration/i18n";
 import { defineAdministrationAction } from "@/features/administrators/server/administration-request.server";
 import { CampaignImageService } from "@/features/email-campaigns/backend/campaign-image.service";
-import { emailCampaignsActionFailureCopy } from "../campaign-operation-failure";
+import { emailsEditorActionFailureCopy } from "./editor-action-failure-copy";
 
-const authorizeCampaignImageUploadAction = defineAdministrationAction(
+const authorizeEmailImageUploadAction = defineAdministrationAction(
   {
     operation: "email-campaigns.admin.authorize-image-upload",
     schema: Schema.toStandardSchemaV1(Schema.Undefined),
-    failureCopy: emailCampaignsActionFailureCopy,
+    failureCopy: emailsEditorActionFailureCopy,
     capabilities: CampaignImageService.Live,
     publicFailure: (_, locale) =>
-      m.emailCampaignsImageUploadFailed({}, { locale }),
+      m.emailsEditorImageUploadFailed({}, { locale }),
   },
   () => CampaignImageService.use((images) => images.authorizeUpload)
 );
@@ -22,8 +22,8 @@ const authorizeCampaignImageUploadAction = defineAdministrationAction(
  * Lets the administrator's browser upload one body image straight to the
  * Deskohub Cloudinary account, which shrinks it and strips its metadata.
  */
-export const authorizeCampaignImageUpload: typeof authorizeCampaignImageUploadAction =
-  async (...args: Parameters<typeof authorizeCampaignImageUploadAction>) => {
+export const authorizeEmailImageUpload: typeof authorizeEmailImageUploadAction =
+  async (...args: Parameters<typeof authorizeEmailImageUploadAction>) => {
     "use server";
-    return await authorizeCampaignImageUploadAction(...args);
+    return await authorizeEmailImageUploadAction(...args);
   };
