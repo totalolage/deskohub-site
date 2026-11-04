@@ -8,7 +8,7 @@ import {
   type EmailVersionId,
   emailValueSnapshotForDefinition,
 } from "@deskohub/workspace-admin-api";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -18,7 +18,9 @@ import {
 import {
   type EmailDeliveryOutcome,
   type EmailDiscountIssuanceRow,
+  type EmailPreparationFailureReason,
   type EmailPreparationRow,
+  type EmailPreparationSkipReason,
   emailDiscountIssuances,
   emailPreparations,
   emailValueSnapshots,
@@ -54,6 +56,20 @@ type NamedValue = {
   readonly valueName: EmailValueName;
 };
 
+/** A terminal preparation state; skipped and failed outcomes carry their recorded reason. */
+export type EmailPreparationOutcome =
+  | { readonly state: "ready" }
+  | {
+      readonly state: "skipped";
+      readonly reason: EmailPreparationSkipReason;
+      readonly valueName?: EmailValueName;
+    }
+  | {
+      readonly state: "failed";
+      readonly reason: EmailPreparationFailureReason;
+      readonly valueName?: EmailValueName;
+    };
+
 /** Fully resolved parameters, including absolute expiry, persisted before provider work. */
 export type EmailIssuanceParameters = {
   readonly discountId: string;
@@ -81,9 +97,13 @@ export interface IEmailRecipientPersistence {
     }[],
     RecipientPersistenceFailure
   >;
+  /**
+   * Seals an open preparation with its outcome. A preparation another attempt
+   * already sealed is returned unchanged, so callers read the winning outcome.
+   */
   readonly finish: (
     preparationId: EmailPreparationId,
-    state: "ready" | "skipped" | "failed"
+    outcome: EmailPreparationOutcome
   ) => Effect.Effect<EmailPreparationRow, RecipientPersistenceFailure>;
   /** CAS plus the database transition guard fences cleanup from any later delivery. */
   readonly recordDeliveryOutcome: (
@@ -271,19 +291,34 @@ export class EmailRecipientPersistence extends Context.Service<
         ),
         finish: Effect.fn("EmailRecipientPersistence.finish")(function* (
           preparationId: EmailPreparationId,
-          state: "ready" | "skipped" | "failed"
+          outcome: EmailPreparationOutcome
         ) {
-          const [row] = yield* db
+          const [sealed] = yield* db
             .update(emailPreparations)
-            .set({ state })
-            .where(eq(emailPreparations.id, preparationId))
+            .set({
+              state: outcome.state,
+              outcomeReason: outcome.state === "ready" ? null : outcome.reason,
+              outcomeValueName:
+                outcome.state === "ready" ? null : (outcome.valueName ?? null),
+            })
+            .where(
+              and(
+                eq(emailPreparations.id, preparationId),
+                inArray(emailPreparations.state, ["selected", "preparing"])
+              )
+            )
             .returning();
-          if (!row)
+          if (sealed) return sealed;
+          const [existing] = yield* db
+            .select()
+            .from(emailPreparations)
+            .where(eq(emailPreparations.id, preparationId));
+          if (!existing)
             return yield* new EmailPreparationConflict({
               preparationId,
               reason: "not-found",
             });
-          return row;
+          return existing;
         }),
         recordDeliveryOutcome: Effect.fn(
           "EmailRecipientPersistence.recordDeliveryOutcome"

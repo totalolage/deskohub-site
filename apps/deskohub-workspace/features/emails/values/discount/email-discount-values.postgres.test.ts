@@ -203,7 +203,7 @@ describe.skipIf(!database)(
             valueName: offer,
             value: { _tag: "Resolved", value },
           });
-          return yield* recipients.finish(preparationId, "ready");
+          return yield* recipients.finish(preparationId, { state: "ready" });
         })
       );
 

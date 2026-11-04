@@ -57,110 +57,132 @@ interface ICustomerValueSource {
   >;
 }
 
+/** The profile and activity loaders, each run after `authorize` admits the read. */
+const customerValueLoaders = Effect.fn("CustomerValueSource.loaders")(
+  function* (
+    authorize: Effect.Effect<
+      void,
+      CustomerValueUnauthorized | CustomerValueUnavailable
+    >
+  ) {
+    const discounts = yield* DiscountAdministration;
+    const administration = yield* AdministrationService;
+    return {
+      profile: Effect.fn("CustomerValueSource.profile")(
+        (input: { readonly customerId: DotyposCustomerId }) =>
+          authorize.pipe(
+            Effect.andThen(() =>
+              discounts.loadCustomerProfile(input).pipe(
+                Effect.mapError((error) =>
+                  Match.value(error).pipe(
+                    Match.tagsExhaustive({
+                      DiscountAdminNotFoundError: () =>
+                        new CustomerValueMissing({
+                          reason: "customer-not-found",
+                        }),
+                      DotyposRejected: () =>
+                        new CustomerValueRejected({
+                          reason: "source-rejected",
+                        }),
+                      DotyposUnavailable: () =>
+                        new CustomerValueUnavailable({ source: "profile" }),
+                      EffectDrizzleQueryError: () =>
+                        new CustomerValueUnavailable({ source: "profile" }),
+                      SqlError: () =>
+                        new CustomerValueUnavailable({ source: "profile" }),
+                    })
+                  )
+                )
+              )
+            ),
+            Effect.map(customerProfileWireInput),
+            Effect.flatMap((profile) =>
+              Schema.decodeUnknownEffect(AdministrationCustomerProfile)(
+                profile
+              ).pipe(
+                Effect.mapError(
+                  () => new CustomerValueRejected({ reason: "invalid-data" })
+                )
+              )
+            )
+          )
+      ),
+      activity: Effect.fn("CustomerValueSource.activity")(
+        ({ customerId }: { readonly customerId: DotyposCustomerId }) =>
+          authorize.pipe(
+            Effect.andThen(() =>
+              administration.loadCustomerActivityStrict(customerId).pipe(
+                Effect.mapError((error) =>
+                  Match.value(error).pipe(
+                    Match.tagsExhaustive({
+                      WorkspaceReservationDetailsMalformedError: () =>
+                        new CustomerValueRejected({ reason: "invalid-data" }),
+                      AdministrationListSourceUnavailableError: () =>
+                        new CustomerValueUnavailable({ source: "activity" }),
+                      EffectDrizzleQueryError: () =>
+                        new CustomerValueUnavailable({ source: "activity" }),
+                    })
+                  )
+                )
+              )
+            ),
+            Effect.flatMap((activity) =>
+              Schema.decodeUnknownEffect(AdministrationCustomerActivity)(
+                activity
+              ).pipe(
+                Effect.mapError(
+                  () => new CustomerValueRejected({ reason: "invalid-data" })
+                )
+              )
+            )
+          )
+      ),
+    } satisfies ICustomerValueSource;
+  }
+);
+
 export class CustomerValueSource extends Context.Service<
   CustomerValueSource,
   ICustomerValueSource
 >()("@deskohub-workspace/emails/CustomerValueSource") {
+  /** Reads for an administrator; every read rechecks the current administrator's grant. */
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const grants = yield* AccountRoleGrants;
-      const discounts = yield* DiscountAdministration;
-      const administration = yield* AdministrationService;
-      const authorize = Effect.serviceOption(CurrentAdministrator).pipe(
-        Effect.flatMap(
-          Option.match({
-            onNone: () => Effect.fail(new CustomerValueUnauthorized()),
-            onSome: (actor) =>
-              grants
-                .has({ accountId: actor.accountId, role: "administrator" })
-                .pipe(
-                  Effect.mapError(
-                    () =>
-                      new CustomerValueUnavailable({ source: "authorization" })
+      return yield* customerValueLoaders(
+        Effect.serviceOption(CurrentAdministrator).pipe(
+          Effect.flatMap(
+            Option.match({
+              onNone: () => Effect.fail(new CustomerValueUnauthorized()),
+              onSome: (actor) =>
+                grants
+                  .has({ accountId: actor.accountId, role: "administrator" })
+                  .pipe(
+                    Effect.mapError(
+                      () =>
+                        new CustomerValueUnavailable({
+                          source: "authorization",
+                        })
+                    ),
+                    Effect.filterOrFail(
+                      Boolean,
+                      () => new CustomerValueUnauthorized()
+                    )
                   ),
-                  Effect.filterOrFail(
-                    Boolean,
-                    () => new CustomerValueUnauthorized()
-                  )
-                ),
-          })
+            })
+          )
         )
       );
-
-      return {
-        profile: Effect.fn("CustomerValueSource.profile")(
-          (input: { readonly customerId: DotyposCustomerId }) =>
-            authorize.pipe(
-              Effect.andThen(() =>
-                discounts.loadCustomerProfile(input).pipe(
-                  Effect.mapError((error) =>
-                    Match.value(error).pipe(
-                      Match.tagsExhaustive({
-                        DiscountAdminNotFoundError: () =>
-                          new CustomerValueMissing({
-                            reason: "customer-not-found",
-                          }),
-                        DotyposRejected: () =>
-                          new CustomerValueRejected({
-                            reason: "source-rejected",
-                          }),
-                        DotyposUnavailable: () =>
-                          new CustomerValueUnavailable({ source: "profile" }),
-                        EffectDrizzleQueryError: () =>
-                          new CustomerValueUnavailable({ source: "profile" }),
-                        SqlError: () =>
-                          new CustomerValueUnavailable({ source: "profile" }),
-                      })
-                    )
-                  )
-                )
-              ),
-              Effect.map(customerProfileWireInput),
-              Effect.flatMap((profile) =>
-                Schema.decodeUnknownEffect(AdministrationCustomerProfile)(
-                  profile
-                ).pipe(
-                  Effect.mapError(
-                    () => new CustomerValueRejected({ reason: "invalid-data" })
-                  )
-                )
-              )
-            )
-        ),
-        activity: Effect.fn("CustomerValueSource.activity")(
-          ({ customerId }: { readonly customerId: DotyposCustomerId }) =>
-            authorize.pipe(
-              Effect.andThen(() =>
-                administration.loadCustomerActivityStrict(customerId).pipe(
-                  Effect.mapError((error) =>
-                    Match.value(error).pipe(
-                      Match.tagsExhaustive({
-                        WorkspaceReservationDetailsMalformedError: () =>
-                          new CustomerValueRejected({ reason: "invalid-data" }),
-                        AdministrationListSourceUnavailableError: () =>
-                          new CustomerValueUnavailable({ source: "activity" }),
-                        EffectDrizzleQueryError: () =>
-                          new CustomerValueUnavailable({ source: "activity" }),
-                      })
-                    )
-                  )
-                )
-              ),
-              Effect.flatMap((activity) =>
-                Schema.decodeUnknownEffect(AdministrationCustomerActivity)(
-                  activity
-                ).pipe(
-                  Effect.mapError(
-                    () => new CustomerValueRejected({ reason: "invalid-data" })
-                  )
-                )
-              )
-            )
-        ),
-      } satisfies ICustomerValueSource;
     })
   );
+
+  /**
+   * Reads for server-side recipient preparation of a delivery an administrator
+   * already authorized. It has no request actor, so never provide it to a
+   * route, action, or other request handler.
+   */
+  static Delivery = Layer.effect(this, customerValueLoaders(Effect.void));
 
   static Live = this.Default.pipe(
     Layer.provide(
@@ -169,6 +191,12 @@ export class CustomerValueSource extends Context.Service<
         DiscountAdministration.Live,
         AdministrationService.Live
       )
+    )
+  );
+
+  static DeliveryLive = this.Delivery.pipe(
+    Layer.provide(
+      Layer.mergeAll(DiscountAdministration.Live, AdministrationService.Live)
     )
   );
 }

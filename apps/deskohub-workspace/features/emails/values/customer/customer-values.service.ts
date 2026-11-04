@@ -147,7 +147,29 @@ export class CustomerValues extends Context.Service<
     })
   );
 
+  /** Administrator reads, for previews of a real customer. */
   static Live = this.Default.pipe(Layer.provide(CustomerValueSource.Live));
+
+  /** Trusted server-side reads for recipient preparation; see `CustomerValueSource.Delivery`. */
+  static DeliveryLive = this.Default.pipe(
+    Layer.provide(CustomerValueSource.DeliveryLive)
+  );
+
+  /** Resolves against a synthetic customer, so a sample reads no customer data. */
+  static Synthetic = (customer: AdministrationCustomerDetail) =>
+    this.Default.pipe(
+      Layer.provide(
+        Layer.succeed(CustomerValueSource, {
+          profile: () =>
+            Effect.fromNullishOr(customer.profile).pipe(
+              Effect.mapError(
+                () => new CustomerValueMissing({ reason: "customer-not-found" })
+              )
+            ),
+          activity: () => Effect.succeed(customer.activity),
+        })
+      )
+    );
 }
 
 const validateDefinitionHistory = (

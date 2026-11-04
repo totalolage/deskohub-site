@@ -25,6 +25,7 @@ import { sensitiveInstant } from "../sensitive-instant";
 import { sensitiveText } from "../sensitive-text";
 import { postgresUuidV7 } from "../uuid-v7";
 import { emailCampaignRecipients } from "./email-campaigns";
+import { quotedSqlList } from "./sql-list";
 
 export const emails = pgTable(
   "emails",
@@ -71,6 +72,28 @@ export type EmailPreparationState =
   | "ready"
   | "skipped"
   | "failed";
+/**
+ * Why a preparation sealed without values; recorded atomically with its
+ * terminal state. Temporary source or issuance failures never seal, so a
+ * later retry can still prepare the recipient.
+ */
+export const emailPreparationOutcomeReasons = {
+  skipped: ["missing-language", "missing-value"],
+  failed: [
+    "customer-rejected",
+    "customer-unauthorized",
+    "discount-unavailable",
+    "invalid-value",
+  ],
+} as const;
+export type EmailPreparationSkipReason =
+  (typeof emailPreparationOutcomeReasons.skipped)[number];
+export type EmailPreparationFailureReason =
+  (typeof emailPreparationOutcomeReasons.failed)[number];
+export type EmailPreparationOutcomeReason =
+  | EmailPreparationSkipReason
+  | EmailPreparationFailureReason;
+
 export type EmailDeliveryOutcome =
   | "pending"
   | "delivering"
@@ -105,6 +128,10 @@ export const emailPreparations = pgTable(
       .notNull()
       .$type<EmailPreparationState>()
       .default("selected"),
+    // Set once with skipped/failed; the value name identifies the definition that ended preparation.
+    outcomeReason:
+      text("outcome_reason").$type<EmailPreparationOutcomeReason>(),
+    outcomeValueName: text("outcome_value_name").$type<EmailValueName>(),
     deliveryOutcome: text("delivery_outcome")
       .notNull()
       .$type<EmailDeliveryOutcome>()
@@ -128,6 +155,10 @@ export const emailPreparations = pgTable(
     check(
       "email_preparations_state_check",
       sql`${t.state} in ('selected', 'preparing', 'ready', 'skipped', 'failed')`
+    ),
+    check(
+      "email_preparations_outcome_check",
+      sql`(case ${t.state} when 'skipped' then ${t.outcomeReason} is not null and ${t.outcomeReason} in (${quotedSqlList(emailPreparationOutcomeReasons.skipped)}) when 'failed' then ${t.outcomeReason} is not null and ${t.outcomeReason} in (${quotedSqlList(emailPreparationOutcomeReasons.failed)}) else ${t.outcomeReason} is null end) and (${t.outcomeValueName} is null or ${t.outcomeReason} is not null)`
     ),
     check(
       "email_preparations_delivery_check",

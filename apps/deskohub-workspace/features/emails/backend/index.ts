@@ -7,5 +7,6 @@ export {
 export {
   type EmailIssuanceParameters,
   EmailPreparationConflict,
+  type EmailPreparationOutcome,
   EmailRecipientPersistence,
 } from "./email-recipient-persistence.service";
