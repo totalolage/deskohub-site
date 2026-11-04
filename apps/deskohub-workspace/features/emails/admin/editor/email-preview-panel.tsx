@@ -19,7 +19,7 @@ export type EmailPreviewValues = Readonly<
 >;
 
 /** One rendered preview: the subject line and the email's HTML. */
-export type EmailPreview = { readonly subject: string; readonly html: string };
+type EmailPreview = { readonly subject: string; readonly html: string };
 
 /**
  * Renders the unsaved draft in one language with sample values. The

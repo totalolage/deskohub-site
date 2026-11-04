@@ -102,7 +102,7 @@ export type EmailScalarValueOption = {
 };
 
 /** The discount fields a text can show. */
-export const emailDiscountScalarFields = ["code", "expiresAt"] as const;
+const emailDiscountScalarFields = ["code", "expiresAt"] as const;
 
 /**
  * Everything a text can show from `definitions`, in definition order: each
