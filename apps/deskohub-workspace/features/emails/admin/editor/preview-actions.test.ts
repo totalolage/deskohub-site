@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import type { EmailDraft } from "@deskohub/workspace-admin-api";
 import { emailDiscountSampleCode } from "@/features/emails/values/discount";
 import { mockAdministrationActionRequest } from "@/shared/testing/workspace-action-request.test-utils";
-import type { EmailPreviewRenderer } from "./email-preview-panel";
 
 const { access } = await mockAdministrationActionRequest({
   administrator: "email-preview",
@@ -12,10 +11,6 @@ const { access } = await mockAdministrationActionRequest({
 });
 
 const { previewEmailDraft } = await import("./preview-actions");
-
-// The editor's preview prop takes the action as it is, so a host page wires
-// the two together without an adapter.
-const _editorRenderer: EmailPreviewRenderer = previewEmailDraft;
 
 const ownImage =
   "https://res.cloudinary.com/cloud/image/upload/v1/email-campaigns/preview/own.jpg";

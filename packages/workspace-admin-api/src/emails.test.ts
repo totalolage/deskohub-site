@@ -234,7 +234,25 @@ describe("reusable email publication", () => {
         fields: [["id"]],
       },
     };
-    expect(() => publish({ ...document, values: [value, value] })).toThrow();
+    // A repeated name a text uses is ambiguous; repeated unused ones drop.
+    expect(() =>
+      publish({
+        ...document,
+        values: [value, value],
+        structure: [
+          ...document.structure,
+          {
+            _tag: "List",
+            id: "visits",
+            value: "visits",
+            fields: [{ field: ["id"], labelKey: "body" }],
+          },
+        ],
+      })
+    ).toThrow();
+    expect(
+      publish({ ...document, values: [value, value] }).values
+    ).toHaveLength(1);
     expect(() =>
       publish({
         ...document,

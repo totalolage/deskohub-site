@@ -253,6 +253,7 @@ export const requiredEmailValueNames = (
     .map((definition) => definition.name);
 };
 
+// Like publication, settings of another component or source kind are dropped.
 const decodeDefinition = Schema.decodeUnknownOption(EmailValueDefinition);
 const decodeComponent = Schema.decodeUnknownOption(EmailBodyComponent);
 
@@ -296,13 +297,31 @@ const publicationCandidate = (draft: EmailDraft): EmailDraft => {
       ),
     }),
     ...(draft.values && {
-      values: draft.values.filter(
-        (definition) =>
-          (definition.name !== undefined && referenced.has(definition.name)) ||
-          Option.isSome(publishableDefinition(definition))
-      ),
+      values: retainedDefinitions(draft.values, referenced),
     }),
   };
+};
+
+/**
+ * The definitions publication keeps, in configured order: every referenced
+ * one, and each complete unused one whose name no earlier kept definition
+ * has. Unused definitions never block: unfinished or repeated ones drop.
+ */
+const retainedDefinitions = (
+  definitions: readonly DraftDefinition[],
+  referenced: ReadonlySet<string>
+): DraftDefinition[] => {
+  const names = new Set<string>();
+  return definitions.filter((definition) => {
+    const name = definition.name;
+    const used = name !== undefined && referenced.has(name);
+    const keep =
+      used ||
+      (Option.isSome(publishableDefinition(definition)) &&
+        !names.has(name ?? ""));
+    if (keep) names.add(name ?? "");
+    return keep;
+  });
 };
 
 const valueNamePattern = /^[a-z][a-z0-9_]{0,63}$/;
@@ -487,7 +506,7 @@ function draftContentProblems(
     const name = definition.name ?? "";
     const used = referenced.has(name);
     const publishable = publishableDefinition(definition);
-    if (!used && Option.isNone(publishable)) continue;
+    if (!used && (Option.isNone(publishable) || kept.has(name))) continue;
     if (kept.has(name)) problems.push(P.ValueNameDuplicate({ name }));
     kept.add(name);
     if (Option.isSome(publishable) && !definitions.has(name))
@@ -730,10 +749,6 @@ export const emailPublicationProblems = (
 ): readonly string[] =>
   emailDraftProblems(document, currentLocales).map(englishEmailDocumentProblem);
 
-const strictEmailDocument = EmailDocument.annotate({
-  parseOptions: { onExcessProperty: "error" },
-});
-
 /**
  * Decodes a stored draft into the version publication creates. Call with the
  * application's current locale registry at every explicit publication.
@@ -744,13 +759,11 @@ export const emailDocumentForPublication = (
   currentLocales: readonly string[]
 ) =>
   EmailDraft.pipe(
-    Schema.decodeTo(strictEmailDocument, {
+    Schema.decodeTo(EmailDocument, {
       // The strict document schema validates the pruned draft's shape next.
       decode: SchemaGetter.transform(
         (draft) =>
-          publicationCandidate(
-            draft
-          ) as unknown as typeof strictEmailDocument.Encoded
+          publicationCandidate(draft) as unknown as typeof EmailDocument.Encoded
       ),
       encode: SchemaGetter.transform(
         (document) => document as unknown as EmailDraft

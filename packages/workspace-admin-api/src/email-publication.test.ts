@@ -110,6 +110,11 @@ const richDocument = {
   ],
 };
 
+const [, firstName] = richDocument.values as [
+  unknown,
+  { readonly name: string; readonly source: Record<string, unknown> },
+];
+
 describe("rich multilingual structure", () => {
   test("publishes shared formatting, lists, dividers, spacers, image layout and offers", () => {
     expect(emailDraftProblems(draft(richDocument), locales)).toEqual([]);
@@ -385,11 +390,89 @@ describe("drafts and publication", () => {
     expect(Result.isFailure(publish(referenced))).toBe(true);
   });
 
+  test("settings of another component or source kind drop at publication", () => {
+    const stray = {
+      ...richDocument,
+      structure: [
+        { ...richDocument.structure[0], width: 320 },
+        ...richDocument.structure.slice(1),
+      ],
+      values: [
+        richDocument.values[0],
+        {
+          ...firstName,
+          source: { ...firstName.source, discountId },
+        },
+      ],
+    };
+    expect(emailDraftProblems(draft(stray), locales)).toEqual([]);
+    const document = Result.getOrThrow(publish(stray));
+    expect(document.structure[0]).not.toHaveProperty("width");
+    expect(document.values[1]?.source).not.toHaveProperty("discountId");
+  });
+
+  test("repeated unused definitions drop at publication; the first stays", () => {
+    const spare = {
+      name: "spare",
+      source: {
+        kind: "customer",
+        path: ["activity", "stats", "favoriteProduct"],
+      },
+    };
+    const repeated = {
+      ...richDocument,
+      values: [
+        ...richDocument.values,
+        spare,
+        { ...spare, fallback: { "en-US": "x" } },
+      ],
+    };
+    expect(emailDraftProblems(draft(repeated), locales)).toEqual([]);
+    const document = Result.getOrThrow(publish(repeated));
+    expect(document.values.map((value) => value.name as string)).toEqual([
+      "offer",
+      "first_name",
+      "spare",
+    ]);
+    expect(document.values[2]?.fallback).toBeUndefined();
+  });
+
   test("publication succeeds exactly when the draft reports no problems", () => {
+    const spare = {
+      name: "spare",
+      source: {
+        kind: "customer",
+        path: ["activity", "stats", "favoriteProduct"],
+      },
+    };
     const cases: unknown[] = [
       {},
       richDocument,
       broken,
+      // Settings of another component or source kind drop at publication.
+      {
+        ...richDocument,
+        structure: [
+          { ...richDocument.structure[0], width: 320 },
+          ...richDocument.structure.slice(1),
+        ],
+      },
+      {
+        ...richDocument,
+        values: [
+          richDocument.values[0],
+          {
+            ...firstName,
+            source: { ...firstName.source, discountId },
+          },
+        ],
+      },
+      // Repeated unused names never block; repeated used names do.
+      { ...richDocument, values: [...richDocument.values, spare, spare] },
+      {
+        ...richDocument,
+        values: [...richDocument.values, richDocument.values[1]],
+      },
       (({ purpose: _, ...rest }) => rest)(richDocument),
       {
         ...richDocument,
