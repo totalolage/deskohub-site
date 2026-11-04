@@ -25,6 +25,8 @@
         "features/emails/values/customer/index.ts",
         // Public discount-value issuance consumed by recipient preparation and delivery cleanup.
         "features/emails/values/discount/index.ts",
+        // Public recipient preparation and samples consumed by delivery and previews.
+        "features/emails/values/preparation/index.ts",
         // Command-line scripts run by path from package.json, CI, or the skills.
         "scripts/*.ts",
         "scripts/account-sticky/run.ts",

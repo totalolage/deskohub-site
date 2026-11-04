@@ -801,6 +801,7 @@
     "features/emails/values/customer/customer-value-source.service.test.ts": 557,
     "features/emails/values/customer/customer-values.service.test.ts": 461,
     "features/emails/values/discount/email-discount-values.postgres.test.ts": 1479,
+    "features/emails/values/preparation/email-recipient-preparation.postgres.test.ts": 1161,
     "features/faq/backend/faq-occupancy.server.test.ts": 259,
     "features/faq/backend/faq-occupancy.test.ts": 136,
     "features/faq/components/faq-page.browser-acceptance.test.ts": 1737,
