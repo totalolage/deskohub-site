@@ -104,7 +104,7 @@ export function EmailValueCustomerSource({
           id={fieldsId}
           tabIndex={-1}
           className="space-y-2 outline-none"
-          {...fieldsProblems.controlProps}
+          aria-describedby={fieldsProblems.describedBy}
         >
           <legend className="font-medium text-sm leading-none">
             {m.emailsEditorValuesFieldsLabel({}, { locale })}
@@ -121,6 +121,7 @@ export function EmailValueCustomerSource({
                     id={checkboxId}
                     className="size-5"
                     checked={chosen.has(pathKey(path))}
+                    {...fieldsProblems.controlProps}
                     onCheckedChange={(checked) =>
                       toggleField(path, checked === true)
                     }

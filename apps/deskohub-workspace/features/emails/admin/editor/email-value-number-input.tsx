@@ -7,10 +7,13 @@ import {
   useEmailFieldProblems,
 } from "./email-editor-context";
 
-/** The whole number an input holds; an empty or unreadable input has none. */
+/**
+ * The whole number an input holds. An empty input, or one holding a fraction
+ * or anything else, has none, so the setting is unset and never rounded.
+ */
 const enteredWholeNumber = (text: string): number | undefined => {
   if (text.trim() === "") return undefined;
-  const number = Math.trunc(Number(text));
+  const number = Number(text);
   return Number.isSafeInteger(number) ? number : undefined;
 };
 

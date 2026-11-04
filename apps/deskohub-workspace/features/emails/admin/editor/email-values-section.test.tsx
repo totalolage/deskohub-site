@@ -427,3 +427,132 @@ test("shows a definition's problems on the control they concern", () => {
     )
   ).toBeNull();
 });
+
+test("keeps focus on a move button when a move reaches either end", async () => {
+  const view = renderSection({
+    values: [
+      { name: "first", source: { kind: "discount" } },
+      { name: "second", source: { kind: "discount" } },
+    ],
+  });
+  const button = (label: string) => view.getByRole("button", { name: label });
+  await act(async () => {
+    const moveDown = button(
+      m.emailsEditorValuesMoveDown({ name: "first" }, { locale })
+    );
+    moveDown.focus();
+    fireEvent.click(moveDown);
+  });
+  expect(values()?.map((definition) => definition.name)).toEqual([
+    "second",
+    "first",
+  ]);
+  expect(document.activeElement).toBe(
+    button(m.emailsEditorValuesMoveUp({ name: "first" }, { locale }))
+  );
+});
+
+test("edits a moved value at its new place and follows a host reset", async () => {
+  const view = renderSection({
+    values: [
+      { name: "first", source: { kind: "discount" } },
+      { name: "second", source: { kind: "discount" } },
+    ],
+  });
+  await act(async () => {
+    fireEvent.click(
+      view.getByRole("button", {
+        name: m.emailsEditorValuesMoveDown({ name: "first" }, { locale }),
+      })
+    );
+  });
+  const firstName = definitionAt(1).getByLabelText(
+    m.emailsEditorValuesNameLabel({}, { locale })
+  ) as HTMLInputElement;
+  expect(firstName.value).toBe("first");
+  await type(firstName, "renamed");
+  expect(values()?.map((definition) => definition.name)).toEqual([
+    "second",
+    "renamed",
+  ]);
+
+  await act(async () => {
+    form.reset({
+      values: [
+        { name: "restored", source: { kind: "discount", validDays: 3 } },
+      ],
+    });
+  });
+  expect(view.getAllByRole("listitem")).toHaveLength(1);
+  expect(
+    (byId(emailEditorFieldIds.valueSetting(0, "name")) as HTMLInputElement)
+      .value
+  ).toBe("restored");
+  expect(
+    (byId(emailEditorFieldIds.valueSetting(0, "validDays")) as HTMLInputElement)
+      .value
+  ).toBe("3");
+});
+
+test("drops a list's sort when its field is no longer included", async () => {
+  renderSection({
+    values: [
+      {
+        name: "revenue",
+        source: {
+          kind: "customer",
+          path: ["activity", "stats", "revenue"],
+          fields: [["value"], ["currency"]],
+          sort: { path: ["value"], direction: "desc" },
+        },
+      },
+    ],
+  });
+  await act(async () => {
+    fireEvent.click(
+      definitionAt(0).getByRole("checkbox", { name: "currency" })
+    );
+  });
+  expect(values()?.[0]?.source?.sort).toEqual({
+    path: ["value"],
+    direction: "desc",
+  });
+  await act(async () => {
+    fireEvent.click(definitionAt(0).getByRole("checkbox", { name: "value" }));
+  });
+  expect(values()?.[0]?.source).toEqual({
+    kind: "customer",
+    path: ["activity", "stats", "revenue"],
+  });
+});
+
+test("leaves a number setting unset rather than rounding a fraction", async () => {
+  renderSection({
+    values: [{ name: "code", source: { kind: "discount", validDays: 7 } }],
+  });
+  const validDays = byId(emailEditorFieldIds.valueSetting(0, "validDays"));
+  await type(validDays, "1.5");
+  expect(values()?.[0]?.source).toEqual({ kind: "discount" });
+  await type(validDays, "30");
+  expect(values()?.[0]?.source).toEqual({ kind: "discount", validDays: 30 });
+});
+
+test("gives a definition without a source a customer field", async () => {
+  const view = renderSection({ values: [{ name: "pending" }] });
+  await act(async () => {
+    fireEvent.click(byId(emailEditorFieldIds.valueSetting(0, "path")));
+  });
+  await search(
+    view.getByRole("combobox", {
+      name: m.emailsEditorValuesPickerSearch({}, { locale }),
+    }),
+    "profile.customer.email"
+  );
+  await pickOption(view, "profile.customer.email");
+  expect(values()).toEqual([
+    {
+      name: "pending",
+      source: { kind: "customer", path: ["profile", "customer", "email"] },
+    },
+  ]);
+});

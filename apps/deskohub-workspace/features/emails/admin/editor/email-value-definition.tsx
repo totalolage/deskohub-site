@@ -2,6 +2,7 @@
 
 import { ArrowDown, ArrowUp, ChevronDown, Trash2 } from "lucide-react";
 import { useId, useRef } from "react";
+import { flushSync } from "react-dom";
 import { useWatch } from "react-hook-form";
 import { m } from "@/features/administration/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
@@ -116,7 +117,8 @@ export function EmailValueDefinition({
         : current;
     });
   const move = (to: number) => {
-    onMove(to);
+    // Commit the move first: it enables and disables the buttons.
+    flushSync(() => onMove(to));
     // A move to either end disables its button; keep focus on the other one.
     if (to === 0) moveDownRef.current?.focus();
     if (to === count - 1) moveUpRef.current?.focus();
@@ -128,7 +130,7 @@ export function EmailValueDefinition({
       tabIndex={-1}
       aria-labelledby={headingId}
       className="space-y-4 rounded-xl border border-navy-blue/10 bg-white p-4 outline-none focus-visible:ring-2 focus-visible:ring-burned-orange"
-      {...containerProblems.controlProps}
+      aria-describedby={containerProblems.describedBy}
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -221,14 +223,14 @@ export function EmailValueDefinition({
         <EmailFieldProblems fieldId={nameId} />
       </div>
 
-      {source?.kind === "customer" && (
+      {source?.kind !== "discount" && (
         <>
           <div className="space-y-1.5">
             <Label htmlFor={pathId}>
               {m.emailsEditorValuesPathLabel({}, { locale })}
             </Label>
             <EmailValueCustomerPicker
-              selectedPath={source.path}
+              selectedPath={source?.path}
               onSelect={choosePath}
               trigger={(open) => (
                 <button
@@ -242,11 +244,11 @@ export function EmailValueDefinition({
                     }),
                     "min-h-9 w-auto min-w-56 max-w-full justify-between rounded-md px-3 py-1.5 text-sm"
                   )}
-                  data-placeholder={source.path?.length ? undefined : ""}
+                  data-placeholder={source?.path?.length ? undefined : ""}
                   {...pathProblems.controlProps}
                 >
                   <span className="min-w-0 truncate font-mono text-[13px]">
-                    {source.path?.length
+                    {source?.path?.length
                       ? emailCustomerFieldPathLabel(source.path)
                       : m.emailsEditorValuesPathChoose({}, { locale })}
                   </span>
@@ -283,30 +285,53 @@ export function EmailValueDefinition({
           {m.emailsEditorValuesFallbackHint({}, { locale })}
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
-          {locales.map((language) => {
-            const fallbackId = `${containerId}-fallback-${language}`;
-            return (
-              <div key={language} className="space-y-1.5">
-                <Label htmlFor={fallbackId}>
-                  {m.emailsEditorValuesFallbackLabel(
-                    { language: emailEditorLanguageName(language, locale) },
-                    { locale }
-                  )}
-                </Label>
-                <Input
-                  id={fallbackId}
-                  lang={language}
-                  className="h-9 min-h-9 rounded-md px-3 py-1.5 text-sm"
-                  value={definition.fallback?.[language] ?? ""}
-                  onChange={(event) =>
-                    changeFallback(language, event.target.value)
-                  }
-                />
-              </div>
-            );
-          })}
+          {locales.map((language) => (
+            <EmailValueFallbackInput
+              key={language}
+              id={`${containerId}-fallback-${language}`}
+              language={language}
+              value={definition.fallback?.[language] ?? ""}
+              onChange={(text) => changeFallback(language, text)}
+            />
+          ))}
         </div>
       </fieldset>
     </li>
+  );
+}
+
+/** The text one language shows in place of the value. */
+function EmailValueFallbackInput({
+  id,
+  language,
+  onChange,
+  value,
+}: {
+  readonly id: string;
+  readonly language: string;
+  readonly onChange: (text: string) => void;
+  readonly value: string;
+}) {
+  const locale = useRouteLocale();
+  const { invalid, controlProps } = useEmailFieldProblems(id);
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>
+        {m.emailsEditorValuesFallbackLabel(
+          { language: emailEditorLanguageName(language, locale) },
+          { locale }
+        )}
+      </Label>
+      <Input
+        id={id}
+        lang={language}
+        className="h-9 min-h-9 rounded-md px-3 py-1.5 text-sm"
+        variant={invalid ? "error" : "default"}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        {...controlProps}
+      />
+      <EmailFieldProblems fieldId={id} />
+    </div>
   );
 }
