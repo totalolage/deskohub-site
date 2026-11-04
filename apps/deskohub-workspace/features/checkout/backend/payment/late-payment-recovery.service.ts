@@ -35,6 +35,7 @@ import {
   temporalInstantToDate,
 } from "@/shared/utils/temporal";
 import { ReservationFulfillment } from "../fulfillment/reservation-fulfillment.service";
+import { DotyposHoldRelease } from "../holds/dotypos-hold-release.service";
 import {
   isReusableHold,
   LatePaymentRecoveryRepository,
@@ -271,6 +272,7 @@ export class LatePaymentRecoveryService extends Context.Service<
       const snapshots = yield* AccountingDocumentSnapshotRepository;
       const availability = yield* WorkspaceAvailabilityService;
       const dotypos = yield* DotyposService;
+      const holdRelease = yield* DotyposHoldRelease;
       const tableAssignments = yield* WorkspaceTableAssignmentService;
       const fulfillment = yield* ReservationFulfillment;
 
@@ -344,19 +346,14 @@ export class LatePaymentRecoveryService extends Context.Service<
             );
           }
         }
+        // releaseOriginalHold read the live status before the claim.
         if (input.status === "NEW") {
-          yield* dotypos
-            .cancelReservation(input.originalDotyposReservationId)
-            .pipe(
-              Effect.tapError(() =>
-                reservations
-                  .markCancellationFailed({
-                    id: reservation.id,
-                    failureCode: "dotypos_cancel_failed",
-                  })
-                  .pipe(Effect.ignore)
-              )
-            );
+          yield* holdRelease.release({
+            reservationId: reservation.id,
+            dotyposReservationId: input.originalDotyposReservationId,
+            liveStatus: "unchecked",
+            failureCode: "dotypos_cancel_failed",
+          });
         }
         yield* reservations
           .markCancelled({

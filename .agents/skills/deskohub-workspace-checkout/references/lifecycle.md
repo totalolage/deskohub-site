@@ -34,6 +34,7 @@ Paths are under `apps/deskohub-workspace/`.
 | Late payment | `features/checkout/backend/payment/late-payment-*.ts`, queue `app/api/queues/workspace/late-payment-recovery` |
 | Refund reconciliation | `features/checkout/backend/payment/payment-refund.service.ts`, cron `app/api/cron/workspace/payment-refunds` |
 | Hold cleanup | `features/checkout/backend/holds/`, queue `app/api/queues/workspace/reservation-hold-cleanup`, daily cron `app/api/cron/workspace/reservation-holds` |
+| Dotypos hold release (live-status rule, cancel, failure marker) shared by supersession, agent rotated holds, hold cleanup, and late payment | `features/checkout/backend/holds/dotypos-hold-release.service.ts` |
 | Paid fulfillment | `features/checkout/backend/fulfillment/reservation-fulfillment.service.ts`, trigger adapters `paid-fulfillment-triggers.ts` for queue `app/api/queues/workspace/paid-fulfillment` and daily cron `app/api/cron/workspace/paid-fulfillment` |
 | Email delivery webhook | `app/api/webhooks/resend/route.ts` composes the ingress `shared/backend/email/delivery-reports.ts` with the handlers `customerAccessDeliveryReports` (`features/checkout/backend/fulfillment/reservation-delivery-reports.ts`; `ReservationFulfillment.recordDelivery` applies) and `campaignDeliveryReports` |
 
@@ -187,6 +188,8 @@ Status-page and cleanup reconciliation go through provider payment finalization.
 ## Hold cleanup
 
 Keep abandoned and expired hold cleanup only in the per-reservation scheduled queue task, with the daily cron as recovery. Don't add inline cleanup, sweeps, or terminal-payment cancellation fallbacks. Supersession cancellation is not cleanup.
+
+Every unpaid-hold cancellation releases its Dotypos hold through `DotyposHoldRelease.release`, while each flow keeps its own claim, local completion, and logs. The caller states the live-status rule: supersession and agent rotated holds use `require_new`; cleanup uses `unchecked` and cancels whatever it claimed without reading the status; late payment reads the status itself before it claims, then uses `unchecked` for `NEW`. Whether cleanup should also require `NEW` is an open developer decision, so don't change a flow's rule as part of a refactor. A hold the step leaves in Dotypos moves the row to `cancellation_failed` with the caller's stored code (`dotypos_cancel_failed` or `checkout_supersession_cancel_failed`); never rename those codes. Administration cancellation is a separate lifecycle with its own claim and codes.
 
 Nexi's card HPP documents no expiry, so queued cleanup applies a 30-minute abandonment window (`features/checkout/provider-order-abandonment.ts`):
 
