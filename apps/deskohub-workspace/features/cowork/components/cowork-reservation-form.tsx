@@ -4,17 +4,12 @@ import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import { AlertTriangle, Clock3, Coffee, Monitor, Wifi } from "lucide-react";
 import Image, { getImageProps } from "next/image";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useId, useMemo, useRef } from "react";
+import { useId } from "react";
 import { preload } from "react-dom";
 import { type Control, useForm } from "react-hook-form";
-import {
-  isCoworkAdvertisedPrice,
-  type PreloadedAdvertisedPrice,
-} from "@/features/checkout/advertised-price";
+import type { PreloadedAdvertisedPrice } from "@/features/checkout/advertised-price";
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
 import {
-  getCoworkTierCoffeeAddon,
-  getCoworkTierWorkstationAddon,
   type WorkspaceCoworkCurrentTier,
   type WorkspaceProductMonitorOption,
   workspaceCoworkCurrentTiers,
@@ -50,21 +45,11 @@ import {
   ReservationTypeInput,
   ReservationTypeOption,
 } from "@/features/reservation/components/reservation-type-input";
-import { useAdvertisedOptionPrices } from "@/features/reservation/components/use-advertised-option-prices";
-import { useAdvertisedPrices } from "@/features/reservation/components/use-advertised-price";
-import { useReservationAvailability } from "@/features/reservation/components/use-reservation-availability";
 import {
   useReservationSelectionUrl,
   useWatchedSelection,
 } from "@/features/reservation/components/use-reservation-selection-url";
-import {
-  coworkTierOptions,
-  findCoworkAdvertisedPriceRequest,
-  getCoworkAddOnAmount,
-  getCoworkCoffeeAdvertisedPriceRequest,
-  getCoworkFormAdvertisedPriceRequests,
-  getCoworkTierOptionPrice,
-} from "@/features/reservation/cowork-advertised-price";
+import { getCoworkTierOptionPrice } from "@/features/reservation/cowork-advertised-price";
 import {
   type CoworkReservationData,
   type CoworkReservationInput,
@@ -74,22 +59,13 @@ import {
   getCoworkReservationDefaultValues,
   type NormalizedCoworkReservationOrder,
 } from "@/features/reservation/cowork-reservation";
-import {
-  evaluateCoworkSelectionAvailability,
-  getCoworkWorkstationNormalization,
-  getCoworkWorkstationOrigin,
-} from "@/features/reservation/cowork-selection-availability";
 import { coworkSelectionLink } from "@/features/reservation/cowork-selection-link";
-import { getReservationCheckoutAvailability } from "@/features/reservation/reservation.i18n";
 import {
   formatReservationInputDate,
   getCurrentWorkspaceDate,
 } from "@/features/reservation/reservation-date";
 import type { ReservationCheckoutCustomerForm } from "@/features/reservation/reservation-existing-customer";
-import {
-  getCoworkAvailabilityQueries,
-  type PreloadedWorkspaceAvailability,
-} from "@/features/reservation/workspace-availability";
+import type { PreloadedWorkspaceAvailability } from "@/features/reservation/workspace-availability";
 import {
   FormControl,
   FormField,
@@ -97,10 +73,12 @@ import {
   FormMessage,
 } from "@/shared/components/ui/form";
 import { Label } from "@/shared/components/ui/label";
-import { formatMoney } from "@/shared/money/money";
 import { cn } from "@/shared/utils";
 import { CoworkOptionalAddonToggle } from "./cowork-optional-addon-toggle";
 import { getCoworkReservationSelectionSummary } from "./cowork-reservation-selection-summary";
+import { useCoworkAddonNormalization } from "./use-cowork-addon-normalization";
+import { useCoworkAdvertisedPrices } from "./use-cowork-advertised-prices";
+import { useCoworkSelectionAvailability } from "./use-cowork-selection-availability";
 
 type CoworkReservationFormProps = {
   initialReservation?: NormalizedCoworkReservationOrder;
@@ -180,205 +158,44 @@ export function CoworkReservationForm({
     reValidateMode: "onChange",
   });
   const selection = useWatchedSelection(coworkSelectionLink, form.control);
-  const {
-    entryTier: selectedTier,
-    date: selectedDate,
-    coffee: selectedCoffee,
-    monitorOption: selectedMonitorOption,
-  } = selection;
+  const { entryTier: selectedTier, monitorOption: selectedMonitorOption } =
+    selection;
   useReservationSelectionUrl(coworkSelectionLink, selection);
-  const showCoffeeAddon = getCoworkTierCoffeeAddon(selectedTier) === "optional";
-  const showWorkstationAddon =
-    getCoworkTierWorkstationAddon(selectedTier) === "optional";
   const allowedMonitorOptions =
     getAllowedMonitorOptionsForCoworkTier(selectedTier);
-  const {
-    range: rangeAvailabilityQuery,
-    selection: availabilityQuery,
-    workstationRequirement: workstationRequirementQuery,
-  } = useMemo(
-    () =>
-      getCoworkAvailabilityQueries({
-        date: selectedDate,
-        entryTier: selectedTier,
-        monitorOption: selectedMonitorOption,
-        today,
-      }),
-    [selectedDate, selectedMonitorOption, selectedTier, today]
-  );
-  const availabilityQueryResult = useReservationAvailability(
-    availabilityQuery,
-    { initialAvailability, replacementToken }
-  );
-  const rangeAvailabilityQueryResult = useReservationAvailability(
-    rangeAvailabilityQuery,
-    { initialAvailability, replacementToken }
-  );
-  const workstationRequirementQueryResult = useReservationAvailability(
-    workstationRequirementQuery,
-    { initialAvailability, replacementToken }
-  );
-  const advertisedPriceRequests = useMemo(() => {
-    if (!selectedDate) {
-      return [];
-    }
-
-    return getCoworkFormAdvertisedPriceRequests({
-      coffee: Boolean(selectedCoffee),
-      date: selectedDate,
+  const { advertisedPrices, coffeePriceLabel, workstationPriceLabel } =
+    useCoworkAdvertisedPrices({
+      initialAdvertisedPrices,
       locale,
+      selection,
       submittedCode,
     });
-  }, [locale, selectedCoffee, selectedDate, submittedCode]);
-  const advertisedPrices = useAdvertisedOptionPrices({
-    family: coworkTierOptions,
-    initialAdvertisedPrices,
-    productLabel: getWorkspaceProductTierTitle(selectedTier, locale),
-    requests: advertisedPriceRequests,
-    selected: findCoworkAdvertisedPriceRequest(advertisedPriceRequests, {
-      entryTier: selectedTier,
-      workstation: selectedMonitorOption !== undefined,
-    }),
+  const selectionAvailability = useCoworkSelectionAvailability({
+    initialAvailability,
+    locale,
+    replacementToken,
+    selection,
+    today,
   });
-  const coffeeAdvertisedPriceRequest = useMemo(
-    () =>
-      selectedDate && selectedTier === "open-space"
-        ? getCoworkCoffeeAdvertisedPriceRequest({
-            date: selectedDate,
-            locale,
-            submittedCode,
-            tier: selectedTier,
-          })
-        : undefined,
-    [locale, selectedDate, selectedTier, submittedCode]
-  );
-  const [coffeeAdvertisedPriceQueryResult] = useAdvertisedPrices(
-    coffeeAdvertisedPriceRequest ? [coffeeAdvertisedPriceRequest] : [],
-    initialAdvertisedPrices
-  );
-  const coffeeAdvertisedPrice =
-    coffeeAdvertisedPriceQueryResult?.data &&
-    isCoworkAdvertisedPrice(coffeeAdvertisedPriceQueryResult.data)
-      ? coffeeAdvertisedPriceQueryResult.data
-      : undefined;
-  const coffeePrice = getCoworkAddOnAmount(coffeeAdvertisedPrice, "coffee");
-  const coffeePriceLabel = coffeePrice
-    ? formatMoney(coffeePrice, locale)
-    : undefined;
-  const workstationAdvertisedPriceRequest = findCoworkAdvertisedPriceRequest(
-    advertisedPriceRequests,
-    { entryTier: "reserved-desk", workstation: true }
-  );
-  const workstationPrice = getCoworkAddOnAmount(
-    workstationAdvertisedPriceRequest &&
-      advertisedPrices.priceOf(workstationAdvertisedPriceRequest),
-    "workstation"
-  );
-  const workstationPriceLabel = workstationPrice
-    ? formatMoney(workstationPrice, locale)
-    : undefined;
-
-  const selectionAvailability = evaluateCoworkSelectionAvailability(
-    {
-      range: rangeAvailabilityQueryResult,
-      selection: availabilityQueryResult,
-      workstationRequirement: workstationRequirementQueryResult,
-    },
-    {
-      date: selectedDate,
-      entryTier: selectedTier,
-      monitorOption: selectedMonitorOption,
-    }
-  );
   const { workstation } = selectionAvailability;
+  const isWorkstationRequired = workstation.requiredMonitorOption !== undefined;
   const {
-    isSelectedMonitorUnavailable,
-    normalizable: isWorkstationNormalizable,
-    requiredMonitorOption,
-  } = workstation;
-  const isWorkstationRequired = requiredMonitorOption !== undefined;
-
-  // Whether the form added the current workstation itself. Customer choices
-  // and tier changes reset it.
-  const autoAddedWorkstation = useRef(false);
-
-  useEffect(() => {
-    if (showWorkstationAddon) {
-      if (
-        form.getValues("entryTier") !== selectedTier ||
-        form.getValues("date") !== selectedDate ||
-        form.getValues("monitorOption") !== selectedMonitorOption
-      ) {
-        return;
-      }
-
-      const normalized = getCoworkWorkstationNormalization(
-        {
-          isSelectedMonitorUnavailable,
-          normalizable: isWorkstationNormalizable,
-          requiredMonitorOption,
-        },
-        {
-          monitorOption: selectedMonitorOption,
-          origin: getCoworkWorkstationOrigin({
-            autoAdded: autoAddedWorkstation.current,
-            monitorOption: selectedMonitorOption,
-          }),
-        }
-      );
-      if (!normalized) return;
-
-      autoAddedWorkstation.current = normalized.origin === "auto-added";
-      form.setValue("monitorOption", normalized.monitorOption, {
-        shouldValidate: true,
-      });
-      return;
-    }
-
-    autoAddedWorkstation.current = false;
-    form.setValue("monitorOption", undefined, { shouldValidate: true });
-    if (!showCoffeeAddon) {
-      form.setValue("coffee", true, { shouldValidate: true });
-    }
-  }, [
-    form,
-    isSelectedMonitorUnavailable,
-    isWorkstationNormalizable,
-    requiredMonitorOption,
-    selectedDate,
-    selectedMonitorOption,
-    selectedTier,
-    showCoffeeAddon,
-    showWorkstationAddon,
-  ]);
+    isCoffeeOptional,
+    isWorkstationOptional,
+    onManualWorkstationSelection,
+    onTierChange,
+  } = useCoworkAddonNormalization({ form, selection, workstation });
 
   return (
     <ReservationCheckoutForm
       checkoutCustomer={checkoutCustomer}
       advertisedPrice={advertisedPrices.checkout}
-      availability={getReservationCheckoutAvailability({
-        isError: selectionAvailability.checkout.isError,
-        isPending: selectionAvailability.checkout.isPending,
-        locale,
-        unavailable: selectionAvailability.checkout.unavailable && {
-          date: selectedDate,
-          dateFallback: m.reservationDatePlaceholder({}, { locale }),
-          reservation: selectionAvailability.checkout.unavailable,
-        },
-      })}
+      availability={selectionAvailability.checkoutAvailability}
       checkoutSessionId={checkoutSessionId}
       form={form}
       getReservation={getCoworkCurrentReservationOrder}
       locale={locale}
-      selectionSummary={getCoworkReservationSelectionSummary(
-        {
-          entryTier: selectedTier,
-          date: selectedDate,
-          coffee: selectedCoffee,
-          monitorOption: selectedMonitorOption,
-        },
-        locale
-      )}
+      selectionSummary={getCoworkReservationSelectionSummary(selection, locale)}
       selection={{
         kind: coworkSelectionLink.kind,
         fromSearchParams: (searchParams) =>
@@ -402,13 +219,7 @@ export function CoworkReservationForm({
                 onBlur={field.onBlur}
                 onChange={(tier) => {
                   field.onChange(tier);
-                  if (getCoworkTierWorkstationAddon(tier) !== "optional") {
-                    autoAddedWorkstation.current = false;
-                    form.setValue("monitorOption", undefined);
-                  }
-                  if (getCoworkTierCoffeeAddon(tier) !== "optional") {
-                    form.setValue("coffee", true);
-                  }
+                  onTierChange(tier);
                 }}
                 presentation="illustrated"
                 value={field.value}
@@ -529,7 +340,7 @@ export function CoworkReservationForm({
           )}
         </div>
 
-        {showCoffeeAddon && (
+        {isCoffeeOptional && (
           <CoworkCoffeeAddonField
             control={form.control}
             locale={locale}
@@ -537,16 +348,14 @@ export function CoworkReservationForm({
           />
         )}
 
-        {showWorkstationAddon && (
+        {isWorkstationOptional && (
           <CoworkWorkstationAddonField
             allowedMonitorOptions={allowedMonitorOptions}
             control={form.control}
             isWorkstationRequired={isWorkstationRequired}
             monitorOptionsAvailabilitySettled={workstation.settled}
             locale={locale}
-            onManualSelection={() => {
-              autoAddedWorkstation.current = false;
-            }}
+            onManualSelection={onManualWorkstationSelection}
             priceLabel={workstationPriceLabel}
             unavailableMonitorOptions={workstation.unavailableMonitorOptions}
           />

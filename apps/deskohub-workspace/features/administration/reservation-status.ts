@@ -169,233 +169,311 @@ export type AdministrationReservationLifecycle = {
   readonly tone: "attention" | "neutral" | "positive";
 };
 
+const isLatePaymentRecoveryInProgress = (input: ReservationStatusInput) =>
+  input.latePaymentRecovery === "pending" ||
+  input.latePaymentRecovery === "processing";
+
+const isLatePaymentRecoveryReview = (input: ReservationStatusInput) =>
+  input.latePaymentRecovery === "review_required";
+
+const isRefundedLatePayment = (input: ReservationStatusInput) =>
+  Boolean(input.latePayment && input.refunded);
+
+const isLatePayment = (input: ReservationStatusInput) =>
+  Boolean(input.latePayment);
+
+const isReservation =
+  (state: ReservationState) => (input: ReservationStatusInput) =>
+    input.reservationState === state;
+
+const isFulfillment =
+  (state: FulfillmentState) => (input: ReservationStatusInput) =>
+    input.fulfillmentState === state;
+
+const isCancelled = isReservation("cancelled");
+
+const isHeld = isReservation("held");
+
+/** The customer gave up on paying after the provider's cutoff, so the hold was released. */
+const isAbandonedAfterProviderCutoff = (input: ReservationStatusInput) =>
+  isCancelled(input) &&
+  input.failureCode === "payment_abandoned_after_provider_cutoff";
+
+/** The payment went through, or confirming the reservation has begun. */
+const isPastPayment = (input: ReservationStatusInput) =>
+  input.paymentState === "paid" ||
+  input.fulfillmentState === "processing" ||
+  input.fulfillmentState === "awaiting_delivery" ||
+  input.reservationState === "confirming" ||
+  input.reservationState === "confirmed";
+
+type ReservationStatusRule<Result> = {
+  readonly applies: (input: ReservationStatusInput) => boolean;
+  readonly result: (input: ReservationStatusInput) => Result;
+};
+
+/** The result of the first rule that applies, in order, else the fallback. */
+const applyFirstRule = <Result>(
+  rules: readonly ReservationStatusRule<Result>[],
+  fallback: () => Result,
+  input: ReservationStatusInput
+) => (rules.find((rule) => rule.applies(input))?.result ?? fallback)(input);
+
+const getLifecycle = (
+  currentStage: AdministrationLifecycleStage,
+  condition: AdministrationLifecycleCondition,
+  reachedStages: readonly AdministrationLifecycleStage[],
+  tone: AdministrationReservationLifecycle["tone"]
+): AdministrationReservationLifecycle => ({
+  currentStage,
+  ...getLifecycleCondition(condition),
+  reachedStages,
+  tone,
+});
+
+/** What a held reservation waits for, by the state of its latest payment. */
+const heldPaymentConditions = {
+  cancelled: "awaiting_another_payment",
+  expired: "payment_expired",
+  failed: "payment_failed",
+  not_started: "awaiting_payment",
+  paid: "payment_received",
+  pending: "awaiting_payment",
+} as const satisfies Record<PaymentState, AdministrationLifecycleCondition>;
+
+const getHeldLifecycle = (input: ReservationStatusInput) =>
+  getLifecycle(
+    "held",
+    heldPaymentConditions[input.paymentState],
+    ["started", "held"],
+    input.paymentState === "failed" || input.paymentState === "expired"
+      ? "attention"
+      : "neutral"
+  );
+
+const lifecycleRules: readonly ReservationStatusRule<AdministrationReservationLifecycle>[] =
+  [
+    {
+      applies: isLatePaymentRecoveryInProgress,
+      result: (input) =>
+        getLifecycle(
+          isCancelled(input) ? "cancelled" : "held",
+          "late_payment_recovery_in_progress",
+          ["started", "held"],
+          "attention"
+        ),
+    },
+    {
+      applies: isLatePaymentRecoveryReview,
+      result: () =>
+        getLifecycle(
+          "cancelled",
+          "late_payment_recovery_review",
+          ["started", "held", "cancelled"],
+          "attention"
+        ),
+    },
+    {
+      applies: (input) => isRefundedLatePayment(input) && isCancelled(input),
+      result: () =>
+        getLifecycle(
+          "cancelled",
+          "late_payment_refunded",
+          ["started", "held", "cancelled"],
+          "neutral"
+        ),
+    },
+    {
+      applies: (input) => isLatePayment(input) && isCancelled(input),
+      result: () =>
+        getLifecycle(
+          "cancelled",
+          "late_payment_refund_required",
+          ["started", "held", "cancelled"],
+          "attention"
+        ),
+    },
+    {
+      applies: isReservation("cancellation_failed"),
+      result: () =>
+        getLifecycle(
+          "cancellation_failed",
+          "cancellation_needs_attention",
+          ["started", "held", "cancellation_failed"],
+          "attention"
+        ),
+    },
+    {
+      applies: isAbandonedAfterProviderCutoff,
+      result: () =>
+        getLifecycle(
+          "cancelled",
+          "payment_abandoned",
+          ["started", "held", "cancelled"],
+          "neutral"
+        ),
+    },
+    {
+      applies: isCancelled,
+      result: () =>
+        getLifecycle(
+          "cancelled",
+          "reservation_cancelled",
+          ["started", "held", "cancelled"],
+          "neutral"
+        ),
+    },
+    {
+      applies: isFulfillment("failed"),
+      result: () =>
+        getLifecycle(
+          "paid",
+          "confirmation_issue",
+          ["started", "held", "paid"],
+          "attention"
+        ),
+    },
+    {
+      applies: (input) => input.dotyposStatus === "CANCELLED",
+      result: () =>
+        getLifecycle(
+          "cancelled",
+          "cancelled_in_dotypos",
+          ["started", "held", "cancelled"],
+          "attention"
+        ),
+    },
+    {
+      applies: isReservation("cancelling"),
+      result: () =>
+        getLifecycle(
+          "cancelling",
+          "cancelling",
+          ["started", "held", "cancelling"],
+          "neutral"
+        ),
+    },
+    {
+      applies: isFulfillment("fulfilled"),
+      result: () =>
+        getLifecycle(
+          "complete",
+          "access_delivered",
+          ["started", "held", "paid", "complete"],
+          "positive"
+        ),
+    },
+    {
+      applies: isReservation("hold_expired"),
+      result: () =>
+        getLifecycle(
+          "hold_expired",
+          "waiting_for_cleanup",
+          ["started", "held", "hold_expired"],
+          "attention"
+        ),
+    },
+    {
+      applies: isPastPayment,
+      result: () =>
+        getLifecycle(
+          "paid",
+          "being_confirmed",
+          ["started", "held", "paid"],
+          "neutral"
+        ),
+    },
+    {
+      applies: (input) =>
+        isHeld(input) &&
+        input.failureCode === "payment_outcome_unconfirmed_before_cleanup",
+      result: () =>
+        getLifecycle(
+          "held",
+          "payment_needs_review",
+          ["started", "held"],
+          "attention"
+        ),
+    },
+    { applies: isHeld, result: getHeldLifecycle },
+  ];
+
 export const getAdministrationReservationLifecycle = (
   input: ReservationStatusInput
-): AdministrationReservationLifecycle => {
-  if (
-    input.latePaymentRecovery === "pending" ||
-    input.latePaymentRecovery === "processing"
-  ) {
-    return {
-      currentStage:
-        input.reservationState === "cancelled" ? "cancelled" : "held",
-      ...getLifecycleCondition("late_payment_recovery_in_progress"),
-      reachedStages: ["started", "held"],
-      tone: "attention",
-    };
-  }
-  if (input.latePaymentRecovery === "review_required") {
-    return {
-      currentStage: "cancelled",
-      ...getLifecycleCondition("late_payment_recovery_review"),
-      reachedStages: ["started", "held", "cancelled"],
-      tone: "attention",
-    };
-  }
-  if (
-    input.latePayment &&
-    input.refunded &&
-    input.reservationState === "cancelled"
-  ) {
-    return {
-      currentStage: "cancelled",
-      ...getLifecycleCondition("late_payment_refunded"),
-      reachedStages: ["started", "held", "cancelled"],
-      tone: "neutral",
-    };
-  }
-  if (input.latePayment && input.reservationState === "cancelled") {
-    return {
-      currentStage: "cancelled",
-      ...getLifecycleCondition("late_payment_refund_required"),
-      reachedStages: ["started", "held", "cancelled"],
-      tone: "attention",
-    };
-  }
-  if (input.reservationState === "cancellation_failed") {
-    return {
-      currentStage: "cancellation_failed",
-      ...getLifecycleCondition("cancellation_needs_attention"),
-      reachedStages: ["started", "held", "cancellation_failed"],
-      tone: "attention",
-    };
-  }
-  if (input.reservationState === "cancelled") {
-    return {
-      currentStage: "cancelled",
-      ...getLifecycleCondition(
-        input.failureCode === "payment_abandoned_after_provider_cutoff"
-          ? "payment_abandoned"
-          : "reservation_cancelled"
-      ),
-      reachedStages: ["started", "held", "cancelled"],
-      tone: "neutral",
-    };
-  }
-  if (input.fulfillmentState === "failed") {
-    return {
-      currentStage: "paid",
-      ...getLifecycleCondition("confirmation_issue"),
-      reachedStages: ["started", "held", "paid"],
-      tone: "attention",
-    };
-  }
-  if (input.dotyposStatus === "CANCELLED") {
-    return {
-      currentStage: "cancelled",
-      ...getLifecycleCondition("cancelled_in_dotypos"),
-      reachedStages: ["started", "held", "cancelled"],
-      tone: "attention",
-    };
-  }
-  if (input.reservationState === "cancelling") {
-    return {
-      currentStage: "cancelling",
-      ...getLifecycleCondition("cancelling"),
-      reachedStages: ["started", "held", "cancelling"],
-      tone: "neutral",
-    };
-  }
-  if (input.fulfillmentState === "fulfilled") {
-    return {
-      currentStage: "complete",
-      ...getLifecycleCondition("access_delivered"),
-      reachedStages: ["started", "held", "paid", "complete"],
-      tone: "positive",
-    };
-  }
-  if (input.reservationState === "hold_expired") {
-    return {
-      currentStage: "hold_expired",
-      ...getLifecycleCondition("waiting_for_cleanup"),
-      reachedStages: ["started", "held", "hold_expired"],
-      tone: "attention",
-    };
-  }
-  if (
-    input.paymentState === "paid" ||
-    input.fulfillmentState === "processing" ||
-    input.fulfillmentState === "awaiting_delivery" ||
-    input.reservationState === "confirming" ||
-    input.reservationState === "confirmed"
-  ) {
-    return {
-      currentStage: "paid",
-      ...getLifecycleCondition("being_confirmed"),
-      reachedStages: ["started", "held", "paid"],
-      tone: "neutral",
-    };
-  }
-  if (input.reservationState === "held") {
-    if (input.failureCode === "payment_outcome_unconfirmed_before_cleanup") {
-      return {
-        currentStage: "held",
-        ...getLifecycleCondition("payment_needs_review"),
-        reachedStages: ["started", "held"],
-        tone: "attention",
-      };
-    }
-    const paymentIssue =
-      input.paymentState === "failed" || input.paymentState === "expired";
-    return {
-      currentStage: "held",
-      ...getLifecycleCondition(
-        (
-          {
-            cancelled: "awaiting_another_payment",
-            expired: "payment_expired",
-            failed: "payment_failed",
-            not_started: "awaiting_payment",
-            paid: "payment_received",
-            pending: "awaiting_payment",
-          } as const
-        )[input.paymentState]
-      ),
-      reachedStages: ["started", "held"],
-      tone: paymentIssue ? "attention" : "neutral",
-    };
-  }
-  return {
-    currentStage: "started",
-    ...getLifecycleCondition("creating_hold"),
-    reachedStages: ["started"],
-    tone: "neutral",
-  };
-};
+): AdministrationReservationLifecycle =>
+  applyFirstRule(
+    lifecycleRules,
+    () => getLifecycle("started", "creating_hold", ["started"], "neutral"),
+    input
+  );
+
+const statusRule = (
+  applies: (input: ReservationStatusInput) => boolean,
+  group: AdministrationStatusGroup,
+  code: AdministrationReservationStatusCode
+): ReservationStatusRule<AdministrationReservationStatus> => ({
+  applies,
+  result: () => getStatus(group, code),
+});
+
+const isHeldWithPayment =
+  (...states: readonly PaymentState[]) =>
+  (input: ReservationStatusInput) =>
+    isHeld(input) && states.includes(input.paymentState);
+
+const statusRules: readonly ReservationStatusRule<AdministrationReservationStatus>[] =
+  [
+    statusRule(
+      isLatePaymentRecoveryInProgress,
+      "attention",
+      "recovering_payment"
+    ),
+    statusRule(isLatePaymentRecoveryReview, "attention", "recovery_review"),
+    statusRule(isRefundedLatePayment, "cancelled", "refunded"),
+    statusRule(isLatePayment, "attention", "refund_required"),
+    statusRule(
+      isReservation("cancellation_failed"),
+      "attention",
+      "cancellation_issue"
+    ),
+    statusRule(isAbandonedAfterProviderCutoff, "cancelled", "abandoned"),
+    statusRule(isCancelled, "cancelled", "cancelled"),
+    statusRule(isFulfillment("failed"), "attention", "confirmation_issue"),
+    statusRule(isReservation("cancelling"), "in_progress", "cancelling"),
+    statusRule(isFulfillment("fulfilled"), "complete", "complete"),
+    statusRule(isReservation("hold_expired"), "cancelled", "expired"),
+    statusRule(
+      isFulfillment("awaiting_delivery"),
+      "in_progress",
+      "delivering_confirmation"
+    ),
+    statusRule(isPastPayment, "in_progress", "confirming"),
+    statusRule(
+      (input) => input.paymentState === "pending",
+      "in_progress",
+      "payment_pending"
+    ),
+    statusRule(isHeldWithPayment("failed"), "in_progress", "payment_failed"),
+    statusRule(isHeldWithPayment("expired"), "in_progress", "payment_expired"),
+    statusRule(
+      isHeldWithPayment("not_started", "cancelled"),
+      "in_progress",
+      "awaiting_payment"
+    ),
+    statusRule(
+      (input) =>
+        input.reservationState === "draft" ||
+        input.reservationState === "creating_hold",
+      "in_progress",
+      "starting"
+    ),
+  ];
 
 export const getAdministrationReservationStatus = (
   input: ReservationStatusInput
-): AdministrationReservationStatus => {
-  if (
-    input.latePaymentRecovery === "pending" ||
-    input.latePaymentRecovery === "processing"
-  ) {
-    return getStatus("attention", "recovering_payment");
-  }
-  if (input.latePaymentRecovery === "review_required") {
-    return getStatus("attention", "recovery_review");
-  }
-  if (input.latePayment && input.refunded) {
-    return getStatus("cancelled", "refunded");
-  }
-  if (input.latePayment) {
-    return getStatus("attention", "refund_required");
-  }
-  if (input.reservationState === "cancellation_failed") {
-    return getStatus("attention", "cancellation_issue");
-  }
-  if (input.reservationState === "cancelled") {
-    return getStatus(
-      "cancelled",
-      input.failureCode === "payment_abandoned_after_provider_cutoff"
-        ? "abandoned"
-        : "cancelled"
-    );
-  }
-  if (input.fulfillmentState === "failed") {
-    return getStatus("attention", "confirmation_issue");
-  }
-  if (input.reservationState === "cancelling") {
-    return getStatus("in_progress", "cancelling");
-  }
-  if (input.fulfillmentState === "fulfilled") {
-    return getStatus("complete", "complete");
-  }
-  if (input.reservationState === "hold_expired") {
-    return getStatus("cancelled", "expired");
-  }
-  if (input.fulfillmentState === "awaiting_delivery") {
-    return getStatus("in_progress", "delivering_confirmation");
-  }
-  if (
-    input.paymentState === "paid" ||
-    input.fulfillmentState === "processing" ||
-    input.reservationState === "confirming" ||
-    input.reservationState === "confirmed"
-  ) {
-    return getStatus("in_progress", "confirming");
-  }
-  if (input.paymentState === "pending") {
-    return getStatus("in_progress", "payment_pending");
-  }
-  if (input.paymentState === "failed" && input.reservationState === "held") {
-    return getStatus("in_progress", "payment_failed");
-  }
-  if (input.paymentState === "expired" && input.reservationState === "held") {
-    return getStatus("in_progress", "payment_expired");
-  }
-  if (
-    input.reservationState === "held" &&
-    (input.paymentState === "not_started" || input.paymentState === "cancelled")
-  ) {
-    return getStatus("in_progress", "awaiting_payment");
-  }
-  if (
-    input.reservationState === "draft" ||
-    input.reservationState === "creating_hold"
-  ) {
-    return getStatus("in_progress", "starting");
-  }
-
-  return getStatus("in_progress", "in_progress");
-};
+): AdministrationReservationStatus =>
+  applyFirstRule(
+    statusRules,
+    () => getStatus("in_progress", "in_progress"),
+    input
+  );

@@ -24,7 +24,9 @@ export const workspaceUseAction = mock(
   <Action, Options>(_action: Action, _options: Options) => undefined
 );
 
+const navigation = await import("next/navigation");
 mock.module("next/navigation", () => ({
+  ...navigation,
   usePathname: workspaceUsePathname,
   useRouter: () => ({
     push: workspaceRouterPush,

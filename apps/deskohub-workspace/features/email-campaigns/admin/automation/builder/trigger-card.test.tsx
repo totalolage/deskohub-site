@@ -32,7 +32,7 @@ mock.module("../../campaign-operations.actions", () => ({
 
 registerWorkspaceComponentTestEnv();
 // React DOM and Radix detect the DOM when they load, so they load after it.
-const { act, cleanup, fireEvent, render } = await import(
+const { act, cleanup, fireEvent, render, within } = await import(
   "@testing-library/react"
 );
 const { TriggerCard } = await import("./trigger-card");
@@ -284,5 +284,26 @@ describe("frequency banner", () => {
     });
 
     expect(view.queryAllByRole("note")).toEqual([]);
+  });
+});
+
+describe("schedule calendar", () => {
+  test("an edit keeps the schedule and previews the edited calendar", () => {
+    const { view, onChange } = renderTrigger(schedule);
+    const hours = view.getByRole("group", {
+      name: m.emailAutomationFlowCalendarPart({ part: "hours" }, { locale }),
+    });
+
+    act(() => {
+      fireEvent.click(within(hours).getByRole("button", { name: "09:00" }));
+    });
+
+    const edited = { weekdays: ["friday"], hours: [8, 9] };
+    expect(onChange.mock.calls).toEqual([
+      [{ _tag: "Schedule", calendar: edited }],
+    ]);
+    expect(schedulePreviews()).toEqual([
+      { expression: edited, usage: "trigger", locale },
+    ]);
   });
 });

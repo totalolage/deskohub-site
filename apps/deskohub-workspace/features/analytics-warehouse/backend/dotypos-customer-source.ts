@@ -632,32 +632,79 @@ const optionalTimestampAt = (micros: string | undefined) =>
 
 const dotyposCustomerAnalyticsOptOutTag = "no-analytics";
 
-/** Projects an identified customer onto the allowlist field by field. */
+/** The allowlisted fields an analytics opt-out withholds. */
+type CustomerProfileFields = Omit<
+  DotyposCustomerSourceRow,
+  "id" | "created" | "versionDate" | "deleted"
+>;
+
+/** An opted-out customer's profile: every withheld field blank. */
+const withheldCustomerProfile: CustomerProfileFields = {
+  firstName: null,
+  lastName: null,
+  companyName: null,
+  email: null,
+  phone: null,
+  addressLine1: null,
+  addressLine2: null,
+  city: null,
+  zip: null,
+  country: null,
+  birthday: null,
+  _discountGroupId: null,
+  points: null,
+  tags: null,
+};
+
+const isAnalyticsOptedOut = (customer: DotyposCustomer) =>
+  customer.tags?.some(
+    (tag) => tag.trim().toLowerCase() === dotyposCustomerAnalyticsOptOutTag
+  ) ?? false;
+
+const customerContactFields = (customer: DotyposCustomer) => ({
+  firstName: customer.firstName ?? null,
+  lastName: customer.lastName ?? null,
+  companyName: customer.companyName ?? null,
+  email: customer.email ?? null,
+  phone: customer.phone ?? null,
+});
+
+const customerAddressFields = (customer: DotyposCustomer) => ({
+  addressLine1: customer.addressLine1 ?? null,
+  addressLine2: customer.addressLine2 ?? null,
+  city: customer.city ?? null,
+  zip: customer.zip ?? null,
+  country: customer.country ?? null,
+});
+
+const customerAccountFields = (customer: DotyposCustomer) => ({
+  birthday: customer.birthday ?? null,
+  _discountGroupId: customer._discountGroupId ?? null,
+  points: customer.points,
+  tags: customer.tags ?? null,
+});
+
+/** The customer's own profile fields, in the row's field order. */
+const customerProfile = (customer: DotyposCustomer): CustomerProfileFields => ({
+  ...customerContactFields(customer),
+  ...customerAddressFields(customer),
+  ...customerAccountFields(customer),
+});
+
+/**
+ * Projects an identified customer onto the allowlist field by field. An
+ * opted-out customer keeps only its identity and timestamps, and reads as
+ * deleted.
+ */
 const toSourceRow = ({
   customer,
   version,
 }: IdentifiedStampedCustomer): DotyposCustomerSourceRow => {
-  const optedOut =
-    customer.tags?.some(
-      (tag) => tag.trim().toLowerCase() === dotyposCustomerAnalyticsOptOutTag
-    ) ?? false;
+  const optedOut = isAnalyticsOptedOut(customer);
 
   return {
     id: customer.id,
-    firstName: optedOut ? null : (customer.firstName ?? null),
-    lastName: optedOut ? null : (customer.lastName ?? null),
-    companyName: optedOut ? null : (customer.companyName ?? null),
-    email: optedOut ? null : (customer.email ?? null),
-    phone: optedOut ? null : (customer.phone ?? null),
-    addressLine1: optedOut ? null : (customer.addressLine1 ?? null),
-    addressLine2: optedOut ? null : (customer.addressLine2 ?? null),
-    city: optedOut ? null : (customer.city ?? null),
-    zip: optedOut ? null : (customer.zip ?? null),
-    country: optedOut ? null : (customer.country ?? null),
-    birthday: optedOut ? null : (customer.birthday ?? null),
-    _discountGroupId: optedOut ? null : (customer._discountGroupId ?? null),
-    points: optedOut ? null : customer.points,
-    tags: optedOut ? null : (customer.tags ?? null),
+    ...(optedOut ? withheldCustomerProfile : customerProfile(customer)),
     created: customer.created ?? null,
     versionDate: Option.match(version, {
       onNone: () => null,

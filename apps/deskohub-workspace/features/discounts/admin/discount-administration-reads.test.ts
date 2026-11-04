@@ -1,9 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import type { Customer as DotyposCustomer } from "@deskohub/dotypos";
+import {
+  type Customer as DotyposCustomer,
+  DotyposService,
+} from "@deskohub/dotypos";
+import { GoogleCalendarService } from "@deskohub/google-calendar";
 import { AdministrationCustomerSearchResult } from "@deskohub/workspace-admin-api";
-import { Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
+import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
+import { makeRecordingWorkspaceDatabase } from "@/shared/testing/workspace-recording-database.test-utils";
 import {
   getAdminDiscountCodeUsage,
+  makeDiscountAdministrationReads,
   toAdminDotyposCustomer,
 } from "./discount-administration-reads";
 
@@ -64,5 +71,68 @@ describe("discount administration customers", () => {
       phone: null,
       discountGroupId: null,
     });
+  });
+});
+
+describe("discount administration customer search", () => {
+  const searchCustomers = async (found: readonly DotyposCustomer[]) => {
+    const recording = await makeRecordingWorkspaceDatabase();
+    const queries: string[] = [];
+    const result = await Effect.gen(function* () {
+      const reads = yield* makeDiscountAdministrationReads;
+      return yield* reads.searchCustomers({ query: "novak" });
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          recording.layer,
+          Layer.mock(GoogleCalendarService, {}),
+          Layer.mock(DotyposService, {
+            searchCustomers: (query) => {
+              queries.push(query);
+              return Effect.succeed([...found]);
+            },
+          }),
+          Layer.mock(CalendarResourceConfig, {
+            salesCalendarId: "sales-calendar" as never,
+          })
+        )
+      ),
+      Effect.runPromise
+    );
+    return { queries, result };
+  };
+  const customer = (id: string, overrides: Partial<DotyposCustomer> = {}) =>
+    ({ id, firstName: "Jana", lastName: id, ...overrides }) as DotyposCustomer;
+
+  test("reports no match when every found customer is deleted or has no ID", async () => {
+    const { queries, result } = await searchCustomers([
+      customer("deleted", { deleted: true }),
+      customer(""),
+    ]);
+
+    expect(queries).toEqual(["novak"]);
+    expect(result).toEqual({ kind: "not-found", customers: [] });
+  });
+
+  test("matches a single active customer", async () => {
+    const { result } = await searchCustomers([
+      customer("deleted", { deleted: true }),
+      customer("active"),
+    ]);
+
+    expect(result.kind).toBe("matched");
+    expect(result.customers.map(({ id }) => id)).toEqual(["active"]);
+  });
+
+  test("lists at most fifty customers of an ambiguous search in Dotypos order", async () => {
+    const found = Array.from({ length: 52 }, (_, index) =>
+      customer(`customer-${index}`)
+    );
+    const { result } = await searchCustomers(found);
+
+    expect(result.kind).toBe("ambiguous");
+    expect(result.customers.map(({ id }) => id)).toEqual(
+      found.slice(0, 50).map(({ id }) => id)
+    );
   });
 });

@@ -36,6 +36,7 @@ import type {
   ProfileCompletionReferralOutcome,
 } from "@/features/account/contracts";
 import {
+  type CustomerAccountAccessError,
   type CustomerAccountId,
   customerAccountUnavailable,
   isCustomerAccountSupportRequired,
@@ -553,7 +554,24 @@ const loadSignedInAccount = Effect.fn(function* (
     );
   }
 
-  const failure = resolution.failure;
+  return yield* loadUnlinkedAccount(
+    user,
+    resolution.failure,
+    rememberedReferralCode,
+    referralsEnabled
+  );
+});
+
+/**
+ * The page for a signed-in account whose resolution found no usable linked
+ * profile: sign-up completion, a support state, or an unavailable account.
+ */
+const loadUnlinkedAccount = Effect.fn(function* (
+  user: CustomerAccountSession,
+  failure: CustomerAccountAccessError,
+  rememberedReferralCode: ReferralCode | undefined,
+  referralsEnabled: boolean
+) {
   if (failure.reason === "unauthenticated") {
     return { kind: "unauthenticated" } as const;
   }

@@ -1,4 +1,5 @@
-import { Effect, Schema, SchemaAST } from "effect";
+import { Effect, Schema } from "effect";
+import { describeEmailCustomerField } from "./email-customer-field-description";
 import { AdministrationCustomerDetail } from "./workspace-admin-api";
 
 const fieldPath = Schema.Array(Schema.NonEmptyString).check(
@@ -84,9 +85,8 @@ export const EmailCustomerField: Schema.Codec<EmailCustomerField> =
   ]);
 
 /** Only schema-declared fields can be selected, including explicit internal fields. */
-export const emailCustomerFieldCatalogue: EmailCustomerField = describeField(
-  AdministrationCustomerDetail.ast
-);
+export const emailCustomerFieldCatalogue: EmailCustomerField =
+  describeEmailCustomerField(AdministrationCustomerDetail.ast);
 
 export class EmailCustomerSelectionInvalid extends Schema.TaggedErrorClass<EmailCustomerSelectionInvalid>()(
   "EmailCustomerSelectionInvalid",
@@ -125,53 +125,77 @@ export const inspectEmailCustomerSelection = (
       path: selection.path,
       reason: "unknown-path",
     });
+  const reason = selectionProblem(selection, selected);
+  return reason
+    ? new EmailCustomerSelectionInvalid({ path: selection.path, reason })
+    : selected;
+};
+
+type SelectionProblem = EmailCustomerSelectionInvalid["reason"];
+
+/** The first rule the selection breaks, checked in a fixed order. */
+const selectionProblem = (
+  selection: EmailCustomerSelection,
+  selected: EmailCustomerField
+): SelectionProblem | undefined => {
   const item = selected.kind === "list" ? selected.element : selected;
-  if (item.kind === "record" && !selection.fields?.length)
-    return new EmailCustomerSelectionInvalid({
-      path: selection.path,
-      reason: "fields-required",
-    });
-  if (selection.fields) {
-    const keys = selection.fields.map((path) => JSON.stringify(path));
-    if (
-      item.kind !== "record" ||
-      new Set(keys).size !== keys.length ||
-      selection.fields.some(
-        (path) => !isEmailCustomerScalar(emailCustomerFieldAtPath(item, path))
-      )
+  return (
+    selectedFieldsProblem(selection.fields, item) ??
+    listOptionsProblem(selection, selected, item) ??
+    (isUnsupportedSelection(selected, item) ? "unsupported" : undefined)
+  );
+};
+
+/** A record needs selected fields; selected fields must be distinct scalars of a record. */
+const selectedFieldsProblem = (
+  fields: EmailCustomerSelection["fields"],
+  item: EmailCustomerField
+): SelectionProblem | undefined => {
+  if (item.kind === "record" && !fields?.length) return "fields-required";
+  if (fields && !areSelectableFields(fields, item)) return "invalid-fields";
+  return undefined;
+};
+
+const areSelectableFields = (
+  fields: NonNullable<EmailCustomerSelection["fields"]>,
+  item: EmailCustomerField
+) => {
+  const keys = fields.map((path) => JSON.stringify(path));
+  return (
+    item.kind === "record" &&
+    new Set(keys).size === keys.length &&
+    fields.every((path) =>
+      isEmailCustomerScalar(emailCustomerFieldAtPath(item, path))
     )
-      return new EmailCustomerSelectionInvalid({
-        path: selection.path,
-        reason: "invalid-fields",
-      });
-  }
+  );
+};
+
+/** Sort and limit apply only to lists, and a list sorts by one of its scalars. */
+const listOptionsProblem = (
+  selection: EmailCustomerSelection,
+  selected: EmailCustomerField,
+  item: EmailCustomerField
+): SelectionProblem | undefined => {
   if (
     (selection.sort || selection.limit !== undefined) &&
     selected.kind !== "list"
   )
-    return new EmailCustomerSelectionInvalid({
-      path: selection.path,
-      reason: "list-only",
-    });
+    return "list-only";
   if (
     selection.sort &&
     !isEmailCustomerScalar(emailCustomerFieldAtPath(item, selection.sort.path))
   )
-    return new EmailCustomerSelectionInvalid({
-      path: selection.path,
-      reason: "invalid-sort",
-    });
-  if (
-    selected.kind === "unsupported" ||
-    item.kind === "unsupported" ||
-    (item.kind !== "record" && !isEmailCustomerScalar(item))
-  )
-    return new EmailCustomerSelectionInvalid({
-      path: selection.path,
-      reason: "unsupported",
-    });
-  return selected;
+    return "invalid-sort";
+  return undefined;
 };
+
+const isUnsupportedSelection = (
+  selected: EmailCustomerField,
+  item: EmailCustomerField
+) =>
+  selected.kind === "unsupported" ||
+  item.kind === "unsupported" ||
+  (item.kind !== "record" && !isEmailCustomerScalar(item));
 
 /** Paths cannot cross list boundaries implicitly or use numeric indexes. */
 export const emailCustomerFieldAtPath = (
@@ -252,138 +276,4 @@ function projectShape(
       })
     ),
   };
-}
-
-function describeField(ast: SchemaAST.AST): EmailCustomerField {
-  const presence: Presence = {
-    nullable: ast._tag === "Null",
-    optional: SchemaAST.isOptional(ast) || ast._tag === "Undefined",
-  };
-  switch (ast._tag) {
-    case "String":
-      return { ...presence, kind: "scalar", type: "string" };
-    case "Number":
-      return { ...presence, kind: "scalar", type: "number" };
-    case "Boolean":
-      return { ...presence, kind: "scalar", type: "boolean" };
-    case "Literal": {
-      const literal = ast.literal;
-      if (typeof literal === "string")
-        return {
-          ...presence,
-          kind: "scalar",
-          type: "string",
-          choices: [literal],
-        };
-      if (typeof literal === "number")
-        return {
-          ...presence,
-          kind: "scalar",
-          type: "number",
-          choices: [literal],
-        };
-      if (typeof literal === "boolean")
-        return {
-          ...presence,
-          kind: "scalar",
-          type: "boolean",
-          choices: [literal],
-        };
-      return { ...presence, kind: "unsupported" };
-    }
-    case "Objects":
-      return {
-        ...presence,
-        kind: "record",
-        fields: Object.fromEntries(
-          ast.propertySignatures
-            .filter((property) => typeof property.name === "string")
-            .map((property) => [property.name, describeField(property.type)])
-        ),
-      };
-    case "Arrays": {
-      const element = ast.rest[0];
-      return element && ast.elements.length === 0 && ast.rest.length === 1
-        ? { ...presence, kind: "list", element: describeField(element) }
-        : { ...presence, kind: "unsupported" };
-    }
-    case "Suspend":
-      return { ...describeField(ast.thunk()), optional: presence.optional };
-    case "Union":
-      return mergeFields(
-        ast.types
-          .filter((type) => type._tag !== "Null" && type._tag !== "Undefined")
-          .map(describeField),
-        {
-          nullable: ast.types.some((type) => type._tag === "Null"),
-          optional:
-            presence.optional ||
-            ast.types.some((type) => type._tag === "Undefined"),
-        }
-      );
-    default:
-      return { ...presence, kind: "unsupported" };
-  }
-}
-
-function mergeFields(
-  fields: readonly EmailCustomerField[],
-  presence: Presence
-): EmailCustomerField {
-  const combined: Presence = {
-    nullable: presence.nullable || fields.some((field) => field.nullable),
-    optional: presence.optional || fields.some((field) => field.optional),
-  };
-  const first = fields[0];
-  if (!first) return { ...combined, kind: "unsupported" };
-  if (fields.length === 1) return { ...first, ...combined };
-  if (fields.every((field) => field.kind === "record")) {
-    const names = new Set(fields.flatMap((field) => Object.keys(field.fields)));
-    return {
-      ...combined,
-      kind: "record",
-      fields: Object.fromEntries(
-        [...names].map((name) => {
-          const variants = fields.flatMap((field) =>
-            field.fields[name] ? [field.fields[name]] : []
-          );
-          return [
-            name,
-            mergeFields(variants, {
-              nullable: false,
-              optional: variants.length < fields.length,
-            }),
-          ];
-        })
-      ),
-    };
-  }
-  if (
-    first.kind === "scalar" &&
-    fields.every(
-      (field) => field.kind === "scalar" && field.type === first.type
-    )
-  ) {
-    const choices = fields.flatMap((field) =>
-      field.kind === "scalar" ? (field.choices ?? []) : []
-    );
-    return {
-      ...combined,
-      kind: "scalar",
-      type: first.type,
-      ...(fields.every((field) => field.kind === "scalar" && field.choices)
-        ? { choices: [...new Set(choices)] }
-        : {}),
-    };
-  }
-  if (fields.every((field) => field.kind === "list"))
-    return {
-      ...combined,
-      kind: "list",
-      element: mergeFields(
-        fields.map((field) => field.element),
-        { nullable: false, optional: false }
-      ),
-    };
-  return { ...combined, kind: "union", alternatives: fields };
 }

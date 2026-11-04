@@ -75,54 +75,79 @@ const nonEmpty = (value: string | null | undefined): string | null => {
   return trimmed ? trimmed : null;
 };
 
-const hasInputBillingData = (
-  billing: NonNullable<CustomerProfileInput["billing"]>
-): boolean =>
+const billingAddressFields = [
+  "addressLine1",
+  "addressLine2",
+  "city",
+  "zip",
+  "country",
+] as const;
+
+const businessBillingFields = ["companyName", "companyId", "vatId"] as const;
+
+type BillingTextField =
+  | (typeof billingAddressFields)[number]
+  | (typeof businessBillingFields)[number];
+
+type BillingInput = CustomerProfileInput["billing"];
+
+type StoredBilling = NonNullable<CustomerProfile["billing"]>;
+
+const businessBillingOf = (billing: BillingInput) =>
+  billing?.kind === "business" ? billing : undefined;
+
+const hasInputBillingData = (billing: NonNullable<BillingInput>): boolean =>
   billing.kind === "business" ||
-  nonEmpty(billing.addressLine1) != null ||
-  nonEmpty(billing.addressLine2) != null ||
-  nonEmpty(billing.city) != null ||
-  nonEmpty(billing.zip) != null ||
-  nonEmpty(billing.country) != null;
+  billingAddressFields.some((field) => nonEmpty(billing[field]) != null);
 
-const toCustomerProfile = (customer: DotyposCustomer): CustomerProfile => {
-  const companyName = nonEmpty(customer.companyName);
-  const companyId = nonEmpty(customer.companyId);
-  const vatId = nonEmpty(customer.vatId);
-  const addressLine1 = nonEmpty(customer.addressLine1);
-  const addressLine2 = nonEmpty(customer.addressLine2);
-  const city = nonEmpty(customer.city);
-  const zip = nonEmpty(customer.zip);
-  const country = nonEmpty(customer.country);
-  const hasBillingData =
-    addressLine1 !== null ||
-    addressLine2 !== null ||
-    city !== null ||
-    zip !== null ||
-    country !== null ||
-    companyName !== null ||
-    companyId !== null ||
-    vatId !== null;
-
-  return {
-    firstName: customer.firstName?.trim() || "",
-    lastName: nonEmpty(customer.lastName),
-    phone: nonEmpty(customer.phone),
-    billing: hasBillingData
-      ? {
-          kind: companyName || companyId || vatId ? "business" : "personal",
-          addressLine1,
-          addressLine2,
-          city,
-          zip,
-          country,
-          companyName,
-          companyId,
-          vatId,
-        }
-      : null,
-  };
+/**
+ * Dotypos clears an optional text field only when it receives an empty
+ * string, so every listed field carries an explicit value.
+ */
+const toProviderText = <Field extends BillingTextField>(
+  fields: readonly Field[],
+  source: Partial<Record<Field, string>> | undefined
+): Record<Field, string> => {
+  const values: Partial<Record<Field, string>> = {};
+  for (const field of fields) values[field] = source?.[field] ?? "";
+  return values as Record<Field, string>;
 };
+
+/** Compares stored and requested values, treating absent and empty alike. */
+const providerTextMatches = <Field extends BillingTextField>(
+  fields: readonly Field[],
+  stored: Record<Field, string | null>,
+  requested: Partial<Record<Field, string>>
+): boolean =>
+  fields.every((field) => (stored[field] ?? "") === (requested[field] ?? ""));
+
+const toCustomerBilling = (customer: DotyposCustomer): StoredBilling | null => {
+  const billing = {
+    addressLine1: nonEmpty(customer.addressLine1),
+    addressLine2: nonEmpty(customer.addressLine2),
+    city: nonEmpty(customer.city),
+    zip: nonEmpty(customer.zip),
+    country: nonEmpty(customer.country),
+    companyName: nonEmpty(customer.companyName),
+    companyId: nonEmpty(customer.companyId),
+    vatId: nonEmpty(customer.vatId),
+  };
+  const isBusiness = businessBillingFields.some(
+    (field) => billing[field] !== null
+  );
+  const hasAddress = billingAddressFields.some(
+    (field) => billing[field] !== null
+  );
+  if (!(isBusiness || hasAddress)) return null;
+  return { kind: isBusiness ? "business" : "personal", ...billing };
+};
+
+const toCustomerProfile = (customer: DotyposCustomer): CustomerProfile => ({
+  firstName: nonEmpty(customer.firstName) ?? "",
+  lastName: nonEmpty(customer.lastName),
+  phone: nonEmpty(customer.phone),
+  billing: toCustomerBilling(customer),
+});
 
 /**
  * Builds the provider PATCH payload so every editable field carries an
@@ -132,24 +157,34 @@ const toCustomerProfile = (customer: DotyposCustomer): CustomerProfile => {
  */
 const toUpdateRequest = (
   input: CustomerProfileInput
-): UpdateCustomerRequest => {
-  const billing = input.billing;
-  const business = billing?.kind === "business" ? billing : undefined;
-  const address = billing ?? null;
+): UpdateCustomerRequest => ({
+  firstName: input.firstName,
+  lastName: input.lastName ?? "",
+  phone: normalizePhoneNumber(input.phone) ?? "",
+  ...toProviderText(billingAddressFields, input.billing),
+  ...toProviderText(businessBillingFields, businessBillingOf(input.billing)),
+});
 
-  return {
-    firstName: input.firstName,
-    lastName: input.lastName ?? "",
-    phone: normalizePhoneNumber(input.phone) ?? "",
-    addressLine1: address?.addressLine1 ?? "",
-    addressLine2: address?.addressLine2 ?? "",
-    city: address?.city ?? "",
-    zip: address?.zip ?? "",
-    country: address?.country ?? "",
-    companyName: business?.companyName ?? "",
-    companyId: business?.companyId ?? "",
-    vatId: business?.vatId ?? "",
-  };
+const contactAppliesInput = (
+  stored: CustomerProfile,
+  input: CustomerProfileInput
+): boolean =>
+  stored.firstName === input.firstName &&
+  (stored.lastName ?? "") === (input.lastName ?? "") &&
+  (stored.phone ?? "") === (normalizePhoneNumber(input.phone) ?? "");
+
+/** Clearing to no billing applies once the stored profile has none either. */
+const billingAppliesInput = (
+  stored: StoredBilling | null,
+  billing: BillingInput
+): boolean => {
+  if (!billing || !hasInputBillingData(billing)) return stored == null;
+  if (stored == null || stored.kind !== billing.kind) return false;
+  return (
+    providerTextMatches(billingAddressFields, stored, billing) &&
+    (billing.kind === "personal" ||
+      providerTextMatches(businessBillingFields, stored, billing))
+  );
 };
 
 /**
@@ -165,36 +200,9 @@ export const customerProfileAppliesInput = (
 ): boolean => {
   if (customer.deleted) return false;
   const stored = toCustomerProfile(customer);
-
-  if (stored.firstName !== input.firstName) return false;
-  if ((stored.lastName ?? "") !== (input.lastName ?? "")) return false;
-  if ((stored.phone ?? "") !== (normalizePhoneNumber(input.phone) ?? "")) {
-    return false;
-  }
-
-  const storedBilling = stored.billing;
-  const billing = input.billing;
-
-  if (!billing || !hasInputBillingData(billing)) {
-    return storedBilling == null;
-  }
-  if (storedBilling == null) return false;
-  if (storedBilling.kind !== billing.kind) return false;
-
-  const addressMatches =
-    (storedBilling.addressLine1 ?? "") === (billing.addressLine1 ?? "") &&
-    (storedBilling.addressLine2 ?? "") === (billing.addressLine2 ?? "") &&
-    (storedBilling.city ?? "") === (billing.city ?? "") &&
-    (storedBilling.zip ?? "") === (billing.zip ?? "") &&
-    (storedBilling.country ?? "") === (billing.country ?? "");
-
-  if (billing.kind === "personal") return addressMatches;
-
   return (
-    addressMatches &&
-    (storedBilling.companyName ?? "") === billing.companyName &&
-    (storedBilling.companyId ?? "") === (billing.companyId ?? "") &&
-    (storedBilling.vatId ?? "") === (billing.vatId ?? "")
+    contactAppliesInput(stored, input) &&
+    billingAppliesInput(stored.billing, input.billing)
   );
 };
 
@@ -208,23 +216,11 @@ const toCustomerDetails = (input: {
   phone: input.profile.phone
     ? normalizePhoneNumber(input.profile.phone) || undefined
     : undefined,
-  addressLine1: input.profile.billing?.addressLine1 ?? "",
-  addressLine2: input.profile.billing?.addressLine2 ?? "",
-  city: input.profile.billing?.city ?? "",
-  zip: input.profile.billing?.zip ?? "",
-  country: input.profile.billing?.country ?? "",
-  companyName:
-    input.profile.billing?.kind === "business"
-      ? input.profile.billing.companyName
-      : "",
-  companyId:
-    input.profile.billing?.kind === "business"
-      ? (input.profile.billing.companyId ?? "")
-      : "",
-  vatId:
-    input.profile.billing?.kind === "business"
-      ? (input.profile.billing.vatId ?? "")
-      : "",
+  ...toProviderText(billingAddressFields, input.profile.billing),
+  ...toProviderText(
+    businessBillingFields,
+    businessBillingOf(input.profile.billing)
+  ),
 });
 
 const expirationPatch = (expired: boolean): UpdateCustomerRequest => ({

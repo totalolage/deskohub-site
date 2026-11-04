@@ -87,6 +87,31 @@ const selectToolbarState = ({ editor }: { editor: Editor | null }) =>
     canRedo: editor.can().redo(),
   };
 
+type ToolbarState = NonNullable<ReturnType<typeof selectToolbarState>>;
+
+/** The toolbar before the editor has started: nothing active or undoable. */
+const idleToolbarState: ToolbarState = {
+  blockType: undefined,
+  bold: false,
+  italic: false,
+  link: false,
+  linkHref: "",
+  bulletList: false,
+  orderedList: false,
+  ctaButton: false,
+  ctaLabel: "",
+  ctaHref: "",
+  image: false,
+  imageAlign: defaultCampaignImageAlignment,
+  imageWidth: undefined,
+  imagePosition: 0,
+  canUndo: false,
+  canRedo: false,
+};
+
+/** A command chain that returns focus to the editor, once there is one. */
+const focusedChain = (editor: Editor | null) => editor?.chain().focus();
+
 /** Formatting controls for the campaign body editor. */
 export function CampaignBodyToolbar({
   editor,
@@ -101,21 +126,7 @@ export function CampaignBodyToolbar({
     selectToolbarState({ editor });
   const [ctaDialogOpen, setCtaDialogOpen] = useState(false);
   const disabled = !editor || !state;
-  const blockType: BlockType = state?.blockType ?? "paragraph";
-  const chain = () => editor?.chain().focus();
-
-  const setBlockType = (next: BlockType) => {
-    if (next === "paragraph") chain()?.setParagraph().run();
-    else chain()?.setHeading({ level: headingLevels[next] }).run();
-  };
-
-  const submitCtaButton = (values: CtaButtonValues) => {
-    if (state?.ctaButton) {
-      chain()?.updateAttributes("ctaButton", values).run();
-    } else {
-      chain()?.insertContent({ type: "ctaButton", attrs: values }).run();
-    }
-  };
+  const toolbar = state ?? idleToolbarState;
 
   return (
     <TooltipProvider>
@@ -125,57 +136,32 @@ export function CampaignBodyToolbar({
         role="toolbar"
       >
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
-          <Select
+          <BlockTypeSelect
+            blockType={toolbar.blockType}
             disabled={disabled}
-            // Inside a form, Radix's hidden native select reports "" once
-            // the value changes before the menu ever opened; applying that
-            // would steal focus into the editor.
-            onValueChange={(value) => {
-              if (value) setBlockType(value as BlockType);
-            }}
-            value={blockType}
-          >
-            <SelectTrigger
-              aria-label={m.emailCampaignsEditorTextStyle({}, { locale })}
-              className="h-8 min-h-8 w-[8.5rem] rounded-md px-2.5 py-1 text-sm"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="paragraph">
-                {m.emailCampaignsEditorParagraph({}, { locale })}
-              </SelectItem>
-              <SelectItem value="h1">
-                {m.emailCampaignsEditorHeading1({}, { locale })}
-              </SelectItem>
-              <SelectItem value="h2">
-                {m.emailCampaignsEditorHeading2({}, { locale })}
-              </SelectItem>
-              <SelectItem value="h3">
-                {m.emailCampaignsEditorHeading3({}, { locale })}
-              </SelectItem>
-            </SelectContent>
-          </Select>
+            editor={editor}
+            locale={locale}
+          />
           <ToolbarSeparator />
           <ToolbarToggle
             disabled={disabled}
             label={m.emailCampaignsEditorBold({}, { locale })}
-            onPressedChange={() => chain()?.toggleBold().run()}
-            pressed={state?.bold ?? false}
+            onPressedChange={() => focusedChain(editor)?.toggleBold().run()}
+            pressed={toolbar.bold}
           >
             <Bold aria-hidden className="size-4" />
           </ToolbarToggle>
           <ToolbarToggle
             disabled={disabled}
             label={m.emailCampaignsEditorItalic({}, { locale })}
-            onPressedChange={() => chain()?.toggleItalic().run()}
-            pressed={state?.italic ?? false}
+            onPressedChange={() => focusedChain(editor)?.toggleItalic().run()}
+            pressed={toolbar.italic}
           >
             <Italic aria-hidden className="size-4" />
           </ToolbarToggle>
           <LinkControl
-            active={state?.link ?? false}
-            currentHref={state?.linkHref ?? ""}
+            active={toolbar.link}
+            currentHref={toolbar.linkHref}
             disabled={disabled}
             editor={editor}
             locale={locale}
@@ -184,16 +170,20 @@ export function CampaignBodyToolbar({
           <ToolbarToggle
             disabled={disabled}
             label={m.emailCampaignsEditorBulletList({}, { locale })}
-            onPressedChange={() => chain()?.toggleBulletList().run()}
-            pressed={state?.bulletList ?? false}
+            onPressedChange={() =>
+              focusedChain(editor)?.toggleBulletList().run()
+            }
+            pressed={toolbar.bulletList}
           >
             <List aria-hidden className="size-4" />
           </ToolbarToggle>
           <ToolbarToggle
             disabled={disabled}
             label={m.emailCampaignsEditorNumberedList({}, { locale })}
-            onPressedChange={() => chain()?.toggleOrderedList().run()}
-            pressed={state?.orderedList ?? false}
+            onPressedChange={() =>
+              focusedChain(editor)?.toggleOrderedList().run()
+            }
+            pressed={toolbar.orderedList}
           >
             <ListOrdered aria-hidden className="size-4" />
           </ToolbarToggle>
@@ -203,26 +193,26 @@ export function CampaignBodyToolbar({
             editor={editor}
             locale={locale}
           />
-          {state?.image && (
+          {toolbar.image && (
             <>
               <ImageAlignmentControl
-                alignment={state.imageAlign}
+                alignment={toolbar.imageAlign}
                 disabled={disabled}
                 editor={editor}
                 locale={locale}
               />
               <ImageWidthControl
                 editor={editor}
-                key={state.imagePosition}
+                key={toolbar.imagePosition}
                 locale={locale}
-                width={state.imageWidth}
+                width={toolbar.imageWidth}
               />
             </>
           )}
           <ToolbarButton
             disabled={disabled}
             label={
-              state?.ctaButton
+              toolbar.ctaButton
                 ? m.emailCampaignsCtaEdit({}, { locale })
                 : m.emailCampaignsCtaInsert({}, { locale })
             }
@@ -233,47 +223,131 @@ export function CampaignBodyToolbar({
           <ToolbarButton
             disabled={disabled}
             label={m.emailCampaignsEditorDivider({}, { locale })}
-            onClick={() => chain()?.setHorizontalRule().run()}
+            onClick={() => focusedChain(editor)?.setHorizontalRule().run()}
           >
             <Minus aria-hidden className="size-4" />
           </ToolbarButton>
         </div>
         <div className="flex shrink-0 items-center gap-1 border-navy-blue/10 border-l pl-1">
           <ToolbarButton
-            disabled={!state?.canUndo}
+            disabled={!toolbar.canUndo}
             label={m.emailCampaignsEditorUndo({}, { locale })}
-            onClick={() => chain()?.undo().run()}
+            onClick={() => focusedChain(editor)?.undo().run()}
           >
             <Undo2 aria-hidden className="size-4" />
           </ToolbarButton>
           <ToolbarButton
-            disabled={!state?.canRedo}
+            disabled={!toolbar.canRedo}
             label={m.emailCampaignsEditorRedo({}, { locale })}
-            onClick={() => chain()?.redo().run()}
+            onClick={() => focusedChain(editor)?.redo().run()}
           >
             <Redo2 aria-hidden className="size-4" />
           </ToolbarButton>
         </div>
       </div>
-      <CtaButtonDialog
-        initialValues={
-          state?.ctaButton
-            ? { label: state.ctaLabel, href: state.ctaHref }
-            : undefined
-        }
+      <CtaButtonToolbarDialog
+        editor={editor}
         onOpenChange={setCtaDialogOpen}
-        onRemove={
-          state?.ctaButton
-            ? () => {
-                setCtaDialogOpen(false);
-                chain()?.deleteSelection().run();
-              }
-            : undefined
-        }
-        onSubmit={submitCtaButton}
         open={ctaDialogOpen}
+        toolbar={toolbar}
       />
     </TooltipProvider>
+  );
+}
+
+/** Switches the current block between a paragraph and the heading levels. */
+function BlockTypeSelect({
+  blockType = "paragraph",
+  disabled,
+  editor,
+  locale,
+}: {
+  readonly blockType: BlockType | undefined;
+  readonly disabled: boolean;
+  readonly editor: Editor | null;
+  readonly locale: Locale;
+}) {
+  const setBlockType = (next: BlockType) => {
+    if (next === "paragraph") focusedChain(editor)?.setParagraph().run();
+    else focusedChain(editor)?.setHeading({ level: headingLevels[next] }).run();
+  };
+
+  return (
+    <Select
+      disabled={disabled}
+      // Inside a form, Radix's hidden native select reports "" once
+      // the value changes before the menu ever opened; applying that
+      // would steal focus into the editor.
+      onValueChange={(value) => {
+        if (value) setBlockType(value as BlockType);
+      }}
+      value={blockType}
+    >
+      <SelectTrigger
+        aria-label={m.emailCampaignsEditorTextStyle({}, { locale })}
+        className="h-8 min-h-8 w-[8.5rem] rounded-md px-2.5 py-1 text-sm"
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="paragraph">
+          {m.emailCampaignsEditorParagraph({}, { locale })}
+        </SelectItem>
+        <SelectItem value="h1">
+          {m.emailCampaignsEditorHeading1({}, { locale })}
+        </SelectItem>
+        <SelectItem value="h2">
+          {m.emailCampaignsEditorHeading2({}, { locale })}
+        </SelectItem>
+        <SelectItem value="h3">
+          {m.emailCampaignsEditorHeading3({}, { locale })}
+        </SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
+
+/** Inserts a CTA button, or edits or removes the selected one. */
+function CtaButtonToolbarDialog({
+  editor,
+  onOpenChange,
+  open,
+  toolbar,
+}: {
+  readonly editor: Editor | null;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly open: boolean;
+  readonly toolbar: ToolbarState;
+}) {
+  const submitCtaButton = (values: CtaButtonValues) => {
+    if (toolbar.ctaButton) {
+      focusedChain(editor)?.updateAttributes("ctaButton", values).run();
+    } else {
+      focusedChain(editor)
+        ?.insertContent({ type: "ctaButton", attrs: values })
+        .run();
+    }
+  };
+
+  return (
+    <CtaButtonDialog
+      initialValues={
+        toolbar.ctaButton
+          ? { label: toolbar.ctaLabel, href: toolbar.ctaHref }
+          : undefined
+      }
+      onOpenChange={onOpenChange}
+      onRemove={
+        toolbar.ctaButton
+          ? () => {
+              onOpenChange(false);
+              focusedChain(editor)?.deleteSelection().run();
+            }
+          : undefined
+      }
+      onSubmit={submitCtaButton}
+      open={open}
+    />
   );
 }
 

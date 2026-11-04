@@ -1,24 +1,21 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
 import { getAccountSignInPath } from "@/features/account/routes";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
-import {
-  clearMarketingManagementAction,
-  confirmMarketingManagementAction,
-  saveMarketingPreferencesAction,
-} from "@/features/legal/actions";
-import {
-  isManagedMarketingState,
-  type MarketingPreferencesRejectionReason,
-  type MarketingPreferencesState,
+import type {
+  MarketingPreferencesRejectionReason,
+  MarketingPreferencesState,
 } from "@/features/legal/marketing-preferences";
 import { Button } from "@/shared/components/ui/button";
 import { PreferenceRow } from "@/shared/components/ui/preference-row";
 import { Switch } from "@/shared/components/ui/switch";
-import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
+import {
+  getMarketingPreferencesFormContext,
+  type MarketingFeedback,
+  type MarketingFeedbackKind,
+  useMarketingPreferencesActions,
+} from "./use-marketing-preferences-actions";
 
 export interface MarketingPreferencesFormProps {
   readonly locale: Locale;
@@ -41,13 +38,48 @@ export function MarketingPreferencesForm({
   );
 }
 
-type MarketingFeedbackKind = "save" | "confirm" | "clear";
+type FeedbackMessage = (locale: Locale) => string;
 
-type MarketingFeedback = {
-  readonly kind: MarketingFeedbackKind;
-  readonly outcome: "success" | "error";
-  readonly reason?: MarketingPreferencesRejectionReason;
-};
+/** A refused request's reason has its own copy, whatever the action. */
+const rejectionReasonMessages = {
+  "invalid-link": (locale) =>
+    m.marketingPreferencesFormInvalidLinkError({}, { locale }),
+  "pending-confirmation-required": (locale) =>
+    m.marketingPreferencesFormConfirmationRequiredError({}, { locale }),
+  "stale-context": (locale) =>
+    m.marketingPreferencesFormStaleContextError({}, { locale }),
+} satisfies Record<MarketingPreferencesRejectionReason, FeedbackMessage>;
+
+const actionOutcomeMessages = {
+  clear: {
+    error: (locale) => m.marketingPreferencesFormClearError({}, { locale }),
+    success: (locale) => m.marketingPreferencesFormCleared({}, { locale }),
+  },
+  confirm: {
+    error: (locale) => m.marketingPreferencesFormConfirmError({}, { locale }),
+    success: (locale) => m.marketingPreferencesFormConfirmed({}, { locale }),
+  },
+  save: {
+    error: (locale) => m.marketingPreferencesFormSaveError({}, { locale }),
+    success: (locale) => m.marketingPreferencesFormSaved({}, { locale }),
+  },
+} satisfies Record<
+  MarketingFeedbackKind,
+  Record<MarketingFeedback["outcome"], FeedbackMessage>
+>;
+
+const getMarketingFeedbackMessage = (
+  { kind, outcome, reason }: MarketingFeedback,
+  locale: Locale
+) =>
+  (reason
+    ? rejectionReasonMessages[reason]
+    : actionOutcomeMessages[kind][outcome])(locale);
+
+const titleId = "marketing-preferences-title";
+const descriptionId = "marketing-preferences-description";
+const switchId = "marketing-preferences-switch";
+const feedbackId = "marketing-preferences-feedback";
 
 function MarketingPreferencesFormContent({
   locale,
@@ -56,152 +88,34 @@ function MarketingPreferencesFormContent({
   readonly locale: Locale;
   readonly state: MarketingPreferencesState;
 }) {
-  const router = useRouter();
-  const managedState = isManagedMarketingState(state) ? state : undefined;
-  const pendingState = state.status === "pending-link" ? state : undefined;
-  const context = "context" in state ? state.context : undefined;
-  const dismissalContext =
-    "dismissalContext" in state ? state.dismissalContext : undefined;
-  const source = managedState?.source;
-  const isLinkManagement = source === "link";
-
-  const serverActive = managedState?.status === "active";
-  // The switch is optimistic: it moves to the target state immediately on
-  // toggle and reverts to the server-authoritative state only when the save
-  // fails.
-  const [checked, setChecked] = useState(serverActive);
-  const [feedback, setFeedback] = useState<MarketingFeedback | null>(null);
-  // The last value the server confirmed. Refreshed server props may lag behind
-  // a successful save, so failures must revert to this, not to the initial
-  // (possibly stale) props.
-  const [confirmedActive, setConfirmedActive] = useState(serverActive);
-  // Refreshed props that report a different server status become the new
-  // confirmed value; unchanged (lagging) props leave local state alone.
-  const [previousServerActive, setPreviousServerActive] =
-    useState(serverActive);
-  if (serverActive !== previousServerActive) {
-    setPreviousServerActive(serverActive);
-    setChecked(serverActive);
-    setConfirmedActive(serverActive);
-  }
-
-  const markSuccess = (kind: MarketingFeedbackKind) => {
-    setFeedback({ kind, outcome: "success" });
-    router.refresh();
-  };
-  // A refused request returns its reason as data; announce the reason's copy.
-  const markError = (
-    kind: MarketingFeedbackKind,
-    reason?: MarketingPreferencesRejectionReason
-  ) => setFeedback({ kind, outcome: "error", reason });
-
-  const revertToConfirmed = () => setChecked(confirmedActive);
-
-  const { executeAsync: executeSave, isExecuting: isSaving } =
-    useWorkspaceAction(saveMarketingPreferencesAction, {
-      onSuccess: ({ data, input }) => {
-        if (data?.status === "rejected") {
-          revertToConfirmed();
-          markError("save", data.reason);
-          return;
-        }
-        setConfirmedActive(input.granted);
-        markSuccess("save");
-      },
-      onError: ({ error }) => {
-        // Transport failures also arrive through useWorkspaceAction's separate
-        // transport callback. Ignore its later hook callback so an older failed
-        // request cannot roll back a newer retry.
-        if (error.thrownError !== undefined) return;
-        revertToConfirmed();
-        markError("save");
-      },
-      onTransportError: () => {
-        revertToConfirmed();
-        markError("save");
-      },
-    });
-  const { executeAsync: executeConfirm, isExecuting: isConfirming } =
-    useWorkspaceAction(confirmMarketingManagementAction, {
-      onSuccess: ({ data }) =>
-        data?.status === "rejected"
-          ? markError("confirm", data.reason)
-          : markSuccess("confirm"),
-      onError: () => markError("confirm"),
-      onTransportError: () => markError("confirm"),
-    });
-  const { executeAsync: executeClear, isExecuting: isClearing } =
-    useWorkspaceAction(clearMarketingManagementAction, {
-      onSuccess: ({ data }) =>
-        data?.status === "rejected"
-          ? markError("clear", data.reason)
-          : markSuccess("clear"),
-      onError: () => markError("clear"),
-      onTransportError: () => markError("clear"),
-    });
-
-  const busy = isSaving || isConfirming || isClearing;
-  const actionInFlight = useRef(false);
-  const releaseActionInFlight = () => {
-    actionInFlight.current = false;
-  };
-
-  const titleId = "marketing-preferences-title";
-  const descriptionId = "marketing-preferences-description";
-  const switchId = "marketing-preferences-switch";
-  const feedbackId = "marketing-preferences-feedback";
-  const hasContextState =
-    context !== undefined || dismissalContext !== undefined;
-  const hasError = feedback?.outcome === "error";
-
-  function feedbackMessage({ kind, outcome, reason }: MarketingFeedback) {
-    if (reason === "invalid-link") {
-      return m.marketingPreferencesFormInvalidLinkError({}, { locale });
-    }
-    if (reason === "stale-context") {
-      return m.marketingPreferencesFormStaleContextError({}, { locale });
-    }
-    if (reason === "pending-confirmation-required") {
-      return m.marketingPreferencesFormConfirmationRequiredError(
-        {},
-        { locale }
-      );
-    }
-    if (kind === "save") {
-      return outcome === "success"
-        ? m.marketingPreferencesFormSaved({}, { locale })
-        : m.marketingPreferencesFormSaveError({}, { locale });
-    }
-    if (kind === "confirm") {
-      return outcome === "success"
-        ? m.marketingPreferencesFormConfirmed({}, { locale })
-        : m.marketingPreferencesFormConfirmError({}, { locale });
-    }
-    return outcome === "success"
-      ? m.marketingPreferencesFormCleared({}, { locale })
-      : m.marketingPreferencesFormClearError({}, { locale });
-  }
+  const formContext = getMarketingPreferencesFormContext(state);
+  const {
+    busy,
+    checked,
+    clearManagement,
+    continueManagement,
+    feedback,
+    handleToggle,
+    isClearing,
+    isConfirming,
+    isSaving,
+  } = useMarketingPreferencesActions({
+    formContext,
+    locale,
+    status: state.status,
+  });
+  const source = formContext.managedState?.source;
 
   // Live-region feedback rendered inside the active surface: the managed
   // row's support column, or the fallback state's root — never as a loose
   // sibling that would break the row-group card rhythm. Both regions stay
   // mounted so assistive technology observes their content changes.
-  const feedbackBlock = hasContextState ? (
-    <div className="text-sm" id={feedbackId}>
-      <div aria-live="polite" role="status">
-        {isSaving && (
-          <p>{m.marketingPreferencesFormSavingStatus({}, { locale })}</p>
-        )}
-        {feedback && !hasError && (
-          <p className="text-emerald-800">{feedbackMessage(feedback)}</p>
-        )}
-      </div>
-      <div role="alert">
-        {feedback && hasError && (
-          <p className="text-red-700">{feedbackMessage(feedback)}</p>
-        )}
-      </div>
-    </div>
+  const feedbackBlock = formContext.hasContextState ? (
+    <MarketingPreferencesFeedback
+      feedback={feedback}
+      isSaving={isSaving}
+      locale={locale}
+    />
   ) : null;
 
   if (state.status === "unavailable") {
@@ -233,7 +147,7 @@ function MarketingPreferencesFormContent({
     );
   }
 
-  if (pendingState) {
+  if (formContext.pendingState) {
     return (
       <div
         className="min-w-0 space-y-3"
@@ -275,90 +189,84 @@ function MarketingPreferencesFormContent({
       title={m.marketingPreferencesFormRowTitle({}, { locale })}
       titleId={titleId}
     >
-      {isLinkManagement && (
-        <>
-          <p className="wrap-break-word text-sm leading-6 text-navy-blue/70">
-            {m.marketingPreferencesFormLinkContext({}, { locale })}
-          </p>
-          <Button
-            className="self-start"
-            disabled={busy}
-            onClick={clearManagement}
-            pending={isClearing}
-            type="button"
-            variant="secondary"
-            wrap
-          >
-            {isClearing
-              ? m.marketingPreferencesFormClearing({}, { locale })
-              : m.marketingPreferencesFormClearAction({}, { locale })}
-          </Button>
-        </>
+      {formContext.isLinkManagement && (
+        <LinkManagementControls
+          busy={busy}
+          isClearing={isClearing}
+          locale={locale}
+          onClear={clearManagement}
+        />
       )}
       {feedbackBlock}
     </PreferenceRow>
   );
+}
 
-  function handleToggle(nextChecked: boolean) {
-    if (
-      managedState === undefined ||
-      context === undefined ||
-      busy ||
-      actionInFlight.current ||
-      nextChecked === checked
-    ) {
-      return;
-    }
+function MarketingPreferencesFeedback({
+  feedback,
+  isSaving,
+  locale,
+}: {
+  readonly feedback: MarketingFeedback | null;
+  readonly isSaving: boolean;
+  readonly locale: Locale;
+}) {
+  const hasError = feedback?.outcome === "error";
 
-    actionInFlight.current = true;
-    setFeedback(null);
-    setChecked(nextChecked);
-    void executeSave({
-      confirmed: true,
-      context,
-      granted: nextChecked,
-      locale,
-      source: managedState.source,
-    }).then(releaseActionInFlight, releaseActionInFlight);
-  }
+  return (
+    <div className="text-sm" id={feedbackId}>
+      <div aria-live="polite" role="status">
+        {isSaving && (
+          <p>{m.marketingPreferencesFormSavingStatus({}, { locale })}</p>
+        )}
+        {feedback && !hasError && (
+          <p className="text-emerald-800">
+            {getMarketingFeedbackMessage(feedback, locale)}
+          </p>
+        )}
+      </div>
+      <div role="alert">
+        {feedback && hasError && (
+          <p className="text-red-700">
+            {getMarketingFeedbackMessage(feedback, locale)}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
 
-  function continueManagement() {
-    if (
-      pendingState === undefined ||
-      context === undefined ||
-      busy ||
-      actionInFlight.current
-    ) {
-      return;
-    }
-
-    actionInFlight.current = true;
-    setFeedback(null);
-    void executeConfirm({ context }).then(
-      releaseActionInFlight,
-      releaseActionInFlight
-    );
-  }
-
-  function clearManagement() {
-    if (
-      dismissalContext === undefined ||
-      (!isLinkManagement &&
-        pendingState === undefined &&
-        state.status !== "invalid-link") ||
-      busy ||
-      actionInFlight.current
-    ) {
-      return;
-    }
-
-    actionInFlight.current = true;
-    setFeedback(null);
-    void executeClear({ context: dismissalContext }).then(
-      releaseActionInFlight,
-      releaseActionInFlight
-    );
-  }
+function LinkManagementControls({
+  busy,
+  isClearing,
+  locale,
+  onClear,
+}: {
+  readonly busy: boolean;
+  readonly isClearing: boolean;
+  readonly locale: Locale;
+  readonly onClear: () => void;
+}) {
+  return (
+    <>
+      <p className="wrap-break-word text-sm leading-6 text-navy-blue/70">
+        {m.marketingPreferencesFormLinkContext({}, { locale })}
+      </p>
+      <Button
+        className="self-start"
+        disabled={busy}
+        onClick={onClear}
+        pending={isClearing}
+        type="button"
+        variant="secondary"
+        wrap
+      >
+        {isClearing
+          ? m.marketingPreferencesFormClearing({}, { locale })
+          : m.marketingPreferencesFormClearAction({}, { locale })}
+      </Button>
+    </>
+  );
 }
 
 function PendingLinkState({

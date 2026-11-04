@@ -1,16 +1,22 @@
 import {
   type DotyposConditionalWriteFailure,
+  type DotyposCustomerId,
   DotyposService,
 } from "@deskohub/dotypos";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer, Result } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
+import type { AccountingDocumentSnapshot } from "@/features/accounting/accounting-document-snapshot";
 import type { InvoiceBuyerAddress } from "@/features/accounting/billing-identity";
+import type { InvoiceBuyer } from "@/features/accounting/invoice";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import type { Locale } from "@/features/i18n";
 import { openReservationAccessToken } from "@/features/reservation/backend/reservation-access-token";
 import type { WorkspaceReservationDetailsMalformedError } from "@/features/reservation/backend/stored-reservation-details.server";
-import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
+import {
+  type WorkspaceReservation,
+  WorkspaceReservationRepository,
+} from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import type { ReservationAccessToken } from "@/features/reservation/reservation-access-token";
 import {
@@ -27,6 +33,7 @@ import {
   InvoiceRepository,
   type InvoiceRepositoryError,
 } from "./invoice.repository";
+import { isFulfilledReservation } from "./invoice-eligibility";
 import {
   type InvoiceEmailDeliveryError,
   InvoiceEmailDeliveryService,
@@ -89,6 +96,35 @@ export class ReservationInvoiceService extends Context.Service<
       const invoices = yield* InvoiceRepository;
       const reservations = yield* WorkspaceReservationRepository;
 
+      /**
+       * A concurrent request may have issued the invoice first: Dotypos must
+       * hold the buyer the issued invoice committed, not this request's.
+       */
+      const syncCommittedInvoiceBuyer = Effect.fnUntraced(function* (input: {
+        readonly dotyposCustomerId: DotyposCustomerId;
+        readonly buyer: InvoiceBuyer;
+      }) {
+        if (input.buyer.kind !== "person") {
+          return yield* new PostOrderInvoiceUnavailableError({
+            message: "The issued invoice buyer does not match the reservation.",
+          });
+        }
+        const committedBillingDetails = getDotyposCustomerBillingDetails({
+          purpose: "personal",
+          invoice: "requested",
+          address: input.buyer.address,
+        });
+        if (!committedBillingDetails) {
+          return yield* new PostOrderInvoiceUnavailableError({
+            message: "The issued invoice billing details are unavailable.",
+          });
+        }
+        yield* dotypos.updateCustomerBillingDetails(
+          input.dotyposCustomerId,
+          committedBillingDetails
+        );
+      });
+
       const getPostOrderContext = Effect.fn(
         "ReservationInvoiceService.getPostOrderContext"
       )(function* (input: PostOrderInvoiceAccess) {
@@ -103,26 +139,14 @@ export class ReservationInvoiceService extends Context.Service<
         }
 
         const reservation = yield* reservations.findById(input.orderId);
-        if (
-          !reservation ||
-          reservation.locale !== input.locale ||
-          reservation.paymentState !== "paid" ||
-          reservation.reservationState !== "confirmed" ||
-          reservation.fulfillmentState !== "fulfilled" ||
-          !reservation.fulfilledAt ||
-          !reservation.activePaymentAttemptId
-        ) {
+        if (!isPostOrderInvoiceableReservation(reservation, input.locale)) {
           return { state: "unavailable" as const };
         }
 
         const paymentAttemptId = reservation.activePaymentAttemptId;
         const source =
           yield* accountingSnapshots.findByPaymentAttemptId(paymentAttemptId);
-        if (
-          !source?.delivery ||
-          source.workspaceReservationId !== reservation.id ||
-          source.dotyposCustomerId !== reservation.dotyposCustomerId
-        ) {
+        if (!isDeliverableReservationSnapshot(source, reservation)) {
           return { state: "unavailable" as const };
         }
 
@@ -131,12 +155,7 @@ export class ReservationInvoiceService extends Context.Service<
         if (invoice) {
           return { state: "issued" as const, paymentAttemptId };
         }
-        if (
-          reservation.reservationPurpose !== "personal" ||
-          source.billing?.purpose !== "personal" ||
-          source.billing.invoice !== "none" ||
-          source.buyer.kind !== "person"
-        ) {
+        if (!isUnrequestedPersonalInvoice(reservation, source)) {
           return { state: "unavailable" as const };
         }
 
@@ -220,27 +239,10 @@ export class ReservationInvoiceService extends Context.Service<
             provenance: { source: "post-order-link" },
           });
           if (!issuance.changed) {
-            const committedBuyer = issuance.invoice.document.buyer;
-            if (committedBuyer.kind !== "person") {
-              return yield* new PostOrderInvoiceUnavailableError({
-                message:
-                  "The issued invoice buyer does not match the reservation.",
-              });
-            }
-            const committedBillingDetails = getDotyposCustomerBillingDetails({
-              purpose: "personal",
-              invoice: "requested",
-              address: committedBuyer.address,
+            yield* syncCommittedInvoiceBuyer({
+              dotyposCustomerId: context.source.dotyposCustomerId,
+              buyer: issuance.invoice.document.buyer,
             });
-            if (!committedBillingDetails) {
-              return yield* new PostOrderInvoiceUnavailableError({
-                message: "The issued invoice billing details are unavailable.",
-              });
-            }
-            yield* dotypos.updateCustomerBillingDetails(
-              context.source.dotyposCustomerId,
-              committedBillingDetails
-            );
           }
           const delivered = yield* invoiceDeliveries
             .deliverByPaymentAttemptId({
@@ -279,6 +281,43 @@ export class ReservationInvoiceService extends Context.Service<
     Layer.orDie
   );
 }
+
+type PostOrderInvoiceableReservation = WorkspaceReservation & {
+  readonly fulfilledAt: Temporal.Instant;
+  readonly activePaymentAttemptId: PaymentAttemptId;
+};
+
+/** A paid, confirmed reservation in the page's locale whose access code was delivered. */
+const isPostOrderInvoiceableReservation = (
+  reservation: WorkspaceReservation | null,
+  locale: Locale
+): reservation is PostOrderInvoiceableReservation =>
+  reservation !== null &&
+  reservation.locale === locale &&
+  reservation.paymentState === "paid" &&
+  reservation.reservationState === "confirmed" &&
+  isFulfilledReservation(reservation) &&
+  Boolean(reservation.activePaymentAttemptId);
+
+/** The reservation's own snapshot, with a frozen recipient to deliver to. */
+const isDeliverableReservationSnapshot = (
+  source: AccountingDocumentSnapshot | null,
+  reservation: WorkspaceReservation
+): source is AccountingDocumentSnapshot =>
+  source !== null &&
+  Boolean(source.delivery) &&
+  source.workspaceReservationId === reservation.id &&
+  source.dotyposCustomerId === reservation.dotyposCustomerId;
+
+/** A personal reservation that asked for no invoice when it was paid. */
+const isUnrequestedPersonalInvoice = (
+  reservation: WorkspaceReservation,
+  source: AccountingDocumentSnapshot
+) =>
+  reservation.reservationPurpose === "personal" &&
+  source.billing?.purpose === "personal" &&
+  source.billing.invoice === "none" &&
+  source.buyer.kind === "person";
 
 function getReservationInvoiceDependencies() {
   const accountingStorage = Layer.merge(

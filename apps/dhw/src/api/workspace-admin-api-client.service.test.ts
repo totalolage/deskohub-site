@@ -23,20 +23,26 @@ import {
   AdministrationStandaloneAccessCodeCreateInput,
   AdministrationStandaloneAccessCodeName,
   AdministrationStoredDiscountId,
+  AdministrationWorkspaceReservationId,
   AutomationFlow,
   AutomationPreviewId,
   AutomationRunId,
   CliAccessToken,
   CliAuthenticationChallenge,
   CliAuthenticationCode,
+  CliAuthenticationRateLimited,
   CliAuthenticationVerifier,
+  CliGrantRejected,
   CliGrantToken,
   CliInputInvalid,
+  CliMutationInProgress,
   CliMutationRejected,
   CliMutationRequestId,
   CliMutationUncertain,
   CliResourceNotFound,
+  CliServiceUnavailable,
   CliSessionId,
+  CliSessionUnauthorized,
   CliStandaloneAccessCodeCleanupRequired,
   CliStandaloneAccessCodeReconciled,
   dhwVersionHeader,
@@ -2016,4 +2022,236 @@ describe("WorkspaceAdminApiClient automations", () => {
       server.stop(true);
     }
   });
+});
+
+describe("WorkspaceAdminApiClient error sanitizing", () => {
+  const accessToken = Redacted.make(
+    Schema.decodeUnknownSync(CliAccessToken)("e".repeat(43))
+  );
+  const requestId = CliMutationRequestId.make(
+    "01980000-0000-7000-8000-000000000044"
+  );
+  const reservationId = Schema.decodeUnknownSync(
+    AdministrationWorkspaceReservationId
+  )("reservation-1");
+  const invoiceInput = Schema.decodeUnknownSync(
+    AdministrationInvoiceCreateInput
+  )({
+    invoiceId: "01980000-0000-7000-8000-000000000045",
+    customer: {
+      kind: "new",
+      details: {
+        kind: "person",
+        email: syntheticEmail,
+        firstName: "Synthetic",
+        lastName: "Customer",
+        address: {
+          line1: "Test street 1",
+          city: "Prague",
+          postalCode: "100 00",
+          country: "CZ",
+        },
+      },
+    },
+    locale: "cs-CZ",
+    serviceDate: "2026-08-10",
+    payment: { status: "due", date: "2026-08-24" },
+    currency: "CZK",
+    lines: [{ description: "Synthetic service", price: "1000" }],
+  });
+  const internalDetails = "internal details";
+
+  /** A clock whose waits pass at once, so retries run out immediately. */
+  const instantClock: Clock.Clock = {
+    currentTimeMillisUnsafe: () => 0,
+    currentTimeMillis: Effect.succeed(0),
+    currentTimeNanosUnsafe: () => 0n,
+    currentTimeNanos: Effect.succeed(0n),
+    sleep: () => Effect.void,
+  };
+
+  type ServerAnswer = () => Response;
+  const refusal =
+    (tag: string, status: number, fields: object = {}): ServerAnswer =>
+    () =>
+      Response.json(
+        { _tag: tag, message: "Synthetic refusal.", ...fields },
+        { status }
+      );
+  const internalFailure: ServerAnswer = () =>
+    new Response(internalDetails, { status: 500 });
+
+  /**
+   * The error a client call fails with when the server always gives
+   * `answer`, and how many requests the call made.
+   */
+  const failureOf = async (
+    answer: ServerAnswer,
+    call: (
+      client: WorkspaceAdminApiClient["Service"]
+    ) => Effect.Effect<unknown, unknown>
+  ) => {
+    let requests = 0;
+    const error = await runClientTest(
+      () => {
+        requests += 1;
+        return answer();
+      },
+      (client) =>
+        call(client).pipe(
+          Effect.flip,
+          Effect.provideService(Clock.Clock, instantClock)
+        )
+    );
+    return { error, requests };
+  };
+
+  const expectSanitized = (error: unknown) => {
+    expect(error).toBeInstanceOf(CliApiRequestError);
+    expect(JSON.stringify(error)).not.toContain(internalDetails);
+  };
+
+  const startAuthentication = (client: WorkspaceAdminApiClient["Service"]) =>
+    client.startAuthentication({
+      challenge: Schema.decodeUnknownSync(CliAuthenticationChallenge)(
+        "h".repeat(43)
+      ),
+      clientName: "test client",
+      cliVersion: "1.0.0",
+      buildTarget: "development",
+    });
+  const exchangeGrant = (client: WorkspaceAdminApiClient["Service"]) =>
+    client.exchangeGrant({
+      code: Schema.decodeUnknownSync(CliAuthenticationCode)("c".repeat(43)),
+      grantToken: Schema.decodeUnknownSync(CliGrantToken)("g".repeat(43)),
+      verifier: Schema.decodeUnknownSync(CliAuthenticationVerifier)(
+        "v".repeat(43)
+      ),
+    });
+  const mutateReservationAccess = (
+    client: WorkspaceAdminApiClient["Service"]
+  ) =>
+    client.mutateReservationAccess(accessToken, requestId, reservationId, {
+      kind: "retry-failed",
+    });
+  const mutateDiscounts = (client: WorkspaceAdminApiClient["Service"]) =>
+    client.mutateDiscounts(accessToken, requestId, {
+      kind: "create-code",
+      code: {
+        code: Schema.decodeUnknownSync(AdministrationCanonicalPromotionCode)(
+          "SUMMER10"
+        ),
+        enabled: true,
+        validFrom: null,
+        validUntil: null,
+        maxUses: null,
+        maxUsesPerCustomer: null,
+      },
+      discount: {
+        kind: "existing",
+        discountId: Schema.decodeUnknownSync(AdministrationStoredDiscountId)(
+          "01980000-0000-7000-8000-000000000001"
+        ),
+      },
+    });
+  const createInvoice = (client: WorkspaceAdminApiClient["Service"]) =>
+    client.createInvoice(accessToken, invoiceInput);
+
+  const inProgress = refusal("CliMutationInProgress", 409, { requestId });
+
+  test.each([
+    [
+      "a rate limit",
+      refusal("CliAuthenticationRateLimited", 429),
+      CliAuthenticationRateLimited,
+    ],
+    [
+      "an unavailable service",
+      refusal("CliServiceUnavailable", 503),
+      CliServiceUnavailable,
+    ],
+  ] as const)(
+    "starting sign-in keeps %s",
+    async (_case, answer, refusalClass) => {
+      const { error, requests } = await failureOf(answer, startAuthentication);
+
+      expect(error).toBeInstanceOf(refusalClass);
+      expect(requests).toBe(1);
+    }
+  );
+
+  test.each([
+    ["a rejected grant", refusal("CliGrantRejected", 401), CliGrantRejected],
+    [
+      "an unavailable service",
+      refusal("CliServiceUnavailable", 503),
+      CliServiceUnavailable,
+    ],
+  ] as const)(
+    "exchanging a grant keeps %s",
+    async (_case, answer, refusalClass) => {
+      const { error, requests } = await failureOf(answer, exchangeGrant);
+
+      expect(error).toBeInstanceOf(refusalClass);
+      expect(requests).toBe(1);
+    }
+  );
+
+  test.each([
+    ["starting sign-in", startAuthentication],
+    ["exchanging a grant", exchangeGrant],
+  ] as const)("%s hides a server failure's details", async (_case, call) => {
+    const { error, requests } = await failureOf(internalFailure, call);
+
+    expectSanitized(error);
+    expect(requests).toBe(1);
+  });
+
+  test.each([
+    ["a reservation access mutation", mutateReservationAccess],
+    ["a discount mutation", mutateDiscounts],
+  ] as const)(
+    "%s keeps the server's refusals, retrying only what may still settle",
+    async (_case, call) => {
+      const answers = [
+        [refusal("CliMutationRejected", 409), CliMutationRejected, 1],
+        [refusal("CliResourceNotFound", 404), CliResourceNotFound, 1],
+        [refusal("CliSessionUnauthorized", 401), CliSessionUnauthorized, 1],
+        [inProgress, CliMutationInProgress, 21],
+        [refusal("CliServiceUnavailable", 503), CliServiceUnavailable, 21],
+      ] as const;
+
+      for (const [answer, refusalClass, attempts] of answers) {
+        const { error, requests } = await failureOf(answer, call);
+
+        expect(error).toBeInstanceOf(refusalClass);
+        expect(requests).toBe(attempts);
+      }
+
+      const { error, requests } = await failureOf(internalFailure, call);
+      expectSanitized(error);
+      expect(requests).toBe(21);
+    }
+  );
+
+  test("invoice creation keeps the server's refusals, retrying only what may still settle", async () => {
+    const answers = [
+      [refusal("CliMutationRejected", 409), CliMutationRejected, 1],
+      [refusal("CliSessionUnauthorized", 401), CliSessionUnauthorized, 1],
+      [inProgress, CliMutationInProgress, 241],
+      [refusal("CliServiceUnavailable", 503), CliServiceUnavailable, 241],
+    ] as const;
+
+    for (const [answer, refusalClass, attempts] of answers) {
+      const { error, requests } = await failureOf(answer, createInvoice);
+
+      expect(error).toBeInstanceOf(refusalClass);
+      expect(requests).toBe(attempts);
+    }
+
+    const { error, requests } = await failureOf(internalFailure, createInvoice);
+    expectSanitized(error);
+    expect(requests).toBe(241);
+    // Invoice creation retries 240 times, so these cases send 725 requests.
+  }, 30_000);
 });

@@ -49,23 +49,54 @@ export function ReservationSubmitSection({
         {m.checkoutContinueButton({}, { locale })}
       </Button>
 
-      {submissionError && (
-        <ReservationError role="alert">{submissionError}</ReservationError>
-      )}
-      {unavailableMessage && !submissionError && (
+      <ReservationSubmitStatus
+        isAvailabilityLoading={isAvailabilityLoading}
+        isPriceLoading={isPriceLoading}
+        locale={locale}
+        onRetryPrice={onRetryPrice}
+        priceError={priceError}
+        retryingPrice={retryingPrice}
+        submissionError={submissionError}
+        unavailableMessage={unavailableMessage}
+      />
+    </div>
+  );
+}
+
+/**
+ * What the submission is waiting on or why it failed. A submission error
+ * replaces the availability and price states.
+ */
+function ReservationSubmitStatus({
+  isAvailabilityLoading,
+  isPriceLoading,
+  locale,
+  onRetryPrice,
+  priceError,
+  retryingPrice,
+  submissionError,
+  unavailableMessage,
+}: Omit<ReservationSubmitSectionProps, "disabled" | "onContinue">) {
+  if (submissionError) {
+    return <ReservationError role="alert">{submissionError}</ReservationError>;
+  }
+
+  return (
+    <>
+      {unavailableMessage && (
         <ReservationError>{unavailableMessage}</ReservationError>
       )}
-      {isAvailabilityLoading && !submissionError && (
+      {isAvailabilityLoading && (
         <ReservationLoadingMessage>
           {m.reservationAvailabilityLoading({}, { locale })}
         </ReservationLoadingMessage>
       )}
-      {isPriceLoading && !submissionError && (
+      {isPriceLoading && (
         <ReservationLoadingMessage>
           {m.reservationAdvertisedPriceLoading({}, { locale })}
         </ReservationLoadingMessage>
       )}
-      {priceError && !submissionError && (
+      {priceError && (
         <div
           className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-burned-orange/20 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-burned-orange-ink"
           role="alert"
@@ -86,7 +117,7 @@ export function ReservationSubmitSection({
           </Button>
         </div>
       )}
-    </div>
+    </>
   );
 }
 

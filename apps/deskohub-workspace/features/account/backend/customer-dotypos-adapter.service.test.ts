@@ -822,6 +822,95 @@ describe("CustomerDotyposAdapter", () => {
       ).toBe(false);
     });
 
+    const storedBusiness = makeCustomer({
+      lastName: "Lovelace",
+      phone: "+420601111222",
+      addressLine1: "Pražská 1",
+      city: "Praha",
+      zip: "11000",
+      country: "CZ",
+      companyName: "Analytical Engines s.r.o.",
+      companyId: "12345678",
+      vatId: "CZ12345678",
+    });
+    const businessInput = {
+      firstName: "Ada",
+      lastName: "Lovelace",
+      phone: "+420 601 111 222",
+      billing: {
+        kind: "business",
+        addressLine1: "Pražská 1",
+        city: "Praha",
+        zip: "11000",
+        country: "CZ",
+        companyName: "Analytical Engines s.r.o.",
+        companyId: "12345678",
+        vatId: "CZ12345678",
+      },
+    } as const;
+
+    test("treats a stored business profile matching every requested field as applied", () => {
+      expect(customerProfileAppliesInput(storedBusiness, businessInput)).toBe(
+        true
+      );
+    });
+
+    test("reports unapplied when any single requested field differs", () => {
+      const variants = [
+        { ...businessInput, firstName: "Augusta" },
+        { ...businessInput, lastName: undefined },
+        { ...businessInput, phone: "+420 602 222 333" },
+        { ...businessInput, billing: { ...businessInput.billing, zip: "" } },
+        {
+          ...businessInput,
+          billing: { ...businessInput.billing, vatId: "CZ87654321" },
+        },
+      ];
+      for (const input of variants) {
+        expect(customerProfileAppliesInput(storedBusiness, input)).toBe(false);
+      }
+    });
+
+    test("reports unapplied when the stored billing kind differs from the input", () => {
+      expect(
+        customerProfileAppliesInput(storedBusiness, {
+          ...businessInput,
+          billing: {
+            kind: "personal",
+            addressLine1: "Pražská 1",
+            city: "Praha",
+            zip: "11000",
+            country: "CZ",
+          },
+        })
+      ).toBe(false);
+    });
+
+    test("compares only the address of personal billing", () => {
+      const storedPersonal = makeCustomer({ addressLine1: "Pražská 1" });
+      expect(
+        customerProfileAppliesInput(storedPersonal, {
+          firstName: "Ada",
+          billing: { kind: "personal", addressLine1: "Pražská 1" },
+        })
+      ).toBe(true);
+      expect(
+        customerProfileAppliesInput(storedPersonal, {
+          firstName: "Ada",
+          billing: { kind: "personal", addressLine1: "Brněnská 2" },
+        })
+      ).toBe(false);
+    });
+
+    test("never treats a deleted profile as applied", () => {
+      expect(
+        customerProfileAppliesInput(
+          { ...storedBusiness, deleted: true },
+          businessInput
+        )
+      ).toBe(false);
+    });
+
     test("reports unapplied when the input adds billing to a profile without billing data", () => {
       expect(
         customerProfileAppliesInput(makeCustomer(), {

@@ -31,7 +31,7 @@ import type { Locale } from "@/features/i18n";
 import type { StoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
 
 /** A synthetic login: the customer account id and its login email. */
-export type FixtureAccount = {
+type FixtureAccount = {
   readonly accountId: CustomerAccountId;
   readonly email: string;
 };

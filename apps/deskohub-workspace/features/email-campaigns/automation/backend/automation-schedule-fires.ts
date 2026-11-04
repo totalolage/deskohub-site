@@ -122,6 +122,135 @@ const advanceNextFire = (input: {
       .pipe(Effect.map(([row]) => Option.fromNullishOr(row?.nextFireAt)))
   );
 
+/** `F` is due at `at` and falls in the automation's accepting window. */
+const isDueFire = (
+  fireAt: Option.Option<Temporal.Instant>,
+  at: Temporal.Instant,
+  acceptingSince: Temporal.Instant
+): fireAt is Option.Some<Temporal.Instant> =>
+  Option.isSome(fireAt) &&
+  Temporal.Instant.compare(fireAt.value, at) <= 0 &&
+  Temporal.Instant.compare(fireAt.value, acceptingSince) >= 0;
+
+/** The entry version of the automation version in force at `F`. */
+const entryVersionAt = Effect.fnUntraced(function* (
+  versions: readonly AutomationVersionActivation[],
+  fireAt: Temporal.Instant
+) {
+  const inForce = versionInForce(versions, fireAt);
+  if (Option.isNone(inForce)) return Option.none();
+  const loaded = yield* loadAutomationEntryVersions([inForce.value.id]);
+  return Option.fromNullishOr(loaded.get(inForce.value.id));
+});
+
+/**
+ * What creating one fire did: nothing (no version, or the fire exists),
+ * entered at once with an empty pool, or entering with its chunks planned.
+ */
+type FireCreation =
+  | { readonly _tag: "Stopped" }
+  | { readonly _tag: "Entered" }
+  | { readonly _tag: "Entering"; readonly chunksPlanned: number };
+
+const stopped: FireCreation = { _tag: "Stopped" };
+
+/** Counts one fire creation into the call's plan. */
+const addFireCreation = (
+  plan: ScheduleFirePlan,
+  creation: FireCreation
+): ScheduleFirePlan => {
+  switch (creation._tag) {
+    case "Stopped":
+      return plan;
+    case "Entered":
+      return {
+        ...plan,
+        firesCreated: plan.firesCreated + 1,
+        firesEntered: plan.firesEntered + 1,
+      };
+    case "Entering":
+      return {
+        ...plan,
+        firesCreated: plan.firesCreated + 1,
+        chunksPlanned: plan.chunksPlanned + creation.chunksPlanned,
+      };
+  }
+};
+
+/**
+ * Inserts the fire `F` for the version in force at it, packing its pool
+ * into chunks: entered at once when the pool is empty, else entering with
+ * one fire-chunk unit per chunk.
+ */
+const createFire = Effect.fnUntraced(function* (input: {
+  readonly campaignId: CampaignId;
+  readonly fireAt: Temporal.Instant;
+  readonly at: Temporal.Instant;
+  readonly versions: readonly AutomationVersionActivation[];
+}) {
+  const { campaignId, fireAt: F, at } = input;
+  const { db } = yield* WorkspaceTransaction;
+  const facts = yield* AutomationEvaluationFacts;
+  const inForce = yield* entryVersionAt(input.versions, F);
+  if (Option.isNone(inForce)) return stopped;
+  const version = inForce.value;
+
+  const pool = yield* listCampaignCandidateIds(db, version.purpose);
+  const { reads } = yield* facts
+    .plan({
+      filters: {
+        entryAudience: version.audienceFilter,
+        reachability: true,
+      },
+      context: audienceEvaluationAt(at),
+    })
+    .pipe(Effect.orDie);
+  const chunks = yield* facts.pack({ reads, customers: pool });
+  const inserted = yield* db
+    .insert(fires)
+    .values({
+      campaignId,
+      fireAt: F,
+      versionId: version.id,
+      status: chunks.length === 0 ? "entered" : "entering",
+      chunksTotal: chunks.length,
+      // The engine's instant, as `settled_at`, so health's fire duration
+      // compares one clock.
+      createdAt: at,
+      settledAt: chunks.length === 0 ? at : null,
+    })
+    .onConflictDoNothing()
+    .returning({ fireAt: fires.fireAt });
+  if (inserted.length === 0) {
+    // `next_fire_at` already passed F once; never enter a fire twice.
+    yield* Effect.logWarning("Schedule fire already exists", {
+      campaignId,
+      fireAt: temporalInstantToIsoString(F),
+    });
+    return stopped;
+  }
+  if (chunks.length === 0) return { _tag: "Entered" } satisfies FireCreation;
+  const planned = yield* planAutomationUnits(
+    chunks.map(
+      (chunk, index): PlannedAutomationUnit => ({
+        kind: "fire-chunk",
+        key: `fire-chunk:${campaignId}:${temporalInstantToIsoString(F)}:${index}`,
+        campaignId,
+        subject: Schema.encodeSync(fireChunkSubjectSchema)({
+          fireAt: F,
+          customerIds: [...chunk.customers],
+        }),
+        requestCost: chunk.requestCost,
+      })
+    ),
+    at
+  );
+  return {
+    _tag: "Entering",
+    chunksPlanned: planned.written.length,
+  } satisfies FireCreation;
+});
+
 /**
  * Creates the automation's due fires in the caller's transaction (§5.7):
  * while `next_fire_at` is due and no fire is entering, it inserts the fire
@@ -134,7 +263,6 @@ const advanceNextFire = (input: {
 export const planNextFire = Effect.fn("automationSchedules.planNextFire")(
   function* (campaignId: CampaignId, at: Temporal.Instant) {
     const { db } = yield* WorkspaceTransaction;
-    const facts = yield* AutomationEvaluationFacts;
     yield* lockScheduleFireEntry(campaignId);
     const state = yield* lockAutomationForEngine(campaignId);
     if (state.status !== "active" || state.acceptingSince === null) {
@@ -153,89 +281,17 @@ export const planNextFire = Effect.fn("automationSchedules.planNextFire")(
     let plan = noFires;
     let fireAt = Option.fromNullishOr(state.nextFireAt);
     for (let created = 0; created < maxFiresPerCall; created++) {
-      if (
-        Option.isNone(fireAt) ||
-        Temporal.Instant.compare(fireAt.value, at) > 0 ||
-        Temporal.Instant.compare(fireAt.value, acceptingSince) < 0
-      ) {
-        break;
-      }
+      if (!isDueFire(fireAt, at, acceptingSince)) break;
       const F = fireAt.value;
-      const inForce = versionInForce(versions, F);
-      if (Option.isNone(inForce)) break;
-      const version = (yield* loadAutomationEntryVersions([
-        inForce.value.id,
-      ])).get(inForce.value.id);
-      if (version === undefined) break;
-
-      const pool = yield* listCampaignCandidateIds(db, version.purpose);
-      const { reads } = yield* facts
-        .plan({
-          filters: {
-            entryAudience: version.audienceFilter,
-            reachability: true,
-          },
-          context: audienceEvaluationAt(at),
-        })
-        .pipe(Effect.orDie);
-      const chunks = yield* facts.pack({ reads, customers: pool });
-      const inserted = yield* db
-        .insert(fires)
-        .values({
-          campaignId,
-          fireAt: F,
-          versionId: version.id,
-          status: chunks.length === 0 ? "entered" : "entering",
-          chunksTotal: chunks.length,
-          // The engine's instant, as `settled_at`, so health's fire duration
-          // compares one clock.
-          createdAt: at,
-          settledAt: chunks.length === 0 ? at : null,
-        })
-        .onConflictDoNothing()
-        .returning({ fireAt: fires.fireAt });
-      if (inserted.length === 0) {
-        // `next_fire_at` already passed F once; never enter a fire twice.
-        yield* Effect.logWarning("Schedule fire already exists", {
-          campaignId,
-          fireAt: temporalInstantToIsoString(F),
-        });
-        break;
-      }
-      if (chunks.length > 0) {
-        const planned = yield* planAutomationUnits(
-          chunks.map(
-            (chunk, index): PlannedAutomationUnit => ({
-              kind: "fire-chunk",
-              key: `fire-chunk:${campaignId}:${temporalInstantToIsoString(F)}:${index}`,
-              campaignId,
-              subject: Schema.encodeSync(fireChunkSubjectSchema)({
-                fireAt: F,
-                customerIds: [...chunk.customers],
-              }),
-              requestCost: chunk.requestCost,
-            })
-          ),
-          at
-        );
-        plan = {
-          ...plan,
-          firesCreated: plan.firesCreated + 1,
-          chunksPlanned: plan.chunksPlanned + planned.written.length,
-        };
-        break;
-      }
-      plan = {
-        ...plan,
-        firesCreated: plan.firesCreated + 1,
-        firesEntered: plan.firesEntered + 1,
-      };
-      const next = yield* advanceNextFire({
+      const creation = yield* createFire({
         campaignId,
         fireAt: F,
+        at,
         versions,
       });
-      fireAt = next;
+      plan = addFireCreation(plan, creation);
+      if (creation._tag !== "Entered") break;
+      fireAt = yield* advanceNextFire({ campaignId, fireAt: F, versions });
     }
     return plan;
   }

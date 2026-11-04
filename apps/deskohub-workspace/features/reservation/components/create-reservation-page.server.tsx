@@ -361,6 +361,46 @@ async function ReservationPageRequestContent<
 }
 
 /**
+ * The selection the form opens on: the family's restored values, its
+ * replacement content, or the link's selection.
+ */
+const loadReservationPageSelection = Effect.fnUntraced(function* <
+  Kind extends ReservationKind,
+  PageData,
+  Values extends ReservationCheckoutFormValues,
+>(
+  definition: ReservationPageDefinition<Kind, PageData, Values>,
+  request: ReservationPageRequest<Kind, PageData>,
+  scope: ReservationPageScope<PageData>
+) {
+  const { restoredReservation } = request;
+  const restoration = restoredReservation
+    ? definition.restore(
+        restoredReservation.reservation,
+        request.searchParams,
+        scope
+      )
+    : undefined;
+  if (restoration?.kind === "replaced" || restoration?.kind === "restored") {
+    return restoration;
+  }
+
+  // A signed reservation decides the page even once it can't reopen the
+  // form: its fallback reads no public query values, neither a selection
+  // nor a contact mode.
+  const values = yield* definition.read(
+    restoredReservation ? {} : request.searchParams,
+    {
+      ...scope,
+      lastReservation: getCheckoutAccountLastReservation(
+        request.checkoutAccount
+      ),
+    }
+  );
+  return { kind: "read", values } as const;
+});
+
+/**
  * The reservation page recipe: the family's selection, restored or read from
  * the link, the contact-details step, both preloads side by side, and the
  * offerings priced from them.
@@ -381,34 +421,18 @@ const loadReservationPageContent = Effect.fn("reservationPage.loadContent")(
       submittedCode: request.submittedCode,
       today: getCurrentWorkspaceDate().toString(),
     };
-    const restoration =
-      restoredReservation &&
-      definition.restore(
-        restoredReservation.reservation,
-        request.searchParams,
-        scope
-      );
-    if (restoration?.kind === "replaced") {
+    const selection = yield* loadReservationPageSelection(
+      definition,
+      request,
+      scope
+    );
+    if (selection.kind === "replaced") {
       return {
         kind: "replaced",
-        content: restoration.content,
+        content: selection.content,
       } satisfies ReservationPageContent<PageData, Values>;
     }
 
-    // A signed reservation decides the page even once it can't reopen the
-    // form: its fallback reads no public query values, neither a selection
-    // nor a contact mode.
-    const values =
-      restoration?.kind === "restored"
-        ? restoration.values
-        : yield* definition.read(
-            restoredReservation ? {} : request.searchParams,
-            {
-              ...scope,
-              lastReservation:
-                getCheckoutAccountLastReservation(checkoutAccount),
-            }
-          );
     const { checkoutCustomer, initialValues } =
       getReservationCheckoutCustomerForm({
         account: checkoutAccount,
@@ -418,10 +442,11 @@ const loadReservationPageContent = Effect.fn("reservationPage.loadContent")(
           : getReservationCustomerQueryMode(request.searchParams, {
               prefillsContact: definition.prefillsContact,
             }),
-        restored: restoration?.kind === "restored",
-        values,
+        restored: selection.kind === "restored",
+        values: selection.values,
       });
 
+    const replacementToken = restoredReservation?.replacementToken;
     const preload = definition.preload(initialValues, scope);
     const preloads = yield* ReservationPagePreloads;
     const [initialAdvertisedPrices, initialAvailability] = yield* Effect.all(
@@ -429,7 +454,7 @@ const loadReservationPageContent = Effect.fn("reservationPage.loadContent")(
         preloads.advertisedPrices(preload.advertisedPrices),
         preloads.availability({
           queries: preload.availability,
-          replacementToken: restoredReservation?.replacementToken,
+          replacementToken,
         }),
       ],
       { concurrency: "unbounded" }
@@ -445,7 +470,7 @@ const loadReservationPageContent = Effect.fn("reservationPage.loadContent")(
         initialValues,
         locale,
         pageData,
-        replacementToken: restoredReservation?.replacementToken,
+        replacementToken,
         submittedCode: scope.submittedCode,
         today: scope.today,
       },

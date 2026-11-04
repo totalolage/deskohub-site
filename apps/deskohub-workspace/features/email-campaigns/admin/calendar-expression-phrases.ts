@@ -226,17 +226,15 @@ const scopedToMonths = (
 };
 
 /**
- * The day part: weekdays lead, and days of month or occurrences qualify them
- * ("every Friday that is the 13th"); otherwise occurrences lead days of
- * month. The months attach to the first day-of-month or occurrence phrase.
+ * The day-of-month and occurrence phrases, occurrences first. The first one
+ * carries the months, and leads the day part unless weekdays do.
  */
-const dayPhrase = (
+const monthBoundPhrases = (
   expression: CalendarExpression,
   phrasing: Phrasing
-): string | undefined => {
+) => {
   const { weekdays, daysOfMonth, weekdayOccurrences, months } = expression;
-  const options = { locale: phrasing.locale };
-  const monthBound = [
+  return [
     weekdayOccurrences && occurrencesPhrase(weekdayOccurrences, phrasing),
     daysOfMonth && daysOfMonthPhrase(daysOfMonth, phrasing),
   ]
@@ -249,17 +247,32 @@ const dayPhrase = (
         phrasing
       )
     );
-  const [lead, ...qualifiers] = weekdays
-    ? [weekdaysPhrase(weekdays, monthBound.length > 0, phrasing), ...monthBound]
-    : monthBound;
-  if (lead === undefined) {
-    return undefined;
-  }
-  if (qualifiers.length === 0) {
-    return weekdays || phrasing.usage === "wait"
-      ? lead
-      : m.emailCampaignsCalendarScheduleOn({ subject: lead }, options);
-  }
+};
+
+/**
+ * A day part with nothing qualifying its lead. A schedule led by a day of
+ * month or an occurrence says "on" before it.
+ */
+const unqualifiedDayPhrase = (
+  lead: string,
+  weekdayLed: boolean,
+  phrasing: Phrasing
+) =>
+  weekdayLed || phrasing.usage === "wait"
+    ? lead
+    : m.emailCampaignsCalendarScheduleOn(
+        { subject: lead },
+        { locale: phrasing.locale }
+      );
+
+/** A lead with its qualifiers: "every Friday that is the 13th". */
+const qualifiedDayPhrase = (
+  lead: string,
+  qualifiers: readonly string[],
+  weekdayLed: boolean,
+  phrasing: Phrasing
+) => {
+  const options = { locale: phrasing.locale };
   const qualifier = listed(qualifiers, phrasing, "conjunction");
   return phrasing.usage === "schedule"
     ? m.emailCampaignsCalendarScheduleQualified(
@@ -267,7 +280,98 @@ const dayPhrase = (
         options
       )
     : m.emailCampaignsCalendarWaitQualified(
-        { kind: weekdays ? "weekday" : "day", subject: lead, qualifier },
+        { kind: weekdayLed ? "weekday" : "day", subject: lead, qualifier },
+        options
+      );
+};
+
+/**
+ * The day part: weekdays lead, and days of month or occurrences qualify them
+ * ("every Friday that is the 13th"); otherwise occurrences lead days of
+ * month. The months attach to the first day-of-month or occurrence phrase.
+ */
+const dayPhrase = (
+  expression: CalendarExpression,
+  phrasing: Phrasing
+): string | undefined => {
+  const { weekdays } = expression;
+  const monthBound = monthBoundPhrases(expression, phrasing);
+  const [lead, ...qualifiers] = weekdays
+    ? [weekdaysPhrase(weekdays, monthBound.length > 0, phrasing), ...monthBound]
+    : monthBound;
+  if (lead === undefined) {
+    return undefined;
+  }
+  const weekdayLed = weekdays !== undefined;
+  return qualifiers.length === 0
+    ? unqualifiedDayPhrase(lead, weekdayLed, phrasing)
+    : qualifiedDayPhrase(lead, qualifiers, weekdayLed, phrasing);
+};
+
+/**
+ * Hours with minutes: a few exact times ("at 09:15 and 17:15"), or more as
+ * minutes past hours in a schedule and minutes within hour windows in a wait.
+ */
+const hoursAndMinutesPhrase = (
+  hours: readonly number[],
+  minutes: readonly number[],
+  phrasing: Phrasing
+) => {
+  const options = { locale: phrasing.locale };
+  if (hours.length * minutes.length <= 6) {
+    const times = hours.flatMap((hour) =>
+      minutes.map((minute) => clockTime(hour, minute))
+    );
+    return m.emailCampaignsCalendarTimeAt(
+      { times: listed(times, phrasing) },
+      options
+    );
+  }
+  return phrasing.usage === "schedule"
+    ? m.emailCampaignsCalendarTimeMinutesPastHours(
+        {
+          minutes: minuteMarks(minutes, phrasing),
+          hours: listed(hours.map(twoDigits), phrasing),
+        },
+        options
+      )
+    : [
+        m.emailCampaignsCalendarTimeAt(
+          { times: minuteMarks(minutes, phrasing) },
+          options
+        ),
+        hoursWithin(hours, phrasing),
+      ].join(" ");
+};
+
+/** Hours alone: on the hour in a schedule, within the hours in a wait. */
+const hoursPhrase = (hours: readonly number[], phrasing: Phrasing) =>
+  phrasing.usage === "schedule"
+    ? m.emailCampaignsCalendarTimeAt(
+        {
+          times: listed(
+            hours.map((hour) => clockTime(hour, 0)),
+            phrasing
+          ),
+        },
+        { locale: phrasing.locale }
+      )
+    : hoursWithin(hours, phrasing);
+
+/** Minutes alone: "every hour at :15" behind a schedule's day, else "at :15". */
+const minutesPhrase = (
+  minutes: readonly number[],
+  hasDayScope: boolean,
+  phrasing: Phrasing
+) => {
+  const options = { locale: phrasing.locale };
+  return phrasing.usage === "schedule" && hasDayScope
+    ? m.emailCampaignsCalendarTimeEveryHourAt(
+        { minutes: minuteMarks(minutes, phrasing) },
+        options
+      )
+    : m.emailCampaignsCalendarTimeAt(
+        { times: minuteMarks(minutes, phrasing) },
         options
       );
 };
@@ -279,59 +383,20 @@ const timePhrase = (
   phrasing: Phrasing
 ): string | undefined => {
   const { hours, minutes } = expression;
-  const options = { locale: phrasing.locale };
   if (hours && minutes) {
-    if (hours.length * minutes.length <= 6) {
-      const times = hours.flatMap((hour) =>
-        minutes.map((minute) => clockTime(hour, minute))
-      );
-      return m.emailCampaignsCalendarTimeAt(
-        { times: listed(times, phrasing) },
-        options
-      );
-    }
-    return phrasing.usage === "schedule"
-      ? m.emailCampaignsCalendarTimeMinutesPastHours(
-          {
-            minutes: minuteMarks(minutes, phrasing),
-            hours: listed(hours.map(twoDigits), phrasing),
-          },
-          options
-        )
-      : [
-          m.emailCampaignsCalendarTimeAt(
-            { times: minuteMarks(minutes, phrasing) },
-            options
-          ),
-          hoursWithin(hours, phrasing),
-        ].join(" ");
+    return hoursAndMinutesPhrase(hours, minutes, phrasing);
   }
   if (hours) {
-    return phrasing.usage === "schedule"
-      ? m.emailCampaignsCalendarTimeAt(
-          {
-            times: listed(
-              hours.map((hour) => clockTime(hour, 0)),
-              phrasing
-            ),
-          },
-          options
-        )
-      : hoursWithin(hours, phrasing);
+    return hoursPhrase(hours, phrasing);
   }
   if (minutes) {
-    return phrasing.usage === "schedule" && hasDayScope
-      ? m.emailCampaignsCalendarTimeEveryHourAt(
-          { minutes: minuteMarks(minutes, phrasing) },
-          options
-        )
-      : m.emailCampaignsCalendarTimeAt(
-          { times: minuteMarks(minutes, phrasing) },
-          options
-        );
+    return minutesPhrase(minutes, hasDayScope, phrasing);
   }
   return phrasing.usage === "schedule"
-    ? m.emailCampaignsCalendarTimeAt({ times: clockTime(0, 0) }, options)
+    ? m.emailCampaignsCalendarTimeAt(
+        { times: clockTime(0, 0) },
+        { locale: phrasing.locale }
+      )
     : undefined;
 };
 
@@ -397,32 +462,36 @@ const periodStartPhrase = (
       );
 };
 
+/** The day and month of an expression naming one numbered day in one month. */
+const singleDate = ({ daysOfMonth, months }: CalendarExpression) => {
+  const [day, ...otherDays] = daysOfMonth ?? [];
+  const [month, ...otherMonths] = months ?? [];
+  const single = otherDays.length === 0 && otherMonths.length === 0;
+  return single && day !== undefined && day !== "last" && month !== undefined
+    ? { day, month }
+    : undefined;
+};
+
 /** One numbered day in one month reads as a date: "on 24 December every year". */
 const datePhrase = (
   expression: CalendarExpression,
   phrasing: Phrasing
 ): string | undefined => {
-  const { daysOfMonth, months, weekdays, weekdayOccurrences } = expression;
-  const [day, ...otherDays] = daysOfMonth ?? [];
-  const [month, ...otherMonths] = months ?? [];
+  const date = singleDate(expression);
   if (
     phrasing.usage !== "schedule" ||
-    weekdays ||
-    weekdayOccurrences ||
-    day === undefined ||
-    day === "last" ||
-    month === undefined ||
-    otherDays.length > 0 ||
-    otherMonths.length > 0
+    expression.weekdays ||
+    expression.weekdayOccurrences ||
+    date === undefined
   ) {
     return undefined;
   }
   const options = { locale: phrasing.locale };
   return m.emailCampaignsCalendarScheduleDate(
     {
-      day,
+      day: date.day,
       month: m.emailCampaignsCalendarMonthOfName(
-        { month: String(month) },
+        { month: String(date.month) },
         options
       ),
     },
@@ -522,58 +591,92 @@ const clockWaitTarget = (
   );
 };
 
+/**
+ * A wait for months with no day: "December" alone, else "a December day"
+ * with its weeks and time.
+ */
+const monthsWaitTarget = (
+  months: readonly number[],
+  weeksOfYear: readonly number[] | undefined,
+  time: string | undefined,
+  phrasing: Phrasing
+) => {
+  const monthNamed = !weeksOfYear && !time;
+  return [
+    monthNamed
+      ? monthNames(months, m.emailCampaignsCalendarMonthName, phrasing)
+      : m.emailCampaignsCalendarWaitMonthDay(
+          {
+            months: monthNames(
+              months,
+              m.emailCampaignsCalendarMonthInName,
+              phrasing
+            ),
+          },
+          { locale: phrasing.locale }
+        ),
+    weeksOfYear && weeksPart(weeksOfYear, phrasing),
+    time,
+  ]
+    .filter(Boolean)
+    .join(" ");
+};
+
+/** A wait for ISO weeks with no day or month: "ISO week 1", or a day in it at a time. */
+const weeksWaitTarget = (
+  weeksOfYear: readonly number[],
+  time: string | undefined,
+  phrasing: Phrasing
+) => {
+  const options = { locale: phrasing.locale };
+  return time
+    ? [
+        m.emailCampaignsCalendarWaitDay({}, options),
+        weeksPart(weeksOfYear, phrasing),
+        time,
+      ].join(" ")
+    : m.emailCampaignsCalendarWaitWeeks(
+        { weeks: weekNumbers(weeksOfYear, phrasing) },
+        options
+      );
+};
+
+/** A wait naming no day: for months, ISO weeks, a clock time, or a minute. */
+const waitTargetWithoutDay = (
+  expression: CalendarExpression,
+  time: string | undefined,
+  form: WaitForm,
+  phrasing: Phrasing
+) => {
+  const { weeksOfYear, months, hours, minutes } = expression;
+  if (months) {
+    return monthsWaitTarget(months, weeksOfYear, time, phrasing);
+  }
+  if (weeksOfYear) {
+    return weeksWaitTarget(weeksOfYear, time, phrasing);
+  }
+  if (hours) {
+    return clockWaitTarget(hours, minutes, form, phrasing);
+  }
+  const options = { locale: phrasing.locale };
+  return minutes
+    ? m.emailCampaignsCalendarWaitNextMinute(
+        { minutes: minuteMarks(minutes, phrasing) },
+        options
+      )
+    : m.emailCampaignsCalendarWaitTime({ time: time ?? "" }, options);
+};
+
 const describeWait = (
   expression: CalendarExpression,
   phrasing: Phrasing,
   form: WaitForm = "sentence"
 ) => {
-  const { weeksOfYear, months, hours, minutes } = expression;
-  const options = { locale: phrasing.locale };
+  const { weeksOfYear } = expression;
   const day = dayPhrase(expression, phrasing);
   const time = timePhrase(expression, true, phrasing);
   if (day === undefined) {
-    if (months) {
-      const monthNamed = !weeksOfYear && !time;
-      return [
-        monthNamed
-          ? monthNames(months, m.emailCampaignsCalendarMonthName, phrasing)
-          : m.emailCampaignsCalendarWaitMonthDay(
-              {
-                months: monthNames(
-                  months,
-                  m.emailCampaignsCalendarMonthInName,
-                  phrasing
-                ),
-              },
-              options
-            ),
-        weeksOfYear && weeksPart(weeksOfYear, phrasing),
-        time,
-      ]
-        .filter(Boolean)
-        .join(" ");
-    }
-    if (weeksOfYear) {
-      return time
-        ? [
-            m.emailCampaignsCalendarWaitDay({}, options),
-            weeksPart(weeksOfYear, phrasing),
-            time,
-          ].join(" ")
-        : m.emailCampaignsCalendarWaitWeeks(
-            { weeks: weekNumbers(weeksOfYear, phrasing) },
-            options
-          );
-    }
-    if (hours) {
-      return clockWaitTarget(hours, minutes, form, phrasing);
-    }
-    return minutes
-      ? m.emailCampaignsCalendarWaitNextMinute(
-          { minutes: minuteMarks(minutes, phrasing) },
-          options
-        )
-      : m.emailCampaignsCalendarWaitTime({ time: time ?? "" }, options);
+    return waitTargetWithoutDay(expression, time, form, phrasing);
   }
   return [
     day,

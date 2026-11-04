@@ -1,4 +1,4 @@
-import { DotyposService } from "@deskohub/dotypos";
+import { type DotyposReservationId, DotyposService } from "@deskohub/dotypos";
 import {
   type EmailDeliveryId,
   isConsoleEmailDeliveryId,
@@ -12,13 +12,17 @@ import {
 } from "@/features/account";
 import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice.service";
 import { WorkspaceCheckoutAccessCodeService } from "@/features/checkout/backend/reservation/access-code.service";
+import type { Locale } from "@/features/i18n";
 import { SeatingMapReleaseGate } from "@/features/reservation/backend/seating-map-release-gate";
 import {
   type WorkspaceReservation,
   WorkspaceReservationRepository,
   type WorkspaceReservationStateError,
 } from "@/features/reservation/backend/workspace-reservation.repository";
-import { WorkspaceReservationService } from "@/features/reservation/backend/workspace-reservation.service";
+import {
+  type WorkspaceReservationDetails,
+  WorkspaceReservationService,
+} from "@/features/reservation/backend/workspace-reservation.service";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { WorkspaceEmailLayer } from "@/shared/backend/config/email.config";
@@ -108,6 +112,23 @@ export class ReservationDeliveryReportError extends Data.TaggedError(
   readonly workspaceReservationId?: WorkspaceReservationId;
   readonly cause?: unknown;
 }> {}
+
+/** A cancelled hold can never be confirmed; any other failure may pass on a retry. */
+const dotyposConfirmationFailureCode = (
+  cause: Effect.Error<
+    ReturnType<DotyposService["Service"]["confirmReservation"]>
+  >
+) =>
+  Match.value(cause).pipe(
+    Match.tagsExhaustive({
+      DotyposReservationCancelledError: () =>
+        "dotypos_reservation_unfulfillable" as const,
+      DotyposUnavailable: () => "dotypos_reservation_failed" as const,
+      DotyposRejected: () => "dotypos_reservation_failed" as const,
+      DotyposUncertain: () => "dotypos_reservation_failed" as const,
+      DotyposVersionConflict: () => "dotypos_reservation_failed" as const,
+    })
+  );
 
 const appliedDelivery: ReservationDeliveryOutcome = "applied";
 
@@ -299,6 +320,561 @@ export class ReservationFulfillment extends Context.Service<
           );
       });
 
+      // Settles an order this run must not claim, retrying a fulfilled
+      // order's invoice; returns the order to claim otherwise.
+      const admitPaidOrder = Effect.fnUntraced(function* (
+        reservation: WorkspaceReservation | null
+      ) {
+        if (!reservation) {
+          yield* Effect.logWarning(
+            "Paid fulfillment skipped: reservation missing",
+            {
+              reason: "reservation_missing",
+            }
+          );
+          return null;
+        }
+
+        if (reservation.paymentState !== "paid") {
+          yield* Effect.logWarning(
+            "Paid fulfillment skipped: reservation not paid",
+            {
+              reason: "reservation_not_paid",
+            }
+          );
+          return null;
+        }
+
+        if (reservation.fulfillmentState === "fulfilled") {
+          yield* Effect.logInfo(
+            "Paid access fulfillment already completed; retrying invoice processing",
+            {
+              reason: "already_fulfilled",
+            }
+          );
+          yield* processReservationInvoice(reservation);
+          return null;
+        }
+
+        if (reservation.fulfillmentState === "awaiting_delivery") {
+          yield* Effect.logInfo(
+            "Paid fulfillment skipped: awaiting customer email delivery",
+            {
+              reason: "awaiting_customer_email_delivery",
+            }
+          );
+          return null;
+        }
+
+        return reservation;
+      });
+
+      // The instant before which a `processing` claim counts as stale, or
+      // null while another run still holds the order.
+      const staleProcessingCutoff = Effect.fnUntraced(function* (
+        reservation: WorkspaceReservation
+      ) {
+        const staleProcessingBefore = Temporal.Now.instant().subtract({
+          milliseconds: PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS,
+        });
+
+        if (reservation.fulfillmentState === "processing") {
+          if (
+            Temporal.Instant.compare(
+              reservation.updatedAt,
+              staleProcessingBefore
+            ) > 0
+          ) {
+            yield* Effect.logInfo(
+              "Paid fulfillment skipped: already processing",
+              {
+                reason: "already_processing",
+              }
+            );
+            return null;
+          }
+
+          yield* Effect.logWarning(
+            "Paid fulfillment retrying stale processing reservation",
+            {
+              reason: "stale_processing",
+              staleProcessingBefore,
+            }
+          );
+        }
+
+        return staleProcessingBefore;
+      });
+
+      const claimPaidOrder = (input: {
+        readonly orderId: WorkspaceReservationId;
+        readonly reservation: WorkspaceReservation;
+        readonly staleProcessingBefore: Temporal.Instant;
+      }) =>
+        ledger
+          .claimPaidFulfillment({
+            id: input.reservation.id,
+            staleProcessingBefore: input.staleProcessingBefore,
+          })
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new WorkspacePaidFulfillmentError({
+                  orderId: input.orderId,
+                  failureCode: "fulfillment_claim_failed",
+                  message:
+                    "Paid reservation could not be claimed for fulfillment.",
+                  cause,
+                })
+            )
+          );
+
+      const confirmHeldReservation = Effect.fnUntraced(function* (input: {
+        readonly orderId: WorkspaceReservationId;
+        readonly claimed: WorkspaceReservation;
+        readonly dotyposReservationId: DotyposReservationId;
+      }) {
+        const { claimed } = input;
+        yield* Effect.logInfo("Dotypos paid reservation confirmation started");
+        yield* dotypos.confirmReservation(input.dotyposReservationId).pipe(
+          Effect.tapError((cause) =>
+            Effect.logError("Dotypos paid reservation confirmation failed", {
+              claimed,
+              cause,
+            })
+          ),
+          Effect.catch((cause) =>
+            failFulfillment({
+              orderId: input.orderId,
+              failureCode: dotyposConfirmationFailureCode(cause),
+              cause,
+            })
+          )
+        );
+        yield* Effect.logInfo(
+          "Dotypos paid reservation confirmation succeeded"
+        );
+
+        yield* Effect.logInfo(
+          "Paid fulfillment reservation confirmed marker started"
+        );
+        const confirmedAt = Temporal.Now.instant();
+        yield* reservations
+          .markReservationConfirmed({
+            id: claimed.id,
+            confirmedAt,
+          })
+          .pipe(
+            Effect.tapError((cause) =>
+              Effect.logError(
+                "Paid fulfillment reservation confirmed marker failed",
+                { claimed, cause }
+              )
+            )
+          );
+        yield* Effect.logInfo(
+          "Paid fulfillment reservation confirmed marker succeeded"
+        );
+        yield* checkoutAnalytics.reservationCompleted({
+          reservation: claimed,
+          timestamp: confirmedAt,
+        });
+      });
+
+      // Fails a claim Dotypos can't fulfill, confirms a held one, and leaves
+      // a confirmed one as it is.
+      const confirmClaimedReservation = Effect.fnUntraced(function* (input: {
+        readonly orderId: WorkspaceReservationId;
+        readonly claimed: WorkspaceReservation;
+      }) {
+        const { claimed } = input;
+        if (!claimed.dotyposReservationId) {
+          yield* Effect.logWarning(
+            "Paid fulfillment failed: missing Dotypos reservation hold",
+            { reason: "missing_dotypos_reservation_id" }
+          );
+
+          return yield* failFulfillment({
+            orderId: input.orderId,
+            failureCode: "dotypos_reservation_unfulfillable",
+          });
+        }
+
+        if (claimed.reservationState === "confirmed") {
+          return;
+        }
+
+        if (claimed.reservationState !== "held") {
+          yield* Effect.logWarning(
+            "Paid fulfillment failed: reservation no longer confirmable",
+            { reason: "reservation_no_longer_confirmable" }
+          );
+
+          return yield* failFulfillment({
+            orderId: input.orderId,
+            failureCode: "dotypos_reservation_unfulfillable",
+          });
+        }
+
+        yield* confirmHeldReservation({
+          orderId: input.orderId,
+          claimed,
+          dotyposReservationId: claimed.dotyposReservationId,
+        });
+      });
+
+      const loadReservationForDelivery = (input: {
+        readonly orderId: WorkspaceReservationId;
+        readonly claimed: WorkspaceReservation;
+      }) =>
+        workspaceReservations.getReservation(input.claimed.id).pipe(
+          Effect.tapError((cause) =>
+            Effect.logError("Workspace paid reservation email flow failed", {
+              workspaceReservationId: input.claimed.id,
+              dotyposCustomerId: input.claimed.dotyposCustomerId,
+              cause,
+            })
+          ),
+          // Only a real email failure may later be repaired by a delivered
+          // webhook, so a provider read failure keeps the Dotypos failure
+          // code.
+          Effect.catch((cause) =>
+            failFulfillment({
+              orderId: input.orderId,
+              failureCode: "dotypos_reservation_failed",
+              cause,
+            })
+          )
+        );
+
+      const issueCustomerAccessCode = (input: {
+        readonly orderId: WorkspaceReservationId;
+        readonly reservationForDelivery: WorkspaceReservationDetails;
+      }) => {
+        const { reservationForDelivery } = input;
+        return accessCodes
+          .resolveCustomerAccessCode({
+            reservationId: reservationForDelivery.id,
+            dotyposReservationId: reservationForDelivery.dotyposReservationId,
+            // The door code also covers an early-setup meeting room's setup
+            // time.
+            reservedFrom:
+              reservationForDelivery.setupFrom ??
+              reservationForDelivery.reservedFrom,
+            reservedUntil: reservationForDelivery.reservedUntil,
+          })
+          .pipe(
+            Effect.catch((cause) =>
+              failFulfillment({
+                orderId: input.orderId,
+                failureCode: "fulfillment_access_failed",
+                cause,
+              })
+            )
+          );
+      };
+
+      // A retained locale pins the current idempotency generation to the
+      // language of its first send: preference changes between failed or
+      // accepted-but-unrecorded retries must not change the email under the
+      // same provider idempotency key. Retention is bound to the claimed
+      // delivery generation via its active-delivery marker, and the
+      // repository returns the AUTHORITATIVE retained locale, so a writer that
+      // loses the null-slot race adopts the winner's locale and sends it. A
+      // null result means another writer already closed this generation by
+      // recording its accepted send, so this writer fails before sending.
+      // Recording the accepted send's delivery ID clears the slot, so the
+      // next generation resolves the current preference again.
+      const retainCustomerEmailLocale = (input: {
+        readonly orderId: WorkspaceReservationId;
+        readonly claimed: WorkspaceReservation;
+        readonly reservationForDelivery: WorkspaceReservationDetails;
+      }) => {
+        const { claimed } = input;
+        return (
+          claimed.activeCustomerEmailDeliveryLocale
+            ? Effect.succeed(claimed.activeCustomerEmailDeliveryLocale)
+            : resolveCustomerEmailLocale(input.reservationForDelivery).pipe(
+                Effect.flatMap((locale) =>
+                  ledger.retainActiveCustomerEmailDeliveryLocale({
+                    id: claimed.id,
+                    locale,
+                    expectedActiveCustomerEmailDeliveryId:
+                      claimed.activeCustomerEmailDeliveryId ?? null,
+                  })
+                ),
+                Effect.flatMap((authoritativeLocale) =>
+                  authoritativeLocale
+                    ? Effect.succeed(authoritativeLocale)
+                    : Effect.fail(new CustomerEmailDeliveryGenerationClosed())
+                )
+              )
+        ).pipe(
+          Effect.mapError(
+            (cause) =>
+              new WorkspacePaidFulfillmentError({
+                orderId: input.orderId,
+                failureCode: "fulfillment_email_failed",
+                message:
+                  "Paid reservation customer email locale could not be resolved and retained.",
+                cause,
+              })
+          )
+        );
+      };
+
+      const sendCustomerConfirmation = Effect.fnUntraced(function* (input: {
+        readonly orderId: WorkspaceReservationId;
+        readonly claimed: WorkspaceReservation;
+        readonly reservationForDelivery: WorkspaceReservationDetails;
+        readonly customerEmailLocale: Locale;
+      }) {
+        const { claimed, reservationForDelivery } = input;
+        // The author confirmation goes out with the first customer delivery
+        // only; a recovery delivery after a bounce re-sends the customer's
+        // email alone, so the author never gets a duplicate once the
+        // provider's idempotency window has passed.
+        const author = claimed.activeCustomerEmailDeliveryId
+          ? null
+          : yield* describeReservationAuthor(claimed);
+        return yield* reservationEmails
+          .sendPaidReservationEmails({
+            reservation: reservationForDelivery,
+            customerEmailLocale: input.customerEmailLocale,
+            author,
+            customerEmailIdempotencyKey: claimed.activeCustomerEmailDeliveryId
+              ? createCustomerEmailRecoveryIdempotencyKey(
+                  claimed.activeCustomerEmailDeliveryId
+                )
+              : createCustomerEmailInitialIdempotencyKey(
+                  reservationForDelivery.id
+                ),
+          })
+          .pipe(
+            Effect.catch((cause) =>
+              failFulfillment({
+                orderId: input.orderId,
+                failureCode: "fulfillment_email_failed",
+                cause,
+              })
+            )
+          );
+      });
+
+      // Completes an accepted send that no delivery report will follow, and
+      // otherwise awaits the report.
+      const settleAcceptedDelivery = Effect.fnUntraced(function* (input: {
+        readonly orderId: WorkspaceReservationId;
+        readonly claimed: WorkspaceReservation;
+        readonly customerEmailDeliveryId: EmailDeliveryId;
+      }) {
+        const { claimed, customerEmailDeliveryId } = input;
+        // Console never reports delivery, and protected Previews cannot
+        // receive Resend callbacks, so acceptance is final for both.
+        const acceptedByConsole = isConsoleEmailDeliveryId(
+          customerEmailDeliveryId
+        );
+        if (env.VERCEL_ENV !== "production" || acceptedByConsole) {
+          yield* ledger.markFulfilled({
+            id: claimed.id,
+            fulfilledAt: Temporal.Now.instant(),
+            customerEmailDeliveryId,
+          });
+          yield* processReservationInvoice(claimed);
+          yield* Effect.logInfo(
+            "Paid fulfillment completed after email provider acceptance",
+            { acceptedByConsole }
+          );
+          return;
+        }
+
+        yield* Effect.logInfo(
+          "Paid fulfillment recorded accepted customer email delivery"
+        );
+        yield* ledger
+          .markAwaitingCustomerEmailDelivery({
+            id: claimed.id,
+            customerEmailDeliveryId,
+            expectedActiveCustomerEmailDeliveryId:
+              claimed.activeCustomerEmailDeliveryId ?? null,
+          })
+          .pipe(
+            // Only a verified generation supersession is benign: another
+            // writer owns the reservation row, so this recording is a no-op.
+            // Any other invalid-state failure keeps the normal failure
+            // handling.
+            Effect.catchTag(
+              "WorkspaceReservationDeliveryGenerationSupersededError",
+              () =>
+                Effect.logWarning(
+                  "Paid fulfillment delivery recording superseded by a newer delivery generation",
+                  { orderId: input.orderId }
+                )
+            )
+          );
+        yield* Effect.logInfo(
+          "Paid fulfillment is awaiting Resend delivery webhook"
+        );
+      });
+
+      // Issues access, sends the customer confirmation, then completes the
+      // fulfillment or awaits its delivery report.
+      const deliverPaidReservation = Effect.fnUntraced(function* (input: {
+        readonly orderId: WorkspaceReservationId;
+        readonly claimed: WorkspaceReservation;
+      }) {
+        yield* Effect.logInfo("Paid reservation email flow started");
+        const reservationForDelivery = yield* loadReservationForDelivery(input);
+        yield* issueCustomerAccessCode({
+          orderId: input.orderId,
+          reservationForDelivery,
+        });
+        const customerEmailLocale = yield* retainCustomerEmailLocale({
+          ...input,
+          reservationForDelivery,
+        });
+        const customerEmailDeliveryId = yield* sendCustomerConfirmation({
+          ...input,
+          reservationForDelivery,
+          customerEmailLocale,
+        });
+        yield* Effect.logInfo("Paid reservation email flow succeeded");
+        yield* settleAcceptedDelivery({ ...input, customerEmailDeliveryId });
+      });
+
+      // A report without an attached delivery is retried while the sender's
+      // tags name a customer access email, and ignored otherwise.
+      const reportUnattachedDelivery = Effect.fnUntraced(function* (
+        report: ReservationAccessDeliveryReport
+      ) {
+        if (report.accessEmail) {
+          const workspaceReservationId = report.accessEmail.reservationId;
+          yield* Effect.logWarning(
+            "Resend webhook arrived before the customer delivery was attached",
+            { workspaceReservationId }
+          );
+
+          return yield* new ReservationDeliveryReportError({
+            reason: "delivery_unattached",
+            message:
+              "The customer delivery was reported before it was attached to a reservation.",
+            workspaceReservationId,
+          });
+        }
+
+        yield* Effect.logWarning(
+          "Resend webhook referenced an unknown customer email delivery"
+        );
+
+        return ignoredDelivery("unknown_email_delivery");
+      });
+
+      const applyDeliveredReport = Effect.fnUntraced(function* (input: {
+        readonly report: ReservationAccessDeliveryReport;
+        readonly reservation: WorkspaceReservation;
+        readonly workspaceReservationId: WorkspaceReservationId;
+      }) {
+        const { report, reservation, workspaceReservationId } = input;
+        if (reservation.fulfillmentState === "fulfilled") {
+          yield* processDeliveredReservationInvoice(reservation);
+          return ignoredDelivery("reservation_already_fulfilled");
+        }
+
+        if (
+          reservation.fulfillmentState === "failed" &&
+          reservation.fulfillmentFailureCode !== fulfillmentEmailFailureCode
+        ) {
+          yield* Effect.logInfo(
+            "Resend delivery success ignored: reservation already failed",
+            {
+              workspaceReservationId,
+              fulfillmentFailureCode: reservation.fulfillmentFailureCode,
+            }
+          );
+
+          return ignoredDelivery("reservation_already_failed");
+        }
+
+        const fulfilledAt = report.occurredAt;
+        const fulfilledReservation = yield* ledger
+          .markCustomerEmailDeliveryFulfilled({
+            customerEmailDeliveryId: report.deliveryId,
+            fulfilledAt,
+          })
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new ReservationDeliveryReportError({
+                  reason: "reservation_update_failed",
+                  message:
+                    "The reported delivery could not mark the reservation fulfilled.",
+                  workspaceReservationId,
+                  cause,
+                })
+            )
+          );
+
+        if (!fulfilledReservation) {
+          yield* Effect.logInfo(
+            "Resend delivery success ignored: reservation delivery state is newer or changed concurrently",
+            {
+              workspaceReservationId,
+              fulfillmentState: reservation.fulfillmentState,
+            }
+          );
+
+          return ignoredDelivery("reservation_delivery_state_changed");
+        }
+
+        yield* checkoutAnalytics.reservationFulfilled({
+          reservation: fulfilledReservation,
+          timestamp: fulfilledAt,
+        });
+        yield* processDeliveredReservationInvoice(fulfilledReservation);
+
+        return appliedDelivery;
+      });
+
+      const applyBouncedReport = Effect.fnUntraced(function* (input: {
+        readonly report: ReservationAccessDeliveryReport;
+        readonly reservation: WorkspaceReservation;
+        readonly workspaceReservationId: WorkspaceReservationId;
+      }) {
+        const { report, workspaceReservationId } = input;
+        const failedReservation = yield* ledger
+          .markCustomerEmailDeliveryFailed({
+            customerEmailDeliveryId: report.deliveryId,
+            failureCode: fulfillmentEmailFailureCode,
+            failedAt: report.occurredAt,
+          })
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new ReservationDeliveryReportError({
+                  reason: "reservation_update_failed",
+                  message:
+                    "The reported delivery could not mark the reservation fulfillment failed.",
+                  workspaceReservationId,
+                  cause,
+                })
+            )
+          );
+
+        if (!failedReservation) {
+          yield* Effect.logInfo(
+            "Resend delivery failure ignored: reservation delivery state is newer or changed concurrently",
+            {
+              workspaceReservationId,
+              fulfillmentState: input.reservation.fulfillmentState,
+            }
+          );
+
+          return ignoredDelivery("reservation_delivery_state_changed");
+        }
+
+        return appliedDelivery;
+      });
+
       return ReservationFulfillment.of({
         run: Effect.fn("workspacePaidFulfillment.fulfillPaidOrder")(
           function* (orderId) {
@@ -326,93 +902,21 @@ export class ReservationFulfillment extends Context.Service<
             yield* Effect.annotateLogsScoped({ reservation });
             yield* Effect.logDebug("Paid fulfillment reservation loaded");
 
-            if (!reservation) {
-              yield* Effect.logWarning(
-                "Paid fulfillment skipped: reservation missing",
-                {
-                  reason: "reservation_missing",
-                }
-              );
+            const admitted = yield* admitPaidOrder(reservation);
+            if (!admitted) {
+              return;
+            }
+            const staleProcessingBefore =
+              yield* staleProcessingCutoff(admitted);
+            if (!staleProcessingBefore) {
               return;
             }
 
-            if (reservation.paymentState !== "paid") {
-              yield* Effect.logWarning(
-                "Paid fulfillment skipped: reservation not paid",
-                {
-                  reason: "reservation_not_paid",
-                }
-              );
-              return;
-            }
-
-            if (reservation.fulfillmentState === "fulfilled") {
-              yield* Effect.logInfo(
-                "Paid access fulfillment already completed; retrying invoice processing",
-                {
-                  reason: "already_fulfilled",
-                }
-              );
-              yield* processReservationInvoice(reservation);
-              return;
-            }
-
-            if (reservation.fulfillmentState === "awaiting_delivery") {
-              yield* Effect.logInfo(
-                "Paid fulfillment skipped: awaiting customer email delivery",
-                {
-                  reason: "awaiting_customer_email_delivery",
-                }
-              );
-              return;
-            }
-
-            const staleProcessingBefore = Temporal.Now.instant().subtract({
-              milliseconds: PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS,
+            const claimed = yield* claimPaidOrder({
+              orderId: input.orderId,
+              reservation: admitted,
+              staleProcessingBefore,
             });
-
-            if (reservation.fulfillmentState === "processing") {
-              if (
-                Temporal.Instant.compare(
-                  reservation.updatedAt,
-                  staleProcessingBefore
-                ) > 0
-              ) {
-                yield* Effect.logInfo(
-                  "Paid fulfillment skipped: already processing",
-                  {
-                    reason: "already_processing",
-                  }
-                );
-                return;
-              }
-
-              yield* Effect.logWarning(
-                "Paid fulfillment retrying stale processing reservation",
-                {
-                  reason: "stale_processing",
-                  staleProcessingBefore,
-                }
-              );
-            }
-
-            const claimed = yield* ledger
-              .claimPaidFulfillment({
-                id: reservation.id,
-                staleProcessingBefore,
-              })
-              .pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new WorkspacePaidFulfillmentError({
-                      orderId: input.orderId,
-                      failureCode: "fulfillment_claim_failed",
-                      message:
-                        "Paid reservation could not be claimed for fulfillment.",
-                      cause,
-                    })
-                )
-              );
             yield* Effect.annotateLogsScoped({ claimed });
             yield* Effect.logDebug("Paid fulfillment claim completed");
 
@@ -425,262 +929,11 @@ export class ReservationFulfillment extends Context.Service<
             }
             yield* Effect.logInfo("Paid fulfillment claim succeeded");
 
-            if (!claimed.dotyposReservationId) {
-              yield* Effect.logWarning(
-                "Paid fulfillment failed: missing Dotypos reservation hold",
-                { reason: "missing_dotypos_reservation_id" }
-              );
-
-              return yield* failFulfillment({
-                orderId: input.orderId,
-                failureCode: "dotypos_reservation_unfulfillable",
-              });
-            }
-
-            if (claimed.reservationState !== "confirmed") {
-              if (claimed.reservationState !== "held") {
-                yield* Effect.logWarning(
-                  "Paid fulfillment failed: reservation no longer confirmable",
-                  { reason: "reservation_no_longer_confirmable" }
-                );
-
-                return yield* failFulfillment({
-                  orderId: input.orderId,
-                  failureCode: "dotypos_reservation_unfulfillable",
-                });
-              }
-
-              yield* Effect.logInfo(
-                "Dotypos paid reservation confirmation started"
-              );
-              yield* dotypos
-                .confirmReservation(claimed.dotyposReservationId)
-                .pipe(
-                  Effect.tapError((cause) =>
-                    Effect.logError(
-                      "Dotypos paid reservation confirmation failed",
-                      { claimed, cause }
-                    )
-                  ),
-                  Effect.catch((cause) =>
-                    failFulfillment({
-                      orderId: input.orderId,
-                      failureCode: Match.value(cause).pipe(
-                        Match.tagsExhaustive({
-                          DotyposReservationCancelledError: () =>
-                            "dotypos_reservation_unfulfillable" as const,
-                          DotyposUnavailable: () =>
-                            "dotypos_reservation_failed" as const,
-                          DotyposRejected: () =>
-                            "dotypos_reservation_failed" as const,
-                          DotyposUncertain: () =>
-                            "dotypos_reservation_failed" as const,
-                          DotyposVersionConflict: () =>
-                            "dotypos_reservation_failed" as const,
-                        })
-                      ),
-                      cause,
-                    })
-                  )
-                );
-              yield* Effect.logInfo(
-                "Dotypos paid reservation confirmation succeeded"
-              );
-
-              yield* Effect.logInfo(
-                "Paid fulfillment reservation confirmed marker started"
-              );
-              const confirmedAt = Temporal.Now.instant();
-              yield* reservations
-                .markReservationConfirmed({
-                  id: claimed.id,
-                  confirmedAt,
-                })
-                .pipe(
-                  Effect.tapError((cause) =>
-                    Effect.logError(
-                      "Paid fulfillment reservation confirmed marker failed",
-                      { claimed, cause }
-                    )
-                  )
-                );
-              yield* Effect.logInfo(
-                "Paid fulfillment reservation confirmed marker succeeded"
-              );
-              yield* checkoutAnalytics.reservationCompleted({
-                reservation: claimed,
-                timestamp: confirmedAt,
-              });
-            }
-
-            yield* Effect.logInfo("Paid reservation email flow started");
-            const reservationForDelivery = yield* workspaceReservations
-              .getReservation(claimed.id)
-              .pipe(
-                Effect.tapError((cause) =>
-                  Effect.logError(
-                    "Workspace paid reservation email flow failed",
-                    {
-                      workspaceReservationId: claimed.id,
-                      dotyposCustomerId: claimed.dotyposCustomerId,
-                      cause,
-                    }
-                  )
-                ),
-                // Only a real email failure may later be repaired by a
-                // delivered webhook, so a provider read failure keeps the
-                // Dotypos failure code.
-                Effect.catch((cause) =>
-                  failFulfillment({
-                    orderId: input.orderId,
-                    failureCode: "dotypos_reservation_failed",
-                    cause,
-                  })
-                )
-              );
-            yield* accessCodes
-              .resolveCustomerAccessCode({
-                reservationId: reservationForDelivery.id,
-                dotyposReservationId:
-                  reservationForDelivery.dotyposReservationId,
-                // The door code also covers an early-setup meeting room's
-                // setup time.
-                reservedFrom:
-                  reservationForDelivery.setupFrom ??
-                  reservationForDelivery.reservedFrom,
-                reservedUntil: reservationForDelivery.reservedUntil,
-              })
-              .pipe(
-                Effect.catch((cause) =>
-                  failFulfillment({
-                    orderId: input.orderId,
-                    failureCode: "fulfillment_access_failed",
-                    cause,
-                  })
-                )
-              );
-            // A retained locale pins the current idempotency generation to the
-            // language of its first send: preference changes between failed or
-            // accepted-but-unrecorded retries must not change the email under
-            // the same provider idempotency key. Retention is bound to the
-            // claimed delivery generation via its active-delivery marker, and
-            // the repository returns the AUTHORITATIVE retained locale, so a
-            // writer that loses the null-slot race adopts the winner's locale
-            // and sends it. A null result means another writer already closed
-            // this generation by recording its accepted send, so this writer
-            // fails before sending. Recording the accepted send's delivery ID
-            // clears the slot, so the next generation resolves the current
-            // preference again.
-            const customerEmailLocale = yield* (
-              claimed.activeCustomerEmailDeliveryLocale
-                ? Effect.succeed(claimed.activeCustomerEmailDeliveryLocale)
-                : resolveCustomerEmailLocale(reservationForDelivery).pipe(
-                    Effect.flatMap((locale) =>
-                      ledger.retainActiveCustomerEmailDeliveryLocale({
-                        id: claimed.id,
-                        locale,
-                        expectedActiveCustomerEmailDeliveryId:
-                          claimed.activeCustomerEmailDeliveryId ?? null,
-                      })
-                    ),
-                    Effect.flatMap((authoritativeLocale) =>
-                      authoritativeLocale
-                        ? Effect.succeed(authoritativeLocale)
-                        : Effect.fail(
-                            new CustomerEmailDeliveryGenerationClosed()
-                          )
-                    )
-                  )
-            ).pipe(
-              Effect.mapError(
-                (cause) =>
-                  new WorkspacePaidFulfillmentError({
-                    orderId: input.orderId,
-                    failureCode: "fulfillment_email_failed",
-                    message:
-                      "Paid reservation customer email locale could not be resolved and retained.",
-                    cause,
-                  })
-              )
-            );
-            // The author confirmation goes out with the first customer
-            // delivery only; a recovery delivery after a bounce re-sends the
-            // customer's email alone, so the author never gets a duplicate
-            // once the provider's idempotency window has passed.
-            const author = claimed.activeCustomerEmailDeliveryId
-              ? null
-              : yield* describeReservationAuthor(claimed);
-            const customerEmailDeliveryId = yield* reservationEmails
-              .sendPaidReservationEmails({
-                reservation: reservationForDelivery,
-                customerEmailLocale,
-                author,
-                customerEmailIdempotencyKey:
-                  claimed.activeCustomerEmailDeliveryId
-                    ? createCustomerEmailRecoveryIdempotencyKey(
-                        claimed.activeCustomerEmailDeliveryId
-                      )
-                    : createCustomerEmailInitialIdempotencyKey(
-                        reservationForDelivery.id
-                      ),
-              })
-              .pipe(
-                Effect.catch((cause) =>
-                  failFulfillment({
-                    orderId: input.orderId,
-                    failureCode: "fulfillment_email_failed",
-                    cause,
-                  })
-                )
-              );
-            yield* Effect.logInfo("Paid reservation email flow succeeded");
-
-            // Console never reports delivery, and protected Previews cannot
-            // receive Resend callbacks, so acceptance is final for both.
-            const acceptedByConsole = isConsoleEmailDeliveryId(
-              customerEmailDeliveryId
-            );
-            if (env.VERCEL_ENV !== "production" || acceptedByConsole) {
-              yield* ledger.markFulfilled({
-                id: claimed.id,
-                fulfilledAt: Temporal.Now.instant(),
-                customerEmailDeliveryId,
-              });
-              yield* processReservationInvoice(claimed);
-              yield* Effect.logInfo(
-                "Paid fulfillment completed after email provider acceptance",
-                { acceptedByConsole }
-              );
-              return;
-            }
-
-            yield* Effect.logInfo(
-              "Paid fulfillment recorded accepted customer email delivery"
-            );
-            yield* ledger
-              .markAwaitingCustomerEmailDelivery({
-                id: claimed.id,
-                customerEmailDeliveryId,
-                expectedActiveCustomerEmailDeliveryId:
-                  claimed.activeCustomerEmailDeliveryId ?? null,
-              })
-              .pipe(
-                // Only a verified generation supersession is benign: another
-                // writer owns the reservation row, so this recording is a
-                // no-op. Any other invalid-state failure keeps the normal
-                // failure handling.
-                Effect.catchTag(
-                  "WorkspaceReservationDeliveryGenerationSupersededError",
-                  () =>
-                    Effect.logWarning(
-                      "Paid fulfillment delivery recording superseded by a newer delivery generation",
-                      { orderId: input.orderId }
-                    )
-                )
-              );
-            yield* Effect.logInfo(
-              "Paid fulfillment is awaiting Resend delivery webhook"
-            );
+            yield* confirmClaimedReservation({
+              orderId: input.orderId,
+              claimed,
+            });
+            yield* deliverPaidReservation({ orderId: input.orderId, claimed });
           },
           (effect, orderId) =>
             effect.pipe(
@@ -703,7 +956,6 @@ export class ReservationFulfillment extends Context.Service<
         recordDelivery: Effect.fn("reservationFulfillment.recordDelivery")(
           function* (report) {
             const { accessEmail } = report;
-            const workspaceReservationId = accessEmail?.reservationId;
 
             const reservation = yield* ledger
               .findByActiveCustomerEmailDeliveryId(report.deliveryId)
@@ -720,32 +972,15 @@ export class ReservationFulfillment extends Context.Service<
               );
 
             if (!reservation) {
-              if (accessEmail) {
-                yield* Effect.logWarning(
-                  "Resend webhook arrived before the customer delivery was attached",
-                  { workspaceReservationId }
-                );
-
-                return yield* new ReservationDeliveryReportError({
-                  reason: "delivery_unattached",
-                  message:
-                    "The customer delivery was reported before it was attached to a reservation.",
-                  workspaceReservationId,
-                });
-              }
-
-              yield* Effect.logWarning(
-                "Resend webhook referenced an unknown customer email delivery"
-              );
-
-              return ignoredDelivery("unknown_email_delivery");
+              return yield* reportUnattachedDelivery(report);
             }
 
             if (!accessEmail) {
               return ignoredDelivery("unrelated_email");
             }
 
-            if (accessEmail.reservationId !== reservation.id) {
+            const workspaceReservationId = accessEmail.reservationId;
+            if (workspaceReservationId !== reservation.id) {
               yield* Effect.logWarning(
                 "Resend webhook reservation tag did not match the active delivery",
                 { workspaceReservationId }
@@ -754,100 +989,15 @@ export class ReservationFulfillment extends Context.Service<
               return ignoredDelivery("reservation_mismatch");
             }
 
-            if (report.outcome === "delivered") {
-              if (reservation.fulfillmentState === "fulfilled") {
-                yield* processDeliveredReservationInvoice(reservation);
-                return ignoredDelivery("reservation_already_fulfilled");
-              }
-
-              if (
-                reservation.fulfillmentState === "failed" &&
-                reservation.fulfillmentFailureCode !==
-                  fulfillmentEmailFailureCode
-              ) {
-                yield* Effect.logInfo(
-                  "Resend delivery success ignored: reservation already failed",
-                  {
-                    workspaceReservationId,
-                    fulfillmentFailureCode: reservation.fulfillmentFailureCode,
-                  }
-                );
-
-                return ignoredDelivery("reservation_already_failed");
-              }
-
-              const fulfilledAt = report.occurredAt;
-              const fulfilledReservation = yield* ledger
-                .markCustomerEmailDeliveryFulfilled({
-                  customerEmailDeliveryId: report.deliveryId,
-                  fulfilledAt,
-                })
-                .pipe(
-                  Effect.mapError(
-                    (cause) =>
-                      new ReservationDeliveryReportError({
-                        reason: "reservation_update_failed",
-                        message:
-                          "The reported delivery could not mark the reservation fulfilled.",
-                        workspaceReservationId,
-                        cause,
-                      })
-                  )
-                );
-
-              if (!fulfilledReservation) {
-                yield* Effect.logInfo(
-                  "Resend delivery success ignored: reservation delivery state is newer or changed concurrently",
-                  {
-                    workspaceReservationId,
-                    fulfillmentState: reservation.fulfillmentState,
-                  }
-                );
-
-                return ignoredDelivery("reservation_delivery_state_changed");
-              }
-
-              yield* checkoutAnalytics.reservationFulfilled({
-                reservation: fulfilledReservation,
-                timestamp: fulfilledAt,
-              });
-              yield* processDeliveredReservationInvoice(fulfilledReservation);
-
-              return appliedDelivery;
-            }
-
-            const failedReservation = yield* ledger
-              .markCustomerEmailDeliveryFailed({
-                customerEmailDeliveryId: report.deliveryId,
-                failureCode: fulfillmentEmailFailureCode,
-                failedAt: report.occurredAt,
-              })
-              .pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new ReservationDeliveryReportError({
-                      reason: "reservation_update_failed",
-                      message:
-                        "The reported delivery could not mark the reservation fulfillment failed.",
-                      workspaceReservationId,
-                      cause,
-                    })
-                )
-              );
-
-            if (!failedReservation) {
-              yield* Effect.logInfo(
-                "Resend delivery failure ignored: reservation delivery state is newer or changed concurrently",
-                {
-                  workspaceReservationId,
-                  fulfillmentState: reservation.fulfillmentState,
-                }
-              );
-
-              return ignoredDelivery("reservation_delivery_state_changed");
-            }
-
-            return appliedDelivery;
+            const applyReport =
+              report.outcome === "delivered"
+                ? applyDeliveredReport
+                : applyBouncedReport;
+            return yield* applyReport({
+              report,
+              reservation,
+              workspaceReservationId,
+            });
           }
         ),
       });

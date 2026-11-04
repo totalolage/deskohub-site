@@ -174,6 +174,27 @@ describe("AdministrationTableToolbar", () => {
     );
   });
 
+  test("shows filters alone without an empty actions group or export alert", async () => {
+    const { AdministrationTableToolbar } = await import("./table-toolbar");
+    const view = render(
+      <RouteLocaleProvider locale="en-US">
+        <AdministrationTableToolbar
+          count={null}
+          filters={<input aria-label="Filter" />}
+          label="Table controls"
+        />
+      </RouteLocaleProvider>
+    );
+    const region = view.getByRole("region", { name: "Table controls" });
+    const controls = view.getByRole("textbox", {
+      name: "Filter",
+    }).parentElement;
+
+    expect(controls?.children).toHaveLength(1);
+    expect(region.querySelector(".self-end")).toBeNull();
+    expect(view.queryByRole("alert")).toBeNull();
+  });
+
   test("shows a failed export below the controls until the next attempt", async () => {
     const unavailable = () =>
       Response.json(

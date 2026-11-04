@@ -65,66 +65,7 @@ export function CheckoutSteps({
       aria-label={m.checkoutOrderStepsLabel({}, { locale })}
     >
       {checkoutFlowSteps.map((step, index) => {
-        const isCompleted = index < activeStepIndex;
         const isCurrentStep = step.key === activeStepKey;
-        const link = isCurrentStep ? undefined : stepLinks?.[step.key];
-        const content = (
-          <>
-            <span
-              className={cn(
-                "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-                isCompleted && "bg-aquamarine-green text-aquamarine-ink",
-                isCurrentStep && "bg-burned-orange text-white",
-                !isCompleted &&
-                  !isCurrentStep &&
-                  "border border-white/18 text-white/64"
-              )}
-            >
-              {isCompleted ? (
-                <Check aria-hidden="true" className="size-4" />
-              ) : (
-                index + 1
-              )}
-            </span>
-            <span className={cn("min-w-0", isCurrentStep && "text-white")}>
-              {step.getLabel({}, { locale })}
-            </span>
-            {isCompleted && (
-              <span className="sr-only">
-                {m.checkoutOrderStepCompleted({}, { locale })}
-              </span>
-            )}
-          </>
-        );
-        let stepContent = (
-          <div className="flex min-w-0 items-center gap-3 rounded-2xl border border-white/12 bg-white/7 px-4 py-3 text-sm font-semibold uppercase tracking-[0.14em] text-white/68 lg:gap-2 lg:px-3 lg:text-xs lg:tracking-[0.08em]">
-            {content}
-          </div>
-        );
-
-        if (link && "onSelect" in link) {
-          stepContent = (
-            <NavItem asChild layout="step" tone="translucent">
-              <button className="w-full" onClick={link.onSelect} type="button">
-                {content}
-              </button>
-            </NavItem>
-          );
-        } else if (link?.navigation === "document") {
-          stepContent = (
-            <NavItem asChild layout="step" tone="translucent">
-              <a href={link.href}>{content}</a>
-            </NavItem>
-          );
-        } else if (link) {
-          stepContent = (
-            <NavItem asChild layout="step" tone="translucent">
-              <Link href={link.href} prefetch={link.prefetch}>
-                {content}
-              </Link>
-            </NavItem>
-          );
-        }
 
         return (
           <li
@@ -132,11 +73,102 @@ export function CheckoutSteps({
             className="min-w-0"
             aria-current={isCurrentStep ? "step" : undefined}
           >
-            {stepContent}
+            <CheckoutStepTarget
+              link={isCurrentStep ? undefined : stepLinks?.[step.key]}
+            >
+              <CheckoutStepContent
+                isCompleted={index < activeStepIndex}
+                isCurrentStep={isCurrentStep}
+                label={step.getLabel({}, { locale })}
+                locale={locale}
+                number={index + 1}
+              />
+            </CheckoutStepTarget>
           </li>
         );
       })}
     </ol>
+  );
+}
+
+function CheckoutStepContent({
+  isCompleted,
+  isCurrentStep,
+  label,
+  locale,
+  number,
+}: {
+  readonly isCompleted: boolean;
+  readonly isCurrentStep: boolean;
+  readonly label: string;
+  readonly locale: Locale;
+  readonly number: number;
+}) {
+  return (
+    <>
+      <span
+        className={cn(
+          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+          isCompleted && "bg-aquamarine-green text-aquamarine-ink",
+          isCurrentStep && "bg-burned-orange text-white",
+          !isCompleted &&
+            !isCurrentStep &&
+            "border border-white/18 text-white/64"
+        )}
+      >
+        {isCompleted ? <Check aria-hidden="true" className="size-4" /> : number}
+      </span>
+      <span className={cn("min-w-0", isCurrentStep && "text-white")}>
+        {label}
+      </span>
+      {isCompleted && (
+        <span className="sr-only">
+          {m.checkoutOrderStepCompleted({}, { locale })}
+        </span>
+      )}
+    </>
+  );
+}
+
+/**
+ * Wraps a step in the control its link asks for: a button that changes the
+ * step in place, a document or client navigation link, or plain text.
+ */
+function CheckoutStepTarget({
+  children,
+  link,
+}: {
+  readonly children: ReactNode;
+  readonly link: CheckoutStepLink | undefined;
+}) {
+  if (!link) {
+    return (
+      <div className="flex min-w-0 items-center gap-3 rounded-2xl border border-white/12 bg-white/7 px-4 py-3 text-sm font-semibold uppercase tracking-[0.14em] text-white/68 lg:gap-2 lg:px-3 lg:text-xs lg:tracking-[0.08em]">
+        {children}
+      </div>
+    );
+  }
+
+  if ("onSelect" in link) {
+    return (
+      <NavItem asChild layout="step" tone="translucent">
+        <button className="w-full" onClick={link.onSelect} type="button">
+          {children}
+        </button>
+      </NavItem>
+    );
+  }
+
+  return (
+    <NavItem asChild layout="step" tone="translucent">
+      {link.navigation === "document" ? (
+        <a href={link.href}>{children}</a>
+      ) : (
+        <Link href={link.href} prefetch={link.prefetch}>
+          {children}
+        </Link>
+      )}
+    </NavItem>
   );
 }
 

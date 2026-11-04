@@ -381,3 +381,28 @@ describe("cowork quote input truthfulness", () => {
     expect(quote.payment.expectedPrice.value).toBe(53_000);
   });
 });
+
+describe("historical cowork tier add-ons", () => {
+  const quoteItemTypes = (input: CoworkReservationQuoteInput) =>
+    Effect.runSync(buildCoworkReservationQuote(input)).items.map(
+      (item) => item.type
+    );
+
+  test("prices Basic coffee only when selected", () => {
+    expect(
+      quoteItemTypes({ kind: "cowork", entryTier: "basic", coffee: true })
+    ).toEqual(["cowork", "coffee"]);
+    expect(
+      quoteItemTypes({ kind: "cowork", entryTier: "basic", coffee: false })
+    ).toEqual(["cowork"]);
+  });
+
+  test.each(["plus", "profi"] as const)(
+    "keeps the included coffee line for %s",
+    (entryTier) => {
+      expect(
+        quoteItemTypes({ kind: "cowork", entryTier, coffee: false })
+      ).toEqual(["cowork", "coffee"]);
+    }
+  );
+});

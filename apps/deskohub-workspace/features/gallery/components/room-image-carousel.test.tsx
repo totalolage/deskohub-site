@@ -163,6 +163,38 @@ describe("RoomImageCarousel", () => {
     ).toHaveLength(0);
   });
 
+  test("shows the empty text without any photo", async () => {
+    const { RoomImageCarousel } = await import("./room-image-carousel");
+    const view = render(
+      <RoomImageCarousel
+        emptyText="No photos"
+        images={[]}
+        openLabel="Open room gallery"
+      />
+    );
+
+    expect(view.getByText("No photos")).toBeTruthy();
+    expect(view.queryByRole("region")).toBeNull();
+    expect(view.queryAllByRole("button", { hidden: true })).toHaveLength(0);
+  });
+
+  test("shows a single photo as the only slide", async () => {
+    const { RoomImageCarousel } = await import("./room-image-carousel");
+    const view = render(
+      <RoomImageCarousel
+        emptyText="No photos"
+        images={venuePhotos.slice(0, 1)}
+        openLabel="Open room gallery"
+      />
+    );
+
+    expect(
+      view
+        .getAllByRole("img", { hidden: true })
+        .map((image) => image.getAttribute("aria-label"))
+    ).toEqual(["Localized alt"]);
+  });
+
   test("opens the current fallback photo with the shared lightbox", async () => {
     const { RoomImageCarousel } = await import("./room-image-carousel");
     const view = render(

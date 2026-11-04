@@ -73,62 +73,139 @@ type Occupancy = ReadonlyMap<DotyposTableId, number>;
 export const evaluateAvailability = (
   input: AvailabilityEvaluationInput
 ): Result.Result<AvailabilityEvaluation, InvalidDotyposTableSeats> => {
-  const { query, dates, reservation, selectedDate, fullyOccupiedDates } = input;
   const inventory = createInventoryView(input.tables, input.reservations);
-  const shouldCheckRangeDateSelection =
-    query.kind === officeReservationKind ||
-    !reservation ||
-    (query.kind === coworkReservationKind
-      ? isCoworkReservationInterval(reservation)
-      : isSingleDayReservationInterval(reservation));
-  const getDateOccupancy = (date: string) =>
-    query.kind !== officeReservationKind && reservation && date === selectedDate
-      ? inventory.getOccupancy(reservation)
-      : inventory.getCoworkOfferOccupancy(
-          date,
-          query.kind === coworkReservationKind ? query.entryTier : undefined
-        );
+  const getDateOccupancy = createDateOccupancyLookup(inventory, input);
 
   // Alternative tier, monitor-option, and bare range-selection checks each use
   // the candidate offer's OWN authoritative interval; the selected offer's
   // interval must not leak into them (a 00:00-17:00 Open Space occupancy and a
   // full-day Reserved Desk occupancy describe different intervals).
-  const reservedDeskWorkstationRequiredDates: string[] = [];
-  if (query.kind === coworkReservationKind) {
-    for (const date of dates) {
-      if (fullyOccupiedDates.has(date)) continue;
-
-      const reservedDeskOccupancy = inventory.getCoworkOfferOccupancy(
-        date,
-        "reserved-desk"
-      );
-      const bareReservedDeskUnavailable = isCoworkOfferUnavailable(
+  const reservedDeskWorkstationRequiredDates =
+    input.query.kind === coworkReservationKind
+      ? findReservedDeskWorkstationRequiredDates(inventory, input)
+      : [];
+  const unavailableDates = findUnavailableDates(
+    inventory,
+    input,
+    getDateOccupancy
+  );
+  const selectedDateAvailability = input.selectedDate
+    ? evaluateSelectedDate(
         inventory,
-        reservedDeskOccupancy,
-        { entryTier: "reserved-desk" }
-      );
-      if (!bareReservedDeskUnavailable) continue;
+        input,
+        input.selectedDate,
+        getDateOccupancy
+      )
+    : noSelectedDateAvailability();
 
-      const unavailableMonitorOptions = workspaceProductMonitorOptions.map(
-        (monitorOption) =>
-          isCoworkOfferUnavailable(inventory, reservedDeskOccupancy, {
-            entryTier: "reserved-desk",
-            monitorOption,
-          })
-      );
-      if (unavailableMonitorOptions.some((unavailable) => !unavailable)) {
-        reservedDeskWorkstationRequiredDates.push(date);
-      }
+  return inventory.seatCapacityError
+    ? Result.fail(inventory.seatCapacityError)
+    : Result.succeed({
+        unavailableDates,
+        reservedDeskWorkstationRequiredDates,
+        ...selectedDateAvailability,
+      });
+};
+
+type SelectedDateAvailability = Pick<
+  AvailabilityEvaluation,
+  | "unavailableCoworkTiers"
+  | "meetingRoomUnavailable"
+  | "officeUnavailable"
+  | "unavailableMonitorOptions"
+>;
+
+const noSelectedDateAvailability = (): SelectedDateAvailability => ({
+  unavailableCoworkTiers: [],
+  meetingRoomUnavailable: false,
+  officeUnavailable: false,
+  unavailableMonitorOptions: [],
+});
+
+type DateOccupancyLookup = (date: string) => Occupancy;
+
+/**
+ * The selected date of a meeting-room or cowork query uses the selected
+ * reservation's own interval; every other date uses the queried cowork
+ * offer's canonical interval.
+ */
+const createDateOccupancyLookup = (
+  inventory: InventoryView,
+  { query, reservation, selectedDate }: AvailabilityEvaluationInput
+): DateOccupancyLookup => {
+  const entryTier =
+    query.kind === coworkReservationKind ? query.entryTier : undefined;
+  return (date) =>
+    query.kind !== officeReservationKind && reservation && date === selectedDate
+      ? inventory.getOccupancy(reservation)
+      : inventory.getCoworkOfferOccupancy(date, entryTier);
+};
+
+/**
+ * Dates on which a bare Reserved Desk is gone but at least one workstation
+ * configuration is still open.
+ */
+const findReservedDeskWorkstationRequiredDates = (
+  inventory: InventoryView,
+  { dates, fullyOccupiedDates }: AvailabilityEvaluationInput
+) => {
+  const workstationRequiredDates: string[] = [];
+  for (const date of dates) {
+    if (fullyOccupiedDates.has(date)) continue;
+
+    const reservedDeskOccupancy = inventory.getCoworkOfferOccupancy(
+      date,
+      "reserved-desk"
+    );
+    const bareReservedDeskUnavailable = isCoworkOfferUnavailable(
+      inventory,
+      reservedDeskOccupancy,
+      { entryTier: "reserved-desk" }
+    );
+    if (!bareReservedDeskUnavailable) continue;
+
+    const unavailableMonitorOptions = workspaceProductMonitorOptions.map(
+      (monitorOption) =>
+        isCoworkOfferUnavailable(inventory, reservedDeskOccupancy, {
+          entryTier: "reserved-desk",
+          monitorOption,
+        })
+    );
+    if (unavailableMonitorOptions.some((unavailable) => !unavailable)) {
+      workstationRequiredDates.push(date);
     }
   }
+  return workstationRequiredDates;
+};
 
+/**
+ * A range query checks every date unless its selected reservation interval
+ * belongs to one date; then only the selected date is checked.
+ */
+const shouldCheckRangeDateSelection = ({
+  query,
+  reservation,
+}: AvailabilityEvaluationInput) =>
+  query.kind === officeReservationKind ||
+  !reservation ||
+  (query.kind === coworkReservationKind
+    ? isCoworkReservationInterval(reservation)
+    : isSingleDayReservationInterval(reservation));
+
+const findUnavailableDates = (
+  inventory: InventoryView,
+  input: AvailabilityEvaluationInput,
+  getDateOccupancy: DateOccupancyLookup
+) => {
+  const { query, dates, selectedDate, fullyOccupiedDates } = input;
+  const checksEveryDate = shouldCheckRangeDateSelection(input);
   const unavailableDates: string[] = [];
   for (const date of dates) {
     if (fullyOccupiedDates.has(date)) {
       unavailableDates.push(date);
       continue;
     }
-    if (!(shouldCheckRangeDateSelection || date === selectedDate)) continue;
+    if (!(checksEveryDate || date === selectedDate)) continue;
     if (
       isUnavailableForSelection(
         inventory,
@@ -140,53 +217,50 @@ export const evaluateAvailability = (
       unavailableDates.push(date);
     }
   }
+  return unavailableDates;
+};
 
-  const selectedDateOccupancy: Occupancy =
-    selectedDate && dates.includes(selectedDate)
-      ? getDateOccupancy(selectedDate)
-      : new Map();
-  const unavailableCoworkTiers = selectedDate
-    ? workspaceCoworkCurrentTiers.filter((tier) =>
-        isCoworkCategoryUnavailable(
-          inventory,
-          inventory.getCoworkOfferOccupancy(selectedDate, tier),
-          tier
-        )
-      )
-    : [];
-  const meetingRoomUnavailable = selectedDate
-    ? isMeetingRoomUnavailable(inventory, selectedDateOccupancy)
-    : false;
+const evaluateSelectedDate = (
+  inventory: InventoryView,
+  { query, dates, reservation }: AvailabilityEvaluationInput,
+  selectedDate: string,
+  getDateOccupancy: DateOccupancyLookup
+): SelectedDateAvailability => {
+  const selectedDateOccupancy: Occupancy = dates.includes(selectedDate)
+    ? getDateOccupancy(selectedDate)
+    : new Map();
+  const unavailableCoworkTiers = workspaceCoworkCurrentTiers.filter((tier) =>
+    isCoworkCategoryUnavailable(
+      inventory,
+      inventory.getCoworkOfferOccupancy(selectedDate, tier),
+      tier
+    )
+  );
+  const meetingRoomUnavailable = isMeetingRoomUnavailable(
+    inventory,
+    selectedDateOccupancy
+  );
   const officeUnavailable =
-    query.kind === officeReservationKind && selectedDate
-      ? isOfficeUnavailable(
-          inventory,
-          reservation
-            ? inventory.getOccupancy(reservation)
-            : selectedDateOccupancy,
-          query.seats ?? workspaceBookingSeatCount
-        )
-      : false;
-  const unavailableMonitorOptions = selectedDate
-    ? workspaceProductMonitorOptions.filter((monitorOption) =>
-        isCoworkOfferUnavailable(
-          inventory,
-          inventory.getCoworkOfferOccupancy(selectedDate, "reserved-desk"),
-          { entryTier: "reserved-desk", monitorOption }
-        )
+    query.kind === officeReservationKind &&
+    isOfficeUnavailable(
+      inventory,
+      reservation ? inventory.getOccupancy(reservation) : selectedDateOccupancy,
+      query.seats ?? workspaceBookingSeatCount
+    );
+  const unavailableMonitorOptions = workspaceProductMonitorOptions.filter(
+    (monitorOption) =>
+      isCoworkOfferUnavailable(
+        inventory,
+        inventory.getCoworkOfferOccupancy(selectedDate, "reserved-desk"),
+        { entryTier: "reserved-desk", monitorOption }
       )
-    : [];
-
-  return inventory.seatCapacityError
-    ? Result.fail(inventory.seatCapacityError)
-    : Result.succeed({
-        unavailableDates,
-        reservedDeskWorkstationRequiredDates,
-        unavailableCoworkTiers,
-        meetingRoomUnavailable,
-        officeUnavailable,
-        unavailableMonitorOptions,
-      });
+  );
+  return {
+    unavailableCoworkTiers,
+    meetingRoomUnavailable,
+    officeUnavailable,
+    unavailableMonitorOptions,
+  };
 };
 
 type InventoryView = ReturnType<typeof createInventoryView>;

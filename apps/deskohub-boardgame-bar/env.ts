@@ -9,7 +9,7 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { createEnv } from "@t3-oss/env-nextjs";
 import { Schema } from "effect";
 import { z } from "zod";
-import { siteConstants } from "@/shared/utils/constants";
+import { resolvePublicDomain } from "@/public-domain";
 
 const toEnvironmentSchema = <S extends Schema.Decoder<unknown>>(schema: S) =>
   Schema.toStandardSchemaV1(schema);
@@ -92,15 +92,12 @@ export const env = createEnv({
     NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME:
       process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
     get NEXT_PUBLIC_DOMAIN() {
-      if (typeof window !== "undefined") return window.location.origin;
-      if (this.NEXT_PUBLIC_VERCEL_URL) return this.NEXT_PUBLIC_VERCEL_URL;
-      if (this.VERCEL_PROJECT_PRODUCTION_URL) {
-        return this.VERCEL_PROJECT_PRODUCTION_URL;
-      }
-      if (this.NEXT_PUBLIC_NODE_ENV === "development") {
-        return `http://localhost:${process.env.PORT || 3000}`;
-      }
-      return `https://${siteConstants.brand.publicDomain}`;
+      return resolvePublicDomain({
+        vercelUrl: this.NEXT_PUBLIC_VERCEL_URL,
+        productionUrl: this.VERCEL_PROJECT_PRODUCTION_URL,
+        nodeEnv: this.NEXT_PUBLIC_NODE_ENV,
+        port: process.env.PORT,
+      });
     },
     NEXT_PUBLIC_GTM_ID: process.env.NEXT_PUBLIC_GTM_ID,
   },

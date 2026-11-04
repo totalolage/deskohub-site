@@ -14,7 +14,8 @@ type SendResponse =
         readonly message: string;
         readonly statusCode?: number;
       };
-    };
+    }
+  | { readonly data?: never; readonly error: unknown };
 type SendImplementation = (
   payload?: unknown,
   options?: { readonly idempotencyKey?: string; readonly signal?: AbortSignal }
@@ -143,6 +144,44 @@ describe("ResendEmailProvider", () => {
         expect(result.failure._tag).toBe("NetworkError");
       }
     }
+  });
+
+  test("classifies an error without a status code by its message, then its error code", async () => {
+    for (const [error, expectedTag] of [
+      [{ error: "invalid_api_key" }, "EmailServiceError"],
+      [
+        { message: 42, error: "restricted_api_key forbidden" },
+        "EmailServiceError",
+      ],
+      [{ message: "Rate limited", error: "invalid_request" }, "NetworkError"],
+      [{ error: 42 }, "NetworkError"],
+      ["Forbidden", "NetworkError"],
+    ] as const) {
+      send = mock<SendImplementation>(async () => ({ error }));
+      const result = await runProvider(
+        Effect.gen(function* () {
+          const provider = yield* EmailProviderTag;
+          return yield* provider.send(message).pipe(Effect.result);
+        })
+      );
+
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        expect(result.failure._tag).toBe(expectedTag);
+      }
+    }
+  });
+
+  test("sends no Resend tags for a message without categories or string metadata", async () => {
+    await runProvider(
+      Effect.gen(function* () {
+        const provider = yield* EmailProviderTag;
+        yield* provider.send({ ...message, metadata: { attempt: 1 } });
+      })
+    );
+
+    const payload = send.mock.calls[0]?.[0] as { tags?: unknown } | undefined;
+    expect(payload?.tags).toBeUndefined();
   });
 
   for (const [env, single, batch] of [

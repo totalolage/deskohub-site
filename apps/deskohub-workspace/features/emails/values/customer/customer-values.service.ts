@@ -183,34 +183,61 @@ export class CustomerValues extends Context.Service<
     );
 }
 
-const validateDefinitionHistory = (
-  definition: EmailValueDefinition & { readonly source: EmailCustomerSelection }
-): Effect.Effect<void, CustomerValueRejected> => {
-  const selection = definition.source;
-  const shape = selectedEmailCustomerFields(selection);
-  if (
+/** Whether a definition's frozen output no longer matches the catalogue. */
+const hasIncompatibleFrozenFields = (
+  definition: EmailValueDefinition,
+  fields: ReturnType<typeof selectedEmailCustomerFields>
+) =>
+  Boolean(
     definition["customerShape"] &&
-    (!shape || !sameFields(definition["customerShape"], shape))
-  )
-    return Effect.fail(
-      new CustomerValueRejected({ reason: "incompatible-shape" })
-    );
-  if (!selection.sort) return Effect.void;
+      (!fields || !sameFields(definition["customerShape"], fields))
+  );
+
+/** The catalogue's current field at a list selection's sort path. */
+const currentSortField = (
+  selection: EmailCustomerSelection,
+  sortPath: readonly string[]
+) => {
   const selected = emailCustomerFieldAtPath(
     emailCustomerFieldCatalogue,
     selection.path,
     { inheritPresence: false }
   );
-  const current =
-    selected?.kind === "list"
-      ? emailCustomerFieldAtPath(selected.element, selection.sort.path)
-      : undefined;
+  return selected?.kind === "list"
+    ? emailCustomerFieldAtPath(selected.element, sortPath)
+    : undefined;
+};
+
+/** The sort field a definition froze, on its own or in its projected output. */
+const frozenSortField = (
+  definition: EmailValueDefinition,
+  sortPath: readonly string[]
+) => {
   const frozenOutput = definition["customerShape"];
-  const frozenSort =
+  return (
     definition["customerSortShape"] ??
     (frozenOutput?.kind === "list"
-      ? emailCustomerFieldAtPath(frozenOutput.element, selection.sort.path)
-      : undefined);
+      ? emailCustomerFieldAtPath(frozenOutput.element, sortPath)
+      : undefined)
+  );
+};
+
+const validateDefinitionHistory = (
+  definition: EmailValueDefinition & { readonly source: EmailCustomerSelection }
+): Effect.Effect<void, CustomerValueRejected> => {
+  const selection = definition.source;
+  if (
+    hasIncompatibleFrozenFields(
+      definition,
+      selectedEmailCustomerFields(selection)
+    )
+  )
+    return Effect.fail(
+      new CustomerValueRejected({ reason: "incompatible-shape" })
+    );
+  if (!selection.sort) return Effect.void;
+  const current = currentSortField(selection, selection.sort.path);
+  const frozenSort = frozenSortField(definition, selection.sort.path);
   // An unprojected historical sort field needs its own frozen descriptor.
   return Effect.void.pipe(
     Effect.filterOrFail(
@@ -288,12 +315,14 @@ const comparePresentKeys = (
     return left - right;
   if (Predicate.isString(left) && Predicate.isString(right))
     return left < right ? -1 : 1;
-  const rank = (value: Exclude<SortKey, null>) => {
-    if (Predicate.isBoolean(value)) return 0;
-    if (Predicate.isNumber(value)) return 1;
-    return 2;
-  };
-  return rank(left) - rank(right);
+  return sortKeyTypeRank(left) - sortKeyTypeRank(right);
+};
+
+/** Mixed sort data orders booleans, then numbers, then strings. */
+const sortKeyTypeRank = (value: Exclude<SortKey, null>) => {
+  if (Predicate.isBoolean(value)) return 0;
+  if (Predicate.isNumber(value)) return 1;
+  return 2;
 };
 
 const valueAtPath = (

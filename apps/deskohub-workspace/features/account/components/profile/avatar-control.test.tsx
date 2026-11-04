@@ -421,4 +421,51 @@ describe("AvatarControl failure feedback", () => {
       )
     );
   });
+
+  test("falls back to the initials when the avatar image fails to load", async () => {
+    const view = renderControl();
+    const image = view.getByAltText(
+      m.accountProfileAvatarAlt({}, { locale: "en-US" })
+    );
+
+    await act(async () => {
+      fireEvent.error(image);
+    });
+
+    expect(
+      view.queryByAltText(m.accountProfileAvatarAlt({}, { locale: "en-US" }))
+    ).toBeNull();
+    expect(view.getByText("AL")).toBeDefined();
+  });
+
+  test("the change control opens the file picker and clears the previous status", async () => {
+    removeResult = () => Promise.resolve({ serverError: "Remove refused." });
+    const view = renderControl();
+    await act(async () => {
+      fireEvent.click(
+        view.getByRole("button", {
+          name: m.accountProfileAvatarRemove({}, { locale: "en-US" }),
+        })
+      );
+    });
+    await waitFor(() =>
+      expect(view.getByRole("status").textContent).toBe("Remove refused.")
+    );
+    const input = view.container.querySelector(
+      'input[type="file"]'
+    ) as HTMLInputElement;
+    const pickerClick = mock(() => undefined);
+    input.click = pickerClick;
+
+    await act(async () => {
+      fireEvent.click(
+        view.getByRole("button", {
+          name: m.accountProfileAvatarChange({}, { locale: "en-US" }),
+        })
+      );
+    });
+
+    expect(pickerClick).toHaveBeenCalledTimes(1);
+    expect(view.getByRole("status").textContent).toBe("");
+  });
 });

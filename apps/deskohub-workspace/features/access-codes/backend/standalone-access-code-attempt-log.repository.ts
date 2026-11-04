@@ -108,13 +108,17 @@ export class StandaloneAccessCodeAttemptLogStorageError extends Data.TaggedError
   readonly cause?: unknown;
 }> {}
 
+type ClaimInput = {
+  readonly attempt: StandaloneAccessCodeAttempt;
+  readonly claimedAt: Temporal.Instant;
+  readonly staleBefore: Temporal.Instant;
+  readonly providerCredentialRemovedAttemptId?: AdministrationStandaloneAccessCodeAttemptId;
+};
+
 export interface IStandaloneAccessCodeAttemptLogRepository {
-  readonly claim: (input: {
-    readonly attempt: StandaloneAccessCodeAttempt;
-    readonly claimedAt: Temporal.Instant;
-    readonly staleBefore: Temporal.Instant;
-    readonly providerCredentialRemovedAttemptId?: AdministrationStandaloneAccessCodeAttemptId;
-  }) => Effect.Effect<
+  readonly claim: (
+    input: ClaimInput
+  ) => Effect.Effect<
     StandaloneAccessCodeAttemptClaim,
     StandaloneAccessCodeAttemptLogStorageError
   >;
@@ -503,12 +507,14 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
         return terminal;
       });
 
-      const cleanupTargetOf = (
-        prior: StandaloneAccessCodeAttemptEventRow
-      ): AdministrationStandaloneAccessCodeCleanupTarget => ({
-        attemptId: prior.attemptId,
-        name: prior.name,
-      });
+      const cleanupRequired = (prior: StandaloneAccessCodeAttemptEventRow) =>
+        ({
+          kind: "cleanup-required",
+          cleanupTarget: {
+            attemptId: prior.attemptId,
+            name: prior.name,
+          } satisfies AdministrationStandaloneAccessCodeCleanupTarget,
+        }) as const;
 
       const resolveReplay = Effect.fn(function* (
         stored: StandaloneAccessCodeAttemptEventRow,
@@ -552,60 +558,62 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
         return resolution;
       });
 
-      const claimAttempt = Effect.fn(function* (input: {
-        readonly attempt: StandaloneAccessCodeAttempt;
-        readonly claimedAt: Temporal.Instant;
-        readonly staleBefore: Temporal.Instant;
-        readonly providerCredentialRemovedAttemptId?: AdministrationStandaloneAccessCodeAttemptId;
-      }) {
-        const [existing] = yield* findStartedEvent(input.attempt.attemptId);
-        if (existing) return yield* resolveReplay(existing, input);
+      /**
+       * Whether a removed attempt is ambiguous and so needs reconciling. A
+       * stale started attempt first gets its ambiguous terminal event, unless
+       * a concurrent writer recorded another outcome.
+       */
+      const settlesAsAmbiguous = Effect.fn(function* (
+        target: {
+          readonly prior: StandaloneAccessCodeAttemptEventRow;
+          readonly staleStarted: boolean;
+        },
+        occurredAt: Temporal.Instant
+      ) {
+        if (!target.staleStarted) return true;
+        const terminal = yield* appendOrResolveStaleAmbiguous({
+          prior: target.prior,
+          occurredAt,
+        });
+        return resolveTerminalEvent(terminal).kind === "ambiguous";
+      });
 
+      /**
+       * Reconciles the oldest unreconciled ambiguous attempt in the device
+       * window once its provider credential was removed. Returns the cleanup
+       * an administrator still owes before a new attempt may claim.
+       */
+      const reconcileAmbiguousAttempt = Effect.fn(function* (
+        input: ClaimInput
+      ) {
         const [target] = yield* unreconciledAmbiguousAttempts({
           attempt: input.attempt,
           staleBefore: input.staleBefore,
         });
-        if (target) {
-          if (
-            input.providerCredentialRemovedAttemptId !== target.prior.attemptId
-          ) {
-            return {
-              kind: "cleanup-required",
-              cleanupTarget: cleanupTargetOf(target.prior),
-            } as const;
-          }
-          if (target.staleStarted) {
-            const terminal = yield* appendOrResolveStaleAmbiguous({
-              prior: target.prior,
-              occurredAt: input.claimedAt,
-            });
-            if (resolveTerminalEvent(terminal).kind === "ambiguous") {
-              yield* insertReconciledEvent({
-                attempt: input.attempt,
-                prior: target.prior,
-                occurredAt: input.claimedAt,
-              });
-            }
-          } else {
-            yield* insertReconciledEvent({
-              attempt: input.attempt,
-              prior: target.prior,
-              occurredAt: input.claimedAt,
-            });
-          }
-
-          const [next] = yield* unreconciledAmbiguousAttempts({
-            attempt: input.attempt,
-            staleBefore: input.staleBefore,
-          });
-          if (next) {
-            return {
-              kind: "cleanup-required",
-              cleanupTarget: cleanupTargetOf(next.prior),
-            } as const;
-          }
+        if (!target) return undefined;
+        if (
+          input.providerCredentialRemovedAttemptId !== target.prior.attemptId
+        ) {
+          return cleanupRequired(target.prior);
         }
 
+        if (yield* settlesAsAmbiguous(target, input.claimedAt)) {
+          yield* insertReconciledEvent({
+            attempt: input.attempt,
+            prior: target.prior,
+            occurredAt: input.claimedAt,
+          });
+        }
+
+        const [next] = yield* unreconciledAmbiguousAttempts({
+          attempt: input.attempt,
+          staleBefore: input.staleBefore,
+        });
+        return next ? cleanupRequired(next.prior) : undefined;
+      });
+
+      /** Starts the attempt on the first provider variance still free. */
+      const claimFreeVariance = Effect.fn(function* (input: ClaimInput) {
         const occupied = yield* occupiedVariances(input.attempt);
         const variance = standaloneAccessCodeProviderVariances.find(
           (candidate) => !occupied.includes(candidate)
@@ -631,6 +639,15 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
           });
         }
         return yield* resolveReplay(raced, input);
+      });
+
+      const claimAttempt = Effect.fn(function* (input: ClaimInput) {
+        const [existing] = yield* findStartedEvent(input.attempt.attemptId);
+        if (existing) return yield* resolveReplay(existing, input);
+
+        const cleanup = yield* reconcileAmbiguousAttempt(input);
+        if (cleanup) return cleanup;
+        return yield* claimFreeVariance(input);
       });
 
       return StandaloneAccessCodeAttemptLogRepository.of({

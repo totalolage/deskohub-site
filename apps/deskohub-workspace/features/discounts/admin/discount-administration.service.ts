@@ -54,6 +54,7 @@ import type {
   VoucherClaimId,
   VoucherId,
 } from "../persistence-contracts";
+import { isAssignableDotyposDiscountGroup } from "./admin-discount-group";
 import type {
   CreateCustomerDiscountCodeAdminInput,
   CreateCustomerVoucherAdminInput,
@@ -1118,6 +1119,30 @@ export class DiscountAdministration extends Context.Service<
         )
       );
 
+      const requireAssignableDiscountGroup = Effect.fnUntraced(function* (
+        discountGroupId: DotyposDiscountGroupId
+      ) {
+        const discountGroups = yield* dotypos.getDiscountGroups();
+        const group = discountGroups.find(({ id }) => id === discountGroupId);
+        if (!group || !isAssignableDotyposDiscountGroup(group)) {
+          return yield* new DiscountAdminNotFoundError({
+            resource: {
+              kind: "Dotypos discount group",
+              id: discountGroupId,
+            },
+            message:
+              "The Dotypos discount group does not exist or is unavailable.",
+          });
+        }
+        if (toDotyposDiscountBasisPoints(group.discountPercent) === undefined) {
+          return yield* new InvalidDotyposDiscountPercentage({
+            discountGroupId,
+            message:
+              "The Dotypos discount group has an invalid discount percentage.",
+          });
+        }
+      });
+
       const setCustomerDiscountGroup = Effect.fn(
         "DiscountAdministration.setCustomerDiscountGroup"
       )(function* (input: {
@@ -1129,29 +1154,7 @@ export class DiscountAdministration extends Context.Service<
           if (customer._discountGroupId === input.discountGroupId) {
             return;
           }
-          const discountGroups = yield* dotypos.getDiscountGroups();
-          const group = discountGroups.find(
-            ({ id }) => id === input.discountGroupId
-          );
-          if (!group || group.deleted || group.display === false) {
-            return yield* new DiscountAdminNotFoundError({
-              resource: {
-                kind: "Dotypos discount group",
-                id: input.discountGroupId,
-              },
-              message:
-                "The Dotypos discount group does not exist or is unavailable.",
-            });
-          }
-          if (
-            toDotyposDiscountBasisPoints(group.discountPercent) === undefined
-          ) {
-            return yield* new InvalidDotyposDiscountPercentage({
-              discountGroupId: input.discountGroupId,
-              message:
-                "The Dotypos discount group has an invalid discount percentage.",
-            });
-          }
+          yield* requireAssignableDiscountGroup(input.discountGroupId);
         }
         yield* dotypos.setCustomerDiscountGroup(
           input.customerId,

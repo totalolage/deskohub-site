@@ -5,6 +5,7 @@ import {
   createSortedRowModel,
   flexRender,
   metaHelper,
+  type Row,
   type RowData,
   rowSortingFeature,
   type SortingState,
@@ -14,7 +15,7 @@ import {
   tableFeatures,
   useTable,
 } from "@tanstack/react-table";
-import { Fragment, type ReactNode, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import {
   Table,
@@ -56,9 +57,116 @@ export type AdministrationDataTableColumn<T extends RowData> = ColumnDef<
 
 export type AdministrationDataTableSorting = SortingState;
 
+type AdministrationDataTableRow<T extends RowData> = Row<
+  typeof administrationTableFeatures,
+  T
+>;
+
 const isTableRowControl = (target: EventTarget | null) =>
   target instanceof Element &&
   Boolean(target.closest("a, button, input, select, textarea, label, summary"));
+
+const rowActivationKeys = new Set(["Enter", " "]);
+
+/** Opens the row's detail when the table lets this row activate, else nothing. */
+const getRowActivation = <T extends RowData>(
+  item: T,
+  expanded: boolean,
+  onRowActivate: ((item: T, expanded: boolean) => void) | undefined,
+  canRowActivate: ((item: T) => boolean) | undefined
+) =>
+  onRowActivate && (canRowActivate?.(item) ?? true)
+    ? () => onRowActivate(item, expanded)
+    : undefined;
+
+/** A body row that, when it can activate, opens from a click outside its controls or Enter/Space on the row itself. */
+function ActivatableTableRow({
+  activate,
+  children,
+  expanded,
+}: {
+  readonly activate: (() => void) | undefined;
+  readonly children: ReactNode;
+  readonly expanded: boolean;
+}) {
+  const canActivate = activate !== undefined;
+  return (
+    <TableRow
+      aria-expanded={canActivate ? expanded : undefined}
+      className={cn(
+        "relative",
+        canActivate &&
+          "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-burned-orange",
+        expanded && "bg-navy-blue/[0.025]"
+      )}
+      onClick={(event) => {
+        if (!activate || isTableRowControl(event.target)) {
+          return;
+        }
+        activate();
+      }}
+      onKeyDown={(event) => {
+        if (
+          !activate ||
+          event.target !== event.currentTarget ||
+          !rowActivationKeys.has(event.key)
+        ) {
+          return;
+        }
+        event.preventDefault();
+        activate();
+      }}
+      tabIndex={canActivate ? 0 : undefined}
+    >
+      {children}
+    </TableRow>
+  );
+}
+
+function AdministrationDataTableBodyRow<T extends RowData>({
+  activate,
+  expanded,
+  renderActions,
+  renderExpanded,
+  row,
+}: {
+  readonly activate: (() => void) | undefined;
+  readonly expanded: boolean;
+  readonly renderActions?: (item: T, expanded: boolean) => ReactNode;
+  readonly renderExpanded?: (item: T) => ReactNode;
+  readonly row: AdministrationDataTableRow<T>;
+}) {
+  const cells = row.getAllCells();
+  return (
+    <>
+      <ActivatableTableRow activate={activate} expanded={expanded}>
+        {cells.map((cell) => (
+          <TableCell
+            className={cell.column.columnDef.meta?.cellClassName}
+            key={cell.id}
+          >
+            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+          </TableCell>
+        ))}
+        {renderActions && (
+          <TableCell className="text-right">
+            {renderActions(row.original, expanded)}
+          </TableCell>
+        )}
+      </ActivatableTableRow>
+      {expanded && renderExpanded && (
+        <TableRow className="bg-[#fafafd] hover:bg-[#fafafd]">
+          <TableCell
+            className="border-t border-navy-blue/10 p-5"
+            colSpan={cells.length + (renderActions ? 1 : 0)}
+          >
+            {renderExpanded(row.original)}
+          </TableCell>
+        </TableRow>
+      )}
+    </>
+  );
+}
 
 export function AdministrationDataTable<T extends RowData>({
   actionsLabel,
@@ -152,63 +260,20 @@ export function AdministrationDataTable<T extends RowData>({
       <TableBody>
         {table.getRowModel().rows.map((row) => {
           const expanded = row.id === expandedId;
-          const rowCanActivate =
-            Boolean(onRowActivate) && (canRowActivate?.(row.original) ?? true);
           return (
-            <Fragment key={row.id}>
-              <TableRow
-                aria-expanded={rowCanActivate ? expanded : undefined}
-                className={cn(
-                  "relative",
-                  rowCanActivate &&
-                    "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-burned-orange",
-                  expanded && "bg-navy-blue/[0.025]"
-                )}
-                onClick={(event) => {
-                  if (!rowCanActivate || isTableRowControl(event.target)) {
-                    return;
-                  }
-                  if (!onRowActivate) return;
-                  onRowActivate(row.original, expanded);
-                }}
-                onKeyDown={(event) => {
-                  if (
-                    !rowCanActivate ||
-                    event.target !== event.currentTarget ||
-                    (event.key !== "Enter" && event.key !== " ")
-                  ) {
-                    return;
-                  }
-                  event.preventDefault();
-                  onRowActivate?.(row.original, expanded);
-                }}
-                tabIndex={rowCanActivate ? 0 : undefined}
-              >
-                {row.getAllCells().map((cell) => (
-                  <TableCell
-                    className={cell.column.columnDef.meta?.cellClassName}
-                    key={cell.id}
-                  >
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </TableCell>
-                ))}
-                {renderActions && (
-                  <TableCell className="text-right">
-                    {renderActions(row.original, expanded)}
-                  </TableCell>
-                )}
-              </TableRow>
-              {expanded && renderExpanded && (
-                <TableRow className="bg-[#fafafd] hover:bg-[#fafafd]">
-                  <TableCell
-                    className="border-t border-navy-blue/10 p-5"
-                    colSpan={row.getAllCells().length + (renderActions ? 1 : 0)}
-                  >
-                    {renderExpanded(row.original)}
-                  </TableCell>
-                </TableRow>
+            <AdministrationDataTableBodyRow
+              activate={getRowActivation(
+                row.original,
+                expanded,
+                onRowActivate,
+                canRowActivate
               )}
-            </Fragment>
+              expanded={expanded}
+              key={row.id}
+              renderActions={renderActions}
+              renderExpanded={renderExpanded}
+              row={row}
+            />
           );
         })}
       </TableBody>

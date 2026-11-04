@@ -1,8 +1,8 @@
 "use client";
 
 import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
-import { Option, Predicate, Schema } from "effect";
-import { useEffect, useMemo } from "react";
+import { Option, Schema } from "effect";
+import { useMemo } from "react";
 import { useForm } from "react-hook-form";
 import type { PreloadedAdvertisedPrice } from "@/features/checkout/advertised-price";
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
@@ -27,11 +27,7 @@ import {
   reservationTypeOptionLayout,
 } from "@/features/reservation/components/reservation-type-input";
 import { useAdvertisedOptionPrices } from "@/features/reservation/components/use-advertised-option-prices";
-import { useReservationAvailability } from "@/features/reservation/components/use-reservation-availability";
-import {
-  useReservationSelectionUrl,
-  useWatchedSelection,
-} from "@/features/reservation/components/use-reservation-selection-url";
+import { useWatchedSelection } from "@/features/reservation/components/use-reservation-selection-url";
 import {
   findOfficeSeatAdvertisedPriceRequest,
   getOfficeSeatAdvertisedPriceRequests,
@@ -40,8 +36,6 @@ import {
 import {
   getOfficeReservationDayCount,
   getOfficeReservationEndsOn,
-  getOfficeReservationMaximumDayCount,
-  getOfficeReservationMaximumEndsOn,
   getOfficeReservationOrder,
   getOfficeSeatOptions,
   type OfficeReservationData,
@@ -50,12 +44,8 @@ import {
   officeReservationSchema,
 } from "@/features/reservation/office-reservation";
 import { officeSelectionLink } from "@/features/reservation/office-selection-link";
-import { getReservationCheckoutAvailability } from "@/features/reservation/reservation.i18n";
 import type { ReservationCheckoutCustomerForm } from "@/features/reservation/reservation-existing-customer";
-import {
-  getOfficeAvailabilityQuery,
-  type PreloadedWorkspaceAvailability,
-} from "@/features/reservation/workspace-availability";
+import type { PreloadedWorkspaceAvailability } from "@/features/reservation/workspace-availability";
 import {
   FormControl,
   FormField,
@@ -66,6 +56,8 @@ import { formatMoney } from "@/shared/money/money";
 import { cn } from "@/shared/utils";
 import { OfficeDayCountInput } from "./office-day-count-input";
 import { getOfficeReservationSelectionSummary } from "./office-reservation-selection-summary";
+import { useOfficeAvailability } from "./use-office-availability";
+import { useOfficeDayCountBounds } from "./use-office-day-count-bounds";
 
 type OfficeReservationFormProps = {
   readonly checkoutSessionId?: CheckoutSessionId;
@@ -128,16 +120,10 @@ export function OfficeReservationForm({
     () => getSelection(startsOn, dayCount, seats),
     [dayCount, seats, startsOn]
   );
-  const maximumEndsOn = getOfficeReservationMaximumEndsOn(
-    Temporal.PlainDate.from(today)
-  ).toString();
-  const availabilityQuery = useMemo(
-    () => getOfficeAvailabilityQuery(today),
-    [today]
-  );
-  const availabilityResult = useReservationAvailability(availabilityQuery, {
+  const { availabilityResult, maximumEndsOn } = useOfficeAvailability({
     initialAvailability,
     replacementToken,
+    today,
   });
   const advertisedPriceRequests = useMemo(
     () =>
@@ -164,37 +150,14 @@ export function OfficeReservationForm({
   });
   const advertisedOfficeQuoteItem =
     advertisedPrices.selectedPrice?.quote.items[0];
-  const unavailableDates = useMemo(
-    () => new Set(availabilityResult.availability?.unavailableDates ?? []),
-    [availabilityResult.availability]
-  );
-  const maximumDayCount = startsOn
-    ? getOfficeReservationMaximumDayCount({
-        startsOn,
-        maximumEndsOn: Temporal.PlainDate.from(maximumEndsOn),
-        unavailableDates: [...unavailableDates],
-      })
-    : 0;
-  useEffect(() => {
-    if (
-      maximumDayCount > 0 &&
-      Predicate.isNumber(dayCount) &&
-      dayCount > maximumDayCount
-    ) {
-      form.setValue("dayCount", maximumDayCount, { shouldValidate: true });
-    }
-  }, [dayCount, form, maximumDayCount]);
-  useReservationSelectionUrl(
-    officeSelectionLink,
-    startsOn && Predicate.isNumber(dayCount) && dayCount <= maximumDayCount
-      ? watchedSelection
-      : undefined
-  );
-  const unavailable = Boolean(
-    startsOn &&
-      (maximumDayCount === 0 ||
-        (Predicate.isNumber(dayCount) && dayCount > maximumDayCount))
-  );
+  const { availability, maximumDayCount, unavailableDates } =
+    useOfficeDayCountBounds({
+      availabilityResult,
+      form,
+      locale,
+      maximumEndsOn,
+      selection: watchedSelection,
+    });
   const basePriceLabel = selection
     ? m.reservationOfficeBasePriceLabel(
         { dayCount: getOfficeReservationDayCount(selection) },
@@ -206,14 +169,7 @@ export function OfficeReservationForm({
     <ReservationCheckoutForm
       checkoutCustomer={checkoutCustomer}
       advertisedPrice={advertisedPrices.checkout}
-      availability={getReservationCheckoutAvailability({
-        isError: availabilityResult.isError,
-        isPending: availabilityResult.isPending,
-        locale,
-        unavailable: unavailable
-          ? { date: startsOn, reservation: { kind: "office" } }
-          : undefined,
-      })}
+      availability={availability}
       checkoutSessionId={checkoutSessionId}
       form={form}
       getReservation={getOfficeReservationOrder}

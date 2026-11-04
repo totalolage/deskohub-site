@@ -12,9 +12,17 @@ import {
 } from "@/shared/testing/workspace-component-test-env";
 import type { AudienceValueOption } from "../audience-filter-summary";
 import { automationFlowFormErrors } from "../automation/builder/automation-flow-form.test-utils";
+import {
+  type AudienceBooleanWording,
+  type AudienceCountWording,
+  type AudienceDateWording,
+  type AudienceSetWording,
+  audienceAttributeWording,
+} from "./audience-attribute-wording";
 import type { FilterErrorLookup } from "./audience-filter-builder";
 import {
   type AudienceFilterGroup,
+  newCondition,
   newSavedAudienceMembership,
   unchosenSavedAudience,
 } from "./audience-filter-editing";
@@ -207,4 +215,130 @@ test("choosing an audience sets the leaf's audience and keeps its operator", asy
       audienceId: savedAudiences[1]?.id,
     } as AutomationConditionLeaf)
   );
+});
+
+const savedAudienceGroupOf = (
+  ...filters: AudienceFilterGroup["filters"]
+): AudienceFilterGroup => ({ _tag: "Group", operator: "and", filters });
+
+const renderSavedAudienceFilter = async (
+  value: AudienceFilterGroup,
+  onChange: (value: AudienceFilterGroup) => void = () => undefined
+) => {
+  const { AudienceFilterBuilder } = await import("./audience-filter-builder");
+  return render(
+    <RouteLocaleProvider locale="en-US">
+      <AudienceFilterBuilder
+        path="filter"
+        value={value}
+        onChange={onChange}
+        errorAt={() => undefined}
+      />
+    </RouteLocaleProvider>
+  );
+};
+
+const leafPickers = (view: BuilderView) =>
+  view.getAllByRole("combobox", {
+    name: m.emailCampaignsAudienceConditionAttributeLabel(
+      {},
+      { locale: "en-US" }
+    ),
+  });
+
+const countWording = audienceAttributeWording(
+  "campaignEmailCount",
+  "en-US"
+) as AudienceCountWording;
+const dateWording = audienceAttributeWording(
+  "accountCreated",
+  "en-US"
+) as AudienceDateWording;
+const setWording = audienceAttributeWording(
+  "locale",
+  "en-US"
+) as AudienceSetWording;
+const booleanWording = audienceAttributeWording(
+  "hasAccount",
+  "en-US"
+) as AudienceBooleanWording;
+
+test("renders each condition with its attribute kind's controls", async () => {
+  const view = await renderSavedAudienceFilter(
+    savedAudienceGroupOf(
+      newCondition("campaignEmailCount"),
+      newCondition("accountCreated"),
+      newCondition("locale"),
+      newCondition("hasAccount")
+    )
+  );
+  expect(leafPickers(view).map((picker) => picker.textContent)).toEqual([
+    countWording.label,
+    dateWording.label,
+    setWording.label,
+    booleanWording.label,
+  ]);
+  const comboboxNamed = (name: string) =>
+    view.getAllByRole("combobox", { name });
+  expect(
+    comboboxNamed(
+      m.emailCampaignsAudienceCountComparisonLabel(
+        { subject: countWording.count },
+        { locale: "en-US" }
+      )
+    )
+  ).toHaveLength(1);
+  expect(
+    comboboxNamed(
+      m.emailCampaignsAudienceDateConditionLabel(
+        { subject: dateWording.label },
+        { locale: "en-US" }
+      )
+    )
+  ).toHaveLength(1);
+  expect(
+    comboboxNamed(
+      m.emailCampaignsAudienceSetMatchLabel(
+        { subject: setWording.label },
+        { locale: "en-US" }
+      )
+    )
+  ).toHaveLength(1);
+  expect(
+    view.getAllByRole("radio", { name: booleanWording.true })
+  ).toHaveLength(1);
+});
+
+test("hands a condition's edit back at its place in the group", async () => {
+  const onChange = mock((_value: AudienceFilterGroup) => undefined);
+  const count = newCondition("campaignEmailCount");
+  const hasAccount = newCondition("hasAccount");
+  const view = await renderSavedAudienceFilter(
+    savedAudienceGroupOf(count, hasAccount),
+    onChange
+  );
+  await act(async () => {
+    fireEvent.click(view.getByRole("radio", { name: booleanWording.false }));
+  });
+  expect(onChange.mock.calls).toEqual([
+    [savedAudienceGroupOf(count, { ...hasAccount, value: false })],
+  ]);
+});
+
+test("switching a condition's attribute starts it over from that attribute's defaults", async () => {
+  const onChange = mock((_value: AudienceFilterGroup) => undefined);
+  const hasAccount = newCondition("hasAccount");
+  const view = await renderSavedAudienceFilter(
+    savedAudienceGroupOf(newCondition("campaignEmailCount"), hasAccount),
+    onChange
+  );
+  await act(async () => {
+    fireEvent.keyDown(leafPickers(view)[0] as HTMLElement, { key: "Enter" });
+  });
+  await act(async () => {
+    fireEvent.click(view.getByRole("option", { name: setWording.label }));
+  });
+  expect(onChange.mock.calls).toEqual([
+    [savedAudienceGroupOf(newCondition("locale"), hasAccount)],
+  ]);
 });

@@ -520,6 +520,39 @@ export type AdministrationOperationGroup<
 >;
 
 /**
+ * Throws when an endpoint can't be an administration operation in its group:
+ * it is CLI-only, or the group and the endpoint disagree on who checks the
+ * minimum `dhw`.
+ */
+const assertAdministrationOperationEndpoint = (
+  declared: HttpApiGroup.AnyWithProps,
+  endpoint: HttpApiEndpoint.AnyWithProps,
+  checksFirst: boolean
+) => {
+  const reference = `${declared.identifier}.${endpoint.name}`;
+  const checksOwn = (endpoint.middlewares as ReadonlySet<unknown>).has(
+    CliClientCompatibility
+  );
+  const annotations = Context.merge(declared.annotations, endpoint.annotations);
+  const minimum = Context.get(annotations, MinimumDhwVersion);
+  if (Option.isSome(Context.getOption(annotations, CliOnly))) {
+    throw new Error(
+      `${reference} is CLI-only and can't be an administration operation.`
+    );
+  }
+  if (checksFirst && checksOwn) {
+    throw new Error(
+      `${reference} checks its dhw version after authentication in a group that checks it first.`
+    );
+  }
+  if (!checksFirst && !checksOwn && Option.isSome(minimum)) {
+    throw new Error(
+      `${reference} requires a minimum dhw that nothing checks; declare it with requiresDhw.`
+    );
+  }
+};
+
+/**
  * `group` served as administration operations under `/api/v1/cli`: each runs
  * as the authenticated administrator's, and each change is recorded. Add
  * every endpoint before declaring the group, since later ones get neither.
@@ -540,30 +573,7 @@ export const administrationOperationGroup = <
   const declared = group as unknown as HttpApiGroup.AnyWithProps;
   const checksFirst = options?.checkDhwVersionBeforeAuthentication ?? false;
   for (const endpoint of Object.values(declared.endpoints)) {
-    const reference = `${declared.identifier}.${endpoint.name}`;
-    const checksOwn = (endpoint.middlewares as ReadonlySet<unknown>).has(
-      CliClientCompatibility
-    );
-    const annotations = Context.merge(
-      declared.annotations,
-      endpoint.annotations
-    );
-    const minimum = Context.get(annotations, MinimumDhwVersion);
-    if (Option.isSome(Context.getOption(annotations, CliOnly))) {
-      throw new Error(
-        `${reference} is CLI-only and can't be an administration operation.`
-      );
-    }
-    if (checksFirst && checksOwn) {
-      throw new Error(
-        `${reference} checks its dhw version after authentication in a group that checks it first.`
-      );
-    }
-    if (!checksFirst && !checksOwn && Option.isSome(minimum)) {
-      throw new Error(
-        `${reference} requires a minimum dhw that nothing checks; declare it with requiresDhw.`
-      );
-    }
+    assertAdministrationOperationEndpoint(declared, endpoint, checksFirst);
   }
   // Each middleware added later runs outside the earlier ones.
   const middleware: ReadonlyArray<

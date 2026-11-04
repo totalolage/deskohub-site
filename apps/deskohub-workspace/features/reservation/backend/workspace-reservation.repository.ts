@@ -6,7 +6,7 @@ import { and, asc, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer } from "effect";
 import type { SqlError } from "effect/unstable/sql";
-import { WorkspaceDatabase } from "@/db/database.service";
+import { WorkspaceDatabase, WorkspaceTransaction } from "@/db/database.service";
 import { retryDatabaseRead } from "@/db/retry-database-read";
 import {
   paymentAttempts,
@@ -303,6 +303,219 @@ export const ensureUpdated = (
         })
       );
 
+type AdministrationCancellationClaim = Parameters<
+  IWorkspaceReservationRepository["claimAdministrationCancellation"]
+>[0];
+
+type PendingPaymentCancellation = NonNullable<
+  AdministrationCancellationClaim["pendingPaymentCancellation"]
+>;
+
+/** Grant states whose door credential Igloohome may still hold. */
+const liveAccessGrantStates: readonly string[] = [
+  "issued",
+  "uncertain",
+  "provisioning",
+];
+
+const isLiveAccessGrantState = (state: string) =>
+  liveAccessGrantStates.includes(state);
+
+/**
+ * Inserts the checkout attempt's first draft under the session's key, or
+ * nothing when a unique index already holds the attempt or the session.
+ */
+const recordReservationDraft = Effect.fnUntraced(function* (
+  input: CreateWorkspaceReservationDraftInput,
+  checkoutSessionKey: CheckoutSessionKey
+) {
+  const { db } = yield* WorkspaceTransaction;
+  return yield* db
+    .insert(workspaceReservations)
+    .values({
+      id: postgresUuidV7,
+      checkoutSessionKey,
+      checkoutAttemptKey: input.checkoutAttemptKey,
+      correlationId: postgresUuidV7,
+      dotyposCustomerId: input.dotyposCustomerId,
+      authorAccountId: input.authorAccountId,
+      agentClientId: input.agentClientId ?? null,
+      agentSelectionKey: input.agentSelectionKey ?? null,
+      reservationPurpose: input.reservationPurpose,
+      reservationState: "draft",
+      paymentState: "not_started",
+      fulfillmentState: "not_started",
+      reservationDetails: input.reservationDetails,
+      locale: input.locale,
+      reservationHoldExpiresAt: input.reservationHoldExpiresAt,
+    })
+    .onConflictDoNothing()
+    .returning();
+});
+
+/** Locks the reservation's access grant row, if it has one. */
+const lockAccessGrantOfReservation = Effect.fnUntraced(function* (
+  reservationId: WorkspaceReservationId
+) {
+  const { db } = yield* WorkspaceTransaction;
+  return yield* db
+    .select({
+      id: reservationAccessGrants.id,
+      state: reservationAccessGrants.state,
+      accessEndsAt: reservationAccessGrants.accessEndsAt,
+      provisioningStartedAt: reservationAccessGrants.provisioningStartedAt,
+      updatedAt: reservationAccessGrants.updatedAt,
+    })
+    .from(reservationAccessGrants)
+    .where(eq(reservationAccessGrants.workspaceReservationId, reservationId))
+    .limit(1)
+    .for("update");
+});
+
+type LockedAccessGrant = Effect.Success<
+  ReturnType<typeof lockAccessGrantOfReservation>
+>[number];
+
+/** A credential whose access hasn't ended may still open the door. */
+const mayAccessCredentialBeLive = (
+  grant: LockedAccessGrant | undefined,
+  now: Temporal.Instant
+): grant is LockedAccessGrant =>
+  grant !== undefined &&
+  isLiveAccessGrantState(grant.state) &&
+  Temporal.Instant.compare(grant.accessEndsAt, now) > 0;
+
+/** Provisioning that started recently enough may still issue a credential. */
+const isProvisioningLive = (grant: LockedAccessGrant, now: Temporal.Instant) =>
+  grant.state === "provisioning" &&
+  grant.provisioningStartedAt !== null &&
+  Temporal.Instant.compare(
+    grant.provisioningStartedAt,
+    now.subtract({
+      milliseconds: reservationAccessProvisioningStaleAfterMilliseconds,
+    })
+  ) > 0;
+
+/**
+ * An administrator may cancel a reservation with a possibly live credential
+ * only after the provider removed it from the grant revision they saw and no
+ * provisioning is still running.
+ */
+const refusesAdministrationCancellation = (
+  grant: LockedAccessGrant | undefined,
+  input: AdministrationCancellationClaim,
+  now: Temporal.Instant
+) =>
+  mayAccessCredentialBeLive(grant, now) &&
+  (!input.providerCredentialRemoved ||
+    input.accessGrantUpdatedAt !== grant.updatedAt.toString() ||
+    isProvisioningLive(grant, now));
+
+/**
+ * Moves the reservation to `cancelling` from a cancellable state or a stale
+ * cancellation, cancelling its pending payment when the claim forces that.
+ */
+const recordAdministrationCancellationClaim = Effect.fnUntraced(function* (
+  input: AdministrationCancellationClaim,
+  now: Temporal.Instant
+) {
+  const { db } = yield* WorkspaceTransaction;
+  return yield* db
+    .update(workspaceReservations)
+    .set({
+      reservationState: "cancelling",
+      ...(input.pendingPaymentCancellation && {
+        paymentState: "cancelled" as const,
+        failureCode: input.pendingPaymentCancellation.failureCode,
+      }),
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(workspaceReservations.id, input.id),
+        or(
+          inArray(workspaceReservations.reservationState, [
+            "held",
+            "hold_expired",
+            "confirmed",
+            "cancellation_failed",
+          ]),
+          and(
+            eq(workspaceReservations.reservationState, "cancelling"),
+            lte(workspaceReservations.updatedAt, input.staleCancellingBefore)
+          )
+        ),
+        input.pendingPaymentCancellation
+          ? and(
+              eq(workspaceReservations.paymentState, "pending"),
+              eq(
+                workspaceReservations.activePaymentAttemptId,
+                input.pendingPaymentCancellation.paymentAttemptId
+              )
+            )
+          : sql`${workspaceReservations.paymentState} <> 'pending'`,
+        sql`${workspaceReservations.fulfillmentState} <> 'processing'`,
+        sql`${workspaceReservations.fulfillmentState} <> 'awaiting_delivery'`
+      )
+    )
+    .returning();
+});
+
+/**
+ * Cancels the reservation's active payment attempt and releases its discount
+ * claims; fails when the attempt can no longer be cancelled.
+ */
+const cancelPendingPaymentAttempt = Effect.fnUntraced(function* (
+  reservationId: WorkspaceReservationId,
+  pendingPaymentCancellation: PendingPaymentCancellation,
+  now: Temporal.Instant
+) {
+  const { db } = yield* WorkspaceTransaction;
+  const [attempt] = yield* db
+    .update(paymentAttempts)
+    .set({
+      state: "cancelled",
+      failureCode: pendingPaymentCancellation.failureCode,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(paymentAttempts.id, pendingPaymentCancellation.paymentAttemptId),
+        eq(paymentAttempts.workspaceReservationId, reservationId),
+        inArray(paymentAttempts.state, ["created", "pending", "cancelled"])
+      )
+    )
+    .returning({ id: paymentAttempts.id });
+  if (!attempt) {
+    return yield* new WorkspaceReservationStateError({
+      operation: "workspaceReservations.claimAdministrationCancellation",
+      reservationId,
+      message: "The active payment attempt could not be cancelled.",
+    });
+  }
+  yield* releaseCodeClaim(
+    pendingPaymentCancellation.paymentAttemptId,
+    now,
+    pendingPaymentCancellation.failureCode
+  );
+});
+
+/** Expires the grant and forgets its access code. */
+const expireAccessGrant = Effect.fnUntraced(function* (
+  grantId: LockedAccessGrant["id"],
+  now: Temporal.Instant
+) {
+  const { db } = yield* WorkspaceTransaction;
+  yield* db
+    .update(reservationAccessGrants)
+    .set({
+      state: "expired",
+      accessCode: null,
+      updatedAt: now,
+    })
+    .where(eq(reservationAccessGrants.id, grantId));
+});
+
 export class WorkspaceReservationRepository extends Context.Service<
   WorkspaceReservationRepository,
   IWorkspaceReservationRepository
@@ -311,6 +524,77 @@ export class WorkspaceReservationRepository extends Context.Service<
     this,
     Effect.gen(function* () {
       const { db, transaction } = yield* WorkspaceDatabase;
+
+      const selectLatestByAttemptKeys = (
+        checkoutAttemptKeys: readonly CheckoutAttemptKey[]
+      ) =>
+        db
+          .select()
+          .from(workspaceReservations)
+          .where(
+            inArray(
+              workspaceReservations.checkoutAttemptKey,
+              checkoutAttemptKeys
+            )
+          )
+          .orderBy(desc(workspaceReservations.createdAt))
+          .limit(1);
+
+      const selectStoredCheckoutSessionKey = (
+        checkoutSessionKeys: readonly CheckoutSessionKey[]
+      ) =>
+        db
+          .select({
+            checkoutSessionKey: workspaceReservations.checkoutSessionKey,
+          })
+          .from(workspaceReservations)
+          .where(
+            inArray(
+              workspaceReservations.checkoutSessionKey,
+              checkoutSessionKeys
+            )
+          )
+          .orderBy(desc(workspaceReservations.createdAt))
+          .limit(1);
+
+      const selectCurrentBySessionKey = (
+        checkoutSessionKey: CheckoutSessionKey
+      ) =>
+        db
+          .select()
+          .from(workspaceReservations)
+          .where(
+            and(
+              eq(workspaceReservations.checkoutSessionKey, checkoutSessionKey),
+              sql`${workspaceReservations.reservationState} <> 'cancelled'`
+            )
+          )
+          .orderBy(desc(workspaceReservations.createdAt))
+          .limit(1);
+
+      // Writers that skip the checkout-session lock can still win a unique
+      // index on the draft insert: a worker from before the lock may have
+      // stored this attempt, even if it is already cancelled, and supersession
+      // inserts its replacement as the session's current row.
+      const findDraftAfterInsertConflict = Effect.fnUntraced(function* (
+        acceptedCheckoutAttemptKeys: readonly CheckoutAttemptKey[],
+        checkoutSessionKey: CheckoutSessionKey
+      ) {
+        const [conflictingAttempt] = yield* selectLatestByAttemptKeys(
+          acceptedCheckoutAttemptKeys
+        );
+        if (conflictingAttempt) {
+          return yield* decodeWorkspaceReservation(conflictingAttempt);
+        }
+        const [replacement] =
+          yield* selectCurrentBySessionKey(checkoutSessionKey);
+        if (!replacement) {
+          return yield* Effect.die(
+            "Workspace reservation insert returned no row."
+          );
+        }
+        return yield* decodeWorkspaceReservation(replacement);
+      });
 
       const findById = Effect.fn("workspaceReservations.findById")(
         function* (id: WorkspaceReservationId) {
@@ -334,101 +618,37 @@ export class WorkspaceReservationRepository extends Context.Service<
                   input.checkoutSessionLockKey
                 );
 
-                const findAttemptRow = () =>
-                  db
-                    .select()
-                    .from(workspaceReservations)
-                    .where(
-                      inArray(
-                        workspaceReservations.checkoutAttemptKey,
-                        input.acceptedCheckoutAttemptKeys
-                      )
-                    )
-                    .orderBy(desc(workspaceReservations.createdAt))
-                    .limit(1);
-
-                const [existingAttempt] = yield* findAttemptRow();
+                const [existingAttempt] = yield* selectLatestByAttemptKeys(
+                  input.acceptedCheckoutAttemptKeys
+                );
                 if (existingAttempt) {
                   return yield* decodeWorkspaceReservation(existingAttempt);
                 }
 
-                const [storedSession] = yield* db
-                  .select({
-                    checkoutSessionKey:
-                      workspaceReservations.checkoutSessionKey,
-                  })
-                  .from(workspaceReservations)
-                  .where(
-                    inArray(
-                      workspaceReservations.checkoutSessionKey,
-                      input.acceptedCheckoutSessionKeys
-                    )
-                  )
-                  .orderBy(desc(workspaceReservations.createdAt))
-                  .limit(1);
+                const [storedSession] = yield* selectStoredCheckoutSessionKey(
+                  input.acceptedCheckoutSessionKeys
+                );
                 const checkoutSessionKey =
                   storedSession?.checkoutSessionKey ?? input.checkoutSessionKey;
-                const findCurrentSessionRow = () =>
-                  db
-                    .select()
-                    .from(workspaceReservations)
-                    .where(
-                      and(
-                        eq(
-                          workspaceReservations.checkoutSessionKey,
-                          checkoutSessionKey
-                        ),
-                        sql`${workspaceReservations.reservationState} <> 'cancelled'`
-                      )
-                    )
-                    .orderBy(desc(workspaceReservations.createdAt))
-                    .limit(1);
 
-                const [currentSessionRow] = yield* findCurrentSessionRow();
+                const [currentSessionRow] =
+                  yield* selectCurrentBySessionKey(checkoutSessionKey);
                 if (currentSessionRow) {
                   return yield* decodeWorkspaceReservation(currentSessionRow);
                 }
 
-                const [inserted] = yield* db
-                  .insert(workspaceReservations)
-                  .values({
-                    id: postgresUuidV7,
-                    checkoutSessionKey,
-                    checkoutAttemptKey: input.checkoutAttemptKey,
-                    correlationId: postgresUuidV7,
-                    dotyposCustomerId: input.dotyposCustomerId,
-                    authorAccountId: input.authorAccountId,
-                    agentClientId: input.agentClientId ?? null,
-                    agentSelectionKey: input.agentSelectionKey ?? null,
-                    reservationPurpose: input.reservationPurpose,
-                    reservationState: "draft",
-                    paymentState: "not_started",
-                    fulfillmentState: "not_started",
-                    reservationDetails: input.reservationDetails,
-                    locale: input.locale,
-                    reservationHoldExpiresAt: input.reservationHoldExpiresAt,
-                  })
-                  .onConflictDoNothing()
-                  .returning();
+                const [inserted] = yield* recordReservationDraft(
+                  input,
+                  checkoutSessionKey
+                );
                 if (inserted) {
                   return yield* decodeWorkspaceReservation(inserted);
                 }
 
-                // Writers that skip this lock can still win a unique index
-                // here: a worker from before the lock may have stored this
-                // attempt, even if it is already cancelled, and supersession
-                // inserts its replacement as the session's current row.
-                const [conflictingAttempt] = yield* findAttemptRow();
-                if (conflictingAttempt) {
-                  return yield* decodeWorkspaceReservation(conflictingAttempt);
-                }
-                const [replacement] = yield* findCurrentSessionRow();
-                if (!replacement) {
-                  return yield* Effect.die(
-                    "Workspace reservation insert returned no row."
-                  );
-                }
-                return yield* decodeWorkspaceReservation(replacement);
+                return yield* findDraftAfterInsertConflict(
+                  input.acceptedCheckoutAttemptKeys,
+                  checkoutSessionKey
+                );
               })
             );
           },
@@ -444,17 +664,8 @@ export class WorkspaceReservationRepository extends Context.Service<
         findById,
         findByAttemptKeys: Effect.fn("workspaceReservations.findByAttemptKeys")(
           function* (checkoutAttemptKeys) {
-            const [reservation] = yield* db
-              .select()
-              .from(workspaceReservations)
-              .where(
-                inArray(
-                  workspaceReservations.checkoutAttemptKey,
-                  checkoutAttemptKeys
-                )
-              )
-              .orderBy(desc(workspaceReservations.createdAt))
-              .limit(1);
+            const [reservation] =
+              yield* selectLatestByAttemptKeys(checkoutAttemptKeys);
             return yield* decodeOptionalWorkspaceReservation(reservation);
           },
           (effect, checkoutAttemptKeys) =>
@@ -468,19 +679,8 @@ export class WorkspaceReservationRepository extends Context.Service<
           "workspaceReservations.findStoredCheckoutSessionKey"
         )(
           function* (checkoutSessionKeys) {
-            const [reservation] = yield* db
-              .select({
-                checkoutSessionKey: workspaceReservations.checkoutSessionKey,
-              })
-              .from(workspaceReservations)
-              .where(
-                inArray(
-                  workspaceReservations.checkoutSessionKey,
-                  checkoutSessionKeys
-                )
-              )
-              .orderBy(desc(workspaceReservations.createdAt))
-              .limit(1);
+            const [reservation] =
+              yield* selectStoredCheckoutSessionKey(checkoutSessionKeys);
             return reservation?.checkoutSessionKey ?? null;
           },
           (effect, checkoutSessionKeys) =>
@@ -542,20 +742,8 @@ export class WorkspaceReservationRepository extends Context.Service<
           "workspaceReservations.findCurrentByCheckoutSessionKey"
         )(
           function* (checkoutSessionKey) {
-            const [reservation] = yield* db
-              .select()
-              .from(workspaceReservations)
-              .where(
-                and(
-                  eq(
-                    workspaceReservations.checkoutSessionKey,
-                    checkoutSessionKey
-                  ),
-                  sql`${workspaceReservations.reservationState} <> 'cancelled'`
-                )
-              )
-              .orderBy(desc(workspaceReservations.createdAt))
-              .limit(1);
+            const [reservation] =
+              yield* selectCurrentBySessionKey(checkoutSessionKey);
             return yield* decodeOptionalWorkspaceReservation(reservation);
           },
           (effect, checkoutSessionKey) =>
@@ -739,142 +927,27 @@ export class WorkspaceReservationRepository extends Context.Service<
           const claim = transaction(
             Effect.gen(function* () {
               const now = Temporal.Now.instant();
-              const [grant] = yield* db
-                .select({
-                  id: reservationAccessGrants.id,
-                  state: reservationAccessGrants.state,
-                  accessEndsAt: reservationAccessGrants.accessEndsAt,
-                  provisioningStartedAt:
-                    reservationAccessGrants.provisioningStartedAt,
-                  updatedAt: reservationAccessGrants.updatedAt,
-                })
-                .from(reservationAccessGrants)
-                .where(
-                  eq(reservationAccessGrants.workspaceReservationId, input.id)
-                )
-                .limit(1)
-                .for("update");
-              const credentialMayBeLive =
-                grant !== undefined &&
-                ["issued", "uncertain", "provisioning"].includes(grant.state) &&
-                Temporal.Instant.compare(grant.accessEndsAt, now) > 0;
-              const provisioningIsLive =
-                grant?.state === "provisioning" &&
-                grant.provisioningStartedAt !== null &&
-                Temporal.Instant.compare(
-                  grant.provisioningStartedAt,
-                  now.subtract({
-                    milliseconds:
-                      reservationAccessProvisioningStaleAfterMilliseconds,
-                  })
-                ) > 0;
-              if (
-                credentialMayBeLive &&
-                (!input.providerCredentialRemoved ||
-                  input.accessGrantUpdatedAt !== grant.updatedAt.toString() ||
-                  provisioningIsLive)
-              ) {
+              const [grant] = yield* lockAccessGrantOfReservation(input.id);
+              if (refusesAdministrationCancellation(grant, input, now)) {
                 return null;
               }
 
-              const [claimed] = yield* db
-                .update(workspaceReservations)
-                .set({
-                  reservationState: "cancelling",
-                  ...(input.pendingPaymentCancellation && {
-                    paymentState: "cancelled" as const,
-                    failureCode: input.pendingPaymentCancellation.failureCode,
-                  }),
-                  updatedAt: now,
-                })
-                .where(
-                  and(
-                    eq(workspaceReservations.id, input.id),
-                    or(
-                      inArray(workspaceReservations.reservationState, [
-                        "held",
-                        "hold_expired",
-                        "confirmed",
-                        "cancellation_failed",
-                      ]),
-                      and(
-                        eq(
-                          workspaceReservations.reservationState,
-                          "cancelling"
-                        ),
-                        lte(
-                          workspaceReservations.updatedAt,
-                          input.staleCancellingBefore
-                        )
-                      )
-                    ),
-                    input.pendingPaymentCancellation
-                      ? and(
-                          eq(workspaceReservations.paymentState, "pending"),
-                          eq(
-                            workspaceReservations.activePaymentAttemptId,
-                            input.pendingPaymentCancellation.paymentAttemptId
-                          )
-                        )
-                      : sql`${workspaceReservations.paymentState} <> 'pending'`,
-                    sql`${workspaceReservations.fulfillmentState} <> 'processing'`,
-                    sql`${workspaceReservations.fulfillmentState} <> 'awaiting_delivery'`
-                  )
-                )
-                .returning();
+              const [claimed] = yield* recordAdministrationCancellationClaim(
+                input,
+                now
+              );
               if (!claimed) return null;
 
               if (input.pendingPaymentCancellation) {
-                const [attempt] = yield* db
-                  .update(paymentAttempts)
-                  .set({
-                    state: "cancelled",
-                    failureCode: input.pendingPaymentCancellation.failureCode,
-                    updatedAt: now,
-                  })
-                  .where(
-                    and(
-                      eq(
-                        paymentAttempts.id,
-                        input.pendingPaymentCancellation.paymentAttemptId
-                      ),
-                      eq(paymentAttempts.workspaceReservationId, input.id),
-                      inArray(paymentAttempts.state, [
-                        "created",
-                        "pending",
-                        "cancelled",
-                      ])
-                    )
-                  )
-                  .returning({ id: paymentAttempts.id });
-                if (!attempt) {
-                  return yield* new WorkspaceReservationStateError({
-                    operation:
-                      "workspaceReservations.claimAdministrationCancellation",
-                    reservationId: input.id,
-                    message:
-                      "The active payment attempt could not be cancelled.",
-                  });
-                }
-                yield* releaseCodeClaim(
-                  input.pendingPaymentCancellation.paymentAttemptId,
-                  now,
-                  input.pendingPaymentCancellation.failureCode
+                yield* cancelPendingPaymentAttempt(
+                  input.id,
+                  input.pendingPaymentCancellation,
+                  now
                 );
               }
 
-              if (
-                grant &&
-                ["issued", "uncertain", "provisioning"].includes(grant.state)
-              ) {
-                yield* db
-                  .update(reservationAccessGrants)
-                  .set({
-                    state: "expired",
-                    accessCode: null,
-                    updatedAt: now,
-                  })
-                  .where(eq(reservationAccessGrants.id, grant.id));
+              if (grant && isLiveAccessGrantState(grant.state)) {
+                yield* expireAccessGrant(grant.id, now);
               }
               return yield* decodeWorkspaceReservation(claimed);
             })
