@@ -1,17 +1,31 @@
 import { describe, expect, test } from "bun:test";
+import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Effect } from "effect";
-import type { CampaignBodyNode } from "./campaign-body-document";
-import type { CampaignLocaleContent } from "./campaign-content";
+import { m } from "@/features/i18n";
+import { getRuntimeMarketingPreferencesAccessUrl } from "@/features/legal/marketing-preferences-access-url";
+import type { CampaignBodyNode } from "./body/campaign-body-document";
+import type {
+  CampaignLocaleContent,
+  CampaignPurpose,
+} from "./body/campaign-content";
 import {
-  CampaignEmailFooter,
-  renderCampaignEmail,
-} from "./render-campaign-email";
+  CampaignDeliveryAudience,
+  CampaignEmailOccasion,
+  campaignEmailKind,
+  campaignEmailMessage,
+  renderCampaignEmailPreview,
+} from "./campaign-email";
+import type {
+  CampaignConfirmationCode,
+  CampaignSendId,
+} from "./campaign-identifiers";
 
 const cloudinaryImage =
   "https://res.cloudinary.com/cloud/image/upload/v1/campaigns/autumn.jpg";
 const bookingUrl = "https://workspace.deskohub.cz/cs-CZ/meeting-room";
-const preferencesUrl =
-  "https://workspace.deskohub.cz/cs-CZ/marketing-preferences/access?token=t0k3n";
+const unsubscribeUrl =
+  "https://workspace.deskohub.cz/api/email-campaigns/unsubscribe?token=t0k3n&x=1";
 
 const text = (value: string) => ({ type: "text", text: value });
 const paragraph = (value: string) => ({
@@ -81,24 +95,65 @@ const content: CampaignLocaleContent = {
 };
 
 const render = (
-  footer: CampaignEmailFooter,
+  purpose: CampaignPurpose = "operational",
   locale = "cs-CZ" as const,
   localeContent: CampaignLocaleContent = content
 ) =>
   Effect.runPromise(
-    renderCampaignEmail({
+    renderCampaignEmailPreview({
       templateKey: "workspace",
+      purpose,
       locale,
       content: localeContent,
-      footer,
     })
   );
 
+const sender = {
+  from: { email: testEmailAddress("campaigns"), name: "Deskohub Workspace" },
+  replyTo: { email: testEmailAddress("hello") },
+};
+const recipient = {
+  sendId: "send-1" as CampaignSendId,
+  dotyposCustomerId: DotyposCustomerIdSchema.make("42"),
+};
+const code = "ABCD-EFGH" as CampaignConfirmationCode;
+
+const message = (
+  occasion: CampaignEmailOccasion,
+  options: {
+    readonly locale?: "cs-CZ" | "en-US";
+    readonly localeContent?: CampaignLocaleContent;
+    readonly deploymentEnvironment?: string;
+  } = {}
+) =>
+  Effect.runPromise(
+    campaignEmailMessage({
+      templateKey: "workspace",
+      locale: options.locale ?? "cs-CZ",
+      content: options.localeContent ?? content,
+      occasion,
+      sender,
+      deploymentEnvironment: options.deploymentEnvironment ?? "preview",
+    })
+  );
+
+const delivery = (audience: CampaignDeliveryAudience) =>
+  CampaignEmailOccasion.Delivery({
+    to: testEmailAddress("ada"),
+    recipient,
+    audience,
+  });
+
+const attribute = (url: string) => url.replaceAll("&", "&amp;");
+
+const placeholderPreferencesUrl = () =>
+  Effect.runPromise(getRuntimeMarketingPreferencesAccessUrl("preview"));
+
 const operationalReason = "Píšeme vám kvůli změně provozní doby.";
 
-describe("renderCampaignEmail", () => {
+describe("campaign email preview", () => {
   test("renders the body inside the Workspace layout", async () => {
-    const email = await render(CampaignEmailFooter.Operational());
+    const email = await render();
 
     expect(email.subject).toBe(content.subject);
     expect(email.html).toContain('lang="cs-CZ"');
@@ -120,7 +175,7 @@ describe("renderCampaignEmail", () => {
   });
 
   test("renders list-item paragraphs without block margins", async () => {
-    const email = await render(CampaignEmailFooter.Operational());
+    const email = await render();
     const listItems = email.html.match(/<li[^>]*>[\s\S]*?<\/li>/g) ?? [];
 
     expect(listItems).toHaveLength(3);
@@ -130,7 +185,7 @@ describe("renderCampaignEmail", () => {
   });
 
   test("renders a readable plain-text version", async () => {
-    const email = await render(CampaignEmailFooter.Operational());
+    const email = await render();
 
     expect(email.text).not.toMatch(/<[a-z]/i);
     expect(email.text).toContain("PODZIMNÍ NOVINKY");
@@ -144,67 +199,173 @@ describe("renderCampaignEmail", () => {
     expect(email.text).toContain(`Rezervovat ${bookingUrl}`);
   });
 
-  test("gives a marketing email an unsubscribe link", async () => {
-    const email = await render(
-      CampaignEmailFooter.Marketing({ marketingPreferencesUrl: preferencesUrl })
-    );
+  test("links a marketing preview to the placeholder preferences page", async () => {
+    const email = await render("marketing");
+    const preferencesUrl = await placeholderPreferencesUrl();
 
+    expect(preferencesUrl).toContain("token=preview");
+    expect(email.html).toContain(`href="${attribute(preferencesUrl)}"`);
     expect(email.html).toContain(
-      `href="${preferencesUrl.replace("&", "&amp;")}"`
+      m.emailCampaignMarketingFooterLink({}, { locale: "cs-CZ" })
     );
-    expect(email.html).toContain("Odhlásit odběr nebo změnit nastavení");
     expect(email.text).toContain(preferencesUrl);
-    expect(email.html).not.toContain("provozní sdělení");
+    expect(email.html).not.toContain(
+      m.emailCampaignOperationalFooter({}, { locale: "cs-CZ" })
+    );
   });
 
-  test("gives an operational email a reason line and no unsubscribe link", async () => {
-    const email = await render(CampaignEmailFooter.Operational());
+  test("gives an operational preview a reason line and no preferences link", async () => {
+    const email = await render();
 
-    expect(email.html).toContain("Toto provozní sdělení ti posíláme");
+    expect(email.html).toContain(
+      m.emailCampaignOperationalFooter({}, { locale: "cs-CZ" })
+    );
     expect(email.html).not.toContain("marketing-preferences");
-    expect(email.html).not.toContain("Odhlásit odběr");
+    expect(email.html).not.toContain(
+      m.emailCampaignMarketingFooterLink({}, { locale: "cs-CZ" })
+    );
   });
 
   test("replaces the operational reason line with the campaign's own", async () => {
-    const email = await render(CampaignEmailFooter.Operational(), "cs-CZ", {
+    const email = await render("operational", "cs-CZ", {
       ...content,
       operationalReason,
     });
 
     expect(email.html).toContain(operationalReason);
     expect(email.text).toContain(operationalReason);
-    expect(email.html).not.toContain("Toto provozní sdělení ti posíláme");
+    expect(email.html).not.toContain(
+      m.emailCampaignOperationalFooter({}, { locale: "cs-CZ" })
+    );
   });
 
   test("ignores the operational reason in a marketing email", async () => {
-    const email = await render(
-      CampaignEmailFooter.Marketing({
-        marketingPreferencesUrl: preferencesUrl,
-      }),
-      "cs-CZ",
-      { ...content, operationalReason }
-    );
+    const email = await render("marketing", "cs-CZ", {
+      ...content,
+      operationalReason,
+    });
 
     expect(email.html).not.toContain(operationalReason);
-    expect(email.html).toContain("Odhlásit odběr nebo změnit nastavení");
+    expect(email.html).toContain(
+      m.emailCampaignMarketingFooterLink({}, { locale: "cs-CZ" })
+    );
   });
 
   test("localizes the footer", async () => {
-    const email = await render(
-      CampaignEmailFooter.Marketing({
-        marketingPreferencesUrl: preferencesUrl,
-      }),
-      "en-US"
-    );
+    const email = await render("marketing", "en-US");
 
     expect(email.html).toContain('lang="en-US"');
-    expect(email.html).toContain("Unsubscribe or change your preferences");
+    expect(email.html).toContain(
+      m.emailCampaignMarketingFooterLink({}, { locale: "en-US" })
+    );
+  });
+
+  test("has no test notice", async () => {
+    const email = await render("marketing");
+
+    expect(email.subject).toBe(content.subject);
+    expect(email.html).not.toContain(
+      m.emailCampaignTestNotice({ code }, { locale: "cs-CZ" })
+    );
+  });
+});
+
+describe("campaign test email", () => {
+  const testOccasion = (
+    purpose: CampaignPurpose,
+    to = testEmailAddress("admin")
+  ) => CampaignEmailOccasion.Test({ to, purpose, code });
+
+  test("marks the subject, leads with the code, and carries no delivery tags or headers", async () => {
+    const email = await message(testOccasion("operational"));
+
+    expect(email.to).toEqual({ email: testEmailAddress("admin") });
+    expect(email.subject).toBe(`[TEST] ${content.subject}`);
+    expect(email.html).toContain(
+      m.emailCampaignTestNotice({ code }, { locale: "cs-CZ" })
+    );
+    expect(email.text).toContain(code);
+    expect(email.headers).toBeUndefined();
+    expect(email.metadata).toBeUndefined();
+    expect(email.tags).toEqual(["email-campaign-test"]);
+    expect(email.sensitiveContent).toBe(false);
+  });
+
+  test("links a marketing test email to the placeholder preferences page", async () => {
+    const email = await message(testOccasion("marketing"));
+
+    expect(email.html).toContain(
+      `href="${attribute(await placeholderPreferencesUrl())}"`
+    );
+    expect(email.headers).toBeUndefined();
+  });
+
+  test("keeps the confirmation code out of production provider logs", async () => {
+    const email = await message(testOccasion("operational"), {
+      deploymentEnvironment: "production",
+    });
+
+    expect(email.sensitiveContent).toBe(true);
+  });
+});
+
+describe("campaign delivery", () => {
+  test("links a marketing footer to the one-click unsubscribe URL", async () => {
+    const email = await message(
+      delivery(CampaignDeliveryAudience.Marketing({ unsubscribeUrl }))
+    );
+    const footerLinks = [
+      ...(email.html ?? "").matchAll(/href="([^"]*unsubscribe[^"]*)"/g),
+    ].map(([, href]) => href);
+
+    expect(email.headers).toEqual({
+      "List-Unsubscribe": `<${unsubscribeUrl}>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    });
+    expect(footerLinks).toEqual([attribute(unsubscribeUrl)]);
+    expect(email.text).toContain(unsubscribeUrl);
+    expect(email.html).not.toContain("token=preview");
+  });
+
+  test("gives an operational email no unsubscribe headers or link", async () => {
+    const email = await message(
+      delivery(CampaignDeliveryAudience.Operational()),
+      { localeContent: { ...content, operationalReason } }
+    );
+
+    expect(email.headers).toBeUndefined();
+    expect(email.html).not.toContain("marketing-preferences");
+    expect(email.html).not.toContain("unsubscribe");
+    expect(email.html).toContain(operationalReason);
+  });
+
+  test("tags the frozen recipient for the delivery-status webhook", async () => {
+    const email = await message(
+      delivery(CampaignDeliveryAudience.Operational())
+    );
+
+    expect(email).toMatchObject({
+      from: sender.from,
+      replyTo: sender.replyTo,
+      to: { email: testEmailAddress("ada") },
+      subject: content.subject,
+      tags: [campaignEmailKind.category],
+      metadata: {
+        campaignSendId: "send-1",
+        dotyposCustomerId: "42",
+        deploymentEnvironment: "preview",
+      },
+    });
+    expect(email.sensitiveContent).toBeUndefined();
+    expect(email.html).not.toContain(
+      m.emailCampaignTestNotice({ code }, { locale: "cs-CZ" })
+    );
   });
 });
 
 describe("campaign body images", () => {
   const renderImage = async (attrs: CampaignBodyNode["attrs"]) => {
-    const email = await render(CampaignEmailFooter.Operational(), "cs-CZ", {
+    const email = await render("operational", "cs-CZ", {
       ...content,
       body: {
         formatVersion: 1,

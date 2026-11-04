@@ -2,6 +2,7 @@ import { testEmailAddress } from "@deskohub/test-email";
 import { createElement } from "react";
 import { CampaignBodyContent } from "@/features/email-campaigns/body/campaign-body-content";
 import { workspaceSiteConstants } from "@/shared/utils";
+import { WorkspaceCampaignFooter } from "../_components/workspace-campaign-footer";
 import type { ContactBusinessEmailProps } from "../contact-business";
 import type { ContactConfirmationEmailProps } from "../contact-confirmation";
 import type { CustomerReservationEmailProps } from "../customer-reservation";
@@ -178,11 +179,7 @@ export const workspaceCampaignPreviewProps = {
       },
     },
   }),
-  footer: {
-    note: "Tento e-mail dostáváš, protože máme tvůj souhlas se zasíláním marketingových sdělení od Deskohub Workspace.",
-    link: {
-      label: "Odhlásit odběr nebo změnit nastavení",
-      href: `https://${workspaceSiteConstants.brand.domain}/cs-CZ/marketing-preferences/access?token=preview`,
-    },
-  },
+  footer: WorkspaceCampaignFooter.Marketing({
+    marketingPreferencesUrl: `https://${workspaceSiteConstants.brand.domain}/cs-CZ/marketing-preferences/access?token=preview`,
+  }),
 } satisfies WorkspaceCampaignEmailProps;
