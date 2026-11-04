@@ -13,10 +13,17 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { unsafeReturnTargets } from "@/shared/testing/unsafe-return-targets.test-utils";
 import type { AuthReturnLifecycle } from "./auth-return";
 import {
+  hasStoredEmailSignInRequest,
+  observeSignInAnalytics,
+  offersPasskeyPrompt,
+  storePendingEmailSignInRequest,
+} from "./browser-sign-in-completion.test-utils";
+import {
   encodeAuthCallbackReturn,
   readAuthCallbackReturnTo,
   signInCallbackReturnParam,
 } from "./routes";
+import { SIGN_IN_CODE_REJECTED_EVENT } from "./sign-in-analytics";
 
 const customerEmail = testEmailAddress("ada");
 
@@ -89,12 +96,6 @@ const passwordSignIn = mock(
       error: null,
     })
 );
-const recordSignInCompletion = mock((method: string) => {
-  events.push(`record:${method}`);
-});
-const captureSignInCodeRejection = mock((reason: string) => {
-  events.push(`rejected:${reason}`);
-});
 const getSession = mock(
   (
     _options?: SessionRequestOptions
@@ -109,10 +110,6 @@ mock.module("@/features/account/auth.client", () => ({
     signIn: { magicLink, emailOtp, email: passwordSignIn },
   },
 }));
-mock.module("./sign-in-analytics", () => ({
-  captureSignInCodeRejection,
-  recordSignInCompletion,
-}));
 
 let originalBroadcastChannel: PropertyDescriptor | undefined;
 let originalCrypto: PropertyDescriptor | undefined;
@@ -121,6 +118,11 @@ let originalFocus: typeof window.focus;
 let originalReplace: typeof window.location.replace;
 
 let authReturn: typeof import("./auth-return");
+let analytics: ReturnType<typeof observeSignInAnalytics>;
+const codeRejectionReasons = () =>
+  analytics.events
+    .filter(({ event }) => event === SIGN_IN_CODE_REJECTED_EVENT)
+    .map(({ properties }) => properties?.reason);
 
 const installReturnApis = () => {
   Object.defineProperty(globalThis, "BroadcastChannel", {
@@ -163,7 +165,7 @@ const setSession = (data: SessionData | null) => {
 
 describe("account auth return lifecycle", () => {
   beforeAll(async () => {
-    GlobalRegistrator.register();
+    GlobalRegistrator.register({ url: "https://deskohub.test/en-US/account" });
     originalBroadcastChannel = Object.getOwnPropertyDescriptor(
       globalThis,
       "BroadcastChannel"
@@ -197,8 +199,7 @@ describe("account auth return lifecycle", () => {
         error: null,
       })
     );
-    recordSignInCompletion.mockClear();
-    captureSignInCodeRejection.mockClear();
+    analytics = observeSignInAnalytics();
     getSession.mockClear();
     getSession.mockImplementation(() =>
       Promise.resolve({ data: null, error: null })
@@ -212,6 +213,7 @@ describe("account auth return lifecycle", () => {
   });
 
   afterEach(() => {
+    analytics.stop();
     for (const cleanup of listenerCleanups) cleanup.mockClear();
     window.location.replace = originalReplace;
     window.focus = originalFocus;
@@ -267,7 +269,7 @@ describe("account auth return lifecycle", () => {
       expect(events.filter((event) => event.startsWith("replace:"))).toEqual([
         "replace:/cs-CZ/auth/callback",
       ]);
-      expect(recordSignInCompletion).not.toHaveBeenCalled();
+      expect(analytics.takeRecordedSignInMethod()).toBeUndefined();
     });
 
     test.each([
@@ -500,6 +502,7 @@ describe("account auth return lifecycle", () => {
   });
 
   test("does not acknowledge when hard navigation cannot be requested", async () => {
+    storePendingEmailSignInRequest();
     setSession({
       session: { createdAt: new Date() },
       user: { emailVerified: true },
@@ -514,6 +517,8 @@ describe("account auth return lifecycle", () => {
 
     expect(await listener?.onReturn(new AbortController().signal)).toBe(false);
     expect(events).not.toContain("focus");
+    // Only a tab that left forgets its pending request.
+    expect(hasStoredEmailSignInRequest()).toBe(true);
     lifecycle.cancel();
   });
 
@@ -684,7 +689,7 @@ describe("account auth return lifecycle", () => {
       expect(await lifecycle.verifySignInCode(customerEmail, "000000")).toBe(
         verification
       );
-      expect(captureSignInCodeRejection).toHaveBeenCalledWith(reason);
+      expect(codeRejectionReasons()).toEqual([reason]);
       // A rejected code keeps the link hand-off alive.
       expect(listenerCleanups[0]).not.toHaveBeenCalled();
       expect(lifecycle.continueWithVerifiedCode()).toBe(false);
@@ -707,7 +712,7 @@ describe("account auth return lifecycle", () => {
     expect(await lifecycle.verifySignInCode(customerEmail, "000000")).toBe(
       "automated"
     );
-    expect(captureSignInCodeRejection).not.toHaveBeenCalled();
+    expect(codeRejectionReasons()).toEqual([]);
     expect(listenerCleanups[0]).not.toHaveBeenCalled();
     lifecycle.cancel();
   });
@@ -727,7 +732,7 @@ describe("account auth return lifecycle", () => {
     expect(await lifecycle.verifySignInCode(customerEmail, "482913")).toBe(
       "failed"
     );
-    expect(captureSignInCodeRejection).not.toHaveBeenCalled();
+    expect(codeRejectionReasons()).toEqual([]);
   });
 
   test("reports a thrown code request generically", async () => {
@@ -757,7 +762,8 @@ describe("account auth return lifecycle", () => {
     expect(events.filter((event) => event.startsWith("replace:"))).toEqual([
       `replace:/en-US/auth/callback?attempt=${VALID_ATTEMPT_ID}`,
     ]);
-    expect(recordSignInCompletion.mock.calls).toEqual([["code"]]);
+    expect(analytics.takeRecordedSignInMethod()).toBe("code");
+    expect(await offersPasskeyPrompt("account-1")).toBe(true);
   });
 
   test("records a link sign-in handed off to this tab, but not a reauthentication", async () => {
@@ -768,16 +774,17 @@ describe("account auth return lifecycle", () => {
     const signIn = authReturn.createAuthReturnLifecycle({ locale: "en-US" });
     await signIn.sendSignInEmail(customerEmail);
     expect(await listener?.onReturn(new AbortController().signal)).toBe(true);
-    expect(recordSignInCompletion.mock.calls).toEqual([["link"]]);
+    expect(analytics.takeRecordedSignInMethod()).toBe("link");
+    expect(await offersPasskeyPrompt("account-1")).toBe(true);
 
-    recordSignInCompletion.mockClear();
     const reauthentication = authReturn.createAuthReturnLifecycle({
       locale: "en-US",
       requireFreshSession: true,
     });
     await reauthentication.sendSignInEmail(customerEmail);
     expect(await listener?.onReturn(new AbortController().signal)).toBe(true);
-    expect(recordSignInCompletion).not.toHaveBeenCalled();
+    expect(analytics.takeRecordedSignInMethod()).toBeUndefined();
+    expect(await offersPasskeyPrompt("account-1")).toBe(false);
   });
 
   test("does not navigate twice when the link hand-off wins the race", async () => {
@@ -825,7 +832,7 @@ describe("account auth return lifecycle", () => {
     expect(await lifecycle.continueIfSignedIn()).toBe(true);
     expect(events).toContain("replace:/en-US/account");
     // The other tab finished the sign-in and records it itself.
-    expect(recordSignInCompletion).not.toHaveBeenCalled();
+    expect(analytics.takeRecordedSignInMethod()).toBeUndefined();
     expect(listenerCleanups[0]).toHaveBeenCalledTimes(1);
   });
 

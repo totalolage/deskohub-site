@@ -191,6 +191,13 @@ glossary defines the customer account, reservation author, and tombstone.
   re-reads the session. The `/account` redirect for signed-out visitors stays
   only for direct or stale navigations, and it is a document navigation too,
   so it loads the sign-in page instead of opening its modal.
+- A sign-in that finishes in the browser (passkey, link callback or
+  hand-off, typed code) calls `completeBrowserSignIn` and leaves with
+  `leaveForSignInDestination` (`features/account/browser-sign-in-completion.ts`).
+  Never sequence the analytics record, passkey-prompt note, passkey marker or
+  pending-request forget at the call site. Tests read those outcomes through
+  `browser-sign-in-completion.test-utils.ts` instead of mocking the storage
+  modules.
 - Use one magic-link form for sign-in and implicit sign-up. Only an
   app-directory review login's address gets a password step after it; see
   the password bullet in [Better Auth configuration](better-auth-configuration.md).
