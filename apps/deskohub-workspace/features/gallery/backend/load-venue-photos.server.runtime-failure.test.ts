@@ -1,11 +1,13 @@
 import "@/shared/testing/workspace-test-env";
 
 import { afterEach, expect, mock, spyOn, test } from "bun:test";
-import { Effect, Layer } from "effect";
 import { recordNextCache } from "@/shared/testing/next-cache-recorder.test-utils";
+import { failWorkspaceTelemetry } from "@/shared/testing/workspace-telemetry.test-utils";
 import { cloudinaryTags } from "@/shared/utils/cache-tags";
 
-const runtimeStartFailure = new Error("synthetic tracing exporter unavailable");
+const runtimeStartFailure = new Error(
+  "synthetic PostHog logging configuration unusable"
+);
 const nextCache = recordNextCache();
 const originalFetch = globalThis.fetch;
 const fetchCalls = mock(async () => new Response("[]", { status: 200 }));
@@ -17,12 +19,7 @@ afterEach(() => {
 // The real Workspace runner builds its observability layer before entering
 // the gallery Effect, so this fails every run in this file before the lookup
 // starts, as a production runtime that cannot start would.
-mock.module("@/instrumentation", () => ({ postHogLoggerProvider: undefined }));
-mock.module("@/shared/backend/observability/workspace-tracing", () => ({
-  createWorkspaceTracingLive: () =>
-    Layer.effectDiscard(Effect.fail(runtimeStartFailure)),
-  WorkspaceTracingLive: Layer.effectDiscard(Effect.fail(runtimeStartFailure)),
-}));
+failWorkspaceTelemetry(runtimeStartFailure);
 mock.module("cloudinary", () => ({
   v2: {
     config: mock(() => undefined),

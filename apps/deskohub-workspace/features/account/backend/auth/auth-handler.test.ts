@@ -33,7 +33,6 @@ import {
   callHandler,
   captureFailure,
   cookieJar,
-  emitWorkspaceLog,
   getSessionCookie,
   HOST,
   linkAccount,
@@ -50,6 +49,7 @@ import {
   uniqueIp,
   userIdForEmail,
   verifyMagicLink,
+  workspaceLogs,
 } from "./auth-handler.test-utils";
 import { betterAuthMagicLinkOptions } from "./auth-options";
 
@@ -133,7 +133,7 @@ test("reports auth handler failures without logging provider data", async () => 
     () => undefined
   );
 
-  emitWorkspaceLog.mockClear();
+  workspaceLogs.reset();
 
   try {
     const authContext = await auth.$context;
@@ -151,7 +151,7 @@ test("reports auth handler failures without logging provider data", async () => 
         ...consoleError.mock.calls,
         ...consoleLog.mock.calls,
         ...consoleWarn.mock.calls,
-        ...emitWorkspaceLog.mock.calls,
+        ...workspaceLogs.records(),
       ],
       (_key, value) =>
         value instanceof Error
@@ -169,8 +169,8 @@ test("reports auth handler failures without logging provider data", async () => 
     expect(captured).not.toContain("insert into auth.verification");
     expect(captured).not.toContain("query");
     expect(captured).not.toContain("params");
-    expect(emitWorkspaceLog).toHaveBeenCalledTimes(1);
-    expect(emitWorkspaceLog.mock.calls[0]?.[0]).toMatchObject({
+    expect(workspaceLogs.records()).toHaveLength(1);
+    expect(workspaceLogs.records()[0]).toMatchObject({
       attributes: {
         boundary: "route",
         operation: "account.auth.handler",
@@ -325,7 +325,7 @@ describe.skipIf(!testDatabase)(
       const email = uniqueEmail("profile-fields");
       const rawProfileSecret = `profile-secret-${crypto.randomUUID()}`;
 
-      emitWorkspaceLog.mockClear();
+      workspaceLogs.reset();
       const response = await callHandler(auth, "/sign-in/magic-link", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -339,7 +339,7 @@ describe.skipIf(!testDatabase)(
       expect(response.status).toBe(400);
       expect(await response.text()).not.toContain(rawProfileSecret);
       expect(sentLinks).toHaveLength(0);
-      expect(emitWorkspaceLog).not.toHaveBeenCalled();
+      expect(workspaceLogs.records()).toHaveLength(0);
 
       const verification = await testDatabase!.pool.query(
         `select id from auth.verification where value like $1`,
@@ -566,14 +566,14 @@ describe.skipIf(!testDatabase)(
       const email = uniqueEmail("legacy-capture-failure");
       const accountId = await insertLegacyAccount(email);
 
-      emitWorkspaceLog.mockClear();
+      workspaceLogs.reset();
       await signInForMagicLink(auth, email, "/cs-CZ/account");
       const verified = await verifyMagicLink(auth, sentLinks[0]!);
 
       expect(verified.status).toBe(302);
       expect(getSessionCookie(verified)).toBeTruthy();
       expect(await localeOf(accountId)).toBeNull();
-      const logs = JSON.stringify(emitWorkspaceLog.mock.calls);
+      const logs = JSON.stringify(workspaceLogs.records());
       expect(logs).toContain("account-locale-preference.capture-failed");
       expect(logs).not.toContain("synthetic constraint violation");
       expect(logs).not.toContain(email);
@@ -701,7 +701,7 @@ describe.skipIf(!testDatabase)(
       const verifyResponse = await verifyMagicLink(auth, sentLinks[0]!);
       const cookie = cookieJar(getSessionCookie(verifyResponse)!);
 
-      emitWorkspaceLog.mockClear();
+      workspaceLogs.reset();
       const evilOrigin = await auth.handler(
         new Request(`https://${HOST}/api/auth/sign-out`, {
           method: "POST",
@@ -728,7 +728,7 @@ describe.skipIf(!testDatabase)(
         `/magic-link/verify?token=${sentLinks[0]!.token}&callbackURL=${encodeURIComponent("https://evil.example/steal")}`
       );
       expect(evilCallbackVerify.status).toBe(403);
-      expect(emitWorkspaceLog).not.toHaveBeenCalled();
+      expect(workspaceLogs.records()).toHaveLength(0);
     });
 
     test("sets secure host-only cookies with lax same-site", async () => {

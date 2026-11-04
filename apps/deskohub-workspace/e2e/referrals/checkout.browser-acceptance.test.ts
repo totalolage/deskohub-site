@@ -17,7 +17,7 @@ import type { WorkspaceReservationId } from "@/features/reservation/persistence-
 import { formatMoney, type Money } from "@/shared/money/money";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import { createCensoredOtelSpanExporter } from "../../shared/backend/logging/censorship";
-import { createTracingLive } from "../../shared/backend/observability/otel-tracing";
+import { createTracingLive } from "../../shared/backend/observability/telemetry-sinks";
 import { E2EBrowserSession } from "../browser-session";
 import { runE2ECase, type WorkspaceE2EStepRunner } from "../case-runner";
 import type { WorkspaceE2EConfig } from "../config";

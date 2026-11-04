@@ -1,6 +1,6 @@
 import "@/shared/testing/workspace-test-env";
 
-import { describe, expect, mock, spyOn, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-flags/node";
 import { Effect } from "effect";
 import { runReactServerFixture } from "@/shared/testing/react-server-fixture.test-utils";
@@ -9,8 +9,6 @@ import {
   TestReleaseGate,
   testReleaseGateEvaluating,
 } from "./release-gate.test-utils";
-
-mock.module("@/instrumentation", () => ({ postHogLoggerProvider: undefined }));
 
 const { releaseGateForRequest } = await import("./release-gate.server");
 

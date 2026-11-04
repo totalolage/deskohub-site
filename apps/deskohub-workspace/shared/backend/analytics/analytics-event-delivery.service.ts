@@ -82,9 +82,10 @@ const serverAnalyticsFlushTimeout = "2 seconds";
 
 /**
  * Sends the events the process's capture client still holds, within the
- * post-response deadline. Runs with every telemetry flush at the response
- * edge and after work that itself runs after the response. Never fails: the
- * client logs a failed delivery, and an overdue flush is logged here.
+ * post-response deadline. Runs with the telemetry flush every Workspace run
+ * gets: after the response, or before a task or work that already runs after
+ * the response settles. Never fails: the client logs a failed delivery, and
+ * an overdue flush is logged here.
  */
 export const flushServerAnalytics: Effect.Effect<void> = Effect.suspend(() => {
   const client = existingCaptureClient();
@@ -107,7 +108,7 @@ export const flushServerAnalytics: Effect.Effect<void> = Effect.suspend(() => {
  * loads, so a flush reaches the events any of them queued. It never evaluates
  * feature flags, which have their own client. Each queued event extends the
  * serverless invocation through `waitUntil` until a debounced flush sends
- * it, which covers runs no response-edge flush follows, such as page renders.
+ * it, which covers an event the telemetry flush misses.
  */
 const captureClientKey = Symbol.for(
   "@deskohub-workspace/analytics/capture-client"

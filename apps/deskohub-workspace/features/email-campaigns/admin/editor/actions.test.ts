@@ -8,12 +8,6 @@ const { access } = await mockAdministrationActionRequest({
   administrator: "campaign-image-upload",
   referer: "https://deskohub.test/en-US/admin",
 });
-mock.module("@/instrumentation", () => ({
-  postHogLoggerProvider: {
-    forceFlush: () => Promise.resolve(),
-    getLogger: () => ({ emit: () => undefined }),
-  },
-}));
 
 const authorization = {
   url: "https://api.cloudinary.test/v1_1/cloud/image/upload",

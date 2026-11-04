@@ -2,13 +2,12 @@ import "server-only";
 
 import { Context, Effect, Layer } from "effect";
 import type { AgentTraffic } from "@/shared/agent-traffic/agent-traffic";
-import { flushServerAnalytics } from "@/shared/backend/analytics/analytics-event-delivery.service";
 import {
   ServerAnalytics,
   type ServerEventProperties,
 } from "@/shared/backend/analytics/server-analytics.service";
 import {
-  runWorkspaceEffect,
+  defineWorkspaceTask,
   runWorkspaceEffectAfterResponse,
 } from "@/shared/backend/workspace-effect";
 
@@ -51,10 +50,12 @@ export class AgentTrafficEvents extends Context.Service<
   static Live = this.Default.pipe(Layer.provide(ServerAnalytics.Live));
 }
 
-/** Records the event, then sends it: this work runs after the response. */
+/**
+ * Records the event. This work runs after the response, so its run sends the
+ * event before it settles.
+ */
 const recordAfterResponse = (input: AgentTrafficEvent) =>
   Effect.flatMap(AgentTrafficEvents, (events) => events.record(input)).pipe(
-    Effect.andThen(flushServerAnalytics),
     Effect.provide(AgentTrafficEvents.Live)
   );
 
@@ -65,6 +66,11 @@ export const scheduleAgentTrafficEvent = (input: AgentTrafficEvent) =>
     recordAfterResponse(input)
   );
 
-/** Records the event now; for the proxy's own after-response callback. */
-export const recordAgentTrafficEvent = (input: AgentTrafficEvent) =>
-  recordAfterResponse(input).pipe(runWorkspaceEffect("agent-traffic.capture"));
+/**
+ * Records the event now and sends it before settling; for the proxy's own
+ * after-response callback, which no response follows.
+ */
+export const recordAgentTrafficEvent = defineWorkspaceTask(
+  "agent-traffic.capture",
+  recordAfterResponse
+);

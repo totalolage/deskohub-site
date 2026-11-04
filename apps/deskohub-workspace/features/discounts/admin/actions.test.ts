@@ -32,12 +32,6 @@ const { access } = request;
 request.after.mockImplementation(() => {
   timeline.push(`${fiberState()}:after`);
 });
-mock.module("@/instrumentation", () => ({
-  postHogLoggerProvider: {
-    forceFlush: () => Promise.resolve(),
-    getLogger: () => ({ emit: () => undefined }),
-  },
-}));
 mock.module("@/features/i18n/server/revalidate-localized-path", () => ({
   revalidateLocalizedPath: (path: string) => {
     revalidatedPaths.push(path);

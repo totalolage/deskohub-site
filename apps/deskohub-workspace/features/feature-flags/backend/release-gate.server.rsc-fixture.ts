@@ -8,7 +8,6 @@ import {
   testReleaseGateEvaluating,
 } from "./release-gate.test-utils";
 
-mock.module("@/instrumentation", () => ({ postHogLoggerProvider: undefined }));
 // Next resolves `next/navigation` to its server build for server components.
 mock.module(
   "next/navigation",

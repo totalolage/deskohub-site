@@ -260,10 +260,11 @@ traffic category and the name of a recognized assistant.
 - Capture never fails the work it's part of and never waits for PostHog: it
   queues the event on one `posthog-node` client per process
   (`analytics-event-delivery.service.ts`), separate from the feature-flag
-  client. The telemetry flush at each action, route, and task edge sends the
-  queue, and the client's `waitUntil` hook keeps a page render's invocation
-  alive until its debounced flush. Agent traffic events, which already run
-  after the response, flush themselves.
+  client. Every Workspace run's telemetry flush sends the queue: after the
+  response for pages, actions, routes, and web handlers, and before settling
+  for tasks and work that already runs after the response, such as agent
+  traffic events. The client's `waitUntil` hook keeps the invocation alive
+  until its debounced flush for an event a flush misses.
 - In tests, provide `recordCheckoutAnalytics()` or `recordServerAnalytics()`
   (the adjacent `*.service.mock.ts` files): the real subject policy over a
   delivery that records each event as PostHog would receive it.
