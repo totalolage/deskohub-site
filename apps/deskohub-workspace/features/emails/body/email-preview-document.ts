@@ -182,7 +182,7 @@ const previewComponent = (
 const previewDefinitions = (values: EmailDraft["values"]): Definitions =>
   new Map(
     Arr.dedupeWith(
-      Arr.getSomes((values ?? []).map(decodeDefinition)),
+      Arr.getSomes((values ?? []).map((value) => decodeDefinition(value))),
       (a, b) => a.name === b.name
     ).map((definition) => [definition.name, definition])
   );

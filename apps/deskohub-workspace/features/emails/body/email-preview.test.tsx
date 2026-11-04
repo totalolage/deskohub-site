@@ -393,23 +393,26 @@ describe("previewEmailDocument", () => {
     ]);
   });
 
-  test("keeps the first of repeated value names and component ids", () => {
+  test("keeps the first finished of repeated value names and component ids", () => {
+    const displayName = {
+      kind: "customer",
+      path: ["profile", "customer", "displayName"],
+    } as const;
     const document = previewEmailDocument(
       {
         structure: [
+          // Unfinished: no text yet.
+          { _tag: "Paragraph", id: "rule" },
           { _tag: "Divider", id: "rule" },
-          { _tag: "Spacer", id: "rule" },
           { _tag: "Spacer", id: "gap" },
+          { _tag: "Spacer", id: "rule" },
+          { _tag: "Divider", id: "gap" },
         ],
         values: [
+          // Unfinished: no discount chosen yet.
           { name: "first_name", source: { kind: "discount", validDays: 7 } },
-          {
-            name: "first_name",
-            source: {
-              kind: "customer",
-              path: ["profile", "customer", "displayName"],
-            },
-          },
+          { name: "first_name", source: displayName },
+          { name: "contact", source: displayName },
           {
             name: "first_name",
             source: { kind: "customer", path: ["profile", "customer"] },
@@ -424,12 +427,8 @@ describe("previewEmailDocument", () => {
       expect.objectContaining({ _tag: "Spacer", id: "gap" }),
     ]);
     expect(document.values).toEqual([
-      expect.objectContaining({
-        name: "first_name",
-        source: expect.objectContaining({
-          path: ["profile", "customer", "displayName"],
-        }),
-      }),
+      { name: "first_name", source: displayName },
+      { name: "contact", source: displayName },
     ]);
   });
 
