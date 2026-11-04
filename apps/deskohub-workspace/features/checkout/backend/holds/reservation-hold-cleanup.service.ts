@@ -7,9 +7,8 @@ import {
   WorkspaceReservationRepository,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
-import { captureReservationAbandoned } from "../analytics/posthog-lifecycle-events";
+import { CheckoutAnalytics } from "../analytics/checkout-analytics.service";
 import {
   ProviderPaymentDeferral,
   ProviderPaymentFinalizationService,
@@ -71,7 +70,7 @@ export class ReservationHoldCleanupService extends Context.Service<
   static Live = this.Default.pipe(
     Layer.provide(ProviderPaymentFinalizationService.Live),
     Layer.provide(PaymentLifecycleRepository.Default),
-    Layer.provide(PostHogEventService.Live),
+    Layer.provide(CheckoutAnalytics.Live),
     Layer.provide(WorkspaceReservationRepository.Default),
     Layer.provide(WorkspaceDatabase.Default),
     Layer.provide(WorkspaceDotyposLayer)
@@ -88,7 +87,7 @@ function makeReservationHoldCleanupServiceLayer(
       const paymentLifecycle = yield* PaymentLifecycleRepository;
       const finalization = yield* ProviderPaymentFinalizationService;
       const dotypos = yield* DotyposService;
-      const posthogEvents = yield* PostHogEventService;
+      const checkoutAnalytics = yield* CheckoutAnalytics;
 
       const loadOrder = (orderId: WorkspaceReservationId) =>
         reservations
@@ -357,10 +356,10 @@ function makeReservationHoldCleanupServiceLayer(
           );
         if (!markedCancelled) return "skipped" as const;
         yield* Effect.logInfo("Reservation hold marked cancelled");
-        yield* captureReservationAbandoned({
+        yield* checkoutAnalytics.reservationAbandoned({
           reservation: claimed,
           timestamp: cancelledAt,
-        }).pipe(Effect.provideService(PostHogEventService, posthogEvents));
+        });
         return "cancelled" as const;
       });
 

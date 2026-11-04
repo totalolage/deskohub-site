@@ -584,21 +584,29 @@ test("every workspace shared package dependency defines a lint task", () => {
 
   expect(dependencyNames.length).toBeGreaterThan(0);
 
+  const rootManifest = JSON.parse(
+    readFileSync(join(repositoryRoot, "package.json"), "utf8")
+  );
+  const workspaceDirectories = (rootManifest.workspaces as string[]).flatMap(
+    (pattern) =>
+      pattern.endsWith("/*")
+        ? readdirSync(join(repositoryRoot, pattern.slice(0, -2)), {
+            withFileTypes: true,
+          })
+            .filter((entry) => entry.isDirectory())
+            .map((entry) => join(pattern.slice(0, -2), entry.name))
+        : [pattern]
+  );
   const lintTasks = new Map(
-    readdirSync(join(repositoryRoot, "packages"), { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => {
-        const manifest = JSON.parse(
-          readFileSync(
-            join(repositoryRoot, "packages", entry.name, "package.json"),
-            "utf8"
-          )
-        );
-        return [
-          manifest.name as string,
-          manifest.scripts?.lint as string | undefined,
-        ];
-      })
+    workspaceDirectories.map((directory) => {
+      const manifest = JSON.parse(
+        readFileSync(join(repositoryRoot, directory, "package.json"), "utf8")
+      );
+      return [
+        manifest.name as string,
+        manifest.scripts?.lint as string | undefined,
+      ];
+    })
   );
 
   const packagesWithoutLint = dependencyNames.filter((name) => {

@@ -1,12 +1,10 @@
 import {
   Context,
   DateTime,
-  Duration,
   Effect,
   Layer,
   Match,
   Option,
-  Schedule,
   Schema,
 } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
@@ -34,6 +32,7 @@ import type {
 } from "../types";
 import { NexiOperationIdSchema, NexiOrderIdSchema } from "../types";
 import { NexiGeneratedClient } from "./api";
+import { nexiRetryPolicy } from "./request-policy";
 
 const DEFAULT_PAYMENT_SERVICE = "CARDS";
 const DEFAULT_CAPTURE_TYPE = "IMPLICIT";
@@ -94,45 +93,8 @@ const isRetryableNexiError = (error: ExternalAPIError | NetworkError) =>
     Match.orElse(() => false)
   );
 
-const retryBaseDelayMilliseconds = 100;
-const maxRetries = 3;
-/** `Schedule.jittered` scales each delay by a random factor of at most 1.2. */
-const maxRetryJitterFactor = 1.2;
-
-const retryPolicy = {
-  schedule: Schedule.exponential(
-    Duration.millis(retryBaseDelayMilliseconds)
-  ).pipe(
-    Schedule.jittered,
-    Schedule.while<ExternalAPIError | NetworkError, Duration.Duration>(
-      ({ input }) => isRetryableNexiError(input)
-    ),
-    Schedule.both(Schedule.recurs(maxRetries)),
-    Schedule.tapOutput(([delay, attempt]) =>
-      Effect.logWarning(`Nexi retry attempt #${attempt + 1}`, {
-        attemptNumber: attempt + 1,
-        delayMs: Duration.toMillis(delay),
-        maxRetries,
-      })
-    )
-  ),
-};
-
-/**
- * The longest a retried Nexi request without its own deadline can take when
- * every attempt times out: the first attempt and each retry wait up to
- * `apiTimeout`, with the jittered exponential backoff between them.
- */
-export const getNexiRequestWorstCaseDuration = (apiTimeout: Duration.Input) => {
-  let backoffMilliseconds = 0;
-  for (let retry = 0; retry < maxRetries; retry += 1) {
-    backoffMilliseconds +=
-      retryBaseDelayMilliseconds * 2 ** retry * maxRetryJitterFactor;
-  }
-  return Duration.millis(
-    Duration.toMillis(apiTimeout) * (maxRetries + 1) + backoffMilliseconds
-  );
-};
+const retryTransientNexiFailure =
+  nexiRetryPolicy.retryWhile(isRetryableNexiError);
 
 const getPaymentOutcomeLogAnnotations = (input: VerifyPaymentOutcomeInput) => ({
   orderId: input.orderId,
@@ -242,7 +204,7 @@ const makeNexiService = Effect.gen(function* () {
         correlationId: input.correlationId,
         orderId: input.orderId,
       })
-      .pipe(Effect.retry(retryPolicy));
+      .pipe(retryTransientNexiFailure);
     if (input.deadline === undefined) return lookup;
 
     return lookup.pipe(
@@ -334,7 +296,7 @@ const makeNexiService = Effect.gen(function* () {
       });
       const response = yield* nexiClient
         .getOrder(input)
-        .pipe(Effect.retry(retryPolicy));
+        .pipe(retryTransientNexiFailure);
       const orderId = yield* decodeOptionalOrderId(
         getProviderOrderId(response),
         input.orderId
@@ -368,7 +330,7 @@ const makeNexiService = Effect.gen(function* () {
     function* (input: ListNexiOrdersInput) {
       const response = yield* nexiClient
         .listOrders(input)
-        .pipe(Effect.retry(retryPolicy));
+        .pipe(retryTransientNexiFailure);
       return yield* Effect.forEach(response.orders ?? [], toNexiOrderStatus);
     },
     (effect, input) =>
@@ -379,7 +341,7 @@ const makeNexiService = Effect.gen(function* () {
     function* (input: GetNexiOperationInput) {
       const response = yield* nexiClient
         .getOperation(input)
-        .pipe(Effect.retry(retryPolicy));
+        .pipe(retryTransientNexiFailure);
       return yield* toNexiOperation(response);
     },
     (effect, input) =>
@@ -395,7 +357,7 @@ const makeNexiService = Effect.gen(function* () {
     function* (input: ListNexiOperationsInput) {
       const response = yield* nexiClient
         .listOperations(input)
-        .pipe(Effect.retry(retryPolicy));
+        .pipe(retryTransientNexiFailure);
       return yield* Effect.forEach(response.operations ?? [], (operation) =>
         toNexiOperation(operation)
       );

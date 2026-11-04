@@ -23,8 +23,11 @@ const { WorkspaceReservationRepository, WorkspaceReservationStateError } =
   await import(
     "@/features/reservation/backend/workspace-reservation.repository"
   );
-const { PostHogEventService } = await import(
-  "@/shared/backend/analytics/posthog-event.service"
+const { CheckoutAnalytics } = await import(
+  "../analytics/checkout-analytics.service"
+);
+const { silentCheckoutAnalytics } = await import(
+  "../analytics/checkout-analytics.service.mock"
 );
 
 type Methods = Record<
@@ -134,11 +137,10 @@ const cancelOrderHold = async (
               DotyposService,
               record("dotypos", collaborators.dotypos)
             ),
-            Layer.mock(PostHogEventService, {
-              capture: trace.recordCalls("posthog", {
-                capture: succeed(undefined),
-              }).capture,
-            })
+            Layer.mock(
+              CheckoutAnalytics,
+              trace.recordCalls("checkoutAnalytics", silentCheckoutAnalytics)
+            )
           )
         )
       )

@@ -12,11 +12,8 @@ import {
   campaignContentFixture,
   everyoneFilter,
 } from "@/features/email-campaigns/backend/email-campaigns.test-utils";
-import {
-  CampaignEmailFooter,
-  renderCampaignEmail,
-} from "@/features/email-campaigns/body/render-campaign-email";
 import { campaignDeliveryBatchIdempotencyKey } from "@/features/email-campaigns/campaign-delivery-batches";
+import { renderCampaignEmailPreview } from "@/features/email-campaigns/campaign-email";
 
 const migration = "20261101154650_perfect_victor_mancha";
 const databaseUrl = process.env.WORKSPACE_TEST_DATABASE_URL;
@@ -104,11 +101,11 @@ describe.skipIf(!databaseUrl)(
                 )
               ).rows[0];
               return Effect.runPromise(
-                renderCampaignEmail({
+                renderCampaignEmailPreview({
                   templateKey: campaign.template_key,
+                  purpose: "operational",
                   locale: "cs-CZ",
                   content: campaign.content["cs-CZ"],
-                  footer: CampaignEmailFooter.Operational(),
                 })
               );
             };

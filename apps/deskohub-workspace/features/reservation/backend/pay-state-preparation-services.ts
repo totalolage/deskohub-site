@@ -1,6 +1,7 @@
 import { EmailRecipientDomainService } from "@deskohub/email/backend/recipient-domain.service";
 import { Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
+import { CheckoutAnalytics } from "@/features/checkout/backend/analytics";
 import { CheckoutPricingService } from "@/features/checkout/backend/checkout";
 import { ReservationHoldCleanupScheduleService } from "@/features/checkout/backend/holds";
 import { WorkspaceTableAssignmentService } from "@/features/checkout/backend/reservation";
@@ -11,7 +12,6 @@ import { ReferralReleaseGateRequest } from "@/features/referrals/referral-releas
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { ReviewAccounts, ReviewSandbox } from "@/features/review-accounts";
-import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 
 /**
@@ -34,7 +34,7 @@ export const payStatePreparationServices = Layer.mergeAll(
     Layer.provide(WorkspaceDotyposLayer)
   ),
   ReservationHoldCleanupScheduleService.Live,
-  PostHogEventService.Live,
+  CheckoutAnalytics.Live,
   WorkspaceDotyposLayer,
   CheckoutPricingService.Live,
   ReferralService.Live,

@@ -3,7 +3,7 @@
 import { Predicate } from "effect";
 import { useEffect, useMemo } from "react";
 import type { UseFormReturn } from "react-hook-form";
-import { type Locale, m } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import type { useReservationAvailability } from "@/features/reservation/components/use-reservation-availability";
 import { useReservationSelectionUrl } from "@/features/reservation/components/use-reservation-selection-url";
 import {
@@ -12,6 +12,7 @@ import {
   type OfficeReservationInput,
 } from "@/features/reservation/office-reservation";
 import { officeSelectionLink } from "@/features/reservation/office-selection-link";
+import { getReservationCheckoutAvailability } from "@/features/reservation/reservation.i18n";
 
 type OfficeSelection = Pick<
   OfficeReservationInput,
@@ -33,32 +34,6 @@ const isOfficeStayUnavailable = ({
       (maximumDayCount === 0 ||
         (Predicate.isNumber(dayCount) && dayCount > maximumDayCount))
   );
-
-/**
- * The message that blocks checkout: the stay doesn't fit the free dates, or,
- * once nothing loads any more, availability failed.
- */
-const getOfficeAvailabilityState = ({
-  availabilityResult: { isError, isPending },
-  locale,
-  unavailable,
-}: {
-  readonly availabilityResult: ReturnType<typeof useReservationAvailability>;
-  readonly locale: Locale;
-  readonly unavailable: boolean;
-}) => {
-  const availabilityMessage = unavailable
-    ? m.reservationOfficeUnavailable({}, { locale })
-    : undefined;
-  const availabilityErrorMessage =
-    isError && !isPending
-      ? m.reservationAvailabilityError({}, { locale })
-      : undefined;
-  return {
-    isPending,
-    unavailableMessage: availabilityMessage ?? availabilityErrorMessage,
-  };
-};
 
 /**
  * How many days the chosen start can run before an unavailable date or the
@@ -111,14 +86,17 @@ export const useOfficeDayCountBounds = ({
   );
 
   return {
-    availability: getOfficeAvailabilityState({
-      availabilityResult,
+    availability: getReservationCheckoutAvailability({
+      isError: availabilityResult.isError,
+      isPending: availabilityResult.isPending,
       locale,
       unavailable: isOfficeStayUnavailable({
         dayCount,
         maximumDayCount,
         startsOn,
-      }),
+      })
+        ? { date: startsOn, reservation: { kind: "office" } }
+        : undefined,
     }),
     maximumDayCount,
     unavailableDates,

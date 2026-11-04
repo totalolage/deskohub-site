@@ -15,8 +15,11 @@ const { NexiWebhookService } = await import("./nexi-webhook.service");
 const { WorkspaceReservationRepository } = await import(
   "@/features/reservation/backend/workspace-reservation.repository"
 );
-const { PostHogEventService } = await import(
-  "@/shared/backend/analytics/posthog-event.service"
+const { CheckoutAnalytics } = await import(
+  "../analytics/checkout-analytics.service"
+);
+const { silentCheckoutAnalytics } = await import(
+  "../analytics/checkout-analytics.service.mock"
 );
 const { ReservationFulfillment } = await import(
   "../fulfillment/reservation-fulfillment.service"
@@ -289,11 +292,10 @@ const processNotification = async (
               PaymentRefundService,
               record("paymentRefunds", collaborators.paymentRefunds)
             ),
-            Layer.mock(PostHogEventService, {
-              capture: trace.recordCalls("posthog", {
-                capture: succeed(undefined),
-              }).capture,
-            })
+            Layer.mock(
+              CheckoutAnalytics,
+              trace.recordCalls("checkoutAnalytics", silentCheckoutAnalytics)
+            )
           )
         )
       )

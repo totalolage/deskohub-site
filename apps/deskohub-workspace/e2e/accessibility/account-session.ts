@@ -4,10 +4,9 @@ import type { BrowserContext } from "@playwright/test";
 import { Schema } from "effect";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import { signInWorkspaceE2ESyntheticBrowserContext } from "../account/seeded-session";
-import { requireBaseUrl } from "../instant-navigation/navigation-test-helpers";
 import { workspaceE2ERunIdSchema } from "../run-identifiers";
 import { workspaceDir, writeJsonAtomically } from "../runtime";
-import { makeSeededAccountRuntime } from "./audit-target";
+import type { SeededAccountRuntime } from "./audit-target";
 import {
   makeSeededAccountRunId,
   reconcileSeededAccount,
@@ -45,15 +44,13 @@ const readAccountSession = async () => {
   return Schema.decodeUnknownSync(accountSessionSchema)(JSON.parse(serialized));
 };
 
-const originOf = (baseURL: string | undefined) =>
-  new URL(requireBaseUrl(baseURL)).origin;
-
 /**
  * Seeds the linked synthetic account the account audits sign in as. The run
  * id is recorded before the journal, so the teardown can always reconcile it.
  */
-export const seedAccessibilityAccount = async (baseURL: string | undefined) => {
-  const runtime = makeSeededAccountRuntime(originOf(baseURL));
+export const seedAccessibilityAccount = async (
+  runtime: SeededAccountRuntime
+) => {
   const runId = makeSeededAccountRunId();
   await writeJsonAtomically(accountSessionPath, { runId });
   const { accountId } = await seedLinkedAccount(
@@ -67,19 +64,17 @@ export const seedAccessibilityAccount = async (baseURL: string | undefined) => {
 /** Signs a browser context in as the seeded account with a fresh session. */
 export const signInAccessibilityAccount = async (
   context: Pick<BrowserContext, "addCookies">,
-  baseURL: string | undefined
+  runtime: SeededAccountRuntime
 ) => {
   const accountId = (await readAccountSession())?.accountId;
   if (accountId === undefined) {
     throw new Error("The account session setup did not seed an account");
   }
-  const origin = originOf(baseURL);
-  const runtime = makeSeededAccountRuntime(origin);
-  await runtime.runPromise(
+  await runtime.runEffect(
     signInWorkspaceE2ESyntheticBrowserContext({
       accountId,
       context,
-      origin,
+      origin: runtime.origin,
       secret: runtime.secret,
     })
   );
@@ -87,13 +82,9 @@ export const signInAccessibilityAccount = async (
 
 /** Expires the seeded profile and deletes the account by its journal. */
 export const removeAccessibilityAccount = async (
-  baseURL: string | undefined
+  runtime: SeededAccountRuntime
 ) => {
   const session = await readAccountSession();
   if (session === undefined) return;
-  await reconcileSeededAccount(
-    makeSeededAccountRuntime(originOf(baseURL)),
-    session.runId,
-    accountSessionLabel
-  );
+  await reconcileSeededAccount(runtime, session.runId, accountSessionLabel);
 };

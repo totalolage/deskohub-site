@@ -19,7 +19,7 @@ import {
   CloudinaryUploadError,
 } from "./errors";
 import type { CnfExpression } from "./expression";
-import { createTransientRetryPolicy } from "./retry";
+import { retryTransientCloudinaryFailure } from "./request-policy";
 import {
   type CloudinaryAsset,
   type CloudinaryDestroyOutcome,
@@ -304,8 +304,7 @@ function decodeAssetResponse(result: unknown) {
   );
 }
 
-const cloudinaryRetryPolicy =
-  createTransientRetryPolicy<CloudinarySearchError>("search");
+const retryTransientSearchFailure = retryTransientCloudinaryFailure("search");
 
 function readCloudinaryHttpCode(
   error: CloudinaryProviderError
@@ -454,7 +453,7 @@ function createSearchExecutor(config: CloudinaryConfig, sanitized = false) {
           ? Effect.logError(folderListingFailureMessage)
           : Effect.logError("Cloudinary search page failed")
       ),
-      Effect.retry(cloudinaryRetryPolicy)
+      retryTransientSearchFailure
     );
 
   return Effect.fn("cloudinary.search")(
@@ -551,7 +550,7 @@ function createPublicIdLookupExecutor() {
         Effect.tapError(() =>
           Effect.logError("Cloudinary public ID lookup failed")
         ),
-        Effect.retry(cloudinaryRetryPolicy)
+        retryTransientSearchFailure
       );
     },
     (effect) => Effect.scoped(effect)
@@ -601,8 +600,8 @@ function toUploadError(
 }
 
 function createUploadExecutor() {
-  const uploadRetryPolicy =
-    createTransientRetryPolicy<CloudinaryUploadError>("image upload");
+  const retryTransientUploadFailure =
+    retryTransientCloudinaryFailure("image upload");
 
   const performUpload = (input: CloudinaryImageUploadInput) =>
     Effect.tryPromise({
@@ -670,7 +669,7 @@ function createUploadExecutor() {
         Effect.tapError(() =>
           Effect.logError("Cloudinary image upload failed")
         ),
-        Effect.retry(uploadRetryPolicy)
+        retryTransientUploadFailure
       );
     },
     (effect) => Effect.scoped(effect)
@@ -721,8 +720,8 @@ function toDestroyOutcome(
 }
 
 function createDestroyExecutor() {
-  const destroyRetryPolicy =
-    createTransientRetryPolicy<CloudinaryDestroyError>("asset destroy");
+  const retryTransientDestroyFailure =
+    retryTransientCloudinaryFailure("asset destroy");
 
   const performDestroy = (publicId: CloudinaryPublicId) =>
     Effect.tryPromise({
@@ -782,7 +781,7 @@ function createDestroyExecutor() {
             outcome: error.outcome,
           })
         ),
-        Effect.retry(destroyRetryPolicy)
+        retryTransientDestroyFailure
       );
     },
     (effect) => Effect.scoped(effect)
@@ -868,7 +867,7 @@ function toPrefixDeleteError(error: CloudinaryRejectedValue) {
 }
 
 function createPrefixDeleteExecutor() {
-  const retryPolicy = createTransientRetryPolicy<CloudinaryPrefixDeleteError>(
+  const retryTransientPrefixDeleteFailure = retryTransientCloudinaryFailure(
     "asset prefix delete"
   );
 
@@ -896,7 +895,7 @@ function createPrefixDeleteExecutor() {
             : {}),
         });
       }),
-      Effect.retry(retryPolicy)
+      retryTransientPrefixDeleteFailure
     );
 
   return Effect.fn("cloudinary.api.delete_resources_by_prefix")(
@@ -986,8 +985,8 @@ function classifyRenameFailure(
 }
 
 function createRenameExecutor() {
-  const renameRetryPolicy =
-    createTransientRetryPolicy<CloudinaryRenameError>("asset rename");
+  const retryTransientRenameFailure =
+    retryTransientCloudinaryFailure("asset rename");
 
   const performRename = (
     fromPublicId: CloudinaryPublicId,
@@ -1044,7 +1043,7 @@ function createRenameExecutor() {
             reason: error.reason,
           })
         ),
-        Effect.retry(renameRetryPolicy)
+        retryTransientRenameFailure
       );
     },
     (effect) => Effect.scoped(effect)

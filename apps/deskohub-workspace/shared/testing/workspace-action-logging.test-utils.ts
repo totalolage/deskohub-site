@@ -1,36 +1,15 @@
 import { mock } from "bun:test";
-import type { LogRecord } from "@opentelemetry/api-logs";
 import { Effect } from "effect";
+import { mockWorkspaceActionRequest } from "./workspace-action-request.test-utils";
+import { captureWorkspaceLogs } from "./workspace-telemetry.test-utils";
 
-const emittedLogRecords: LogRecord[] = [];
+let workspaceLogs: ReturnType<typeof captureWorkspaceLogs> | undefined;
 let installation: Promise<void> | undefined;
 
 const installActionTelemetryMocks = async () => {
-  const nextServer = await import("next/server");
-
   mock.module("server-only", () => ({}));
-  mock.module("next/server", () => ({ ...nextServer, after: () => {} }));
-  mock.module("next/headers", () => ({
-    cookies: async () => ({ get: () => undefined, getAll: () => [] }),
-    headers: async () =>
-      new Headers({ referer: "https://deskohub.test/en-US" }),
-  }));
-  mock.module("botid/server", () => ({
-    checkBotId: () => Promise.resolve({ isBot: false }),
-  }));
-  mock.module("@/shared/backend/bot-protection/bot-protection.runtime", () => ({
-    isWorkspaceBotIdEnforcedAtRuntime: () => false,
-  }));
-  mock.module("@/instrumentation", () => ({
-    postHogLoggerProvider: {
-      forceFlush: () => Promise.resolve(),
-      getLogger: () => ({
-        emit: (record: LogRecord) => {
-          emittedLogRecords.push(record);
-        },
-      }),
-    },
-  }));
+  await mockWorkspaceActionRequest();
+  workspaceLogs = captureWorkspaceLogs();
 
   const {
     defineWorkspaceAction,
@@ -61,7 +40,7 @@ export const mockWorkspaceActionTelemetry = async () => {
   return {
     /** Every telemetry record emitted for one action operation. */
     getOperationLogRecords: (operation: string) =>
-      emittedLogRecords.filter(
+      (workspaceLogs?.records() ?? []).filter(
         ({ attributes }) => attributes?.operation === operation
       ),
   };

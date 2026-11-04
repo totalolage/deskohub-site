@@ -7,11 +7,13 @@ import { Context, Effect, Layer } from "effect";
 import { m } from "@/features/i18n";
 import { ReferralError } from "@/features/referrals/contracts";
 import { ReferralService as Referrals } from "@/features/referrals/referral.service";
+import { referralCodeCookieName } from "@/features/referrals/referral-code-cookie";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import {
   type InMemoryReferralCookie,
   RememberedReferral,
 } from "@/features/referrals/remembered-referral.service";
+import { mockWorkspaceActionRequest } from "@/shared/testing/workspace-action-request.test-utils";
 import { CustomerAccountContactService } from "./backend/customer-account-contact.service";
 import { CustomerAccountAccessError } from "./customer-account";
 
@@ -23,34 +25,7 @@ const revalidatePath = mock(
 );
 mock.module("next/cache", () => ({ revalidatePath }));
 
-const requestHeaders = new Headers({ referer: "https://deskohub.test/en-US" });
-const cookieWrites: { name: string; value: string }[] = [];
-mock.module("next/headers", () => ({
-  headers: async () => requestHeaders,
-  cookies: async () => ({
-    get: (name: string) =>
-      name === "deskohub-referral-code" &&
-      rememberedReferralCookie.value !== undefined
-        ? { value: rememberedReferralCookie.value }
-        : undefined,
-    getAll: () => [],
-    set: (name: string, value: string) => {
-      cookieWrites.push({ name, value });
-    },
-  }),
-}));
-mock.module("next/server", () => ({
-  after: () => undefined,
-}));
-mock.module("@/instrumentation", () => ({
-  postHogLoggerProvider: {
-    forceFlush: () => Promise.resolve(),
-    getLogger: () => ({ emit: () => undefined }),
-  },
-}));
-mock.module("botid/server", () => ({
-  checkBotId: () => Promise.resolve({ isBot: false }),
-}));
+const request = await mockWorkspaceActionRequest();
 
 let referralsEnabled = true;
 const areReferralsEnabled = mock(() => Promise.resolve(referralsEnabled));
@@ -285,7 +260,15 @@ CustomerAccountContactService.Live = Layer.mock(
   CustomerAccountContactService,
   {}
 );
-const rememberedReferralCookie: InMemoryReferralCookie = {};
+// The remembered code lives in the request's referral cookie.
+const rememberedReferralCookie: InMemoryReferralCookie = {
+  get value() {
+    return request.cookie(referralCodeCookieName);
+  },
+  set value(value) {
+    request.setCookie(referralCodeCookieName, value);
+  },
+};
 let rememberedReferralWritable = true;
 RememberedReferral.Cookies = Layer.unwrap(
   Effect.sync(() =>
@@ -368,7 +351,6 @@ describe("account actions", () => {
     availableReferralCode = Effect.succeed("RFL12345");
     referralAcceptance = Effect.succeed({ kind: "accepted" });
     settledReferral = Effect.succeed(false);
-    rememberedReferralCookie.value = undefined;
     rememberedReferralWritable = true;
     revalidatePath.mockClear();
     referralsEnabled = true;
@@ -384,7 +366,7 @@ describe("account actions", () => {
     deleteUser = () => Promise.resolve({ success: true });
     preferenceSaveEffect = Effect.succeed(undefined);
     preferenceSaveCalls = [];
-    cookieWrites.length = 0;
+    request.reset();
   });
 
   const importActions = () => import("./actions");
@@ -731,7 +713,7 @@ describe("account actions", () => {
     await updateLocalePreference({ locale: "cs-CZ" });
 
     expect(preferenceSaveCalls).toHaveLength(1);
-    expect(cookieWrites).toEqual([]);
+    expect(request.cookieWrites()).toEqual([]);
   });
 
   test("ignores a submitted referral code while the referral program is withheld", async () => {
@@ -839,7 +821,7 @@ describe("account actions", () => {
       m.accountDeletionPendingError({}, { locale: "en-US" })
     );
     expect(preferenceSaveCalls).toHaveLength(1);
-    expect(cookieWrites).toEqual([]);
+    expect(request.cookieWrites()).toEqual([]);
   });
 
   test("deletes through the Better Auth endpoint and revalidates every account path", async () => {

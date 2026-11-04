@@ -19,6 +19,7 @@ import {
   type OrderResponse,
 } from "../generated/effect.gen";
 import type { NexiCorrelationId, NexiOperationId, NexiOrderId } from "../types";
+import { getNexiRequestPolicy } from "./request-policy";
 
 const NEXI_API_PATH = "/api/phoenix-0.0/psp/api/v1";
 
@@ -98,21 +99,20 @@ const makeNexiGeneratedClient = Effect.gen(function* () {
       headers: { "Correlation-Id": correlationId },
     });
 
+  const boundAttempt = getNexiRequestPolicy(config.apiTimeout).attempt(
+    () =>
+      new NetworkError({
+        message: "Failed to connect to Nexi",
+      })
+  );
+
   const runNexiRequest = <A, E>(
     effect: Effect.Effect<A, E>,
     operation: string
   ) =>
     effect.pipe(
       Effect.mapError((error) => mapNexiClientError(error, operation)),
-      Effect.timeoutOrElse({
-        duration: config.apiTimeout,
-        orElse: () =>
-          Effect.fail(
-            new NetworkError({
-              message: "Failed to connect to Nexi",
-            })
-          ),
-      })
+      boundAttempt
     );
 
   return {

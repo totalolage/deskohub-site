@@ -1,6 +1,6 @@
 import type { Properties } from "posthog-js";
-import { isConsentCategoryAcceptedInCookie } from "@/shared/utils/consent-cookie";
 import { createOutbox } from "@/shared/utils/outbox";
+import { visitorConsent } from "./visitor-consent";
 
 /** A browser analytics event, captured in PostHog once analytics is ready. */
 export interface AnalyticsEvent {
@@ -21,12 +21,7 @@ export const captureAnalyticsEvent = (
   event: string,
   properties?: Properties
 ): void => {
-  if (
-    globalThis.document === undefined ||
-    !isConsentCategoryAcceptedInCookie(globalThis.document.cookie, "analytics")
-  ) {
-    return;
-  }
+  if (!visitorConsent.accepts("analytics")) return;
 
   outbox.post(properties === undefined ? { event } : { event, properties });
 };

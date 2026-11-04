@@ -58,8 +58,11 @@ const { WorkspaceReservationService } = await import(
 const { CustomerEmailLocaleService, ReservationAuthorDirectory } = await import(
   "@/features/account"
 );
-const { PostHogEventService } = await import(
-  "@/shared/backend/analytics/posthog-event.service"
+const { CheckoutAnalytics } = await import(
+  "../analytics/checkout-analytics.service"
+);
+const { silentCheckoutAnalytics } = await import(
+  "../analytics/checkout-analytics.service.mock"
 );
 
 type Methods = Record<
@@ -215,11 +218,10 @@ const traceFulfillment = async (
                 byDotyposCustomer: succeed({ kind: "guest" }),
               }).byDotyposCustomer,
             }),
-            Layer.mock(PostHogEventService, {
-              capture: trace.recordCalls("posthog", {
-                capture: succeed(undefined),
-              }).capture,
-            })
+            Layer.mock(
+              CheckoutAnalytics,
+              trace.recordCalls("checkoutAnalytics", silentCheckoutAnalytics)
+            )
           )
         )
       )

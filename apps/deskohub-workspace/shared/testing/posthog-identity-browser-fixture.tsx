@@ -16,8 +16,10 @@ import {
   PostHogAnalytics,
   PostHogProvider,
 } from "@/features/cookie-consent/components/posthog-analytics";
-import { useCookieConsent } from "@/features/cookie-consent/hooks/use-cookie-consent";
-import { dispatchConsentUpdatedEvent } from "@/features/cookie-consent/utils/consent-event";
+import {
+  announceVisitorConsentChange,
+  useVisitorConsent,
+} from "@/features/cookie-consent/visitor-consent";
 import {
   CONSENT_COOKIE_NAME,
   getAcceptedConsentCategoriesFromCookie,
@@ -137,15 +139,16 @@ const readIdentityState = (): FixtureIdentityState => ({
   status: getAnalyticsAccountIdentity().status,
 });
 
-const readConsentState = (): FixtureConsentState => ({
-  analyticsAccepted: getAcceptedConsentCategoriesFromCookie(
+const readConsentState = (): FixtureConsentState => {
+  const acceptedCategories = getAcceptedConsentCategoriesFromCookie(
     document.cookie
-  ).includes("analytics"),
-  cookiePresent: getConsentCookieValuesFromCookie(document.cookie).length > 0,
-  necessaryAccepted: getAcceptedConsentCategoriesFromCookie(
-    document.cookie
-  ).includes("necessary"),
-});
+  );
+  return {
+    analyticsAccepted: acceptedCategories.includes("analytics"),
+    cookiePresent: getConsentCookieValuesFromCookie(document.cookie).length > 0,
+    necessaryAccepted: acceptedCategories.includes("necessary"),
+  };
+};
 
 const readStringPostHogProperty = (name: string) => {
   try {
@@ -257,14 +260,11 @@ const removeConsentCookie = () => {
 const signOut = async () => (await signOutOfAccount()) === "signed-out";
 
 export function PostHogIdentityBrowserFixture() {
-  const { isAccepted } = useCookieConsent();
-  const analyticsAccepted = isAccepted("analytics");
+  const analyticsAccepted = useVisitorConsent("analytics");
 
   const setAnalyticsConsent = useCallback((accepted: boolean) => {
     writeAnalyticsConsentCookie(accepted);
-    dispatchConsentUpdatedEvent(
-      accepted ? ["necessary", "analytics"] : ["necessary"]
-    );
+    announceVisitorConsentChange();
   }, []);
 
   useEffect(() => {

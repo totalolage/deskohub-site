@@ -15,8 +15,8 @@ Workspace and Boardgame Bar get tag-based gallery lists through `getGalleryImage
 - Each tracing layer that sees the request names spans after the full URL. Keep all three guards:
   - `listTaggedAssets` disables Effect client spans with `HttpClient.TracerDisabledWhen`.
   - `CloudinaryService.Live` sends requests through `untracedFetch`, which runs `fetch` with OpenTelemetry tracing suppressed. Apps must use `Live`. A layer built from `Default` with its own `FetchHttpClient.Fetch` loses this guard.
-  - `CloudinarySignatureRedactor` (`@deskohub/cloudinary/telemetry`) rewrites signature segments to `s--REDACTED--`. Workspace lists it through `createWorkspaceSpanRedactors` before its exporters in `instrumentation.ts` and in the PostHog tracer provider. List the redactors before the exporters in any new tracer provider, including a future Boardgame Bar one.
-- Use only the synthetic `s--fake-signature--` segment in tests. Regression tests: `packages/cloudinary/src/service.test.ts`, `packages/cloudinary/src/telemetry.test.ts`, and `apps/deskohub-workspace/shared/backend/observability/span-redaction.test.ts`.
+  - `CloudinarySignatureRedactor` (`@deskohub/cloudinary/telemetry`) rewrites signature segments to `s--REDACTED--`. Workspace lists it before the exporters of every tracer provider and of the `registerOTel` options, all built in `apps/deskohub-workspace/shared/backend/observability/telemetry-sinks.ts`. List the redactors before the exporters in any new tracer provider, including a future Boardgame Bar one.
+- Use only the synthetic `s--fake-signature--` segment in tests. Regression tests: `packages/cloudinary/src/service.test.ts`, `packages/cloudinary/src/telemetry.test.ts`, and `apps/deskohub-workspace/shared/backend/observability/telemetry-sinks.test.ts`.
 
 ## Expression semantics and limits
 

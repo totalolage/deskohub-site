@@ -1,5 +1,1 @@
-export {
-  captureAvailabilityResult,
-  capturePrePaymentOutcome,
-  captureReservationStarted,
-} from "./posthog-lifecycle-events";
+export { CheckoutAnalytics } from "./checkout-analytics.service";

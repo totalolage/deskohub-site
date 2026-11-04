@@ -1,5 +1,6 @@
 export { dotyposApiTimeoutDefaultMilliseconds } from "./api-timeout";
 export type { DotyposIdReadOptions } from "./backend/id-reads";
+export { getDotyposRequestWorstCase } from "./backend/request-profiles";
 export type {
   CustomerChanges,
   CustomerChangesOptions,

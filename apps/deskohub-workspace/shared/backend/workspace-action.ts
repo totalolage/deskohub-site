@@ -27,11 +27,7 @@ import {
 } from "./observability/trace-correlation";
 import { runStandaloneWorkspaceEffect } from "./standalone-workspace-effect";
 import { getRequestHeaders } from "./utils/request-headers";
-import {
-  findNextControlFlow,
-  runWorkspaceEffect,
-  scheduleWorkspaceTelemetryFlush,
-} from "./workspace-effect";
+import { findNextControlFlow, runWorkspaceEffect } from "./workspace-effect";
 import { withWorkspaceRequestContext } from "./workspace-request-context";
 
 interface WorkspaceActionArgs<S extends StandardSchemaV1> {
@@ -341,9 +337,7 @@ const prepareWorkspaceAction = <
 
   // The runtime may run the action outside the request's async context, so
   // the request's span is captured here.
-  return Effect.andThen(scheduleWorkspaceTelemetryFlush(), invocation).pipe(
-    continueActiveTrace
-  );
+  return invocation.pipe(continueActiveTrace);
 };
 
 const getWorkspaceActionContext = <S extends StandardSchemaV1>(
@@ -377,7 +371,6 @@ const handleWorkspaceActionValidationFailure = async <
         }),
       })
     );
-    yield* scheduleWorkspaceTelemetryFlush();
   }).pipe(runWorkspaceEffect(operation, { boundary: "action" }));
 
   const fieldErrors = Object.groupBy(

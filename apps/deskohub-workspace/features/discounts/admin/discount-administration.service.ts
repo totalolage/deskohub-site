@@ -45,6 +45,7 @@ import {
   sameMoneyUnit,
 } from "@/shared/money/money";
 import type { DiscountAdjustment } from "../contracts";
+import { insertDiscountCode } from "../discount-code-issuance";
 import { toDotyposDiscountBasisPoints } from "../dotypos-discount-percentage";
 import type {
   DiscountCodeClaimId,
@@ -597,34 +598,14 @@ export class DiscountAdministration extends Context.Service<
                   }),
                 })
               );
-              const [promotion] = yield* db
-                .insert(promotionCodes)
-                .values({
-                  kind: "discount",
-                  ...toPromotionCodeValues(input.code),
-                })
-                .returning({ id: promotionCodes.id });
-              if (!promotion) {
-                return yield* Effect.die(
-                  new Error("Promotion insert returned no identifier.")
-                );
-              }
-              const codeRows = yield* db
-                .insert(discountCodes)
-                .values({
-                  ...toPromotionCodeValues(input.code),
-                  promotionCodeId: promotion.id,
-                  discountId,
-                  maxUses: input.code.maxUses,
-                  maxUsesPerCustomer: input.code.maxUsesPerCustomer ?? null,
-                })
-                .returning({ id: discountCodes.id });
-              const codeRow = codeRows[0];
-              return codeRow
-                ? codeRow.id
-                : yield* Effect.die(
-                    new Error("Discount code insert returned no identifier.")
-                  );
+              const code = yield* insertDiscountCode({
+                ...toPromotionCodeValues(input.code),
+                discountId,
+                maxUses: input.code.maxUses,
+                maxUsesPerCustomer: input.code.maxUsesPerCustomer ?? null,
+                audience: [],
+              });
+              return code.id;
             })
           )
       );
@@ -673,39 +654,14 @@ export class DiscountAdministration extends Context.Service<
                 }),
               })
             );
-            const [promotion] = yield* db
-              .insert(promotionCodes)
-              .values({
-                kind: "discount",
-                ...toPromotionCodeValues(input.code),
-              })
-              .returning({ id: promotionCodes.id });
-            if (!promotion) {
-              return yield* Effect.die(
-                new Error("Promotion insert returned no identifier.")
-              );
-            }
-            const codeRows = yield* db
-              .insert(discountCodes)
-              .values({
-                ...toPromotionCodeValues(input.code),
-                promotionCodeId: promotion.id,
-                discountId,
-                maxUses: input.code.maxUses,
-                maxUsesPerCustomer: input.code.maxUsesPerCustomer ?? null,
-              })
-              .returning({ id: discountCodes.id });
-            const codeRow = codeRows[0];
-            if (!codeRow) {
-              return yield* Effect.die(
-                new Error("Discount code insert returned no identifier.")
-              );
-            }
-            yield* db.insert(promotionCodeCustomers).values({
-              promotionCodeId: promotion.id,
-              dotyposCustomerId: input.customerId,
+            const code = yield* insertDiscountCode({
+              ...toPromotionCodeValues(input.code),
+              discountId,
+              maxUses: input.code.maxUses,
+              maxUsesPerCustomer: input.code.maxUsesPerCustomer ?? null,
+              audience: [input.customerId],
             });
-            return codeRow.id;
+            return code.id;
           })
         );
       });

@@ -20,6 +20,7 @@ import {
 import { AdministrationService } from "@/features/administration/administration.service";
 import { PaymentAdministrationServiceMock } from "@/features/administration/payment-administration.service.mock";
 import { PostHogReservationHistory } from "@/features/administration/posthog-reservation-history";
+import { recordCheckoutAnalytics } from "@/features/checkout/backend/analytics/checkout-analytics.service.mock";
 import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import { ReservationHoldCleanupScheduleService } from "@/features/checkout/backend/holds";
 import { WorkspaceTableAssignmentServiceMock } from "@/features/checkout/backend/reservation/workspace-table-assignment.service.mock";
@@ -47,7 +48,6 @@ import {
   ReviewAccounts,
   ReviewSandbox,
 } from "@/features/review-accounts";
-import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
 import { CurrentVisitorIdentity } from "@/shared/backend/workspace-request-context";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
@@ -129,7 +129,7 @@ describe.skipIf(!database)(
       session: {},
       activityState: "active",
     });
-    const capture = mock(() => Effect.void);
+    const analytics = recordCheckoutAnalytics();
     const unreachable = (name: string) =>
       mock(() => Effect.die(`${name} is outside the review sandbox`));
 
@@ -209,7 +209,7 @@ describe.skipIf(!database)(
           )
         )
       ),
-      Layer.mock(PostHogEventService, { capture })
+      analytics.layer
     );
 
     // The account the activity guard fixture signs in.
@@ -334,7 +334,7 @@ describe.skipIf(!database)(
       );
 
       expect(failed).toBe("failed");
-      expect(capture).not.toHaveBeenCalled();
+      expect(analytics.messages).toEqual([]);
     });
 
     test("still captures an ordinary account's outcome", async () => {
@@ -353,8 +353,8 @@ describe.skipIf(!database)(
         [accountId]
       );
 
-      expect(capture).toHaveBeenCalled();
-      capture.mockClear();
+      expect(analytics.messages).not.toEqual([]);
+      analytics.messages.length = 0;
     });
 
     test("leaves the reservation ledger and administration empty", async () => {

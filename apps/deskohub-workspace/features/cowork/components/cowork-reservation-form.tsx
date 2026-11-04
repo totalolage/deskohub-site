@@ -7,10 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { useId } from "react";
 import { preload } from "react-dom";
 import { type Control, useForm } from "react-hook-form";
-import {
-  getAdvertisedProductItem,
-  type PreloadedAdvertisedPrice,
-} from "@/features/checkout/advertised-price";
+import type { PreloadedAdvertisedPrice } from "@/features/checkout/advertised-price";
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
 import {
   type WorkspaceCoworkCurrentTier,
@@ -52,6 +49,7 @@ import {
   useReservationSelectionUrl,
   useWatchedSelection,
 } from "@/features/reservation/components/use-reservation-selection-url";
+import { getCoworkTierOptionPrice } from "@/features/reservation/cowork-advertised-price";
 import {
   type CoworkReservationData,
   type CoworkReservationInput,
@@ -67,10 +65,7 @@ import {
   getCurrentWorkspaceDate,
 } from "@/features/reservation/reservation-date";
 import type { ReservationCheckoutCustomerForm } from "@/features/reservation/reservation-existing-customer";
-import type {
-  PreloadedWorkspaceAvailability,
-  WorkspaceAvailabilityNotice,
-} from "@/features/reservation/workspace-availability";
+import type { PreloadedWorkspaceAvailability } from "@/features/reservation/workspace-availability";
 import {
   FormControl,
   FormField,
@@ -168,36 +163,34 @@ export function CoworkReservationForm({
   useReservationSelectionUrl(coworkSelectionLink, selection);
   const allowedMonitorOptions =
     getAllowedMonitorOptionsForCoworkTier(selectedTier);
-  const {
-    checkoutAdvertisedPrice,
-    coffeePriceLabel,
-    pricesByTier,
-    workstationPriceLabel,
-  } = useCoworkAdvertisedPrices({
-    initialAdvertisedPrices,
-    locale,
-    selection,
-    submittedCode,
-  });
-  const availability = useCoworkSelectionAvailability({
+  const { advertisedPrices, coffeePriceLabel, workstationPriceLabel } =
+    useCoworkAdvertisedPrices({
+      initialAdvertisedPrices,
+      locale,
+      selection,
+      submittedCode,
+    });
+  const selectionAvailability = useCoworkSelectionAvailability({
     initialAvailability,
     locale,
     replacementToken,
     selection,
     today,
   });
+  const { workstation } = selectionAvailability;
+  const isWorkstationRequired = workstation.requiredMonitorOption !== undefined;
   const {
     isCoffeeOptional,
     isWorkstationOptional,
     onManualWorkstationSelection,
     onTierChange,
-  } = useCoworkAddonNormalization({ availability, form, selection });
+  } = useCoworkAddonNormalization({ form, selection, workstation });
 
   return (
     <ReservationCheckoutForm
       checkoutCustomer={checkoutCustomer}
-      advertisedPrice={checkoutAdvertisedPrice}
-      availability={availability.checkoutAvailability}
+      advertisedPrice={advertisedPrices.checkout}
+      availability={selectionAvailability.checkoutAvailability}
       checkoutSessionId={checkoutSessionId}
       form={form}
       getReservation={getCoworkCurrentReservationOrder}
@@ -243,21 +236,13 @@ export function CoworkReservationForm({
                     option.title,
                     locale
                   );
-                  const isUnavailable = availability.unavailableCoworkTiers.has(
+                  const isUnavailable =
+                    selectionAvailability.unavailableTiers.has(option.value);
+                  const tierPrice = getCoworkTierOptionPrice(
+                    advertisedPrices,
                     option.value
                   );
-                  const tierAdvertisedPrice = pricesByTier.get(option.value);
-                  const advertisedProductItem =
-                    tierAdvertisedPrice &&
-                    getAdvertisedProductItem(tierAdvertisedPrice, {
-                      kind: "cowork",
-                      tier: option.value,
-                    });
-                  const originalAmount =
-                    advertisedProductItem &&
-                    "originalAmount" in advertisedProductItem
-                      ? advertisedProductItem.originalAmount
-                      : undefined;
+                  const originalAmount = tierPrice?.originalAmount;
                   return (
                     <ReservationTypeOption
                       key={option.value}
@@ -283,9 +268,9 @@ export function CoworkReservationForm({
                         />
                       }
                       price={
-                        advertisedProductItem ? (
+                        tierPrice ? (
                           <ReservationAdvertisedPrice
-                            amount={advertisedProductItem.amount}
+                            amount={tierPrice.amount}
                             originalAmountClassName={
                               originalAmount ? "text-[0.6em]" : undefined
                             }
@@ -304,7 +289,7 @@ export function CoworkReservationForm({
                           <ReservationSkeletonBlock className="h-4 w-24 bg-aquamarine-green/15" />
                         )
                       }
-                      priceReady={Boolean(advertisedProductItem)}
+                      priceReady={Boolean(tierPrice)}
                       title={optionTitle}
                       value={option.value}
                     >
@@ -328,13 +313,31 @@ export function CoworkReservationForm({
           <CoworkReservationDateField
             control={form.control}
             locale={locale}
-            unavailableDates={availability.unavailableCalendarDates}
+            unavailableDates={selectionAvailability.unavailableDates}
           />
 
-          <CoworkSelectedDateNotices
-            locale={locale}
-            notices={availability.selectedDateNotices}
-          />
+          {selectionAvailability.selectedDateNotices.length > 0 && (
+            <div className="space-y-3">
+              {selectionAvailability.selectedDateNotices.map((notice) => (
+                <p
+                  key={`${notice.date}-${notice.startsAt}-${notice.endsAt}`}
+                  aria-live="polite"
+                  className="flex items-start gap-2 rounded-2xl border border-dashed border-sunset-yellow/45 bg-sunset-yellow/14 px-4 py-3 text-sm leading-6 text-navy-blue/50"
+                >
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-chilean-fire" />
+                  <span>
+                    {m.reservationAvailabilityPartialNotice(
+                      {
+                        startsAt: notice.startsAt,
+                        endsAt: notice.endsAt,
+                      },
+                      { locale }
+                    )}
+                  </span>
+                </p>
+              ))}
+            </div>
+          )}
         </div>
 
         {isCoffeeOptional && (
@@ -349,52 +352,16 @@ export function CoworkReservationForm({
           <CoworkWorkstationAddonField
             allowedMonitorOptions={allowedMonitorOptions}
             control={form.control}
-            isWorkstationRequired={availability.isWorkstationRequired}
-            monitorOptionsAvailabilitySettled={
-              availability.isWorkstationRequirementSettled
-            }
+            isWorkstationRequired={isWorkstationRequired}
+            monitorOptionsAvailabilitySettled={workstation.settled}
             locale={locale}
             onManualSelection={onManualWorkstationSelection}
             priceLabel={workstationPriceLabel}
-            unavailableMonitorOptions={availability.unavailableMonitorOptions}
+            unavailableMonitorOptions={workstation.unavailableMonitorOptions}
           />
         )}
       </div>
     </ReservationCheckoutForm>
-  );
-}
-
-/** Partial-day notices for the selected date, such as a closure window. */
-function CoworkSelectedDateNotices({
-  locale,
-  notices,
-}: {
-  readonly locale: Locale;
-  readonly notices: ReadonlyArray<WorkspaceAvailabilityNotice>;
-}) {
-  return (
-    notices.length > 0 && (
-      <div className="space-y-3">
-        {notices.map((notice) => (
-          <p
-            key={`${notice.date}-${notice.startsAt}-${notice.endsAt}`}
-            aria-live="polite"
-            className="flex items-start gap-2 rounded-2xl border border-dashed border-sunset-yellow/45 bg-sunset-yellow/14 px-4 py-3 text-sm leading-6 text-navy-blue/50"
-          >
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-chilean-fire" />
-            <span>
-              {m.reservationAvailabilityPartialNotice(
-                {
-                  startsAt: notice.startsAt,
-                  endsAt: notice.endsAt,
-                },
-                { locale }
-              )}
-            </span>
-          </p>
-        ))}
-      </div>
-    )
   );
 }
 

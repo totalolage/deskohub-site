@@ -1,16 +1,14 @@
 import { expect, mock, spyOn, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { Effect } from "effect";
+import { failWorkspaceTelemetry } from "@/shared/testing/workspace-telemetry.test-utils";
 
-const runtimeBuildFailure = new Error("tracing exporter unavailable");
+const runtimeBuildFailure = new Error(
+  "synthetic PostHog logging configuration unusable"
+);
 
 // The shared runtime builds its observability layer before entering any
 // Effect, so this fails every run in this file before the program starts.
-mock.module("@/instrumentation", () => ({ postHogLoggerProvider: undefined }));
-mock.module("./observability/workspace-tracing", () => ({
-  createWorkspaceTracingLive: () =>
-    Layer.effectDiscard(Effect.fail(runtimeBuildFailure)),
-  WorkspaceTracingLive: Layer.effectDiscard(Effect.fail(runtimeBuildFailure)),
-}));
+failWorkspaceTelemetry(runtimeBuildFailure);
 
 const { runWorkspaceEffect, runWorkspaceEffectOrElse } = await import(
   "./workspace-effect"

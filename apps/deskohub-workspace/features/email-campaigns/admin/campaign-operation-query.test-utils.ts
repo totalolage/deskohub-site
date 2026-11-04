@@ -65,12 +65,6 @@ export const stubCampaignPageQueries = () => {
     after: () => undefined,
     connection: () => Promise.resolve(),
   }));
-  mock.module("@/instrumentation", () => ({
-    postHogLoggerProvider: {
-      forceFlush: () => Promise.resolve(),
-      getLogger: () => ({ emit: () => undefined }),
-    },
-  }));
 
   return port;
 };

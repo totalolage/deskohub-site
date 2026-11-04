@@ -47,25 +47,28 @@ import { useReservationCheckoutStep } from "./use-reservation-checkout-step";
 
 export type { ReservationFormSubmission } from "./reservation-checkout-form-submission";
 
+/** The selected option's advertised price, as checkout submits and shows it. */
+export type ReservationCheckoutAdvertisedPrice = {
+  readonly isError: boolean;
+  readonly isFetching: boolean;
+  readonly retry: () => void;
+  readonly token?: string;
+  readonly sale?: {
+    readonly discounts: readonly CheckoutSummaryDiscount[];
+    readonly productLabel: string;
+  };
+  /** The selection's advertised total, with the price before discounts. */
+  readonly total?: {
+    readonly amount: Money;
+    readonly originalAmount?: Money;
+  };
+};
+
 type ReservationCheckoutFormProps<
   Input extends FieldValues,
   Data extends ReservationFormData,
 > = {
-  readonly advertisedPrice: {
-    readonly isError: boolean;
-    readonly isFetching: boolean;
-    readonly retry: () => void;
-    readonly token?: string;
-    readonly sale?: {
-      readonly discounts: readonly CheckoutSummaryDiscount[];
-      readonly productLabel: string;
-    };
-    /** The selection's advertised total, with the price before discounts. */
-    readonly total?: {
-      readonly amount: Money;
-      readonly originalAmount?: Money;
-    };
-  };
+  readonly advertisedPrice: ReservationCheckoutAdvertisedPrice;
   readonly availability: {
     /**
      * Whether availability for the current selection has not settled yet. A

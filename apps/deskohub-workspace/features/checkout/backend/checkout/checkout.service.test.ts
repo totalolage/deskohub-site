@@ -499,7 +499,6 @@ type CheckoutHarnessOptions<ReservationOverrides extends object> = {
   readonly completeInternalPayment?: ReturnType<typeof mock>;
   readonly createHostedPaymentPage?: ReturnType<typeof mock>;
   readonly run?: ReturnType<typeof mock>;
-  readonly capture?: ReturnType<typeof mock>;
   readonly accountAuthority?: OptionalAccountActivityFixture;
 };
 
@@ -520,8 +519,8 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
   const { PaymentLifecycleRepository } = await import(
     "../repositories/payment-lifecycle.repository"
   );
-  const { PostHogEventService } = await import(
-    "@/shared/backend/analytics/posthog-event.service"
+  const { recordCheckoutAnalytics } = await import(
+    "@/features/checkout/backend/analytics/checkout-analytics.service.mock"
   );
   const { ReservationFulfillment } = await import(
     "../fulfillment/reservation-fulfillment.service"
@@ -560,7 +559,7 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
       })
     );
   const fulfillPaidOrder = options.run ?? mock(() => Effect.void);
-  const capture = options.capture ?? mock(() => Effect.void);
+  const analytics = recordCheckoutAnalytics();
   const recordLegalEvidence = mock((_input: readonly unknown[]) => Effect.void);
   const findAttempt = mock(() => Effect.succeed(options.activeAttempt ?? null));
   const attachHostedPaymentPage = mock(() => Effect.succeed(attachedAttempt));
@@ -696,9 +695,7 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
             Layer.mock(ReservationFulfillment, {
               run: fulfillPaidOrder,
             }),
-            Layer.mock(PostHogEventService, {
-              capture,
-            }),
+            analytics.layer,
             Layer.mock(LegalEvidenceEventRepository, {
               recordMany: recordLegalEvidence,
             })
@@ -721,7 +718,7 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
     updateReservation,
     createHostedPaymentPage,
     fulfillPaidOrder,
-    capture,
+    analyticsEvents: analytics.messages,
     recordLegalEvidence,
     requireCurrent,
     reservationRecord,
@@ -1425,7 +1422,7 @@ describe("CheckoutService", () => {
     expect(harness.fulfillPaidOrder).toHaveBeenCalledWith(
       "reservation-zero-total"
     );
-    expect(harness.capture).toHaveBeenCalledWith(
+    expect(harness.analyticsEvents).toContainEqual(
       expect.objectContaining({
         event: "payment completed",
         properties: expect.objectContaining({

@@ -5,12 +5,15 @@ import type { UseFormReturn } from "react-hook-form";
 import {
   getCoworkTierCoffeeAddon,
   getCoworkTierWorkstationAddon,
-  type WorkspaceProductMonitorOption,
 } from "@/features/checkout/product-catalog";
 import type {
   CoworkReservationData,
   CoworkReservationInput,
 } from "@/features/reservation/cowork-reservation";
+import {
+  getCoworkWorkstationNormalization,
+  getCoworkWorkstationOrigin,
+} from "@/features/reservation/cowork-selection-availability";
 
 type CoworkAddonSelection = Pick<
   CoworkReservationInput,
@@ -18,49 +21,16 @@ type CoworkAddonSelection = Pick<
 >;
 
 /**
- * Whether the form still holds the watched Reserved Desk selection, so a
- * normalization never acts on values the customer has already changed.
+ * Whether the form still holds the watched selection, so a normalization
+ * never acts on values the customer has already changed.
  */
-export const isReservedDeskSelectionCurrent = (
+const isSelectionCurrent = (
   values: CoworkAddonSelection,
   selection: CoworkAddonSelection
 ) =>
-  selection.entryTier === "reserved-desk" &&
   values.entryTier === selection.entryTier &&
   values.date === selection.date &&
   values.monitorOption === selection.monitorOption;
-
-/**
- * The monitor option a Reserved Desk needs on the selected day: the first
- * available one while the day requires a workstation and none, or an
- * unavailable one, is chosen; none once the requirement lifts from a
- * workstation the form added itself. Undefined leaves the choice alone.
- */
-export const getReservedDeskWorkstationNormalization = ({
-  autoAdded,
-  firstAvailableMonitorOption,
-  isRequired,
-  monitorOption,
-  unavailableMonitorOptions,
-}: {
-  readonly autoAdded: boolean;
-  readonly firstAvailableMonitorOption?: WorkspaceProductMonitorOption;
-  readonly isRequired: boolean;
-  readonly monitorOption: CoworkReservationInput["monitorOption"];
-  readonly unavailableMonitorOptions: ReadonlySet<WorkspaceProductMonitorOption>;
-}) => {
-  if (!isRequired || !firstAvailableMonitorOption) {
-    return autoAdded
-      ? { autoAdded: false, monitorOption: undefined }
-      : undefined;
-  }
-  if (!monitorOption) {
-    return { autoAdded: true, monitorOption: firstAvailableMonitorOption };
-  }
-  return unavailableMonitorOptions.has(monitorOption)
-    ? { autoAdded, monitorOption: firstAvailableMonitorOption }
-    : undefined;
-};
 
 /**
  * Keeps the cowork form's addons valid for the selected tier and day: drops
@@ -69,91 +39,80 @@ export const getReservedDeskWorkstationNormalization = ({
  * day's requirement changes.
  */
 export const useCoworkAddonNormalization = ({
-  availability: {
-    firstAvailableMonitorOption,
-    isSelectionSettled,
-    isWorkstationRequired,
-    isWorkstationRequirementSettled,
-    unavailableMonitorOptions,
-  },
   form,
-  selection: { date, entryTier, monitorOption },
+  selection,
+  workstation: {
+    isSelectedMonitorUnavailable,
+    normalizable,
+    requiredMonitorOption,
+  },
 }: {
-  readonly availability: {
-    readonly firstAvailableMonitorOption?: WorkspaceProductMonitorOption;
-    readonly isSelectionSettled: boolean;
-    readonly isWorkstationRequired: boolean;
-    readonly isWorkstationRequirementSettled: boolean;
-    readonly unavailableMonitorOptions: ReadonlySet<WorkspaceProductMonitorOption>;
-  };
   readonly form: UseFormReturn<
     CoworkReservationInput,
     unknown,
     CoworkReservationData
   >;
   readonly selection: CoworkAddonSelection;
+  readonly workstation: Parameters<typeof getCoworkWorkstationNormalization>[0];
 }) => {
-  const autoAddedWorkstation = useRef(false);
+  const { date, entryTier, monitorOption } = selection;
   const isCoffeeOptional = getCoworkTierCoffeeAddon(entryTier) === "optional";
   const isWorkstationOptional =
     getCoworkTierWorkstationAddon(entryTier) === "optional";
+  // Whether the form added the current workstation itself. Customer choices
+  // and tier changes reset it.
+  const autoAddedWorkstation = useRef(false);
 
   useEffect(() => {
-    if (!isWorkstationOptional) {
-      autoAddedWorkstation.current = false;
-      form.setValue("monitorOption", undefined, { shouldValidate: true });
-      if (!isCoffeeOptional) {
-        form.setValue("coffee", true, { shouldValidate: true });
+    if (isWorkstationOptional) {
+      const values = form.getValues();
+      if (!isSelectionCurrent(values, { date, entryTier, monitorOption })) {
+        return;
       }
-      return;
-    }
-    if (
-      !isSelectionSettled ||
-      !isWorkstationRequirementSettled ||
-      !isReservedDeskSelectionCurrent(form.getValues(), {
-        date,
-        entryTier,
-        monitorOption,
-      })
-    ) {
+
+      const normalized = getCoworkWorkstationNormalization(
+        { isSelectedMonitorUnavailable, normalizable, requiredMonitorOption },
+        {
+          monitorOption,
+          origin: getCoworkWorkstationOrigin({
+            autoAdded: autoAddedWorkstation.current,
+            monitorOption,
+          }),
+        }
+      );
+      if (!normalized) return;
+
+      autoAddedWorkstation.current = normalized.origin === "auto-added";
+      form.setValue("monitorOption", normalized.monitorOption, {
+        shouldValidate: true,
+      });
       return;
     }
 
-    const normalization = getReservedDeskWorkstationNormalization({
-      autoAdded: autoAddedWorkstation.current,
-      firstAvailableMonitorOption,
-      isRequired: isWorkstationRequired,
-      monitorOption,
-      unavailableMonitorOptions,
-    });
-    if (!normalization) return;
-
-    autoAddedWorkstation.current = normalization.autoAdded;
-    form.setValue("monitorOption", normalization.monitorOption, {
-      shouldValidate: true,
-    });
+    autoAddedWorkstation.current = false;
+    form.setValue("monitorOption", undefined, { shouldValidate: true });
+    if (!isCoffeeOptional) {
+      form.setValue("coffee", true, { shouldValidate: true });
+    }
   }, [
     date,
     entryTier,
-    firstAvailableMonitorOption,
     form,
     isCoffeeOptional,
-    isSelectionSettled,
+    isSelectedMonitorUnavailable,
     isWorkstationOptional,
-    isWorkstationRequired,
-    isWorkstationRequirementSettled,
     monitorOption,
-    unavailableMonitorOptions,
+    normalizable,
+    requiredMonitorOption,
   ]);
 
   return {
     isCoffeeOptional,
     isWorkstationOptional,
-    /** The customer chose the workstation, so the form no longer owns it. */
     onManualWorkstationSelection: () => {
       autoAddedWorkstation.current = false;
     },
-    /** Resets the addons a newly chosen tier doesn't offer as options. */
+    /** Drops the addons the newly chosen tier doesn't offer as options. */
     onTierChange: (tier: CoworkReservationInput["entryTier"]) => {
       if (getCoworkTierWorkstationAddon(tier) !== "optional") {
         autoAddedWorkstation.current = false;

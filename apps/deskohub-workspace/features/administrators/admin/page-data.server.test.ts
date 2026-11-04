@@ -48,13 +48,6 @@ mock.module("next/root-params", () => ({
   locale: async () => requestLocale,
 }));
 
-mock.module("@/instrumentation", () => ({
-  postHogLoggerProvider: {
-    forceFlush: () => Promise.resolve(),
-    getLogger: () => ({ emit: () => undefined }),
-  },
-}));
-
 const { loadAdministrators } = await import("./page-data.server");
 
 describe("loadAdministrators", () => {

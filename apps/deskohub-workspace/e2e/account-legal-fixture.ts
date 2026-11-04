@@ -79,7 +79,7 @@ import type { ReactNode } from "react";
 import { FixtureHydration } from "@/fixture/hydration";
 ${
   realCookieConsent
-    ? 'import { CookieConsentProvider } from "@/features/cookie-consent/components/cookie-consent-provider";\n'
+    ? 'import { ConsentBanner } from "@/features/cookie-consent/components/consent-banner";\n'
     : ""
 }import { UnsavedChangesProvider } from "@/shared/components/unsaved-changes-guard";
 import "../globals.css";
@@ -105,7 +105,7 @@ export default async function LocaleLayout({
     <html lang={locale} data-scroll-behavior="smooth">
       <body>
 ${
-  realCookieConsent ? "        <CookieConsentProvider locale={locale} />\n" : ""
+  realCookieConsent ? "        <ConsentBanner locale={locale} />\n" : ""
 }        <UnsavedChangesProvider>
           <FixtureHydration>{children}</FixtureHydration>
         </UnsavedChangesProvider>
@@ -303,14 +303,15 @@ export const env = {
 const fixtureCookieConsent = `
 export type ConsentCategory = "necessary" | "analytics" | "marketing" | "preferences";
 
-export function useCookieConsent() {
-  return {
-    acceptAll: () => undefined,
-    acceptCategory: (_category: ConsentCategory) => undefined,
-    isAccepted: (_category: ConsentCategory) => false,
-    rejectAll: () => undefined,
-    rejectCategory: (_category: ConsentCategory) => undefined,
-  };
+export const visitorConsent = {
+  accept: (_category: ConsentCategory) => undefined,
+  accepts: (_category: ConsentCategory) => false,
+  reject: (_category: ConsentCategory) => undefined,
+  subscribe: () => () => undefined,
+};
+
+export function useVisitorConsent(_category: ConsentCategory) {
+  return false;
 }
 `;
 

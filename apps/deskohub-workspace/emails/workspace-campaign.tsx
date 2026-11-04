@@ -1,19 +1,17 @@
 import type { ReactNode } from "react";
-import { Link, Text } from "react-email";
+import type { Locale } from "@/features/i18n";
 import {
-  WorkspaceEmailLayout,
-  type WorkspaceEmailLocale,
-} from "./_components/workspace-email-layout";
+  type WorkspaceCampaignFooter,
+  WorkspaceCampaignFooterText,
+} from "./_components/workspace-campaign-footer";
+import { WorkspaceEmailLayout } from "./_components/workspace-email-layout";
 import { workspaceCampaignPreviewProps } from "./_fixtures/preview-props";
 
 export type WorkspaceCampaignEmailProps = {
-  readonly locale: WorkspaceEmailLocale;
+  readonly locale: Locale;
   readonly preview: string;
   readonly body: ReactNode;
-  readonly footer: {
-    readonly note: string;
-    readonly link?: { readonly label: string; readonly href: string };
-  };
+  readonly footer: WorkspaceCampaignFooter;
 };
 
 export function WorkspaceCampaignEmail({
@@ -24,22 +22,7 @@ export function WorkspaceCampaignEmail({
 }: WorkspaceCampaignEmailProps) {
   return (
     <WorkspaceEmailLayout
-      footer={
-        <Text className="m-0 px-5 pt-2 text-center text-[12px] leading-[18px] text-[#666983]">
-          {footer.note}
-          {footer.link && (
-            <>
-              {" "}
-              <Link
-                className="text-[#666983] underline"
-                href={footer.link.href}
-              >
-                {footer.link.label}
-              </Link>
-            </>
-          )}
-        </Text>
-      }
+      footer={<WorkspaceCampaignFooterText footer={footer} locale={locale} />}
       locale={locale}
       preview={preview}
     >

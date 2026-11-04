@@ -22,8 +22,8 @@ import { RememberedReferral } from "@/features/referrals/remembered-referral.ser
 import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { getCalendarActionDeadline } from "@/shared/backend/calendar-action-deadline";
-import type { DeploymentEnvironment } from "@/shared/backend/config/deployment-request-timeout";
 import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
+import type { DeploymentEnvironment } from "@/shared/deployment/deployment-stage";
 import type { ApplyDiscountCodeInput } from "./apply-discount-code-input";
 
 /**

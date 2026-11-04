@@ -26,7 +26,13 @@ import {
   reservationTypeInputLayout,
   reservationTypeOptionLayout,
 } from "@/features/reservation/components/reservation-type-input";
+import { useAdvertisedOptionPrices } from "@/features/reservation/components/use-advertised-option-prices";
 import { useWatchedSelection } from "@/features/reservation/components/use-reservation-selection-url";
+import {
+  findOfficeSeatAdvertisedPriceRequest,
+  getOfficeSeatAdvertisedPriceRequests,
+  officeSeatOptions,
+} from "@/features/reservation/office-advertised-price";
 import {
   getOfficeReservationDayCount,
   getOfficeReservationEndsOn,
@@ -46,11 +52,10 @@ import {
   FormItem,
   FormMessage,
 } from "@/shared/components/ui/form";
-import { formatMoney, moneyWithValue } from "@/shared/money/money";
+import { formatMoney } from "@/shared/money/money";
 import { cn } from "@/shared/utils";
 import { OfficeDayCountInput } from "./office-day-count-input";
 import { getOfficeReservationSelectionSummary } from "./office-reservation-selection-summary";
-import { useOfficeAdvertisedPrices } from "./use-office-advertised-prices";
 import { useOfficeAvailability } from "./use-office-availability";
 import { useOfficeDayCountBounds } from "./use-office-day-count-bounds";
 
@@ -120,19 +125,31 @@ export function OfficeReservationForm({
     replacementToken,
     today,
   });
-  const {
-    advertisedPrice,
-    checkoutAdvertisedPrice,
-    pricesBySeats: advertisedPricesBySeats,
-  } = useOfficeAdvertisedPrices({
+  const advertisedPriceRequests = useMemo(
+    () =>
+      selection
+        ? getOfficeSeatAdvertisedPriceRequests({
+            seatCapacity,
+            locale,
+            startsOn: selection.startsOn,
+            endsOn: selection.endsOn,
+            submittedCode,
+          })
+        : [],
+    [seatCapacity, locale, selection, submittedCode]
+  );
+  const advertisedPrices = useAdvertisedOptionPrices({
+    family: officeSeatOptions,
     initialAdvertisedPrices,
-    locale,
-    seatCapacity,
-    seats,
-    selection,
-    submittedCode,
+    productLabel: getWorkspaceOfficeProductTitle(locale),
+    requests: advertisedPriceRequests,
+    selected: findOfficeSeatAdvertisedPriceRequest(
+      advertisedPriceRequests,
+      seats
+    ),
   });
-  const advertisedOfficeQuoteItem = advertisedPrice?.quote.items[0];
+  const advertisedOfficeQuoteItem =
+    advertisedPrices.selectedPrice?.quote.items[0];
   const { availability, maximumDayCount, unavailableDates } =
     useOfficeDayCountBounds({
       availabilityResult,
@@ -151,7 +168,7 @@ export function OfficeReservationForm({
   return (
     <ReservationCheckoutForm
       checkoutCustomer={checkoutCustomer}
-      advertisedPrice={checkoutAdvertisedPrice}
+      advertisedPrice={advertisedPrices.checkout}
       availability={availability}
       checkoutSessionId={checkoutSessionId}
       form={form}
@@ -270,16 +287,12 @@ export function OfficeReservationForm({
                     { count: seatCount },
                     { locale }
                   );
-                  const optionAdvertisedPrice =
-                    advertisedPricesBySeats.get(seatCount);
-                  const quotedSeatAmount =
-                    optionAdvertisedPrice?.quote.items[0].seatAmount;
-                  const seatPrice = quotedSeatAmount
-                    ? moneyWithValue(
-                        quotedSeatAmount.value * seatCount,
-                        quotedSeatAmount
-                      )
-                    : undefined;
+                  const seatRequest = findOfficeSeatAdvertisedPriceRequest(
+                    advertisedPriceRequests,
+                    seatCount
+                  );
+                  const seatPrice =
+                    seatRequest && advertisedPrices.of(seatRequest)?.amount;
 
                   return (
                     <ReservationTypeOption

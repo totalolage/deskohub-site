@@ -1,20 +1,20 @@
-import { expect, mock, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { expect, test } from "bun:test";
+import { type TracerProvider, trace } from "@opentelemetry/api";
+import { BasicTracerProvider } from "@opentelemetry/sdk-trace-base";
+import { Effect } from "effect";
 import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
 
+// Each build of the observability Layer the runtime and web handlers share
+// takes one tracer from the global tracer provider, which `registerOTel`
+// installs in production.
 let observabilityBuilds = 0;
-const CountedTracingLive = Layer.effectDiscard(
-  Effect.sync(() => {
+const tracerProvider = new BasicTracerProvider();
+trace.setGlobalTracerProvider({
+  getTracer: (...args: Parameters<TracerProvider["getTracer"]>) => {
     observabilityBuilds += 1;
-  })
-);
-
-// Counts builds of the observability Layer the runtime and web handlers share.
-mock.module("@/instrumentation", () => ({ postHogLoggerProvider: undefined }));
-mock.module("./observability/workspace-tracing", () => ({
-  createWorkspaceTracingLive: () => CountedTracingLive,
-  WorkspaceTracingLive: CountedTracingLive,
-}));
+    return tracerProvider.getTracer(...args);
+  },
+});
 
 const { runWorkspaceEffect, toWorkspaceWebHandler } = await import(
   "./workspace-effect"

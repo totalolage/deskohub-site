@@ -13,7 +13,6 @@ import { recordNextCache } from "@/shared/testing/next-cache-recorder.test-utils
 
 const nextCache = recordNextCache();
 
-mock.module("@/instrumentation", () => ({ postHogLoggerProvider: undefined }));
 mock.module("next/cache", () => nextCache.module);
 
 const { readSharedSnapshot } = await import("./shared-snapshot");

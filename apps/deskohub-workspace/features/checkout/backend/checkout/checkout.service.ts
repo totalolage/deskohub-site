@@ -49,7 +49,6 @@ import {
   type WorkspaceReservationId,
 } from "@/features/reservation/persistence-contracts";
 import { hasReservationIntervalEnded } from "@/features/reservation/reservation-interval";
-import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { WorkspaceNexiLayer } from "@/shared/backend/config/nexi.config";
 import {
@@ -59,11 +58,7 @@ import {
 import { type Money, moneyEquals } from "@/shared/money/money";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { localDateTimeToInstant } from "@/shared/utils/temporal";
-import {
-  capturePaymentCompleted,
-  capturePaymentFailed,
-  capturePaymentStarted,
-} from "../analytics/posthog-lifecycle-events";
+import { CheckoutAnalytics } from "../analytics/checkout-analytics.service";
 import { ReservationFulfillment } from "../fulfillment/reservation-fulfillment.service";
 import { NexiAmountFromWorkspaceMoney } from "../payment/nexi-amount.codec";
 import { getNexiCurrencyOverride } from "../payment/nexi-currency";
@@ -233,7 +228,7 @@ export class CheckoutService extends Context.Service<
     Layer.provide(ReservationFulfillment.Live),
     Layer.provide(PayableReservationService.Default),
     Layer.provide(LegalEvidenceEventRepository.Default),
-    Layer.provide(PostHogEventService.Live),
+    Layer.provide(CheckoutAnalytics.Live),
     Layer.provide(PaymentLifecycleRepository.Default),
     Layer.provide(PaymentAttemptRepository.Default),
     Layer.provide(WorkspaceReservationRepository.Default),
@@ -442,7 +437,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
       const paymentLifecycle = yield* PaymentLifecycleRepository;
       const legalEvidenceEvents = yield* LegalEvidenceEventRepository;
       const paidFulfillment = yield* ReservationFulfillment;
-      const posthogEvents = yield* PostHogEventService;
+      const checkoutAnalytics = yield* CheckoutAnalytics;
       const pricing = yield* CheckoutPricingService;
       const payableReservations = yield* PayableReservationService;
       const accountActivity = yield* OptionalAccountActivityGuard;
@@ -468,13 +463,11 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                 });
 
                 if (transition.changed) {
-                  yield* capturePaymentFailed({
+                  yield* checkoutAnalytics.paymentFailed({
                     attempt: transition.attempt,
                     failureReason: "nexi_hpp_create_failed",
                     timestamp: transition.timestamp,
-                  }).pipe(
-                    Effect.provideService(PostHogEventService, posthogEvents)
-                  );
+                  });
                 }
               })
             ),
@@ -639,10 +632,10 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                 return { attachedAttempt, hostedPaymentPage };
               })
             );
-          yield* capturePaymentStarted({
+          yield* checkoutAnalytics.paymentStarted({
             attempt: attachedAttempt,
             timestamp: attachedAttempt.updatedAt,
-          }).pipe(Effect.provideService(PostHogEventService, posthogEvents));
+          });
           yield* Effect.logDebug(
             "Checkout hosted payment page attach completed"
           );
@@ -680,10 +673,10 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
         });
 
         if (transition.changed) {
-          yield* capturePaymentCompleted({
+          yield* checkoutAnalytics.paymentCompleted({
             attempt: transition.attempt,
             timestamp: transition.timestamp,
-          }).pipe(Effect.provideService(PostHogEventService, posthogEvents));
+          });
         }
 
         yield* paidFulfillment.run(input.workspaceReservationId).pipe(

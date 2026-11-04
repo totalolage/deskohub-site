@@ -63,6 +63,7 @@ import { type DotyposIdReadOptions, readByIds } from "./id-reads";
 import {
   type DotyposAttemptFailure,
   type DotyposRequestFailure,
+  getDotyposRequestPolicy,
   retryDotyposRequest,
 } from "./request-profiles";
 
@@ -342,6 +343,11 @@ type DotyposPages<A> = {
   readonly pageCount: number;
 };
 
+/**
+ * Reads every page in order. The cursor and the items read so far live with
+ * the returned effect, so a retry around it resumes at the page that failed
+ * (the `resume` pagination of `getDotyposRequestWorstCase(...).pagedLoad`).
+ */
 const loadDotyposPages = <A, E, R, Request extends DotyposRequest>(
   input: DotyposPageLoad<A, E, R, Request>
 ): Effect.Effect<DotyposPages<A>, E | DotyposRequestFailure<Request>, R> => {
@@ -825,6 +831,7 @@ const makeDotyposService: Effect.Effect<
 > = Effect.gen(function* () {
   const config = yield* DotyposRuntimeConfig;
   const { client } = yield* DotyposGeneratedClient;
+  const requestPolicy = getDotyposRequestPolicy(config.apiTimeout);
 
   /**
    * Sends one request attempt and classifies its failure by the request's
@@ -841,10 +848,7 @@ const makeDotyposService: Effect.Effect<
           call
         )
       ),
-      Effect.timeoutOrElse({
-        duration: config.apiTimeout,
-        orElse: () => Effect.fail(dotyposTimeout(call)),
-      })
+      requestPolicy.attempt(() => dotyposTimeout(call))
     );
 
   /** A creation answered with an empty array created nothing, so it can be retried. */

@@ -5,16 +5,13 @@ import {
   WorkspaceEmailHeading,
   WorkspaceEmailNote,
 } from "@/emails/_components/workspace-email-content";
-import {
-  WorkspaceEmailLayout,
-  type WorkspaceEmailLocale,
-} from "@/emails/_components/workspace-email-layout";
-import { m } from "@/features/i18n";
+import { WorkspaceEmailLayout } from "@/emails/_components/workspace-email-layout";
+import { type Locale, m } from "@/features/i18n";
 import { renderWorkspaceEmail } from "@/shared/backend/email/render-react-email";
 import type { MagicLinkDeliveryRequest } from "./send-magic-link-email";
 
 export type MagicLinkEmailProps = {
-  readonly locale: WorkspaceEmailLocale;
+  readonly locale: Locale;
   readonly url: string;
   /** The sign-in code; alone on its own line in the text body. */
   readonly code?: string;

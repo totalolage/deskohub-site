@@ -60,16 +60,16 @@ import type {
   CampaignTemplateKey,
 } from "../body/campaign-content";
 import {
-  CampaignEmailFooter,
-  renderCampaignEmail,
-} from "../body/render-campaign-email";
-import {
   campaignDeliveryBatchIdempotencyKey,
   campaignDeliveryBatchReplayWindow,
   campaignDeliveryBatchSize,
   campaignDeliveryPayloadHash,
 } from "../campaign-delivery-batches";
-import { campaignDeliveryMessage } from "../campaign-email-message";
+import {
+  CampaignDeliveryAudience,
+  CampaignEmailOccasion,
+  campaignEmailMessage,
+} from "../campaign-email";
 import type { CampaignId, CampaignSendId } from "../campaign-identifiers";
 import type { CampaignRecipientSkipReason } from "../campaign-states";
 import { campaignFallbackLocale } from "../recipient-locale";
@@ -644,39 +644,40 @@ export class CampaignDeliveryService extends Context.Service<
             sendId: context.sendId,
             dotyposCustomerId: recipient.dotyposCustomerId,
           })),
-          Effect.bind("unsubscribeUrl", ({ context, recipientTags }) =>
-            unsubscribe
-              .unsubscribeUrl(recipientTags)
-              .pipe(
-                Effect.when(
-                  Effect.succeed(context.campaign.purpose === "marketing")
-                )
-              )
+          Effect.bind("audience", ({ context, recipientTags }) =>
+            Match.value(context.campaign.purpose).pipe(
+              Match.when("marketing", () =>
+                unsubscribe
+                  .unsubscribeUrl(recipientTags)
+                  .pipe(
+                    Effect.map((unsubscribeUrl) =>
+                      CampaignDeliveryAudience.Marketing({ unsubscribeUrl })
+                    )
+                  )
+              ),
+              Match.when("operational", () =>
+                Effect.succeed(CampaignDeliveryAudience.Operational())
+              ),
+              Match.exhaustive
+            )
           ),
           Effect.let("localized", ({ context, recipient }) =>
             campaignContentFor(context.campaign, recipient.locale)
           ),
-          Effect.bind("rendered", ({ context, unsubscribeUrl, localized }) =>
-            renderCampaignEmail({
-              templateKey: context.campaign.templateKey,
-              locale: localized.locale,
-              content: localized.content,
-              footer: Option.match(unsubscribeUrl, {
-                onNone: () => CampaignEmailFooter.Operational(),
-                onSome: (marketingPreferencesUrl) =>
-                  CampaignEmailFooter.Marketing({ marketingPreferencesUrl }),
-              }),
-            })
-          ),
-          Effect.map(({ recipient, recipientTags, unsubscribeUrl, rendered }) =>
-            campaignDeliveryMessage({
-              sender: config,
-              to: recipient.to,
-              email: rendered,
-              unsubscribeUrl,
-              recipient: recipientTags,
-              deploymentEnvironment: config.deploymentEnvironment,
-            })
+          Effect.flatMap(
+            ({ context, recipient, recipientTags, audience, localized }) =>
+              campaignEmailMessage({
+                templateKey: context.campaign.templateKey,
+                locale: localized.locale,
+                content: localized.content,
+                occasion: CampaignEmailOccasion.Delivery({
+                  to: recipient.to,
+                  recipient: recipientTags,
+                  audience,
+                }),
+                sender: config,
+                deploymentEnvironment: config.deploymentEnvironment,
+              })
           ),
           Effect.withSpan("CampaignDeliveryService.renderMessage")
         );

@@ -167,7 +167,7 @@ App-directory review accounts (`customer_accounts.review`) book in a sandbox own
 
 Each Nexi request times out after 5 seconds in production and 30 seconds elsewhere (`getNexiRequestTimeoutMilliseconds` in `shared/backend/config/nexi.config.ts`). The sandbox can exceed 5 seconds to create a hosted page, and each timeout leaves an ambiguous `created` attempt, so test environments wait instead of retrying. Keep every deadline that wraps a Nexi call above one full request plus surrounding work:
 
-- Pay submit: `getCheckoutSubmitDeadline` (one Calendar load, one Dotypos request, one Nexi request, and 10 seconds of overhead).
+- Pay submit: `getCheckoutSubmitDeadline` (one Calendar load, one Dotypos request attempt without its retries, one Nexi request, and 10 seconds of overhead).
 - Status refresh: one shared 40-second verification budget (`refreshVerificationBudget` in `checkout-status.service.ts`) passed to `verifyPaymentOutcome`; on expiry the page reports `provider_verification_failed` and renders stored status. If finalization returns `not_pending`, late-payment verification starts only if one full Nexi request still fits; otherwise it logs the deferral and the next webhook or refresh starts recovery. Never shorten that lookup below one full request. The account modal's status route shares this refresh.
 - Webhook, queue, and cron verification keep unbounded retries inside the 300-second function limit.
 

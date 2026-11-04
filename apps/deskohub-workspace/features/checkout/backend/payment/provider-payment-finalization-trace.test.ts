@@ -34,8 +34,11 @@ const { ReservationFulfillment } = await import(
 const { WorkspaceReservationRepository } = await import(
   "@/features/reservation/backend/workspace-reservation.repository"
 );
-const { PostHogEventService } = await import(
-  "@/shared/backend/analytics/posthog-event.service"
+const { CheckoutAnalytics } = await import(
+  "../analytics/checkout-analytics.service"
+);
+const { silentCheckoutAnalytics } = await import(
+  "../analytics/checkout-analytics.service.mock"
 );
 
 type Methods = Record<
@@ -230,11 +233,10 @@ const finalize = async (
               ReservationFulfillment,
               record("fulfillment", collaborators.fulfillment)
             ),
-            Layer.mock(PostHogEventService, {
-              capture: trace.recordCalls("posthog", {
-                capture: succeed(undefined),
-              }).capture,
-            })
+            Layer.mock(
+              CheckoutAnalytics,
+              trace.recordCalls("checkoutAnalytics", silentCheckoutAnalytics)
+            )
           )
         )
       )

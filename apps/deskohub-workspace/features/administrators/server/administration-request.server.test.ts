@@ -28,12 +28,6 @@ mock.module("next/server", () => ({
 mock.module("next/root-params", () => ({
   locale: () => Promise.resolve("en-US"),
 }));
-mock.module("@/instrumentation", () => ({
-  postHogLoggerProvider: {
-    forceFlush: () => Promise.resolve(),
-    getLogger: () => ({ emit: () => undefined }),
-  },
-}));
 mock.module("@/features/i18n/server/revalidate-localized-path", () => ({
   revalidateLocalizedPath: (path: string) => {
     // Recorded with the number of runs settled so far, to prove the

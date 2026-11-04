@@ -26,7 +26,7 @@ import {
   References,
 } from "effect";
 import { SqlError } from "effect/unstable/sql";
-import { createTracingLive } from "../observability/otel-tracing";
+import { createTracingLive } from "../observability/telemetry-sinks";
 
 const syntheticEmail = testEmailAddress("synthetic");
 const adaEmail = testEmailAddress("ada");
