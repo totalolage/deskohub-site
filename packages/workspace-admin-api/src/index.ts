@@ -438,6 +438,7 @@ export {
 } from "./email-publication";
 export {
   EmailValueSnapshot,
+  emailValueMatchesField,
   emailValueSnapshotForDefinition,
 } from "./email-value-snapshot";
 export {

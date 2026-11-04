@@ -57,7 +57,7 @@ export const emailValueSnapshotForDefinition = (
           value.length > selection.limit
         )
           return false;
-        return matchesField(value, selected);
+        return emailValueMatchesField(value, selected);
       },
       {
         description:
@@ -66,7 +66,11 @@ export const emailValueSnapshotForDefinition = (
     )
   );
 
-function matchesField(
+/**
+ * Whether a value matches a frozen field shape, independent of today's
+ * customer catalogue.
+ */
+export function emailValueMatchesField(
   value: Schema.Json | undefined,
   field: EmailCustomerField
 ): boolean {
@@ -81,12 +85,12 @@ function matchesField(
       );
     case "union":
       return field.alternatives.some((alternative) =>
-        matchesField(value, alternative)
+        emailValueMatchesField(value, alternative)
       );
     case "list":
       return (
         Arr.isArray<Schema.Json>(value) &&
-        value.every((item) => matchesField(item, field.element))
+        value.every((item) => emailValueMatchesField(item, field.element))
       );
     case "record":
       return (
@@ -94,7 +98,7 @@ function matchesField(
         !Arr.isArray<Schema.Json>(value) &&
         Object.keys(value).every((key) => Object.hasOwn(field.fields, key)) &&
         Object.entries(field.fields).every(([key, descriptor]) =>
-          matchesField(
+          emailValueMatchesField(
             Object.hasOwn(value, key) ? value[key] : undefined,
             descriptor
           )
