@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
+import { Effect, JsonSchema, Schema } from "effect";
 import {
+  type EmailCustomerField,
   EmailCustomerSelection,
   EmailCustomerSelectionInvalid,
   emailCustomerFieldAtPath,
@@ -17,6 +18,130 @@ import {
   emailDocumentForPublication,
   requiredEmailValueNames,
 } from "./emails";
+import { AdministrationCustomerDetail } from "./workspace-admin-api";
+
+interface CustomerContractNode {
+  readonly $ref?: string;
+  readonly type?: string | readonly string[];
+  readonly properties?: Readonly<Record<string, CustomerContractNode>>;
+  readonly items?: CustomerContractNode;
+  readonly anyOf?: readonly CustomerContractNode[];
+  readonly oneOf?: readonly CustomerContractNode[];
+  readonly allOf?: readonly CustomerContractNode[];
+}
+
+const customerContractNode: Schema.Codec<CustomerContractNode> = Schema.suspend(
+  () =>
+    Schema.Struct({
+      $ref: Schema.optionalKey(Schema.String),
+      type: Schema.optionalKey(
+        Schema.Union([Schema.String, Schema.Array(Schema.String)])
+      ),
+      properties: Schema.optionalKey(
+        Schema.Record(Schema.String, customerContractNode)
+      ),
+      items: Schema.optionalKey(customerContractNode),
+      anyOf: Schema.optionalKey(Schema.Array(customerContractNode)),
+      oneOf: Schema.optionalKey(Schema.Array(customerContractNode)),
+      allOf: Schema.optionalKey(Schema.Array(customerContractNode)),
+    })
+);
+
+type CustomerFieldPath = readonly (string | 0)[];
+const fieldPath = (path: CustomerFieldPath, kind: string) =>
+  JSON.stringify([path, kind]);
+
+// Use JSON Schema rather than the catalogue's AST walker as the coverage oracle.
+function customerContractPaths(schema: Schema.Top): Set<string> {
+  const document = Schema.toJsonSchemaDocument(Schema.toType(schema));
+  const paths = new Set<string>();
+  function visit(
+    node: CustomerContractNode,
+    path: CustomerFieldPath,
+    constraintOnly = false
+  ): void {
+    if (node.$ref) {
+      const referenced = JsonSchema.resolve$ref(
+        node.$ref,
+        document.definitions
+      );
+      if (!referenced)
+        throw new Error(`Unresolved customer reference ${node.$ref}`);
+      visit(Schema.decodeUnknownSync(customerContractNode)(referenced), path);
+    }
+    for (const branch of [...(node.anyOf ?? []), ...(node.oneOf ?? [])])
+      visit(branch, path);
+    for (const branch of node.allOf ?? []) visit(branch, path, true);
+    for (const type of typeof node.type === "string"
+      ? [node.type]
+      : (node.type ?? [])) {
+      switch (type) {
+        case "null":
+          break;
+        case "string":
+        case "number":
+        case "integer":
+        case "boolean":
+          paths.add(fieldPath(path, "scalar"));
+          break;
+        case "object":
+          if (!node.properties) throw new Error("Unbounded customer record");
+          paths.add(fieldPath(path, "record"));
+          break;
+        case "array":
+          if (!node.items) throw new Error("Customer list without an element");
+          paths.add(fieldPath(path, "list"));
+          break;
+        default:
+          throw new Error(`Unsupported customer JSON Schema type ${type}`);
+      }
+    }
+    for (const [name, child] of Object.entries(node.properties ?? {}))
+      visit(child, [...path, name]);
+    if (node.items) visit(node.items, [...path, 0]);
+    if (
+      !node.type &&
+      !node.$ref &&
+      !node.anyOf &&
+      !node.oneOf &&
+      !node.allOf &&
+      !constraintOnly
+    )
+      throw new Error(
+        `Unrecognized customer schema at ${JSON.stringify(path)}`
+      );
+  }
+  visit(Schema.decodeUnknownSync(customerContractNode)(document.schema), []);
+  return paths;
+}
+
+function customerCataloguePaths(
+  field: EmailCustomerField,
+  path: CustomerFieldPath = []
+): string[] {
+  switch (field.kind) {
+    case "scalar":
+      return [fieldPath(path, "scalar")];
+    case "record":
+      return [
+        fieldPath(path, "record"),
+        ...Object.entries(field.fields).flatMap(([name, child]) =>
+          customerCataloguePaths(child, [...path, name])
+        ),
+      ];
+    case "list":
+      return [
+        fieldPath(path, "list"),
+        ...customerCataloguePaths(field.element, [...path, 0]),
+      ];
+    case "union":
+      return field.alternatives.flatMap((child) =>
+        customerCataloguePaths(child, path)
+      );
+    case "unsupported":
+      return [];
+  }
+}
 
 const text = [{ _tag: "Text", text: "Hello" }] as const;
 const translation: EmailTranslation = {
@@ -201,6 +326,36 @@ describe("reusable email publication", () => {
 });
 
 describe("administration-schema customer selections", () => {
+  test("covers every declared customer field and list element", () => {
+    expect(
+      new Set(customerCataloguePaths(emailCustomerFieldCatalogue))
+    ).toEqual(customerContractPaths(AdministrationCustomerDetail));
+  });
+
+  test("coverage detects removed fields and newly declared list fields", () => {
+    if (emailCustomerFieldCatalogue.kind !== "record")
+      throw new Error("Customer detail must be a record");
+    const { profile: omitted, ...fields } = emailCustomerFieldCatalogue.fields;
+    expect(omitted).toBeDefined();
+    expect(
+      new Set(
+        customerCataloguePaths({ ...emailCustomerFieldCatalogue, fields })
+      )
+    ).not.toEqual(customerContractPaths(AdministrationCustomerDetail));
+    const extended = Schema.Struct({
+      ...AdministrationCustomerDetail.fields,
+      futureHistory: Schema.Array(
+        Schema.Struct({ futureField: Schema.String })
+      ),
+    });
+    expect(
+      new Set(customerCataloguePaths(emailCustomerFieldCatalogue))
+    ).not.toEqual(customerContractPaths(extended));
+    expect(customerContractPaths(extended)).toContain(
+      fieldPath(["futureHistory", 0, "futureField"], "scalar")
+    );
+  });
+
   test("keeps scalar types, nullable and optional flags from the declared schema", () => {
     expect(
       emailCustomerFieldAtPath(emailCustomerFieldCatalogue, [
