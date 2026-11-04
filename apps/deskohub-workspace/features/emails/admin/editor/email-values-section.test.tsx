@@ -1,6 +1,7 @@
 import { afterAll, afterEach, expect, test } from "bun:test";
 import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import { EmailDraft } from "@deskohub/workspace-admin-api";
+import { useEffect } from "react";
 import { FormProvider, type UseFormReturn, useForm } from "react-hook-form";
 import { m } from "@/features/administration/i18n";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
@@ -35,13 +36,16 @@ function Host({
 }: {
   readonly defaultValues: EmailDraftFormValues;
 }) {
-  form = useForm<EmailDraftFormValues, unknown, EmailDraft>({
+  const host = useForm<EmailDraftFormValues, unknown, EmailDraft>({
     resolver: effectSchemaResolver(EmailDraft),
     defaultValues,
   });
+  useEffect(() => {
+    form = host;
+  });
   return (
     <RouteLocaleProvider locale={locale}>
-      <FormProvider {...form}>
+      <FormProvider {...host}>
         <EmailEditorProvider locales={["en-US", "cs-CZ"]}>
           <EmailValuesSection discounts={discounts} />
         </EmailEditorProvider>

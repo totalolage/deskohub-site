@@ -1,4 +1,5 @@
 import { afterAll, afterEach, expect, test } from "bun:test";
+import { useEffect } from "react";
 import { m } from "@/features/administration/i18n";
 import {
   registerWorkspaceComponentTestEnv,
@@ -41,7 +42,10 @@ const deferredRenderer = () => {
 
 let showLanguage: (language: "cs-CZ" | "en-US") => void = () => {};
 function LanguageSwitch() {
-  showLanguage = useEmailEditor().setActiveLocale;
+  const { setActiveLocale } = useEmailEditor();
+  useEffect(() => {
+    showLanguage = setActiveLocale;
+  });
   return null;
 }
 

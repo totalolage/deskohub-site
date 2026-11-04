@@ -87,18 +87,19 @@ export const emailRowRemovalFocus = (
  * button may turn disabled at the end of its list.
  */
 export const useEmailFocusAfterChange = () => {
-  const [candidates, setCandidates] = useState<readonly string[]>();
+  // Each request is a new object, so the effect runs once per request.
+  const [request, setRequest] = useState<{
+    readonly candidates: readonly string[];
+  }>();
   useEffect(() => {
-    if (!candidates) return;
-    setCandidates(undefined);
-    for (const id of candidates) {
+    for (const id of request?.candidates ?? []) {
       const element = document.getElementById(id);
       if (!element || element.hasAttribute("disabled")) continue;
       element.focus();
       return;
     }
-  }, [candidates]);
-  return setCandidates;
+  }, [request]);
+  return (candidates: readonly string[]) => setRequest({ candidates });
 };
 
 /** A labelled shared setting with its problems under it. */
