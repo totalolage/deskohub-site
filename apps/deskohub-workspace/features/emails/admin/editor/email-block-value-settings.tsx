@@ -215,8 +215,21 @@ function ValueBlockFields({
   );
 }
 
-/** A list block's sorting and limit. */
-function ListBlockOrder({
+/**
+ * The paths a list sorts by: its chosen record fields, or the empty path of
+ * the items themselves for a list of scalars.
+ */
+const listSortPaths = (
+  definition: EmailDraftValueDefinition
+): readonly EmailCustomerFieldPath[] => {
+  const selected = selectedEmailCustomerField(definition);
+  return selected?.kind === "list" && isEmailCustomerScalar(selected.element)
+    ? [[]]
+    : selectedEmailCustomerFieldPaths(definition);
+};
+
+/** The path a list block sorts its items by, and the direction once it sorts. */
+function ListBlockSort({
   component,
   definition,
   update,
@@ -227,25 +240,17 @@ function ListBlockOrder({
 }) {
   const locale = useRouteLocale();
   const sortId = emailEditorFieldIds.componentSetting(component.id, "sort");
-  const selected = definition && selectedEmailCustomerField(definition);
-  const element = selected?.kind === "list" ? selected.element : undefined;
-  // A list of scalars sorts by its items themselves, the empty path.
-  const scalarItems = element !== undefined && isEmailCustomerScalar(element);
-  const recordPaths = definition
-    ? selectedEmailCustomerFieldPaths(definition)
-    : [];
-  const paths: readonly EmailCustomerFieldPath[] = scalarItems
-    ? [[]]
-    : recordPaths;
+  const paths = definition ? listSortPaths(definition) : [];
   const sort = component.sort;
   const current = sort?.path;
+  const currentValue = current && pathValue(current);
   const pathLabel = (path: EmailCustomerFieldPath) =>
     path.length === 0
       ? m.emailsEditorBlockSortItself({}, { locale })
       : emailCustomerFieldPathLabel(path);
 
   return (
-    <div className="flex flex-wrap items-start gap-4">
+    <>
       <EmailBlockSelectSetting
         fieldId={sortId}
         label={m.emailsEditorBlockSort({}, { locale })}
@@ -270,12 +275,12 @@ function ListBlockOrder({
               label: pathLabel(path),
             })),
           ],
-          current && pathValue(current),
+          currentValue,
           current ? pathLabel(current) : "",
           locale
         )}
         placeholder={m.emailsEditorBlockSortNone({}, { locale })}
-        value={sort === undefined ? sortNone : current && pathValue(current)}
+        value={sort === undefined ? sortNone : currentValue}
       />
       {sort && (
         <EmailBlockSelectSetting
@@ -302,6 +307,28 @@ function ListBlockOrder({
           value={sort.direction}
         />
       )}
+    </>
+  );
+}
+
+/** A list block's sorting and limit. */
+function ListBlockOrder({
+  component,
+  definition,
+  update,
+}: {
+  readonly component: EmailDraftComponent & { readonly id: string };
+  readonly definition: EmailDraftValueDefinition | undefined;
+  readonly update: (next: EmailDraftComponent) => void;
+}) {
+  const locale = useRouteLocale();
+  return (
+    <div className="flex flex-wrap items-start gap-4">
+      <ListBlockSort
+        component={component}
+        definition={definition}
+        update={update}
+      />
       <EmailBlockNumberSetting
         fieldId={emailEditorFieldIds.componentSetting(component.id, "limit")}
         hint={m.emailsEditorBlockLimitHint({}, { locale })}
@@ -312,6 +339,190 @@ function ListBlockOrder({
         }
         value={component.limit}
       />
+    </div>
+  );
+}
+
+/** A block that shows a named value, with its id. */
+type ValueBlock = EmailDraftComponent & {
+  readonly id: string;
+  readonly _tag: ValueBlockTag;
+};
+
+/** Whether `component` shows a named value. */
+const isValueBlock = (
+  component: EmailDraftComponent
+): component is EmailDraftComponent & { readonly _tag: ValueBlockTag } =>
+  component._tag === "Record" ||
+  component._tag === "List" ||
+  component._tag === "Offer";
+
+/** The distinct names of the values in `definitions` that yield `kind`. */
+const valueNamesOfKind = (
+  definitions: readonly EmailDraftValueDefinition[],
+  kind: EmailValueKind
+): readonly string[] => [
+  ...new Set(
+    definitions.flatMap((definition) =>
+      definition.name && emailValueKind(definition) === kind
+        ? [definition.name]
+        : []
+    )
+  ),
+];
+
+/** The value a block shows, chosen among the values of the kind it shows. */
+function ValueBlockChoice({
+  block,
+  definitions,
+  update,
+}: {
+  readonly block: ValueBlock;
+  readonly definitions: readonly EmailDraftValueDefinition[];
+  readonly update: (next: EmailDraftComponent) => void;
+}) {
+  const locale = useRouteLocale();
+  const { kind, none } = valueBlocks[block._tag];
+  const names = valueNamesOfKind(definitions, kind);
+
+  return (
+    <div className="space-y-1">
+      <EmailBlockSelectSetting
+        fieldId={emailEditorFieldIds.componentSetting(block.id, "value")}
+        label={m.emailsEditorBlockValue({}, { locale })}
+        onChange={(value) => update({ ...block, value })}
+        options={withCurrent(
+          names.map((name) => ({ value: name, label: name })),
+          block.value,
+          block.value ?? "",
+          locale
+        )}
+        placeholder={m.emailsEditorBlockValuePlaceholder({}, { locale })}
+        value={block.value}
+      />
+      {names.length === 0 && (
+        <p className="text-navy-blue/60 text-xs">{none({}, { locale })}</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A list block's fields, shown when its items are records or it already
+ * lists fields, then its sorting and limit.
+ */
+function ListBlockSettings({
+  block,
+  contentLocale,
+  definition,
+  update,
+}: {
+  readonly block: ValueBlock;
+  readonly contentLocale: Locale;
+  readonly definition: EmailDraftValueDefinition | undefined;
+  readonly update: (next: EmailDraftComponent) => void;
+}) {
+  const selected = definition && selectedEmailCustomerField(definition);
+  const recordItems =
+    selected?.kind === "list" && selected.element.kind === "record";
+  const showFields = recordItems || (block.fields ?? []).length > 0;
+
+  return (
+    <>
+      {showFields && (
+        <ValueBlockFields
+          component={block}
+          contentLocale={contentLocale}
+          definition={definition}
+          update={update}
+        />
+      )}
+      <ListBlockOrder
+        component={block}
+        definition={definition}
+        update={update}
+      />
+    </>
+  );
+}
+
+/** An offer block's destination and button label. */
+function OfferBlockSettings({
+  block,
+  contentLocale,
+  update,
+}: {
+  readonly block: ValueBlock;
+  readonly contentLocale: Locale;
+  readonly update: (next: EmailDraftComponent) => void;
+}) {
+  const locale = useRouteLocale();
+  return (
+    <>
+      <EmailBlockTextSetting
+        fieldId={emailEditorFieldIds.componentSetting(block.id, "href")}
+        label={m.emailsEditorBlockHref({}, { locale })}
+        onChange={(href) => update(withEmailSetting(block, "href", href))}
+        placeholder="https://"
+        type="url"
+        value={block.href}
+      />
+      <EmailBlockLabelText
+        contentLocale={contentLocale}
+        label={m.emailsEditorBlockButtonLabel({}, { locale })}
+        textKey={block.labelKey}
+      />
+    </>
+  );
+}
+
+/** A value block's value choice, then the settings of its kind. */
+function ValueBlockSettings({
+  block,
+  contentLocale,
+  update,
+}: {
+  readonly block: ValueBlock;
+  readonly contentLocale: Locale;
+  readonly update: (next: EmailDraftComponent) => void;
+}) {
+  const { control } = useEmailDraftForm();
+  const definitions = useWatch({ control, name: "values" }) ?? [];
+  const definition = definitions.find(
+    (candidate) =>
+      candidate.name !== undefined && candidate.name === block.value
+  );
+
+  return (
+    <div className="space-y-4">
+      <ValueBlockChoice
+        block={block}
+        definitions={definitions}
+        update={update}
+      />
+      {block._tag === "Record" && (
+        <ValueBlockFields
+          component={block}
+          contentLocale={contentLocale}
+          definition={definition}
+          update={update}
+        />
+      )}
+      {block._tag === "List" && (
+        <ListBlockSettings
+          block={block}
+          contentLocale={contentLocale}
+          definition={definition}
+          update={update}
+        />
+      )}
+      {block._tag === "Offer" && (
+        <OfferBlockSettings
+          block={block}
+          contentLocale={contentLocale}
+          update={update}
+        />
+      )}
     </div>
   );
 }
@@ -328,94 +539,13 @@ export function EmailBlockValueSettings({
   readonly contentLocale: Locale;
   readonly index: number;
 }) {
-  const locale = useRouteLocale();
-  const { control } = useEmailDraftForm();
-  const definitions = useWatch({ control, name: "values" }) ?? [];
   const [component, update] = useEmailBlock(index);
-  if (!component?.id) return null;
-  if (
-    component._tag !== "Record" &&
-    component._tag !== "List" &&
-    component._tag !== "Offer"
-  )
-    return null;
-  const block = { ...component, id: component.id };
-  const { kind, none } = valueBlocks[component._tag];
-  const names = [
-    ...new Set(
-      definitions.flatMap((definition) =>
-        definition.name && emailValueKind(definition) === kind
-          ? [definition.name]
-          : []
-      )
-    ),
-  ];
-  const definition = definitions.find(
-    (candidate) =>
-      candidate.name !== undefined && candidate.name === component.value
-  );
-  const selected = definition && selectedEmailCustomerField(definition);
-  const recordElement =
-    selected?.kind === "list" && selected.element.kind === "record";
-  const showFields =
-    component._tag === "Record" ||
-    (component._tag === "List" &&
-      (recordElement || (component.fields ?? []).length > 0));
-
+  if (!component?.id || !isValueBlock(component)) return null;
   return (
-    <div className="space-y-4">
-      <div className="space-y-1">
-        <EmailBlockSelectSetting
-          fieldId={emailEditorFieldIds.componentSetting(block.id, "value")}
-          label={m.emailsEditorBlockValue({}, { locale })}
-          onChange={(value) => update({ ...component, value })}
-          options={withCurrent(
-            names.map((name) => ({ value: name, label: name })),
-            component.value,
-            component.value ?? "",
-            locale
-          )}
-          placeholder={m.emailsEditorBlockValuePlaceholder({}, { locale })}
-          value={component.value}
-        />
-        {names.length === 0 && (
-          <p className="text-navy-blue/60 text-xs">{none({}, { locale })}</p>
-        )}
-      </div>
-      {showFields && (
-        <ValueBlockFields
-          component={block}
-          contentLocale={contentLocale}
-          definition={definition}
-          update={update}
-        />
-      )}
-      {component._tag === "List" && (
-        <ListBlockOrder
-          component={block}
-          definition={definition}
-          update={update}
-        />
-      )}
-      {component._tag === "Offer" && (
-        <>
-          <EmailBlockTextSetting
-            fieldId={emailEditorFieldIds.componentSetting(block.id, "href")}
-            label={m.emailsEditorBlockHref({}, { locale })}
-            onChange={(href) =>
-              update(withEmailSetting(component, "href", href))
-            }
-            placeholder="https://"
-            type="url"
-            value={component.href}
-          />
-          <EmailBlockLabelText
-            contentLocale={contentLocale}
-            label={m.emailsEditorBlockButtonLabel({}, { locale })}
-            textKey={component.labelKey}
-          />
-        </>
-      )}
-    </div>
+    <ValueBlockSettings
+      block={{ ...component, id: component.id }}
+      contentLocale={contentLocale}
+      update={update}
+    />
   );
 }
