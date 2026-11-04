@@ -96,6 +96,9 @@ const openCheckoutPayState = (payStateToken: string) =>
       state,
       restartKind: state.reservation.kind,
     })),
+    // A key ring that can't be read leaves the token unreadable, like any
+    // other failure to open it.
+    Effect.provide(SealedStateKeys.Default),
     Effect.catch((cause) =>
       Effect.logWarning("Checkout pay state could not be loaded", {
         cause,
@@ -107,6 +110,7 @@ const openCheckoutPayState = (payStateToken: string) =>
               state: undefined,
               restartKind,
             })),
+            Effect.provide(SealedStateKeys.Default),
             Effect.orElseSucceed(() => ({
               state: undefined,
               restartKind: undefined,
@@ -115,7 +119,6 @@ const openCheckoutPayState = (payStateToken: string) =>
         )
       )
     ),
-    Effect.provide(SealedStateKeys.Default),
     runWorkspaceEffect("checkout.pay.open")
   );
 

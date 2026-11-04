@@ -37,12 +37,22 @@ export class SealedStateKeys extends Context.Service<
   SealedStateKeys,
   ISealedStateKeys
 >()("@deskohub-workspace/SealedStateKeys") {
+  // Loaded lazily, so importing the capability never validates the
+  // environment. An environment that fails validation is an invalid secret,
+  // as a ring that fails to parse is.
   static Default = Layer.unwrap(
-    Effect.promise(async () => {
-      const { makeSealedStateKeysLayer } = await import(
-        "./sealed-state-keys-provider.server"
-      );
-      return makeSealedStateKeysLayer();
+    Effect.tryPromise({
+      try: async () => {
+        const { makeSealedStateKeysLayer } = await import(
+          "./sealed-state-keys-provider.server"
+        );
+        return makeSealedStateKeysLayer();
+      },
+      catch: (cause) =>
+        invalidSecret(
+          "Workspace sealed state configuration is invalid.",
+          cause
+        ),
     })
   );
 

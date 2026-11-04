@@ -13,11 +13,23 @@ import {
   getCoworkReservationPath,
   getReservationStartPath,
 } from "@/features/reservation/routes";
+import { SealedStateKeys } from "@/shared/backend/sealed-state-keys.service";
 import { TestSealedStateKeys } from "@/shared/testing/sealed-state-keys.test-utils";
 import type { SearchParamsRecord } from "@/shared/utils";
 import { instantStringSchema } from "@/shared/utils/temporal";
 
 mock.module("server-only", () => ({}));
+
+/** Configures the page's key ring as a value that doesn't parse. */
+let keyRingMalformed = false;
+mock.module("@/shared/backend/sealed-state-keys-provider.server", () => ({
+  makeSealedStateKeysLayer: () =>
+    SealedStateKeys.fromConfiguration(
+      keyRingMalformed
+        ? "malformed"
+        : (process.env.CHECKOUT_PAY_STATE_KEYS ?? "")
+    ),
+}));
 mock.module("next/root-params", () => ({
   locale: () => Promise.resolve("cs-CZ"),
 }));
@@ -316,6 +328,20 @@ describe("LocalizedCheckoutPayPage", () => {
     expect(restartPathOf(otherLocale)).toBe(
       getReservationStartPath("cs-CZ", "cowork")
     );
+  });
+
+  test("restarts an order when its key ring can't be read", async () => {
+    reservationPayable = true;
+    const token = await sealCoworkPayState({ date: distantDate });
+    keyRingMalformed = true;
+    const markup = await renderPayPage({
+      [payStateTokenQueryParam]: token,
+    }).finally(() => {
+      keyRingMalformed = false;
+    });
+
+    expect(attributeOf(markup, "data-variant")).toBeUndefined();
+    expect(restartPathOf(markup)).toBe(getCoworkReservationPath("cs-CZ"));
   });
 
   test("restarts an order whose reservation is no longer held", async () => {
