@@ -8,7 +8,6 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
-import { useId } from "react";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
@@ -47,6 +46,9 @@ import { withEmailSetting } from "./email-structure-blocks";
 
 type ItemAction = "move-up" | "move-down" | "indent" | "outdent" | "remove";
 
+/** The controls of one item, by their id suffix. */
+type ItemControl = ItemAction | "ordered";
+
 /** What a level's rows do to the block's items; each path names one item. */
 type ItemOperations = {
   readonly itemsId: string;
@@ -60,11 +62,11 @@ type ItemOperations = {
   ) => void;
 };
 
-const itemActionId = (
+const itemControlId = (
   itemsId: string,
   textKey: string | undefined,
-  action: ItemAction
-) => `${itemsId}-${textKey ?? ""}-${action}`;
+  control: ItemControl
+) => `${itemsId}-${textKey ?? ""}-${control}`;
 
 const itemActions = [
   {
@@ -94,24 +96,38 @@ const itemActions = [
   readonly label: typeof m.emailsEditorBlockListItemRemove;
 }[];
 
-/** The switch that numbers the items under one item. */
+/**
+ * The switch that numbers the items under one item. Its id follows the
+ * block's setting ids, so it carries any problem placed on it like every
+ * other control; the central problems currently mark the items group.
+ */
 function NestedOrderedSwitch({
   checked,
+  fieldId,
   number,
   onChange,
 }: {
   readonly checked: boolean;
+  readonly fieldId: string;
   readonly number: string;
   readonly onChange: (ordered: boolean) => void;
 }) {
   const locale = useRouteLocale();
-  const id = useId();
+  const { controlProps } = useEmailFieldProblems(fieldId);
   return (
-    <div className="flex items-center gap-2">
-      <Switch checked={checked} id={id} onCheckedChange={onChange} />
-      <Label className="text-navy-blue text-xs" htmlFor={id}>
-        {m.emailsEditorBlockListNestedOrdered({ number }, { locale })}
-      </Label>
+    <div className="space-y-1">
+      <div className="flex items-center gap-2">
+        <Switch
+          {...controlProps}
+          checked={checked}
+          id={fieldId}
+          onCheckedChange={onChange}
+        />
+        <Label className="text-navy-blue text-xs" htmlFor={fieldId}>
+          {m.emailsEditorBlockListNestedOrdered({ number }, { locale })}
+        </Label>
+      </div>
+      <EmailFieldProblems fieldId={fieldId} />
     </div>
   );
 }
@@ -170,7 +186,7 @@ function TextListLevel({
                     <Button
                       aria-label={name}
                       disabled={disabled[action]}
-                      id={itemActionId(
+                      id={itemControlId(
                         operations.itemsId,
                         item.textKey,
                         action
@@ -193,6 +209,11 @@ function TextListLevel({
               <div className="ml-4 space-y-2">
                 <NestedOrderedSwitch
                   checked={item.list.ordered ?? false}
+                  fieldId={itemControlId(
+                    operations.itemsId,
+                    item.textKey,
+                    "ordered"
+                  )}
                   number={number}
                   onChange={(ordered) =>
                     operations.setNestedOrdered(path, ordered)
@@ -262,7 +283,7 @@ export function EmailBlockTextListSettings({
       const textKey = emailTextListItemAt(items, path)?.textKey;
       const focus = (...actions: ItemAction[]) =>
         focusAfterChange([
-          ...actions.map((next) => itemActionId(itemsId, textKey, next)),
+          ...actions.map((next) => itemControlId(itemsId, textKey, next)),
           itemsId,
         ]);
       switch (action) {

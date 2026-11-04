@@ -491,11 +491,15 @@ describe("text lists", () => {
       },
     ]);
 
-    await click(
-      view.getByRole("switch", {
-        name: m.emailsEditorBlockListNestedOrdered({ number: "1" }, { locale }),
-      })
+    const nestedOrdered = view.getByRole("switch", {
+      name: m.emailsEditorBlockListNestedOrdered({ number: "1" }, { locale }),
+    });
+    // The nested level's switch is a block setting control like the others.
+    expect(nestedOrdered.id).toBe(
+      `${emailEditorFieldIds.componentSetting("steps", "items")}-a-ordered`
     );
+    expect(nestedOrdered.hasAttribute("aria-invalid")).toBe(false);
+    await click(nestedOrdered);
     expect(items(values)?.[0]?.list?.ordered).toBe(false);
 
     await click(
