@@ -88,9 +88,18 @@ const mismatchMessages = {
   list: m.emailsEditorProblemValueMismatchList,
 } as const;
 
-/** The setting field a value problem marks: the one its message names. */
-const valueSettingField = (field: string): string =>
-  field === "source" ? "path" : field;
+/**
+ * The setting field a value problem marks: the one its message names. A
+ * source that fails as a whole marks the discount choice or the customer
+ * field, the setting that identifies it.
+ */
+const valueSettingField = (
+  field: string,
+  kind: "customer" | "discount" | undefined
+): string => {
+  if (field !== "source") return field;
+  return kind === "discount" ? "discountId" : "path";
+};
 
 type Placed = Pick<EmailEditorProblem, "fieldId" | "locale" | "place">;
 
@@ -266,10 +275,11 @@ export const emailEditorProblems = ({
         message: m.emailsEditorProblemValueNameInvalid({}, { locale }),
       }),
       ValueIncomplete: ({ index, field }) => {
-        const setting = valueSettingField(field);
+        const setting = valueSettingField(field, values[index]?.source?.kind);
         return {
           ...value(index, setting),
-          message: (Object.hasOwn(valueSettingMessages, setting)
+          message: (field !== "source" &&
+            Object.hasOwn(valueSettingMessages, setting)
             ? valueSettingMessages[setting as keyof typeof valueSettingMessages]
             : m.emailsEditorProblemValueSource)({}, { locale }),
         };

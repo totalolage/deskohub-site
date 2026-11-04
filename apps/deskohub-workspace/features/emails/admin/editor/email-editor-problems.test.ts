@@ -105,6 +105,26 @@ describe("emailEditorProblems", () => {
     ]);
   });
 
+  test("places a discount that fails as a whole on its discount choice", () => {
+    const problems = problemsOf({
+      ...fixtureDraft,
+      values: fixtureDraft.values?.map((definition) =>
+        definition.name === "welcome_offer"
+          ? {
+              ...definition,
+              source: { ...definition.source!, discountId: "not-a-uuid" },
+            }
+          : definition
+      ),
+    });
+    expect(problems).toContainEqual(
+      expect.objectContaining({
+        fieldId: emailEditorFieldIds.valueSetting(1, "discountId"),
+        message: m.emailsEditorProblemValueSource({}, { locale }),
+      })
+    );
+  });
+
   test("refuses an image not uploaded through the editor unless it was published", () => {
     // From the account, but not an untransformed editor upload.
     const foreign =
