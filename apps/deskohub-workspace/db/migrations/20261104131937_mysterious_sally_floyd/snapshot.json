@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "78972d4c-568a-4b51-99a9-f118d2edc4ad",
+  "id": "63ae14ba-ca17-477c-9c16-804e8d8c55c6",
   "prevIds": [
     "07449eda-ada9-4a23-a4d2-b8333a8541d6"
   ],
@@ -16639,7 +16639,7 @@
       "table": "email_preparations"
     },
     {
-      "value": "(case \"state\" when 'skipped' then \"outcome_reason\" is not null and \"outcome_reason\" in ('missing-language', 'missing-value') when 'failed' then \"outcome_reason\" is not null and \"outcome_reason\" in ('customer-rejected', 'customer-unauthorized', 'discount-unavailable', 'invalid-value') else \"outcome_reason\" is null end) and (\"outcome_value_name\" is null or \"outcome_reason\" is not null)",
+      "value": "(case \"state\" when 'skipped' then \"outcome_reason\" is not null and \"outcome_reason\" in ('missing-language', 'missing-customer', 'missing-value') when 'failed' then \"outcome_reason\" is not null and \"outcome_reason\" in ('customer-rejected', 'customer-unauthorized', 'discount-unavailable', 'invalid-value') else \"outcome_reason\" is null end) and (\"outcome_value_name\" is null or \"outcome_reason\" is not null)",
       "name": "email_preparations_outcome_check",
       "entityType": "checks",
       "schema": "public",

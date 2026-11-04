@@ -18,6 +18,7 @@ import {
 } from "@/features/emails/backend";
 import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
+  CustomerValueMissing,
   CustomerValueRejected,
   CustomerValueSource,
   CustomerValueUnavailable,
@@ -40,7 +41,7 @@ const spare = EmailValueName.make("spare");
 /** Synthetic customer data per Dotypos customer, and how the fake source answers. */
 type FakeCustomer = {
   email: string | null;
-  mode: "ok" | "unavailable" | "rejected" | "gated";
+  mode: "ok" | "unavailable" | "rejected" | "gated" | "deleted";
   /** A gated read waits for this, then reports the customer as missing or unavailable. */
   gate?: Promise<void>;
   afterGate?: "missing" | "unavailable";
@@ -97,6 +98,10 @@ describe.skipIf(!database)(
                     new CustomerValueUnavailable({ source: "profile" })
                   )
             )
+          );
+        if (customer?.mode === "deleted")
+          return Effect.fail(
+            new CustomerValueMissing({ reason: "customer-not-found" })
           );
         if (customer?.mode === "unavailable")
           return Effect.fail(
@@ -453,6 +458,24 @@ describe.skipIf(!database)(
         reason: "missing-value",
         valueName: contact,
       });
+    });
+
+    test("a deleted customer skips even when the language has a fallback", async () => {
+      const { version } = await publishEmail(
+        draftFor({
+          discountId: await seedDiscount(),
+          fallback: { "cs-CZ": "milý zákazníku" },
+        })
+      );
+      const input = await recipientFor(version);
+      customers.set(input.dotyposCustomerId, { email: null, mode: "deleted" });
+      const skipped = await prepare(input);
+      expect(skipped).toMatchObject({
+        _tag: "Skipped",
+        reason: "missing-customer",
+        valueName: contact,
+      });
+      expect(await codesFor(input.dotyposCustomerId)).toEqual([]);
     });
 
     test("a language the version was never published in skips before any provider work", async () => {

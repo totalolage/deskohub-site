@@ -78,7 +78,7 @@ export type EmailPreparationState =
  * later retry can still prepare the recipient.
  */
 export const emailPreparationOutcomeReasons = {
-  skipped: ["missing-language", "missing-value"],
+  skipped: ["missing-language", "missing-customer", "missing-value"],
   failed: [
     "customer-rejected",
     "customer-unauthorized",

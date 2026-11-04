@@ -5,7 +5,15 @@ import type {
   EmailValueName,
   EmailValueSnapshot,
 } from "@deskohub/workspace-admin-api";
-import { Context, Data, Duration, Effect, Predicate, Schedule } from "effect";
+import {
+  Context,
+  Data,
+  Duration,
+  Effect,
+  Match,
+  Predicate,
+  Schedule,
+} from "effect";
 import type { EmailPreparationOutcome } from "@/features/emails/backend";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { CustomerValues } from "../customer";
@@ -85,14 +93,24 @@ export const customerValueSnapshot = Effect.fn(
     retryTemporary(Predicate.isTagged("CustomerValueUnavailable")),
     Effect.map((value): EmailValueSnapshot => ({ _tag: "Resolved", value })),
     Effect.catchTags({
-      CustomerValueMissing: () =>
-        Effect.fromNullishOr(input.definition.fallback?.[input.locale]).pipe(
-          Effect.map(
-            (text): EmailValueSnapshot => ({ _tag: "Fallback", text })
-          ),
-          Effect.catch(() =>
-            stop({ state: "skipped", reason: "missing-value", valueName })
-          )
+      CustomerValueMissing: (missing) =>
+        Match.value(missing).pipe(
+          Match.discriminatorsExhaustive("reason")({
+            "field-absent": () =>
+              Effect.fromNullishOr(
+                input.definition.fallback?.[input.locale]
+              ).pipe(
+                Effect.map(
+                  (text): EmailValueSnapshot => ({ _tag: "Fallback", text })
+                ),
+                Effect.catch(() =>
+                  stop({ state: "skipped", reason: "missing-value", valueName })
+                )
+              ),
+            // A deleted or unknown customer is no recipient; fallbacks cover missing fields only.
+            "customer-not-found": () =>
+              stop({ state: "skipped", reason: "missing-customer", valueName }),
+          })
         ),
       CustomerValueUnavailable: () =>
         Effect.fail(
