@@ -281,8 +281,7 @@ describe("ReservationHoldCleanupService.cancelOrderHold trace", () => {
         "Info Reservation hold cancelled marker started {activeReservation,checkedAt,claimed,claimedFromNew,input,orderId,paymentAttemptExpirationChanged,providerFinalizationResult} in reservationHoldCleanup.cancelOrderHold",
         "call reservations.markCancelled(id=reservation-id, cancelledAt=<Instant>, holdExpiredAt=<Instant>)",
         "Info Reservation hold marked cancelled {activeReservation,checkedAt,claimed,claimedFromNew,input,orderId,paymentAttemptExpirationChanged,providerFinalizationResult} in reservationHoldCleanup.cancelOrderHold",
-        "span posthog.captureLifecycleEvent",
-        "call posthog.capture(distinctId=reservation-id, event=reservation abandoned, properties=<Object>, timestamp=<Instant>, uuid=reservation-id:reservation abandoned)",
+        "call checkoutAnalytics.reservationAbandoned(reservation=<Object>, timestamp=<Instant>)",
       ]
     `);
   });
@@ -443,8 +442,7 @@ describe("ReservationHoldCleanupService.cancelOrderHold trace", () => {
         "Info Reservation hold cancelled marker started {activeReservation,claimed,claimedFromNew,input,orderId,providerFinalizationResult} in reservationHoldCleanup.cancelOrderHold",
         "call reservations.markCancelled(id=reservation-id, cancelledAt=<Instant>, holdExpiredAt=undefined)",
         "Info Reservation hold marked cancelled {activeReservation,claimed,claimedFromNew,input,orderId,providerFinalizationResult} in reservationHoldCleanup.cancelOrderHold",
-        "span posthog.captureLifecycleEvent",
-        "call posthog.capture(distinctId=reservation-id, event=reservation abandoned, properties=<Object>, timestamp=<Instant>, uuid=reservation-id:reservation abandoned)",
+        "call checkoutAnalytics.reservationAbandoned(reservation=<Object>, timestamp=<Instant>)",
       ]
     `);
   });
@@ -473,8 +471,7 @@ describe("ReservationHoldCleanupService.cancelOrderHold trace", () => {
         "Info Reservation hold cancelled marker started {activeReservation,checkedAt,claimed,claimedFromNew,input,orderId} in reservationHoldCleanup.cancelOrderHold",
         "call reservations.markCancelled(id=reservation-id, cancelledAt=<Instant>, holdExpiredAt=<Instant>)",
         "Info Reservation hold marked cancelled {activeReservation,checkedAt,claimed,claimedFromNew,input,orderId} in reservationHoldCleanup.cancelOrderHold",
-        "span posthog.captureLifecycleEvent",
-        "call posthog.capture(distinctId=reservation-id, event=reservation abandoned, properties=<Object>, timestamp=<Instant>, uuid=reservation-id:reservation abandoned)",
+        "call checkoutAnalytics.reservationAbandoned(reservation=<Object>, timestamp=<Instant>)",
       ]
     `);
   });
@@ -527,8 +524,7 @@ describe("ReservationHoldCleanupService.cancelOrderHold trace", () => {
         "Info Reservation hold cancelled marker started {activeReservation,checkedAt,claimed,claimedFromNew,input,orderId} in reservationHoldCleanup.cancelOrderHold",
         "call reservations.markCancelled(id=reservation-id, cancelledAt=<Instant>, holdExpiredAt=<Instant>)",
         "Info Reservation hold marked cancelled {activeReservation,checkedAt,claimed,claimedFromNew,input,orderId} in reservationHoldCleanup.cancelOrderHold",
-        "span posthog.captureLifecycleEvent",
-        "call posthog.capture(distinctId=reservation-id, event=reservation abandoned, properties=<Object>, timestamp=<Instant>, uuid=reservation-id:reservation abandoned)",
+        "call checkoutAnalytics.reservationAbandoned(reservation=<Object>, timestamp=<Instant>)",
       ]
     `);
   });
