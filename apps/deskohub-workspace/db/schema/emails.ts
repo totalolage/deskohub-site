@@ -99,7 +99,7 @@ export type EmailPreparationOutcomeReason =
  * retries. It is recorded on the still-open preparation, so a later retry
  * can resume it.
  */
-export const emailPreparationUnavailableReasons = [
+const emailPreparationUnavailableReasons = [
   "customer-unavailable",
   "issuance-unavailable",
 ] as const;
@@ -181,7 +181,7 @@ export const emailPreparations = pgTable(
     ),
     check(
       "email_preparations_unavailable_check",
-      sql`(${t.unavailableReason} is null and ${t.unavailableValueName} is null and ${t.unavailableAt} is null) or (${t.unavailableReason} in (${quotedSqlList(emailPreparationUnavailableReasons)}) and ${t.unavailableValueName} is not null and ${t.unavailableAt} is not null)`
+      sql`(${t.unavailableReason} is null and ${t.unavailableValueName} is null and ${t.unavailableAt} is null) or (${t.unavailableReason} is not null and ${t.unavailableReason} in (${quotedSqlList(emailPreparationUnavailableReasons)}) and ${t.unavailableValueName} is not null and ${t.unavailableAt} is not null)`
     ),
     check(
       "email_preparations_delivery_check",

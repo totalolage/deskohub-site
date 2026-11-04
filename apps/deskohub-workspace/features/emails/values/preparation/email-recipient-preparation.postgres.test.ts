@@ -798,6 +798,30 @@ describe.skipIf(!database)(
           [open.id]
         )
       ).rejects.toThrow("email_preparations_outcome_check");
+      for (const partial of [
+        "unavailable_value_name = 'contact', unavailable_at = now()",
+        "unavailable_reason = 'customer-unavailable', unavailable_at = now()",
+        "unavailable_reason = 'customer-unavailable', unavailable_value_name = 'contact'",
+        "unavailable_reason = 'missing-value', unavailable_value_name = 'contact', unavailable_at = now()",
+      ])
+        await expect(
+          pool.query(`update email_preparations set ${partial} where id = $1`, [
+            open.id,
+          ])
+        ).rejects.toThrow("email_preparations_unavailable_check");
+      // A sealed preparation keeps its outcome and records no later exhaustion.
+      const sealed = await run(
+        Effect.flatMap(EmailRecipientPersistence, (recipients) =>
+          recipients.recordUnavailable(preparation.id, {
+            reason: "customer-unavailable",
+            valueName: contact,
+          })
+        )
+      );
+      expect(sealed).toMatchObject({
+        state: winner.state,
+        unavailableReason: null,
+      });
     });
 
     test("samples generate preview values without storing, issuing or reading a real customer", async () => {

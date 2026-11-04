@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "546a9b17-e8ee-4d8f-ba95-0a28f9e24e59",
+  "id": "ab44f777-a631-406d-8faa-e67dfa0f6eef",
   "prevIds": [
     "07449eda-ada9-4a23-a4d2-b8333a8541d6"
   ],
@@ -16685,7 +16685,7 @@
       "table": "email_preparations"
     },
     {
-      "value": "(\"unavailable_reason\" is null and \"unavailable_value_name\" is null and \"unavailable_at\" is null) or (\"unavailable_reason\" in ('customer-unavailable', 'issuance-unavailable') and \"unavailable_value_name\" is not null and \"unavailable_at\" is not null)",
+      "value": "(\"unavailable_reason\" is null and \"unavailable_value_name\" is null and \"unavailable_at\" is null) or (\"unavailable_reason\" is not null and \"unavailable_reason\" in ('customer-unavailable', 'issuance-unavailable') and \"unavailable_value_name\" is not null and \"unavailable_at\" is not null)",
       "name": "email_preparations_unavailable_check",
       "entityType": "checks",
       "schema": "public",
