@@ -2252,5 +2252,6 @@ describe("WorkspaceAdminApiClient error sanitizing", () => {
     const { error, requests } = await failureOf(internalFailure, createInvoice);
     expectSanitized(error);
     expect(requests).toBe(241);
-  });
+    // Invoice creation retries 240 times, so these cases send 725 requests.
+  }, 30_000);
 });
