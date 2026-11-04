@@ -54,7 +54,7 @@ If a real response fails generated decoding, fix the OpenAPI schema and regenera
 
 ## Record ids
 
-Read records always carry an id. `id` is required on the `Reservation`, `Customer` and `Table` schemas in `openapi/dotypos-api.yaml`, which every read references, so `DotyposReservation`, `DotyposCustomer` and `DotyposTable` carry a branded, trimmed id. Don't guard a read record against a missing id or re-decode one. A read response without an id fails generated decoding as `DotyposRejected{invalid-response}`. Read-only probes on a non-production cloud on 2026-11-04 found a string id on every list and item read of tables, reservations and customers, deleted customers included; some customer ids are negative signed longs.
+Read records always carry an id. `id` is required on the `Reservation`, `Customer` and `Table` schemas in `openapi/dotypos-api.yaml`, which every read references, so `DotyposReservation`, `DotyposCustomer` and `DotyposTable` carry a branded, trimmed id. Don't guard a read record against a missing id or re-decode one. A read response without an id fails generated decoding as `DotyposRejected{invalid-response}`. Read-only probes on a non-production cloud on 2026-11-04 found a string id on every list and item read of tables, reservations and customers, deleted customers included, and every item read returned the requested id; some customer ids are negative signed longs. Item reads keep the returned id rather than substituting the requested one.
 
 Write responses are unprobed, so they keep their id fallbacks:
 
