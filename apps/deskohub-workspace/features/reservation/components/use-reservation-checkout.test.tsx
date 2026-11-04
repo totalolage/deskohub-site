@@ -10,6 +10,7 @@ import {
 } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { act, cleanup, renderHook } from "@testing-library/react";
+import { m } from "@/features/i18n";
 import type { PreparePayStateInput } from "@/features/reservation/actions/prepare-pay-state.schema";
 import { normalizedMeetingRoomReservationOrderSchema } from "@/features/reservation/meeting-room-reservation";
 import {
@@ -76,6 +77,8 @@ const reservationFor = (startHour: number) =>
     email: testEmailAddress("ada"),
     phone: "+420777777777",
   });
+
+const genericError = m.reservationErrorMessage({}, { locale: "en-US" });
 
 const renderCheckout = () =>
   renderHook(() => useReservationCheckout({ locale: "en-US" }));
@@ -151,14 +154,18 @@ describe("useReservationCheckout", () => {
 
   test("shows the action's message when preparation fails", () => {
     const { result } = renderCheckout();
+    const message = m.reservationMeetingRoomUnavailable(
+      {},
+      { locale: "en-US" }
+    );
 
     act(() => {
       preparePayStateOptions?.onSuccess({
-        data: { status: "error", message: "The room was just booked." },
+        data: { status: "error", message },
       });
     });
 
-    expect(result.current.submissionError).toBe("The room was just booked.");
+    expect(result.current.submissionError).toBe(message);
     expect(push).not.toHaveBeenCalled();
   });
 
@@ -169,7 +176,7 @@ describe("useReservationCheckout", () => {
       preparePayStateOptions?.onSuccess({ data: { status: "ready" } });
     });
 
-    expect(result.current.submissionError).toBeString();
+    expect(result.current.submissionError).toBe(genericError);
     expect(push).not.toHaveBeenCalled();
   });
 
@@ -206,19 +213,17 @@ describe("useReservationCheckout", () => {
 
   test("shows the server's error, or the generic one without it", () => {
     const { result } = renderCheckout();
+    const serverError = m.reservationAvailabilityError({}, { locale: "en-US" });
 
     act(() => {
-      preparePayStateOptions?.onError({
-        error: { serverError: "Checkout is closed." },
-      });
+      preparePayStateOptions?.onError({ error: { serverError } });
     });
-    expect(result.current.submissionError).toBe("Checkout is closed.");
+    expect(result.current.submissionError).toBe(serverError);
 
     act(() => {
       preparePayStateOptions?.onError({ error: {} });
     });
-    expect(result.current.submissionError).toBeString();
-    expect(result.current.submissionError).not.toBe("Checkout is closed.");
+    expect(result.current.submissionError).toBe(genericError);
   });
 
   test("shows the generic error when the request does not reach the server", () => {
@@ -228,6 +233,6 @@ describe("useReservationCheckout", () => {
       preparePayStateOptions?.onTransportError();
     });
 
-    expect(result.current.submissionError).toBeString();
+    expect(result.current.submissionError).toBe(genericError);
   });
 });
