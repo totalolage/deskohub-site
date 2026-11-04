@@ -1,21 +1,14 @@
-import Interpolate from "@doist/react-interpolate";
-import Link from "next/link";
 import { AccountSignInRedirect } from "@/features/account/components/account-sign-in-redirect";
-import { AccountWithoutProfile } from "@/features/account/components/account-without-profile";
-import { LinkedAccount } from "@/features/account/components/linked-account";
-import { ProfileForm } from "@/features/account/components/profile-form";
 import { ReservationHistory } from "@/features/account/components/reservation-history";
 import { SessionRefresh } from "@/features/account/components/session-refresh";
+import {
+  AccountUnavailableCard,
+  SignedInAccount,
+  type SignedInAccountState,
+} from "@/features/account/components/signed-in-account";
 import type { CustomerReservationHistory } from "@/features/account/contracts";
 import type { CustomerAccountPageState } from "@/features/account/page-data.server";
-import { type Locale, m } from "@/features/i18n";
-import type { ReferralCode } from "@/features/referrals/client";
-import { ForgetRememberedReferralCode } from "@/features/referrals/forget-remembered-referral-code";
-import { ReviewAccountCard } from "@/features/review-accounts/components/review-account-card";
-import { Card, CardContent } from "@/shared/components/ui/card";
-
-const cardClassName =
-  "rounded-3xl border-white/70 bg-white/92 shadow-[0_26px_80px_-48px_rgba(0,2,79,0.55)]";
+import type { Locale } from "@/features/i18n";
 
 export function AccountPage({
   locale,
@@ -27,209 +20,52 @@ export function AccountPage({
   if (state.kind === "unauthenticated") {
     return <AccountSignInRedirect locale={locale} />;
   }
-  if (state.kind === "linked") {
-    return (
-      <>
-        <SessionRefresh />
-        {state.rememberedReferralCodeUsed && <ForgetRememberedReferralCode />}
-        <LinkedAccount
-          avatarPresentation={state.avatar}
-          email={state.email}
-          assistants={state.assistants}
-          locale={locale}
-          passkeys={state.passkeys}
-          profile={state.profile}
-          referrals={state.referrals}
-          referralsEnabled={state.referralsEnabled}
-          reservationCount={countCurrentReservations(state.history)}
-          reservations={
-            <ReservationHistory history={state.history} locale={locale} />
-          }
-          signupReferral={state.signupReferral}
-        />
-      </>
-    );
+  if (state.kind === "unavailable") {
+    return <AccountUnavailableCard locale={locale} />;
   }
 
   return (
     <>
-      {state.kind !== "unavailable" && <SessionRefresh />}
-      {renderState(locale, state)}
+      <SessionRefresh />
+      <SignedInAccount
+        locale={locale}
+        state={withRenderedReservations(state, locale)}
+      />
     </>
   );
 }
 
-/** The current reservations the navigation counts; unknown while unavailable. */
-const countCurrentReservations = (history: CustomerReservationHistory) =>
-  history.kind === "available" ? history.groups.current.length : undefined;
-
-function renderState(
-  locale: Locale,
+/**
+ * Renders the state's reservation history on the server, where its `Intl`
+ * dates are formatted, and leaves the history itself out of the client view.
+ */
+function withRenderedReservations(
   state: Exclude<
     CustomerAccountPageState,
-    { readonly kind: "unauthenticated" | "linked" }
-  >
-): React.ReactNode {
+    { readonly kind: "unauthenticated" | "unavailable" }
+  >,
+  locale: Locale
+): SignedInAccountState {
+  const render = (history: CustomerReservationHistory) => ({
+    count:
+      history.kind === "available" ? history.groups.current.length : undefined,
+    history: <ReservationHistory history={history} locale={locale} />,
+  });
   switch (state.kind) {
-    case "unavailable":
-      return <UnavailableCard locale={locale} />;
-    case "authenticated-unavailable":
-      return (
-        <AccountWithoutProfile
-          assistants={state.assistants}
-          deletion={state.deletion}
-          email={state.email}
-          locale={locale}
-          passkeys={state.passkeys}
-        >
-          <UnavailableCard locale={locale} />
-        </AccountWithoutProfile>
-      );
+    case "linked":
+    case "review-account": {
+      const { history, ...rest } = state;
+      return { ...rest, reservations: render(history) };
+    }
     case "completion-required":
-      return (
-        <AccountWithoutProfile
-          assistants={state.assistants}
-          deletion={state.deletion}
-          email={state.email}
-          locale={locale}
-          passkeys={state.passkeys}
-          {...authoredReservations(locale, state.history)}
-        >
-          <CompletionCard
-            email={state.email}
-            locale={locale}
-            referralCode={state.referralCode}
-            referralsEnabled={state.referralsEnabled}
-          />
-        </AccountWithoutProfile>
-      );
-    case "support-required":
-      return (
-        <AccountWithoutProfile
-          assistants={state.assistants}
-          deletion={state.deletion}
-          email={state.email}
-          locale={locale}
-          passkeys={state.passkeys}
-          {...authoredReservations(locale, state.history)}
-        >
-          <SupportRequiredCard locale={locale} />
-        </AccountWithoutProfile>
-      );
-    case "review-account":
-      return (
-        <AccountWithoutProfile
-          assistants={state.assistants}
-          deletion={state.deletion}
-          email={state.email}
-          locale={locale}
-          passkeys={state.passkeys}
-          {...authoredReservations(locale, state.history)}
-        >
-          <ReviewAccountCard locale={locale} />
-        </AccountWithoutProfile>
-      );
+    case "support-required": {
+      const { history, ...rest } = state;
+      return history === undefined
+        ? rest
+        : { ...rest, reservations: render(history) };
+    }
+    case "authenticated-unavailable":
     case "deletion-pending":
-      return (
-        <AccountWithoutProfile
-          deletion={state.deletion}
-          email={state.email}
-          locale={locale}
-          passkeys={state.passkeys}
-        />
-      );
+      return state;
   }
-}
-
-/**
- * The Reservations section and navigation count of an account without a
- * usable profile; absent when it authored nothing.
- */
-const authoredReservations = (
-  locale: Locale,
-  history: CustomerReservationHistory | undefined
-) =>
-  history && {
-    reservationCount: countCurrentReservations(history),
-    reservations: <ReservationHistory history={history} locale={locale} />,
-  };
-
-function UnavailableCard({ locale }: { readonly locale: Locale }) {
-  return (
-    <Card
-      className="mx-auto max-w-xl p-8 text-center"
-      id="account-profile-unavailable"
-    >
-      <h2 className="text-3xl text-navy-blue">
-        {m.accountUnavailableTitle({}, { locale })}
-      </h2>
-      <p className="mt-4 leading-7 text-navy-blue/68">
-        {m.accountUnavailableDescription({}, { locale })}
-      </p>
-    </Card>
-  );
-}
-
-function CompletionCard({
-  email,
-  locale,
-  referralCode,
-  referralsEnabled,
-}: {
-  readonly email: string;
-  readonly locale: Locale;
-  readonly referralCode?: ReferralCode;
-  readonly referralsEnabled: boolean;
-}) {
-  return (
-    <Card
-      className={`mx-auto max-w-2xl ${cardClassName}`}
-      id="account-completion-required"
-    >
-      <CardContent className="p-6 @xl:p-10">
-        <h2 className="text-3xl text-navy-blue @xl:text-4xl">
-          {m.accountCompletionTitle({}, { locale })}
-        </h2>
-        <p className="mt-3 text-sm leading-6 text-navy-blue/68">
-          {m.accountCompletionBody({}, { locale })}
-        </p>
-        <div className="mt-8">
-          <ProfileForm
-            email={email}
-            locale={locale}
-            mode="complete"
-            referralCode={referralCode}
-            referralsEnabled={referralsEnabled}
-          />
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function SupportRequiredCard({ locale }: { readonly locale: Locale }) {
-  return (
-    <Card className={`mx-auto max-w-2xl ${cardClassName}`}>
-      <CardContent className="p-6 text-center @xl:p-10">
-        <h2 className="text-3xl text-navy-blue @xl:text-4xl">
-          {m.accountSupportTitle({}, { locale })}
-        </h2>
-        <p className="mt-4 leading-7 text-navy-blue/68">
-          <Interpolate
-            string={m.accountSupportContact({}, { locale })}
-            mapping={{
-              contact: (label) => (
-                <Link
-                  href={`/${locale}/contact`}
-                  className="text-burned-orange underline underline-offset-4"
-                >
-                  {label}
-                </Link>
-              ),
-            }}
-          />
-        </p>
-      </CardContent>
-    </Card>
-  );
 }
