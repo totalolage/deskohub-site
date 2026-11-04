@@ -4,22 +4,25 @@ import type {
   PostHogEventId,
 } from "@deskohub/posthog/identifiers";
 import { Effect } from "effect";
+import type { PostHog } from "posthog-node";
 import type { PostHogRuntimeConfigObj } from "@/shared/backend/config/posthog.config";
 
 mock.module("server-only", () => ({}));
 
 // No event reaches PostHog: the SDK client is a fake that records what the
 // delivery hands it.
+type PostHogOptions = ConstructorParameters<typeof PostHog>[1];
+type CapturedEvent = Parameters<PostHog["capture"]>[0];
 const constructedClients: {
   readonly projectToken: string;
-  readonly options: unknown;
+  readonly options: PostHogOptions;
 }[] = [];
-const capturedEvents: unknown[] = [];
+const capturedEvents: CapturedEvent[] = [];
 class FakePostHog {
-  constructor(projectToken: string, options: unknown) {
+  constructor(projectToken: string, options: PostHogOptions) {
     constructedClients.push({ projectToken, options });
   }
-  capture(event: unknown) {
+  capture(event: CapturedEvent) {
     capturedEvents.push(event);
   }
   on() {

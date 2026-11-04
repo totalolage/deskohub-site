@@ -53,8 +53,10 @@ mock.module("@/features/cookie-consent", () => ({
   },
 }));
 
-const track = mock((_event: string, _properties?: unknown) => undefined);
 const vercelAnalytics = await import("@vercel/analytics/react");
+const track = mock(
+  (..._args: Parameters<typeof vercelAnalytics.track>) => undefined
+);
 mock.module("@vercel/analytics/react", () => ({ ...vercelAnalytics, track }));
 
 mock.module("@/features/reservation/actions/prepare-pay-state", () => ({
