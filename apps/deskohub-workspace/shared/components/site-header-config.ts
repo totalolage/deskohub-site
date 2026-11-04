@@ -1,13 +1,11 @@
-import { updateLocalePreference } from "@/features/account/actions";
 import {
   getAccountPath,
   getAccountSignInPath,
 } from "@/features/account/routes";
 import { isCustomerSignedIn } from "@/features/account/server/customer-session.server";
-import type { LocalePreferenceSaving } from "@/features/account/switch-locale";
+import { createLocalePreferenceSaving } from "@/features/account/server/locale-preference-saving.server";
 import { isCurrentAccountAdministrator } from "@/features/administrators/server/current-account-administrator.server";
 import { type Locale, m } from "@/features/i18n";
-import { getLanguageLabels } from "@/features/i18n/language-labels";
 import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-release-gate.server";
 import { isOfficePageEnabled } from "@/features/office/backend/office-release-gate.server";
 import {
@@ -143,7 +141,6 @@ const createSiteHeaderConfig = (
     account: createSiteHeaderAccountEntry(locale),
     administrator: createSiteHeaderAdministratorEntry(locale),
     localePreference: createLocalePreferenceSaving(),
-    languageLabels: getLanguageLabels(locale),
     links: links.filter(({ id }) => disabledMenuItems[id] !== true),
     contactLabel: m.reservationNavCta({}, { locale }),
     contactHref: getCoworkReservationPath(locale),
@@ -172,13 +169,6 @@ const createSiteHeaderAdministratorEntry = (
   visible: isCurrentAccountAdministrator().catch(() => false),
   href: `/${locale}/admin`,
   label: m.siteHeaderAdminLabel({}, { locale }),
-});
-
-// Not awaited, like the account entry: the switcher learns after the shell
-// whether a switch must save the signed-in customer's preference.
-export const createLocalePreferenceSaving = (): LocalePreferenceSaving => ({
-  signedIn: isCustomerSignedIn().catch(() => false),
-  save: updateLocalePreference,
 });
 
 export { siteHeaderSectionIds };

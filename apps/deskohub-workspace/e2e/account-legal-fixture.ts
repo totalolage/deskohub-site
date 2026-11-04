@@ -187,10 +187,6 @@ export async function getSiteHeaderConfig(locale: Locale) {
     closeNavigationMenuLabel: "Close navigation menu",
     contactHref: ${contactHrefExpression},
     contactLabel: "Contact",
-    languageLabels: {
-      "cs-CZ": "Čeština",
-      "en-US": "English",
-    } satisfies Record<Locale, string>,
     languageSwitcherLabel: "Language",
     links,
     mobilePrimaryNavigationLabel: "Mobile primary navigation",

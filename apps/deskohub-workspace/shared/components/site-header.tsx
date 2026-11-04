@@ -6,10 +6,7 @@ import { Suspense, use, useState } from "react";
 import type { LocalePreferenceSaving } from "@/features/account/switch-locale";
 import type { Locale } from "@/features/i18n";
 import { GuardedLink as Link } from "@/shared/components/guarded-link";
-import {
-  LocaleSwitcherLabels,
-  LocaleSwitcherLinks,
-} from "@/shared/components/locale-switcher-links";
+import { LocaleSwitcher } from "@/shared/components/locale-switcher";
 import {
   AdministratorEntryButton,
   AdministratorEntryMenuButton,
@@ -28,7 +25,6 @@ type SiteHeaderProps = {
   account?: SiteHeaderAccountEntry;
   administrator?: SiteHeaderAdministratorEntry;
   currentLocale: Locale;
-  languageLabels: Record<Locale, string>;
   localePreference?: LocalePreferenceSaving;
   links: SiteHeaderMenuItem[];
   contactLabel: string;
@@ -166,7 +162,6 @@ export function SiteHeader({
   account,
   administrator,
   currentLocale,
-  languageLabels,
   localePreference,
   links,
   contactLabel,
@@ -236,20 +231,11 @@ export function SiteHeader({
             data-locale-switcher
             className="hidden rounded-full border border-white/12 bg-white/6 px-4 py-2 text-center text-xs uppercase tracking-[0.14em] text-white/72 xl:block xl:max-2xl:px-3 xl:max-2xl:tracking-[0.08em]"
           >
-            <Suspense
-              fallback={
-                <LocaleSwitcherLabels
-                  currentLocale={currentLocale}
-                  languageLabels={languageLabels}
-                />
-              }
-            >
-              <LocaleSwitcherLinks
-                currentLocale={currentLocale}
-                languageLabels={languageLabels}
-                localePreference={localePreference}
-              />
-            </Suspense>
+            <LocaleSwitcher
+              locale={currentLocale}
+              appearance="stacked"
+              localePreference={localePreference}
+            />
           </nav>
 
           <Button
@@ -311,23 +297,12 @@ export function SiteHeader({
             data-locale-switcher
             className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-xs uppercase tracking-[0.14em] text-white/72"
           >
-            <Suspense
-              fallback={
-                <LocaleSwitcherLabels
-                  currentLocale={currentLocale}
-                  languageLabels={languageLabels}
-                  isMobile
-                />
-              }
-            >
-              <LocaleSwitcherLinks
-                currentLocale={currentLocale}
-                languageLabels={languageLabels}
-                closeMenu={closeMenu}
-                isMobile
-                localePreference={localePreference}
-              />
-            </Suspense>
+            <LocaleSwitcher
+              locale={currentLocale}
+              appearance="inline"
+              localePreference={localePreference}
+              onSwitch={closeMenu}
+            />
           </div>
         </div>
       </div>
