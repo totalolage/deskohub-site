@@ -1,6 +1,6 @@
 # Email campaigns
 
-Admin email campaigns live in `apps/deskohub-workspace/features/email-campaigns/`. The body document, templates, rendering, and content hash are under `body/`. The domain core (schema, audiences, recipient resolution, services) is in the rest of the feature, with tables in `db/schema/email-campaigns.ts`.
+Admin email campaigns live in `apps/deskohub-workspace/features/email-campaigns/`. The body document, templates, and content hash are under `body/`; `campaign-email.tsx` renders messages. The domain core (schema, audiences, recipient resolution, services) is in the rest of the feature, with tables in `db/schema/email-campaigns.ts`.
 
 ## Glossary
 
