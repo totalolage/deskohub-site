@@ -121,6 +121,13 @@ export const isSuperseded = (
       sameSource(deployment, skipped) && deployment.created > skipped.created
   );
 
+/**
+ * Whether a deployment is a skipped preview this can recover: Vercel cancels
+ * skipped deployments, and production needs no recovery.
+ */
+export const isRecoverableSkip = (deployment: DeploymentSummary) =>
+  deployment.readyState === "CANCELED" && deployment.target !== "production";
+
 /** Files changed between two commits, or `undefined` if Git can't tell. */
 export const changedPathsBetween = async (
   base: string,
@@ -292,8 +299,10 @@ const main = async () => {
   const { ref, sha } = skipped;
   // A main merge commit's parent diff covers the whole pull request, and CI
   // builds the portal for every pull request, so only previews need this.
-  if (skipped.target === "production") {
-    report(`${skipped.id} is a production deployment; nothing to do`);
+  if (!isRecoverableSkip(skipped)) {
+    report(
+      `${skipped.id} is a ${skipped.target ?? "preview"} deployment in state ${skipped.readyState}; nothing to do`
+    );
     return;
   }
 

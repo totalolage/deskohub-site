@@ -7,6 +7,7 @@ import {
   comparisonBase,
   type DeploymentSummary,
   decideRebuild,
+  isRecoverableSkip,
   isSuperseded,
   readPackageGraph,
 } from "./rebuild-skipped-deployment";
@@ -144,6 +145,33 @@ describe("isSuperseded", () => {
         deployment({ id: "production", created: 200, target: "production" }),
       ])
     ).toBe(false);
+  });
+});
+
+describe("isRecoverableSkip", () => {
+  test("recovers a skipped preview", () => {
+    expect(
+      isRecoverableSkip(deployment({ id: "skipped", readyState: "CANCELED" }))
+    ).toBe(true);
+  });
+
+  test.each([
+    ["a ready preview", deployment({ id: "ready" })],
+    [
+      "a building preview",
+      deployment({ id: "building", readyState: "BUILDING" }),
+    ],
+    ["a failed preview", deployment({ id: "failed", readyState: "ERROR" })],
+    [
+      "a skipped production deployment",
+      deployment({
+        id: "production",
+        readyState: "CANCELED",
+        target: "production",
+      }),
+    ],
+  ])("leaves %s alone", (_name, candidate) => {
+    expect(isRecoverableSkip(candidate)).toBe(false);
   });
 });
 
