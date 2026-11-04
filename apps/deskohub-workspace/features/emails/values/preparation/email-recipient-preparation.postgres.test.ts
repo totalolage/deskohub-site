@@ -195,12 +195,13 @@ describe.skipIf(!database)(
     });
 
     const contactDefinition = (fallback?: Record<string, string>) => {
-      const definition: Record<string, unknown> = {
-        name: contact,
-        source: { kind: "customer", path: ["profile", "customer", "email"] },
-      };
-      if (fallback) definition.fallback = fallback;
-      return definition;
+      const source = {
+        kind: "customer",
+        path: ["profile", "customer", "email"],
+      } as const;
+      return fallback
+        ? { name: contact, source, fallback }
+        : { name: contact, source };
     };
 
     const publishEmail = (draft) =>
