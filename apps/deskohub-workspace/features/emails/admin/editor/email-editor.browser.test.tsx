@@ -546,6 +546,8 @@ for (const locale of ["en-US", "cs-CZ"] as const) {
           )}"]`
         );
         await frame.getByText("Welcome back").waitFor();
+        // The host's sample value reaches the renderer.
+        await frame.getByText("Hi Jana Nováková, see our spaces").waitFor();
         expect(await preview.textContent()).toContain(
           m.emailsEditorPreviewSampleNote({}, { locale })
         );

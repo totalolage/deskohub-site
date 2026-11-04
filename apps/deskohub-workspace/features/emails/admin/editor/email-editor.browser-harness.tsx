@@ -6,14 +6,20 @@ import { createRoot } from "react-dom/client";
 import { FormProvider, useForm } from "react-hook-form";
 import type { Locale } from "@/features/i18n";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
-import type { EmailDraftFormValues } from "./email-draft-form";
-import { EmailEditor } from "./email-editor";
 import {
   fixtureDiscount,
   fixtureDraft,
   fixtureImageCloudName,
 } from "./email-editor.fixtures.test-utils";
-import type { EmailPreviewRenderer } from "./email-preview-panel";
+// The harness composes the editor as a host page does: through its index.
+import {
+  type EmailDraftFormValues,
+  EmailEditor,
+  type EmailEditorDiscount,
+  type EmailEditorProps,
+  type EmailPreviewRenderer,
+  type EmailPreviewValues,
+} from "./index";
 
 const mountPoint = document.getElementById("editor-root");
 if (!mountPoint) throw new Error("The editor harness root is missing.");
@@ -24,12 +30,27 @@ const initialDraft: EmailDraftFormValues = mountPoint.dataset.draft
 /** The Workspace languages, as the host passes them. */
 const locales = ["cs-CZ", "en-US"] as const satisfies readonly Locale[];
 
+/** Synthetic sample values the host supplies; the rest show by name. */
+const sampleValues: EmailPreviewValues = {
+  customer_name: { _tag: "Resolved", value: "Jana Nováková" },
+};
+
+const sampleText = (
+  name: string | undefined,
+  values: EmailPreviewValues = {}
+) => {
+  const sample = name ? values[name] : undefined;
+  if (!sample) return `[${name ?? ""}]`;
+  return sample._tag === "Resolved" ? String(sample.value) : sample.text;
+};
+
 const plainText = (
-  parts: readonly { _tag: string; text?: string; name?: string }[] = []
+  parts: readonly { _tag: string; text?: string; name?: string }[] = [],
+  values?: EmailPreviewValues
 ) =>
   parts
     .map((part) =>
-      part._tag === "Text" ? (part.text ?? "") : `[${part.name ?? ""}]`
+      part._tag === "Text" ? (part.text ?? "") : sampleText(part.name, values)
     )
     .join("");
 
@@ -42,20 +63,24 @@ const escapeHtml = (text: string) =>
 
 /**
  * A stand-in for the preview Server Action: shows the language's texts in
- * structure order with value names in brackets, as sample output.
+ * structure order, with the supplied sample values and other value names in
+ * brackets.
  */
 const renderPreview: EmailPreviewRenderer = async ({
   draft,
   locale: language,
+  values,
 }) => {
   const translation = draft.translations?.[language];
-  const subject = plainText(translation?.subject);
+  const subject = plainText(translation?.subject, values);
   const body = (draft.structure ?? [])
     .flatMap((component) =>
       [component.textKey, component.labelKey, component.altKey].flatMap(
         (key) =>
           key
-            ? [`<p>${escapeHtml(plainText(translation?.texts?.[key]))}</p>`]
+            ? [
+                `<p>${escapeHtml(plainText(translation?.texts?.[key], values))}</p>`,
+              ]
             : []
       )
     )
@@ -66,6 +91,16 @@ const renderPreview: EmailPreviewRenderer = async ({
       html: `<!doctype html><html lang="${language}"><body style="font-family:sans-serif;padding:16px"><h1 style="font-size:18px">${escapeHtml(subject)}</h1>${body}</body></html>`,
     },
   };
+};
+
+const discounts: readonly EmailEditorDiscount[] = [fixtureDiscount];
+
+const editorProps: EmailEditorProps = {
+  discounts,
+  imageCloudName: fixtureImageCloudName,
+  locales,
+  renderPreview,
+  values: sampleValues,
 };
 
 function EmailEditorHarness() {
@@ -84,12 +119,7 @@ function EmailEditorHarness() {
               () => setSaved(JSON.stringify({ invalid: true }))
             )}
           >
-            <EmailEditor
-              discounts={[fixtureDiscount]}
-              imageCloudName={fixtureImageCloudName}
-              locales={locales}
-              renderPreview={renderPreview}
-            />
+            <EmailEditor {...editorProps} />
             <div className="mt-4 flex gap-2">
               <button type="submit">Save draft</button>
               <button onClick={() => form.reset(initialDraft)} type="button">
