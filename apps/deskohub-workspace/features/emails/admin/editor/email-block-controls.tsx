@@ -22,7 +22,10 @@ import {
 } from "./email-editor-context";
 import { emailEditorFieldIds } from "./email-editor-field-ids";
 import { EmailInlineTextField } from "./email-inline-text-field";
-import { withoutEmailTexts } from "./email-structure-blocks";
+import {
+  emailBlockTextKeys,
+  withoutEmailTexts,
+} from "./email-structure-blocks";
 
 /**
  * The block at `index` of the host form's structure and a writer that
@@ -43,17 +46,36 @@ export const useEmailBlock = (
 
 /**
  * Deletes the texts `textKeys` name from every language, including the ones
- * the editor doesn't show, once the block or item owning them is gone.
+ * the editor doesn't show, once the block or item owning them is gone. Call
+ * it after removing the owner from the structure: a text another block still
+ * uses stays.
  */
 export const useRemoveEmailTexts = () => {
   const { getValues, setValue } = useEmailDraftForm();
   return (textKeys: readonly string[]) => {
     const translations = getValues("translations");
-    if (!translations || textKeys.length === 0) return;
-    const next = withoutEmailTexts(translations, textKeys);
+    const inUse = new Set(
+      (getValues("structure") ?? []).flatMap(emailBlockTextKeys)
+    );
+    const unused = textKeys.filter((textKey) => !inUse.has(textKey));
+    if (!translations || unused.length === 0) return;
+    const next = withoutEmailTexts(translations, unused);
     if (next) setValue("translations", next, { shouldDirty: true });
   };
 };
+
+/**
+ * Where focus goes once the row at `position` is removed: the same control
+ * of the row after it, else of the row before it, else `fallback`.
+ */
+export const emailRowRemovalFocus = (
+  rowControlIds: readonly string[],
+  position: number,
+  fallback: string
+): readonly string[] =>
+  [rowControlIds[position + 1], rowControlIds[position - 1], fallback].filter(
+    (id): id is string => id !== undefined
+  );
 
 /**
  * Moves focus after the structure changed under it: to the first of

@@ -13,7 +13,9 @@ import {
   type EmailBlockOption,
   EmailBlockSelectSetting,
   EmailBlockTextSetting,
+  emailRowRemovalFocus,
   useEmailBlock,
+  useEmailFocusAfterChange,
   useRemoveEmailTexts,
 } from "./email-block-controls";
 import {
@@ -94,10 +96,14 @@ function ValueBlockFields({
 }) {
   const locale = useRouteLocale();
   const removeTexts = useRemoveEmailTexts();
+  const focusAfterChange = useEmailFocusAfterChange();
   const fieldsId = emailEditorFieldIds.componentSetting(component.id, "fields");
   const { controlProps } = useEmailFieldProblems(fieldsId);
   const fields = component.fields ?? [];
   const paths = definition ? selectedEmailCustomerFieldPaths(definition) : [];
+  const rowId = (field: ComponentField, position: number) =>
+    `${fieldsId}-${field.labelKey ?? position}`;
+  const addId = `${fieldsId}-add`;
   const setFields = (next: readonly ComponentField[]) =>
     update(
       withEmailSetting(component, "fields", next.length > 0 ? next : undefined)
@@ -127,7 +133,7 @@ function ValueBlockFields({
             key={field.labelKey ?? position}
           >
             <EmailBlockSelectSetting
-              fieldId={`${fieldsId}-${field.labelKey ?? position}`}
+              fieldId={rowId(field, position)}
               label={m.emailsEditorBlockField({ number }, { locale })}
               onChange={(value) => {
                 const path = paths.find(
@@ -159,9 +165,17 @@ function ValueBlockFields({
                 { number },
                 { locale }
               )}
+              id={`${rowId(field, position)}-remove`}
               onClick={() => {
                 setFields(fields.filter((_entry, at) => at !== position));
                 if (field.labelKey) removeTexts([field.labelKey]);
+                focusAfterChange(
+                  emailRowRemovalFocus(
+                    fields.map((entry, at) => `${rowId(entry, at)}-remove`),
+                    position,
+                    addId
+                  )
+                );
               }}
               size="icon-sm"
               title={m.emailsEditorBlockFieldRemove({ number }, { locale })}
@@ -175,6 +189,7 @@ function ValueBlockFields({
         );
       })}
       <Button
+        id={addId}
         onClick={() =>
           setFields([...fields, { labelKey: newEmailEditorKey("text") }])
         }

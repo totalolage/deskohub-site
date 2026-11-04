@@ -314,6 +314,34 @@ describe("moving and removing blocks", () => {
   });
 });
 
+test("removing a block keeps a text another block still uses", async () => {
+  const { view, values } = renderSection({
+    structure: [
+      { _tag: "Paragraph", id: "first", textKey: "shared" },
+      { _tag: "Paragraph", id: "second", textKey: "shared" },
+    ],
+    translations: {
+      "en-US": { texts: { shared: text("Both") } },
+      "de-DE": { texts: { shared: text("Beide") } },
+    },
+  });
+  const kind = kinds.Paragraph;
+
+  await click(
+    block(view, kind, 1).getByRole("button", {
+      name: m.emailsEditorBlockRemove({ number: 1, kind }, { locale }),
+    })
+  );
+
+  expect(values().structure?.map((component) => component.id)).toEqual([
+    "second",
+  ]);
+  expect(values().translations).toEqual({
+    "en-US": { texts: { shared: text("Both") } },
+    "de-DE": { texts: { shared: text("Beide") } },
+  });
+});
+
 describe("text blocks", () => {
   test("a heading's level is a shared setting", async () => {
     const { view, values } = renderSection({
@@ -397,6 +425,12 @@ describe("text blocks", () => {
     expect(Object.keys(values().structure?.[0]?.links ?? {})).toEqual([
       added ?? "",
     ]);
+    // Focus stays in the destinations, on the row that took the removed one's place.
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute("aria-label")).toBe(
+        m.emailsEditorBlockLinkRemove({ number: 1 }, { locale })
+      )
+    );
     // The text still links to the removed destination, which it now shows.
     expect(document.getElementById(textId)?.getAttribute("aria-invalid")).toBe(
       "true"
@@ -637,6 +671,82 @@ describe("images", () => {
     expect(view.getByRole("status").textContent).toBe("");
   });
 
+  test("an upload that ends after the block moved and changed sets only its source", async () => {
+    const { promise: stored, resolve: store } = Promise.withResolvers<void>();
+    fetchSpy.mockImplementation(async () => {
+      await stored;
+      return Response.json(storedImage);
+    });
+    const { view, values } = renderSection({
+      structure: [
+        { _tag: "Image", id: "hero", altKey: "hero-alt" },
+        { _tag: "Paragraph", id: "after", textKey: "after-text" },
+      ],
+    });
+
+    await chooseImage(view);
+    await waitFor(() =>
+      expect(view.getByRole("status").textContent).toBe(
+        m.emailsEditorBlockImageUploading({}, { locale })
+      )
+    );
+    expect(uploadButton(view).hasAttribute("disabled")).toBe(true);
+    const kind = kinds.Image;
+    await click(
+      block(view, kind, 1).getByRole("button", {
+        name: m.emailsEditorBlockMoveDown({ number: 1, kind }, { locale }),
+      })
+    );
+    await choose(
+      view,
+      view.getByRole("combobox", {
+        name: m.emailsEditorBlockImageAlign({}, { locale }),
+      }),
+      m.emailsEditorBlockImageAlignLeft({}, { locale })
+    );
+    await act(async () => store());
+
+    await waitFor(() =>
+      expect(values().structure?.[1]).toEqual({
+        _tag: "Image",
+        id: "hero",
+        altKey: "hero-alt",
+        align: "left",
+        src: storedImage.secure_url,
+      })
+    );
+    expect(values().structure?.[0]).toEqual({
+      _tag: "Paragraph",
+      id: "after",
+      textKey: "after-text",
+    });
+    expect(view.getByRole("status").textContent).toBe("");
+  });
+
+  test("an upload that ends after its block was removed changes nothing", async () => {
+    const { promise: stored, resolve: store } = Promise.withResolvers<void>();
+    fetchSpy.mockImplementation(async () => {
+      await stored;
+      return Response.json(storedImage);
+    });
+    const { view, values } = renderSection(imageDraft);
+
+    await chooseImage(view);
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+    const kind = kinds.Image;
+    await click(
+      block(view, kind, 1).getByRole("button", {
+        name: m.emailsEditorBlockRemove({ number: 1, kind }, { locale }),
+      })
+    );
+    await act(async () => store());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+
+    expect(values().structure).toEqual([]);
+  });
+
   test("alignment, width and link are shared settings; an empty width is unset", async () => {
     const { view, values } = renderSection(imageDraft);
 
@@ -780,6 +890,65 @@ describe("value blocks", () => {
         .getElementById(emailEditorFieldIds.componentSetting("block", "fields"))
         ?.getAttribute("aria-invalid")
     ).toBe("true");
+  });
+
+  test("removing a field deletes its label in every language", async () => {
+    const { view, values: form } = renderSection({
+      structure: [
+        {
+          _tag: "Record",
+          id: "block",
+          value: "stats",
+          fields: [
+            { labelKey: "visits-label", field: ["reservationCount"] },
+            { labelKey: "product-label", field: ["favoriteProduct"] },
+          ],
+        },
+      ],
+      translations: {
+        "en-US": {
+          texts: {
+            "visits-label": text("Visits"),
+            "product-label": text("Favourite"),
+          },
+        },
+        "cs-CZ": { texts: { "visits-label": text("Návštěvy") } },
+        "de-DE": { texts: { "visits-label": text("Besuche") } },
+      },
+      values,
+    });
+
+    await click(
+      view.getByRole("button", {
+        name: m.emailsEditorBlockFieldRemove({ number: 1 }, { locale }),
+      })
+    );
+
+    expect(form().structure?.[0]?.fields).toEqual([
+      { labelKey: "product-label", field: ["favoriteProduct"] },
+    ]);
+    expect(form().translations).toEqual({
+      "en-US": { texts: { "product-label": text("Favourite") } },
+      "cs-CZ": { texts: {} },
+      "de-DE": { texts: {} },
+    });
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute("aria-label")).toBe(
+        m.emailsEditorBlockFieldRemove({ number: 1 }, { locale })
+      )
+    );
+
+    await click(
+      view.getByRole("button", {
+        name: m.emailsEditorBlockFieldRemove({ number: 1 }, { locale }),
+      })
+    );
+    // With no row left, focus moves to adding one.
+    await waitFor(() =>
+      expect(document.activeElement?.textContent).toBe(
+        m.emailsEditorBlockFieldAdd({}, { locale })
+      )
+    );
   });
 
   test("a list block sorts by a chosen field and limits its items", async () => {

@@ -5,7 +5,12 @@ import { Plus, Trash2 } from "lucide-react";
 import { m } from "@/features/administration/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
-import { EmailBlockTextSetting, useEmailBlock } from "./email-block-controls";
+import {
+  EmailBlockTextSetting,
+  emailRowRemovalFocus,
+  useEmailBlock,
+  useEmailFocusAfterChange,
+} from "./email-block-controls";
 import { newEmailEditorKey } from "./email-draft-form";
 import { emailEditorFieldIds } from "./email-editor-field-ids";
 import { withEmailSetting } from "./email-structure-blocks";
@@ -18,9 +23,13 @@ import { withEmailSetting } from "./email-structure-blocks";
 export function EmailBlockLinks({ index }: { readonly index: number }) {
   const locale = useRouteLocale();
   const [component, update] = useEmailBlock(index);
+  const focusAfterChange = useEmailFocusAfterChange();
   if (!component?.id) return null;
   const componentId = component.id;
   const links = component.links ?? {};
+  const removeId = (linkKey: string) =>
+    `${emailEditorFieldIds.componentLink(componentId, linkKey)}-remove`;
+  const addId = `${emailEditorFieldIds.component(componentId)}-add-link`;
   const setLinks = (next: { readonly [linkKey: string]: string }) =>
     update(
       withEmailSetting(
@@ -59,7 +68,17 @@ export function EmailBlockLinks({ index }: { readonly index: number }) {
             </div>
             <Button
               aria-label={m.emailsEditorBlockLinkRemove({ number }, { locale })}
-              onClick={() => setLinks(Record.remove(links, linkKey))}
+              id={removeId(linkKey)}
+              onClick={() => {
+                setLinks(Record.remove(links, linkKey));
+                focusAfterChange(
+                  emailRowRemovalFocus(
+                    Object.keys(links).map(removeId),
+                    position,
+                    addId
+                  )
+                );
+              }}
               size="icon-sm"
               title={m.emailsEditorBlockLinkRemove({ number }, { locale })}
               tone="muted"
@@ -72,6 +91,7 @@ export function EmailBlockLinks({ index }: { readonly index: number }) {
         );
       })}
       <Button
+        id={addId}
         onClick={() => setLinks({ ...links, [newEmailEditorKey("link")]: "" })}
         size="sm"
         type="button"
