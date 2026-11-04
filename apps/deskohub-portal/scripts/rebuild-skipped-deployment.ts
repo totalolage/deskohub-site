@@ -1,17 +1,18 @@
 /**
- * Builds a portal preview that Vercel skipped although the portal changed.
+ * Builds a portal deployment that Vercel skipped although the portal changed.
  *
  * Vercel skips the portal when a commit doesn't affect it relative to its
  * parent. A push of several commits, or a parent whose deployment failed or
- * was canceled, can leave a portal change without a preview. This compares
- * the skipped commit with the branch's last ready portal preview (or
- * production's) instead, and redeploys the skipped deployment, which builds
- * it, unless every change since then is in a package the portal doesn't
- * depend on. Production needs no recovery: a main merge commit's parent
- * diff covers its whole pull request, whose CI builds the portal.
+ * was canceled, can leave a portal change undeployed. This compares the
+ * skipped commit with the last ready portal deployment of the same
+ * repository, branch and target (for a preview without one, production's)
+ * and, unless every change since then is in a package the portal doesn't
+ * depend on, builds it: a preview by redeploying the skipped deployment, and
+ * production by deploying the branch's current head, so recovery never
+ * promotes an older commit.
  *
  * Run by `.github/workflows/portal-skipped-deployments.yml`. `DRY_RUN=1`
- * reports the decision without redeploying.
+ * reports the decision without deploying.
  */
 import { $ } from "bun";
 
@@ -121,12 +122,109 @@ export const isSuperseded = (
       sameSource(deployment, skipped) && deployment.created > skipped.created
   );
 
-/**
- * Whether a deployment is a skipped preview this can recover: Vercel cancels
- * skipped deployments, and production needs no recovery.
- */
+/** Whether a deployment is one Vercel skipped (it cancels skipped ones). */
 export const isRecoverableSkip = (deployment: DeploymentSummary) =>
-  deployment.readyState === "CANCELED" && deployment.target !== "production";
+  deployment.readyState === "CANCELED";
+
+export type PortalDeployments = {
+  /** Deployments for a list query; `truncated` when more pages exist. */
+  readonly list: (query: Record<string, string>) => Promise<{
+    readonly deployments: readonly DeploymentSummary[];
+    readonly truncated: boolean;
+  }>;
+  /** Redeploys a deployment, which builds it again. */
+  readonly redeploy: (deploymentId: string) => Promise<DeploymentSummary>;
+  /** Deploys the current head of a branch to production. */
+  readonly deployBranchHeadToProduction: (input: {
+    readonly repositoryId: string;
+    readonly ref: string;
+  }) => Promise<DeploymentSummary>;
+};
+
+export type RecoveryOutcome =
+  | { readonly action: "none"; readonly reason: string }
+  | {
+      readonly action: "deployed";
+      readonly reason: string;
+      readonly deploymentId: string;
+    };
+
+export const recoverSkippedDeployment = async ({
+  skipped,
+  deployments,
+  decide,
+  dryRun,
+}: {
+  readonly skipped: DeploymentSummary;
+  readonly deployments: PortalDeployments;
+  readonly decide: (
+    head: string,
+    base: DeploymentSummary | undefined
+  ) => Promise<Decision>;
+  readonly dryRun: boolean;
+}): Promise<RecoveryOutcome> => {
+  const { ref, repositoryId, sha } = skipped;
+  if (!ref || !sha || !repositoryId) {
+    throw new Error("The skipped deployment has no Git commit");
+  }
+  if (!isRecoverableSkip(skipped)) {
+    return {
+      action: "none",
+      reason: `${skipped.id} is ${skipped.readyState}, not skipped`,
+    };
+  }
+
+  const superseded = async () => {
+    const newer = await deployments.list({
+      branch: ref,
+      since: String(skipped.created),
+      limit: "100",
+    });
+    return newer.truncated || isSuperseded(skipped, newer.deployments);
+  };
+  if (await superseded()) {
+    return {
+      action: "none",
+      reason: `${skipped.id} is superseded by a newer ${ref} deployment`,
+    };
+  }
+
+  const until = String(skipped.created);
+  const ready = [
+    ...(
+      await deployments.list({
+        branch: ref,
+        state: "READY",
+        until,
+        limit: "20",
+      })
+    ).deployments,
+    ...(
+      await deployments.list({
+        target: "production",
+        state: "READY",
+        until,
+        limit: "20",
+      })
+    ).deployments,
+  ];
+  const base = comparisonBase(skipped, ready);
+  const decision = await decide(sha, base);
+  const reason = `${skipped.id} (${sha}) against ${base?.id ?? "nothing"}: ${decision.reason}`;
+  if (!decision.rebuild || dryRun) return { action: "none", reason };
+  if (await superseded()) {
+    return {
+      action: "none",
+      reason: `${skipped.id} was superseded while comparing`,
+    };
+  }
+
+  const deployed =
+    skipped.target === "production"
+      ? await deployments.deployBranchHeadToProduction({ repositoryId, ref })
+      : await deployments.redeploy(skipped.id);
+  return { action: "deployed", reason, deploymentId: deployed.id };
+};
 
 /** Files changed between two commits, or `undefined` if Git can't tell. */
 export const changedPathsBetween = async (
@@ -255,17 +353,47 @@ const main = async () => {
   const teamId = requireEnv("VERCEL_TEAM_ID");
   const projectId = requireEnv("PORTAL_PROJECT_ID");
   const skippedUrl = process.env.SKIPPED_DEPLOYMENT_URL;
+  const skippedSha = process.env.SKIPPED_DEPLOYMENT_SHA;
   const repositoryRoot = (await $`git rev-parse --show-toplevel`.text()).trim();
 
-  const listDeployments = async (query: string) => {
-    const list = (await vercelApi(
-      `/v6/deployments?projectId=${projectId}&teamId=${teamId}&${query}`,
-      token
-    )) as DeploymentList;
-    return {
-      deployments: list.deployments.map(summarize),
-      truncated: Boolean(list.pagination?.next),
-    };
+  const deployments: PortalDeployments = {
+    list: async (query) => {
+      const list = (await vercelApi(
+        `/v6/deployments?${new URLSearchParams({ projectId, teamId, ...query })}`,
+        token
+      )) as DeploymentList;
+      return {
+        deployments: list.deployments.map(summarize),
+        truncated: Boolean(list.pagination?.next),
+      };
+    },
+    redeploy: async (deploymentId) =>
+      summarize(
+        (await vercelApi(
+          `/v13/deployments?teamId=${teamId}&forceNew=1`,
+          token,
+          {
+            method: "POST",
+            body: { name: portalPackageName, deploymentId },
+          }
+        )) as VercelDeployment
+      ),
+    deployBranchHeadToProduction: async ({ repositoryId, ref }) =>
+      summarize(
+        (await vercelApi(
+          `/v13/deployments?teamId=${teamId}&forceNew=1`,
+          token,
+          {
+            method: "POST",
+            body: {
+              name: portalPackageName,
+              project: projectId,
+              target: "production",
+              gitSource: { type: "github", repoId: repositoryId, ref },
+            },
+          }
+        )) as VercelDeployment
+      ),
   };
 
   const skippedDeployment = skippedUrl
@@ -278,75 +406,32 @@ const main = async () => {
         token
       )) as VercelDeployment)
     : undefined;
-  const skipped = skippedDeployment
-    ? summarize(skippedDeployment)
-    : (
-        await listDeployments(
-          `limit=20&sha=${requireEnv("SKIPPED_DEPLOYMENT_SHA")}`
-        )
-      ).deployments.find(
-        (deployment) => deployment.sha === process.env.SKIPPED_DEPLOYMENT_SHA
-      );
-  if (!skipped) {
-    throw new Error("No portal deployment matches the skipped commit");
-  }
   if (skippedDeployment && skippedDeployment.projectId !== projectId) {
     throw new Error("The skipped deployment belongs to another project");
   }
-  if (!skipped.ref || !skipped.sha || !skipped.repositoryId) {
-    throw new Error("The skipped deployment has no Git commit");
-  }
-  const { ref, sha } = skipped;
-  // A main merge commit's parent diff covers the whole pull request, and CI
-  // builds the portal for every pull request, so only previews need this.
-  if (!isRecoverableSkip(skipped)) {
-    report(
-      `${skipped.id} is a ${skipped.target ?? "preview"} deployment in state ${skipped.readyState}; nothing to do`
-    );
-    return;
-  }
-
-  const supersededNow = async () => {
-    const newer = await listDeployments(
-      `branch=${encodeURIComponent(ref)}&since=${skipped.created}&limit=100`
-    );
-    return newer.truncated || isSuperseded(skipped, newer.deployments);
-  };
-  if (await supersededNow()) {
-    report(`${skipped.id} is superseded by a newer ${ref} deployment`);
-    return;
+  const skipped = skippedDeployment
+    ? summarize(skippedDeployment)
+    : (
+        await deployments.list({
+          limit: "20",
+          sha: requireEnv("SKIPPED_DEPLOYMENT_SHA"),
+        })
+      ).deployments.find((deployment) => deployment.sha === skippedSha);
+  if (!skipped) {
+    throw new Error("No portal deployment matches the skipped commit");
   }
 
-  const ready = [
-    ...(
-      await listDeployments(
-        `branch=${encodeURIComponent(ref)}&state=READY&until=${skipped.created}&limit=20`
-      )
-    ).deployments,
-    ...(
-      await listDeployments(
-        `target=production&state=READY&until=${skipped.created}&limit=20`
-      )
-    ).deployments,
-  ];
-  const base = comparisonBase(skipped, ready);
-  const decision = await decideAgainst(sha, base, repositoryRoot);
+  const outcome = await recoverSkippedDeployment({
+    skipped,
+    deployments,
+    decide: (head, base) => decideAgainst(head, base, repositoryRoot),
+    dryRun: process.env.DRY_RUN === "1",
+  });
   report(
-    `${skipped.id} (${sha}) against ${base?.id ?? "nothing"}: ${decision.reason}`
+    outcome.action === "deployed"
+      ? `${outcome.reason}; deploying as ${outcome.deploymentId}`
+      : outcome.reason
   );
-  if (!decision.rebuild || process.env.DRY_RUN === "1") return;
-  if (await supersededNow()) {
-    report(`${skipped.id} was superseded while comparing`);
-    return;
-  }
-
-  const rebuilt = summarize(
-    (await vercelApi(`/v13/deployments?teamId=${teamId}&forceNew=1`, token, {
-      method: "POST",
-      body: { name: portalPackageName, deploymentId: skipped.id },
-    })) as VercelDeployment
-  );
-  report(`Rebuilding ${sha} as ${rebuilt.id}`);
 };
 
 if (import.meta.main) await main();

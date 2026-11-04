@@ -5,10 +5,10 @@ permissions:
 
 # Vercel skips the portal when a commit doesn't affect it relative to its
 # parent alone. After a multi-commit push, or a parent whose deployment
-# failed or was canceled, that can leave a portal change without a preview,
-# so this compares each skipped portal preview with the branch's last ready
-# one and redeploys it, which builds it, when anything the portal uses
-# changed. Workspace CI builds the portal for every pull request either way.
+# failed or was canceled, that can leave a portal change undeployed, so this
+# compares each skipped portal deployment with the last ready one of its
+# branch and target, and builds it when anything the portal uses changed:
+# previews by redeploying, production by deploying main's current head.
 on:
   repository_dispatch:
     types: [vercel.deployment.skipped]
