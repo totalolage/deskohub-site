@@ -104,9 +104,10 @@ const advertisedPriceToken = async (reservationDate: string) => {
         ...quote,
         fingerprint: getReservationQuoteFingerprint(advertised.details, quote),
       },
-    })
-      .pipe(Effect.provide(TestSealedStateKeys))
-      .pipe(Effect.flatMap(sealAdvertisedPriceState))
+    }).pipe(
+      Effect.flatMap(sealAdvertisedPriceState),
+      Effect.provide(TestSealedStateKeys)
+    )
   );
 };
 
@@ -212,7 +213,8 @@ describe.skipIf(!database)(
           )
         )
       ),
-      analytics.layer
+      analytics.layer,
+      TestSealedStateKeys
     );
 
     // The account the activity guard fixture signs in.
