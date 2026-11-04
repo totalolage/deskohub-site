@@ -46,7 +46,10 @@
         // (`prepare` script), not an installable module.
         "@effect/language-service",
         // Preview server the `email:dev` CLI resolves from the project at runtime.
-        "@react-email/ui"
+        "@react-email/ui",
+        // Not imported: declared so Vercel deploys Workspace previews for
+        // agent-skill changes (apps/deskohub-portal/deployment-graph.test.ts).
+        "@deskohub/agent-skills"
       ]
     }
   }
