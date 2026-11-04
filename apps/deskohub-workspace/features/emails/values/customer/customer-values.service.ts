@@ -19,6 +19,8 @@ import {
   Predicate,
   Schema,
 } from "effect";
+import { AdministrationService } from "@/features/administration/administration.service";
+import { DiscountAdministration } from "@/features/discounts/admin/discount-administration.service";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import {
   CustomerValueMissing,
@@ -154,8 +156,14 @@ export class CustomerValues extends Context.Service<
   // sharing it would let one runtime reuse the administrator-checked build.
 
   /** Trusted server-side reads for recipient preparation; see `CustomerValueSource.Delivery`. */
-  static DeliveryLive = Layer.fresh(this.Default).pipe(
-    Layer.provide(CustomerValueSource.DeliveryLive)
+  static Delivery = Layer.fresh(this.Default).pipe(
+    Layer.provide(CustomerValueSource.Delivery)
+  );
+
+  static DeliveryLive = this.Delivery.pipe(
+    Layer.provide(
+      Layer.mergeAll(DiscountAdministration.Live, AdministrationService.Live)
+    )
   );
 
   /** Resolves against a synthetic customer, so a sample reads no customer data. */

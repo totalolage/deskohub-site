@@ -193,12 +193,6 @@ export class CustomerValueSource extends Context.Service<
       )
     )
   );
-
-  static DeliveryLive = this.Delivery.pipe(
-    Layer.provide(
-      Layer.mergeAll(DiscountAdministration.Live, AdministrationService.Live)
-    )
-  );
 }
 
 // Match the administration wire boundary, then let its schema discard internal-only fields.
