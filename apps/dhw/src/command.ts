@@ -107,7 +107,7 @@ const versionCommand = Command.make("version", {}, () =>
   )
 ).pipe(
   Command.withDescription(
-    "Show CLI version and build target for the bundled administration contracts"
+    "Show CLI version and build target; bundled administration contracts match this version"
   )
 );
 
