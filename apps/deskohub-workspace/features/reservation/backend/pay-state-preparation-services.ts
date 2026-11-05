@@ -13,6 +13,7 @@ import { WorkspaceAvailabilityService } from "@/features/reservation/backend/wor
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { ReviewAccounts, ReviewSandbox } from "@/features/review-accounts";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
+import { SealedStateKeys } from "@/shared/backend/sealed-state-keys.service";
 
 /**
  * The services `prepareWorkspacePayState` books through, except the account
@@ -38,5 +39,6 @@ export const payStatePreparationServices = Layer.mergeAll(
   WorkspaceDotyposLayer,
   CheckoutPricingService.Live,
   ReferralService.Live,
-  OfficeReleaseGate.Live
+  OfficeReleaseGate.Live,
+  SealedStateKeys.Default
 ).pipe(Layer.provideMerge(ReferralReleaseGateRequest));

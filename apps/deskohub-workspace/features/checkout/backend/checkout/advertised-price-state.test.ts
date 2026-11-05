@@ -7,7 +7,15 @@ import {
   canonicalPromotionCodeSchema,
   discountIdSchema,
 } from "@/features/discounts";
-import { parseSealedStateKey, sealState } from "@/shared/backend/sealed-state";
+import {
+  makeLegacySealedState,
+  sealedStateClaimsSchema,
+} from "@/shared/backend/sealed-state";
+import type { SealedStateKeys } from "@/shared/backend/sealed-state-keys.service";
+import {
+  runSealedState,
+  syntheticSealedStateKeyRing,
+} from "@/shared/testing/sealed-state-keys.test-utils";
 
 const testEmailAddressForAda = testEmailAddress("ada");
 
@@ -20,10 +28,13 @@ const {
 } = await import("./advertised-price-state");
 
 const fixedNow = new Date("2026-06-01T10:00:00.000Z");
-const fixedKey = Effect.runSync(
-  parseSealedStateKey("test-kid", Buffer.alloc(32, 1).toString("base64url"))
-);
-const fixedRandomBytes = (byteLength: number) => Buffer.alloc(byteLength, 7);
+const fixedKey = syntheticSealedStateKeyRing(["test-kid", 1]);
+
+/** Runs advertised-price work under `fixedKey` at `fixedNow` unless told otherwise. */
+const run = <A, E>(
+  effect: Effect.Effect<A, E, SealedStateKeys>,
+  options: { readonly keys?: string; readonly at?: Date } = {}
+) => runSealedState(effect, { keys: fixedKey, at: fixedNow, ...options });
 const reservation = {
   kind: "cowork" as const,
   details: {
@@ -36,26 +47,19 @@ const reservation = {
 const quote = buildCoworkReservationQuote(reservation.details);
 
 const buildState = () =>
-  Effect.runSync(
-    buildAdvertisedPriceState(
-      {
-        kind: "cowork",
-        locale: "en-US",
-        reservation,
-        quote,
-        ttlMilliseconds: 10 * 60 * 1000,
-      },
-      { keys: [fixedKey], now: () => fixedNow }
-    )
+  run(
+    buildAdvertisedPriceState({
+      kind: "cowork",
+      locale: "en-US",
+      reservation,
+      quote,
+      ttlMilliseconds: 10 * 60 * 1000,
+    }),
+    { keys: fixedKey, at: fixedNow }
   );
 
 const seal = (state = buildState()) =>
-  Effect.runSync(
-    sealAdvertisedPriceState(state, {
-      keys: [fixedKey],
-      randomBytes: fixedRandomBytes,
-    })
-  );
+  run(sealAdvertisedPriceState(state), { keys: fixedKey });
 
 const tamperToken = (token: string) => {
   const parts = token.split(".");
@@ -67,12 +71,10 @@ const tamperToken = (token: string) => {
 describe("advertised price state", () => {
   test("round-trips a PII-free snapshot", () => {
     const token = seal();
-    const opened = Effect.runSync(
-      openAdvertisedPriceState(token, {
-        keys: [fixedKey],
-        now: () => fixedNow,
-      })
-    );
+    const opened = run(openAdvertisedPriceState(token), {
+      keys: fixedKey,
+      at: fixedNow,
+    });
 
     expect(opened).toEqual(buildState());
     expect(JSON.stringify(opened)).not.toMatch(/name|email|phone|message/i);
@@ -85,26 +87,22 @@ describe("advertised price state", () => {
     )("CAMPAIGN10");
     const submittedCodeDiscountId =
       Schema.decodeUnknownSync(discountIdSchema)("campaign-discount");
-    const state = Effect.runSync(
-      buildAdvertisedPriceState(
-        {
-          kind: "cowork",
-          locale: "en-US",
-          reservation,
-          quote,
-          submittedCode,
-          submittedCodeDiscountId,
-        },
-        { keys: [fixedKey], now: () => fixedNow }
-      )
+    const state = run(
+      buildAdvertisedPriceState({
+        kind: "cowork",
+        locale: "en-US",
+        reservation,
+        quote,
+        submittedCode,
+        submittedCodeDiscountId,
+      }),
+      { keys: fixedKey, at: fixedNow }
     );
     const token = seal(state);
-    const opened = Effect.runSync(
-      openAdvertisedPriceState(token, {
-        keys: [fixedKey],
-        now: () => fixedNow,
-      })
-    );
+    const opened = run(openAdvertisedPriceState(token), {
+      keys: fixedKey,
+      at: fixedNow,
+    });
 
     expect(opened).toMatchObject({ submittedCode, submittedCodeDiscountId });
     expect(token).not.toContain(submittedCode);
@@ -114,25 +112,21 @@ describe("advertised price state", () => {
     const requestedDiscountCode = Schema.decodeUnknownSync(
       canonicalPromotionCodeSchema
     )("CAMPAIGN10");
-    const state = Effect.runSync(
-      buildAdvertisedPriceState(
-        {
-          kind: "cowork",
-          locale: "en-US",
-          reservation,
-          quote,
-          requestedDiscountCode,
-        },
-        { keys: [fixedKey], now: () => fixedNow }
-      )
+    const state = run(
+      buildAdvertisedPriceState({
+        kind: "cowork",
+        locale: "en-US",
+        reservation,
+        quote,
+        requestedDiscountCode,
+      }),
+      { keys: fixedKey, at: fixedNow }
     );
     const token = seal(state);
-    const opened = Effect.runSync(
-      openAdvertisedPriceState(token, {
-        keys: [fixedKey],
-        now: () => fixedNow,
-      })
-    );
+    const opened = run(openAdvertisedPriceState(token), {
+      keys: fixedKey,
+      at: fixedNow,
+    });
 
     expect(opened).toMatchObject({ requestedDiscountCode });
     expect(opened.submittedCode).toBeUndefined();
@@ -144,20 +138,16 @@ describe("advertised price state", () => {
     const token = seal();
 
     expect(() =>
-      Effect.runSync(
-        openAdvertisedPriceState(tamperToken(token), {
-          keys: [fixedKey],
-          now: () => fixedNow,
-        })
-      )
+      run(openAdvertisedPriceState(tamperToken(token)), {
+        keys: fixedKey,
+        at: fixedNow,
+      })
     ).toThrow();
     expect(() =>
-      Effect.runSync(
-        openAdvertisedPriceState(token, {
-          keys: [fixedKey],
-          now: () => new Date("2026-06-01T10:10:00.000Z"),
-        })
-      )
+      run(openAdvertisedPriceState(token), {
+        keys: fixedKey,
+        at: new Date("2026-06-01T10:10:00.000Z"),
+      })
     ).toThrow("expired");
   });
 
@@ -165,12 +155,9 @@ describe("advertised price state", () => {
     const token = seal();
 
     expect(
-      Effect.runSync(
-        openAdvertisedPriceState(token, {
-          keys: [fixedKey],
-          now: () => new Date("2026-06-01T10:10:00.000Z"),
-        }).pipe(Effect.flip)
-      )
+      run(openAdvertisedPriceState(token).pipe(Effect.flip), {
+        at: new Date("2026-06-01T10:10:00.000Z"),
+      })
     ).toMatchObject({
       _tag: "AdvertisedPriceStateTokenError",
       code: "expired",
@@ -178,36 +165,38 @@ describe("advertised price state", () => {
       cause: { _tag: "SealedStateTokenError", code: "expired" },
     });
     expect(
-      Effect.runSync(
-        sealAdvertisedPriceState(
-          { ...buildState(), customerEmail: testEmailAddressForAda },
-          { keys: [fixedKey], randomBytes: fixedRandomBytes }
-        ).pipe(Effect.flip)
+      run(
+        sealAdvertisedPriceState({
+          ...buildState(),
+          customerEmail: testEmailAddressForAda,
+        }).pipe(Effect.flip)
       )
     ).toMatchObject({
       _tag: "AdvertisedPriceStateTokenError",
       code: "invalid-token",
-      message: "Invalid advertised price state.",
-      cause: { _tag: "SchemaError" },
+      cause: {
+        _tag: "SealedStateTokenError",
+        code: "invalid-token",
+        cause: { _tag: "SchemaError" },
+      },
     });
   });
 
   test("strictly rejects extra snapshot fields", () => {
     const state = { ...buildState(), customerEmail: testEmailAddressForAda };
-    const token = Effect.runSync(
-      sealState(state, state.kid, {
-        keys: [fixedKey],
-        randomBytes: fixedRandomBytes,
-      })
+    // Seal below the snapshot schema, in the advertised-price token format.
+    const token = run(
+      makeLegacySealedState({
+        schema: Schema.StructWithRest(
+          Schema.Struct(sealedStateClaimsSchema.fields),
+          [Schema.Record(Schema.String, Schema.Unknown)]
+        ),
+        ttlMilliseconds: 10 * 60 * 1000,
+      }).seal(state)
     );
 
     expect(() =>
-      Effect.runSync(
-        openAdvertisedPriceState(token, {
-          keys: [fixedKey],
-          now: () => fixedNow,
-        })
-      )
+      run(openAdvertisedPriceState(token), { keys: fixedKey, at: fixedNow })
     ).toThrow();
   });
 });

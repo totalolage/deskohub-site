@@ -21,6 +21,7 @@ import type {
 } from "@/features/reservation/reservation-existing-customer";
 import type { PreloadedWorkspaceAvailability } from "@/features/reservation/workspace-availability";
 import { getOfficeAvailabilityQuery } from "@/features/reservation/workspace-availability";
+import { TestSealedStateKeys } from "@/shared/testing/sealed-state-keys.test-utils";
 import { getSearchParam, type SearchParamsRecord } from "@/shared/utils";
 import { instantStringSchema } from "@/shared/utils/temporal";
 import type {
@@ -258,7 +259,7 @@ const sealCoworkPayState = (requestedDiscountCode?: string) =>
         }),
       });
       return yield* sealPayState(state);
-    })
+    }).pipe(Effect.provide(TestSealedStateKeys))
   );
 
 test("renders the reservation shell before request-bound content resolves", async () => {
@@ -415,7 +416,9 @@ test("reopens the contact details sealed into a sign-in's return path", async ()
     marketingConsent: true,
   } as const;
   const token = await Effect.runPromise(
-    checkoutContactReturnState.seal(contact)
+    checkoutContactReturnState
+      .seal(contact)
+      .pipe(Effect.provide(TestSealedStateKeys))
   );
   const family = createPreloadFreeFamily();
   const pageDefinition = createReservationPage(family);

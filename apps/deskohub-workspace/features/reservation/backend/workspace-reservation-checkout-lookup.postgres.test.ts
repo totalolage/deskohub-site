@@ -4,7 +4,7 @@ import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import { and, desc, eq, inArray, ne } from "drizzle-orm";
-import { ConfigProvider, Effect, Layer, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { type ReservationState, workspaceReservations } from "@/db/schema";
 import {
   deriveCheckoutAttemptKeys,
@@ -29,6 +29,7 @@ import {
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
 import { reservationOrderSchema } from "@/features/reservation/reservation-order";
+import { SealedStateKeys } from "@/shared/backend/sealed-state-keys.service";
 import {
   fixtureReservationAuthorId,
   workspaceFixtures,
@@ -210,12 +211,7 @@ describe.skipIf(!postgresDatabase)(
           attemptKeys: yield* deriveCheckoutAttemptKeys(submission),
         };
       }).pipe(
-        Effect.provideService(
-          ConfigProvider.ConfigProvider,
-          ConfigProvider.fromUnknown({
-            CHECKOUT_PAY_STATE_KEYS: options.keyRing,
-          })
-        ),
+        Effect.provide(SealedStateKeys.fromConfiguration(options.keyRing)),
         Effect.runSync
       );
 

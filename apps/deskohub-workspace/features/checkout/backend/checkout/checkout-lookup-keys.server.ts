@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createHash, createHmac, hkdfSync } from "node:crypto";
-import { Config, Effect, Match } from "effect";
+import { Effect, Match, Redacted } from "effect";
 import {
   type CheckoutAttemptId,
   type CheckoutSessionId,
@@ -13,10 +13,9 @@ import { getMeetingRoomReservationDetails } from "@/features/reservation/meeting
 import { getOfficeReservationDetails } from "@/features/reservation/office-reservation";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import {
-  parseSealedStateKeys,
   type SealedStateKey,
-  SealedStateTokenError,
-} from "@/shared/backend/sealed-state";
+  SealedStateKeys,
+} from "@/shared/backend/sealed-state-keys.service";
 
 /**
  * Persisted one-way lookup keys for one checkout identifier.
@@ -123,12 +122,14 @@ const deriveCheckoutLookupKeys = <Payload, Key extends string>(
   payload: Payload,
   toKey: (value: string) => Key
 ) =>
-  loadCheckoutLookupKeyRing.pipe(
-    Effect.map(({ configuredKeyRing, keys: [activeKey, ...otherKeys] }) => {
+  SealedStateKeys.pipe(
+    Effect.map(({ configured, ring: [activeKey, ...otherKeys] }) => {
       const deriveKeyIdPrefixed = (key: SealedStateKey) =>
         toKey(`${key.kid}:${signLookupKey(deriveLookupSecret(key), payload)}`);
       const activeKeyIdPrefixed = deriveKeyIdPrefixed(activeKey);
-      const ringKeyed = toKey(signLookupKey(configuredKeyRing, payload));
+      const ringKeyed = toKey(
+        signLookupKey(Redacted.value(configured), payload)
+      );
       const current = {
         "ring-keyed": ringKeyed,
         "key-id-prefixed": activeKeyIdPrefixed,
@@ -147,24 +148,6 @@ const deriveCheckoutLookupKeys = <Payload, Key extends string>(
       return lookupKeys;
     })
   );
-
-const loadCheckoutLookupKeyRing = Effect.gen(function* () {
-  const configuredKeyRing = yield* Config.string(
-    "CHECKOUT_PAY_STATE_KEYS"
-  ).pipe(
-    Effect.mapError(
-      (cause) =>
-        new SealedStateTokenError({
-          code: "invalid-secret",
-          message: "Workspace checkout state configuration is invalid.",
-          cause,
-        })
-    )
-  );
-  const keys = yield* parseSealedStateKeys(configuredKeyRing);
-
-  return { configuredKeyRing, keys };
-});
 
 // Separates lookup-key HMACs from the same key's Pay-state encryption use.
 const deriveLookupSecret = (key: SealedStateKey) =>
