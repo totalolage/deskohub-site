@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   type DotyposCustomer,
+  type DotyposCustomerProfile,
   type DotyposCustomerWriteRecord,
-  DotyposRejected,
   DotyposService,
   DotyposUnavailable,
   DotyposUncertain,
@@ -11,10 +11,8 @@ import {
 } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer, Option } from "effect";
-import {
-  CustomerDotyposAdapter,
-  customerProfileAppliesInput,
-} from "./customer-dotypos-adapter.service";
+import type { CustomerProfileInput } from "../contracts";
+import { CustomerDotyposAdapter } from "./customer-dotypos-adapter.service";
 
 const customerEmail = testEmailAddress("ada");
 
@@ -44,12 +42,6 @@ const createdCustomerWithoutId = (): DotyposCustomerWriteRecord => {
 
 const activeCustomer = makeCustomer();
 
-const uncertainPatch = (reason: DotyposUncertain["reason"] = "transport") =>
-  new DotyposUncertain({
-    operation: "patchCustomer",
-    request: "customer.patch",
-    reason,
-  });
 const expiredCustomer = makeCustomer({
   id: "60222",
   expireDate: "2020-01-01T00:00:00Z",
@@ -232,726 +224,213 @@ describe("CustomerDotyposAdapter", () => {
     });
   });
 
-  describe("expiration and reactivation", () => {
-    test("expires with a fresh ETag and a past expireDate", async () => {
-      const calls: string[] = [];
-      const payloads: unknown[] = [];
+  describe("profile and lifecycle writes", () => {
+    const missingCustomer = Effect.succeed(Option.none<DotyposCustomer>());
+    const conflict = (operation: AccountWriteOperation) =>
+      new DotyposVersionConflict({ operation, request: "customer.patch" });
+    const uncertain = (operation: AccountWriteOperation) =>
+      new DotyposUncertain({
+        operation,
+        request: "customer.patch",
+        reason: "conflict-after-replay",
+        httpStatus: 412,
+      });
 
-      await runWithDotypos(
+    type AccountWriteOperation =
+      | "updateCustomerProfile"
+      | "expireCustomer"
+      | "reactivateCustomer";
+
+    /** Runs one account write against a package operation that answers `outcomes` in order. */
+    const runAccountWrite = async (
+      operation: AccountWriteOperation,
+      outcomes: ReadonlyArray<
+        Effect.Effect<
+          Option.Option<DotyposCustomer>,
+          DotyposVersionConflict | DotyposUncertain | DotyposUnavailable
+        >
+      >
+    ) => {
+      let calls = 0;
+      const answer = () => {
+        const outcome = outcomes[Math.min(calls, outcomes.length - 1)];
+        calls += 1;
+        return outcome ?? missingCustomer;
+      };
+      const reads: string[] = [];
+      const result = await runWithDotypos(
         {
-          patchCustomer: (_id, payload) => {
-            calls.push("patch");
-            payloads.push(payload);
-            return Effect.succeed(
-              Option.some(makeCustomer({ expireDate: "2020-01-01T00:00:00Z" }))
-            );
-          },
-        },
-        (adapter) => adapter.expireCustomer("60111")
-      );
-
-      expect(calls).toEqual(["patch"]);
-      expect(payloads).toHaveLength(1);
-      const payload = payloads[0] as { expireDate: string };
-      expect(payload.expireDate).not.toBeNull();
-      expect(new Date(payload.expireDate).getTime()).toBeLessThan(Date.now());
-    });
-
-    test("reactivates by clearing expireDate", async () => {
-      const payloads: unknown[] = [];
-
-      await runWithDotypos(
-        {
-          patchCustomer: (_id, payload) => {
-            payloads.push(payload);
-            return Effect.succeed(Option.some(makeCustomer()));
-          },
-        },
-        (adapter) => adapter.reactivateCustomer("60222")
-      );
-
-      expect(payloads).toEqual([{ expireDate: null }]);
-    });
-
-    test("does not treat an uncertain response followed by a missing profile as reactivated", async () => {
-      const calls: string[] = [];
-
-      const outcome = await runWithDotypos(
-        {
-          patchCustomer: () => {
-            calls.push("patch");
-            return Effect.fail(uncertainPatch());
-          },
+          [operation]: answer,
           getCustomer: () => {
-            calls.push("read");
-            return Effect.succeed(Option.none());
-          },
-        },
-        (adapter) => adapter.reactivateCustomer("60222").pipe(Effect.result)
-      );
-
-      expect(calls).toContain("read");
-      expect(outcome._tag).toBe("Failure");
-    });
-
-    test("rereads after an uncertain response and retries only when unapplied", async () => {
-      const calls: string[] = [];
-      let patchCount = 0;
-
-      await runWithDotypos(
-        {
-          patchCustomer: () => {
-            patchCount += 1;
-            calls.push("patch");
-            if (patchCount === 1) {
-              return Effect.fail(uncertainPatch());
-            }
-            return Effect.succeed(Option.some(makeCustomer()));
-          },
-          getCustomer: () => {
-            calls.push("read");
-            return Effect.succeed(Option.some(expiredCustomer));
-          },
-        },
-        (adapter) => adapter.reactivateCustomer("60222")
-      );
-
-      expect(calls).toEqual(["patch", "read", "patch"]);
-    });
-
-    test("accepts an uncertain response once a reread shows it applied", async () => {
-      const calls: string[] = [];
-
-      await runWithDotypos(
-        {
-          patchCustomer: () => {
-            calls.push("patch");
-            return Effect.fail(uncertainPatch());
-          },
-          getCustomer: () => {
-            calls.push("read");
-            return Effect.succeed(Option.some(expiredCustomer));
-          },
-        },
-        (adapter) => adapter.expireCustomer("60111")
-      );
-
-      expect(calls).toEqual(["patch", "read"]);
-    });
-
-    test("retries once on an ETag conflict and fails after a second conflict", async () => {
-      const calls: string[] = [];
-      const conflict = () =>
-        new DotyposVersionConflict({
-          operation: "patchCustomer",
-          request: "customer.patch",
-        });
-
-      const outcome = await runWithDotypos(
-        {
-          patchCustomer: () => {
-            calls.push("patch");
-            return Effect.fail(conflict());
-          },
-          getCustomer: () => {
-            calls.push("read");
+            reads.push("read");
             return Effect.succeed(Option.some(activeCustomer));
           },
         },
-        (adapter) => adapter.reactivateCustomer("60222").pipe(Effect.result)
+        (adapter) => {
+          switch (operation) {
+            case "updateCustomerProfile":
+              return adapter
+                .updateCustomerProfile("60111", { firstName: "Ada" })
+                .pipe(Effect.result);
+            case "expireCustomer":
+              return adapter.expireCustomer("60111").pipe(Effect.result);
+            case "reactivateCustomer":
+              return adapter.reactivateCustomer("60222").pipe(Effect.result);
+          }
+        }
       );
+      return { result, calls, reads };
+    };
 
-      expect(calls).toEqual(["patch", "patch"]);
-      expect(outcome._tag).toBe("Failure");
-      if (outcome._tag === "Failure") {
-        expect(outcome.failure).toMatchObject({
-          _tag: "DotyposVersionConflict",
-        });
+    const accountWriteOperations = [
+      "updateCustomerProfile",
+      "expireCustomer",
+      "reactivateCustomer",
+    ] as const;
+
+    test.each(accountWriteOperations)(
+      "%s refreshes once after a genuine version conflict",
+      async (operation) => {
+        const { result, calls, reads } = await runAccountWrite(operation, [
+          Effect.fail(conflict(operation)),
+          Effect.succeed(Option.some(activeCustomer)),
+        ]);
+
+        expect(result._tag).toBe("Success");
+        expect(calls).toBe(2);
+        expect(reads).toEqual([]);
       }
-    });
+    );
 
-    test("settles a second uncertain response with one final reread and then fails uncertain", async () => {
-      const calls: string[] = [];
+    test.each(accountWriteOperations)(
+      "%s fails the second genuine version conflict without a third attempt",
+      async (operation) => {
+        const { result, calls } = await runAccountWrite(operation, [
+          Effect.fail(conflict(operation)),
+          Effect.fail(conflict(operation)),
+          Effect.succeed(Option.some(activeCustomer)),
+        ]);
 
-      const outcome = await runWithDotypos(
-        {
-          patchCustomer: () => {
-            calls.push("patch");
-            return Effect.fail(uncertainPatch("server"));
-          },
-          getCustomer: () => {
-            calls.push("read");
-            return Effect.succeed(Option.some(expiredCustomer));
-          },
-        },
-        (adapter) => adapter.reactivateCustomer("60222").pipe(Effect.result)
-      );
+        expect(result).toMatchObject({
+          _tag: "Failure",
+          failure: { _tag: "DotyposVersionConflict" },
+        });
+        expect(calls).toBe(2);
+      }
+    );
 
-      expect(calls).toEqual(["patch", "read", "patch", "read"]);
-      expect(outcome._tag).toBe("Failure");
-      if (outcome._tag === "Failure") {
-        expect(outcome.failure).toMatchObject({
-          _tag: "DotyposUncertain",
-          operation: "patchCustomer",
+    test.each(accountWriteOperations)(
+      "%s keeps an uncertain write uncertain without retrying or rereading",
+      async (operation) => {
+        const failure = uncertain(operation);
+        const { result, calls, reads } = await runAccountWrite(operation, [
+          Effect.fail(failure),
+          Effect.succeed(Option.some(activeCustomer)),
+        ]);
+
+        expect(result).toMatchObject({ _tag: "Failure", failure });
+        expect(calls).toBe(1);
+        expect(reads).toEqual([]);
+      }
+    );
+
+    test.each(accountWriteOperations)(
+      "%s keeps an uncertain refresh uncertain without a third attempt",
+      async (operation) => {
+        const failure = uncertain(operation);
+        const { result, calls } = await runAccountWrite(operation, [
+          Effect.fail(conflict(operation)),
+          Effect.fail(failure),
+          Effect.succeed(Option.some(activeCustomer)),
+        ]);
+
+        expect(result).toMatchObject({ _tag: "Failure", failure });
+        expect(calls).toBe(2);
+      }
+    );
+
+    test.each(accountWriteOperations)(
+      "%s fails an unavailable write without retrying",
+      async (operation) => {
+        const failure = new DotyposUnavailable({
+          operation,
+          request: "customer.patch",
           reason: "server",
+          httpStatus: 503,
         });
+        const { result, calls } = await runAccountWrite(operation, [
+          Effect.fail(failure),
+          Effect.succeed(Option.some(activeCustomer)),
+        ]);
+
+        expect(result).toMatchObject({ _tag: "Failure", failure });
+        expect(calls).toBe(1);
       }
-    });
-
-    test("accepts a second uncertain response once the final reread shows it applied", async () => {
-      const calls: string[] = [];
-      let reads = 0;
-
-      await runWithDotypos(
-        {
-          patchCustomer: () => {
-            calls.push("patch");
-            return Effect.fail(uncertainPatch());
-          },
-          getCustomer: () => {
-            calls.push("read");
-            reads += 1;
-            return Effect.succeed(
-              Option.some(reads < 2 ? activeCustomer : expiredCustomer)
-            );
-          },
-        },
-        (adapter) => adapter.expireCustomer("60111")
-      );
-
-      expect(calls).toEqual(["patch", "read", "patch", "read"]);
-    });
-
-    test("fails with a reread failure without retrying the patch", async () => {
-      const calls: string[] = [];
-
-      const outcome = await runWithDotypos(
-        {
-          patchCustomer: () => {
-            calls.push("patch");
-            return Effect.fail(uncertainPatch());
-          },
-          getCustomer: () => {
-            calls.push("read");
-            return Effect.fail(
-              new DotyposUnavailable({
-                operation: "getCustomer",
-                request: "customer.get",
-                reason: "server",
-              })
-            );
-          },
-        },
-        (adapter) => adapter.expireCustomer("60111").pipe(Effect.result)
-      );
-
-      expect(calls).toEqual(["patch", "read"]);
-      expect(outcome._tag).toBe("Failure");
-      if (outcome._tag === "Failure") {
-        expect(outcome.failure).toMatchObject({ operation: "getCustomer" });
-      }
-    });
-
-    test("fails a definitive rejection without rereading or retrying", async () => {
-      const calls: string[] = [];
-
-      const outcome = await runWithDotypos(
-        {
-          patchCustomer: () => {
-            calls.push("patch");
-            return Effect.fail(
-              new DotyposRejected({
-                operation: "patchCustomer",
-                request: "customer.patch",
-                reason: "invalid-request",
-              })
-            );
-          },
-          getCustomer: () => {
-            calls.push("read");
-            return Effect.succeed(Option.some(expiredCustomer));
-          },
-        },
-        (adapter) => adapter.expireCustomer("60111").pipe(Effect.result)
-      );
-
-      expect(calls).toEqual(["patch"]);
-      expect(outcome._tag).toBe("Failure");
-      if (outcome._tag === "Failure") {
-        expect(outcome.failure).toMatchObject({
-          _tag: "DotyposRejected",
-          reason: "invalid-request",
-        });
-      }
-    });
-
-    for (const replay of [
-      new DotyposRejected({
-        operation: "patchCustomer",
-        request: "customer.patch",
-        reason: "invalid-request",
-      }),
-      new DotyposVersionConflict({
-        operation: "patchCustomer",
-        request: "customer.patch",
-      }),
-    ]) {
-      test(`fails with the replay's ${replay._tag} after an uncertain patch the reread shows unapplied`, async () => {
-        const calls: string[] = [];
-        let patchCount = 0;
-
-        const outcome = await runWithDotypos(
-          {
-            patchCustomer: () => {
-              patchCount += 1;
-              calls.push("patch");
-              return Effect.fail(patchCount === 1 ? uncertainPatch() : replay);
-            },
-            getCustomer: () => {
-              calls.push("read");
-              return Effect.succeed(Option.some(activeCustomer));
-            },
-          },
-          (adapter) => adapter.expireCustomer("60111").pipe(Effect.result)
-        );
-
-        expect(calls).toEqual(["patch", "read", "patch"]);
-        expect(outcome._tag).toBe("Failure");
-        if (outcome._tag === "Failure") {
-          expect(outcome.failure).toBe(replay);
-        }
-      });
-    }
-
-    for (const unavailable of [
-      new DotyposUnavailable({
-        operation: "patchCustomer",
-        request: "customer.patch",
-        reason: "rate-limited",
-        httpStatus: 429,
-      }),
-      new DotyposUnavailable({
-        operation: "patchCustomer",
-        request: "customer.version",
-        reason: "server",
-        httpStatus: 503,
-      }),
-    ]) {
-      test(`surfaces an unavailable ${unavailable.request} request after one execution without rereading`, async () => {
-        const calls: string[] = [];
-
-        const outcome = await runWithDotypos(
-          {
-            patchCustomer: () => {
-              calls.push("patch");
-              return Effect.fail(unavailable);
-            },
-            getCustomer: () => {
-              calls.push("read");
-              return Effect.succeed(Option.some(expiredCustomer));
-            },
-          },
-          (adapter) => adapter.expireCustomer("60111").pipe(Effect.result)
-        );
-
-        expect(calls).toEqual(["patch"]);
-        expect(outcome._tag).toBe("Failure");
-        if (outcome._tag === "Failure") {
-          expect(outcome.failure).toBe(unavailable);
-        }
-      });
-    }
-
-    // Malformed entity identifiers in the answer also fail without a status.
-    for (const httpStatus of [undefined, 200]) {
-      const unreadable = new DotyposUncertain({
-        operation: "patchCustomer",
-        request: "customer.patch",
-        reason: "invalid-response",
-        ...(httpStatus !== undefined && { httpStatus }),
-      });
-
-      test(`accepts an unreadable patch response (status ${httpStatus}) once a reread shows it applied`, async () => {
-        const calls: string[] = [];
-
-        const outcome = await runWithDotypos(
-          {
-            patchCustomer: () => {
-              calls.push("patch");
-              return Effect.fail(unreadable);
-            },
-            getCustomer: () => {
-              calls.push("read");
-              return Effect.succeed(Option.some(expiredCustomer));
-            },
-          },
-          (adapter) => adapter.expireCustomer("60111")
-        );
-
-        expect(calls).toEqual(["patch", "read"]);
-        expect(Option.isSome(outcome)).toBe(true);
-      });
-
-      test(`replays an unreadable patch response (status ${httpStatus}) once a reread shows it unapplied`, async () => {
-        const calls: string[] = [];
-        let patchCount = 0;
-
-        const outcome = await runWithDotypos(
-          {
-            patchCustomer: () => {
-              patchCount += 1;
-              calls.push("patch");
-              return patchCount === 1
-                ? Effect.fail(unreadable)
-                : Effect.succeed(
-                    Option.some(makeCustomer({ lastName: "Lovelace" }))
-                  );
-            },
-            getCustomer: () => {
-              calls.push("read");
-              return Effect.succeed(Option.some(activeCustomer));
-            },
-          },
-          (adapter) =>
-            adapter
-              .updateCustomerProfile("60111", {
-                firstName: "Ada",
-                lastName: "Lovelace",
-                billing: undefined,
-              })
-              .pipe(Effect.result)
-        );
-
-        expect(calls).toEqual(["patch", "read", "patch"]);
-        expect(outcome._tag).toBe("Success");
-      });
-    }
-
-    for (const lastAttempt of [
-      new DotyposRejected({
-        operation: "patchCustomer",
-        request: "customer.patch",
-        reason: "invalid-request",
-        httpStatus: 400,
-      }),
-      new DotyposVersionConflict({
-        operation: "patchCustomer",
-        request: "customer.patch",
-        httpStatus: 412,
-      }),
-    ]) {
-      const sticky = new DotyposUncertain({
-        operation: "patchCustomer",
-        request: "customer.patch",
-        reason: "server",
-        cause: lastAttempt,
-      });
-
-      test(`accepts a replayed patch whose last attempt ended in ${lastAttempt._tag} once a reread shows it applied`, async () => {
-        const calls: string[] = [];
-
-        const outcome = await runWithDotypos(
-          {
-            patchCustomer: () => {
-              calls.push("patch");
-              return Effect.fail(sticky);
-            },
-            getCustomer: () => {
-              calls.push("read");
-              return Effect.succeed(Option.some(expiredCustomer));
-            },
-          },
-          (adapter) => adapter.expireCustomer("60111")
-        );
-
-        expect(calls).toEqual(["patch", "read"]);
-        expect(Option.isSome(outcome)).toBe(true);
-      });
-
-      test(`keeps a replayed patch whose last attempt ended in ${lastAttempt._tag} uncertain while rereads show it unapplied`, async () => {
-        const calls: string[] = [];
-
-        const outcome = await runWithDotypos(
-          {
-            patchCustomer: () => {
-              calls.push("patch");
-              return Effect.fail(sticky);
-            },
-            getCustomer: () => {
-              calls.push("read");
-              return Effect.succeed(Option.some(activeCustomer));
-            },
-          },
-          (adapter) => adapter.expireCustomer("60111").pipe(Effect.result)
-        );
-
-        expect(calls).toEqual(["patch", "read", "patch", "read"]);
-        expect(outcome._tag).toBe("Failure");
-        if (outcome._tag === "Failure") {
-          expect(outcome.failure).toBe(sticky);
-        }
-      });
-    }
-
-    test("fails expiration when the version read's access token answers 404", async () => {
-      const calls: string[] = [];
-      const tokenNotFound = new DotyposRejected({
-        operation: "patchCustomer",
-        request: "customer.version",
-        reason: "unauthorized",
-        httpStatus: 404,
-      });
-
-      const outcome = await runWithDotypos(
-        {
-          patchCustomer: () => {
-            calls.push("patch");
-            return Effect.fail(tokenNotFound);
-          },
-          getCustomer: () => {
-            calls.push("read");
-            return Effect.succeed(Option.none());
-          },
-        },
-        (adapter) => adapter.expireCustomer("60111").pipe(Effect.result)
-      );
-
-      expect(calls).toEqual(["patch"]);
-      expect(outcome._tag).toBe("Failure");
-      if (outcome._tag === "Failure") {
-        expect(outcome.failure).toBe(tokenNotFound);
-      }
-    });
-
-    test("fails without replaying or rereading when the version read answers 409", async () => {
-      const calls: string[] = [];
-
-      const outcome = await runWithDotypos(
-        {
-          patchCustomer: () => {
-            calls.push("patch");
-            return Effect.fail(
-              new DotyposRejected({
-                operation: "patchCustomer",
-                request: "customer.version",
-                reason: "invalid-request",
-                httpStatus: 409,
-              })
-            );
-          },
-          getCustomer: () => {
-            calls.push("read");
-            return Effect.succeed(Option.some(expiredCustomer));
-          },
-        },
-        (adapter) => adapter.expireCustomer("60111").pipe(Effect.result)
-      );
-
-      expect(calls).toEqual(["patch"]);
-      expect(outcome._tag).toBe("Failure");
-    });
+    );
 
     test("reports an already missing customer as none when expiring", async () => {
+      const { result } = await runAccountWrite("expireCustomer", [
+        missingCustomer,
+      ]);
+
+      expect(result).toMatchObject({ _tag: "Success" });
+      if (result._tag === "Success") {
+        expect(Option.isNone(result.success as Option.Option<unknown>)).toBe(
+          true
+        );
+      }
+    });
+
+    test("returns the expired customer the package answers", async () => {
+      const expired = makeCustomer({ expireDate: "2020-01-01T00:00:00Z" });
       const outcome = await runWithDotypos(
-        { patchCustomer: () => Effect.succeed(Option.none()) },
+        { expireCustomer: () => Effect.succeed(Option.some(expired)) },
         (adapter) => adapter.expireCustomer("60111")
       );
 
-      expect(Option.isNone(outcome)).toBe(true);
+      expect(outcome).toEqual(Option.some(expired));
     });
 
-    test("fails reactivation and profile updates of a missing customer", async () => {
-      const dotypos = { patchCustomer: () => Effect.succeed(Option.none()) };
+    test.each(["updateCustomerProfile", "reactivateCustomer"] as const)(
+      "%s fails a missing customer as DotyposCustomerMissing",
+      async (operation) => {
+        const { result } = await runAccountWrite(operation, [missingCustomer]);
 
-      const reactivation = await runWithDotypos(dotypos, (adapter) =>
-        adapter.reactivateCustomer("60222").pipe(Effect.result)
-      );
-      const update = await runWithDotypos(dotypos, (adapter) =>
-        adapter
-          .updateCustomerProfile("60111", {
-            firstName: "Ada",
-            lastName: "Lovelace",
-            billing: undefined,
-          })
-          .pipe(Effect.result)
-      );
-
-      for (const outcome of [reactivation, update]) {
-        expect(outcome._tag).toBe("Failure");
-        if (outcome._tag === "Failure") {
-          expect(outcome.failure).toMatchObject({
+        expect(result).toMatchObject({
+          _tag: "Failure",
+          failure: {
             _tag: "DotyposCustomerMissing",
             customerId: expect.any(String),
-          });
-        }
+          },
+        });
       }
-    });
-  });
-
-  describe("uncertain-response comparison", () => {
-    test("treats clearing to no billing as applied", () => {
-      expect(
-        customerProfileAppliesInput(makeCustomer(), {
-          firstName: "Ada",
-          billing: undefined,
-        })
-      ).toBe(true);
-      expect(
-        customerProfileAppliesInput(
-          makeCustomer({ lastName: "   ", phone: "  " }),
-          { firstName: "Ada", billing: undefined }
-        )
-      ).toBe(true);
-    });
-
-    test("reconciles whitespace-only personal billing as cleared", () => {
-      expect(
-        customerProfileAppliesInput(makeCustomer(), {
-          firstName: "Ada",
-          billing: {
-            kind: "personal",
-            addressLine1: "   ",
-            addressLine2: "",
-            city: "",
-            zip: "",
-            country: "",
-          },
-        })
-      ).toBe(true);
-    });
-
-    test("reports unapplied when billing data remains while the input clears billing", () => {
-      expect(
-        customerProfileAppliesInput(
-          makeCustomer({ addressLine1: "Pražská 1" }),
-          { firstName: "Ada", billing: undefined }
-        )
-      ).toBe(false);
-    });
-
-    const storedBusiness = makeCustomer({
-      lastName: "Lovelace",
-      phone: "+420601111222",
-      addressLine1: "Pražská 1",
-      city: "Praha",
-      zip: "11000",
-      country: "CZ",
-      companyName: "Analytical Engines s.r.o.",
-      companyId: "12345678",
-      vatId: "CZ12345678",
-    });
-    const businessInput = {
-      firstName: "Ada",
-      lastName: "Lovelace",
-      phone: "+420 601 111 222",
-      billing: {
-        kind: "business",
-        addressLine1: "Pražská 1",
-        city: "Praha",
-        zip: "11000",
-        country: "CZ",
-        companyName: "Analytical Engines s.r.o.",
-        companyId: "12345678",
-        vatId: "CZ12345678",
-      },
-    } as const;
-
-    test("treats a stored business profile matching every requested field as applied", () => {
-      expect(customerProfileAppliesInput(storedBusiness, businessInput)).toBe(
-        true
-      );
-    });
-
-    test("reports unapplied when any single requested field differs", () => {
-      const variants = [
-        { ...businessInput, firstName: "Augusta" },
-        { ...businessInput, lastName: undefined },
-        { ...businessInput, phone: "+420 602 222 333" },
-        { ...businessInput, billing: { ...businessInput.billing, zip: "" } },
-        {
-          ...businessInput,
-          billing: { ...businessInput.billing, vatId: "CZ87654321" },
-        },
-      ];
-      for (const input of variants) {
-        expect(customerProfileAppliesInput(storedBusiness, input)).toBe(false);
-      }
-    });
-
-    test("reports unapplied when the stored billing kind differs from the input", () => {
-      expect(
-        customerProfileAppliesInput(storedBusiness, {
-          ...businessInput,
-          billing: {
-            kind: "personal",
-            addressLine1: "Pražská 1",
-            city: "Praha",
-            zip: "11000",
-            country: "CZ",
-          },
-        })
-      ).toBe(false);
-    });
-
-    test("compares only the address of personal billing", () => {
-      const storedPersonal = makeCustomer({ addressLine1: "Pražská 1" });
-      expect(
-        customerProfileAppliesInput(storedPersonal, {
-          firstName: "Ada",
-          billing: { kind: "personal", addressLine1: "Pražská 1" },
-        })
-      ).toBe(true);
-      expect(
-        customerProfileAppliesInput(storedPersonal, {
-          firstName: "Ada",
-          billing: { kind: "personal", addressLine1: "Brněnská 2" },
-        })
-      ).toBe(false);
-    });
-
-    test("never treats a deleted profile as applied", () => {
-      expect(
-        customerProfileAppliesInput(
-          { ...storedBusiness, deleted: true },
-          businessInput
-        )
-      ).toBe(false);
-    });
-
-    test("reports unapplied when the input adds billing to a profile without billing data", () => {
-      expect(
-        customerProfileAppliesInput(makeCustomer(), {
-          firstName: "Ada",
-          billing: {
-            kind: "personal",
-            addressLine1: "Pražská 1",
-          },
-        })
-      ).toBe(false);
-    });
+    );
   });
 
   describe("profile updates", () => {
-    test("sends explicit clearing values instead of omitting optional fields", async () => {
-      const payloads: unknown[] = [];
-
+    const writeProfile = async (input: CustomerProfileInput) => {
+      const profiles: DotyposCustomerProfile[] = [];
       await runWithDotypos(
         {
-          patchCustomer: (_id, payload) => {
-            payloads.push(payload);
+          updateCustomerProfile: (_id, profile) => {
+            profiles.push(profile);
             return Effect.succeed(Option.some(makeCustomer()));
           },
         },
-        (adapter) =>
-          adapter.updateCustomerProfile("60111", {
-            firstName: "Ada",
-            lastName: undefined,
-            phone: undefined,
-            billing: undefined,
-          })
+        (adapter) => adapter.updateCustomerProfile("60111", input)
       );
+      return profiles;
+    };
 
-      expect(payloads).toEqual([
+    test("sends explicit clearing values, a blank phone included, instead of omitting optional fields", async () => {
+      const profiles = await writeProfile({
+        firstName: "Ada",
+        lastName: undefined,
+        phone: undefined,
+        billing: undefined,
+      });
+
+      expect(profiles).toEqual([
         {
           firstName: "Ada",
           lastName: "",
@@ -968,31 +447,29 @@ describe("CustomerDotyposAdapter", () => {
       ]);
     });
 
+    test("passes the validated phone for the package to normalize", async () => {
+      const profiles = await writeProfile({
+        firstName: "Ada",
+        phone: "+420 601 111 222",
+      });
+
+      expect(profiles[0]?.phone).toBe("+420 601 111 222");
+    });
+
     test("clears business billing when the profile switches to personal", async () => {
-      const payloads: unknown[] = [];
-
-      await runWithDotypos(
-        {
-          patchCustomer: (_id, payload) => {
-            payloads.push(payload);
-            return Effect.succeed(Option.some(makeCustomer()));
-          },
+      const profiles = await writeProfile({
+        firstName: "Ada",
+        billing: {
+          kind: "personal",
+          addressLine1: "Pražská 1",
+          addressLine2: undefined,
+          city: "Praha",
+          zip: "11000",
+          country: "CZ",
         },
-        (adapter) =>
-          adapter.updateCustomerProfile("60111", {
-            firstName: "Ada",
-            billing: {
-              kind: "personal",
-              addressLine1: "Pražská 1",
-              addressLine2: undefined,
-              city: "Praha",
-              zip: "11000",
-              country: "CZ",
-            },
-          })
-      );
+      });
 
-      expect(payloads[0]).toMatchObject({
+      expect(profiles[0]).toMatchObject({
         addressLine1: "Pražská 1",
         addressLine2: "",
         companyName: "",
@@ -1001,70 +478,28 @@ describe("CustomerDotyposAdapter", () => {
       });
     });
 
-    test("retries an uncertain optional-only update whose reread shows it unapplied", async () => {
-      const calls: string[] = [];
-      let patchCount = 0;
-
-      await runWithDotypos(
-        {
-          patchCustomer: () => {
-            patchCount += 1;
-            calls.push("patch");
-            return Effect.fail(uncertainPatch());
-          },
-          getCustomer: () => {
-            calls.push("read");
-            return Effect.succeed(
-              Option.some(
-                makeCustomer({ lastName: "Old-name", phone: "+420601111222" })
-              )
-            );
-          },
+    test("sends business billing fields", async () => {
+      const profiles = await writeProfile({
+        firstName: "Ada",
+        billing: {
+          kind: "business",
+          companyName: "Analytical Engines",
+          companyId: "12345678",
+          vatId: undefined,
+          addressLine1: undefined,
+          addressLine2: undefined,
+          city: undefined,
+          zip: undefined,
+          country: undefined,
         },
-        (adapter) =>
-          adapter
-            .updateCustomerProfile("60111", {
-              firstName: "Ada",
-              lastName: undefined,
-              phone: undefined,
-              billing: undefined,
-            })
-            .pipe(Effect.result)
-      );
+      });
 
-      expect(calls[0]).toBe("patch");
-      expect(calls[1]).toBe("read");
-      expect(patchCount).toBe(2);
-    });
-
-    test("accepts an uncertain optional-only clearing update once a reread shows it applied", async () => {
-      const calls: string[] = [];
-
-      const outcome = await runWithDotypos(
-        {
-          patchCustomer: () => {
-            calls.push("patch");
-            return Effect.fail(uncertainPatch());
-          },
-          getCustomer: () => {
-            calls.push("read");
-            return Effect.succeed(
-              Option.some(makeCustomer({ lastName: "Lovelace" }))
-            );
-          },
-        },
-        (adapter) =>
-          adapter
-            .updateCustomerProfile("60111", {
-              firstName: "Ada",
-              lastName: "Lovelace",
-              billing: undefined,
-            })
-            .pipe(Effect.result)
-      );
-
-      expect(calls).toEqual(["patch", "read"]);
-      expect(outcome._tag).toBe("Success");
+      expect(profiles[0]).toMatchObject({
+        companyName: "Analytical Engines",
+        companyId: "12345678",
+        vatId: "",
+        addressLine1: "",
+      });
     });
   });
 

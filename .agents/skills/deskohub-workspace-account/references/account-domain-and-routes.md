@@ -287,8 +287,9 @@ Better Auth's public delete endpoint is the only identity-deletion path:
    `CustomerAccountDeletionService.requestDeletion`, which takes the account
    lock and then:
    1. persists the `deletionRequestedAt` marker in its own transaction;
-   2. expires the linked Dotypos profile with a fresh ETag, retrying once on
-      a conflict; a missing or deleted profile counts as done;
+   2. expires the linked Dotypos profile with a fresh ETag, refreshing once
+      on a genuine version conflict; a missing profile counts as done, and an
+      uncertain expiration fails so deletion stays retryable;
    3. destroys the avatar (see [avatar media storage](avatar-media-storage.md));
    4. tombstones the durable customer account (`deleted_at`), last, so
       reservations it authored keep their author. A retry keeps the first

@@ -856,7 +856,7 @@ describe.skipIf(!testDatabase)(
       const deletionLayers = makeTestDeletionLayers(() =>
         Effect.fail(
           new DotyposUncertain({
-            operation: "patchCustomer",
+            operation: "expireCustomer",
             reason: "transport",
           })
         )

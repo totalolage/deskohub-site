@@ -3,14 +3,13 @@ import {
   type DotyposConditionalWriteFailure,
   type DotyposCustomer,
   type DotyposCustomerId,
+  type DotyposCustomerProfile,
   type DotyposCustomerWriteRecord,
   DotyposService,
-  type DotyposUncertain,
   type FindCustomerResult,
   normalizePhoneNumber,
 } from "@deskohub/dotypos";
-import type { UpdateCustomerRequest } from "@deskohub/dotypos/generated";
-import { Context, Data, Effect, Layer, Option } from "effect";
+import { Context, Data, Effect, Layer, Option, Schedule } from "effect";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { MissingDotyposId } from "@/shared/backend/missing-dotypos-id";
 import type { CustomerProfile, CustomerProfileInput } from "../contracts";
@@ -92,10 +91,6 @@ type StoredBilling = NonNullable<CustomerProfile["billing"]>;
 const businessBillingOf = (billing: BillingInput) =>
   billing?.kind === "business" ? billing : undefined;
 
-const hasInputBillingData = (billing: NonNullable<BillingInput>): boolean =>
-  billing.kind === "business" ||
-  billingAddressFields.some((field) => nonEmpty(billing[field]) != null);
-
 /**
  * Dotypos clears an optional text field only when it receives an empty
  * string, so every listed field carries an explicit value.
@@ -108,14 +103,6 @@ const toProviderText = <Field extends BillingTextField>(
   for (const field of fields) values[field] = source?.[field] ?? "";
   return values as Record<Field, string>;
 };
-
-/** Compares stored and requested values, treating absent and empty alike. */
-const providerTextMatches = <Field extends BillingTextField>(
-  fields: readonly Field[],
-  stored: Record<Field, string | null>,
-  requested: Partial<Record<Field, string>>
-): boolean =>
-  fields.every((field) => (stored[field] ?? "") === (requested[field] ?? ""));
 
 const toCustomerBilling = (
   customer: DotyposCustomerWriteRecord
@@ -150,61 +137,21 @@ const toCustomerProfile = (
 });
 
 /**
- * Builds the provider PATCH payload so every editable field carries an
- * explicit value: optional fields the user cleared send the provider's
- * clearing value instead of being omitted, which would leave the previous
- * provider state in place.
+ * The provider profile write, with every editable field explicit: optional
+ * fields the user cleared send the provider's clearing value instead of being
+ * omitted, which would leave the previous provider state in place. The
+ * contract already rejects a nonblank phone the normalizer can't parse, so a
+ * blank phone here is the customer's explicit clearing.
  */
-const toUpdateRequest = (
+const toProviderProfile = (
   input: CustomerProfileInput
-): UpdateCustomerRequest => ({
+): DotyposCustomerProfile => ({
   firstName: input.firstName,
   lastName: input.lastName ?? "",
-  phone: normalizePhoneNumber(input.phone) ?? "",
+  phone: input.phone ?? "",
   ...toProviderText(billingAddressFields, input.billing),
   ...toProviderText(businessBillingFields, businessBillingOf(input.billing)),
 });
-
-const contactAppliesInput = (
-  stored: CustomerProfile,
-  input: CustomerProfileInput
-): boolean =>
-  stored.firstName === input.firstName &&
-  (stored.lastName ?? "") === (input.lastName ?? "") &&
-  (stored.phone ?? "") === (normalizePhoneNumber(input.phone) ?? "");
-
-/** Clearing to no billing applies once the stored profile has none either. */
-const billingAppliesInput = (
-  stored: StoredBilling | null,
-  billing: BillingInput
-): boolean => {
-  if (!billing || !hasInputBillingData(billing)) return stored == null;
-  if (stored == null || stored.kind !== billing.kind) return false;
-  return (
-    providerTextMatches(billingAddressFields, stored, billing) &&
-    (billing.kind === "personal" ||
-      providerTextMatches(businessBillingFields, stored, billing))
-  );
-};
-
-/**
- * Decides whether a provider profile reflects every requested editable
- * field, including optional-only changes. Used after uncertain provider
- * responses, where a partial comparison would report a dropped field as
- * applied. Clearing to no billing counts as applied once the stored profile
- * carries no billing data either.
- */
-export const customerProfileAppliesInput = (
-  customer: DotyposCustomer,
-  input: CustomerProfileInput
-): boolean => {
-  if (customer.deleted) return false;
-  const stored = toCustomerProfile(customer);
-  return (
-    contactAppliesInput(stored, input) &&
-    billingAppliesInput(stored.billing, input.billing)
-  );
-};
 
 const toCustomerDetails = (input: {
   readonly email: string;
@@ -223,9 +170,22 @@ const toCustomerDetails = (input: {
   ),
 });
 
-const expirationPatch = (expired: boolean): UpdateCustomerRequest => ({
-  expireDate: expired ? new Date(Date.now() - 60_000).toISOString() : null,
-});
+/**
+ * Refreshes an account write once after a genuine version conflict: each
+ * attempt calls the package write afresh, which rereads the ETag and sends
+ * the write again. The customer's own profile and lifecycle writes win over a
+ * concurrent change, which is the account's policy, not the package default.
+ * An uncertain write is never retried, because it may already have landed.
+ */
+const refreshOnceOnVersionConflict = <A>(
+  write: () => Effect.Effect<A, DotyposConditionalWriteFailure>
+) =>
+  Effect.suspend(write).pipe(
+    Effect.retry({
+      schedule: Schedule.recurs(1),
+      while: (failure) => failure._tag === "DotyposVersionConflict",
+    })
+  );
 
 interface ICustomerDotyposAdapter {
   readonly classifyExactEmailCustomers: (
@@ -348,98 +308,33 @@ export class CustomerDotyposAdapter extends Context.Service<
         };
       };
 
-      /**
-       * Patches the customer and settles an uncertain patch by rereading it.
-       * At most two patch executions run, each of which the package may
-       * replay: a second one follows a version conflict or an uncertain patch
-       * the reread shows unapplied. Reread failures carry read tags only, so
-       * they are never retried. None means the customer does not exist.
-       */
-      const patchWithReread = Effect.fn(
-        "CustomerDotyposAdapter.patchWithReread"
-      )(function* (input: {
-        readonly customerId: DotyposCustomerId;
-        readonly payload: UpdateCustomerRequest;
-        readonly isApplied: (customer: DotyposCustomer) => boolean;
-      }) {
-        // Each execution sends a fresh patch request.
-        const patchOnce = Effect.suspend(() =>
-          dotypos.patchCustomer(input.customerId, input.payload)
-        );
-        // A missing customer is not an applied patch.
-        const settle = (uncertain: DotyposUncertain) =>
-          dotypos
-            .getCustomer(input.customerId)
-            .pipe(
-              Effect.filterOrFail(
-                Option.exists(input.isApplied),
-                () => uncertain
-              )
-            );
-
-        return yield* patchOnce.pipe(
-          Effect.catchTags({
-            // Re-merge policy: one more conditional attempt, without a reread.
-            DotyposVersionConflict: () => patchOnce,
-            // The reread shows the patch did not land: one conditional replay.
-            DotyposUncertain: (uncertain) =>
-              settle(uncertain).pipe(
-                Effect.catchTag("DotyposUncertain", () => patchOnce)
-              ),
-          }),
-          // The final settlement read after the second execution.
-          Effect.catchTag("DotyposUncertain", settle)
-        );
-      });
-
-      /** Patches a customer that must exist; a missing one fails DotyposCustomerMissing. */
-      const patchExistingWithReread = (input: {
-        readonly customerId: DotyposCustomerId;
-        readonly payload: UpdateCustomerRequest;
-        readonly isApplied: (customer: DotyposCustomer) => boolean;
-      }) =>
-        patchWithReread(input).pipe(
-          Effect.flatMap(
-            Option.match({
-              onNone: () =>
-                Effect.fail(
-                  new DotyposCustomerMissing({ customerId: input.customerId })
-                ),
-              onSome: () => Effect.void,
-            })
-          )
-        );
+      /** A customer that must exist; a missing one fails DotyposCustomerMissing. */
+      const requireExisting =
+        (customerId: DotyposCustomerId) =>
+        (customer: Option.Option<DotyposCustomer>) =>
+          Option.isSome(customer)
+            ? Effect.void
+            : Effect.fail(new DotyposCustomerMissing({ customerId }));
 
       const updateCustomerProfile = Effect.fn(
         "CustomerDotyposAdapter.updateCustomerProfile"
       )((customerId: DotyposCustomerId, profile: CustomerProfileInput) =>
-        patchExistingWithReread({
-          customerId,
-          payload: toUpdateRequest(profile),
-          isApplied: (customer) =>
-            customerProfileAppliesInput(customer, profile),
-        })
+        refreshOnceOnVersionConflict(() =>
+          dotypos.updateCustomerProfile(customerId, toProviderProfile(profile))
+        ).pipe(Effect.flatMap(requireExisting(customerId)))
       );
 
       const expireCustomer = Effect.fn("CustomerDotyposAdapter.expireCustomer")(
         (customerId: DotyposCustomerId) =>
-          patchWithReread({
-            customerId,
-            payload: expirationPatch(true),
-            isApplied: (customer) =>
-              customerLifecycle(customer, new Date()) !== "active",
-          })
+          refreshOnceOnVersionConflict(() => dotypos.expireCustomer(customerId))
       );
 
       const reactivateCustomer = Effect.fn(
         "CustomerDotyposAdapter.reactivateCustomer"
       )((customerId: DotyposCustomerId) =>
-        patchExistingWithReread({
-          customerId,
-          payload: expirationPatch(false),
-          isApplied: (customer) =>
-            customerLifecycle(customer, new Date()) === "active",
-        })
+        refreshOnceOnVersionConflict(() =>
+          dotypos.reactivateCustomer(customerId)
+        ).pipe(Effect.flatMap(requireExisting(customerId)))
       );
 
       return {

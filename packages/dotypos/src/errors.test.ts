@@ -49,6 +49,9 @@ type ReadOperation = Exclude<
   | "setCustomerDiscountGroup"
   | "updateCustomerBillingDetails"
   | "updateCustomerDetails"
+  | "updateCustomerProfile"
+  | "expireCustomer"
+  | "reactivateCustomer"
 >;
 export type ReadChannels = Expect<
   Equal<
