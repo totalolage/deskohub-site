@@ -45,6 +45,7 @@ import {
   workspaceActionDeadline,
 } from "@/shared/backend/workspace-action";
 import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
+import { TestSealedStateKeys } from "@/shared/testing/sealed-state-keys.test-utils";
 import { withInstantSleeps } from "@/shared/testing/workspace-test-clock.test-utils";
 import { instantStringSchema } from "@/shared/utils/temporal";
 
@@ -87,10 +88,12 @@ const makePayStateToken = async (input?: {
         submittedCode: input.submittedCode,
         submittedCodeDiscountId,
       }),
-    })
+    }).pipe(Effect.provide(TestSealedStateKeys))
   );
 
-  return await Effect.runPromise(sealPayState(state));
+  return await Effect.runPromise(
+    sealPayState(state).pipe(Effect.provide(TestSealedStateKeys))
+  );
 };
 
 type SubmissionInput = {
@@ -206,6 +209,7 @@ const prepareSubmission = async (input?: SubmissionInput) => {
         Layer.succeed(PayableReservationService, { requireCurrent }),
         input?.referralService ?? referralService,
         Layer.succeed(CheckoutReferralService, { acceptCode } as never),
+        TestSealedStateKeys,
         RememberedReferral.inMemory(rememberedReferralCookie, {
           writable: input?.rememberedReferralWritable,
         }).pipe(
@@ -375,7 +379,9 @@ describe("applyDiscountCodeToPayState", () => {
     ).searchParams.get(payStateTokenQueryParam);
     expect(acceptedToken).toBeTruthy();
     const acceptedState = await Effect.runPromise(
-      openPayState(acceptedToken ?? "")
+      openPayState(acceptedToken ?? "").pipe(
+        Effect.provide(TestSealedStateKeys)
+      )
     );
     expect(acceptedState).not.toHaveProperty("submittedCode");
     expect(acceptedState).not.toHaveProperty("submittedCodeDiscountId");
@@ -400,7 +406,7 @@ describe("applyDiscountCodeToPayState", () => {
           ordinary.result.freshPayUrl,
           "https://deskohub.test"
         ).searchParams.get(payStateTokenQueryParam) ?? ""
-      )
+      ).pipe(Effect.provide(TestSealedStateKeys))
     );
     expect(ordinaryState.referralCode).toBe("RFL12345");
   });
@@ -434,7 +440,9 @@ describe("applyDiscountCodeToPayState", () => {
       );
       expect(freshUrl.searchParams.get("discountCodeErrorId")).toBeTruthy();
       const freshState = await Effect.runPromise(
-        openPayState(freshUrl.searchParams.get(payStateTokenQueryParam) ?? "")
+        openPayState(
+          freshUrl.searchParams.get(payStateTokenQueryParam) ?? ""
+        ).pipe(Effect.provide(TestSealedStateKeys))
       );
       expect(freshState.requestedDiscountCode).toBe("RFL12345");
       expect(freshState).not.toHaveProperty("referralCode");
@@ -479,7 +487,9 @@ describe("applyDiscountCodeToPayState", () => {
     expect(freshUrl.searchParams.get("orderId")).toBe("reservation-id");
     const freshToken = freshUrl.searchParams.get(payStateTokenQueryParam);
     expect(freshToken).toBeTruthy();
-    const freshState = await Effect.runPromise(openPayState(freshToken ?? ""));
+    const freshState = await Effect.runPromise(
+      openPayState(freshToken ?? "").pipe(Effect.provide(TestSealedStateKeys))
+    );
     expect(freshState.checkoutSessionId).toBe(checkoutSessionId);
     expect(freshState.submittedCode).toBe("SAVE20");
     expect(freshState.submittedCodeDiscountId).toBe(submittedCodeDiscountId);
@@ -584,7 +594,9 @@ describe("applyDiscountCodeToPayState", () => {
     expect(freshUrl.searchParams.get("orderId")).toBe("reservation-id");
     expect(freshUrl.searchParams.get("discountCodeError")).toBe("unavailable");
     const freshToken = freshUrl.searchParams.get(payStateTokenQueryParam);
-    const freshState = await Effect.runPromise(openPayState(freshToken ?? ""));
+    const freshState = await Effect.runPromise(
+      openPayState(freshToken ?? "").pipe(Effect.provide(TestSealedStateKeys))
+    );
     expect(freshState.orderId).toBe("reservation-id");
     expect(freshState.requestedDiscountCode).toBe("SAVE20");
     expect(freshState.submittedCode).toBeUndefined();
@@ -621,7 +633,9 @@ describe("applyDiscountCodeToPayState", () => {
         "https://deskohub.test"
       );
       const freshState = await Effect.runPromise(
-        openPayState(freshUrl.searchParams.get(payStateTokenQueryParam) ?? "")
+        openPayState(
+          freshUrl.searchParams.get(payStateTokenQueryParam) ?? ""
+        ).pipe(Effect.provide(TestSealedStateKeys))
       );
       return {
         discountCodeError: freshUrl.searchParams.get("discountCodeError"),
@@ -773,7 +787,9 @@ describe("applyDiscountCodeToPayState", () => {
     );
     expect(freshUrl.searchParams.get("orderId")).toBe("reservation-id");
     const freshToken = freshUrl.searchParams.get(payStateTokenQueryParam);
-    const freshState = await Effect.runPromise(openPayState(freshToken ?? ""));
+    const freshState = await Effect.runPromise(
+      openPayState(freshToken ?? "").pipe(Effect.provide(TestSealedStateKeys))
+    );
     expect(freshState.checkoutSessionId).toBe(checkoutSessionId);
     expect(freshState.changedKeys).toEqual(changedKeys);
     expect(freshState.submittedCode).toBeUndefined();
@@ -895,7 +911,9 @@ describe("applyDiscountCodeToPayState", () => {
     );
     expect(freshUrl.searchParams.get("discountCodeError")).toBe("unavailable");
     const freshState = await Effect.runPromise(
-      openPayState(freshUrl.searchParams.get(payStateTokenQueryParam) ?? "")
+      openPayState(
+        freshUrl.searchParams.get(payStateTokenQueryParam) ?? ""
+      ).pipe(Effect.provide(TestSealedStateKeys))
     );
     expect(freshState.requestedDiscountCode).toBe("RFL12345");
   });

@@ -5,6 +5,7 @@ import { buildCoworkReservationQuote } from "@/features/checkout/reservation-quo
 import type { Locale } from "@/features/i18n";
 import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import { SealedStateKeys } from "@/shared/backend/sealed-state-keys.service";
 import { instantStringSchema } from "@/shared/utils/temporal";
 import { buildSignedPayState, sealPayState } from "./pay-state";
 
@@ -46,8 +47,14 @@ export const sealSyntheticCoworkPayState = ({
           bookedAt: instantStringSchema.make("2026-06-01T09:58:00.000Z"),
           checkoutSessionId: checkoutSessionIdSchema.make("session-id"),
         },
-        issuedAt ? { now: () => issuedAt } : {}
+        issuedAt
+          ? {
+              issuedAt: Temporal.Instant.fromEpochMilliseconds(
+                issuedAt.getTime()
+              ),
+            }
+          : {}
       );
       return yield* sealPayState(state);
-    })
+    }).pipe(Effect.provide(SealedStateKeys.Default))
   );

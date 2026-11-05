@@ -9,6 +9,7 @@ import type { LocaleBoundContinuation } from "@/features/checkout/locale-bound-c
 import { openReservationAccessToken } from "@/features/reservation/backend/reservation-access-token";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { reservationAccessTokenSchema } from "@/features/reservation/reservation-access-token";
+import { SealedStateKeys } from "@/shared/backend/sealed-state-keys.service";
 
 /**
  * Whether a candidate continuation validates for its page and URL locale with
@@ -22,7 +23,10 @@ export const continuesInIssuedLocale = Effect.fn(
   "LocaleBoundContinuation.verify"
 )(function* (continuation: LocaleBoundContinuation) {
   if (continuation.kind === "pay-state") {
-    const state = yield* openPayState(continuation.token).pipe(Effect.option);
+    const state = yield* openPayState(continuation.token).pipe(
+      Effect.provide(SealedStateKeys.Default),
+      Effect.option
+    );
     return Option.match(state, {
       onNone: () => false,
       onSome: (opened) =>

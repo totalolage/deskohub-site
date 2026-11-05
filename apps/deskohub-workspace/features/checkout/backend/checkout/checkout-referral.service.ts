@@ -22,6 +22,7 @@ import {
   dotyposCustomerIdSchema,
 } from "@/features/reservation/dotypos-customer";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
+import { SealedStateKeys } from "@/shared/backend/sealed-state-keys.service";
 import { moneyEquals } from "@/shared/money/money";
 import { buildFreshCheckoutPayPath } from "./checkout-pay-url";
 import {
@@ -227,6 +228,7 @@ export class CheckoutReferralService extends Context.Service<
       const referrals = yield* ReferralService;
       const pricing = yield* CheckoutPricingService;
       const payableReservations = yield* PayableReservationService;
+      const sealedStateKeys = yield* SealedStateKeys;
 
       const acceptCode: ICheckoutReferralService["acceptCode"] = Effect.fn(
         "CheckoutReferralService.acceptCode"
@@ -301,7 +303,11 @@ export class CheckoutReferralService extends Context.Service<
             freshPayUrl,
           });
         },
-        (effect) => effect.pipe(Effect.orElseSucceed(() => unavailable))
+        (effect) =>
+          effect.pipe(
+            Effect.orElseSucceed(() => unavailable),
+            Effect.provideService(SealedStateKeys, sealedStateKeys)
+          )
       );
 
       return { acceptCode } satisfies ICheckoutReferralService;
@@ -314,7 +320,8 @@ export class CheckoutReferralService extends Context.Service<
         ReferralService.Live,
         CheckoutPricingService.Live,
         PayableReservationService.Live,
-        WorkspaceDotyposLayer
+        WorkspaceDotyposLayer,
+        SealedStateKeys.Default
       )
     )
   );
