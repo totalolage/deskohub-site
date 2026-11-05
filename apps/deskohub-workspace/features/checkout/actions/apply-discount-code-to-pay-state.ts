@@ -291,7 +291,13 @@ export const applyDiscountCodeToPayState = Effect.fn(
       return { status: "unavailable" as const, freshPayUrl: undefined };
     }
 
-    const codeKind = yield* referrals.lookupCodeKind({ code: submittedCode });
+    // A registry that can't classify the code applies nothing.
+    const codeKind = yield* referrals
+      .lookupCodeKind({ code: submittedCode })
+      .pipe(Effect.orElseSucceed(() => undefined));
+    if (codeKind === undefined) {
+      return { status: "unavailable" as const, freshPayUrl: undefined };
+    }
     const entry = { input, state, submittedCode };
     return yield* codeKind.kind === "referral"
       ? acceptReferralCode(entry)
@@ -310,11 +316,6 @@ export const applyDiscountCodeToPayState = Effect.fn(
             freshPayUrl: undefined,
           }),
         DiscountProviderError: () =>
-          Effect.succeed({
-            status: "unavailable" as const,
-            freshPayUrl: undefined,
-          }),
-        ReferralError: () =>
           Effect.succeed({
             status: "unavailable" as const,
             freshPayUrl: undefined,

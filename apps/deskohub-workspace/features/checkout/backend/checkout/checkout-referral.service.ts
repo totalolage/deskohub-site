@@ -13,9 +13,10 @@ import {
 } from "@/features/discounts/contracts";
 import type { Locale } from "@/features/i18n";
 import { ReferralService } from "@/features/referrals";
-import type {
-  CheckoutReferralEvaluation,
+import {
+  type CheckoutReferralEvaluation,
   ReferralError,
+  type ReferralOutage,
 } from "@/features/referrals/contracts";
 import {
   type DotyposCustomerId,
@@ -70,16 +71,18 @@ const unavailable: CheckoutReferralResult = { status: "unavailable" };
 
 /**
  * Only an immutable existing attribution and first-booking ineligibility are
- * explained to the customer; every other failure stays a generic unavailable
- * code so the response cannot probe codes or accounts.
+ * explained to the customer; every other verdict, a withheld program, and an
+ * outage stay a generic unavailable code so the response cannot probe codes
+ * or accounts.
  */
 const getAcceptanceRejection = (
-  error: ReferralError
+  failure: ReferralError | ReferralOutage
 ): CheckoutReferralResult | undefined => {
-  if (error.reason === "already_attributed") {
+  if (!(failure instanceof ReferralError)) return undefined;
+  if (failure.reason === "already_attributed") {
     return { status: "already_attributed" };
   }
-  if (error.reason === "ineligible") return { status: "ineligible" };
+  if (failure.reason === "ineligible") return { status: "ineligible" };
   return undefined;
 };
 

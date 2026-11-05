@@ -1,4 +1,6 @@
+import type { DotyposReadFailure } from "@deskohub/dotypos";
 import { Data } from "effect";
+import type { DatabaseQueryError } from "@/db/sql-constraint";
 import type { Money } from "@/shared/money/money";
 import type { ReferralCode } from "./client";
 
@@ -42,8 +44,13 @@ export type ReferralAccountOverview = {
   readonly shareUrl: string;
 };
 
-type ReferralFailureReason =
-  | "invalid_code"
+/** A verdict that the code can't refer this customer now. */
+export type ReferralRejection =
+  /**
+   * The code can't refer anyone: it is unknown, disabled, outside its
+   * validity window, or its owner has no active linked account. The account
+   * summary also reports a share code it could not issue this way.
+   */
   | "unavailable"
   | "self_referral"
   | "already_attributed"
@@ -55,8 +62,17 @@ type ReferralFailureReason =
    */
   | "pending_payment"
   /** The code's owner was invited, directly or through others, by this customer. */
-  | "cycle"
+  | "cycle";
+
+type ReferralFailureReason =
+  | "invalid_code"
+  | ReferralRejection
   | "account_unavailable"
+  /**
+   * The code's owner relinked their account, or the code changed hands, while
+   * acceptance took its locks. Not a verdict: a later attempt decides.
+   */
+  | "referrer_changed"
   /**
    * The referral program is withheld, or its feature flag could not be
    * evaluated. Never a verdict on the code or the customer: callers that
@@ -67,3 +83,9 @@ type ReferralFailureReason =
 export class ReferralError extends Data.TaggedError("ReferralError")<{
   readonly reason: ReferralFailureReason;
 }> {}
+
+/**
+ * The referral store or Dotypos failed, so no verdict was reached. It says
+ * nothing about the code or the customer, and a later attempt can succeed.
+ */
+export type ReferralOutage = DatabaseQueryError | DotyposReadFailure;

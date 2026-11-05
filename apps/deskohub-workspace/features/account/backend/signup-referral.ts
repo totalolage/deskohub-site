@@ -1,7 +1,11 @@
 import { Effect, Match, Result } from "effect";
 import type { ReferralSignupOutcome } from "@/db/schema/referrals";
 import { ReferralService } from "@/features/referrals";
-import type { ReferralError } from "@/features/referrals/contracts";
+import type {
+  ReferralError,
+  ReferralOutage,
+} from "@/features/referrals/contracts";
+import { referralFailureLogFields } from "@/features/referrals/referral-failure";
 import {
   type ReferralSignupIntent,
   ReferralSignupIntentRepository,
@@ -45,6 +49,8 @@ export const prepareSignupReferral = Effect.fn("account.prepareSignupReferral")(
         Effect.result
       );
     // A withheld program ignores the code rather than reporting it unusable.
+    // A failed lookup reads as an unusable code, so the completion can be
+    // retried with it or without it.
     if (
       Result.isFailure(lookup) &&
       lookup.failure._tag === "ReferralError" &&
@@ -68,42 +74,50 @@ export const prepareSignupReferral = Effect.fn("account.prepareSignupReferral")(
   }
 );
 
+/** What a verdict on the stored code means for it. */
 const classifyRejection = (
-  error: ReferralError,
-  code: string
-): Effect.Effect<ProfileCompletionReferralOutcome, never, ReferralService> =>
-  Match.value(error.reason).pipe(
-    Match.when("already_attributed", () =>
-      Effect.succeed(notApplied("already-referred"))
-    ),
-    Match.when("ineligible", () => Effect.succeed(notApplied("not-eligible"))),
-    Match.when(Match.is("self_referral", "invalid_code", "cycle"), () =>
-      Effect.succeed(notApplied("code-unusable"))
+  reason: ReferralError["reason"]
+): ProfileCompletionReferralOutcome =>
+  Match.value(reason).pipe(
+    Match.when("already_attributed", () => notApplied("already-referred")),
+    Match.when("ineligible", () => notApplied("not-eligible")),
+    Match.when(
+      Match.is("self_referral", "invalid_code", "cycle", "unavailable"),
+      () => notApplied("code-unusable")
     ),
     // A pending payment may still become the first paid booking, either
     // closing the window or recording that checkout's own referral; the
-    // retry after it settles reports whichever happened.
+    // retry after it settles reports whichever happened. A referrer who
+    // relinked during acceptance is decided by the next attempt.
     // A withheld program, or a flag that could not be read, says nothing
     // about the code: the intent waits for the program.
     Match.when(
-      Match.is("pending_payment", "account_unavailable", "disabled"),
-      () => Effect.succeed(pending)
-    ),
-    // Acceptance reports both an unusable code and a failed database or
-    // Dotypos read as `unavailable`. Only a read that succeeds and finds the
-    // code unusable is definitive; anything else is retried.
-    Match.when("unavailable", () =>
-      Effect.flatMap(ReferralService, (referrals) =>
-        referrals.findAvailableCode({ code })
-      ).pipe(
-        Effect.map((available) =>
-          available === undefined ? notApplied("code-unusable") : pending
-        ),
-        Effect.orElseSucceed(() => pending)
-      )
+      Match.is(
+        "pending_payment",
+        "account_unavailable",
+        "referrer_changed",
+        "disabled"
+      ),
+      () => pending
     ),
     Match.exhaustive
   );
+
+/**
+ * Only a verdict settles the stored code. A failed database or Dotypos read
+ * says nothing about it, so the intent stays pending for the next load.
+ */
+const classifyAcceptanceFailure = Match.type<
+  ReferralError | ReferralOutage
+>().pipe(
+  Match.tagsExhaustive({
+    ReferralError: ({ reason }) => classifyRejection(reason),
+    EffectDrizzleQueryError: () => pending,
+    SqlError: () => pending,
+    DotyposUnavailable: () => pending,
+    DotyposRejected: () => pending,
+  })
+);
 
 /**
  * The stored completion code's outcome for the account page, and the retry
@@ -148,14 +162,13 @@ const checkSignupReferral = Effect.fnUntraced(function* (
     .pipe(Effect.result);
   const outcome: ProfileCompletionReferralOutcome = Result.isSuccess(acceptance)
     ? applied
-    : yield* classifyRejection(acceptance.failure, intent.code);
+    : classifyAcceptanceFailure(acceptance.failure);
   yield* Effect.logInfo("Referral signup intent checked").pipe(
     Effect.annotateLogs({
       code: "account.signup-referral",
       outcome: outcome.status,
-      ...(Result.isFailure(acceptance) && {
-        reason: acceptance.failure.reason,
-      }),
+      ...(Result.isFailure(acceptance) &&
+        referralFailureLogFields(acceptance.failure)),
     })
   );
   return outcome;

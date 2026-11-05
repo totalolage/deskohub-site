@@ -2,7 +2,11 @@ import { testEmailAddress } from "@deskohub/test-email";
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
-import { type DotyposCustomerId, DotyposService } from "@deskohub/dotypos";
+import {
+  type DotyposCustomerId,
+  DotyposService,
+  DotyposUnavailable,
+} from "@deskohub/dotypos";
 import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-flags/node";
 import { Deferred, Effect, Fiber, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
@@ -182,6 +186,8 @@ const completionLayer = (options: {
   readonly createGate?: Gate;
   readonly recordGate?: Gate;
   readonly identityUnavailable?: boolean;
+  /** Dotypos fails every booking-history read. */
+  readonly dotyposUnavailable?: boolean;
   readonly createdCustomers?: DotyposCustomerId[];
   readonly referralsEnabled?: boolean;
   /** The referral flag the services read; `referralsEnabled` by default. */
@@ -239,7 +245,15 @@ const completionLayer = (options: {
         links,
         resolver,
         Layer.mock(DotyposService, {
-          listReservations: () => Effect.succeed([]),
+          listReservations: () =>
+            options.dotyposUnavailable
+              ? Effect.fail(
+                  new DotyposUnavailable({
+                    operation: "listReservations",
+                    reason: "transport",
+                  })
+                )
+              : Effect.succeed([]),
         } as Partial<DotyposService["Service"]>)
       )
     )
@@ -494,6 +508,37 @@ describe.skipIf(!testDatabase)(
       expect(retried).toEqual({ status: "applied" });
       expect(await readReferrer(customerId!)).toBe(referrer.customerId);
       expect(await readIntentCodes(accountId)).toEqual([]);
+    });
+
+    test("keeps a stored code pending while Dotypos history can't be read and records it once it can", async () => {
+      const referrer = await insertReferrer();
+      const account = await completeWithStoredIntent(referrer.code);
+
+      const unreadable = await recordSignupReferral({
+        accountId: account.accountId,
+        dotyposCustomerId: account.customerId,
+      }).pipe(
+        withinLockBudget,
+        Effect.provide(
+          completionLayer({
+            accountId: account.accountId,
+            dotyposUnavailable: true,
+          })
+        ),
+        Effect.runPromise
+      );
+
+      expect(unreadable).toEqual({ status: "pending" });
+      expect(await readReferrer(account.customerId)).toBeUndefined();
+      expect(await readIntentCodes(account.accountId)).toEqual([
+        referrer.promotionCodeId,
+      ]);
+
+      expect(await retrySignupReferral(account)).toEqual({
+        status: "applied",
+      });
+      expect(await readReferrer(account.customerId)).toBe(referrer.customerId);
+      expect(await readIntentCodes(account.accountId)).toEqual([]);
     });
 
     test("keeps a stored code pending while the referral program is withheld", async () => {
