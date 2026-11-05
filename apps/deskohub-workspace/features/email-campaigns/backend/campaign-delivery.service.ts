@@ -46,7 +46,7 @@ import {
   emailCampaigns,
 } from "@/db/schema";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
-import { type Locale, locales } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import { marketingConsentState } from "@/features/legal/backend/marketing-consent-ledger";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { WorkspaceEmailLayer } from "@/shared/backend/config/email.config";
@@ -54,7 +54,6 @@ import { currentInstant } from "@/shared/utils/temporal";
 import type { AutomationVersionId } from "../automation/automation-identifiers";
 import { AutomationRunSettlement } from "../automation/backend/automation-run-settlement.service";
 import type {
-  CampaignLocaleContent,
   CampaignLocalizedContent,
   CampaignPurpose,
   CampaignTemplateKey,
@@ -72,7 +71,7 @@ import {
 } from "../campaign-email";
 import type { CampaignId, CampaignSendId } from "../campaign-identifiers";
 import type { CampaignRecipientSkipReason } from "../campaign-states";
-import { campaignFallbackLocale } from "../recipient-locale";
+import { campaignContentForRecipient } from "../recipient-locale";
 import { CampaignEmailConfig } from "./campaign-email.config";
 import { reachableCampaignEmail } from "./campaign-recipient.service";
 import type { CampaignDeliveryAttempt } from "./campaign-send-queue.service";
@@ -662,7 +661,10 @@ export class CampaignDeliveryService extends Context.Service<
             )
           ),
           Effect.let("localized", ({ context, recipient }) =>
-            campaignContentFor(context.campaign, recipient.locale)
+            campaignContentForRecipient(
+              context.campaign.content,
+              recipient.locale
+            )
           ),
           Effect.flatMap(
             ({ context, recipient, recipientTags, audience, localized }) =>
@@ -1650,19 +1652,3 @@ const incomplete = (attempt: CampaignDeliveryAttempt) =>
       deliveryAttempt: attempt.deliveryAttempt,
     })
   );
-
-/**
- * The content a recipient reads: their locale's, else Czech, else the
- * campaign's only locale (an audience restricted to it).
- */
-const campaignContentFor = (
-  campaign: DeliveredCampaign,
-  locale: Locale
-): { readonly locale: Locale; readonly content: CampaignLocaleContent } => {
-  const candidates = [locale, campaignFallbackLocale, ...localesOf(campaign)];
-  const chosen = candidates.find((candidate) => campaign.content[candidate]);
-  return { locale: chosen!, content: campaign.content[chosen!]! };
-};
-
-const localesOf = (campaign: DeliveredCampaign) =>
-  locales.filter((locale) => campaign.content[locale] !== undefined);

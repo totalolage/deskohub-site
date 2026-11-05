@@ -67,6 +67,7 @@ import type { ReservationBillingSelectionInput } from "@/features/reservation/re
 import { NoReviewAccounts } from "@/features/review-accounts/backend/review-accounts.repository.mock";
 import { getSlowestSuccessfulCalendarLoad } from "@/shared/backend/config/google-calendar.config.test-utils";
 import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
+import { TestSealedStateKeys } from "@/shared/testing/sealed-state-keys.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { withInstantSleeps } from "@/shared/testing/workspace-test-clock.test-utils";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
@@ -187,7 +188,10 @@ const buildAdvertisedPriceToken = async (
     });
     return yield* sealAdvertisedPriceState(state);
   });
-  return (at ? withInstant(at, effect) : effect).pipe(Effect.runPromise);
+  return (at ? withInstant(at, effect) : effect).pipe(
+    Effect.provide(TestSealedStateKeys),
+    Effect.runPromise
+  );
 };
 
 const buildMeetingRoomAdvertisedPriceToken = async (
@@ -241,7 +245,7 @@ const buildMeetingRoomAdvertisedPriceToken = async (
       }),
     });
     return yield* sealAdvertisedPriceState(state);
-  }).pipe(Effect.runPromise);
+  }).pipe(Effect.provide(TestSealedStateKeys), Effect.runPromise);
 };
 
 const tamperToken = (token: string) => {
@@ -580,6 +584,7 @@ const runReusableReservationScenario = async (input: {
       hasSettledReferral: hasSettledReferral as never,
     });
   const testLayer = Layer.mergeAll(
+    TestSealedStateKeys,
     accountAuthority.layer,
     contacts,
     referrals,
@@ -835,6 +840,7 @@ const runMeetingRoomNewHoldScenario = async (
       })
   );
   const testLayer = Layer.mergeAll(
+    TestSealedStateKeys,
     accountAuthority.layer,
     inertRememberedReferral(),
     CheckoutPricingService.Default.pipe(
@@ -1001,7 +1007,9 @@ describe("prepareWorkspacePayState", () => {
       scenario.result.redirectUrl,
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
-    const state = Effect.runSync(openPayState(token ?? ""));
+    const state = Effect.runSync(
+      openPayState(token ?? "").pipe(Effect.provide(TestSealedStateKeys))
+    );
 
     expect(state.requestedDiscountCode).toBe("CAMPAIGN10");
     expect(state.submittedCode).toBeUndefined();
@@ -1136,7 +1144,9 @@ describe("prepareWorkspacePayState", () => {
       scenario.result.redirectUrl,
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
-    const state = Effect.runSync(openPayState(token ?? ""));
+    const state = Effect.runSync(
+      openPayState(token ?? "").pipe(Effect.provide(TestSealedStateKeys))
+    );
     expect(state.checkoutSessionId).toBe("meeting-room-session-id");
     expect(state.reservation).toMatchObject({
       kind: "meeting-room",
@@ -1287,6 +1297,7 @@ describe("prepareWorkspacePayState", () => {
       );
     const { layer: accountAuthorityLayer } = await accountAuthorityFixture();
     const testLayer = Layer.mergeAll(
+      TestSealedStateKeys,
       accountAuthorityLayer,
       inertRememberedReferral(),
       CheckoutPricingServiceMock({
@@ -1389,7 +1400,9 @@ describe("prepareWorkspacePayState", () => {
     const token = redirectUrl.searchParams.get(payStateTokenQueryParam);
     expect(redirectUrl.searchParams.get("orderId")).toBe("reservation-id");
     expect(token).toBeTruthy();
-    const state = Effect.runSync(openPayState(token ?? ""));
+    const state = Effect.runSync(
+      openPayState(token ?? "").pipe(Effect.provide(TestSealedStateKeys))
+    );
     expect(state.orderId).toBe("reservation-id");
     expect(state.checkoutSessionId).toBe("session-id");
     expect(state.submittedCode).toBeUndefined();
@@ -3020,7 +3033,11 @@ describe("prepareWorkspacePayState", () => {
           redirectUrl ?? "",
           "https://deskohub.test"
         ).searchParams.get(payStateTokenQueryParam);
-        return token ? Effect.runSync(openPayState(token)) : undefined;
+        return token
+          ? Effect.runSync(
+              openPayState(token).pipe(Effect.provide(TestSealedStateKeys))
+            )
+          : undefined;
       };
       const referralAppliedOf = (redirectUrl: string | undefined) =>
         new URL(redirectUrl ?? "", "https://deskohub.test").searchParams.get(
@@ -3191,7 +3208,9 @@ describe("prepareWorkspacePayState", () => {
           redirectUrlOf(result) ?? "",
           "https://deskohub.test"
         ).searchParams.get(payStateTokenQueryParam);
-        return Effect.runSync(openPayState(token ?? "")).requestedDiscountCode;
+        return Effect.runSync(
+          openPayState(token ?? "").pipe(Effect.provide(TestSealedStateKeys))
+        ).requestedDiscountCode;
       };
 
       test("prefills a usable code for a contact booking without accepting it", async () => {
@@ -4004,9 +4023,11 @@ describe("prepareWorkspacePayState", () => {
       result.result.redirectUrl,
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
-    expect(Effect.runSync(openPayState(token ?? "")).checkoutSessionId).toBe(
-      "attempt-id"
-    );
+    expect(
+      Effect.runSync(
+        openPayState(token ?? "").pipe(Effect.provide(TestSealedStateKeys))
+      ).checkoutSessionId
+    ).toBe("attempt-id");
   });
 
   test("keeps the rotated checkout session when superseding its current reservation", async () => {
@@ -4057,9 +4078,11 @@ describe("prepareWorkspacePayState", () => {
       result.result.redirectUrl,
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
-    expect(Effect.runSync(openPayState(token ?? "")).checkoutSessionId).toBe(
-      "attempt-id"
-    );
+    expect(
+      Effect.runSync(
+        openPayState(token ?? "").pipe(Effect.provide(TestSealedStateKeys))
+      ).checkoutSessionId
+    ).toBe("attempt-id");
   });
 
   test("marks a failed cancellation and creates the replacement in a rotated checkout session", async () => {
@@ -4104,9 +4127,11 @@ describe("prepareWorkspacePayState", () => {
       result.result.redirectUrl,
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
-    expect(Effect.runSync(openPayState(token ?? "")).checkoutSessionId).toBe(
-      "attempt-id"
-    );
+    expect(
+      Effect.runSync(
+        openPayState(token ?? "").pipe(Effect.provide(TestSealedStateKeys))
+      ).checkoutSessionId
+    ).toBe("attempt-id");
   });
 
   test("does not cancel a Dotypos reservation that is no longer pending", async () => {
@@ -4222,7 +4247,8 @@ describe("prepareWorkspacePayState", () => {
           inertRememberedReferral(),
           BotProtectionServiceMock({ verifyHuman: () => Effect.void }),
           CheckoutPricingServiceMock({}),
-          recordCheckoutAnalytics().layer
+          recordCheckoutAnalytics().layer,
+          TestSealedStateKeys
         )
       )
     ) as Effect.Effect<never, unknown, never>;
@@ -4264,7 +4290,9 @@ describe("prepareWorkspacePayState", () => {
       result.result.redirectUrl,
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
-    const state = Effect.runSync(openPayState(token ?? ""));
+    const state = Effect.runSync(
+      openPayState(token ?? "").pipe(Effect.provide(TestSealedStateKeys))
+    );
     expect(state.changedKeys?.itemKeys).toContain("product:cowork:open-space");
     expect(state.quote.payment.discounts).toEqual([]);
   });
@@ -4289,7 +4317,9 @@ describe("prepareWorkspacePayState", () => {
       result.result.redirectUrl,
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
-    const state = Effect.runSync(openPayState(token ?? ""));
+    const state = Effect.runSync(
+      openPayState(token ?? "").pipe(Effect.provide(TestSealedStateKeys))
+    );
     expect(state.changedKeys).toBeUndefined();
     expect(state.quote.payment.discounts).toHaveLength(1);
     expect(state.quote.payment.discounts[0]?.discount.label).toBe(

@@ -30,11 +30,10 @@ import {
   officeAdvertisedPriceReservationSchema,
 } from "@/features/reservation/office-reservation";
 import {
-  createSealedStateClaims,
-  openSealedState,
-  type SealedStateCryptoOptions,
+  makeLegacySealedState,
+  type SealedStateIssueOptions,
+  type SealedStateSealOptions,
   type SealedStateTokenError,
-  sealState,
 } from "@/shared/backend/sealed-state";
 import {
   getSubmittedCodeMetadata,
@@ -115,6 +114,15 @@ const advertisedPriceStateSchema = Schema.Union([
 
 export type AdvertisedPriceState = typeof advertisedPriceStateSchema.Type;
 
+/**
+ * Advertised-price tokens ride on reservation pages into the submission, so
+ * they keep the sealed state format that predates purposes.
+ */
+const advertisedPriceStateCodec = makeLegacySealedState({
+  schema: advertisedPriceStateSchema,
+  ttlMilliseconds: advertisedPriceStateDefaultTtlMilliseconds,
+});
+
 type AdvertisedPriceStateInput = (
   | {
       readonly kind: "cowork";
@@ -188,12 +196,12 @@ export const buildAdvertisedPriceState = Effect.fn(
   "advertisedPriceState.build"
 )(function* (
   input: AdvertisedPriceStateInput,
-  options: SealedStateCryptoOptions = {}
+  options: SealedStateIssueOptions = {}
 ) {
-  const claims = yield* createSealedStateClaims(
-    input.ttlMilliseconds ?? advertisedPriceStateDefaultTtlMilliseconds,
-    options
-  );
+  const claims = yield* advertisedPriceStateCodec.issueClaims({
+    issuedAt: options.issuedAt,
+    ttlMilliseconds: input.ttlMilliseconds,
+  });
 
   return yield* Schema.decodeUnknownEffect(advertisedPriceStateSchema, {
     onExcessProperty: "error",
@@ -211,25 +219,17 @@ export const buildAdvertisedPriceState = Effect.fn(
 }, Effect.mapError(AdvertisedPriceStateTokenError.fromStateFailure));
 
 export const sealAdvertisedPriceState = Effect.fn("advertisedPriceState.seal")(
-  function* (
-    state: AdvertisedPriceState,
-    options: SealedStateCryptoOptions = {}
-  ) {
-    const encodedState = yield* Schema.encodeUnknownEffect(
-      advertisedPriceStateSchema,
-      { onExcessProperty: "error" }
-    )(state);
-
-    return yield* sealState(encodedState, state.kid, options);
-  },
-  Effect.mapError(AdvertisedPriceStateTokenError.fromStateFailure)
+  (state: AdvertisedPriceState, options: SealedStateSealOptions = {}) =>
+    advertisedPriceStateCodec
+      .seal(state, options)
+      .pipe(Effect.mapError(AdvertisedPriceStateTokenError.fromStateFailure))
 );
 
 export const openAdvertisedPriceState = Effect.fn("advertisedPriceState.open")(
-  (token: string, options: SealedStateCryptoOptions = {}) =>
-    openSealedState(token, advertisedPriceStateSchema, options).pipe(
-      Effect.mapError(AdvertisedPriceStateTokenError.fromStateFailure)
-    )
+  (token: string) =>
+    advertisedPriceStateCodec
+      .open(token)
+      .pipe(Effect.mapError(AdvertisedPriceStateTokenError.fromStateFailure))
 );
 
 export const openSubmittedAdvertisedPriceState = Effect.fn(
