@@ -433,8 +433,18 @@ export type DotyposCustomerBillingDetails = {
   readonly vatId: string;
 };
 
+export type DotyposCustomerDetails = DotyposCustomerBillingDetails & {
+  readonly firstName: string;
+  readonly lastName: string;
+  readonly email: string;
+  readonly phone?: string;
+};
+
+/** A customer text field a details write always sets. */
+type CustomerDetailTextField = Exclude<keyof DotyposCustomerDetails, "phone">;
+
 /** Every billing detail field; the type check keeps the list complete. */
-const customerBillingDetailFields = Struct.keys({
+const customerBillingDetailFieldSet = {
   addressLine1: true,
   addressLine2: true,
   city: true,
@@ -443,23 +453,69 @@ const customerBillingDetailFields = Struct.keys({
   companyName: true,
   companyId: true,
   vatId: true,
-} satisfies { readonly [Field in keyof DotyposCustomerBillingDetails]: true });
+} as const satisfies {
+  readonly [Field in keyof DotyposCustomerBillingDetails]: true;
+};
+
+/** Every customer detail text field; the type check keeps the list complete. */
+const customerDetailTextFields = Struct.keys({
+  ...customerBillingDetailFieldSet,
+  firstName: true,
+  lastName: true,
+  email: true,
+} as const satisfies { readonly [Field in CustomerDetailTextField]: true });
 
 /**
- * Whether a customer holds every billing detail exactly as written. An empty
- * detail also matches a field Dotypos leaves missing or null.
+ * Whether a customer holds each text field exactly as written. An empty
+ * value also matches a field Dotypos leaves missing or null.
  */
-const holdsCustomerBillingDetails =
-  (details: DotyposCustomerBillingDetails) => (customer: DotyposCustomer) =>
-    customerBillingDetailFields.every(
-      (field) => (customer[field] ?? "") === details[field]
-    );
+const holdsCustomerText =
+  <Field extends CustomerDetailTextField>(
+    fields: readonly Field[],
+    written: { readonly [Key in Field]: string }
+  ) =>
+  (customer: DotyposCustomer) =>
+    fields.every((field) => (customer[field] ?? "") === written[field]);
 
-export type DotyposCustomerDetails = DotyposCustomerBillingDetails & {
-  readonly firstName: string;
-  readonly lastName: string;
-  readonly email: string;
-  readonly phone?: string;
+const holdsCustomerBillingDetails = (details: DotyposCustomerBillingDetails) =>
+  holdsCustomerText(Struct.keys(customerBillingDetailFieldSet), details);
+
+/**
+ * Whether a customer holds a details write: every text field as
+ * holdsCustomerText checks it, and the phone exactly only when the write
+ * includes one. A write without a phone leaves the stored phone alone, so
+ * any stored phone holds it.
+ */
+const holdsCustomerDetails = (details: DotyposCustomerDetails) => {
+  const holdsText = holdsCustomerText(customerDetailTextFields, details);
+  return (customer: DotyposCustomer) =>
+    holdsText(customer) &&
+    (details.phone === undefined || customer.phone === details.phone);
+};
+
+/**
+ * The trimmed details an update writes. An absent or unparseable phone is
+ * left out so the phone stored in Dotypos stays untouched; clearing it
+ * requires an explicit provider patch.
+ */
+const toCustomerDetailsUpdate = (
+  details: DotyposCustomerDetails
+): DotyposCustomerDetails => {
+  const phone = normalizePhoneNumber(details.phone);
+  return {
+    addressLine1: details.addressLine1.trim(),
+    addressLine2: details.addressLine2.trim(),
+    city: details.city.trim(),
+    companyId: details.companyId.trim(),
+    companyName: details.companyName.trim(),
+    country: details.country.trim(),
+    email: details.email.trim(),
+    firstName: details.firstName.trim(),
+    lastName: details.lastName.trim(),
+    ...(phone && { phone }),
+    vatId: details.vatId.trim(),
+    zip: details.zip.trim(),
+  };
 };
 
 export type FindCustomerOptions = {
@@ -841,10 +897,9 @@ export interface IDotyposService {
   >;
   /**
    * The next three patch the customer and fail DotyposRejected{not-found} when it does not exist.
-   * setCustomerDiscountGroup and updateCustomerBillingDetails settle a replayed PATCH that meets 412 by rereading the
-   * customer once: a reread with a new ETag that holds the write gets one confirming PATCH under that ETag, which
-   * succeeds when it holds the write; any other reread, a failed one, or a failed confirmation stays DotyposUncertain.
-   * A plain 412 is DotyposVersionConflict.
+   * Each settles a replayed PATCH that meets 412 by rereading the customer once: a reread with a new ETag that holds
+   * the write gets one confirming PATCH under that ETag, which succeeds when it holds the write; any other reread, a
+   * failed one, or a failed confirmation stays DotyposUncertain. A plain 412 is DotyposVersionConflict.
    */
   readonly setCustomerDiscountGroup: (
     customerId: DotyposCustomerId,
@@ -2222,31 +2277,16 @@ const makeDotyposService: Effect.Effect<
     )
   );
 
-  /**
-   * An absent or unparseable phone omits the field so the phone stored in
-   * Dotypos stays untouched; clearing it requires an explicit provider patch.
-   */
+  /** Writes the trimmed details; see toCustomerDetailsUpdate for the phone. */
   const updateCustomerDetails = Effect.fn(
     "DotyposService.updateCustomerDetails"
   )((customerId: DotyposCustomerId, details: DotyposCustomerDetails) => {
-    const phone = normalizePhoneNumber(details.phone);
+    const update = toCustomerDetailsUpdate(details);
     return updateCustomerVersion(
       customerId,
-      {
-        addressLine1: details.addressLine1.trim(),
-        addressLine2: details.addressLine2.trim(),
-        city: details.city.trim(),
-        companyId: details.companyId.trim(),
-        companyName: details.companyName.trim(),
-        country: details.country.trim(),
-        email: details.email.trim(),
-        firstName: details.firstName.trim(),
-        lastName: details.lastName.trim(),
-        ...(phone && { phone }),
-        vatId: details.vatId.trim(),
-        zip: details.zip.trim(),
-      },
-      "updateCustomerDetails"
+      update,
+      "updateCustomerDetails",
+      holdsCustomerDetails(update)
     );
   });
 
