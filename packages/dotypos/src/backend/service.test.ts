@@ -52,6 +52,7 @@ import {
 } from "./request-profiles";
 import {
   CustomerVersionSelection,
+  type DotyposCustomerBillingDetails,
   DotyposService,
   type IDotyposService,
 } from "./service";
@@ -5807,6 +5808,283 @@ describe("DotyposService conditional-write replay", () => {
       // Every PATCH, a confirmation included, sends the same payload.
       expect(patchBodies).toEqual(
         row.expectedIfMatch.map(() => ({ _discountGroupId: row.requested }))
+      );
+    }
+  );
+
+  /** Billing fields a customer answer carries; undefined leaves one out. */
+  type BillingSettlementFields = {
+    readonly [Field in keyof DotyposCustomerBillingDetails]?: string | null;
+  };
+  /** A version read: the customer's billing fields under an ETag, or a 503. */
+  type BillingSettlementRead =
+    | { readonly fields: BillingSettlementFields; readonly etag: string }
+    | 503;
+  /** A PATCH answer: `success` echoes the written details; fields answer 200 with them. */
+  type BillingSettlementPatch =
+    | "success"
+    | { readonly fields: BillingSettlementFields }
+    | "transport"
+    | 503
+    | 412;
+  type BillingSettlementRow = {
+    readonly label: string;
+    /** Each version read's answer in order; the last one repeats. */
+    readonly reads: readonly BillingSettlementRead[];
+    readonly patches: readonly BillingSettlementPatch[];
+    readonly expected:
+      | "success"
+      | {
+          readonly _tag: string;
+          readonly reason?: string;
+          readonly request: string;
+          readonly httpStatus?: number;
+        };
+    readonly expectedReads: number;
+    /** Each PATCH's If-Match ETag version in order. */
+    readonly expectedIfMatch: readonly string[];
+  };
+
+  const requestedBilling: DotyposCustomerBillingDetails = {
+    addressLine1: "Synthetic street 1",
+    addressLine2: "",
+    city: "Synthetic city",
+    zip: "12345",
+    country: "CZ",
+    companyName: "Synthetic company",
+    companyId: "",
+    vatId: "",
+  };
+  const blankBillingAsNull = {
+    ...requestedBilling,
+    addressLine2: null,
+    companyId: null,
+    vatId: null,
+  } as const;
+  const blankBillingMissing = {
+    ...requestedBilling,
+    addressLine2: undefined,
+    companyId: undefined,
+    vatId: undefined,
+  } as const;
+  const billingBefore = { fields: {}, etag: "v1" } as const;
+  const billingApplied = [
+    billingBefore,
+    { fields: requestedBilling, etag: "v2" },
+  ] as const;
+  const billingRereadOnly = (fields: BillingSettlementFields) =>
+    ({
+      reads: [billingBefore, { fields, etag: "v2" }],
+      patches: [503, 412],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: replayedOnly,
+    }) as const;
+
+  const billingSettlementRows: readonly BillingSettlementRow[] = [
+    {
+      label:
+        "503 then 412 settles when a confirming PATCH holds every billing detail",
+      reads: billingApplied,
+      patches: [503, 412, "success"],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label:
+        "transport failure then 412 settles when a confirming PATCH holds every billing detail",
+      reads: billingApplied,
+      patches: ["transport", 412, "success"],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "null fields hold blank billing details",
+      reads: [billingBefore, { fields: blankBillingAsNull, etag: "v2" }],
+      patches: [503, 412, { fields: blankBillingAsNull }],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "missing fields hold blank billing details",
+      reads: [billingBefore, { fields: blankBillingMissing, etag: "v2" }],
+      patches: [503, 412, { fields: blankBillingMissing }],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "a reread with another zip stays uncertain without a PATCH",
+      ...billingRereadOnly({ ...requestedBilling, zip: "54321" }),
+    },
+    {
+      label:
+        "a reread with a VAT ID where a blank was written stays uncertain without a PATCH",
+      ...billingRereadOnly({ ...requestedBilling, vatId: "CZ00000000" }),
+    },
+    {
+      label: "a reread without a written city stays uncertain without a PATCH",
+      ...billingRereadOnly({ ...requestedBilling, city: null }),
+    },
+    {
+      label:
+        "a reread whose city differs only by case stays uncertain without a PATCH",
+      ...billingRereadOnly({ ...requestedBilling, city: "SYNTHETIC CITY" }),
+    },
+    {
+      label:
+        "a reread whose address differs only by whitespace stays uncertain without a PATCH",
+      ...billingRereadOnly({
+        ...requestedBilling,
+        addressLine1: " Synthetic street 1 ",
+      }),
+    },
+    {
+      label:
+        "a reread that holds the details under the replayed ETag stays uncertain without a PATCH",
+      reads: [billingBefore, { fields: requestedBilling, etag: "v1" }],
+      patches: [503, 412],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: replayedOnly,
+    },
+    {
+      label: "a confirming PATCH that answers another country stays uncertain",
+      reads: billingApplied,
+      patches: [503, 412, { fields: { ...requestedBilling, country: "SK" } }],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "a confirming PATCH that meets 412 stays uncertain",
+      reads: billingApplied,
+      patches: [503, 412, 412],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "a confirming PATCH that exhausts its retries stays uncertain",
+      reads: billingApplied,
+      patches: [503, 412, 503, 503, 503, 503],
+      expected: {
+        _tag: "DotyposUncertain",
+        reason: "server",
+        request: "customer.patch",
+        httpStatus: 503,
+      },
+      expectedReads: 2,
+      expectedIfMatch: ["v1", "v1", "v2", "v2", "v2", "v2"],
+    },
+    {
+      label: "a failed settling reread stays uncertain",
+      reads: [billingBefore, 503],
+      patches: [503, 412],
+      expected: {
+        _tag: "DotyposUncertain",
+        reason: "conflict-after-replay",
+        request: "customer.version",
+        httpStatus: 503,
+      },
+      expectedReads: 5,
+      expectedIfMatch: replayedOnly,
+    },
+    {
+      label: "a plain 412 is a version conflict without a reread",
+      reads: billingApplied,
+      patches: [412],
+      expected: {
+        _tag: "DotyposVersionConflict",
+        request: "customer.patch",
+        httpStatus: 412,
+      },
+      expectedReads: 1,
+      expectedIfMatch: ["v1"],
+    },
+  ];
+
+  test.each([...billingSettlementRows])(
+    "updateCustomerBillingDetails settlement: $label",
+    async (row) => {
+      let versionReads = 0;
+      const ifMatchHeaders: Array<string | null> = [];
+      const patchBodies: unknown[] = [];
+      const fetchMock = mockDotyposFetch(async (request) => {
+        const url = new URL(request.url);
+        if (url.pathname === "/signin/token") return tokenResponse();
+        if (url.pathname !== "/clouds/cloud-id/customers/customer-id") {
+          return new Response("Not found", { status: 404 });
+        }
+        if (request.method === "GET") {
+          const read = row.reads[
+            Math.min(versionReads, row.reads.length - 1)
+          ] as BillingSettlementRead;
+          versionReads += 1;
+          if (read === 503) return new Response("Unavailable", { status: 503 });
+          return Response.json(customer(read.fields), {
+            headers: { ETag: `"customer-${read.etag}"` },
+          });
+        }
+        if (request.method === "PATCH") {
+          const patch = row.patches[ifMatchHeaders.length];
+          ifMatchHeaders.push(request.headers.get("if-match"));
+          patchBodies.push(await request.json());
+          if (patch === "transport") throw new TypeError("fetch failed");
+          if (patch === "success") {
+            return Response.json(customer(requestedBilling));
+          }
+          if (typeof patch === "object") {
+            return Response.json(customer(patch.fields));
+          }
+          return new Response(null, { status: patch ?? 500 });
+        }
+        return new Response("Not found", { status: 404 });
+      });
+
+      const result = await runWithServiceRetryingInstantly(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos
+            .updateCustomerBillingDetails(
+              dotyposCustomerId("customer-id"),
+              requestedBilling
+            )
+            .pipe(Effect.result);
+        }),
+        fetchMock
+      );
+
+      if (row.expected === "success") {
+        expect(result).toMatchObject({
+          _tag: "Success",
+          success: { id: "customer-id" },
+        });
+      } else {
+        expect(result).toMatchObject({
+          _tag: "Failure",
+          failure: {
+            _tag: row.expected._tag,
+            ...(row.expected.reason && { reason: row.expected.reason }),
+            operation: "updateCustomerBillingDetails",
+            request: row.expected.request,
+            ...(row.expected.httpStatus !== undefined && {
+              httpStatus: row.expected.httpStatus,
+            }),
+          },
+        });
+      }
+      expect(versionReads).toBe(row.expectedReads);
+      // The replay reuses the first ETag; a confirmation uses the reread's.
+      expect(ifMatchHeaders).toEqual(
+        row.expectedIfMatch.map((etag) => `"customer-${etag}"`)
+      );
+      // Every PATCH, a confirmation included, sends the exact details.
+      expect(patchBodies).toEqual(
+        row.expectedIfMatch.map(() => requestedBilling)
       );
     }
   );

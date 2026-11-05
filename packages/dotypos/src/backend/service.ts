@@ -8,6 +8,7 @@ import {
   Ref,
   Schedule,
   Schema,
+  Struct,
 } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { DotyposRuntimeConfig } from "../config";
@@ -432,6 +433,28 @@ export type DotyposCustomerBillingDetails = {
   readonly vatId: string;
 };
 
+/** Every billing detail field; the type check keeps the list complete. */
+const customerBillingDetailFields = Struct.keys({
+  addressLine1: true,
+  addressLine2: true,
+  city: true,
+  zip: true,
+  country: true,
+  companyName: true,
+  companyId: true,
+  vatId: true,
+} satisfies { readonly [Field in keyof DotyposCustomerBillingDetails]: true });
+
+/**
+ * Whether a customer holds every billing detail exactly as written. An empty
+ * detail also matches a field Dotypos leaves missing or null.
+ */
+const holdsCustomerBillingDetails =
+  (details: DotyposCustomerBillingDetails) => (customer: DotyposCustomer) =>
+    customerBillingDetailFields.every(
+      (field) => (customer[field] ?? "") === details[field]
+    );
+
 export type DotyposCustomerDetails = DotyposCustomerBillingDetails & {
   readonly firstName: string;
   readonly lastName: string;
@@ -818,9 +841,10 @@ export interface IDotyposService {
   >;
   /**
    * The next three patch the customer and fail DotyposRejected{not-found} when it does not exist.
-   * setCustomerDiscountGroup settles a replayed PATCH that meets 412 by rereading the customer once: a reread with a new
-   * ETag and the requested group gets one confirming PATCH under that ETag, which succeeds when it holds the group; any
-   * other reread, a failed one, or a failed confirmation stays DotyposUncertain. A plain 412 is DotyposVersionConflict.
+   * setCustomerDiscountGroup and updateCustomerBillingDetails settle a replayed PATCH that meets 412 by rereading the
+   * customer once: a reread with a new ETag that holds the write gets one confirming PATCH under that ETag, which
+   * succeeds when it holds the write; any other reread, a failed one, or a failed confirmation stays DotyposUncertain.
+   * A plain 412 is DotyposVersionConflict.
    */
   readonly setCustomerDiscountGroup: (
     customerId: DotyposCustomerId,
@@ -2190,7 +2214,12 @@ const makeDotyposService: Effect.Effect<
   const updateCustomerBillingDetails = Effect.fn(
     "DotyposService.updateCustomerBillingDetails"
   )((customerId: DotyposCustomerId, details: DotyposCustomerBillingDetails) =>
-    updateCustomerVersion(customerId, details, "updateCustomerBillingDetails")
+    updateCustomerVersion(
+      customerId,
+      details,
+      "updateCustomerBillingDetails",
+      holdsCustomerBillingDetails(details)
+    )
   );
 
   /**
