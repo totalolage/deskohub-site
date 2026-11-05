@@ -208,7 +208,7 @@ const createSyntheticReservationAt = (
         !candidate.tags?.includes(workspaceOfficeReservationTableTag) &&
         !candidate.tags?.includes(workspaceMeetingRoomReservationTableTag)
     );
-    if (!table?.id) {
+    if (!table) {
       return yield* workspaceE2EError(
         "No enabled shared table is available for the synthetic account reservation",
         {

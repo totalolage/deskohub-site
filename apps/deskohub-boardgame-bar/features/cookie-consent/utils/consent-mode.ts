@@ -3,6 +3,10 @@
  * Manages consent state and updates for Google services
  */
 
+import type CookieConsent from "vanilla-cookieconsent";
+import type { ConsentCategory } from "../config/consent-config";
+import { acceptedConsentCategories } from "./accepted-consent-categories";
+
 export type ConsentStatus = "granted" | "denied";
 
 export interface ConsentState {
@@ -106,4 +110,56 @@ export function denyPreferencesConsent(): void {
   updateConsentMode({
     personalization_storage: "denied",
   });
+}
+
+const consentModeUpdates = {
+  analytics: { grant: grantAnalyticsConsent, deny: denyAnalyticsConsent },
+  marketing: { grant: grantMarketingConsent, deny: denyMarketingConsent },
+  preferences: {
+    grant: grantPreferencesConsent,
+    deny: denyPreferencesConsent,
+  },
+} satisfies Partial<
+  Record<ConsentCategory, { grant: () => void; deny: () => void }>
+>;
+
+/**
+ * Window event announcing the visitor's accepted categories after every
+ * consent sync, for GTM and `useCookieConsent`.
+ */
+export const CONSENT_UPDATED_EVENT = "consentUpdated";
+
+/** The cookie banner's view of the visitor's current choices. */
+export interface CookieConsentChoices {
+  getUserPreferences(): Pick<
+    CookieConsent.UserPreferences,
+    "acceptedCategories"
+  >;
+  acceptedCategory(category: string): boolean;
+}
+
+/**
+ * Mirrors the cookie banner's current choices into Google Consent Mode and
+ * announces the accepted categories.
+ */
+export function syncConsentMode(cookieConsent: CookieConsentChoices): void {
+  const acceptedCategories = acceptedConsentCategories(
+    cookieConsent.getUserPreferences()
+  );
+
+  for (const [category, update] of Object.entries(consentModeUpdates)) {
+    if (cookieConsent.acceptedCategory(category)) {
+      update.grant();
+    } else {
+      update.deny();
+    }
+  }
+
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent(CONSENT_UPDATED_EVENT, {
+        detail: { acceptedCategories },
+      })
+    );
+  }
 }

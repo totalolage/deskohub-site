@@ -118,7 +118,5 @@ export const excludeDotyposReservationsById = <
   if (excludedDotyposReservationIds.length === 0) return reservations;
 
   const excludedIds = new Set(excludedDotyposReservationIds);
-  return reservations.filter(
-    (reservation) => !reservation.id || !excludedIds.has(reservation.id)
-  );
+  return reservations.filter((reservation) => !excludedIds.has(reservation.id));
 };

@@ -3,6 +3,7 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { AccountingDocumentSnapshotRepository } from "@/features/accounting/backend/accounting-document-snapshot.repository";
 import { AccountingSnapshotKeyService } from "@/features/accounting/backend/accounting-snapshot-key.service";
 import { ReservationFulfillment } from "@/features/checkout/backend/fulfillment";
+import { DotyposHoldRelease } from "@/features/checkout/backend/holds";
 import {
   LatePaymentRecoveryService,
   latePaymentRecoveryTopic,
@@ -30,6 +31,7 @@ const databaseRepositories = Layer.mergeAll(
 );
 
 const ConsumerLive = LatePaymentRecoveryService.Default.pipe(
+  Layer.provide(DotyposHoldRelease.Default),
   Layer.provide(databaseRepositories),
   Layer.provide(WorkspaceAvailabilityService.Live),
   Layer.provide(

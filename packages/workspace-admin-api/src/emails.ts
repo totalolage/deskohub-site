@@ -1,15 +1,9 @@
-import { Effect, Match, Schema, SchemaGetter } from "effect";
+import { Effect, Schema } from "effect";
 import { AdministrationCampaignPurpose } from "./campaign-locale-and-purpose";
 import { AdministrationCampaignTemplateKey } from "./email-campaigns";
 import {
   EmailCustomerField,
   EmailCustomerSelection,
-  EmailCustomerSelectionInvalid,
-  emailCustomerFieldAtPath,
-  emailCustomerFieldCatalogue,
-  inspectEmailCustomerSelection,
-  isEmailCustomerScalar,
-  selectedEmailCustomerShape,
 } from "./email-customer-selection";
 import { EmailValueName } from "./email-identifiers";
 import { AdministrationStoredDiscountId } from "./workspace-admin-api";
@@ -17,25 +11,98 @@ import { AdministrationStoredDiscountId } from "./workspace-admin-api";
 const key = Schema.NonEmptyString;
 const path = Schema.Array(key).check(Schema.isMinLength(1));
 const httpUrl = Schema.String.check(Schema.isPattern(/^https?:\/\/[^\s]+$/));
+/**
+ * Where a link, button, linked image or offer leads. Decoding accepts any web
+ * or `mailto:` address so historical publications keep decoding; publication
+ * requires `https:` or `mailto:`.
+ */
+const destination = Schema.String.check(
+  Schema.isPattern(/^(?:https?:\/\/|mailto:)[^\s]+$/)
+);
+/** Shared destinations of one text-bearing component, named by link key. */
+const links = Schema.optionalKey(Schema.Record(key, destination));
+/** Formatting a rich text part carries; plain texts must not set it. */
+const marks = {
+  bold: Schema.optionalKey(Schema.Boolean),
+  italic: Schema.optionalKey(Schema.Boolean),
+  /** A link key of the component that owns this text. */
+  link: Schema.optionalKey(key),
+};
+const draftMarks = {
+  bold: Schema.optionalKey(Schema.Boolean),
+  italic: Schema.optionalKey(Schema.Boolean),
+  link: Schema.optionalKey(Schema.String),
+};
 
 export const EmailInlinePart = Schema.Union([
-  Schema.TaggedStruct("Text", { text: Schema.String }),
+  Schema.TaggedStruct("Text", { text: Schema.String, ...marks }),
   Schema.TaggedStruct("Value", {
     name: EmailValueName,
     field: Schema.optionalKey(path),
+    ...marks,
   }),
 ]);
 export type EmailInlinePart = typeof EmailInlinePart.Type;
 const inline = Schema.Array(EmailInlinePart);
 const draftInline = Schema.Array(
   Schema.Union([
-    Schema.TaggedStruct("Text", { text: Schema.optionalKey(Schema.String) }),
+    Schema.TaggedStruct("Text", {
+      text: Schema.optionalKey(Schema.String),
+      ...draftMarks,
+    }),
     Schema.TaggedStruct("Value", {
       name: Schema.optionalKey(Schema.String),
       field: Schema.optionalKey(Schema.Array(Schema.String)),
+      ...draftMarks,
     }),
   ])
 );
+
+/** One text list item; a nested list follows its text. */
+export interface EmailTextListItem {
+  readonly textKey: string;
+  readonly list?: EmailTextListLevel;
+}
+export interface EmailTextListLevel {
+  readonly ordered: boolean;
+  readonly start?: number;
+  readonly items: readonly EmailTextListItem[];
+}
+const listStart = Schema.optionalKey(
+  Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+);
+const textListItems: Schema.Codec<readonly EmailTextListItem[]> = Schema.Array(
+  Schema.Struct({
+    textKey: key,
+    list: Schema.optionalKey(Schema.suspend(() => EmailTextListLevel)),
+  })
+).check(Schema.isMinLength(1));
+const EmailTextListLevel: Schema.Codec<EmailTextListLevel> = Schema.Struct({
+  ordered: Schema.Boolean,
+  start: listStart,
+  items: textListItems,
+});
+interface DraftTextListLevel {
+  readonly ordered?: boolean;
+  readonly start?: number;
+  readonly items?: readonly {
+    readonly textKey?: string;
+    readonly list?: DraftTextListLevel;
+  }[];
+}
+const draftTextListItems: Schema.Codec<
+  NonNullable<DraftTextListLevel["items"]>
+> = Schema.Array(
+  Schema.Struct({
+    textKey: Schema.optionalKey(Schema.String),
+    list: Schema.optionalKey(Schema.suspend(() => DraftTextListLevel)),
+  })
+);
+const DraftTextListLevel: Schema.Codec<DraftTextListLevel> = Schema.Struct({
+  ordered: Schema.optionalKey(Schema.Boolean),
+  start: Schema.optionalKey(Schema.Int),
+  items: Schema.optionalKey(draftTextListItems),
+});
 
 export const EmailDiscountSelection = Schema.Struct({
   kind: Schema.Literal("discount"),
@@ -63,19 +130,34 @@ export type EmailValueDefinition = typeof EmailValueDefinition.Type;
 const componentField = Schema.Struct({ field: path, labelKey: key });
 const fields = Schema.Array(componentField).check(Schema.isMinLength(1));
 export const EmailBodyComponent = Schema.Union([
-  Schema.TaggedStruct("Paragraph", { id: key, textKey: key }),
+  Schema.TaggedStruct("Paragraph", { id: key, textKey: key, links }),
   Schema.TaggedStruct("Heading", {
     id: key,
     textKey: key,
     level: Schema.Literals([1, 2, 3]),
+    links,
   }),
+  /** A bulleted or numbered list of translated rich texts. */
+  Schema.TaggedStruct("TextList", {
+    id: key,
+    ordered: Schema.Boolean,
+    start: listStart,
+    items: textListItems,
+    links,
+  }),
+  Schema.TaggedStruct("Divider", { id: key }),
+  /** An empty line, as a blank paragraph renders. */
+  Schema.TaggedStruct("Spacer", { id: key }),
   Schema.TaggedStruct("Image", {
     id: key,
     src: httpUrl,
     altKey: key,
-    href: Schema.optionalKey(httpUrl),
+    href: Schema.optionalKey(destination),
+    align: Schema.optionalKey(Schema.Literals(["left", "center", "right"])),
+    /** Intrinsic width in whole pixels; unset fills the body column. */
+    width: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0))),
   }),
-  Schema.TaggedStruct("Button", { id: key, labelKey: key, href: httpUrl }),
+  Schema.TaggedStruct("Button", { id: key, labelKey: key, href: destination }),
   Schema.TaggedStruct("Record", { id: key, value: EmailValueName, fields }),
   Schema.TaggedStruct("List", {
     id: key,
@@ -93,7 +175,7 @@ export const EmailBodyComponent = Schema.Union([
     id: key,
     value: EmailValueName,
     labelKey: key,
-    href: httpUrl,
+    href: destination,
   }),
 ]);
 export type EmailBodyComponent = typeof EmailBodyComponent.Type;
@@ -133,13 +215,22 @@ const draftComponent = Schema.Struct({
     "Record",
     "List",
     "Offer",
+    "TextList",
+    "Divider",
+    "Spacer",
   ]),
   id: Schema.optionalKey(Schema.String),
   textKey: Schema.optionalKey(Schema.String),
   level: Schema.optionalKey(Schema.Literals([1, 2, 3])),
+  links: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  ordered: Schema.optionalKey(Schema.Boolean),
+  start: Schema.optionalKey(Schema.Int),
+  items: Schema.optionalKey(draftTextListItems),
   src: Schema.optionalKey(Schema.String),
   altKey: Schema.optionalKey(Schema.String),
   href: Schema.optionalKey(Schema.String),
+  align: Schema.optionalKey(Schema.Literals(["left", "center", "right"])),
+  width: Schema.optionalKey(Schema.Int),
   labelKey: Schema.optionalKey(Schema.String),
   value: Schema.optionalKey(Schema.String),
   sort: Schema.optionalKey(
@@ -199,257 +290,3 @@ export const EmailDocument = Schema.Struct({
   values: Schema.Array(EmailValueDefinition),
 }).annotate({ identifier: "EmailDocument" });
 export type EmailDocument = typeof EmailDocument.Type;
-
-/** Call with the application's current locale registry at every explicit publication. */
-export const emailDocumentForPublication = (
-  currentLocales: readonly string[]
-) =>
-  EmailDocument.annotate({ parseOptions: { onExcessProperty: "error" } })
-    .check(
-      Schema.makeFilter(
-        (document) =>
-          emailPublicationProblems(document, currentLocales).length === 0,
-        {
-          description:
-            "Every current language, nonempty subjects and body, unique names and component ids, valid localized text and typed value references are required.",
-        }
-      )
-    )
-    .pipe(
-      Schema.decodeTo(Schema.toType(EmailDocument), {
-        decode: SchemaGetter.transform((document) => ({
-          ...document,
-          values: document.values.map((definition) => {
-            if (definition.source.kind !== "customer") return definition;
-            const shape = selectedEmailCustomerShape(definition.source);
-            const selected = emailCustomerFieldAtPath(
-              emailCustomerFieldCatalogue,
-              definition.source.path,
-              { inheritPresence: false }
-            );
-            const sortShape =
-              definition.source.sort && selected?.kind === "list"
-                ? emailCustomerFieldAtPath(
-                    selected.element,
-                    definition.source.sort.path
-                  )
-                : undefined;
-            return shape
-              ? {
-                  ...definition,
-                  customerShape: shape,
-                  ...(sortShape ? { customerSortShape: sortShape } : {}),
-                }
-              : definition;
-          }),
-        })),
-        encode: SchemaGetter.transform((document) => document),
-      })
-    );
-
-/** Stable ordered required set, frozen alongside the selected version before generation. */
-export const requiredEmailValueNames = (
-  document: EmailDocument
-): readonly EmailValueName[] => {
-  const referenced = new Set<EmailValueName>(
-    document.structure.flatMap((component) =>
-      "value" in component ? [component.value] : []
-    )
-  );
-  for (const translation of Object.values(document.translations)) {
-    for (const part of translatedParts(document.structure, translation))
-      if (part._tag === "Value") referenced.add(part.name);
-  }
-  return document.values
-    .filter((definition) => referenced.has(definition.name))
-    .map((definition) => definition.name);
-};
-
-export const emailPublicationProblems = (
-  document: EmailDocument,
-  currentLocales: readonly string[]
-): readonly string[] => {
-  const problems: string[] = [];
-  const definitions = new Map(
-    document.values.map((definition) => [definition.name, definition])
-  );
-  if (definitions.size !== document.values.length)
-    problems.push("Duplicate value names.");
-  if (
-    new Set(document.structure.map((component) => component.id)).size !==
-    document.structure.length
-  )
-    problems.push("Duplicate component ids.");
-  if (document.structure.length === 0) problems.push("Body is empty.");
-  for (const locale of currentLocales)
-    if (!Object.hasOwn(document.translations, locale))
-      problems.push(`Missing language: ${locale}.`);
-  for (const definition of document.values)
-    if (
-      definition.source.kind === "customer" &&
-      inspectEmailCustomerSelection(definition.source) instanceof
-        EmailCustomerSelectionInvalid
-    )
-      problems.push(`Invalid customer selection: ${definition.name}.`);
-  for (const [locale, translation] of Object.entries(document.translations)) {
-    if (
-      !translation.subject.length ||
-      translation.subject.every(
-        (part) => part._tag === "Text" && !part.text.trim()
-      )
-    )
-      problems.push(`Empty subject: ${locale}.`);
-    for (const textKey of componentTextKeys(document.structure)) {
-      if (!Object.hasOwn(translation.texts, textKey))
-        problems.push(`Missing text ${textKey}: ${locale}.`);
-      const decorative = !componentTextKeys(
-        document.structure.filter((component) => component._tag !== "Image")
-      ).includes(textKey);
-      if (
-        !decorative &&
-        !(translation.texts[textKey] ?? []).some(
-          (part) => part._tag === "Value" || part.text.trim().length > 0
-        )
-      )
-        problems.push(`Empty text ${textKey}: ${locale}.`);
-    }
-    for (const part of translatedParts(document.structure, translation)) {
-      if (
-        part._tag === "Value" &&
-        !validScalarReference(definitions.get(part.name), part.field)
-      )
-        problems.push(`Invalid scalar value ${part.name}: ${locale}.`);
-    }
-  }
-  for (const component of document.structure) {
-    if (!("value" in component)) continue;
-    const definition = definitions.get(component.value);
-    if (!definition) {
-      problems.push(`Unknown value: ${component.value}.`);
-      continue;
-    }
-    if (component._tag === "Offer") {
-      if (definition.source.kind !== "discount")
-        problems.push(`Offer requires a discount: ${component.value}.`);
-      continue;
-    }
-    if (definition.source.kind !== "customer") {
-      problems.push(
-        `Structured component requires customer data: ${component.value}.`
-      );
-      continue;
-    }
-    const source = definition.source;
-    const selected = emailCustomerFieldAtPath(
-      emailCustomerFieldCatalogue,
-      source.path
-    );
-    if (
-      !selected ||
-      (component._tag === "Record" && selected.kind !== "record") ||
-      (component._tag === "List" && selected.kind !== "list")
-    ) {
-      problems.push(`Wrong component value shape: ${component.value}.`);
-      continue;
-    }
-    const item = selected.kind === "list" ? selected.element : selected;
-    if (component._tag === "List") {
-      if (
-        component.sort &&
-        (!isEmailCustomerScalar(
-          emailCustomerFieldAtPath(item, component.sort.path)
-        ) ||
-          (item.kind === "record" &&
-            !source.fields?.some((field) =>
-              samePath(field, component.sort?.path ?? [])
-            )))
-      )
-        problems.push(`Unselected list sort field: ${component.value}.`);
-      if (
-        component.limit !== undefined &&
-        source.limit !== undefined &&
-        component.limit > source.limit
-      )
-        problems.push(
-          `List component limit exceeds selected source: ${component.value}.`
-        );
-    }
-    if (item.kind === "record" && !component.fields?.length)
-      problems.push(`Record fields required: ${component.value}.`);
-    if (
-      component.fields?.some(
-        ({ field }) =>
-          !isEmailCustomerScalar(emailCustomerFieldAtPath(item, field)) ||
-          !source.fields?.some((selectedField) =>
-            samePath(field, selectedField)
-          )
-      )
-    )
-      problems.push(`Unselected component field: ${component.value}.`);
-  }
-  return problems;
-};
-
-function samePath(left: readonly string[], right: readonly string[]): boolean {
-  return (
-    left.length === right.length &&
-    left.every((part, index) => part === right[index])
-  );
-}
-
-function validScalarReference(
-  definition: EmailValueDefinition | undefined,
-  field: readonly string[] | undefined
-): boolean {
-  if (!definition) return false;
-  if (definition.source.kind === "discount")
-    return (
-      field?.length === 1 && (field[0] === "code" || field[0] === "expiresAt")
-    );
-  const selected = emailCustomerFieldAtPath(
-    emailCustomerFieldCatalogue,
-    definition.source.path
-  );
-  if (!field) return isEmailCustomerScalar(selected);
-  return (
-    selected?.kind === "record" &&
-    isEmailCustomerScalar(emailCustomerFieldAtPath(selected, field)) &&
-    Boolean(
-      definition.source.fields?.some((selectedField) =>
-        samePath(field, selectedField)
-      )
-    )
-  );
-}
-
-function componentTextKeys(
-  structure: readonly EmailBodyComponent[]
-): readonly string[] {
-  return structure.flatMap((component) =>
-    Match.value(component).pipe(
-      Match.tagsExhaustive({
-        Paragraph: ({ textKey }) => [textKey],
-        Heading: ({ textKey }) => [textKey],
-        Image: ({ altKey }) => [altKey],
-        Button: ({ labelKey }) => [labelKey],
-        Offer: ({ labelKey }) => [labelKey],
-        Record: ({ fields }) => fields.map((field) => field.labelKey),
-        List: ({ fields }) => fields?.map((field) => field.labelKey) ?? [],
-      })
-    )
-  );
-}
-
-function translatedParts(
-  structure: readonly EmailBodyComponent[],
-  translation: EmailTranslation
-): readonly EmailInlinePart[] {
-  return [
-    ...translation.subject,
-    ...translation.preheader,
-    ...(translation.operationalReason ?? []),
-    ...componentTextKeys(structure).flatMap(
-      (key) => translation.texts[key] ?? []
-    ),
-  ];
-}

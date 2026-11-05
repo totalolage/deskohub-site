@@ -69,7 +69,7 @@ export const isCampaignLinkHref = (
  * Images must be delivered from our own Cloudinary account, `imageCloudName`.
  * Without one configured, no image source qualifies.
  */
-const isCampaignImageSource = (
+export const isCampaignImageSource = (
   source: CampaignBodyAttributeValue | undefined,
   imageCloudName: Option.Option<string>
 ): source is string => {
@@ -106,79 +106,88 @@ export const campaignButtonLabelIssue = (
     : Option.none();
 };
 
+/** Every link mark on the node must open an allowed URL. */
+const linkMarkIssues = (
+  node: CampaignBodyNode,
+  path: IssuePath
+): ReadonlyArray<CampaignBodyIssue> =>
+  (node.marks ?? []).flatMap((mark, index) =>
+    mark.type === "link" && !isCampaignLinkHref(mark.attrs?.href)
+      ? [
+          CampaignBodyIssue.LinkHrefInvalid({
+            path: [...path, "marks", index, "attrs", "href"],
+          }),
+        ]
+      : []
+  );
+
+/**
+ * An image layout attribute breaks its rule. An unset alignment or width
+ * keeps the default: centered, filling the column.
+ */
+const isImageLayoutInvalid = (
+  value: CampaignBodyAttributeValue | undefined,
+  isValid: (value: CampaignBodyAttributeValue | undefined) => boolean
+): boolean => value !== undefined && value !== null && !isValid(value);
+
+const imageLayoutRules = [
+  ["align", isCampaignImageAlignment],
+  ["width", isCampaignImageWidth],
+] as const;
+
+/** An image must come from our Cloudinary account and keep a valid layout. */
+const imageIssues = (
+  node: CampaignBodyNode,
+  path: IssuePath,
+  imageCloudName: Option.Option<string>
+): ReadonlyArray<CampaignBodyIssue> => [
+  ...(isCampaignImageSource(node.attrs?.src, imageCloudName)
+    ? []
+    : [
+        CampaignBodyIssue.ImageSourceInvalid({
+          path: [...path, "attrs", "src"],
+        }),
+      ]),
+  ...imageLayoutRules.flatMap(([attribute, isValid]) =>
+    isImageLayoutInvalid(node.attrs?.[attribute], isValid)
+      ? [
+          CampaignBodyIssue.ImageLayoutInvalid({
+            path: [...path, "attrs", attribute],
+          }),
+        ]
+      : []
+  ),
+];
+
+/** A button needs a label and an allowed URL. */
+const ctaButtonIssues = (
+  node: CampaignBodyNode,
+  path: IssuePath
+): ReadonlyArray<CampaignBodyIssue> => [
+  ...Option.toArray(
+    campaignButtonLabelIssue(node.attrs?.label, [...path, "attrs", "label"])
+  ),
+  ...(isCampaignLinkHref(node.attrs?.href)
+    ? []
+    : [
+        CampaignBodyIssue.ButtonHrefInvalid({
+          path: [...path, "attrs", "href"],
+        }),
+      ]),
+];
+
 const nodeIssues = (
   node: CampaignBodyNode,
   path: IssuePath,
   imageCloudName: Option.Option<string>
-): ReadonlyArray<CampaignBodyIssue> => {
-  const own: Array<CampaignBodyIssue> = [];
-
-  for (const [index, mark] of (node.marks ?? []).entries()) {
-    if (mark.type === "link" && !isCampaignLinkHref(mark.attrs?.href)) {
-      own.push(
-        CampaignBodyIssue.LinkHrefInvalid({
-          path: [...path, "marks", index, "attrs", "href"],
-        })
-      );
-    }
-  }
-
-  if (
-    node.type === "image" &&
-    !isCampaignImageSource(node.attrs?.src, imageCloudName)
-  ) {
-    own.push(
-      CampaignBodyIssue.ImageSourceInvalid({ path: [...path, "attrs", "src"] })
-    );
-  }
-
-  if (node.type === "image") {
-    const align = node.attrs?.align;
-    const width = node.attrs?.width;
-    // An unset alignment or width keeps the default: centered, filling the
-    // column.
-    if (
-      align !== undefined &&
-      align !== null &&
-      !isCampaignImageAlignment(align)
-    ) {
-      own.push(
-        CampaignBodyIssue.ImageLayoutInvalid({
-          path: [...path, "attrs", "align"],
-        })
-      );
-    }
-    if (width !== undefined && width !== null && !isCampaignImageWidth(width)) {
-      own.push(
-        CampaignBodyIssue.ImageLayoutInvalid({
-          path: [...path, "attrs", "width"],
-        })
-      );
-    }
-  }
-
-  if (node.type === "ctaButton") {
-    own.push(
-      ...Option.toArray(
-        campaignButtonLabelIssue(node.attrs?.label, [...path, "attrs", "label"])
-      )
-    );
-    if (!isCampaignLinkHref(node.attrs?.href)) {
-      own.push(
-        CampaignBodyIssue.ButtonHrefInvalid({
-          path: [...path, "attrs", "href"],
-        })
-      );
-    }
-  }
-
-  return [
-    ...own,
-    ...(node.content ?? []).flatMap((child, index) =>
-      nodeIssues(child, [...path, "content", index], imageCloudName)
-    ),
-  ];
-};
+): ReadonlyArray<CampaignBodyIssue> => [
+  ...linkMarkIssues(node, path),
+  ...(node.type === "image" ? imageIssues(node, path, imageCloudName) : []),
+  ...(node.type === "ctaButton" ? ctaButtonIssues(node, path) : []),
+  ...(node.content ?? []).flatMap((child, index) =>
+    nodeIssues(child, [...path, "content", index], imageCloudName)
+  ),
+];
 
 /**
  * Checks a body against the TipTap schema of the campaign content set: known

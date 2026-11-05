@@ -1,3 +1,4 @@
+export { DotyposHoldRelease } from "./dotypos-hold-release.service";
 export { ReservationHoldCleanupService } from "./reservation-hold-cleanup.service";
 export {
   processReservationHoldCleanupScheduleMessage,

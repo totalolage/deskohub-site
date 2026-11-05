@@ -680,6 +680,44 @@ describe("BookingForm", () => {
     );
   });
 
+  test("checks the cowork tier the customer picks and marks the results stale", async () => {
+    const { onCheck, onSelectionChange } = renderForm();
+
+    choose("Reserved Desk");
+    expect(onSelectionChange).toHaveBeenCalledTimes(1);
+    fireEvent.click(checkButton());
+
+    await waitFor(() => expect(onCheck).toHaveBeenCalledTimes(1));
+    expect(onCheck.mock.calls[0]?.[0]).toMatchObject({
+      family: "cowork",
+      tier: "reserved-desk",
+    });
+  });
+
+  test("checks the meeting-room start time the customer types", async () => {
+    const { onCheck, onSelectionChange } = renderForm();
+
+    choose(m.bookingWidgetFamilyMeetingRoom({}, { locale: "en-US" }));
+    onSelectionChange.mockClear();
+    fireEvent.change(
+      screen.queries.getByLabelText(
+        m.bookingWidgetStartTimeLabel({}, { locale: "en-US" })
+      ),
+      { target: { value: "10:00" } }
+    );
+    expect(onSelectionChange).toHaveBeenCalledTimes(1);
+    fireEvent.click(checkButton());
+
+    await waitFor(() =>
+      expect(onCheck).toHaveBeenCalledWith({
+        family: "meeting-room",
+        date: bookingToday,
+        duration: "hour:1",
+        start_time: "10:00",
+      })
+    );
+  });
+
   test("names the monitor setup the view picked when only workstation desks are left", () => {
     const monitors = bookingOfferings()
       .find(({ tier }) => tier === "reserved-desk")

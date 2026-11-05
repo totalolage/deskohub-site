@@ -62,25 +62,37 @@ const operationFailureResults = new Set([
 
 const operationWarningTypes = new Set(["CANCEL", "REFUND", "VOID"]);
 
+/** The results that mean an operation type went through as intended. */
+const operationSuccessResults = new Map<string, ReadonlySet<string>>([
+  ["AUTHORIZATION", new Set(["AUTHORIZED", "EXECUTED"])],
+  ["CAPTURE", new Set(["EXECUTED"])],
+]);
+
+const isWarningOperation = (
+  type: string | undefined,
+  result: string | undefined
+) =>
+  (result !== undefined && operationFailureResults.has(result)) ||
+  (type !== undefined && operationWarningTypes.has(type));
+
+const isSuccessfulOperation = (
+  type: string | undefined,
+  result: string | undefined
+) =>
+  type !== undefined &&
+  result !== undefined &&
+  (operationSuccessResults.get(type)?.has(result) ?? false);
+
 export const getProviderOperationTimelineTone = (
   operationType: string | undefined,
   operationResult: string | undefined
 ): "neutral" | "positive" | "warning" => {
   const type = operationType?.toUpperCase();
   const result = operationResult?.toUpperCase();
-  if (
-    (result && operationFailureResults.has(result)) ||
-    (type && operationWarningTypes.has(type))
-  ) {
+  if (isWarningOperation(type, result)) {
     return "warning";
   }
-  if (
-    (type === "AUTHORIZATION" && result === "AUTHORIZED") ||
-    ((type === "AUTHORIZATION" || type === "CAPTURE") && result === "EXECUTED")
-  ) {
-    return "positive";
-  }
-  return "neutral";
+  return isSuccessfulOperation(type, result) ? "positive" : "neutral";
 };
 
 /** Whether the hold cleanup gave up on the payment after the local payment window. */

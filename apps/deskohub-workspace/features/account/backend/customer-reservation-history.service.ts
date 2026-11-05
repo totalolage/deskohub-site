@@ -85,29 +85,40 @@ const getReservationProduct = (
   }
 };
 
+/**
+ * The reservation states that settle the status Workspace shows, whatever
+ * the shared Dotypos snapshot says. Workspace records a paid hold's
+ * confirmation itself, so a snapshot taken before it can't show a paid
+ * booking as pending.
+ */
+const statusByReservationState: Partial<
+  Record<ReservationRow["reservationState"], CustomerReservationStatus>
+> = {
+  cancelled: "cancelled",
+  hold_expired: "cancelled",
+  cancellation_failed: "requires-attention",
+  confirmed: "confirmed",
+};
+
+/** The status Workspace's own row settles; a cancellation always wins. */
+const getLocalReservationStatus = (
+  row: ReservationRow | undefined
+): CustomerReservationStatus | undefined => {
+  if (row === undefined) return undefined;
+  const stateStatus = statusByReservationState[row.reservationState];
+  if (stateStatus === "cancelled") return stateStatus;
+  if (row.fulfillmentState === "failed") return "requires-attention";
+  return stateStatus;
+};
+
 const getReservationStatus = (
   reservation: ReservationRecord,
   row: ReservationRow | undefined
 ): CustomerReservationStatus => {
-  if (
-    reservation.status === "CANCELLED" ||
-    row?.reservationState === "cancelled" ||
-    row?.reservationState === "hold_expired"
-  ) {
-    return "cancelled";
-  }
-  if (
-    row?.reservationState === "cancellation_failed" ||
-    row?.fulfillmentState === "failed"
-  ) {
-    return "requires-attention";
-  }
-  // Workspace records a paid hold's confirmation itself, so a shared
-  // snapshot taken before it can't show a paid booking as pending.
-  return reservation.status === "CONFIRMED" ||
-    row?.reservationState === "confirmed"
-    ? "confirmed"
-    : "pending";
+  if (reservation.status === "CANCELLED") return "cancelled";
+  const localStatus = getLocalReservationStatus(row);
+  if (localStatus !== undefined) return localStatus;
+  return reservation.status === "CONFIRMED" ? "confirmed" : "pending";
 };
 
 /**
@@ -118,12 +129,10 @@ const mergeReservations = (
   own: readonly ReservationRecord[],
   bookedForOthers: readonly ReservationRecord[]
 ) => {
-  const ownIds = new Set(own.flatMap((reservation) => reservation.id ?? []));
+  const ownIds = new Set(own.map((reservation) => reservation.id));
   return [
     ...own,
-    ...bookedForOthers.filter(
-      (reservation) => !reservation.id || !ownIds.has(reservation.id)
-    ),
+    ...bookedForOthers.filter((reservation) => !ownIds.has(reservation.id)),
   ];
 };
 
@@ -205,10 +214,9 @@ const getBookedStartFields = (
 
 const toReservationSummary = (
   { reservation, row, booked }: HistoryEntry,
-  party: CustomerReservationParty | undefined,
-  index: number
+  party: CustomerReservationParty | undefined
 ): CustomerReservationSummary => ({
-  id: row?.id ?? reservation.id ?? `${reservation.startDate}:${index}`,
+  id: row?.id ?? reservation.id,
   ...(row?.id && { workspaceReservationId: row.id }),
   ...(party && { party }),
   product: getReservationProduct(row),
@@ -259,9 +267,7 @@ const relateReservations = ({
   );
   return mergeReservations(sources.own, sources.bookedForOthers)
     .map((reservation): HistoryEntry => {
-      const row = reservation.id
-        ? rowsByReservationId.get(reservation.id)
-        : undefined;
+      const row = rowsByReservationId.get(reservation.id);
       return {
         reservation,
         row,
@@ -281,11 +287,10 @@ const toReservationHistory = ({
 }): CustomerReservationHistory => ({
   kind: "available",
   groups: groupCustomerReservations(
-    entries.map((entry, index) =>
+    entries.map((entry) =>
       toReservationSummary(
         entry,
-        entry.relation && toReservationParty(entry.relation, names),
-        index
+        entry.relation && toReservationParty(entry.relation, names)
       )
     )
   ),

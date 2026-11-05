@@ -15,17 +15,31 @@ import {
 import type { IMarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import type { MarketingConsentStatus } from "@/features/legal/marketing-consent-status";
+import { getMeetingRoomReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
+import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
 import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import type { CustomerLastReservation } from "@/features/reservation/reservation-existing-customer";
+import {
+  getMeetingRoomAvailabilityQuery,
+  type WorkspaceAvailability,
+} from "@/features/reservation/workspace-availability";
 import { ReviewAccounts } from "@/features/review-accounts";
 import { CustomerLastReservationService } from "./customer-last-reservation.service";
+import {
+  AvailabilityQueryInvalid,
+  WorkspaceAvailabilityService,
+} from "./workspace-availability.service";
 
 const testEmailAddressForAda = testEmailAddress("ada");
 
 mock.module("server-only", () => ({}));
 
-const { loadLinkedExistingCustomer, loadReservationCheckoutAccount } =
-  await import("./reservation-existing-customer.server");
+const {
+  isRememberedCoworkOfferAvailable,
+  isRememberedMeetingRoomReservationAvailable,
+  loadLinkedExistingCustomer,
+  loadReservationCheckoutAccount,
+} = await import("./reservation-existing-customer.server");
 
 const account: CurrentLinkedAccount = {
   accountId: customerAccountIdSchema.make("auth-user-1"),
@@ -340,5 +354,174 @@ describe("loadReservationCheckoutAccount", () => {
     expect(await loadReservationCheckoutAccount("cowork")).toEqual({
       status: "signed-out",
     });
+  });
+});
+
+describe("remembered reservation option availability", () => {
+  // The checks provide the live availability layer themselves, so the test
+  // swaps it for a fake that answers the current scenario.
+  const date = "2099-06-10";
+  let availability: Effect.Effect<
+    WorkspaceAvailability,
+    AvailabilityQueryInvalid
+  >;
+  const getAvailability = mock(
+    (
+      _request: Parameters<
+        WorkspaceAvailabilityService["Service"]["getAvailability"]
+      >[0]
+    ) => availability
+  );
+
+  const originalAvailabilityLive = WorkspaceAvailabilityService.Live;
+  WorkspaceAvailabilityService.Live = Layer.mock(WorkspaceAvailabilityService, {
+    getAvailability,
+  });
+
+  const availableOn = (
+    overrides: Partial<WorkspaceAvailability> = {}
+  ): WorkspaceAvailability => ({
+    date,
+    from: date,
+    to: date,
+    unavailableDates: [],
+    reservedDeskWorkstationRequiredDates: [],
+    unavailableCoworkTiers: [],
+    meetingRoomUnavailable: false,
+    officeUnavailable: false,
+    unavailableMonitorOptions: [],
+    notices: [],
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    availability = Effect.succeed(availableOn());
+    getAvailability.mockClear();
+  });
+
+  // The checks are Effects the page recipe runs; each test runs one alone.
+  const coworkOfferAvailable = (
+    offer: Parameters<typeof isRememberedCoworkOfferAvailable>[0]
+  ) => Effect.runPromise(isRememberedCoworkOfferAvailable(offer));
+  const meetingRoomReservationAvailable = (
+    remembered: Parameters<
+      typeof isRememberedMeetingRoomReservationAvailable
+    >[0]
+  ) =>
+    Effect.runPromise(isRememberedMeetingRoomReservationAvailable(remembered));
+
+  afterAll(() => {
+    WorkspaceAvailabilityService.Live = originalAvailabilityLive;
+  });
+
+  test("queries the remembered cowork offer on the form's date", async () => {
+    expect(
+      await coworkOfferAvailable({
+        date,
+        entryTier: "reserved-desk",
+        monitorOption: "2x27-qhd",
+      })
+    ).toBe(true);
+    expect(
+      await coworkOfferAvailable({
+        date,
+        entryTier: "open-space",
+        monitorOption: undefined,
+      })
+    ).toBe(true);
+
+    expect(getAvailability.mock.calls).toEqual([
+      [
+        {
+          query: {
+            kind: "cowork",
+            from: date,
+            to: date,
+            date,
+            entryTier: "reserved-desk",
+            monitorOption: "2x27-qhd",
+          },
+        },
+      ],
+      [
+        {
+          query: {
+            kind: "cowork",
+            from: date,
+            to: date,
+            date,
+            entryTier: "open-space",
+          },
+        },
+      ],
+    ]);
+  });
+
+  test("reads a remembered cowork offer as unavailable when it's taken or unknown", async () => {
+    availability = Effect.succeed(
+      availableOn({ unavailableMonitorOptions: ["2x27-qhd"] })
+    );
+    expect(
+      await coworkOfferAvailable({
+        date,
+        entryTier: "reserved-desk",
+        monitorOption: "2x27-qhd",
+      })
+    ).toBe(false);
+
+    availability = Effect.fail(
+      new AvailabilityQueryInvalid({ message: "Invalid availability date." })
+    );
+    expect(
+      await coworkOfferAvailable({
+        date,
+        entryTier: "open-space",
+        monitorOption: undefined,
+      })
+    ).toBe(false);
+  });
+
+  test("queries the meeting room for the remembered duration's interval", async () => {
+    const interval = getMeetingRoomReservationInterval(
+      `${date}T09:00`,
+      getMeetingRoomReservationDuration("hour:4")
+    );
+
+    expect(
+      await meetingRoomReservationAvailable({
+        duration: "hour:4",
+        startDateTime: `${date}T09:00`,
+      })
+    ).toBe(true);
+    expect(interval).not.toBeNull();
+    expect(getAvailability.mock.calls).toEqual([
+      [{ query: interval && getMeetingRoomAvailabilityQuery(interval) }],
+    ]);
+  });
+
+  test("reads the meeting room as unavailable when it's taken, unknown, or the start is invalid", async () => {
+    const remembered = {
+      duration: "hour:4",
+      startDateTime: `${date}T09:00`,
+    } as const;
+
+    availability = Effect.succeed(
+      availableOn({ meetingRoomUnavailable: true })
+    );
+    expect(await meetingRoomReservationAvailable(remembered)).toBe(false);
+
+    availability = Effect.fail(
+      new AvailabilityQueryInvalid({ message: "Invalid availability date." })
+    );
+    expect(await meetingRoomReservationAvailable(remembered)).toBe(false);
+
+    getAvailability.mockClear();
+    expect(
+      await meetingRoomReservationAvailable({
+        ...remembered,
+        startDateTime: "not-a-start",
+      })
+    ).toBe(false);
+    expect(getAvailability).not.toHaveBeenCalled();
   });
 });

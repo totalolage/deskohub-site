@@ -44,58 +44,97 @@ export function AdministrationTableToolbar({
 }) {
   const [exportFailure, setExportFailure] =
     useState<AdministrationListExportFailure | null>(null);
-  const layout = filters ? filterLayout : "unfiltered";
+  const layout: ToolbarLayout = filters ? filterLayout : "unfiltered";
+  const inline = layout === "inline";
   return (
     <section
       aria-label={label}
       className="mb-5 rounded-xl border border-navy-blue/10 bg-white p-4"
     >
-      <div
-        className={
-          {
-            inline: "flex flex-wrap items-center gap-4",
-            stacked:
-              "grid gap-4 2xl:grid-cols-[minmax(0,1fr)_auto] 2xl:items-center",
-            unfiltered:
-              "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4",
-          }[layout]
-        }
-      >
+      <div className={toolbarLayoutClassNames[layout]}>
         <div
           className={cn(
             "flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center",
-            layout === "inline" &&
-              "min-h-10 flex-auto justify-center sm:justify-start"
+            inline && "min-h-10 flex-auto justify-center sm:justify-start"
           )}
         >
           {count}
           {search && <div className="w-full sm:max-w-[32rem]">{search}</div>}
         </div>
-        {(filters || actions || exportHref) && (
-          <div
-            className={
-              layout === "inline"
-                ? "ml-auto flex flex-wrap items-end justify-end gap-3"
-                : "flex flex-col gap-3 2xl:flex-row 2xl:items-end 2xl:justify-end"
-            }
-          >
-            {filters}
-            {(actions || exportHref) && (
-              <div className="flex items-start gap-2 self-end">
-                {actions}
-                {exportHref && (
-                  <AdministrationTableExport
-                    href={exportHref}
-                    onFailureChange={setExportFailure}
-                  />
-                )}
-              </div>
-            )}
-          </div>
-        )}
+        <ToolbarControls
+          actions={actions}
+          exportHref={exportHref}
+          filters={filters}
+          inline={inline}
+          onExportFailureChange={setExportFailure}
+        />
       </div>
       {exportHref && <AdministrationTableExportAlert failure={exportFailure} />}
     </section>
+  );
+}
+
+/** How the toolbar arranges its rows: see `filterLayout`; lists without filters keep one row. */
+const toolbarLayoutClassNames = {
+  inline: "flex flex-wrap items-center gap-4",
+  stacked: "grid gap-4 2xl:grid-cols-[minmax(0,1fr)_auto] 2xl:items-center",
+  unfiltered: "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4",
+} as const;
+
+type ToolbarLayout = keyof typeof toolbarLayoutClassNames;
+
+type ToolbarActionsProps = {
+  readonly actions?: ReactNode;
+  readonly exportHref?: Promise<AdministrationHref>;
+  readonly onExportFailureChange: (
+    failure: AdministrationListExportFailure | null
+  ) => void;
+};
+
+/** The filters and actions beside the count, when the list has any. */
+function ToolbarControls({
+  filters,
+  inline,
+  ...actionProps
+}: ToolbarActionsProps & {
+  readonly filters?: ReactNode;
+  readonly inline: boolean;
+}) {
+  if (!(filters || actionProps.actions || actionProps.exportHref)) {
+    return null;
+  }
+  return (
+    <div
+      className={
+        inline
+          ? "ml-auto flex flex-wrap items-end justify-end gap-3"
+          : "flex flex-col gap-3 2xl:flex-row 2xl:items-end 2xl:justify-end"
+      }
+    >
+      {filters}
+      <ToolbarActions {...actionProps} />
+    </div>
+  );
+}
+
+function ToolbarActions({
+  actions,
+  exportHref,
+  onExportFailureChange,
+}: ToolbarActionsProps) {
+  if (!(actions || exportHref)) {
+    return null;
+  }
+  return (
+    <div className="flex items-start gap-2 self-end">
+      {actions}
+      {exportHref && (
+        <AdministrationTableExport
+          href={exportHref}
+          onFailureChange={onExportFailureChange}
+        />
+      )}
+    </div>
   );
 }
 

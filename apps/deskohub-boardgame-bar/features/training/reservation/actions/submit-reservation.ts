@@ -5,6 +5,7 @@ import { m } from "@/features/i18n/paraglide/messages";
 import { TrainingReservationService } from "@/features/training/reservation/backend/training-reservation.service";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 import { reservationSchema } from "../schemas/reservation";
+import { trainingReservationConfirmationUrl } from "./confirmation-url";
 
 // Create the internal action using the service layer
 const _submitTrainingRoomReservation = createEffectSafeAction(
@@ -33,37 +34,7 @@ const _submitTrainingRoomReservation = createEffectSafeAction(
         `Training room reservation submitted: ${submission.submittedAt} for locale: ${locale}`
       );
 
-      // Build query parameters from the form data
-      const params = new URLSearchParams();
-
-      // Add name fields (prefer company for display, fallback to full name)
-      if (input.company) {
-        params.set("company", input.company);
-      }
-      if (input.firstName) {
-        params.set("firstName", input.firstName);
-      }
-      if (input.lastName) {
-        params.set("lastName", input.lastName);
-      }
-      if (input.role) {
-        params.set("role", input.role);
-      }
-
-      // Add contact and reservation details
-      params.set("email", input.email);
-      params.set("phone", input.phone);
-      params.set("date", input.date.toISOString());
-      params.set("time", input.time);
-      params.set("duration", input.duration.toString());
-
-      if (input.specialRequirements) {
-        params.set("specialRequirements", input.specialRequirements);
-      }
-
-      // Build the full URL with query parameters
-      const queryString = params.toString();
-      const redirectUrl = `/training-room/reservation/confirmation?${queryString}`;
+      const redirectUrl = trainingReservationConfirmationUrl(input);
 
       const result = {
         success: true,

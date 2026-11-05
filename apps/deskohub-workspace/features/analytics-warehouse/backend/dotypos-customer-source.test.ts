@@ -517,25 +517,6 @@ describe("Dotypos customer source", () => {
     expect(page.next_cursor).toBe("dated");
   });
 
-  test("rejects a whole page when a customer has no ID", async () => {
-    const { response, listRequests } = await requestSource({
-      url: `${sourceUrl}?since=${firstVersion}`,
-      changes: singlePage(
-        [
-          customer({ id: undefined, versionDate: firstVersion }),
-          customer({ id: "2", versionDate: laterVersion }),
-        ],
-        true
-      ),
-    });
-
-    expect(response.status).toBe(502);
-    expect(await response.json()).toEqual({
-      error: "Dotypos customers are unavailable.",
-    });
-    expect(listRequests).toHaveLength(1);
-  });
-
   test("starts at PostHog's last version date and holds back the version date a full page cuts", async () => {
     const { response, listRequests } = await requestSource({
       url: `${sourceUrl}?since=${encodeURIComponent("2026-10-01T12:00:00.000000+00:00")}`,

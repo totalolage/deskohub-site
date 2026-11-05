@@ -55,10 +55,11 @@ const makeWorkspaceReservation = (
 const makeDotyposReservation = (
   overrides: Partial<Reservation> = {}
 ): Reservation => ({
+  id: "dotypos-reservation-id",
   _branchId: "branch",
   _cloudId: "cloud",
   _customerId: "customer-id",
-  _tableId: " table-id ",
+  _tableId: "table-id",
   startDate: "2026-06-15T22:00:00.000Z",
   endDate: "2026-06-16T22:00:00.000Z",
   seats: "1",
@@ -194,16 +195,17 @@ describe("WorkspaceReservationService", () => {
         monitorOption: "2x27-qhd",
       },
       customer,
-      tableName: "12",
-      tableMap: {
-        assignedTableId: "table-id",
-        roomName: "Main room",
+      placement: {
+        table: { mode: "assigned", name: "12" },
+        tableMap: {
+          assignedTableId: "table-id",
+          roomName: "Main room",
+        },
       },
     });
-    expect(details.tableMap?.tables.map((table) => table.id)).toEqual([
-      "table-id",
-      "neighbor-table",
-    ]);
+    expect(details.placement.tableMap?.tables.map((table) => table.id)).toEqual(
+      ["table-id", "neighbor-table"]
+    );
     expect(
       details.reservedFrom.equals(
         Temporal.Instant.from("2026-06-15T22:00:00.000Z")
@@ -216,7 +218,7 @@ describe("WorkspaceReservationService", () => {
     ).toBe(true);
   });
 
-  test("lists named, assignable Open Space tables with valid capacity", async () => {
+  test("places Open Space on its shared tables, not the assigned one", async () => {
     const providerReads: Array<"getReservation" | "getTables"> = [];
     const details = await Effect.runPromise(
       detailsEffect({
@@ -228,80 +230,10 @@ describe("WorkspaceReservationService", () => {
           },
         }),
         tables: [
-          makeTable({
-            id: "table-id",
-            name: "  Assigned desk  ",
-            seats: "2",
-            tags: ["cowork:open-space"],
-          }),
+          makeTable({ name: "Assigned desk", tags: ["cowork:open-space"] }),
           makeTable({
             id: "free-table",
-            name: " Free desk ",
-            seats: "4",
-            tags: ["cowork:open-space"],
-          }),
-          makeTable({
-            id: "occupied-table",
-            name: " Occupied desk ",
-            seats: "3",
-            tags: ["cowork:open-space"],
-          }),
-          makeTable({
-            id: "disabled-table",
-            name: "Disabled desk",
-            enabled: false,
-            tags: ["cowork:open-space"],
-          }),
-          makeTable({
-            id: "undisplayed-table",
-            name: "Undisplayed desk",
-            display: false,
-            tags: ["cowork:open-space"],
-          }),
-          makeTable({
-            id: "   ",
-            name: "Unassignable desk",
-            tags: ["cowork:open-space"],
-          }),
-          makeTable({ id: "historical-table", name: "Historical desk" }),
-          makeTable({
-            id: "monitor-table",
-            name: "Monitor desk",
-            tags: ["cowork:open-space", "monitor:size:27"],
-          }),
-          makeTable({
-            id: "missing-capacity",
-            name: "Missing capacity desk",
-            seats: undefined,
-            tags: ["cowork:open-space"],
-          }),
-          makeTable({
-            id: "zero-capacity",
-            name: "Zero capacity desk",
-            seats: "0",
-            tags: ["cowork:open-space"],
-          }),
-          makeTable({
-            id: "negative-capacity",
-            name: "Negative capacity desk",
-            seats: "-1",
-            tags: ["cowork:open-space"],
-          }),
-          makeTable({
-            id: "fractional-capacity",
-            name: "Fractional capacity desk",
-            seats: "1.5",
-            tags: ["cowork:open-space"],
-          }),
-          makeTable({
-            id: "invalid-capacity",
-            name: "Invalid capacity desk",
-            seats: "not-a-number",
-            tags: ["cowork:open-space"],
-          }),
-          makeTable({
-            id: "unnamed-table",
-            name: "   ",
+            name: "Free desk",
             tags: ["cowork:open-space"],
           }),
         ],
@@ -309,37 +241,21 @@ describe("WorkspaceReservationService", () => {
       })
     );
 
-    expect(details.openSpaceTableNames).toEqual([
-      "Assigned desk",
-      "Free desk",
-      "Occupied desk",
-    ]);
-    expect(details.tableName).toBe("Assigned desk");
+    expect(details.placement.table).toEqual({
+      mode: "shared",
+      name: "Assigned desk, Free desk",
+    });
     expect(providerReads.sort()).toEqual(["getReservation", "getTables"]);
   });
 
-  test("does not fall back to the assigned table name when no eligible name exists", async () => {
+  test("leaves the seating map out until it is released", async () => {
     const details = await Effect.runPromise(
-      detailsEffect({
-        workspaceReservation: makeWorkspaceReservation({
-          reservationDetails: {
-            kind: "cowork",
-            entryTier: "open-space",
-            coffee: false,
-          },
-        }),
-        tables: [
-          makeTable({
-            id: "table-id",
-            name: "   ",
-            tags: ["cowork:open-space"],
-          }),
-        ],
-      })
+      detailsEffect({ seatingMapEnabled: false })
     );
 
-    expect(details.openSpaceTableNames).toEqual([]);
-    expect(details.tableName).toBe("table-id");
+    expect(details.placement).toEqual({
+      table: { mode: "assigned", name: "12" },
+    });
   });
 
   test("rejects a Dotypos reservation whose end precedes its start", async () => {

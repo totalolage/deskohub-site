@@ -1,7 +1,7 @@
 "use client";
 
 import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { useForm } from "react-hook-form";
 import type { PreloadedAdvertisedPrice } from "@/features/checkout/advertised-price";
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
@@ -12,13 +12,8 @@ import {
 } from "@/features/checkout/product-catalog.i18n";
 import type { CanonicalPromotionCode } from "@/features/discounts";
 import { type Locale, m } from "@/features/i18n";
-import {
-  getMeetingRoomEarlySetupAvailability,
-  isMeetingRoomEarlySetupRuledOut,
-  MeetingRoomEarlySetupField,
-} from "@/features/meeting-room/components/meeting-room-early-setup-field";
+import { MeetingRoomEarlySetupField } from "@/features/meeting-room/components/meeting-room-early-setup-field";
 import { MeetingRoomStartTimeOptions } from "@/features/meeting-room/components/meeting-room-start-time-options";
-import { useMeetingRoomStartTimes } from "@/features/meeting-room/components/use-meeting-room-start-times";
 import { ReservationAdvertisedPrice } from "@/features/reservation/components/reservation-advertised-price";
 import { ReservationCheckoutForm } from "@/features/reservation/components/reservation-checkout-form";
 import { ReservationFormDateTimePicker } from "@/features/reservation/components/reservation-date-time-picker";
@@ -70,7 +65,6 @@ import { getReservationCheckoutAvailability } from "@/features/reservation/reser
 import type { ReservationCheckoutCustomerForm } from "@/features/reservation/reservation-existing-customer";
 import {
   getMeetingRoomSelectionAvailabilityQuery,
-  getMeetingRoomStartTimesQuery,
   isMeetingRoomAvailable,
   type PreloadedWorkspaceAvailability,
 } from "@/features/reservation/workspace-availability";
@@ -82,6 +76,7 @@ import {
 } from "@/shared/components/ui/form";
 import { cn } from "@/shared/utils";
 import { getMeetingRoomReservationSelectionSummary } from "./meeting-room-reservation-selection-summary";
+import { useMeetingRoomEarlySetup } from "./use-meeting-room-early-setup";
 
 type MeetingRoomReservationFormProps = {
   readonly checkoutSessionId?: CheckoutSessionId;
@@ -163,33 +158,20 @@ export function MeetingRoomReservationForm({
     selectedInterval && availability && !isMeetingRoomAvailable(availability)
       ? selectedInterval
       : undefined;
-  // A whole day lists no starts, but its midnight start's entry still says
-  // whether its setup time is free.
-  const startTimesQuery = getMeetingRoomStartTimesQuery({
-    duration: selectedDurationKey,
-    startDateTime: selectedStartDateTime,
-  });
-  const startTimes = useMeetingRoomStartTimes({
-    query: startTimesQuery,
-    replacementToken,
-  });
-  const earlySetupAvailability = getMeetingRoomEarlySetupAvailability({
+  const {
+    availability: earlySetupAvailability,
     startTimes,
-    startsAt: selectedInterval
-      ? Temporal.Instant.from(selectedInterval.startsAt)
-      : undefined,
+    startTimesQuery,
+  } = useMeetingRoomEarlySetup({
+    earlySetup,
+    form,
+    replacementToken,
+    selectedInterval,
+    selection: {
+      duration: selectedDurationKey,
+      startDateTime: selectedStartDateTime,
+    },
   });
-  const isEarlySetupRuledOut = isMeetingRoomEarlySetupRuledOut(
-    earlySetupAvailability
-  );
-
-  // Changing to a start whose setup time is taken drops the setup choice.
-  // Loading or failed starts keep it; submission checks it again.
-  useEffect(() => {
-    if (earlySetup && isEarlySetupRuledOut) {
-      form.setValue("earlySetup", false, { shouldValidate: true });
-    }
-  }, [earlySetup, form, isEarlySetupRuledOut]);
   const advertisedPriceRequests = useMemo(
     () =>
       getMeetingRoomDurationAdvertisedPriceRequests({

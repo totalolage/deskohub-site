@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   type DotyposCustomer,
+  type DotyposCustomerWriteRecord,
   DotyposRejected,
   DotyposService,
   DotyposUnavailable,
@@ -34,6 +35,12 @@ const makeCustomer = (
     expireDate: null,
     ...overrides,
   }) as DotyposCustomer;
+
+/** A customer as a create may return it, without the id Dotypos assigned. */
+const createdCustomerWithoutId = (): DotyposCustomerWriteRecord => {
+  const { id: _id, ...customer } = makeCustomer();
+  return customer;
+};
 
 const activeCustomer = makeCustomer();
 
@@ -822,6 +829,95 @@ describe("CustomerDotyposAdapter", () => {
       ).toBe(false);
     });
 
+    const storedBusiness = makeCustomer({
+      lastName: "Lovelace",
+      phone: "+420601111222",
+      addressLine1: "Pražská 1",
+      city: "Praha",
+      zip: "11000",
+      country: "CZ",
+      companyName: "Analytical Engines s.r.o.",
+      companyId: "12345678",
+      vatId: "CZ12345678",
+    });
+    const businessInput = {
+      firstName: "Ada",
+      lastName: "Lovelace",
+      phone: "+420 601 111 222",
+      billing: {
+        kind: "business",
+        addressLine1: "Pražská 1",
+        city: "Praha",
+        zip: "11000",
+        country: "CZ",
+        companyName: "Analytical Engines s.r.o.",
+        companyId: "12345678",
+        vatId: "CZ12345678",
+      },
+    } as const;
+
+    test("treats a stored business profile matching every requested field as applied", () => {
+      expect(customerProfileAppliesInput(storedBusiness, businessInput)).toBe(
+        true
+      );
+    });
+
+    test("reports unapplied when any single requested field differs", () => {
+      const variants = [
+        { ...businessInput, firstName: "Augusta" },
+        { ...businessInput, lastName: undefined },
+        { ...businessInput, phone: "+420 602 222 333" },
+        { ...businessInput, billing: { ...businessInput.billing, zip: "" } },
+        {
+          ...businessInput,
+          billing: { ...businessInput.billing, vatId: "CZ87654321" },
+        },
+      ];
+      for (const input of variants) {
+        expect(customerProfileAppliesInput(storedBusiness, input)).toBe(false);
+      }
+    });
+
+    test("reports unapplied when the stored billing kind differs from the input", () => {
+      expect(
+        customerProfileAppliesInput(storedBusiness, {
+          ...businessInput,
+          billing: {
+            kind: "personal",
+            addressLine1: "Pražská 1",
+            city: "Praha",
+            zip: "11000",
+            country: "CZ",
+          },
+        })
+      ).toBe(false);
+    });
+
+    test("compares only the address of personal billing", () => {
+      const storedPersonal = makeCustomer({ addressLine1: "Pražská 1" });
+      expect(
+        customerProfileAppliesInput(storedPersonal, {
+          firstName: "Ada",
+          billing: { kind: "personal", addressLine1: "Pražská 1" },
+        })
+      ).toBe(true);
+      expect(
+        customerProfileAppliesInput(storedPersonal, {
+          firstName: "Ada",
+          billing: { kind: "personal", addressLine1: "Brněnská 2" },
+        })
+      ).toBe(false);
+    });
+
+    test("never treats a deleted profile as applied", () => {
+      expect(
+        customerProfileAppliesInput(
+          { ...storedBusiness, deleted: true },
+          businessInput
+        )
+      ).toBe(false);
+    });
+
     test("reports unapplied when the input adds billing to a profile without billing data", () => {
       expect(
         customerProfileAppliesInput(makeCustomer(), {
@@ -1059,7 +1155,7 @@ describe("CustomerDotyposAdapter", () => {
         {
           createCustomer: () => {
             calls.push("create");
-            return Effect.succeed(makeCustomer({ id: undefined }));
+            return Effect.succeed(createdCustomerWithoutId());
           },
           findCustomer: () => {
             calls.push("find");
@@ -1097,7 +1193,7 @@ describe("CustomerDotyposAdapter", () => {
     test("fails with the unusable-create error when the exact-email fallback has no match", async () => {
       const outcome = await runWithDotypos(
         {
-          createCustomer: () => Effect.succeed(makeCustomer({ id: undefined })),
+          createCustomer: () => Effect.succeed(createdCustomerWithoutId()),
           findCustomer: () =>
             Effect.succeed(FindCustomerResult.NotFound({ matches: [] })),
         },

@@ -213,7 +213,13 @@ const recordFirstUncertain = (
       )
     : Effect.void;
 
-const keepUncertainty = (
+/**
+ * Keeps an earlier uncertain attempt's uncertainty on a later failure of the
+ * same call. A version conflict becomes `conflict-after-replay`; any other
+ * failure keeps the earlier reason. Without an earlier uncertainty the
+ * failure stands.
+ */
+export const keepUncertainty = (
   outcome: DotyposAttemptFailure,
   firstUncertain: Option.Option<DotyposUncertain>
 ): DotyposAttemptFailure =>

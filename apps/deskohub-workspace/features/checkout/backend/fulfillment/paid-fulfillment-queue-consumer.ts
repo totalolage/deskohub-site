@@ -1,4 +1,5 @@
 import { Data, Effect, Match, Predicate, Result } from "effect";
+import type { FulfillmentState, LatePaymentRecoveryState } from "@/db/schema";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { QueueRedelivery } from "@/shared/backend/queue/queue-consumer";
 import {
@@ -32,6 +33,67 @@ type PaidFulfillmentQueueProgress = Data.TaggedEnum<{
 const PaidFulfillmentQueueProgress =
   Data.taggedEnum<PaidFulfillmentQueueProgress>();
 
+/** The fulfillment states `claimPaidFulfillment` can still take. */
+const claimableFulfillmentStates: Readonly<Record<FulfillmentState, boolean>> =
+  {
+    not_started: true,
+    processing: true,
+    failed: true,
+    awaiting_delivery: false,
+    fulfilled: false,
+  };
+
+const latePaymentRecoveryInProgress = PaidFulfillmentQueueProgress.Pending({
+  reason: "late_payment_recovery_in_progress",
+});
+
+const latePaymentRecoverySettled = PaidFulfillmentQueueProgress.Settled({
+  reason: "late_payment_recovery_settled",
+});
+
+/** How an unrecovered late payment decides the order, if it does. */
+const latePaymentRecoveryProgress: Readonly<
+  Record<LatePaymentRecoveryState, PaidFulfillmentQueueProgress | undefined>
+> = {
+  pending: latePaymentRecoveryInProgress,
+  processing: latePaymentRecoveryInProgress,
+  recovered: undefined,
+  refund_required: latePaymentRecoverySettled,
+  review_required: latePaymentRecoverySettled,
+};
+
+/** A claimable fulfillment progresses only on a held or confirmed reservation. */
+const describeReservationProgress = ({
+  reservationState,
+  fulfillmentState,
+}: PaidFulfillmentProgress): PaidFulfillmentQueueProgress => {
+  if (reservationState === "held" || reservationState === "confirmed") {
+    return PaidFulfillmentQueueProgress.Pending({
+      reason:
+        fulfillmentState === "failed"
+          ? "fulfillment_failed"
+          : "fulfillment_in_progress",
+    });
+  }
+  if (reservationState === "cancelled") {
+    return PaidFulfillmentQueueProgress.Settled({
+      reason: "reservation_cancelled",
+    });
+  }
+  return PaidFulfillmentQueueProgress.Blocked({
+    reason: "reservation_not_fulfillable",
+  });
+};
+
+/** A late-payment recovery decides a claimable fulfillment before its reservation. */
+const describeClaimableFulfillmentProgress = (
+  progress: PaidFulfillmentProgress
+): PaidFulfillmentQueueProgress =>
+  (progress.latePaymentRecoveryState === null
+    ? undefined
+    : latePaymentRecoveryProgress[progress.latePaymentRecoveryState]) ??
+  describeReservationProgress(progress);
+
 /**
  * Mirrors the claim in `claimPaidFulfillment`: an order the claim can never
  * take again is settled for this message. The claim retakes a `failed`
@@ -53,50 +115,12 @@ const describePaidFulfillmentProgress = (
       reason: "reservation_not_paid",
     });
   }
-  if (
-    progress.fulfillmentState !== "not_started" &&
-    progress.fulfillmentState !== "processing" &&
-    progress.fulfillmentState !== "failed"
-  ) {
+  if (!claimableFulfillmentStates[progress.fulfillmentState]) {
     return PaidFulfillmentQueueProgress.Settled({
       reason: "fulfillment_settled",
     });
   }
-  if (
-    progress.latePaymentRecoveryState === "refund_required" ||
-    progress.latePaymentRecoveryState === "review_required"
-  ) {
-    return PaidFulfillmentQueueProgress.Settled({
-      reason: "late_payment_recovery_settled",
-    });
-  }
-  if (
-    progress.latePaymentRecoveryState === "pending" ||
-    progress.latePaymentRecoveryState === "processing"
-  ) {
-    return PaidFulfillmentQueueProgress.Pending({
-      reason: "late_payment_recovery_in_progress",
-    });
-  }
-  if (
-    progress.reservationState === "held" ||
-    progress.reservationState === "confirmed"
-  ) {
-    return PaidFulfillmentQueueProgress.Pending({
-      reason:
-        progress.fulfillmentState === "failed"
-          ? "fulfillment_failed"
-          : "fulfillment_in_progress",
-    });
-  }
-  if (progress.reservationState === "cancelled") {
-    return PaidFulfillmentQueueProgress.Settled({
-      reason: "reservation_cancelled",
-    });
-  }
-  return PaidFulfillmentQueueProgress.Blocked({
-    reason: "reservation_not_fulfillable",
-  });
+  return describeClaimableFulfillmentProgress(progress);
 };
 
 /** Redelivers the message with backoff: fulfillment can still progress. */

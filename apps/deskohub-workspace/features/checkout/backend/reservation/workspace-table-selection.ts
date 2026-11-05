@@ -10,7 +10,6 @@ import {
   type WorkspaceReservationKind,
   workspaceReservationKindSchema,
 } from "@/features/reservation/reservation-kind";
-import { getAssignableDotyposTableId } from "./dotypos-table-id";
 import { workspaceBookingSeatCount } from "./workspace-table-occupancy";
 
 export const workspaceMeetingRoomReservationTableTag =
@@ -106,7 +105,7 @@ const compareWorkspaceTables = (left: DotyposTable, right: DotyposTable) => {
 
   if (nameComparison !== 0) return nameComparison;
 
-  return (left.id ?? "").localeCompare(right.id ?? "");
+  return left.id.localeCompare(right.id);
 };
 
 export const getWorkspaceTableCandidates = (
@@ -119,8 +118,6 @@ export const getWorkspaceTableCandidatesByPredicate = (
   isCandidateTable: (tableTags: ReadonlySet<string>) => boolean
 ) =>
   tables.filter((table) => {
-    const tableId = getAssignableDotyposTableId(table);
-    if (!tableId) return false;
     if (table.enabled !== true || table.display !== true) return false;
 
     return isCandidateTable(new Set(table.tags ?? []));
@@ -130,7 +127,7 @@ export const getWorkspaceTableCandidatesByPredicate = (
 export class InvalidDotyposTableSeats extends Data.TaggedError(
   "InvalidDotyposTableSeats"
 )<{
-  readonly tableId: DotyposTableId | undefined;
+  readonly tableId: DotyposTableId;
   readonly message: string;
   readonly cause?: unknown;
 }> {}
@@ -139,13 +136,14 @@ const decodeSeatCapacity = Schema.decodeUnknownResult(
   workspaceTableSeatCapacitySchema
 );
 
-const decodeTableSeatCapacity = (table: DotyposTable) =>
+/** A table's configured seat capacity, or why Workspace can't use it. */
+export const decodeTableSeatCapacity = (table: DotyposTable) =>
   Result.mapError(
     decodeSeatCapacity(table.seats),
     (cause) =>
       new InvalidDotyposTableSeats({
         tableId: table.id,
-        message: `Dotypos workspace table ${table.id ?? table.name} has an invalid seat capacity.`,
+        message: `Dotypos workspace table ${table.id} has an invalid seat capacity.`,
         cause,
       })
   );
@@ -286,8 +284,6 @@ const isAssignableWorkspaceTable = (
   table: DotyposTable,
   requiredTags: readonly string[]
 ) => {
-  const tableId = getAssignableDotyposTableId(table);
-  if (!tableId) return false;
   if (table.enabled !== true || table.display !== true) return false;
 
   const tableTags = new Set(table.tags ?? []);
@@ -301,9 +297,7 @@ const hasWorkspaceTableCapacity = (
   requireEmpty: boolean
 ) => {
   const { seatCapacity: capacity, table } = candidate;
-  const tableId = getAssignableDotyposTableId(table);
-  if (!tableId) return false;
-  const occupancy = occupancyByTableId.get(tableId) ?? 0;
+  const occupancy = occupancyByTableId.get(table.id) ?? 0;
 
   if (requireEmpty) return occupancy === 0 && seats <= capacity;
 
@@ -318,16 +312,12 @@ const scoreWorkspaceTableCandidate = (
   maxDistance: number,
   occupancyByTableId: ReadonlyMap<DotyposTableId, number>
 ) => {
-  const candidateTableId = getAssignableDotyposTableId(candidate);
-  const candidateOccupancy = candidateTableId
-    ? (occupancyByTableId.get(candidateTableId) ?? 0)
-    : 0;
+  const candidateOccupancy = occupancyByTableId.get(candidate.id) ?? 0;
   let occupiedSeats = 0;
   let weightedDistanceScore = 0;
 
   for (const table of scoringTables) {
-    const tableId = getAssignableDotyposTableId(table);
-    const occupancy = tableId ? (occupancyByTableId.get(tableId) ?? 0) : 0;
+    const occupancy = occupancyByTableId.get(table.id) ?? 0;
     if (occupancy <= 0) continue;
 
     const normalizedDistance =
@@ -364,8 +354,6 @@ const getWorkspaceScoringTablesByRoom = (tables: readonly DotyposTable[]) => {
 };
 
 export const isDisplayableWorkspaceTable = (table: DotyposTable) => {
-  const tableId = getAssignableDotyposTableId(table);
-  if (!tableId) return false;
   if (table.enabled !== true || table.display !== true) return false;
 
   const tableTags = new Set(table.tags ?? []);

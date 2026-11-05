@@ -11,6 +11,7 @@ import { m } from "@/features/administration/i18n";
 import { AdministrationCollectionLoading } from "@/features/administration/loading";
 import type { Locale } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
+import { getCliSessionsNotice } from "./cli-sessions-notice";
 import { CliSessionsTable } from "./cli-sessions-table";
 import { loadCliSessions } from "./page-data.server";
 
@@ -51,7 +52,7 @@ async function CliSessionsContent({
     loadCliSessions(),
     searchParams,
   ]);
-  const notice = getSessionsNotice(params.result, locale);
+  const notice = getCliSessionsNotice(params.result, locale);
 
   return (
     <>
@@ -100,19 +101,3 @@ async function CliSessionsContent({
     </>
   );
 }
-
-const getSessionsNotice = (result: string | undefined, locale: Locale) => {
-  if (result === "revoked") {
-    return {
-      message: m.adminCliSessionsRevokedNotice({}, { locale }),
-      status: "success" as const,
-    };
-  }
-  if (result === "unchanged") {
-    return {
-      message: m.adminCliSessionsUnchangedNotice({}, { locale }),
-      status: "error" as const,
-    };
-  }
-  return undefined;
-};

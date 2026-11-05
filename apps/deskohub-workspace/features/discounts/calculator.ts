@@ -5,8 +5,10 @@ import {
 } from "@/features/checkout/product-identity";
 import {
   type Money,
+  moneyEquals,
   moneyWithValue,
   nonNegativeMoneyCodec,
+  sameMoneyUnit,
 } from "@/shared/money/money";
 import type { AppliedDiscount, Discount, DiscountQuote } from "./contracts";
 import { DiscountCalculationError } from "./errors";
@@ -45,7 +47,13 @@ export const calculateDiscounts = Effect.fn("DiscountCalculator.calculate")(
     )
 );
 
-export const appendDiscounts = Effect.fn("DiscountCalculator.append")(
+/**
+ * Calculates candidates on the quote's remaining subtotal and appends them,
+ * returning the extended quote and the new applications.
+ */
+export const appendDiscountCalculation = Effect.fn(
+  "DiscountCalculator.appendCalculation"
+)(
   (input: {
     readonly baseQuote: DiscountQuote;
     readonly candidates: readonly DiscountCandidate[];
@@ -55,27 +63,33 @@ export const appendDiscounts = Effect.fn("DiscountCalculator.append")(
       discountableSubtotal: input.baseQuote.discountedSubtotal,
       candidates: input.candidates,
     }).pipe(
-      Effect.bindTo("additional"),
-      Effect.let("totalDiscount", ({ additional }) =>
-        moneyWithValue(
-          input.baseQuote.totalDiscount.value +
-            additional.quote.totalDiscount.value,
-          input.baseQuote.totalDiscount
-        )
-      ),
       Effect.map(
-        ({ additional, totalDiscount }): DiscountQuote => ({
-          product: input.baseQuote.product,
-          discountableSubtotal: input.baseQuote.discountableSubtotal,
-          discounts: [
-            ...input.baseQuote.discounts,
-            ...additional.quote.discounts,
-          ],
-          totalDiscount,
-          discountedSubtotal: additional.quote.discountedSubtotal,
+        (additional): DiscountCalculation => ({
+          quote: {
+            product: input.baseQuote.product,
+            discountableSubtotal: input.baseQuote.discountableSubtotal,
+            discounts: [
+              ...input.baseQuote.discounts,
+              ...additional.quote.discounts,
+            ],
+            totalDiscount: moneyWithValue(
+              input.baseQuote.totalDiscount.value +
+                additional.quote.totalDiscount.value,
+              input.baseQuote.totalDiscount
+            ),
+            discountedSubtotal: additional.quote.discountedSubtotal,
+          },
+          applications: additional.applications,
         })
       )
     )
+);
+
+export const appendDiscounts = Effect.fn("DiscountCalculator.append")(
+  (input: {
+    readonly baseQuote: DiscountQuote;
+    readonly candidates: readonly DiscountCandidate[];
+  }) => appendDiscountCalculation(input).pipe(Effect.map(({ quote }) => quote))
 );
 
 const validateDiscountableSubtotal = (input: {
@@ -293,5 +307,24 @@ const toPublicDiscount = (discount: Discount): Discount => ({
   }),
 });
 
-const applyBasisPoints = (value: number, basisPoints: number) =>
+/** The share of a minor-unit value, rounded half up to a whole minor unit. */
+export const applyBasisPoints = (value: number, basisPoints: number) =>
   Number((BigInt(value) * BigInt(basisPoints) + BigInt(5000)) / BigInt(10_000));
+
+/**
+ * Whether an application takes no more than its subtotal, in the subtotal's
+ * unit, and leaves exactly the difference.
+ */
+export const isApplicationArithmeticConsistent = (
+  application: AppliedDiscount
+) => {
+  const { subtotalBefore, amount, subtotalAfter } = application;
+  return (
+    sameMoneyUnit(subtotalBefore, amount) &&
+    subtotalBefore.value >= amount.value &&
+    moneyEquals(subtotalAfter, {
+      ...subtotalBefore,
+      value: subtotalBefore.value - amount.value,
+    })
+  );
+};

@@ -32,6 +32,7 @@ import {
 } from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
 import { Textarea } from "@/shared/components/ui/textarea";
+import { describeContactFormFailure } from "./contact-form-failure";
 
 type ContactFormProps = {
   initialValues?: ContactFormInitialValues;
@@ -53,10 +54,9 @@ export function ContactForm({ initialValues }: ContactFormProps) {
       form.reset(contactDefaultValues);
     },
     onError: ({ error }) => {
-      track("Contact Form Error", {
-        error: error.serverError || "Unknown error",
-      });
-      toast.error(error.serverError || m["errors.submissionError"]());
+      const failure = describeContactFormFailure(error.serverError);
+      track("Contact Form Error", { error: failure.trackedError });
+      toast.error(failure.message);
     },
   });
 

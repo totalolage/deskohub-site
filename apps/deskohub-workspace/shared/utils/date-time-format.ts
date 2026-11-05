@@ -170,6 +170,65 @@ const getNumericDateFieldOrder = (locale: Intl.LocalesArgument) =>
     .map((part) => part.type)
     .filter(isNumericDateField);
 
+/** The three digit runs of a typed date, split at its separators, or none. */
+const splitNumericDate = (text: string): Option.Option<readonly string[]> => {
+  const numbers = text
+    .trim()
+    .replace(/[.\s]+$/, "")
+    .split(/\s*[./-]\s*|\s+/);
+  return numbers.length === 3 && numbers.every((value) => /^\d+$/.test(value))
+    ? Option.some(numbers)
+    : Option.none();
+};
+
+/**
+ * The typed year, month and day digits: ISO order after a four-digit first
+ * number, otherwise the locale's order.
+ */
+const readNumericDateFields = (
+  numbers: readonly string[],
+  locale: Intl.LocalesArgument
+): Readonly<Record<NumericDateField, string>> => {
+  const order: readonly NumericDateField[] =
+    numbers[0]?.length === 4
+      ? ["year", "month", "day"]
+      : getNumericDateFieldOrder(locale);
+  const read = (field: NumericDateField) => numbers[order.indexOf(field)] ?? "";
+  return { year: read("year"), month: read("month"), day: read("day") };
+};
+
+/** Whether the numbers name a day of the proleptic ISO calendar from year 1. */
+const isCalendarDay = ({
+  year,
+  month,
+  day,
+}: Readonly<Record<NumericDateField, number>>) =>
+  year >= 1 &&
+  month >= 1 &&
+  month <= 12 &&
+  day >= 1 &&
+  day <= Temporal.PlainYearMonth.from({ year, month }).daysInMonth;
+
+/**
+ * The date typed digits name, when the year has four digits, the month and
+ * day at most two, and the day exists.
+ */
+const plainDateFromNumericFields = ({
+  year,
+  month,
+  day,
+}: Readonly<
+  Record<NumericDateField, string>
+>): Option.Option<Temporal.PlainDate> => {
+  if (year.length !== 4 || month.length > 2 || day.length > 2) {
+    return Option.none();
+  }
+  const date = { year: Number(year), month: Number(month), day: Number(day) };
+  return isCalendarDay(date)
+    ? Option.some(Temporal.PlainDate.from(date))
+    : Option.none();
+};
+
 /**
  * Reads a typed all-numeric date. A four-digit first number reads as ISO
  * year, month, day; otherwise the numbers follow the locale's order, such as
@@ -182,32 +241,8 @@ export const parseNumericPlainDate = ({
 }: {
   readonly locale: Intl.LocalesArgument;
   readonly text: string;
-}): Option.Option<Temporal.PlainDate> => {
-  const numbers = text
-    .trim()
-    .replace(/[.\s]+$/, "")
-    .split(/\s*[./-]\s*|\s+/);
-  if (numbers.length !== 3 || !numbers.every((value) => /^\d+$/.test(value))) {
-    return Option.none();
-  }
-
-  const order: readonly NumericDateField[] =
-    numbers[0]?.length === 4
-      ? ["year", "month", "day"]
-      : getNumericDateFieldOrder(locale);
-  const read = (field: NumericDateField) => numbers[order.indexOf(field)] ?? "";
-  const [year, month, day] = [read("year"), read("month"), read("day")];
-  if (year.length !== 4 || month.length > 2 || day.length > 2) {
-    return Option.none();
-  }
-
-  const yearMonth = { year: Number(year), month: Number(month) };
-  const dayOfMonth = Number(day);
-  return yearMonth.year >= 1 &&
-    yearMonth.month >= 1 &&
-    yearMonth.month <= 12 &&
-    dayOfMonth >= 1 &&
-    dayOfMonth <= Temporal.PlainYearMonth.from(yearMonth).daysInMonth
-    ? Option.some(Temporal.PlainDate.from({ ...yearMonth, day: dayOfMonth }))
-    : Option.none();
-};
+}): Option.Option<Temporal.PlainDate> =>
+  splitNumericDate(text).pipe(
+    Option.map((numbers) => readNumericDateFields(numbers, locale)),
+    Option.flatMap(plainDateFromNumericFields)
+  );

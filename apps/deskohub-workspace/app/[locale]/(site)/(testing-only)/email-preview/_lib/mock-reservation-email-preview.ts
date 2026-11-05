@@ -1,23 +1,61 @@
 import {
   DotyposCloudIdSchema,
+  type DotyposCustomer,
   DotyposCustomerIdSchema,
   DotyposReservationIdSchema,
+  type DotyposTable,
   DotyposTableIdSchema,
 } from "@deskohub/dotypos";
-import type { Customer } from "@deskohub/dotypos/generated";
+import { getCustomerReservationPlacement } from "@/features/reservation/backend/customer-reservation-placement";
 import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
 import "@/shared/polyfills/temporal";
 import { testEmailAddress } from "@deskohub/test-email";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
-import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import {
+  type StoredWorkspaceReservationDetails,
+  workspaceReservationIdSchema,
+} from "@/features/reservation/persistence-contracts";
 
 const mockDate = Temporal.Instant.from("2026-06-12T09:00:00.000+02:00");
 const mockEndDate = Temporal.Instant.from("2026-06-13T09:00:00.000+02:00");
 
 const workspaceReservationEmailPreviewTableName = "12";
 
-const workspaceReservationEmailPreviewCustomer: Customer = {
-  _cloudId: "preview-cloud-id",
+const previewReservationDetails: StoredWorkspaceReservationDetails = {
+  kind: "cowork",
+  entryTier: "profi",
+  coffee: true,
+  monitorOption: "2x27-qhd",
+};
+
+const previewOpenSpaceReservationDetails: StoredWorkspaceReservationDetails = {
+  kind: "cowork",
+  entryTier: "open-space",
+  coffee: false,
+};
+
+const makePreviewTable = (input: {
+  readonly id: string;
+  readonly name: string;
+  readonly positionX: string;
+  readonly tags: readonly string[];
+}): DotyposTable => ({
+  _cloudId: DotyposCloudIdSchema.make("preview-cloud-id"),
+  id: DotyposTableIdSchema.make(input.id),
+  name: input.name,
+  locationName: "Main room",
+  positionX: input.positionX,
+  positionY: "80",
+  type: "SQUARE",
+  enabled: true,
+  display: true,
+  seats: "1",
+  tags: [...input.tags],
+});
+
+const workspaceReservationEmailPreviewCustomer: DotyposCustomer = {
+  id: DotyposCustomerIdSchema.make("987654321"),
+  _cloudId: DotyposCloudIdSchema.make("preview-cloud-id"),
   firstName: "Ada",
   lastName: "Lovelace",
   companyName: "Analytical Engines Ltd.",
@@ -36,54 +74,51 @@ export const createWorkspaceReservationEmailPreviewReservation = (
   dotyposCustomerId: DotyposCustomerIdSchema.make("987654321"),
   authorAccountId: customerAccountIdSchema.make("email-preview-author"),
   dotyposReservationId: DotyposReservationIdSchema.make("123456789"),
-  reservationDetails: {
-    kind: "cowork",
-    entryTier: "profi",
-    coffee: true,
-    monitorOption: "2x27-qhd",
-  },
+  reservationDetails: previewReservationDetails,
   locale,
   customer: workspaceReservationEmailPreviewCustomer,
   providerStatus: "CONFIRMED",
   reservedFrom: mockDate,
   reservedUntil: mockEndDate,
   seats: 1,
-  tableName: workspaceReservationEmailPreviewTableName,
-  tableMap: {
-    assignedTableId: DotyposTableIdSchema.make("desk-12"),
-    roomName: "Main room",
+  placement: getCustomerReservationPlacement({
+    reservationDetails: previewReservationDetails,
+    dotyposReservation: { _tableId: DotyposTableIdSchema.make("desk-12") },
     tables: [
-      {
-        _cloudId: DotyposCloudIdSchema.make("preview-cloud-id"),
-        id: DotyposTableIdSchema.make("desk-12"),
-        name: "12",
-        locationName: "Main room",
+      makePreviewTable({
+        id: "desk-12",
+        name: workspaceReservationEmailPreviewTableName,
         positionX: "40",
-        positionY: "80",
-        type: "SQUARE",
-      },
-      {
-        _cloudId: DotyposCloudIdSchema.make("preview-cloud-id"),
-        id: DotyposTableIdSchema.make("desk-11"),
+        tags: ["tier:profi"],
+      }),
+      makePreviewTable({
+        id: "desk-11",
         name: "11",
-        locationName: "Main room",
         positionX: "130",
-        positionY: "80",
-        type: "SQUARE",
-      },
+        tags: ["tier:profi"],
+      }),
     ],
-  },
+    seatingMap: true,
+  }),
 });
 
 export const createWorkspaceOpenSpaceReservationEmailPreviewReservation = (
   locale: string
 ): WorkspaceReservationDetails => ({
   ...createWorkspaceReservationEmailPreviewReservation(locale),
-  reservationDetails: {
-    kind: "cowork",
-    entryTier: "open-space",
-    coffee: false,
-  },
-  tableName: "assigned-only-preview-table-id",
-  openSpaceTableNames: ["9", "10", "11", "12", "15", "16", "wallee", "gromice"],
+  reservationDetails: previewOpenSpaceReservationDetails,
+  placement: getCustomerReservationPlacement({
+    reservationDetails: previewOpenSpaceReservationDetails,
+    dotyposReservation: { _tableId: DotyposTableIdSchema.make("open-12") },
+    tables: ["9", "10", "11", "12", "15", "16", "wallee", "gromice"].map(
+      (name, index) =>
+        makePreviewTable({
+          id: `open-${name}`,
+          name,
+          positionX: String(40 + index * 90),
+          tags: ["cowork:open-space"],
+        })
+    ),
+    seatingMap: false,
+  }),
 });

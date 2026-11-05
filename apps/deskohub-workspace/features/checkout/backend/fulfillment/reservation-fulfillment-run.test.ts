@@ -92,7 +92,7 @@ describe("ReservationFulfillment.run", () => {
       customer: { email: testEmailAddressForCustomer },
       reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
       reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
-      tableName: "12",
+      placement: { table: { mode: "assigned", name: "12" } },
     };
     const claimPaidFulfillment = mock(() => Effect.succeed(claimed as never));
     const confirmReservation = mock(() =>
@@ -479,7 +479,7 @@ describe("ReservationFulfillment.run", () => {
       customer: { email: testEmailAddressForCustomer },
       reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
       reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
-      tableName: "12",
+      placement: { table: { mode: "assigned", name: "12" } },
     };
     const confirmReservation = mock(() => Effect.void);
     const markReservationConfirmed = mock(() => Effect.void);
@@ -596,7 +596,7 @@ describe("ReservationFulfillment.run", () => {
       customer: { email: testEmailAddressForCustomer },
       reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
       reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
-      tableName: "12",
+      placement: { table: { mode: "assigned", name: "12" } },
     };
     const sendFailure = new Error("synthetic email provider failure");
     const sendInputs: unknown[] = [];
@@ -975,7 +975,7 @@ describe("ReservationFulfillment.run", () => {
       customer: { email: testEmailAddressForCustomer },
       reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
       reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
-      tableName: "12",
+      placement: { table: { mode: "assigned", name: "12" } },
     };
     // The stale writer resolves the changed preference, but the repository
     // reports the locale the winning concurrent worker already retained for
@@ -1090,7 +1090,7 @@ describe("ReservationFulfillment.run", () => {
       customer: { email: testEmailAddressForCustomer },
       reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
       reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
-      tableName: "12",
+      placement: { table: { mode: "assigned", name: "12" } },
     };
     const retainInputs: Parameters<
       IFulfillmentLedger["retainActiveCustomerEmailDeliveryLocale"]

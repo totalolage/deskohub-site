@@ -115,8 +115,26 @@ const applyHostStyles = ({ theme, styles }: McpUiHostContext) => {
   if (styles?.variables) applyHostStyleVariables(styles.variables);
 };
 
-const connectBookingHost = Effect.fn("bookingWidget.connect")(function* (
-  app: App
+/** The part of the MCP Apps client the booking view talks to its host through. */
+type BookingHostConnection = Pick<
+  App,
+  | "ontoolinput"
+  | "ontoolresult"
+  | "onhostcontextchanged"
+  | "connect"
+  | "close"
+  | "getHostContext"
+  | "getHostCapabilities"
+  | "callServerTool"
+  | "openLink"
+>;
+
+/**
+ * Connects the booking view to its host app and serves the host's tool calls,
+ * links, theme and language for the scope's lifetime.
+ */
+export const connectBookingHost = Effect.fn("bookingWidget.connect")(function* (
+  app: BookingHostConnection
 ) {
   const toolInput = yield* Deferred.make<ToolInput>();
   const toolResult = yield* Deferred.make<ToolResult>();

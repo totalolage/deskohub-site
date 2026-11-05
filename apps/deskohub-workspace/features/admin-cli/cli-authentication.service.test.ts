@@ -679,5 +679,62 @@ describe.skipIf(!postgresDatabase)(
         (await Effect.runPromise(authentication.status(code))).authStatus
       ).toBe("expired");
     });
+
+    test("reports a revoked session's authentication request as revoked", async () => {
+      const { code, granted } = await authenticateThroughApproval(
+        cliSessionLifetimeSchema.cases.Never.make({})
+      );
+      expect(
+        (await Effect.runPromise(authentication.status(code))).authStatus
+      ).toBe("granted");
+
+      expect(
+        await Effect.runPromise(
+          authentication.revoke({
+            owner: alice.accountId,
+            sessionId: granted.session.id,
+          })
+        )
+      ).toBe(true);
+
+      expect(await Effect.runPromise(authentication.status(code))).toEqual({
+        authStatus: "revoked",
+      });
+    });
+
+    test("reports an approved request as expired once its grant lapses and clears the grant", async () => {
+      const grant = await insertApprovedGrantFixture(alice);
+      const code = CliAuthenticationCode.make(grant.code);
+      const codeHash = await Effect.runPromise(digestSecret(grant.code));
+      const status = await Effect.runPromise(authentication.status(code));
+      expect(status).toMatchObject({
+        authStatus: "approved",
+        grantToken: grant.grantToken,
+      });
+
+      await Effect.runPromise(
+        postgres.db
+          .update(cliAuthenticationRequests)
+          .set({
+            grantExpiresAt: Temporal.Now.instant().subtract({ minutes: 1 }),
+          })
+          .where(eq(cliAuthenticationRequests.codeHash, codeHash))
+      );
+
+      expect(await Effect.runPromise(authentication.status(code))).toEqual({
+        authStatus: "expired",
+      });
+      const [request] = await Effect.runPromise(
+        postgres.db
+          .select({ grantToken: cliAuthenticationRequests.grantToken })
+          .from(cliAuthenticationRequests)
+          .where(eq(cliAuthenticationRequests.codeHash, codeHash))
+      );
+      expect(request?.grantToken).toBeNull();
+      // Without a grant token, the approval can't be reported as approved.
+      expect(await Effect.runPromise(authentication.status(code))).toEqual({
+        authStatus: "expired",
+      });
+    });
   }
 );

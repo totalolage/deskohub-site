@@ -1,6 +1,7 @@
 import type {
   AdministrationCampaignContent,
   AutomationDryRun,
+  AutomationDryRunCustomer,
   AutomationDryRunRow,
   AutomationFlow,
   AutomationPreviewOutcome,
@@ -78,11 +79,6 @@ const outcomeCopy = {
   }
 >;
 
-/**
- * What a dry run found: counts by outcome, the replayed events or the next
- * fire's entrants with their flags, and the rendered email per locale.
- * Everything is formatted here on the server, in Prague time.
- */
 /** Why a page of the dry run has no rows: past the end, or none at all. */
 const noRowsLabel = ({
   cursor,
@@ -99,6 +95,11 @@ const noRowsLabel = ({
     : m.emailAutomationActivationNoEntrants({}, { locale });
 };
 
+/**
+ * What a dry run found: counts by outcome, the replayed events or the next
+ * fire's entrants with their flags, and the rendered email per locale.
+ * Everything is formatted here on the server, in Prague time.
+ */
 export function AutomationDryRunResults({
   content,
   cursor,
@@ -114,6 +115,181 @@ export function AutomationDryRunResults({
   readonly locale: Locale;
 }) {
   const replay = dryRun.kind === "replay";
+  return (
+    <div className="space-y-6">
+      <DryRunSummary dryRun={dryRun} locale={locale} replay={replay} />
+      <DryRunRowsSection
+        cursor={cursor}
+        dryRun={dryRun}
+        flow={flow}
+        locale={locale}
+        replay={replay}
+      />
+      <DryRunEmails content={content} dryRun={dryRun} locale={locale} />
+    </div>
+  );
+}
+
+/** The counts by outcome, what the dry run covered, and its truncation. */
+function DryRunSummary({
+  dryRun,
+  locale,
+  replay,
+}: {
+  readonly dryRun: AutomationDryRun;
+  readonly locale: Locale;
+  readonly replay: boolean;
+}) {
+  return (
+    <AdministrationDetailSection
+      title={m.emailAutomationActivationResultsTitle({}, { locale })}
+    >
+      <div className="space-y-5">
+        <dl className="grid grid-cols-2 gap-4 max-sm:[&>div]:flex max-sm:[&>div]:flex-col max-sm:[&>div]:justify-between sm:grid-cols-3">
+          {automationPreviewOutcomes.map((outcome) => (
+            <AdministrationFact
+              key={outcome}
+              label={outcomeCopy[outcome].label({}, { locale })}
+              value={formatCount(dryRun.counts[outcome], locale)}
+              valueClassName="text-2xl"
+            />
+          ))}
+        </dl>
+        {replay ? (
+          <ReplayScope dryRun={dryRun} locale={locale} />
+        ) : (
+          <ScheduleFires dryRun={dryRun} locale={locale} />
+        )}
+        {dryRun.truncated && dryRun.eventsTotal !== null && (
+          <AdministrationAlert status="warning">
+            {m.emailAutomationActivationTruncated(
+              { total: formatCount(dryRun.eventsTotal, locale) },
+              { locale }
+            )}
+          </AdministrationAlert>
+        )}
+      </div>
+    </AdministrationDetailSection>
+  );
+}
+
+/** The events a replay evaluated, and whether it read current profiles. */
+function ReplayScope({
+  dryRun,
+  locale,
+}: {
+  readonly dryRun: AutomationDryRun;
+  readonly locale: Locale;
+}) {
+  return (
+    <div className="space-y-2 text-navy-blue/70 text-sm leading-6">
+      <p>
+        {m.emailAutomationActivationReplayScope(
+          { asOf: formatAdministrationDateTime(dryRun.asOf, locale) },
+          { locale }
+        )}
+      </p>
+      {dryRun.profileFactsAreCurrent && (
+        <p>{m.emailAutomationActivationProfileFactsCurrent({}, { locale })}</p>
+      )}
+    </div>
+  );
+}
+
+/** A schedule's frequency warning and its next fires, the first emphasized. */
+function ScheduleFires({
+  dryRun,
+  locale,
+}: {
+  readonly dryRun: AutomationDryRun;
+  readonly locale: Locale;
+}) {
+  return (
+    <div className="space-y-4">
+      {dryRun.frequency && (
+        <AutomationFrequencyBanner
+          frequency={dryRun.frequency}
+          locale={locale}
+        />
+      )}
+      <div>
+        <h3 className="font-semibold text-sm">
+          {m.emailAutomationActivationNextFiresTitle({}, { locale })}
+        </h3>
+        <ol className="mt-2 flex flex-wrap gap-2">
+          {dryRun.nextFires.map((fire, index) => (
+            <li key={fire}>
+              <Badge variant={index === 0 ? "emphasis" : "subtle"}>
+                {formatAdministrationDateTime(fire, locale)}
+              </Badge>
+            </li>
+          ))}
+        </ol>
+        <p className="mt-2 text-navy-blue/60 text-xs">
+          {m.emailAutomationActivationPragueTime({}, { locale })}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/** The replayed events or the next fire's entrants, a page at a time. */
+function DryRunRowsSection({
+  cursor,
+  dryRun,
+  flow,
+  locale,
+  replay,
+}: {
+  readonly cursor: string | undefined;
+  readonly dryRun: AutomationDryRun;
+  readonly flow: AutomationFlow | null;
+  readonly locale: Locale;
+  readonly replay: boolean;
+}) {
+  return (
+    <AdministrationDetailSection
+      title={
+        replay
+          ? m.emailAutomationActivationReplayRowsTitle({}, { locale })
+          : m.emailAutomationActivationEntrantsTitle(
+              {
+                fire: formatAdministrationDateTime(dryRun.asOf, locale),
+              },
+              { locale }
+            )
+      }
+    >
+      {dryRun.rows.length === 0 ? (
+        <p className="text-navy-blue/65 text-sm">
+          {noRowsLabel({ cursor, replay, locale })}
+        </p>
+      ) : (
+        <TooltipProvider>
+          <DryRunRows
+            dryRun={dryRun}
+            flow={flow}
+            locale={locale}
+            replay={replay}
+          />
+        </TooltipProvider>
+      )}
+      <DryRunPages cursor={cursor} dryRun={dryRun} locale={locale} />
+    </AdministrationDetailSection>
+  );
+}
+
+/** Back to the first page from a later one, and on to the next. */
+function DryRunPages({
+  cursor,
+  dryRun,
+  locale,
+}: {
+  readonly cursor: string | undefined;
+  readonly dryRun: AutomationDryRun;
+  readonly locale: Locale;
+}) {
+  if (!(cursor || dryRun.nextCursor)) return null;
   const pageHref = (pageCursor?: string): AdministrationHref =>
     `${administrationHref(
       "/[locale]/admin/email-campaigns/[campaignId]/preview",
@@ -123,146 +299,67 @@ export function AutomationDryRunResults({
       ...(pageCursor && { cursor: pageCursor }),
     })}`;
   return (
-    <div className="space-y-6">
-      <AdministrationDetailSection
-        title={m.emailAutomationActivationResultsTitle({}, { locale })}
-      >
-        <div className="space-y-5">
-          <dl className="grid grid-cols-2 gap-4 max-sm:[&>div]:flex max-sm:[&>div]:flex-col max-sm:[&>div]:justify-between sm:grid-cols-3">
-            {automationPreviewOutcomes.map((outcome) => (
-              <AdministrationFact
-                key={outcome}
-                label={outcomeCopy[outcome].label({}, { locale })}
-                value={formatCount(dryRun.counts[outcome], locale)}
-                valueClassName="text-2xl"
-              />
-            ))}
-          </dl>
-          {replay ? (
-            <div className="space-y-2 text-navy-blue/70 text-sm leading-6">
-              <p>
-                {m.emailAutomationActivationReplayScope(
-                  { asOf: formatAdministrationDateTime(dryRun.asOf, locale) },
-                  { locale }
-                )}
-              </p>
-              {dryRun.profileFactsAreCurrent && (
-                <p>
-                  {m.emailAutomationActivationProfileFactsCurrent(
-                    {},
-                    { locale }
-                  )}
-                </p>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {dryRun.frequency && (
-                <AutomationFrequencyBanner
-                  frequency={dryRun.frequency}
-                  locale={locale}
-                />
-              )}
-              <div>
-                <h3 className="font-semibold text-sm">
-                  {m.emailAutomationActivationNextFiresTitle({}, { locale })}
-                </h3>
-                <ol className="mt-2 flex flex-wrap gap-2">
-                  {dryRun.nextFires.map((fire, index) => (
-                    <li key={fire}>
-                      <Badge variant={index === 0 ? "emphasis" : "subtle"}>
-                        {formatAdministrationDateTime(fire, locale)}
-                      </Badge>
-                    </li>
-                  ))}
-                </ol>
-                <p className="mt-2 text-navy-blue/60 text-xs">
-                  {m.emailAutomationActivationPragueTime({}, { locale })}
-                </p>
-              </div>
-            </div>
-          )}
-          {dryRun.truncated && dryRun.eventsTotal !== null && (
-            <AdministrationAlert status="warning">
-              {m.emailAutomationActivationTruncated(
-                { total: formatCount(dryRun.eventsTotal, locale) },
-                { locale }
-              )}
-            </AdministrationAlert>
-          )}
-        </div>
-      </AdministrationDetailSection>
-
-      <AdministrationDetailSection
-        title={
-          replay
-            ? m.emailAutomationActivationReplayRowsTitle({}, { locale })
-            : m.emailAutomationActivationEntrantsTitle(
-                {
-                  fire: formatAdministrationDateTime(dryRun.asOf, locale),
-                },
-                { locale }
-              )
-        }
-      >
-        {dryRun.rows.length === 0 ? (
-          <p className="text-navy-blue/65 text-sm">
-            {noRowsLabel({ cursor, replay, locale })}
-          </p>
-        ) : (
-          <TooltipProvider>
-            <DryRunRows
-              dryRun={dryRun}
-              flow={flow}
-              locale={locale}
-              replay={replay}
-            />
-          </TooltipProvider>
-        )}
-        {(cursor || dryRun.nextCursor) && (
-          <nav
-            aria-label={m.emailAutomationActivationPagesLabel({}, { locale })}
-            className="mt-4 flex flex-wrap justify-between gap-2"
-          >
-            {cursor ? (
-              <Button asChild size="sm" variant="secondary">
-                <AdministrationLink href={pageHref()}>
-                  <ChevronLeft aria-hidden className="size-4" />
-                  {m.emailAutomationActivationFirstPage({}, { locale })}
-                </AdministrationLink>
-              </Button>
-            ) : (
-              <span />
-            )}
-            {dryRun.nextCursor && (
-              <Button asChild size="sm" variant="secondary">
-                <AdministrationLink href={pageHref(dryRun.nextCursor)}>
-                  {m.emailAutomationActivationNextPage({}, { locale })}
-                  <ChevronRight aria-hidden className="size-4" />
-                </AdministrationLink>
-              </Button>
-            )}
-          </nav>
-        )}
-      </AdministrationDetailSection>
-
-      {dryRun.emails.length > 0 && (
-        <AdministrationDetailSection
-          title={m.emailAutomationActivationEmailTitle({}, { locale })}
-        >
-          <SentCampaignEmailPreview
-            emails={dryRun.emails.map((email) => ({
-              locale: email.locale,
-              subject: email.subject,
-              preheader: content[email.locale]?.preheader ?? "",
-              html: email.html,
-            }))}
-          />
-        </AdministrationDetailSection>
+    <nav
+      aria-label={m.emailAutomationActivationPagesLabel({}, { locale })}
+      className="mt-4 flex flex-wrap justify-between gap-2"
+    >
+      {cursor ? (
+        <Button asChild size="sm" variant="secondary">
+          <AdministrationLink href={pageHref()}>
+            <ChevronLeft aria-hidden className="size-4" />
+            {m.emailAutomationActivationFirstPage({}, { locale })}
+          </AdministrationLink>
+        </Button>
+      ) : (
+        <span />
       )}
-    </div>
+      {dryRun.nextCursor && (
+        <Button asChild size="sm" variant="secondary">
+          <AdministrationLink href={pageHref(dryRun.nextCursor)}>
+            {m.emailAutomationActivationNextPage({}, { locale })}
+            <ChevronRight aria-hidden className="size-4" />
+          </AdministrationLink>
+        </Button>
+      )}
+    </nav>
   );
 }
+
+/** The working copy's email in each locale it covers. */
+function DryRunEmails({
+  content,
+  dryRun,
+  locale,
+}: {
+  readonly content: AdministrationCampaignContent;
+  readonly dryRun: AutomationDryRun;
+  readonly locale: Locale;
+}) {
+  if (dryRun.emails.length === 0) return null;
+  return (
+    <AdministrationDetailSection
+      title={m.emailAutomationActivationEmailTitle({}, { locale })}
+    >
+      <SentCampaignEmailPreview
+        emails={dryRun.emails.map((email) => ({
+          locale: email.locale,
+          subject: email.subject,
+          preheader: content[email.locale]?.preheader ?? "",
+          html: email.html,
+        }))}
+      />
+    </AdministrationDetailSection>
+  );
+}
+
+/** A row's customer by name, else email, else id, with the email under a name. */
+const dryRunCustomerLabel = (
+  customer: AutomationDryRunCustomer | undefined,
+  customerId: string
+) => ({
+  name: customer?.name ?? customer?.email ?? customerId,
+  detail: customer?.name ? customer.email : null,
+});
 
 function DryRunRows({
   dryRun,
@@ -283,8 +380,7 @@ function DryRunRows({
     return {
       key: `${row.triggerAt}:${row.customerId}:${row.customerEventId ?? ""}`,
       row,
-      name: customer?.name ?? customer?.email ?? row.customerId,
-      detail: customer?.name ? customer.email : null,
+      ...dryRunCustomerLabel(customer, row.customerId),
       triggeredAt: formatAdministrationDateTime(row.triggerAt, locale),
       sendAt: row.sendAt && formatAdministrationDateTime(row.sendAt, locale),
     };

@@ -1,15 +1,5 @@
-import Interpolate from "@doist/react-interpolate";
 import { cva } from "class-variance-authority";
 import { Match } from "effect";
-import {
-  AlertTriangle,
-  CheckCircle2,
-  Clock3,
-  HelpCircle,
-  MailCheck,
-  RotateCcw,
-  XCircle,
-} from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { CheckoutStatusViewModel } from "@/features/checkout/backend/checkout";
@@ -33,19 +23,16 @@ import { getSelectionPath } from "@/features/reservation/selection-path";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
 import { CheckoutFlowLayout } from "./checkout-flow-layout";
+import {
+  type CheckoutStatusCopy,
+  getCheckoutStatusCopy,
+} from "./checkout-status-copy";
 import { WorkspaceTableMapView } from "./workspace-table-map-view";
 
 type CheckoutStatusPageProps = {
   readonly locale: Locale;
   readonly presentation?: "page" | "modal";
   readonly status: CheckoutStatusViewModel;
-};
-
-type StatusCopy = {
-  readonly title: string;
-  readonly lead: ReactNode;
-  readonly tone: "success" | "pending" | "warning" | "failed" | "unknown";
-  readonly Icon: typeof CheckCircle2;
 };
 
 const statusIconWrapperVariants = cva(
@@ -63,166 +50,6 @@ const statusIconWrapperVariants = cva(
     },
   }
 );
-
-/** Shows the recipient so the customer can spot a mistyped address. */
-const getConfirmationRecipientLead = (
-  template: string,
-  email: string
-): ReactNode => (
-  <Interpolate
-    string={template}
-    mapping={{
-      email: (
-        <strong className="break-words font-semibold text-navy-blue">
-          {email}
-        </strong>
-      ),
-    }}
-  />
-);
-
-const getStatusCopy = (
-  status: CheckoutStatusViewModel,
-  locale: Locale
-): StatusCopy => {
-  const recipientEmail =
-    status.status === "not_found"
-      ? undefined
-      : status.supportContactPrefill?.email;
-
-  switch (status.status) {
-    case "created":
-      return {
-        title: m.checkoutStatusCreatedTitle({}, { locale }),
-        lead: m.checkoutStatusCreatedLead({}, { locale }),
-        tone: "pending",
-        Icon: Clock3,
-      };
-    case "pending":
-      return {
-        title: m.checkoutStatusPendingTitle({}, { locale }),
-        lead: m.checkoutStatusPendingLead({}, { locale }),
-        tone: "pending",
-        Icon: Clock3,
-      };
-    case "payment_pending_delayed":
-      return {
-        title: m.checkoutStatusPaymentPendingDelayedTitle({}, { locale }),
-        lead: m.checkoutStatusPaymentPendingDelayedLead({}, { locale }),
-        tone: "warning",
-        Icon: Clock3,
-      };
-    case "paid_waiting_fulfillment":
-      return {
-        title: m.checkoutStatusPaidWaitingFulfillmentTitle({}, { locale }),
-        lead: m.checkoutStatusPaidWaitingFulfillmentLead({}, { locale }),
-        tone: "pending",
-        Icon: MailCheck,
-      };
-    case "paid_fulfillment_delayed":
-      return {
-        title: m.checkoutStatusPaidFulfillmentDelayedTitle({}, { locale }),
-        lead: m.checkoutStatusPaidFulfillmentDelayedLead({}, { locale }),
-        tone: "warning",
-        Icon: AlertTriangle,
-      };
-    case "paid_awaiting_delivery":
-      return {
-        title: m.checkoutStatusPaidAwaitingDeliveryTitle({}, { locale }),
-        lead: recipientEmail
-          ? getConfirmationRecipientLead(
-              m.checkoutStatusPaidAwaitingDeliveryLead({}, { locale }),
-              recipientEmail
-            )
-          : m.checkoutStatusPaidAwaitingDeliveryLeadWithoutEmail(
-              {},
-              { locale }
-            ),
-        tone: "success",
-        Icon: MailCheck,
-      };
-    case "paid_delivery_delayed":
-      return {
-        title: m.checkoutStatusPaidDeliveryDelayedTitle({}, { locale }),
-        lead: recipientEmail
-          ? getConfirmationRecipientLead(
-              m.checkoutStatusPaidDeliveryDelayedLead({}, { locale }),
-              recipientEmail
-            )
-          : m.checkoutStatusPaidDeliveryDelayedLeadWithoutEmail({}, { locale }),
-        tone: "warning",
-        Icon: AlertTriangle,
-      };
-    case "fulfilled":
-      return {
-        title: m.checkoutStatusFulfilledTitle({}, { locale }),
-        lead: m.checkoutStatusFulfilledLead({}, { locale }),
-        tone: "success",
-        Icon: CheckCircle2,
-      };
-    case "fulfillment_failed":
-      return {
-        title: m.checkoutStatusFulfillmentFailedTitle({}, { locale }),
-        lead: recipientEmail
-          ? getConfirmationRecipientLead(
-              m.checkoutStatusFulfillmentFailedLead({}, { locale }),
-              recipientEmail
-            )
-          : m.checkoutStatusFulfillmentFailedLeadWithoutEmail({}, { locale }),
-        tone: "warning",
-        Icon: AlertTriangle,
-      };
-    case "payment_failed":
-      return {
-        title: m.checkoutStatusPaymentFailedTitle({}, { locale }),
-        lead: m.checkoutStatusPaymentFailedLead({}, { locale }),
-        tone: "failed",
-        Icon: XCircle,
-      };
-    case "cancelled":
-      return {
-        title: m.checkoutStatusCancelledTitle({}, { locale }),
-        lead: m.checkoutStatusCancelledLead({}, { locale }),
-        tone: "warning",
-        Icon: XCircle,
-      };
-    case "expired":
-      return {
-        title: m.checkoutStatusExpiredTitle({}, { locale }),
-        lead: m.checkoutStatusExpiredLead({}, { locale }),
-        tone: "warning",
-        Icon: Clock3,
-      };
-    case "late_payment_checking":
-      return {
-        title: m.checkoutStatusLatePaymentCheckingTitle({}, { locale }),
-        lead: m.checkoutStatusLatePaymentCheckingLead({}, { locale }),
-        tone: "pending",
-        Icon: Clock3,
-      };
-    case "late_payment_refund":
-      return {
-        title: m.checkoutStatusLatePaymentRefundTitle({}, { locale }),
-        lead: m.checkoutStatusLatePaymentRefundLead({}, { locale }),
-        tone: "warning",
-        Icon: RotateCcw,
-      };
-    case "late_payment_review":
-      return {
-        title: m.checkoutStatusLatePaymentReviewTitle({}, { locale }),
-        lead: m.checkoutStatusLatePaymentReviewLead({}, { locale }),
-        tone: "warning",
-        Icon: AlertTriangle,
-      };
-    case "not_found":
-      return {
-        title: m.checkoutStatusNotFoundTitle({}, { locale }),
-        lead: m.checkoutStatusNotFoundLead({}, { locale }),
-        tone: "unknown",
-        Icon: HelpCircle,
-      };
-  }
-};
 
 const getSummaryPresentation = (
   status: CheckoutStatusViewModel,
@@ -365,15 +192,32 @@ const getSupportContactHref = (
   return `${url.pathname}${url.search}`;
 };
 
+type CheckoutStatusPresentation = NonNullable<
+  CheckoutStatusPageProps["presentation"]
+>;
+
+type CheckoutReservationStatusViewModel = Exclude<
+  CheckoutStatusViewModel,
+  { readonly status: "not_found" }
+>;
+
+const getReservationAccessHref = (
+  status: CheckoutStatusViewModel,
+  locale: Locale,
+  reviewSandbox: boolean | undefined
+) =>
+  status.status === "fulfilled" && !reviewSandbox
+    ? `/${locale}${reservationAccessPath}/${encodeURIComponent(status.orderId)}`
+    : undefined;
+
 export function CheckoutStatusPage({
   locale,
   presentation = "page",
   status,
 }: CheckoutStatusPageProps) {
-  const copy = getStatusCopy(status, locale);
+  const copy = getCheckoutStatusCopy(status, locale);
   const showReservationDetails = status.status !== "not_found";
   const summaryPresentation = getSummaryPresentation(status, locale);
-  const summaryRows = summaryPresentation?.rows ?? [];
   const supportContactHref = getSupportContactHref(
     status,
     locale,
@@ -387,17 +231,79 @@ export function CheckoutStatusPage({
     offersRetry,
     repeatSearchParams: repeatReservationSearchParams,
   });
-  const showSupportButton = !!supportContactHref;
   const offersNewReservation =
     checkoutStatusTraits[status.status].offersNewReservation;
   const reviewSandbox = status.status !== "not_found" && status.reviewSandbox;
-  const reservationAccessHref =
-    status.status === "fulfilled" && !reviewSandbox
-      ? `/${locale}${reservationAccessPath}/${encodeURIComponent(status.orderId)}`
-      : undefined;
-  const Icon = copy.Icon;
-  const showPageActions = presentation === "page";
 
+  return (
+    <CheckoutStatusFrame
+      locale={locale}
+      presentation={presentation}
+      reserveAgainPath={offersNewReservation ? reserveAgainPath : undefined}
+    >
+      <CheckoutStatusHeadline
+        copy={copy}
+        locale={locale}
+        reviewSandbox={!!reviewSandbox}
+        showSupportButton={!!supportContactHref}
+      />
+
+      {!!supportContactHref && (
+        <Button asChild size="lg" fullWidth className="mt-6">
+          <Link
+            href={supportContactHref}
+            id="checkout-status-support-contact"
+            prefetch={false}
+          >
+            {m.checkoutStatusFulfillmentFailedContactButton({}, { locale })}
+          </Link>
+        </Button>
+      )}
+
+      {showReservationDetails && (
+        <CheckoutStatusReservationDetails
+          locale={locale}
+          status={status}
+          summaryPresentation={summaryPresentation}
+        />
+      )}
+
+      <CheckoutStatusActions
+        locale={locale}
+        offersNewReservation={offersNewReservation}
+        presentation={presentation}
+        reservationAccessHref={getReservationAccessHref(
+          status,
+          locale,
+          reviewSandbox
+        )}
+        reserveAgainLabel={getReserveAgainLabel(
+          offersRetry,
+          !!repeatReservationSearchParams,
+          locale
+        )}
+        reserveAgainPath={reserveAgainPath}
+      />
+    </CheckoutStatusFrame>
+  );
+}
+
+/**
+ * Wraps the status card in the checkout steps on a page, or shows the bare
+ * card in a modal. On a page, the completed order step links to the next
+ * reservation when the status offers one.
+ */
+function CheckoutStatusFrame({
+  children,
+  locale,
+  presentation,
+  reserveAgainPath,
+}: {
+  readonly children: ReactNode;
+  readonly locale: Locale;
+  readonly presentation: CheckoutStatusPresentation;
+  readonly reserveAgainPath: string | undefined;
+}) {
   const content = (
     <div
       className={
@@ -406,6 +312,42 @@ export function CheckoutStatusPage({
           : "rounded-[2.25rem] border border-white/55 bg-white/94 p-6 text-navy-blue shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm sm:p-10"
       }
     >
+      {children}
+    </div>
+  );
+
+  return presentation === "modal" ? (
+    content
+  ) : (
+    <CheckoutFlowLayout
+      activeStepKey="complete"
+      locale={locale}
+      stepLinks={
+        reserveAgainPath === undefined
+          ? undefined
+          : { chooseSpace: { href: reserveAgainPath, navigation: "document" } }
+      }
+    >
+      {content}
+    </CheckoutFlowLayout>
+  );
+}
+
+function CheckoutStatusHeadline({
+  copy,
+  locale,
+  reviewSandbox,
+  showSupportButton,
+}: {
+  readonly copy: CheckoutStatusCopy;
+  readonly locale: Locale;
+  readonly reviewSandbox: boolean;
+  readonly showSupportButton: boolean;
+}) {
+  const Icon = copy.Icon;
+
+  return (
+    <>
       <output className="sr-only" aria-live="polite" aria-atomic>
         {m.checkoutStatusEyebrow({}, { locale })}: {copy.title}
       </output>
@@ -440,74 +382,76 @@ export function CheckoutStatusPage({
           )}
         </div>
       </div>
+    </>
+  );
+}
 
-      {showSupportButton && (
-        <Button asChild size="lg" fullWidth className="mt-6">
-          <Link
-            href={supportContactHref}
-            id="checkout-status-support-contact"
-            prefetch={false}
-          >
-            {m.checkoutStatusFulfillmentFailedContactButton({}, { locale })}
-          </Link>
-        </Button>
-      )}
+function CheckoutStatusReservationDetails({
+  locale,
+  status,
+  summaryPresentation,
+}: {
+  readonly locale: Locale;
+  readonly status: CheckoutReservationStatusViewModel;
+  readonly summaryPresentation: CheckoutStatusSummaryPresentation | undefined;
+}) {
+  const summaryRows = summaryPresentation?.rows ?? [];
 
-      {showReservationDetails && (
-        <div className="mt-10 rounded-[1.6rem] border border-navy-blue/10 bg-linear-to-br from-white to-aquamarine-green/8 p-5 sm:p-6">
-          <h2 className="text-xl text-navy-blue">
-            {m.checkoutStatusSummaryTitle({}, { locale })}
-          </h2>
+  return (
+    <>
+      <div className="mt-10 rounded-[1.6rem] border border-navy-blue/10 bg-linear-to-br from-white to-aquamarine-green/8 p-5 sm:p-6">
+        <h2 className="text-xl text-navy-blue">
+          {m.checkoutStatusSummaryTitle({}, { locale })}
+        </h2>
 
-          <dl className="mt-5 grid gap-3">
+        <dl className="mt-5 grid gap-3">
+          <div className="grid gap-1 rounded-2xl border border-navy-blue/8 bg-white/80 px-4 py-3 sm:grid-cols-[10rem_1fr] sm:gap-4">
+            <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-navy-blue/52">
+              {m.checkoutStatusOrderIdLabel({}, { locale })}
+            </dt>
+            <dd className="break-all font-mono text-sm font-semibold text-navy-blue">
+              {status.orderId}
+            </dd>
+          </div>
+          {status.table && (
             <div className="grid gap-1 rounded-2xl border border-navy-blue/8 bg-white/80 px-4 py-3 sm:grid-cols-[10rem_1fr] sm:gap-4">
               <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-navy-blue/52">
-                {m.checkoutStatusOrderIdLabel({}, { locale })}
+                {
+                  {
+                    assigned: m.checkoutEmailTableNumberLabel({}, { locale }),
+                    shared: m.checkoutEmailTablesLabel({}, { locale }),
+                  }[status.table.mode]
+                }
               </dt>
-              <dd className="break-all font-mono text-sm font-semibold text-navy-blue">
-                {status.orderId}
+              <dd className="text-base font-semibold text-navy-blue">
+                {status.table.name}
               </dd>
             </div>
-            {showReservationDetails && status.table && (
-              <div className="grid gap-1 rounded-2xl border border-navy-blue/8 bg-white/80 px-4 py-3 sm:grid-cols-[10rem_1fr] sm:gap-4">
-                <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-navy-blue/52">
-                  {
-                    {
-                      assigned: m.checkoutEmailTableNumberLabel({}, { locale }),
-                      shared: m.checkoutEmailTablesLabel({}, { locale }),
-                    }[status.table.mode]
-                  }
-                </dt>
-                <dd className="text-base font-semibold text-navy-blue">
-                  {status.table.name}
-                </dd>
-              </div>
-            )}
-            {summaryRows.map((row) => (
-              <div
-                key={row.label}
-                className="grid gap-1 rounded-2xl border border-navy-blue/8 bg-white/80 px-4 py-3 sm:grid-cols-[10rem_1fr] sm:gap-4"
-              >
-                <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-navy-blue/52">
-                  {row.label}
-                </dt>
-                <dd className="text-base font-semibold text-navy-blue">
-                  {row.value}
-                </dd>
-              </div>
-            ))}
-          </dl>
+          )}
+          {summaryRows.map((row) => (
+            <div
+              key={row.label}
+              className="grid gap-1 rounded-2xl border border-navy-blue/8 bg-white/80 px-4 py-3 sm:grid-cols-[10rem_1fr] sm:gap-4"
+            >
+              <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-navy-blue/52">
+                {row.label}
+              </dt>
+              <dd className="text-base font-semibold text-navy-blue">
+                {row.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
 
-          {summaryRows.length === 0 &&
-            checkoutStatusTraits[status.status].promisesEmail && (
-              <p className="mt-4 rounded-2xl border border-burned-orange/16 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-burned-orange-ink">
-                {m.checkoutStatusMissingSummary({}, { locale })}
-              </p>
-            )}
-        </div>
-      )}
+        {summaryRows.length === 0 &&
+          checkoutStatusTraits[status.status].promisesEmail && (
+            <p className="mt-4 rounded-2xl border border-burned-orange/16 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-burned-orange-ink">
+              {m.checkoutStatusMissingSummary({}, { locale })}
+            </p>
+          )}
+      </div>
 
-      {showReservationDetails && status.tableMap && (
+      {status.tableMap && (
         <div className="mt-8 rounded-[1.6rem] border border-navy-blue/10 bg-white/88 p-5 sm:p-6">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -534,64 +478,67 @@ export function CheckoutStatusPage({
           </div>
         </div>
       )}
+    </>
+  );
+}
 
-      {(showPageActions || reservationAccessHref) && (
-        <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-          {showPageActions && (
-            <>
-              {offersNewReservation && (
-                <Button asChild size="lg">
-                  <a href={reserveAgainPath} id="checkout-status-reserve-again">
-                    {getReserveAgainLabel(
-                      offersRetry,
-                      !!repeatReservationSearchParams,
-                      locale
-                    )}
-                  </a>
-                </Button>
-              )}
-              <Button asChild variant="secondary" size="lg">
-                <Link href={`/${locale}`} prefetch={false}>
-                  {m.checkoutStatusBackHome({}, { locale })}
-                </Link>
-              </Button>
-            </>
-          )}
-          {reservationAccessHref && (
-            <Button asChild variant="secondary" size="lg">
-              {presentation === "modal" ? (
-                <Link
-                  href={reservationAccessHref}
-                  id="checkout-status-access"
-                  prefetch={false}
-                >
-                  {m.checkoutEmailCustomerAccessButton({}, { locale })}
-                </Link>
-              ) : (
-                <a href={reservationAccessHref} id="checkout-status-access">
-                  {m.checkoutEmailCustomerAccessButton({}, { locale })}
-                </a>
-              )}
+/**
+ * A page offers a new reservation and the way home; a fulfilled reservation
+ * also links to its access, softly navigating inside a modal.
+ */
+function CheckoutStatusActions({
+  locale,
+  offersNewReservation,
+  presentation,
+  reservationAccessHref,
+  reserveAgainLabel,
+  reserveAgainPath,
+}: {
+  readonly locale: Locale;
+  readonly offersNewReservation: boolean;
+  readonly presentation: CheckoutStatusPresentation;
+  readonly reservationAccessHref: string | undefined;
+  readonly reserveAgainLabel: string;
+  readonly reserveAgainPath: string;
+}) {
+  const showPageActions = presentation === "page";
+  if (!showPageActions && !reservationAccessHref) return null;
+
+  return (
+    <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+      {showPageActions && (
+        <>
+          {offersNewReservation && (
+            <Button asChild size="lg">
+              <a href={reserveAgainPath} id="checkout-status-reserve-again">
+                {reserveAgainLabel}
+              </a>
             </Button>
           )}
-        </div>
+          <Button asChild variant="secondary" size="lg">
+            <Link href={`/${locale}`} prefetch={false}>
+              {m.checkoutStatusBackHome({}, { locale })}
+            </Link>
+          </Button>
+        </>
+      )}
+      {reservationAccessHref && (
+        <Button asChild variant="secondary" size="lg">
+          {presentation === "modal" ? (
+            <Link
+              href={reservationAccessHref}
+              id="checkout-status-access"
+              prefetch={false}
+            >
+              {m.checkoutEmailCustomerAccessButton({}, { locale })}
+            </Link>
+          ) : (
+            <a href={reservationAccessHref} id="checkout-status-access">
+              {m.checkoutEmailCustomerAccessButton({}, { locale })}
+            </a>
+          )}
+        </Button>
       )}
     </div>
-  );
-
-  return presentation === "modal" ? (
-    content
-  ) : (
-    <CheckoutFlowLayout
-      activeStepKey="complete"
-      locale={locale}
-      stepLinks={
-        offersNewReservation
-          ? { chooseSpace: { href: reserveAgainPath, navigation: "document" } }
-          : undefined
-      }
-    >
-      {content}
-    </CheckoutFlowLayout>
   );
 }

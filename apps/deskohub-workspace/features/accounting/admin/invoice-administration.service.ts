@@ -202,6 +202,10 @@ export class InvoiceAdministrationInProgressError extends Data.TaggedError(
   readonly message: string;
 }> {}
 
+type ManualInvoiceCreationClaim = Effect.Success<
+  ReturnType<ManualInvoiceCreationRequests["Service"]["claim"]>
+>;
+
 const makeInvoiceAdministrationService = Effect.gen(function* () {
   const { transaction } = yield* WorkspaceDatabase;
   const invoices = yield* InvoiceRepository;
@@ -323,10 +327,8 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
   )(function* (query: string) {
     const matches = yield* dotypos.searchCustomers(query);
     return matches
-      .flatMap((customer): InvoiceAdministrationCustomer[] => {
-        const projection = toCustomer(customer);
-        return projection && !customer.deleted ? [projection] : [];
-      })
+      .filter((customer) => !customer.deleted)
+      .map(toCustomer)
       .slice(0, 50);
   });
 
@@ -358,6 +360,60 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
         ...prepared.forCustomer(dotyposCustomerId),
         issuedBy: issuer.administrator,
       });
+    // The claim decides whether this request may issue: different input or
+    // an unfinished concurrent creation refuses it, and a completed one must
+    // still have its invoice.
+    const findClaimedInvoice = Effect.fnUntraced(function* (
+      claim: ManualInvoiceCreationClaim
+    ) {
+      if (claim.kind === "mismatch") {
+        return yield* new InvoiceAdministrationCustomerError({
+          reason: "invoice-id-reused",
+          message: "Invoice id was already used with different input.",
+        });
+      }
+      if (claim.kind === "in-progress") {
+        return yield* new InvoiceAdministrationInProgressError({
+          invoiceId: input.invoiceId,
+          message:
+            "This invoice is already being created. Try the same request again shortly.",
+        });
+      }
+      const existing = yield* invoices.findById(input.invoiceId);
+      if (claim.kind === "completed" && !existing) {
+        return yield* new ManualInvoiceCreationRequestError({
+          message: "The completed invoice creation request has no invoice.",
+        });
+      }
+      return existing;
+    });
+    // An invoice issued before keeps its customer unless the request names
+    // one; otherwise the request's customer is resolved first.
+    const issueLocked = Effect.fnUntraced(function* (existing: Invoice | null) {
+      if (existing) {
+        return yield* issueForCustomer(
+          input.customer.kind === "existing"
+            ? yield* decodeDotyposCustomerId(input.customer.customerId)
+            : DotyposCustomerIdSchema.make(existing.dotyposCustomerId)
+        );
+      }
+      const customerResolution = resolveCustomer(dotypos, input.customer);
+      return yield* (
+        input.customer.kind === "new"
+          ? // ponytail: one global new-customer lock avoids putting email
+            // PII in SQL; shard by a keyed normalized-email digest if
+            // admin throughput matters.
+            transaction(
+              WorkspaceLocks.manualInvoiceNewCustomer().pipe(
+                Effect.andThen(customerResolution)
+              )
+            )
+          : customerResolution
+      ).pipe(
+        Effect.flatMap((customer) => decodeDotyposCustomerId(customer.id)),
+        Effect.flatMap(issueForCustomer)
+      );
+    });
     const issuance = yield* transaction(
       WorkspaceLocks.manualInvoiceCreation(invoiceId).pipe(
         Effect.andThen(
@@ -369,50 +425,9 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
                 provenance
               ),
             });
-            if (claim.kind === "mismatch") {
-              return yield* new InvoiceAdministrationCustomerError({
-                reason: "invoice-id-reused",
-                message: "Invoice id was already used with different input.",
-              });
-            }
-            if (claim.kind === "in-progress") {
-              return yield* new InvoiceAdministrationInProgressError({
-                invoiceId: input.invoiceId,
-                message:
-                  "This invoice is already being created. Try the same request again shortly.",
-              });
-            }
-            const existing = yield* invoices.findById(input.invoiceId);
-            if (claim.kind === "completed" && !existing) {
-              return yield* new ManualInvoiceCreationRequestError({
-                message:
-                  "The completed invoice creation request has no invoice.",
-              });
-            }
-            const customerResolution = resolveCustomer(dotypos, input.customer);
-            const lockedIssuance = existing
-              ? yield* issueForCustomer(
-                  input.customer.kind === "existing"
-                    ? yield* decodeDotyposCustomerId(input.customer.customerId)
-                    : DotyposCustomerIdSchema.make(existing.dotyposCustomerId)
-                )
-              : yield* (
-                  input.customer.kind === "new"
-                    ? // ponytail: one global new-customer lock avoids putting email
-                      // PII in SQL; shard by a keyed normalized-email digest if
-                      // admin throughput matters.
-                      transaction(
-                        WorkspaceLocks.manualInvoiceNewCustomer().pipe(
-                          Effect.andThen(customerResolution)
-                        )
-                      )
-                    : customerResolution
-                ).pipe(
-                  Effect.flatMap((customer) =>
-                    decodeDotyposCustomerId(customer.id)
-                  ),
-                  Effect.flatMap(issueForCustomer)
-                );
+            const lockedIssuance = yield* issueLocked(
+              yield* findClaimedInvoice(claim)
+            );
             if (claim.kind === "claimed") {
               yield* creationRequests.complete(invoiceId);
             }
@@ -545,14 +560,7 @@ const resolveCustomer = Effect.fn(
       )
     ),
     Match.tag("Matched", ({ customer }) =>
-      customer.id
-        ? dotypos.updateCustomerDetails(customer.id, details)
-        : Effect.fail(
-            new InvoiceAdministrationCustomerError({
-              reason: "customer-id-missing",
-              message: "Dotypos returned a customer without an id.",
-            })
-          )
+      dotypos.updateCustomerDetails(customer.id, details)
     ),
     Match.tag("NotFound", () => dotypos.createCustomer(details)),
     // Deleted profiles were invisible to lookups before; keep creating a
@@ -605,51 +613,69 @@ const toBuyer = Effect.fn("InvoiceAdministrationService.toBuyer")(
     )
 );
 
+/** A Dotypos text field without surrounding whitespace; absent reads as "". */
+const customerText = (value: string | null | undefined) => value?.trim() ?? "";
+
+const toCustomerAddress = (customer: DotyposCustomer) => {
+  const line2 = customerText(customer.addressLine2);
+  return {
+    line1: customerText(customer.addressLine1),
+    ...(line2 && { line2 }),
+    city: customerText(customer.city),
+    postalCode: customerText(customer.zip),
+    country: customerText(customer.country).toUpperCase() || "CZ",
+  };
+};
+
+/**
+ * The billing details a Dotypos customer prefills: a business when it has a
+ * company name, otherwise a person.
+ */
+const toCustomerDetails = (
+  customer: DotyposCustomer
+): AdministrationInvoiceCustomerDetailsType => {
+  const phone = customerText(customer.phone);
+  const common = {
+    email: customerText(customer.email),
+    ...(phone && { phone }),
+    firstName: customerText(customer.firstName) || undefined,
+    lastName: customerText(customer.lastName) || undefined,
+    address: toCustomerAddress(customer),
+  };
+  const companyName = customerText(customer.companyName);
+  if (!companyName) {
+    return {
+      ...common,
+      kind: "person",
+      firstName: customerText(customer.firstName),
+      lastName: customerText(customer.lastName),
+    };
+  }
+  const vatId = customerText(customer.vatId);
+  return {
+    ...common,
+    kind: "business",
+    companyName,
+    companyId: customerText(customer.companyId),
+    ...(vatId && { vatId }),
+  };
+};
+
 const toCustomer = (
   customer: DotyposCustomer
-): InvoiceAdministrationCustomer | null => {
-  if (!customer.id) return null;
+): InvoiceAdministrationCustomer => {
   const personName = [customer.firstName, customer.lastName]
     .filter(Boolean)
     .join(" ")
     .trim();
-  const common = {
-    email: customer.email?.trim() ?? "",
-    ...(customer.phone?.trim() && { phone: customer.phone.trim() }),
-    firstName: customer.firstName?.trim() || undefined,
-    lastName: customer.lastName?.trim() || undefined,
-    address: {
-      line1: customer.addressLine1?.trim() ?? "",
-      ...(customer.addressLine2?.trim() && {
-        line2: customer.addressLine2.trim(),
-      }),
-      city: customer.city?.trim() ?? "",
-      postalCode: customer.zip?.trim() ?? "",
-      country: customer.country?.trim().toUpperCase() || "CZ",
-    },
-  };
-  const details = customer.companyName?.trim()
-    ? {
-        ...common,
-        kind: "business" as const,
-        companyName: customer.companyName.trim(),
-        companyId: customer.companyId?.trim() ?? "",
-        ...(customer.vatId?.trim() && { vatId: customer.vatId.trim() }),
-      }
-    : {
-        ...common,
-        kind: "person" as const,
-        firstName: customer.firstName?.trim() ?? "",
-        lastName: customer.lastName?.trim() ?? "",
-      };
-  const name =
-    customer.companyName?.trim() || personName || customer.email?.trim();
+  const email = customerText(customer.email);
+  const name = customerText(customer.companyName) || personName || email;
   return {
     id: customer.id,
     displayName: name || unnamedCustomerDisplayName,
     hasName: Boolean(name),
-    email: customer.email?.trim() || null,
-    details,
+    email: email || null,
+    details: toCustomerDetails(customer),
   };
 };
 

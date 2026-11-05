@@ -1,6 +1,6 @@
 "use client";
 
-import type { Category, Product } from "@deskohub/dotypos/generated";
+import type { DotyposCategory, DotyposProduct } from "@deskohub/dotypos";
 import { siteConstants } from "@/shared/utils/constants";
 import { MenuFooterNote } from "./menu-footer-note";
 import { MenuOpeningHours } from "./menu-opening-hours";
@@ -8,8 +8,8 @@ import { MenuPDFDownload } from "./menu-pdf-download";
 import { MenuSection } from "./menu-section";
 
 interface MenuClientProps {
-  products: Product[];
-  categories: Category[];
+  products: DotyposProduct[];
+  categories: DotyposCategory[];
   showPdfDownload: boolean;
 }
 

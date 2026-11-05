@@ -32,6 +32,10 @@ const emailConfig: EmailConfig = {
   },
 };
 
+/** The HTML of the first captured email tagged `tag`, if it was rendered. */
+const findRenderedEmail = (messages: readonly EmailMessage[], tag: string) =>
+  messages.find((message) => message.tags?.includes(tag))?.html;
+
 export const createContactEmailPreviews = (locale: Locale) => {
   const sentMessages: EmailMessage[] = [];
   const emailService: EmailService = {
@@ -62,22 +66,18 @@ export const createContactEmailPreviews = (locale: Locale) => {
     const contactService = yield* ContactService;
     yield* contactService.submit(previewSubmission, locale);
 
-    const business = sentMessages.find((message) =>
-      message.tags?.includes("workspace-contact-form")
-    );
-    const confirmation = sentMessages.find((message) =>
-      message.tags?.includes("workspace-contact-confirmation")
+    const business = findRenderedEmail(sentMessages, "workspace-contact-form");
+    const confirmation = findRenderedEmail(
+      sentMessages,
+      "workspace-contact-confirmation"
     );
 
-    if (!(business?.html && confirmation?.html)) {
+    if (!(business && confirmation)) {
       return yield* Effect.die(
         "Contact preview did not capture both rendered emails."
       );
     }
 
-    return {
-      business: business.html,
-      confirmation: confirmation.html,
-    } as const;
+    return { business, confirmation } as const;
   }).pipe(Effect.provide(PreviewContactService));
 };

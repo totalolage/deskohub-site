@@ -9,14 +9,16 @@ import {
   validateEmailCustomerSelection,
 } from "./email-customer-selection";
 import { EmailValueName } from "./email-identifiers";
+import {
+  emailDocumentForPublication,
+  requiredEmailValueNames,
+} from "./email-publication";
 import { emailValueSnapshotForDefinition } from "./email-value-snapshot";
 import {
   EmailDocument,
   EmailDraft,
   type EmailTranslation,
   EmailValueDefinition,
-  emailDocumentForPublication,
-  requiredEmailValueNames,
 } from "./emails";
 import { AdministrationCustomerDetail } from "./workspace-admin-api";
 
@@ -232,7 +234,25 @@ describe("reusable email publication", () => {
         fields: [["id"]],
       },
     };
-    expect(() => publish({ ...document, values: [value, value] })).toThrow();
+    // A repeated name a text uses is ambiguous; repeated unused ones drop.
+    expect(() =>
+      publish({
+        ...document,
+        values: [value, value],
+        structure: [
+          ...document.structure,
+          {
+            _tag: "List",
+            id: "visits",
+            value: "visits",
+            fields: [{ field: ["id"], labelKey: "body" }],
+          },
+        ],
+      })
+    ).toThrow();
+    expect(
+      publish({ ...document, values: [value, value] }).values
+    ).toHaveLength(1);
     expect(() =>
       publish({
         ...document,

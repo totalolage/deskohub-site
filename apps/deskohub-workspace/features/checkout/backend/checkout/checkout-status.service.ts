@@ -1,39 +1,27 @@
+import type { DotyposCustomer } from "@deskohub/dotypos";
 import {
   type DotyposReservationId,
   DotyposService,
   getCustomerDisplayName,
 } from "@deskohub/dotypos";
-import type { Customer } from "@deskohub/dotypos/generated";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Clock, Context, Duration, Effect, Layer, Match, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import type {
-  FulfillmentState,
-  LatePaymentRecovery,
-  PaymentState,
-} from "@/db/schema";
-import {
-  type CheckoutStatusKind,
-  checkoutStatusTraits,
-} from "@/features/checkout/checkout-status-kind";
+import type { FulfillmentState, PaymentState } from "@/db/schema";
+import { checkoutStatusTraits } from "@/features/checkout/checkout-status-kind";
 import { getProviderOrderAbandonmentCutoff } from "@/features/checkout/provider-order-abandonment";
-import {
-  getWorkspaceTableMap,
-  type WorkspaceTableMap,
-} from "@/features/checkout/workspace-table-map";
 import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
 import { SharedAvailabilityInventoryLive } from "@/features/reservation/backend/availability-inventory-cache.server";
 import {
   type BookedReservation,
   decodeBookedReservation,
 } from "@/features/reservation/backend/booked-reservation";
-import { ReservationRecords } from "@/features/reservation/backend/reservation-records";
 import {
-  type CustomerReservationTable,
-  getCustomerReservationTable,
-  getOpenSpaceTableNames,
-  getReservationTableName,
-} from "@/features/reservation/backend/reservation-table";
+  type CustomerReservationPlacement,
+  getCustomerReservationPlacement,
+} from "@/features/reservation/backend/customer-reservation-placement";
+import type { ReservationRecord } from "@/features/reservation/backend/reservation-record";
+import { ReservationRecords } from "@/features/reservation/backend/reservation-records";
 import { SeatingMapReleaseGate } from "@/features/reservation/backend/seating-map-release-gate";
 import type { WorkspaceReservationDetailsMalformedError } from "@/features/reservation/backend/stored-reservation-details.server";
 import {
@@ -62,10 +50,13 @@ import {
   PaymentAttemptRepository,
 } from "../repositories/payment-attempt.repository";
 import type { PaymentLifecycleRepositoryError } from "../repositories/payment-lifecycle.repository";
+import {
+  type CheckoutReservationStatusKind,
+  getLatePaymentStatusKind,
+  toCheckoutStatusKind,
+} from "./checkout-reservation-status-kind";
 
 export type CheckoutStatusReturnOutcome = "success" | "cancelled" | "unknown";
-
-type CheckoutReservationStatusKind = Exclude<CheckoutStatusKind, "not_found">;
 
 type CheckoutStatusSummaryBase = {
   readonly price: Money;
@@ -94,28 +85,25 @@ type CheckoutStatusContactPrefill = {
   readonly phone?: string;
 };
 
-type CheckoutStatusTableMap = WorkspaceTableMap;
-
 type CheckoutStatusViewModelBase = {
   readonly orderId: WorkspaceReservationId;
   readonly returnOutcome: CheckoutStatusReturnOutcome;
 };
 
-type CheckoutReservationStatusViewModelBase = CheckoutStatusViewModelBase & {
-  readonly status: CheckoutReservationStatusKind;
-  readonly paymentStatus: PaymentState;
-  readonly fulfillmentStatus: FulfillmentState;
-  readonly table?: CustomerReservationTable;
-  readonly tableMap?: CheckoutStatusTableMap;
-  readonly supportContactPrefill?: CheckoutStatusContactPrefill;
-  /** The booked selection a retry status reopens on the reservation page. */
-  readonly retrySelection?: ReservationSelection;
-  /**
-   * Marks a review account's sample or simulated hold, which nothing was
-   * reserved or charged for and which has no access code.
-   */
-  readonly reviewSandbox?: true;
-};
+type CheckoutReservationStatusViewModelBase = CheckoutStatusViewModelBase &
+  CustomerReservationPlacement & {
+    readonly status: CheckoutReservationStatusKind;
+    readonly paymentStatus: PaymentState;
+    readonly fulfillmentStatus: FulfillmentState;
+    readonly supportContactPrefill?: CheckoutStatusContactPrefill;
+    /** The booked selection a retry status reopens on the reservation page. */
+    readonly retrySelection?: ReservationSelection;
+    /**
+     * Marks a review account's sample or simulated hold, which nothing was
+     * reserved or charged for and which has no access code.
+     */
+    readonly reviewSandbox?: true;
+  };
 
 type CheckoutCoworkStatusViewModel = CheckoutReservationStatusViewModelBase & {
   readonly kind: "cowork";
@@ -163,8 +151,7 @@ type CheckoutStatusReservationReconstruction =
 
 type CheckoutStatusReconstruction = {
   readonly reservation: CheckoutStatusReservationReconstruction;
-  readonly table?: CustomerReservationTable;
-  readonly tableMap?: CheckoutStatusTableMap;
+  readonly placement?: CustomerReservationPlacement;
 };
 
 type CheckoutStatusError =
@@ -192,94 +179,6 @@ export interface ICheckoutStatusService {
     readonly returnOutcome: CheckoutStatusReturnOutcome;
   }) => Effect.Effect<CheckoutStatusViewModel, CheckoutStatusError>;
 }
-
-/**
- * Fulfillment and delivery normally finish within seconds. After this long
- * the status page stops promising automatic completion and offers support
- * instead, because the work may have stalled or the email may never arrive.
- */
-const paidFulfillmentGracePeriod = { minutes: 10 };
-
-const toCheckoutStatusKind = (
-  reservation: Pick<
-    WorkspaceReservation,
-    "fulfillmentState" | "paidAt" | "paymentState" | "reservationState"
-  >,
-  now: Temporal.Instant
-): CheckoutReservationStatusKind => {
-  const { paymentState } = reservation;
-  if (paymentState === "paid") {
-    const isOverdue =
-      !!reservation.paidAt &&
-      Temporal.Instant.compare(
-        now,
-        reservation.paidAt.add(paidFulfillmentGracePeriod)
-      ) >= 0;
-    switch (reservation.fulfillmentState) {
-      case "fulfilled":
-        return "fulfilled";
-      case "failed":
-        return "fulfillment_failed";
-      case "awaiting_delivery":
-        if (reservation.reservationState === "confirmed") {
-          return isOverdue ? "paid_delivery_delayed" : "paid_awaiting_delivery";
-        }
-        return isOverdue
-          ? "paid_fulfillment_delayed"
-          : "paid_waiting_fulfillment";
-      case "processing":
-      case "not_started":
-        return isOverdue
-          ? "paid_fulfillment_delayed"
-          : "paid_waiting_fulfillment";
-    }
-  }
-
-  switch (paymentState) {
-    case "not_started":
-      return "created";
-    case "pending":
-      return "pending";
-    case "failed":
-      return "payment_failed";
-    case "cancelled":
-      return "cancelled";
-    case "expired":
-      return "expired";
-  }
-};
-
-const latePaymentStatusKinds = {
-  pending: "late_payment_checking",
-  processing: "late_payment_checking",
-  refund_required: "late_payment_refund",
-  review_required: "late_payment_review",
-} as const satisfies Record<
-  Exclude<LatePaymentRecovery["state"], "recovered">,
-  CheckoutReservationStatusKind
->;
-
-/**
- * A late payment takes over the customer status until recovery confirms the
- * reservation. A refund for an older attempt does not hide a reservation that
- * its active attempt has paid.
- */
-const getLatePaymentStatusKind = (
-  reservation: Pick<
-    WorkspaceReservation,
-    "activePaymentAttemptId" | "paymentState"
-  >,
-  recovery: LatePaymentRecovery | null
-): CheckoutReservationStatusKind | undefined => {
-  if (!recovery || recovery.state === "recovered") return undefined;
-  if (
-    recovery.paymentAttemptId !== reservation.activePaymentAttemptId &&
-    reservation.paymentState === "paid"
-  ) {
-    return undefined;
-  }
-  return latePaymentStatusKinds[recovery.state];
-};
 
 const canUseAttemptForSummary = (
   attempt: PaymentAttempt,
@@ -361,7 +260,7 @@ const toOptionalString = (value: string | null | undefined) => {
 };
 
 const getSupportContactPrefill = (
-  customer: Customer
+  customer: DotyposCustomer
 ): CheckoutStatusContactPrefill | undefined => {
   const prefill: CheckoutStatusContactPrefill = {
     name: getCustomerDisplayName(customer),
@@ -380,6 +279,60 @@ const getEmptyCheckoutStatusReservation = (
       cowork: () => ({ kind: "cowork" as const }),
       "meeting-room": () => ({ kind: "meeting-room" as const }),
       office: () => ({ kind: "office" as const }),
+    })
+  );
+
+/** The family's summary of the booked time and the paid attempt's amount. */
+const toStatusReservation = ({
+  reservation,
+  booked,
+  timing,
+  attempt,
+}: {
+  readonly reservation: WorkspaceReservation;
+  readonly booked: Pick<BookedReservation, "seats" | "setupStart">;
+  readonly timing: Effect.Success<
+    ReturnType<typeof getDotyposReservationTiming>
+  >;
+  readonly attempt: Pick<PaymentAttempt, "amount">;
+}): CheckoutStatusReservationReconstruction =>
+  Match.value(reservation.reservationDetails).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      cowork: (details) => ({
+        kind: "cowork" as const,
+        summary: {
+          ...details,
+          ...timing,
+          price: attempt.amount,
+        },
+      }),
+      "meeting-room": (details) => ({
+        kind: "meeting-room" as const,
+        summary: {
+          ...details,
+          ...timing,
+          ...Option.match(booked.setupStart, {
+            onNone: () => ({}),
+            onSome: (setupFrom) => ({ setupFrom }),
+          }),
+          price: attempt.amount,
+        },
+      }),
+      office: (details) => {
+        // Unreadable Dotypos seats leave the office summary out.
+        if (Option.isNone(booked.seats)) return { kind: "office" as const };
+        const seats = booked.seats.value;
+
+        return {
+          kind: "office" as const,
+          summary: {
+            ...details,
+            ...timing,
+            price: attempt.amount,
+            seats,
+          },
+        };
+      },
     })
   );
 
@@ -405,6 +358,42 @@ const implementation = Effect.gen(function* () {
   const inventory = yield* AdvisoryAvailabilityInventory;
   const finalization = yield* ProviderPaymentFinalizationService;
   const seatingMap = yield* SeatingMapReleaseGate;
+
+  /**
+   * Loads what the summary needs at once: the displayable payment attempt, the
+   * Dotypos reservation when the attempt is likely usable, the table
+   * inventory, and the seating-map release.
+   */
+  const loadSummarySources = (input: {
+    readonly reservation: WorkspaceReservation;
+    readonly loadDotyposReservation: Effect.Effect<
+      ReservationRecord | undefined
+    >;
+    readonly prefetchDotyposReservation: boolean;
+  }) =>
+    Effect.all(
+      [
+        paymentAttempts.findDisplayableForReservation({
+          workspaceReservationId: input.reservation.id,
+          activePaymentAttemptId:
+            input.reservation.activePaymentAttemptId ?? undefined,
+          paymentState: input.reservation.paymentState,
+        }),
+        input.prefetchDotyposReservation
+          ? input.loadDotyposReservation
+          : Effect.void,
+        inventory.tables.pipe(
+          Effect.tapError((cause) =>
+            Effect.logWarning("Checkout status tables load failed", {
+              cause,
+            })
+          ),
+          Effect.orElseSucceed(() => [])
+        ),
+        seatingMap.isOpen,
+      ],
+      { concurrency: "inherit" }
+    );
 
   const reconstructSummary = Effect.fn(
     "CheckoutStatusService.reconstructSummary"
@@ -439,27 +428,11 @@ const implementation = Effect.gen(function* () {
         isSummaryLikelyDisplayable(reservation);
 
       const [attempt, prefetchedDotyposReservation, tables, seatingMapEnabled] =
-        yield* Effect.all(
-          [
-            paymentAttempts.findDisplayableForReservation({
-              workspaceReservationId: reservation.id,
-              activePaymentAttemptId:
-                reservation.activePaymentAttemptId ?? undefined,
-              paymentState: reservation.paymentState,
-            }),
-            prefetchDotyposReservation ? loadDotyposReservation : Effect.void,
-            inventory.tables.pipe(
-              Effect.tapError((cause) =>
-                Effect.logWarning("Checkout status tables load failed", {
-                  cause,
-                })
-              ),
-              Effect.orElseSucceed(() => [])
-            ),
-            seatingMap.isOpen,
-          ],
-          { concurrency: "inherit" }
-        );
+        yield* loadSummarySources({
+          reservation,
+          loadDotyposReservation,
+          prefetchDotyposReservation,
+        });
       yield* Effect.logDebug(
         "Checkout status summary attempt lookup completed"
       );
@@ -496,19 +469,12 @@ const implementation = Effect.gen(function* () {
         "Checkout status summary Dotypos reservation loaded"
       );
 
-      const openSpaceTableNames =
-        reservation.reservationDetails.kind === "cowork" &&
-        reservation.reservationDetails.entryTier === "open-space"
-          ? yield* getOpenSpaceTableNames(tables)
-          : undefined;
-      const table = getCustomerReservationTable({
+      const placement = getCustomerReservationPlacement({
         reservationDetails: reservation.reservationDetails,
-        tableName: getReservationTableName(dotyposReservation, tables),
-        openSpaceTableNames,
+        dotyposReservation,
+        tables,
+        seatingMap: seatingMapEnabled,
       });
-      const tableMap = seatingMapEnabled
-        ? getWorkspaceTableMap(dotyposReservation, tables)
-        : undefined;
 
       const booked = decodeBookedReservation(
         dotyposReservation,
@@ -530,61 +496,24 @@ const implementation = Effect.gen(function* () {
       if (!timing) {
         const reconstruction: CheckoutStatusReconstruction = {
           reservation: emptyReconstruction.reservation,
-          table,
-          tableMap,
+          placement,
         };
 
         return reconstruction;
       }
 
-      const statusReservation = Match.value(
-        reservation.reservationDetails
-      ).pipe(
-        Match.discriminatorsExhaustive("kind")({
-          cowork: (details) => ({
-            kind: "cowork" as const,
-            summary: {
-              ...details,
-              ...timing,
-              price: attempt.amount,
-            },
-          }),
-          "meeting-room": (details) => ({
-            kind: "meeting-room" as const,
-            summary: {
-              ...details,
-              ...timing,
-              ...Option.match(booked.setupStart, {
-                onNone: () => ({}),
-                onSome: (setupFrom) => ({ setupFrom }),
-              }),
-              price: attempt.amount,
-            },
-          }),
-          office: (details) => {
-            // Unreadable Dotypos seats leave the office summary out.
-            if (Option.isNone(booked.seats)) return { kind: "office" as const };
-            const seats = booked.seats.value;
-
-            return {
-              kind: "office" as const,
-              summary: {
-                ...details,
-                ...timing,
-                price: attempt.amount,
-                seats,
-              },
-            };
-          },
-        })
-      );
+      const statusReservation = toStatusReservation({
+        reservation,
+        booked,
+        timing,
+        attempt,
+      });
 
       yield* Effect.logDebug("Checkout status summary reconstructed");
 
       const reconstruction: CheckoutStatusReconstruction = {
         reservation: statusReservation,
-        table,
-        tableMap,
+        placement,
       };
 
       return reconstruction;
@@ -808,10 +737,7 @@ const implementation = Effect.gen(function* () {
         fulfillmentStatus: reservation.fulfillmentState,
         // A late payment has no booked place to show until recovery confirms
         // a reservation; the original hold's table may belong to someone else.
-        ...(!latePaymentStatusKind && {
-          table: reconstruction.table,
-          tableMap: reconstruction.tableMap,
-        }),
+        ...(!latePaymentStatusKind && reconstruction.placement),
         supportContactPrefill,
         // A late payment that settled takes over the status, and with it the
         // retry of the payment it replaced.

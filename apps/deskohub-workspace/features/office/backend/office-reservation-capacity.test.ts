@@ -36,7 +36,6 @@ describe("getOfficeReservationSeatCapacity", () => {
       getSeatCapacity([
         makeTable({ id: "disabled", enabled: false, seats: "12" }),
         makeTable({ id: "hidden", display: false, seats: "10" }),
-        makeTable({ id: undefined, seats: "9" }),
         makeTable({ id: "office", seats: "3" }),
       ])
     ).toBe(3);

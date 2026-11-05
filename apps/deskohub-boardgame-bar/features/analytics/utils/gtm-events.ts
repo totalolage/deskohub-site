@@ -28,6 +28,19 @@ export function trackPageView(url: string): void {
 }
 
 /**
+ * Track a page view of the current route, with its query string when it has one
+ */
+export function trackRoutePageView(
+  pathname: string | null,
+  searchParams: { toString(): string } | null
+): void {
+  if (!pathname) return;
+
+  const query = searchParams?.toString();
+  trackPageView(query ? `${pathname}?${query}` : pathname);
+}
+
+/**
  * Track button click
  */
 export function trackButtonClick(buttonName: string, location?: string): void {

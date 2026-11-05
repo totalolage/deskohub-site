@@ -219,8 +219,9 @@ describe("reservation invoice processing", () => {
       })
     );
 
-    await runPostOrderCreate(harness, accessToken);
+    const result = await runPostOrderCreate(harness, accessToken);
 
+    expect(result).toEqual({ status: "already-issued", delivered: true });
     expect(harness.updateBilling).toHaveBeenCalledTimes(2);
     expect(harness.updateBilling).toHaveBeenLastCalledWith(
       "dotypos-customer-1",
@@ -248,6 +249,216 @@ describe("reservation invoice processing", () => {
     const result = await runPostOrderCreate(harness, accessToken);
 
     expect(result).toEqual({ status: "created", delivered: true });
+  });
+
+  test("refuses a losing concurrent request whose issued buyer is not a person", async () => {
+    const source = makeSource({ purpose: "personal", invoice: "none" });
+    const harness = makeHarness(source, {
+      issuedInvoice: {
+        document: {
+          ...makeCoworkInvoiceDocument("en-US"),
+          buyer: {
+            kind: "business",
+            legalName: "Synthetic Company s.r.o.",
+            companyId: "12345678",
+            address: personalAddress,
+          },
+        },
+      },
+      issueChanged: false,
+    });
+
+    await expect(
+      runPostOrderCreate(harness, await makeAccessToken(source))
+    ).rejects.toMatchObject({ _tag: "PostOrderInvoiceUnavailableError" });
+    expect(harness.updateBilling).toHaveBeenCalledTimes(1);
+    expect(harness.deliver).not.toHaveBeenCalled();
+  });
+
+  test("offers customer resend when the customer copy failed", async () => {
+    const source = makeSource({ purpose: "personal", invoice: "none" });
+    const harness = makeHarness(source, {
+      deliveryFailure: new InvoiceEmailDeliveryError({
+        code: "email_delivery_failed",
+        paymentAttemptId,
+        message: "Customer invoice email delivery failed.",
+        customerDelivered: false,
+      }),
+    });
+
+    const result = await runPostOrderCreate(
+      harness,
+      await makeAccessToken(source)
+    );
+
+    expect(result).toEqual({ status: "created", delivered: false });
+  });
+
+  test("returns an issued invoice without issuing or delivering again", async () => {
+    const source = makeSource({ purpose: "personal", invoice: "none" });
+    const harness = makeHarness(source, { existingInvoice: {} });
+
+    const result = await runPostOrderCreate(
+      harness,
+      await makeAccessToken(source)
+    );
+
+    expect(result).toEqual({ status: "already-issued", delivered: true });
+    expect(harness.updateBilling).not.toHaveBeenCalled();
+    expect(harness.issue).not.toHaveBeenCalled();
+    expect(harness.deliver).not.toHaveBeenCalled();
+  });
+
+  test("refuses creation and resend when the post-order page is unavailable", async () => {
+    const source = makeSource({
+      purpose: "personal",
+      invoice: "requested",
+      address: personalAddress,
+    });
+    const harness = makeHarness(source);
+    const accessToken = await makeAccessToken(source);
+
+    await expect(
+      runPostOrderCreate(harness, accessToken)
+    ).rejects.toMatchObject({ _tag: "PostOrderInvoiceUnavailableError" });
+    await expect(
+      runPostOrderResend(harness, accessToken)
+    ).rejects.toMatchObject({ _tag: "PostOrderInvoiceUnavailableError" });
+    expect(harness.updateBilling).not.toHaveBeenCalled();
+    expect(harness.issue).not.toHaveBeenCalled();
+    expect(harness.resend).not.toHaveBeenCalled();
+  });
+
+  test("is unavailable without a capability, before loading the reservation", async () => {
+    const harness = makeHarness(
+      makeSource({ purpose: "personal", invoice: "none" })
+    );
+
+    const state = await runPostOrderState(harness, undefined);
+
+    expect(state).toBe("unavailable");
+    expect(harness.findReservation).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["is missing", null],
+    ["is in another locale", { locale: "cs" }],
+    ["is unpaid", { paymentState: "pending" }],
+    ["is unconfirmed", { reservationState: "held" }],
+    [
+      "has no delivered access code",
+      { fulfillmentState: "processing", fulfilledAt: null },
+    ],
+    ["has no active payment attempt", { activePaymentAttemptId: null }],
+  ] as const)(
+    "is unavailable when the reservation %s",
+    async (_, reservation) => {
+      const source = makeSource({ purpose: "personal", invoice: "none" });
+      const harness = makeHarness(source, { reservation });
+
+      const state = await runPostOrderState(
+        harness,
+        await makeAccessToken(source)
+      );
+
+      expect(state).toBe("unavailable");
+      expect(harness.findSnapshot).not.toHaveBeenCalled();
+    }
+  );
+
+  test.each([
+    ["is missing", () => null],
+    [
+      "has no delivery recipient",
+      ({ delivery: _delivery, ...source }: AccountingDocumentSnapshot) =>
+        source,
+    ],
+    [
+      "belongs to another reservation",
+      (source: AccountingDocumentSnapshot) => ({
+        ...source,
+        workspaceReservationId: "other-reservation",
+      }),
+    ],
+    [
+      "belongs to another customer",
+      (source: AccountingDocumentSnapshot) => ({
+        ...source,
+        dotyposCustomerId: "other-customer",
+      }),
+    ],
+  ] as const)("is unavailable when the snapshot %s", async (_, snapshotOf) => {
+    const source = makeSource({ purpose: "personal", invoice: "none" });
+    const harness = makeHarness(source, {
+      snapshot: snapshotOf(source) as AccountingDocumentSnapshot | null,
+    });
+
+    const state = await runPostOrderState(
+      harness,
+      await makeAccessToken(source)
+    );
+
+    expect(state).toBe("unavailable");
+    expect(harness.findInvoice).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    [
+      "the reservation is a business one",
+      { reservation: { reservationPurpose: "business" } },
+    ],
+    [
+      "the snapshot already requested an invoice",
+      {
+        snapshot: makeSource({
+          purpose: "personal",
+          invoice: "requested",
+          address: personalAddress,
+        }),
+      },
+    ],
+    [
+      "the snapshot has no billing selection",
+      {
+        snapshot: (() => {
+          const { billing: _billing, ...legacy } = makeSource({
+            purpose: "personal",
+            invoice: "none",
+          });
+          return Schema.decodeUnknownSync(accountingDocumentSnapshotSchema)(
+            legacy
+          );
+        })(),
+      },
+    ],
+    [
+      "the snapshot buyer is not a person",
+      {
+        snapshot: Schema.decodeUnknownSync(accountingDocumentSnapshotSchema)({
+          ...makeSource({ purpose: "personal", invoice: "none" }),
+          buyer: {
+            kind: "business",
+            legalName: "Synthetic Company s.r.o.",
+            companyId: "12345678",
+            address: personalAddress,
+          },
+        }),
+      },
+    ],
+  ] as const)("does not offer creation when %s", async (_, options) => {
+    const source = makeSource({ purpose: "personal", invoice: "none" });
+    const harness = makeHarness(source, {
+      reservation: { reservationPurpose: "personal" },
+      ...options,
+    });
+
+    const state = await runPostOrderState(
+      harness,
+      await makeAccessToken(source)
+    );
+
+    expect(state).toBe("unavailable");
+    expect(harness.findInvoice).toHaveBeenCalledTimes(1);
   });
 
   test("resends an existing invoice only through the customer resend path", async () => {
@@ -292,9 +503,17 @@ const runProcessing = (harness: ReturnType<typeof makeHarness>) =>
     Effect.runPromise
   );
 
+const makeAccessToken = (source: AccountingDocumentSnapshot) =>
+  Effect.runPromise(
+    createReservationAccessToken({
+      orderId: source.workspaceReservationId,
+      locale: "en-US",
+    })
+  );
+
 const runPostOrderState = (
   harness: ReturnType<typeof makeHarness>,
-  accessToken: ReservationAccessToken
+  accessToken: ReservationAccessToken | undefined
 ) =>
   runWithHarness(
     harness,
@@ -373,6 +592,8 @@ const makeHarness = (
     readonly issuedInvoice?: object;
     readonly issueChanged?: boolean;
     readonly deliveryFailure?: InstanceType<typeof InvoiceEmailDeliveryError>;
+    readonly reservation?: object | null;
+    readonly snapshot?: AccountingDocumentSnapshot | null;
   } = {}
 ) => {
   const issue = mock(() =>
@@ -391,7 +612,7 @@ const makeHarness = (
   );
   const findReservation = mock(() =>
     Effect.succeed(
-      source
+      source && options.reservation !== null
         ? ({
             id: source.workspaceReservationId,
             locale: source.locale,
@@ -402,6 +623,7 @@ const makeHarness = (
             activePaymentAttemptId: paymentAttemptId,
             reservationPurpose: source.billing?.purpose ?? null,
             dotyposCustomerId: source.dotyposCustomerId,
+            ...options.reservation,
           } as never)
         : null
     )
@@ -410,14 +632,19 @@ const makeHarness = (
     Effect.succeed({ status: "delivered" as const, changed: true })
   );
 
+  const findSnapshot = mock(() =>
+    Effect.succeed(options.snapshot === undefined ? source : options.snapshot)
+  );
+  const findInvoice = mock(() =>
+    Effect.succeed((options.existingInvoice ?? null) as never)
+  );
+
   return {
     accountingSnapshots: {
-      findByPaymentAttemptId: mock(() => Effect.succeed(source)),
+      findByPaymentAttemptId: findSnapshot,
     },
     invoices: {
-      findByPaymentAttemptId: mock(() =>
-        Effect.succeed((options.existingInvoice ?? null) as never)
-      ),
+      findByPaymentAttemptId: findInvoice,
       issue,
     },
     dotypos: {
@@ -430,6 +657,8 @@ const makeHarness = (
     reservations: { findById: findReservation },
     source,
     findReservation,
+    findSnapshot,
+    findInvoice,
     updateBilling,
     issue,
     deliver,

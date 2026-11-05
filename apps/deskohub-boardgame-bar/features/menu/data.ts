@@ -1,4 +1,4 @@
-import type { Category, Product } from "@deskohub/dotypos/generated";
+import type { DotyposCategory, DotyposProduct } from "@deskohub/dotypos";
 import { Context, Data, Effect, Layer } from "effect";
 import { DotyposService, isCategoryDisplayable } from "@/features/dotypos";
 import { siteConstants } from "@/shared/utils/constants";
@@ -9,8 +9,8 @@ class MenuDataError extends Data.TaggedError("MenuDataError")<{
 }> {}
 
 export interface MenuDataShape {
-  readonly products: Product[];
-  readonly categories: Category[];
+  readonly products: DotyposProduct[];
+  readonly categories: DotyposCategory[];
 }
 
 interface MenuServiceShape {
@@ -40,7 +40,7 @@ export class MenuService extends Context.Service<
             ...siteConstants.menu.categoryGroups.food,
             ...siteConstants.menu.categoryGroups.drinks,
           ];
-          const displayCategories: Category[] = [];
+          const displayCategories: DotyposCategory[] = [];
           for (const categoryId of categoryOrder) {
             const category = categories.find((cat) => cat.id === categoryId);
             if (!category) {

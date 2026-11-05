@@ -14,9 +14,9 @@ export type {
 } from "./workspace-table-selection";
 export {
   decodeTableCandidates,
+  decodeTableSeatCapacity,
   getWorkspaceTableCandidates,
   getWorkspaceTableCandidatesByPredicate,
-  getWorkspaceTableSeatCapacity,
   hasCandidateCapacity,
   InvalidDotyposTableSeats,
   isWorkspaceCoworkTableCandidate,

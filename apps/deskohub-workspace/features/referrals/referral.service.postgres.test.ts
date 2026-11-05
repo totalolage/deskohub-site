@@ -34,11 +34,8 @@ import {
   workspaceFixtures,
 } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import {
-  getReferralInvitationDiscountId,
-  getReferralReferrerDiscountId,
-} from "./discount-identifiers";
 import { ReferralService } from "./referral.service";
+import { getReferralBenefitIds } from "./referral-benefits";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 const uniqueId = () => crypto.randomUUID();
@@ -812,14 +809,15 @@ describe.skipIf(!testDatabase)("ReferralService on disposable Postgres", () => {
       )
     );
     const referrerDiscountId =
-      getReferralReferrerDiscountId(referrerCustomerId);
+      getReferralBenefitIds(referrerCustomerId).referrer;
     await insertDiscountedBooking({
       dotyposCustomerId: referrerCustomerId,
       attempt: "paid",
       applications: [
         { publicDiscountId: "synthetic-ordinary-discount", amountValue: 1000 },
         {
-          publicDiscountId: getReferralInvitationDiscountId(referrerCustomerId),
+          publicDiscountId:
+            getReferralBenefitIds(referrerCustomerId).invitation,
           amountValue: 3000,
         },
         { publicDiscountId: referrerDiscountId, amountValue: 1234 },
@@ -877,7 +875,7 @@ describe.skipIf(!testDatabase)("ReferralService on disposable Postgres", () => {
       attempt: "paid",
       applications: [
         {
-          publicDiscountId: getReferralReferrerDiscountId(otherCustomer),
+          publicDiscountId: getReferralBenefitIds(otherCustomer).referrer,
           amountValue: 7000,
         },
       ],
@@ -1363,6 +1361,90 @@ describe.skipIf(!testDatabase)(
           [paidCustomer]
         );
         await referrer.cleanup();
+      }
+    });
+
+    test("prices the referrer discount only for a referrer with eligible invitees and a subtotal left to reduce", async () => {
+      const referrer = await createActiveReferrer();
+      const loneReferrer = await createActiveReferrer();
+      const invitee = uniqueDotyposId();
+      const inviteeBooking =
+        `invitee-booking-${uniqueId()}` as DotyposReservationId;
+      const referrerCandidate = (
+        dotyposCustomerId: DotyposCustomerId,
+        remainingValue: number
+      ) =>
+        runReferrals(
+          (referrals) =>
+            referrals.resolveReferrerCandidate({
+              dotyposCustomerId,
+              locale: "en-US",
+              remainingSubtotal: currencyCZK(remainingValue),
+            }),
+          makeReferralLayer(
+            {
+              accountId: customerAccountIdSchema.make(uniqueId()),
+              dotyposCustomerId,
+            },
+            (customerId) =>
+              customerId === invitee
+                ? [makeLiveConfirmedReservation(inviteeBooking)]
+                : []
+          )
+        );
+      try {
+        await Effect.runPromise(
+          testDatabase!.db.insert(referralAttributions).values({
+            invitedDotyposCustomerId: invitee,
+            referrerDotyposCustomerId: referrer.dotyposCustomerId,
+            promotionCodeId: referrer.promotionCodeId,
+          })
+        );
+        await Effect.runPromise(
+          workspaceFixtures(testDatabase!.db).reservation({
+            stage: { reservation: "confirmed", payment: "paid" },
+            customer: invitee,
+            overrides: { dotyposReservationId: inviteeBooking },
+          })
+        );
+
+        expect(
+          await referrerCandidate(loneReferrer.dotyposCustomerId, 100_000)
+        ).toMatchObject({ _tag: "Success", success: undefined });
+        // Nothing is left to reduce, so the referrer discount prices nothing.
+        expect(
+          await referrerCandidate(referrer.dotyposCustomerId, 0)
+        ).toMatchObject({ _tag: "Success", success: undefined });
+        expect(
+          await referrerCandidate(referrer.dotyposCustomerId, 100_000)
+        ).toMatchObject({
+          _tag: "Success",
+          success: {
+            discount: {
+              id: getReferralBenefitIds(referrer.dotyposCustomerId).referrer,
+              adjustment: { kind: "fixed", amount: currencyCZK(5_000) },
+            },
+            provenance: {
+              providerNamespace: "referral-referrer",
+              providerReference: referrer.dotyposCustomerId,
+              details: {
+                referralReferrer: {
+                  referrerDotyposCustomerId: referrer.dotyposCustomerId,
+                  eligibleInviteeCount: 1,
+                  discountPercentage: "5",
+                },
+              },
+            },
+          },
+        });
+      } finally {
+        await deleteBookings([invitee]);
+        await testDatabase!.pool.query(
+          "delete from referral_attributions where invited_dotypos_customer_id = $1",
+          [invitee]
+        );
+        await referrer.cleanup();
+        await loneReferrer.cleanup();
       }
     });
 

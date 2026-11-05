@@ -23,9 +23,7 @@ export const seededCustomerReads = (
     return Effect.succeed(
       new Map(
         customers.flatMap((customer) =>
-          customer.id !== undefined && selectedIds.has(customer.id)
-            ? [[customer.id, customer] as const]
-            : []
+          selectedIds.has(customer.id) ? [[customer.id, customer] as const] : []
         )
       )
     );
@@ -80,7 +78,7 @@ export const seededReservationReads = (
         const selected = new Set<DotyposReservationId>(ids);
         return new Map(
           select(options).flatMap((reservation) =>
-            reservation.id !== undefined && selected.has(reservation.id)
+            selected.has(reservation.id)
               ? [[reservation.id, reservation] as const]
               : []
           )

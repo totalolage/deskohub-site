@@ -157,6 +157,84 @@ function isFunction(value: unknown): value is (...args: never[]) => unknown {
   return typeof value === "function";
 }
 
+type TemporalNamespaceApis = TemporalApis[string];
+
+/** A namespace of the host's Temporal global, which may be missing or partial. */
+// biome-ignore lint/plugin: a namespace of a host global that may be partial.
+type HostTemporalNamespace = Record<string, unknown> | undefined;
+
+/**
+ * Whether a namespace with instance members is a constructor, as a class
+ * must be. `Reflect.construct` throws if it isn't, without calling it.
+ */
+function isConstructibleWhereClass(
+  namespace: HostTemporalNamespace,
+  members: TemporalNamespaceApis
+): boolean {
+  if (members.methods === undefined && members.getters === undefined) {
+    return true;
+  }
+  if (!isFunction(namespace)) return false;
+  Reflect.construct(Object, [], namespace);
+  return true;
+}
+
+/** Whether every static member of a namespace is a function. */
+function hasStaticFunctions(
+  namespace: HostTemporalNamespace,
+  members: TemporalNamespaceApis
+): boolean {
+  return (members.static ?? []).every((member) =>
+    isFunction(namespace?.[member])
+  );
+}
+
+/**
+ * Whether a namespace's prototype has every instance method and getter as a
+ * function. Reads descriptors rather than values, since reading a getter off
+ * the prototype throws, and only the prototype's own, so that
+ * `Object.prototype`'s `toString` doesn't count.
+ */
+function hasInstanceFunctions(
+  namespace: HostTemporalNamespace,
+  members: TemporalNamespaceApis
+): boolean {
+  const prototype = Object(namespace?.prototype);
+  const descriptor = (member: string) =>
+    Object.getOwnPropertyDescriptor(prototype, member);
+  return (
+    (members.methods ?? []).every((member) =>
+      isFunction(descriptor(member)?.value)
+    ) &&
+    (members.getters ?? []).every((member) =>
+      isFunction(descriptor(member)?.get)
+    )
+  );
+}
+
+/**
+ * Whether the date arithmetic and time zone conversions Workspace code relies
+ * on give the right answers in `timeZone` across a daylight saving change.
+ * Central European clocks skip 02:00–03:00 on 2026-03-29.
+ */
+function convertsAcrossDaylightSavingChange(
+  temporal: typeof Temporal,
+  timeZone: string
+): boolean {
+  const { Instant, PlainDate, PlainDateTime } = temporal;
+  const afterChange = Instant.from("2026-03-29T01:30:00Z");
+  return (
+    PlainDate.from("2026-03-28").add({ days: 1 }).toZonedDateTime(timeZone)
+      .hoursInDay === 23 &&
+    PlainDateTime.from("2026-03-29T03:30")
+      .toZonedDateTime(timeZone)
+      .toInstant()
+      .equals(afterChange) &&
+    afterChange.toZonedDateTimeISO(timeZone).toPlainTime().toString() ===
+      "03:30:00"
+  );
+}
+
 /**
  * Whether `temporal` has every API in `apis` in a form code can call, and
  * whether the date arithmetic and time zone conversions Workspace code relies
@@ -170,45 +248,17 @@ export function isTemporalComplete(
   timeZone: string
 ): boolean {
   try {
-    // biome-ignore lint/plugin: the namespaces of a host global that may be partial.
-    const namespaces = temporal as Record<string, Record<string, unknown>>;
-    for (const [name, members] of Object.entries(apis)) {
-      const namespace = namespaces[name];
-      // A namespace with instance members is a class, so must be a
-      // constructor. `Reflect.construct` throws if it isn't, without calling it.
-      if (members.methods !== undefined || members.getters !== undefined) {
-        if (!isFunction(namespace)) return false;
-        Reflect.construct(Object, [], namespace);
-      }
-      for (const member of members.static ?? []) {
-        if (!isFunction(namespace?.[member])) return false;
-      }
-      // Read descriptors rather than values, since reading a getter off the
-      // prototype throws, and only the prototype's own, so that
-      // `Object.prototype`'s `toString` doesn't count.
-      const prototype = Object(namespace?.prototype);
-      const descriptor = (member: string) =>
-        Object.getOwnPropertyDescriptor(prototype, member);
-      for (const member of members.methods ?? []) {
-        if (!isFunction(descriptor(member)?.value)) return false;
-      }
-      for (const member of members.getters ?? []) {
-        if (!isFunction(descriptor(member)?.get)) return false;
-      }
-    }
-
-    // Central European clocks skip 02:00–03:00 on 2026-03-29.
-    const { Instant, PlainDate, PlainDateTime } = temporal as typeof Temporal;
-    const afterChange = Instant.from("2026-03-29T01:30:00Z");
+    const namespaces = temporal as Record<string, HostTemporalNamespace>;
     return (
-      PlainDate.from("2026-03-28").add({ days: 1 }).toZonedDateTime(timeZone)
-        .hoursInDay === 23 &&
-      PlainDateTime.from("2026-03-29T03:30")
-        .toZonedDateTime(timeZone)
-        .toInstant()
-        .equals(afterChange) &&
-      afterChange.toZonedDateTimeISO(timeZone).toPlainTime().toString() ===
-        "03:30:00"
+      Object.entries(apis).every(([name, members]) => {
+        const namespace = namespaces[name];
+        return (
+          isConstructibleWhereClass(namespace, members) &&
+          hasStaticFunctions(namespace, members) &&
+          hasInstanceFunctions(namespace, members)
+        );
+      }) &&
+      convertsAcrossDaylightSavingChange(temporal as typeof Temporal, timeZone)
     );
   } catch {
     return false;

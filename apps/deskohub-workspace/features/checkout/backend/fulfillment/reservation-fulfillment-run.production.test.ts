@@ -92,7 +92,7 @@ describe("ReservationFulfillment.run production email acceptance", () => {
       customer: { email: testEmailAddressForCustomer },
       reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
       reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
-      tableName: "12",
+      placement: { table: { mode: "assigned", name: "12" } },
     };
     const customerEmailDeliveryId = EmailDeliveryIdSchema.make(
       "accepted-production-email-delivery"
@@ -208,7 +208,7 @@ describe("ReservationFulfillment.run production email acceptance", () => {
       customer: { email: testEmailAddress("delivered+cowork-basic-1") },
       reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
       reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
-      tableName: "12",
+      placement: { table: { mode: "assigned", name: "12" } },
     };
     const customerEmailDeliveryId = EmailDeliveryIdSchema.make(
       "console-production-email-delivery"
@@ -330,7 +330,7 @@ describe("ReservationFulfillment.run production email acceptance", () => {
       customer: { email: testEmailAddressForCustomer },
       reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
       reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
-      tableName: "12",
+      placement: { table: { mode: "assigned", name: "12" } },
     };
     const recoveredDeliveryId = EmailDeliveryIdSchema.make(
       "recovered-customer-email-delivery"
@@ -449,7 +449,7 @@ describe("ReservationFulfillment.run production email acceptance", () => {
       customer: { email: testEmailAddressForCustomer },
       reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
       reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
-      tableName: "12",
+      placement: { table: { mode: "assigned", name: "12" } },
     };
     const claims = [initialClaimed, retainedClaimed];
     const claimPaidFulfillment = mock(() =>
@@ -611,7 +611,7 @@ describe("ReservationFulfillment.run production email acceptance", () => {
       customer: { email: testEmailAddressForCustomer },
       reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
       reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
-      tableName: "12",
+      placement: { table: { mode: "assigned", name: "12" } },
     };
     // A newer recovery generation already recorded its delivery, so this
     // old-generation recording is rejected by the repository's generation
@@ -724,7 +724,7 @@ describe("ReservationFulfillment.run production email acceptance", () => {
       customer: { email: testEmailAddressForCustomer },
       reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
       reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
-      tableName: "12",
+      placement: { table: { mode: "assigned", name: "12" } },
     };
     // The reservation is no longer claimable for recording even though the
     // delivery generation still matches, so this is a real invalid-state

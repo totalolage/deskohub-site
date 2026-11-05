@@ -19,8 +19,8 @@ import { toCampaignPreviewInput } from "../composer/campaign-composer-fields";
 
 registerWorkspaceComponentTestEnv();
 
-mock.module("@/features/email-campaigns/admin/editor/actions", () => ({
-  authorizeCampaignImageUpload: mock(async () => ({})),
+mock.module("@/features/emails/admin/editor/image-upload-actions", () => ({
+  authorizeEmailImageUpload: mock(async () => ({})),
 }));
 
 const { CampaignBodyEditor } = await import("./campaign-body-editor");

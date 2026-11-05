@@ -57,6 +57,11 @@ export const readTitle = () => {
   return title.toUpperCase();
 };
 `,
+  "src/fresh.ts": `
+export function freshValue(): number {
+  return 7;
+}
+`,
   "src/teardown.ts": `
 export function fileTeardown(): void {}
 `,
@@ -103,6 +108,14 @@ test("runs a function from its source text, as a browser page does", () => {
   expect(new Function(\`return (\${readTitle.toString()})();\`)()).toBe("PAGE");
 });
 `,
+  "tests/fresh.test.ts": `
+import { expect, test } from "bun:test";
+test("imports fresh module instances through a query suffix", async () => {
+  const first = await import("../src/fresh?first");
+  const second = await import("../src/fresh.ts?second");
+  expect(first.freshValue() + second.freshValue()).toBe(14);
+});
+`,
   "tests/child.test.ts": `
 import { expect, test } from "bun:test";
 test("runs a child script", async () => {
@@ -120,6 +133,7 @@ const sourcePaths = [
   "src/mocked.ts",
   "src/in-page.ts",
   "src/teardown.ts",
+  "src/fresh.ts",
   "src/never-loaded.ts",
 ];
 
@@ -204,7 +218,7 @@ describe.each([
   ["isolated test files", ["--parallel=1"]],
   ["a shared global", []],
 ])("coverage collection with %s", (_, testArguments) => {
-  test("sums counters across test files and covers preloads, teardown, child scripts, and unloaded sources", async () => {
+  test("sums counters across test files and covers preloads, teardown, child scripts, query-suffixed imports, and unloaded sources", async () => {
     const { report, file } = await collectFixtureCoverage(testArguments);
 
     expect(Object.keys(report.coverage).sort()).toEqual(
@@ -220,6 +234,7 @@ describe.each([
     expect(functionCalls(file("src/script-only.ts"), "scriptOnly")).toBe(1);
     expect(functionCalls(file("src/mocked.ts"), "mockedValue")).toBe(0);
     expect(functionCalls(file("src/teardown.ts"), "fileTeardown")).toBe(1);
+    expect(functionCalls(file("src/fresh.ts"), "freshValue")).toBe(2);
 
     const neverLoaded = file("src/never-loaded.ts");
     expect(functionCalls(neverLoaded, "neverLoaded")).toBe(0);

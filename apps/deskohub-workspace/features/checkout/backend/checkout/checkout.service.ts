@@ -19,6 +19,7 @@ import {
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
 import {
   type CheckoutSummary,
+  type CheckoutSummaryChangedKeys,
   getCheckoutSummaryChangedKeys,
 } from "@/features/checkout/checkout-summary";
 import { getCoworkCheckoutSummary } from "@/features/checkout/checkout-summary-cowork";
@@ -36,7 +37,10 @@ import type { DiscountCommitment } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
 import { isEarlyPerformanceRequestRequired } from "@/features/legal/early-performance";
 import { getPaymentSubmitLegalEvidence } from "@/features/legal/payment-submit-evidence";
-import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
+import {
+  type WorkspaceReservation,
+  WorkspaceReservationRepository,
+} from "@/features/reservation/backend/workspace-reservation.repository";
 import { getCoworkReservationIntervalInput } from "@/features/reservation/cowork-reservation";
 import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
 import { hasOfficeReservationEnded } from "@/features/reservation/office-reservation";
@@ -725,6 +729,297 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
         });
       });
 
+      /**
+       * The payable reservation for the signed order, or `null` when it can no
+       * longer be paid, as when payment or hold cleanup already moved it on.
+       */
+      const loadPayableReservation = Effect.fnUntraced(function* (
+        state: SignedPayState
+      ) {
+        const reservation = yield* payableReservations
+          .requireCurrent({
+            orderId: state.orderId,
+            checkoutSessionId: state.checkoutSessionId,
+          })
+          .pipe(
+            Effect.catchTag(
+              "PayableReservationUnavailableError",
+              (cause: PayableReservationUnavailableError) =>
+                Effect.logInfo(
+                  "Hosted payment checkout reservation is unavailable",
+                  { orderId: state.orderId, reason: cause.reason }
+                ).pipe(Effect.as(null))
+            )
+          );
+        yield* Effect.annotateLogsScoped({
+          reservationId: reservation?.id,
+          reservationState: reservation?.reservationState,
+          paymentState: reservation?.paymentState,
+          fulfillmentState: reservation?.fulfillmentState,
+        });
+        return reservation;
+      });
+
+      /** An order that can't be paid again is either already paid or still moving. */
+      const recoverUnpayableOrder = Effect.fnUntraced(function* (input: {
+        readonly orderId: WorkspaceReservationId;
+        readonly locale: Locale;
+      }) {
+        const completedReservation = yield* reservations.findById(
+          input.orderId
+        );
+        if (completedReservation?.paymentState === "paid") {
+          yield* Effect.logInfo(
+            "Hosted payment checkout recovered completed reservation"
+          );
+          return yield* getCompletedCheckoutResult({
+            orderId: completedReservation.id,
+            locale: input.locale,
+          });
+        }
+
+        yield* Effect.logWarning(
+          "Hosted payment checkout returned in_progress: reservation missing"
+        );
+
+        return { status: "in_progress" as const };
+      });
+
+      type ReservationProgressInput = {
+        readonly reservation: WorkspaceReservation;
+        readonly state: SignedPayState;
+        readonly locale: Locale;
+      };
+
+      /**
+       * The result a paid, released, or expired hold, or an existing provider
+       * session, already decides; `undefined` when a new payment may start.
+       */
+      const findReservationProgressResult = Effect.fnUntraced(function* (
+        input: ReservationProgressInput
+      ) {
+        const holdResult = yield* findHoldStateResult(input);
+        if (holdResult) return holdResult;
+        return yield* findActiveAttemptResult(input);
+      });
+
+      const findHoldStateResult = Effect.fnUntraced(function* ({
+        reservation,
+        locale,
+      }: ReservationProgressInput) {
+        if (reservation.paymentState === "paid") {
+          yield* Effect.logInfo(
+            "Hosted payment checkout reused completed reservation"
+          );
+
+          return yield* getCompletedCheckoutResult({
+            orderId: reservation.id,
+            locale,
+          });
+        }
+
+        yield* Effect.annotateLogsScoped({
+          correlationId: reservation.correlationId,
+        });
+
+        if (reservation.reservationState !== "held") {
+          yield* Effect.logInfo(
+            "Hosted payment checkout returned in_progress: reservation not held"
+          );
+
+          return { status: "in_progress" as const };
+        }
+
+        if (
+          reservation.reservationHoldExpiresAt &&
+          Temporal.Instant.compare(
+            reservation.reservationHoldExpiresAt,
+            Temporal.Now.instant()
+          ) <= 0
+        ) {
+          yield* Effect.logInfo(
+            "Hosted payment checkout returned in_progress: reservation hold expired"
+          );
+
+          return { status: "in_progress" as const };
+        }
+        return undefined;
+      });
+
+      // An existing provider session can settle independently. Returning its
+      // matching URL is idempotent recovery, not new payment initiation.
+      const findActiveAttemptResult = Effect.fnUntraced(function* ({
+        reservation,
+        state,
+        locale,
+      }: ReservationProgressInput) {
+        if (!reservation.activePaymentAttemptId) return undefined;
+
+        yield* Effect.logDebug(
+          "Hosted payment checkout active payment attempt lookup started"
+        );
+        const attempt = yield* paymentAttempts.findById(
+          reservation.activePaymentAttemptId
+        );
+        yield* Effect.annotateLogsScoped({
+          activePaymentAttempt: attempt,
+        });
+        yield* Effect.logDebug(
+          "Hosted payment checkout active payment attempt lookup completed"
+        );
+        if (!attempt || !isReusableAttemptState(attempt.state)) {
+          return undefined;
+        }
+
+        if (
+          attempt.securityToken &&
+          attempt.providerRedirectUrl &&
+          moneyEquals(attempt.amount, state.acceptedTotal)
+        ) {
+          yield* Effect.annotateLogsScoped({ attempt });
+          yield* Effect.logInfo(
+            "Hosted payment checkout reused active provider session"
+          );
+          return getHostedPaymentCheckoutResult({
+            locale,
+            providerRedirectUrl: attempt.providerRedirectUrl,
+            workspaceReservationId: reservation.id,
+          });
+        }
+
+        yield* Effect.logInfo(
+          "Hosted payment checkout returned in_progress: active attempt is not reusable for signed summary"
+        );
+
+        return { status: "in_progress" as const };
+      });
+
+      /** A signed state still awaiting the customer's review of a price change. */
+      const getPendingPricingReviewResult = Effect.fnUntraced(
+        function* (input: {
+          readonly state: SignedPayState;
+          readonly changedKeys: CheckoutSummaryChangedKeys;
+          readonly locale: Locale;
+          readonly reservation: WorkspaceReservation;
+        }) {
+          const { state } = input;
+          yield* Effect.logInfo(
+            "Hosted payment checkout returned existing pricing_changed review"
+          );
+
+          const freshPayUrl = yield* getFreshPayUrl({
+            ...state,
+            locale: input.locale,
+            orderId: input.reservation.id,
+            requestedDiscountCode:
+              state.requestedDiscountCode ?? state.submittedCode,
+          });
+          return {
+            status: "pricing_changed" as const,
+            changedKeys: input.changedKeys,
+            freshSummary: getSignedPayStateCheckoutSummary(state),
+            freshPayUrl,
+          };
+        }
+      );
+
+      /** Re-prices the signed order for the reservation's stored customer. */
+      const affirmSignedPricing = Effect.fnUntraced(function* (input: {
+        readonly state: SignedPayState;
+        readonly locale: Locale;
+        readonly reservation: WorkspaceReservation;
+      }) {
+        const { state, locale } = input;
+        const dotyposCustomerId = yield* decodeDotyposCustomerId(
+          input.reservation.dotyposCustomerId
+        ).pipe(
+          Effect.mapError(
+            (cause) =>
+              new CheckoutError({
+                code: "checkout_failed",
+                message: "Reservation customer identity is invalid.",
+                cause,
+              })
+          )
+        );
+        const prepared = yield* pricing.affirmForPayment({
+          ...state,
+          bookedAt: getSignedPayStateBookedAt(state),
+          dotyposCustomerId,
+          locale,
+        });
+        const acceptedSummary = getSignedPayStateCheckoutSummary(state);
+        const freshSummary = Match.value(prepared).pipe(
+          Match.discriminatorsExhaustive("kind")({
+            cowork: ({ quote, reservation }) =>
+              getCoworkCheckoutSummary(reservation, quote),
+            "meeting-room": ({ quote }) => getMeetingRoomCheckoutSummary(quote),
+            office: ({ quote }) => getOfficeCheckoutSummary(quote),
+          })
+        );
+        yield* Effect.annotateLogsScoped({ quote: prepared.quote });
+        yield* Effect.logDebug("Hosted payment checkout quote built");
+        yield* Effect.logDebug(
+          "Hosted payment checkout quote comparison started"
+        );
+        return { dotyposCustomerId, prepared, acceptedSummary, freshSummary };
+      });
+
+      /**
+       * A fresh Pay state to review when re-pricing changed the quote or the
+       * signed total; `undefined` when the signed price still holds.
+       */
+      const findRepricedResult = Effect.fnUntraced(function* (input: {
+        readonly state: SignedPayState;
+        readonly locale: Locale;
+        readonly reservation: WorkspaceReservation;
+        readonly prepared: PaymentPriceAffirmation;
+        readonly acceptedSummary: CheckoutSummary;
+        readonly freshSummary: CheckoutSummary;
+      }) {
+        const { state, prepared, acceptedSummary, freshSummary } = input;
+        if (
+          prepared.quote.fingerprint === state.quote.fingerprint &&
+          moneyEquals(freshSummary.total, state.acceptedTotal)
+        ) {
+          return undefined;
+        }
+        const changedKeys = getCheckoutSummaryChangedKeys(
+          acceptedSummary,
+          freshSummary
+        );
+        yield* Effect.annotateLogsScoped({
+          changedKeys,
+          acceptedQuote: state.quote,
+          acceptedTotal: state.acceptedTotal,
+        });
+        yield* Effect.logInfo(
+          "Hosted payment checkout returned pricing_changed"
+        );
+
+        const freshPayUrl = yield* getFreshPayUrl({
+          ...prepared,
+          locale: input.locale,
+          orderId: input.reservation.id,
+          bookedAt: state.bookedAt,
+          checkoutSessionId: state.checkoutSessionId,
+          referralCode: state.referralCode,
+          requestedDiscountCode:
+            state.requestedDiscountCode ?? state.submittedCode,
+          ...getSignedPayStateSubmittedCode(
+            state,
+            prepared.quote.payment.discounts
+          ),
+          changedKeys,
+        });
+        return {
+          status: "pricing_changed" as const,
+          changedKeys,
+          freshSummary,
+          freshPayUrl,
+        };
+      });
+
       return CheckoutService.of({
         createHostedPaymentCheckout: Effect.fn(
           "checkout.createHostedPaymentCheckout"
@@ -758,223 +1053,49 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
             yield* Effect.logInfo("Hosted payment checkout pay state opened");
 
             const data = state.reservation;
-            const reservation = yield* payableReservations
-              .requireCurrent({
-                orderId: state.orderId,
-                checkoutSessionId: state.checkoutSessionId,
-              })
-              .pipe(
-                Effect.catchTag(
-                  "PayableReservationUnavailableError",
-                  (cause: PayableReservationUnavailableError) =>
-                    Effect.logInfo(
-                      "Hosted payment checkout reservation is unavailable",
-                      { orderId: state.orderId, reason: cause.reason }
-                    ).pipe(Effect.as(null))
-                )
-              );
-            yield* Effect.annotateLogsScoped({
-              reservationId: reservation?.id,
-              reservationState: reservation?.reservationState,
-              paymentState: reservation?.paymentState,
-              fulfillmentState: reservation?.fulfillmentState,
-            });
+            const reservation = yield* loadPayableReservation(state);
 
             if (!reservation) {
-              const completedReservation = yield* reservations.findById(
-                state.orderId
-              );
-              if (completedReservation?.paymentState === "paid") {
-                yield* Effect.logInfo(
-                  "Hosted payment checkout recovered completed reservation"
-                );
-                return yield* getCompletedCheckoutResult({
-                  orderId: completedReservation.id,
-                  locale,
-                });
-              }
-
-              yield* Effect.logWarning(
-                "Hosted payment checkout returned in_progress: reservation missing"
-              );
-
-              return { status: "in_progress" as const };
-            }
-
-            if (reservation.paymentState === "paid") {
-              yield* Effect.logInfo(
-                "Hosted payment checkout reused completed reservation"
-              );
-
-              return yield* getCompletedCheckoutResult({
-                orderId: reservation.id,
+              return yield* recoverUnpayableOrder({
+                orderId: state.orderId,
                 locale,
               });
             }
 
-            yield* Effect.annotateLogsScoped({
-              correlationId: reservation.correlationId,
+            const progressResult = yield* findReservationProgressResult({
+              reservation,
+              state,
+              locale,
             });
-
-            if (reservation.reservationState !== "held") {
-              yield* Effect.logInfo(
-                "Hosted payment checkout returned in_progress: reservation not held"
-              );
-
-              return { status: "in_progress" as const };
-            }
-
-            if (
-              reservation.reservationHoldExpiresAt &&
-              Temporal.Instant.compare(
-                reservation.reservationHoldExpiresAt,
-                Temporal.Now.instant()
-              ) <= 0
-            ) {
-              yield* Effect.logInfo(
-                "Hosted payment checkout returned in_progress: reservation hold expired"
-              );
-
-              return { status: "in_progress" as const };
-            }
-
-            // An existing provider session can settle independently. Returning its
-            // matching URL is idempotent recovery, not new payment initiation.
-            if (reservation.activePaymentAttemptId) {
-              yield* Effect.logDebug(
-                "Hosted payment checkout active payment attempt lookup started"
-              );
-              const attempt = yield* paymentAttempts.findById(
-                reservation.activePaymentAttemptId
-              );
-              yield* Effect.annotateLogsScoped({
-                activePaymentAttempt: attempt,
-              });
-              yield* Effect.logDebug(
-                "Hosted payment checkout active payment attempt lookup completed"
-              );
-              if (
-                attempt &&
-                isReusableAttemptState(attempt.state) &&
-                attempt.securityToken &&
-                attempt.providerRedirectUrl &&
-                moneyEquals(attempt.amount, state.acceptedTotal)
-              ) {
-                yield* Effect.annotateLogsScoped({ attempt });
-                yield* Effect.logInfo(
-                  "Hosted payment checkout reused active provider session"
-                );
-                return getHostedPaymentCheckoutResult({
-                  locale,
-                  providerRedirectUrl: attempt.providerRedirectUrl,
-                  workspaceReservationId: reservation.id,
-                });
-              }
-
-              if (attempt && isReusableAttemptState(attempt.state)) {
-                yield* Effect.logInfo(
-                  "Hosted payment checkout returned in_progress: active attempt is not reusable for signed summary"
-                );
-
-                return { status: "in_progress" as const };
-              }
-            }
+            if (progressResult) return progressResult;
 
             yield* ensureReservationHasNotEnded(state.reservation);
 
             if (state.changedKeys) {
-              yield* Effect.logInfo(
-                "Hosted payment checkout returned existing pricing_changed review"
-              );
-
-              const freshPayUrl = yield* getFreshPayUrl({
-                ...state,
-                locale,
-                orderId: reservation.id,
-                requestedDiscountCode:
-                  state.requestedDiscountCode ?? state.submittedCode,
-              });
-              return {
-                status: "pricing_changed" as const,
+              return yield* getPendingPricingReviewResult({
+                state,
                 changedKeys: state.changedKeys,
-                freshSummary: getSignedPayStateCheckoutSummary(state),
-                freshPayUrl,
-              };
-            }
-
-            const dotyposCustomerId = yield* decodeDotyposCustomerId(
-              reservation.dotyposCustomerId
-            ).pipe(
-              Effect.mapError(
-                (cause) =>
-                  new CheckoutError({
-                    code: "checkout_failed",
-                    message: "Reservation customer identity is invalid.",
-                    cause,
-                  })
-              )
-            );
-            const prepared = yield* pricing.affirmForPayment({
-              ...state,
-              bookedAt: getSignedPayStateBookedAt(state),
-              dotyposCustomerId,
-              locale,
-            });
-            const acceptedSummary = getSignedPayStateCheckoutSummary(state);
-            const freshSummary = Match.value(prepared).pipe(
-              Match.discriminatorsExhaustive("kind")({
-                cowork: ({ quote, reservation }) =>
-                  getCoworkCheckoutSummary(reservation, quote),
-                "meeting-room": ({ quote }) =>
-                  getMeetingRoomCheckoutSummary(quote),
-                office: ({ quote }) => getOfficeCheckoutSummary(quote),
-              })
-            );
-            yield* Effect.annotateLogsScoped({ quote: prepared.quote });
-            yield* Effect.logDebug("Hosted payment checkout quote built");
-            yield* Effect.logDebug(
-              "Hosted payment checkout quote comparison started"
-            );
-
-            if (
-              prepared.quote.fingerprint !== state.quote.fingerprint ||
-              !moneyEquals(freshSummary.total, state.acceptedTotal)
-            ) {
-              const changedKeys = getCheckoutSummaryChangedKeys(
-                acceptedSummary,
-                freshSummary
-              );
-              yield* Effect.annotateLogsScoped({
-                changedKeys,
-                acceptedQuote: state.quote,
-                acceptedTotal: state.acceptedTotal,
-              });
-              yield* Effect.logInfo(
-                "Hosted payment checkout returned pricing_changed"
-              );
-
-              const freshPayUrl = yield* getFreshPayUrl({
-                ...prepared,
                 locale,
-                orderId: reservation.id,
-                bookedAt: state.bookedAt,
-                checkoutSessionId: state.checkoutSessionId,
-                referralCode: state.referralCode,
-                requestedDiscountCode:
-                  state.requestedDiscountCode ?? state.submittedCode,
-                ...getSignedPayStateSubmittedCode(
-                  state,
-                  prepared.quote.payment.discounts
-                ),
-                changedKeys,
+                reservation,
               });
-              return {
-                status: "pricing_changed" as const,
-                changedKeys,
-                freshSummary,
-                freshPayUrl,
-              };
             }
+
+            const {
+              dotyposCustomerId,
+              prepared,
+              acceptedSummary,
+              freshSummary,
+            } = yield* affirmSignedPricing({ state, locale, reservation });
+
+            const repricedResult = yield* findRepricedResult({
+              state,
+              locale,
+              reservation,
+              prepared,
+              acceptedSummary,
+              freshSummary,
+            });
+            if (repricedResult) return repricedResult;
             yield* Effect.logDebug(
               "Hosted payment checkout quote comparison passed"
             );

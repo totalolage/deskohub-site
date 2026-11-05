@@ -1116,6 +1116,178 @@ describe("CheckoutService", () => {
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 
+  test("rejects checkout without legal consent before reading the reservation", async () => {
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-without-legal-consent",
+      legalConsent: false,
+    });
+
+    const error = await Effect.runPromise(Effect.flip(harness.effect));
+
+    expect(error).toMatchObject({
+      _tag: "CheckoutError",
+      code: "checkout_failed",
+    });
+    expect(harness.requireCurrent).not.toHaveBeenCalled();
+    expect(harness.affirm).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    {
+      name: "the payable reservation is unavailable and the order is unpaid",
+      reservationOverrides: {},
+      unavailable: true,
+    },
+    {
+      name: "the reservation is no longer held",
+      reservationOverrides: { reservationState: "confirming" },
+      unavailable: false,
+    },
+    {
+      name: "the hold has expired",
+      reservationOverrides: {
+        reservationHoldExpiresAt: testInstant("2020-01-01T00:00:00.000Z"),
+      },
+      unavailable: false,
+    },
+  ])(
+    "reports checkout in progress without pricing or provider work when $name",
+    async ({ reservationOverrides, unavailable }) => {
+      const { PayableReservationUnavailableError } = await import(
+        "./payable-reservation.service"
+      );
+      const orderId = "reservation-in-progress";
+      const harness = await createCheckoutHarness({
+        orderId,
+        reservationOverrides,
+        ...(unavailable && {
+          requireCurrent: mock(() =>
+            Effect.fail(
+              new PayableReservationUnavailableError({
+                orderId,
+                reason: "not_held",
+              })
+            )
+          ),
+        }),
+      });
+
+      const result = await Effect.runPromise(harness.effect);
+
+      expect(result).toEqual({ status: "in_progress" });
+      expect(harness.fulfillPaidOrder).not.toHaveBeenCalled();
+      expect(harness.findAttempt).not.toHaveBeenCalled();
+      expect(harness.affirm).not.toHaveBeenCalled();
+      expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
+    }
+  );
+
+  test.each([
+    { name: "a security token", securityToken: null },
+    { name: "a provider redirect", providerRedirectUrl: null },
+  ])(
+    "keeps checkout in progress for a live active attempt without $name",
+    async (attemptOverrides) => {
+      const orderId = "reservation-incomplete-provider-attempt";
+      const activeAttempt = makeAttempt({
+        id: "active-attempt",
+        orderId,
+        state: "created",
+        securityToken: "active-security-token",
+        providerRedirectUrl: "https://payments.example/existing",
+        ...attemptOverrides,
+      });
+      const harness = await createCheckoutHarness({
+        orderId,
+        activeAttempt,
+        reservationOverrides: { activePaymentAttemptId: activeAttempt.id },
+      });
+
+      const result = await Effect.runPromise(harness.effect);
+
+      expect(result).toEqual({ status: "in_progress" });
+      expect(harness.affirm).not.toHaveBeenCalled();
+      expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
+    }
+  );
+
+  test.each([
+    {
+      name: "an active attempt that has ended",
+      activeAttempt: makeAttempt({
+        id: "active-attempt",
+        orderId: "reservation-starts-new-attempt",
+        state: "failed",
+        securityToken: "active-security-token",
+        providerRedirectUrl: "https://payments.example/existing",
+      }),
+    },
+    { name: "an active attempt that is gone", activeAttempt: null },
+  ])("starts a new provider session after $name", async ({ activeAttempt }) => {
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-starts-new-attempt",
+      activeAttempt,
+      reservationOverrides: { activePaymentAttemptId: "active-attempt" },
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(harness.findAttempt).toHaveBeenCalledWith("active-attempt");
+    expect(result).toEqual({
+      status: "redirect",
+      redirectUrl: "https://payments.example/hosted",
+      statusUrl: "/en-US/reservation/status/reservation-starts-new-attempt",
+    });
+    expect(harness.createPendingNexiAttempt).toHaveBeenCalledTimes(1);
+  });
+
+  test("starts a provider session for a hold without a recorded expiry", async () => {
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-without-hold-expiry",
+      reservationOverrides: { reservationHoldExpiresAt: null },
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result.status).toBe("redirect");
+    expect(harness.createPendingNexiAttempt).toHaveBeenCalledTimes(1);
+  });
+
+  test("fails before pricing when the stored customer identity is invalid", async () => {
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-invalid-customer",
+      reservationOverrides: { dotyposCustomerId: "" },
+    });
+
+    const error = await Effect.runPromise(Effect.flip(harness.effect));
+
+    expect(error).toMatchObject({
+      _tag: "CheckoutError",
+      code: "checkout_failed",
+    });
+    expect(harness.affirm).not.toHaveBeenCalled();
+    expect(harness.updateReservationDetails).not.toHaveBeenCalled();
+  });
+
+  test("fails after recording legal evidence when the held reservation has no Dotypos reservation", async () => {
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-without-dotypos-reservation",
+      reservationOverrides: { dotyposReservationId: null },
+    });
+
+    const error = await Effect.runPromise(Effect.flip(harness.effect));
+
+    expect(error).toMatchObject({
+      _tag: "CheckoutError",
+      code: "checkout_failed",
+    });
+    expect(harness.updateReservationDetails).toHaveBeenCalledTimes(1);
+    expect(harness.recordLegalEvidence).toHaveBeenCalledTimes(1);
+    expect(harness.updateReservation).not.toHaveBeenCalled();
+    expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
+    expect(harness.completeInternalPayment).not.toHaveBeenCalled();
+  });
+
   test("affirms the accepted discounts with the checkout locale, stored customer, and encrypted code", async () => {
     const submittedCode = canonicalCode("CANONICAL-SECRET-CODE");
     const orderId = "reservation-affirms-code";

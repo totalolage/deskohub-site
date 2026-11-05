@@ -195,24 +195,28 @@ const redactUrlSearchParams = (url: URL): void => {
   }
 };
 
-const censorUrlString = (value: string) => {
-  const absoluteUrl = URL.parse(value);
+const censorAbsoluteUrl = (url: URL, value: string) => {
+  if (url.protocol !== "http:" && url.protocol !== "https:") return value;
 
-  if (absoluteUrl) {
-    if (absoluteUrl.protocol !== "http:" && absoluteUrl.protocol !== "https:") {
-      return value;
-    }
+  redactUrlSearchParams(url);
+  return url.toString();
+};
 
-    redactUrlSearchParams(absoluteUrl);
-    return absoluteUrl.toString();
+// Writes a censored relative URL back in the form it was logged in:
+// protocol-relative, query-only, path-relative or bare.
+const formatRelativeUrl = (url: URL, value: string) => {
+  const searchAndHash = `${url.search}${url.hash}`;
+  if (value.startsWith("//")) {
+    return `//${url.host}${url.pathname}${searchAndHash}`;
   }
+  if (value.startsWith("?")) return searchAndHash;
+  if (value.startsWith("/")) return `${url.pathname}${searchAndHash}`;
+  return `${url.pathname.slice(1)}${searchAndHash}`;
+};
 
-  const isQueryOnlyRelativeUrl = value.startsWith("?");
-  const isPathRelativeUrl = value.startsWith("/");
-  const isBareRelativeUrlWithQuery = value.includes("?");
-
+const censorRelativeUrl = (value: string) => {
   if (
-    !(isPathRelativeUrl || isQueryOnlyRelativeUrl || isBareRelativeUrlWithQuery)
+    !(value.startsWith("/") || value.startsWith("?") || value.includes("?"))
   ) {
     return value;
   }
@@ -221,18 +225,14 @@ const censorUrlString = (value: string) => {
   if (!relativeUrl) return value;
 
   redactUrlSearchParams(relativeUrl);
+  return formatRelativeUrl(relativeUrl, value);
+};
 
-  if (value.startsWith("//")) {
-    return `//${relativeUrl.host}${relativeUrl.pathname}${relativeUrl.search}${relativeUrl.hash}`;
-  }
-
-  if (!(isPathRelativeUrl || isQueryOnlyRelativeUrl)) {
-    return `${relativeUrl.pathname.slice(1)}${relativeUrl.search}${relativeUrl.hash}`;
-  }
-
-  return isQueryOnlyRelativeUrl
-    ? `${relativeUrl.search}${relativeUrl.hash}`
-    : `${relativeUrl.pathname}${relativeUrl.search}${relativeUrl.hash}`;
+const censorUrlString = (value: string) => {
+  const absoluteUrl = URL.parse(value);
+  return absoluteUrl
+    ? censorAbsoluteUrl(absoluteUrl, value)
+    : censorRelativeUrl(value);
 };
 
 const censorStackFrameSource = (source: string): string | undefined => {
@@ -250,24 +250,48 @@ const censorStackFrameSource = (source: string): string | undefined => {
   return isProtocolRelative ? `//${url.host}${url.pathname}` : url.toString();
 };
 
-const censorStackTrace = (stack: string, message: string): string => {
+// Where a stack's frames start: right after the logged message, or after a
+// first line with no message marker when the message is empty or frames
+// follow. -1 when the stack's first line can't be matched to the message.
+const findStackFramesStart = (stack: string, message: string): number => {
   const messageMarker = stack.indexOf(": ");
-  const firstLineEnd = stack.indexOf("\n");
-  let framesStart = -1;
-  if (message === "" && messageMarker < 0) {
-    framesStart = firstLineEnd;
-  } else if (
-    messageMarker >= 0 &&
-    stack.startsWith(message, messageMarker + 2)
-  ) {
-    framesStart = messageMarker + 2 + message.length;
-  } else if (
-    messageMarker < 0 &&
-    firstLineEnd >= 0 &&
-    /^[\t ]*at[\t ]/.test(stack.slice(firstLineEnd + 1))
-  ) {
-    framesStart = firstLineEnd;
+  if (messageMarker >= 0) {
+    return stack.startsWith(message, messageMarker + 2)
+      ? messageMarker + 2 + message.length
+      : -1;
   }
+
+  const firstLineEnd = stack.indexOf("\n");
+  return message === "" ||
+    (firstLineEnd >= 0 && /^[\t ]*at[\t ]/.test(stack.slice(firstLineEnd + 1)))
+    ? firstLineEnd
+    : -1;
+};
+
+// A stack frame line kept as its censored source location alone, or nothing
+// for a frame without a known source.
+const censorStackFrame = (line: string): readonly string[] => {
+  const frame = /^\s*at(?:\s+.*\s+\()?(.+):(\d+):(\d+)\)?$/.exec(line);
+  if (!frame) return [];
+  const source = frame[1]?.trim();
+  const lineNumber = frame[2];
+  const columnNumber = frame[3];
+  if (!(source && lineNumber && columnNumber)) return [];
+  if (
+    !/^(?:\/|[A-Za-z]:[\\/]|(?:https?|file|node|bun|webpack|turbopack):)/.test(
+      source
+    )
+  ) {
+    return [];
+  }
+  const censoredSource = censorStackFrameSource(source);
+  return censoredSource
+    ? [`    at ${censoredSource}:${lineNumber}:${columnNumber}`]
+    : [];
+};
+
+const censorStackTrace = (stack: string, message: string): string => {
+  const framesStart = findStackFramesStart(stack, message);
   if (framesStart < 0 || stack[framesStart] !== "\n") {
     return CENSORED_LOG_VALUE;
   }
@@ -275,25 +299,7 @@ const censorStackTrace = (stack: string, message: string): string => {
   const frames = stack
     .slice(framesStart + 1)
     .split("\n")
-    .flatMap((line) => {
-      const frame = /^\s*at(?:\s+.*\s+\()?(.+):(\d+):(\d+)\)?$/.exec(line);
-      if (!frame) return [];
-      const source = frame[1]?.trim();
-      const lineNumber = frame[2];
-      const columnNumber = frame[3];
-      if (!(source && lineNumber && columnNumber)) return [];
-      if (
-        !/^(?:\/|[A-Za-z]:[\\/]|(?:https?|file|node|bun|webpack|turbopack):)/.test(
-          source
-        )
-      ) {
-        return [];
-      }
-      const censoredSource = censorStackFrameSource(source);
-      return censoredSource
-        ? [`    at ${censoredSource}:${lineNumber}:${columnNumber}`]
-        : [];
-    });
+    .flatMap(censorStackFrame);
 
   return frames.length === 0
     ? CENSORED_LOG_VALUE
@@ -307,25 +313,39 @@ const isEffectDrizzleQueryError = <T>(
   "_tag" in value &&
   value._tag === "EffectDrizzleQueryError";
 
-const censorQueryParameter = <T>(
+type LogValueCensorship = WeakMap<object, unknown>;
+
+// Censors a value that holds other values one step at a time: it yields each
+// held value and gets its censored form back, so deep nesting grows a heap
+// stack in `runCensorSteps` rather than the call stack. Each object's steps
+// register its result before yielding, so a shared or cyclic reference to it
+// gets that same result and the censored value keeps its shape.
+type CensorSteps = Generator<unknown, unknown, unknown>;
+
+// An error's cause keeps its shape only as a structured error or a record.
+function* censorErrorCause(cause: unknown): CensorSteps {
+  return isStructuredErrorCause(cause) || isPlainObject(cause)
+    ? yield cause
+    : CENSORED_LOG_VALUE;
+}
+
+function* censorQueryParameter<T>(
   value: T,
-  seen: WeakMap<object, unknown>
-): unknown => {
-  if (!Predicate.isString(value)) {
-    return censorLogValueInternal(value, seen);
-  }
+  seen: LogValueCensorship
+): CensorSteps {
+  if (!Predicate.isString(value)) return yield value;
 
   return Result.try(() =>
     JSON.stringify(censorLogValueInternal(JSON.parse(value) as unknown, seen))
   ).pipe(Result.getOrElse(() => censorLogValueInternal(value, seen)));
-};
+}
 
-const censorQueryParamsInternal = <T>(
+function* censorQueryParams<T>(
   query: string | undefined,
   value: T,
-  seen: WeakMap<object, unknown>
-): unknown => {
-  if (!Array.isArray(value)) return censorLogValueInternal(value, seen);
+  seen: LogValueCensorship
+): CensorSteps {
+  if (!Array.isArray(value)) return yield value;
 
   const existing = seen.get(value);
   if (existing) return existing;
@@ -340,196 +360,210 @@ const censorQueryParamsInternal = <T>(
     if (!(index in value)) continue;
     result[index] = sensitiveIndexes.has(index)
       ? CENSORED_LOG_VALUE
-      : censorQueryParameter(value[index], seen);
+      : yield* censorQueryParameter(value[index], seen);
   }
 
   return result;
-};
+}
 
 export const censorDatabaseQueryParams = (
   query: string,
   params: readonly unknown[]
-): readonly unknown[] =>
-  censorQueryParamsInternal(query, params, new WeakMap()) as readonly unknown[];
-
-const censorLogRecordValue = <T>(
-  key: string,
-  value: T,
-  seen: WeakMap<object, unknown>,
-  databaseQuery?: string,
-  stackMessage?: string
-): unknown => {
-  if (
-    ["exception.stacktrace", "stack", "stacktrace"].includes(key.toLowerCase())
-  ) {
-    if (!(Predicate.isString(value) && stackMessage !== undefined)) {
-      return CENSORED_LOG_VALUE;
-    }
-    return censorStackTrace(value, stackMessage);
-  }
-  if (isSensitiveLogRecordKey(key)) return CENSORED_LOG_VALUE;
-  if (key.toLowerCase() === "cause") {
-    return censorErrorCauseInternal(value, seen);
-  }
-  if (key.toLowerCase() === "params") {
-    return censorQueryParamsInternal(databaseQuery, value, seen);
-  }
-  return censorLogValueInternal(value, seen);
+): readonly unknown[] => {
+  const seen: LogValueCensorship = new WeakMap();
+  return runCensorSteps(
+    censorQueryParams(query, params, seen),
+    seen
+  ) as readonly unknown[];
 };
 
-const censorLogValueInternal = <T>(
+const isStackTraceKey = (key: string) =>
+  ["exception.stacktrace", "stack", "stacktrace"].includes(key.toLowerCase());
+
+function* censorLogRecordValue<T>(
+  key: string,
   value: T,
-  seen: WeakMap<object, unknown>
-): unknown => {
-  if (Array.isArray(value)) {
-    const existing = seen.get(value);
-    if (existing) return existing;
+  seen: LogValueCensorship,
+  databaseQuery?: string,
+  stackMessage?: string
+): CensorSteps {
+  if (isStackTraceKey(key)) {
+    return Predicate.isString(value) && stackMessage !== undefined
+      ? censorStackTrace(value, stackMessage)
+      : CENSORED_LOG_VALUE;
+  }
+  if (isSensitiveLogRecordKey(key)) return CENSORED_LOG_VALUE;
+  if (key.toLowerCase() === "cause") return yield* censorErrorCause(value);
+  if (key.toLowerCase() === "params") {
+    return yield* censorQueryParams(databaseQuery, value, seen);
+  }
+  return yield value;
+}
 
-    const result: unknown[] = [];
-    seen.set(value, result);
+function* censorArray(
+  value: readonly unknown[],
+  seen: LogValueCensorship
+): CensorSteps {
+  const result: unknown[] = [];
+  seen.set(value, result);
 
-    for (let index = 0; index < value.length; index += 1) {
-      if (index in value) {
-        result[index] = censorLogValueInternal(value[index], seen);
-      }
-    }
-
-    return result;
+  for (let index = 0; index < value.length; index += 1) {
+    if (index in value) result[index] = yield value[index];
   }
 
-  if (isMap(value)) {
-    const existing = seen.get(value);
-    if (existing) return existing;
+  return result;
+}
 
-    const result = new Map<unknown, unknown>();
-    seen.set(value, result);
+function* censorMap(
+  value: Map<unknown, unknown>,
+  seen: LogValueCensorship
+): CensorSteps {
+  const result = new Map<unknown, unknown>();
+  seen.set(value, result);
 
-    for (const [key, nestedValue] of value) {
-      result.set(
-        key,
-        Predicate.isString(key)
-          ? censorLogRecordValue(key, nestedValue, seen)
-          : censorLogValueInternal(nestedValue, seen)
-      );
-    }
-
-    return result;
+  for (const [key, nestedValue] of value) {
+    result.set(
+      key,
+      Predicate.isString(key)
+        ? yield* censorLogRecordValue(key, nestedValue, seen)
+        : yield nestedValue
+    );
   }
 
-  if (isHeaders(value)) {
-    const existing = seen.get(value);
-    if (existing) return existing;
+  return result;
+}
 
-    const result = new Headers();
-    seen.set(value, result);
+// A header or search parameter value, censored whole under a sensitive key.
+function* censorKeyedText(
+  key: string,
+  value: string
+): Generator<unknown, string> {
+  return isSensitiveLogRecordKey(key)
+    ? CENSORED_LOG_VALUE
+    : String(yield value);
+}
 
-    value.forEach((nestedValue, key) => {
-      result.set(
-        key,
-        isSensitiveLogRecordKey(key)
-          ? CENSORED_LOG_VALUE
-          : String(censorLogValueInternal(nestedValue, seen))
-      );
-    });
+function* censorHeaders(value: Headers, seen: LogValueCensorship): CensorSteps {
+  const result = new Headers();
+  seen.set(value, result);
 
-    return result;
+  for (const [key, nestedValue] of value) {
+    result.set(key, yield* censorKeyedText(key, nestedValue));
   }
 
-  if (isURLSearchParams(value)) {
-    const existing = seen.get(value);
-    if (existing) return existing;
+  return result;
+}
 
-    const result = new URLSearchParams();
-    seen.set(value, result);
+function* censorSearchParams(
+  value: URLSearchParams,
+  seen: LogValueCensorship
+): CensorSteps {
+  const result = new URLSearchParams();
+  seen.set(value, result);
 
-    value.forEach((nestedValue, key) => {
-      result.append(
-        key,
-        isSensitiveLogRecordKey(key)
-          ? CENSORED_LOG_VALUE
-          : String(censorLogValueInternal(nestedValue, seen))
-      );
-    });
-
-    return result;
+  for (const [key, nestedValue] of value) {
+    result.append(key, yield* censorKeyedText(key, nestedValue));
   }
 
-  if (Predicate.isString(value)) return censorUrlString(value);
+  return result;
+}
 
-  if (Cause.isCause(value)) return censorCauseInternal(value, seen);
+function* censorDrizzleQueryError(
+  value: EffectDrizzleQueryError,
+  seen: LogValueCensorship
+): CensorSteps {
+  const result: MutableLogAnnotations = {
+    _tag: value._tag,
+    query: value.query,
+  };
+  seen.set(value, result);
 
-  if (isEffectDrizzleQueryError(value)) {
-    const existing = seen.get(value);
-    if (existing) return existing;
+  result.params = yield* censorQueryParams(value.query, value.params, seen);
+  result.cause = yield* censorErrorCause(value.cause);
+  return result;
+}
 
-    const result: MutableLogAnnotations = {
-      _tag: value._tag,
-      query: value.query,
-    };
-    seen.set(value, result);
-    result.params = censorQueryParamsInternal(value.query, value.params, seen);
-    result.cause = censorErrorCauseInternal(value.cause, seen);
-    return result;
+// An error's own data property: an accessor could compute anything.
+const findOwnDataProperty = (value: Error, key: string) => {
+  const property = Object.getOwnPropertyDescriptor(value, key);
+  return property && "value" in property ? property : undefined;
+};
+
+const censorErrorClassification = (
+  value: Error,
+  result: MutableLogAnnotations
+) => {
+  for (const key of errorClassificationKeys) {
+    const property = findOwnDataProperty(value, key);
+    if (property) result[key] = censorErrorClassificationValue(property.value);
+  }
+};
+
+// An aggregate error's errors, keeping only structured ones.
+function* censorAggregatedErrors(errors: readonly unknown[]): CensorSteps {
+  const length = errors.length;
+  const result = new Array<unknown>(length);
+  for (let index = 0; index < length; index += 1) {
+    if (!(index in errors)) continue;
+    const error = errors[index];
+    result[index] = isStructuredErrorCause(error)
+      ? yield error
+      : CENSORED_LOG_VALUE;
+  }
+  return result;
+}
+
+function* censorNativeError(
+  value: Error,
+  seen: LogValueCensorship
+): CensorSteps {
+  const result: MutableLogAnnotations = {
+    // Any code can set `name`, so it passes the same filter as `_tag`.
+    errorType: censorErrorClassificationValue(value.name),
+    message: CENSORED_LOG_VALUE,
+  };
+  seen.set(value, result);
+  censorErrorClassification(value, result);
+
+  const stack = findOwnDataProperty(value, "stack");
+  if (stack && Predicate.isString(stack.value)) {
+    result.stack = censorStackTrace(stack.value, value.message);
   }
 
-  if (isNativeError(value)) {
-    const existing = seen.get(value);
-    if (existing) return existing;
-
-    const result: MutableLogAnnotations = {
-      // Any code can set `name`, so it passes the same filter as `_tag`.
-      errorType: censorErrorClassificationValue(value.name),
-      message: CENSORED_LOG_VALUE,
-    };
-    seen.set(value, result);
-
-    for (const key of errorClassificationKeys) {
-      const property = Object.getOwnPropertyDescriptor(value, key);
-      if (property && "value" in property) {
-        result[key] = censorErrorClassificationValue(property.value);
-      }
-    }
-
-    const stack = Object.getOwnPropertyDescriptor(value, "stack");
-    if (stack && "value" in stack && Predicate.isString(stack.value)) {
-      result.stack = censorStackTrace(stack.value, value.message);
-    }
-
-    if ("cause" in value) {
-      result.cause = censorErrorCauseInternal(value.cause, seen);
-    }
-
-    const errors = Object.getOwnPropertyDescriptor(value, "errors");
-    if (errors && "value" in errors && Array.isArray(errors.value)) {
-      result.errors = errors.value.map((error) =>
-        isStructuredErrorCause(error)
-          ? censorLogValueInternal(error, seen)
-          : CENSORED_LOG_VALUE
-      );
-    }
-
-    return result;
+  if ("cause" in value) {
+    result.cause = yield* censorErrorCause(value.cause);
   }
 
-  if (!isPlainObject(value)) return value;
+  const errors = findOwnDataProperty(value, "errors");
+  if (errors && Array.isArray(errors.value)) {
+    result.errors = yield* censorAggregatedErrors(errors.value);
+  }
 
-  const existing = seen.get(value);
-  if (existing) return existing;
+  return result;
+}
 
+// The message a record's stack trace starts with: its exception message, or
+// else its message.
+const findRecordStackMessage = (value: LogAnnotations) => {
+  if (Predicate.isString(value["exception.message"])) {
+    return value["exception.message"];
+  }
+  return Predicate.isString(value.message) ? value.message : undefined;
+};
+
+function* censorRecord(
+  value: LogAnnotations,
+  seen: LogValueCensorship
+): CensorSteps {
   const result: MutableLogAnnotations = {};
   seen.set(value, result);
   const databaseQuery = Predicate.isString(value.query)
     ? value.query
     : undefined;
-  let stackMessage: string | undefined;
-  if (Predicate.isString(value["exception.message"])) {
-    stackMessage = value["exception.message"];
-  } else if (Predicate.isString(value.message)) {
-    stackMessage = value.message;
-  }
+  const stackMessage = findRecordStackMessage(value);
 
   for (const [key, nestedValue] of Object.entries(value)) {
-    result[key] = censorLogRecordValue(
+    result[key] = yield* censorLogRecordValue(
       key,
       nestedValue,
       seen,
@@ -539,19 +573,99 @@ const censorLogValueInternal = <T>(
   }
 
   return result;
+}
+
+// The steps for an object not censored before; one censored before gets its
+// earlier result without steps.
+const startCensorSteps = <Input extends object>(
+  value: Input,
+  seen: LogValueCensorship,
+  censor: (value: Input, seen: LogValueCensorship) => CensorSteps
+): CensorSteps | undefined =>
+  seen.has(value) ? undefined : censor(value, seen);
+
+// The steps for an error or a record; a cause is censored without steps.
+const findObjectCensorSteps = <T>(
+  value: T,
+  seen: LogValueCensorship
+): CensorSteps | undefined => {
+  if (Cause.isCause(value)) return undefined;
+  if (isEffectDrizzleQueryError(value)) {
+    return startCensorSteps(value, seen, censorDrizzleQueryError);
+  }
+  if (isNativeError(value)) {
+    return startCensorSteps(value, seen, censorNativeError);
+  }
+  return isPlainObject(value)
+    ? startCensorSteps(value, seen, censorRecord)
+    : undefined;
+};
+
+// The steps that censor a value holding other values, or undefined for a
+// value censored without steps.
+const findCensorSteps = <T>(
+  value: T,
+  seen: LogValueCensorship
+): CensorSteps | undefined => {
+  if (Array.isArray(value)) return startCensorSteps(value, seen, censorArray);
+  if (isMap(value)) return startCensorSteps(value, seen, censorMap);
+  if (isHeaders(value)) return startCensorSteps(value, seen, censorHeaders);
+  if (isURLSearchParams(value)) {
+    return startCensorSteps(value, seen, censorSearchParams);
+  }
+  return findObjectCensorSteps(value, seen);
+};
+
+// An object censored before gets that same result, a string its censored URL
+// and a cause its censored reasons; any other value is kept as it is.
+const censorWithoutSteps = <T>(value: T, seen: LogValueCensorship): unknown => {
+  if (Predicate.isString(value)) return censorUrlString(value);
+  if (Predicate.isObjectOrArray(value) && seen.has(value)) {
+    return seen.get(value);
+  }
+  return Cause.isCause(value) ? censorCauseInternal(value, seen) : value;
+};
+
+// Runs censor steps to completion, starting the steps of each value they
+// yield and resuming them with its censored form.
+const runCensorSteps = (
+  steps: CensorSteps,
+  seen: LogValueCensorship
+): unknown => {
+  const suspended: CensorSteps[] = [];
+  let current: CensorSteps | undefined = steps;
+  let censored: unknown;
+
+  while (current) {
+    const step = current.next(censored);
+    if (step.done) {
+      censored = step.value;
+      current = suspended.pop();
+      continue;
+    }
+
+    const nested = findCensorSteps(step.value, seen);
+    if (nested) {
+      suspended.push(current);
+      current = nested;
+    } else {
+      censored = censorWithoutSteps(step.value, seen);
+    }
+  }
+
+  return censored;
+};
+
+const censorLogValueInternal = <T>(
+  value: T,
+  seen: LogValueCensorship
+): unknown => {
+  const steps = findCensorSteps(value, seen);
+  return steps ? runCensorSteps(steps, seen) : censorWithoutSteps(value, seen);
 };
 
 export const censorLogValue = <T>(value: T): unknown =>
   censorLogValueInternal(value, new WeakMap());
-
-function censorErrorCauseInternal(
-  cause: unknown,
-  seen: WeakMap<object, unknown>
-): unknown {
-  return isStructuredErrorCause(cause) || isPlainObject(cause)
-    ? censorLogValueInternal(cause, seen)
-    : CENSORED_LOG_VALUE;
-}
 
 const isStructuredErrorCause = (cause: unknown): boolean =>
   Cause.isCause(cause) ||
@@ -560,30 +674,35 @@ const isStructuredErrorCause = (cause: unknown): boolean =>
 
 const censorCauseInternal = (
   cause: Cause.Cause<unknown>,
-  seen: WeakMap<object, unknown>
+  seen: LogValueCensorship
 ): Cause.Cause<unknown> => {
   const existing = seen.get(cause);
   if (Cause.isCause(existing)) return existing;
 
-  const result = Cause.fromReasons(
-    cause.reasons.map((reason) => {
-      if (Cause.isFailReason(reason)) {
-        return Cause.makeFailReason(
-          censorErrorCauseInternal(reason.error, seen)
-        );
-      }
-      if (Cause.isDieReason(reason)) {
-        // A defect can be any thrown value, so only a structured error keeps
-        // its shape; a plain object could be a whole payload.
-        return Cause.makeDieReason(
+  // A loop rather than `map`, so each nested cause costs fewer stack frames.
+  const reasons: Cause.Reason<unknown>[] = [];
+  for (const reason of cause.reasons) {
+    if (Cause.isFailReason(reason)) {
+      reasons.push(
+        Cause.makeFailReason(
+          runCensorSteps(censorErrorCause(reason.error), seen)
+        )
+      );
+    } else if (Cause.isDieReason(reason)) {
+      // A defect can be any thrown value, so only a structured error keeps
+      // its shape; a plain object could be a whole payload.
+      reasons.push(
+        Cause.makeDieReason(
           isStructuredErrorCause(reason.defect)
             ? censorLogValueInternal(reason.defect, seen)
             : CENSORED_LOG_VALUE
-        );
-      }
-      return reason;
-    })
-  );
+        )
+      );
+    } else {
+      reasons.push(reason);
+    }
+  }
+  const result = Cause.fromReasons(reasons);
   seen.set(cause, result);
   return result;
 };
@@ -608,10 +727,16 @@ export const censorLoggerOptions = (
         const annotations = value as LogAnnotations;
 
         return Object.fromEntries(
-          Object.entries(annotations).map(([key, nestedValue]) => [
-            key,
-            censorLogRecordValue(key, nestedValue, new WeakMap()),
-          ])
+          Object.entries(annotations).map(([key, nestedValue]) => {
+            const seen: LogValueCensorship = new WeakMap();
+            return [
+              key,
+              runCensorSteps(
+                censorLogRecordValue(key, nestedValue, seen),
+                seen
+              ),
+            ];
+          })
         ) as typeof value;
       },
     },

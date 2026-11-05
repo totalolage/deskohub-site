@@ -294,6 +294,44 @@ const createStaticMapInput = (
   options: StaticMapImageOptions
 ): StaticMapInput => {
   const tileSize = options.tileSize ?? defaultTileSize;
+  const viewport = createStaticMapViewport(options, tileSize);
+  const look = resolveStaticMapLook(options);
+
+  return {
+    attribution: look.attribution,
+    attributionFont: look.attributionFont,
+    attributionScale: look.attributionScale,
+    baseWidth: (viewport.endTileX - viewport.startTileX + 1) * tileSize,
+    baseHeight: (viewport.endTileY - viewport.startTileY + 1) * tileSize,
+    extractLeft: viewport.left - viewport.startTileX * tileSize,
+    extractTop: viewport.top - viewport.startTileY * tileSize,
+    focus: viewport.focus,
+    format: look.format,
+    height: options.height,
+    marker: look.marker,
+    quality: look.quality,
+    tileUrl: options.tileUrl ?? defaultTileUrl,
+    tiles: placeViewportTiles(viewport, options.zoom, tileSize),
+    userAgent: options.userAgent ?? defaultUserAgent,
+    width: options.width,
+  };
+};
+
+interface StaticMapViewport {
+  readonly endTileX: number;
+  readonly endTileY: number;
+  readonly focus: StaticMapFocus;
+  readonly left: number;
+  readonly startTileX: number;
+  readonly startTileY: number;
+  readonly top: number;
+}
+
+/** Positions the image over the world pixels and finds the tiles it spans. */
+const createStaticMapViewport = (
+  options: StaticMapImageOptions,
+  tileSize: number
+): StaticMapViewport => {
   const center = coordinateToGlobalPixel(
     options.lat,
     options.lng,
@@ -308,11 +346,28 @@ const createStaticMapInput = (
   // offset and the tile range agree and the crop stays inside the canvas.
   const left = Math.round(center.x - focus.x);
   const top = Math.round(center.y - focus.y);
-  const startTileX = Math.floor(left / tileSize);
-  const startTileY = Math.floor(top / tileSize);
-  const endTileX = Math.floor((left + options.width - 1) / tileSize);
-  const endTileY = Math.floor((top + options.height - 1) / tileSize);
-  const tileCount = 2 ** options.zoom;
+
+  return {
+    endTileX: Math.floor((left + options.width - 1) / tileSize),
+    endTileY: Math.floor((top + options.height - 1) / tileSize),
+    focus,
+    left,
+    startTileX: Math.floor(left / tileSize),
+    startTileY: Math.floor(top / tileSize),
+    top,
+  };
+};
+
+/**
+ * Places each tile the viewport spans, skipping rows beyond the poles and
+ * wrapping columns around the antimeridian.
+ */
+const placeViewportTiles = (
+  { endTileX, endTileY, startTileX, startTileY }: StaticMapViewport,
+  zoom: number,
+  tileSize: number
+): TilePlacement[] => {
+  const tileCount = 2 ** zoom;
   const tiles: TilePlacement[] = [];
 
   for (let y = startTileY; y <= endTileY; y += 1) {
@@ -321,9 +376,9 @@ const createStaticMapInput = (
     for (let x = startTileX; x <= endTileX; x += 1) {
       tiles.push({
         tile: {
-          x: normalizeTileX(x, options.zoom),
+          x: normalizeTileX(x, zoom),
           y,
-          z: options.zoom,
+          z: zoom,
         },
         left: (x - startTileX) * tileSize,
         top: (y - startTileY) * tileSize,
@@ -331,25 +386,18 @@ const createStaticMapInput = (
     }
   }
 
-  return {
-    attribution: options.attribution ?? true,
-    attributionFont: options.attributionFont,
-    attributionScale: options.attributionScale ?? 1,
-    baseWidth: (endTileX - startTileX + 1) * tileSize,
-    baseHeight: (endTileY - startTileY + 1) * tileSize,
-    extractLeft: left - startTileX * tileSize,
-    extractTop: top - startTileY * tileSize,
-    focus,
-    format: options.format ?? "jpeg",
-    height: options.height,
-    marker: options.marker ?? true,
-    quality: options.quality ?? staticMapDefaults.quality,
-    tileUrl: options.tileUrl ?? defaultTileUrl,
-    tiles,
-    userAgent: options.userAgent ?? defaultUserAgent,
-    width: options.width,
-  };
+  return tiles;
 };
+
+/** Resolves what the rendered image draws and how it is encoded. */
+const resolveStaticMapLook = (options: StaticMapImageOptions) => ({
+  attribution: options.attribution ?? true,
+  attributionFont: options.attributionFont,
+  attributionScale: options.attributionScale ?? 1,
+  format: options.format ?? "jpeg",
+  marker: options.marker ?? true,
+  quality: options.quality ?? staticMapDefaults.quality,
+});
 
 const degreesToRadians = (degrees: number) => (degrees * Math.PI) / 180;
 

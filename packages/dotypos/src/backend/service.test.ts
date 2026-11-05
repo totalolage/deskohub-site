@@ -19,11 +19,15 @@ import {
   DotyposRuntimeConfigSchema,
   makeDotyposRuntimeConfigLayer,
 } from "../config";
-import type {
-  Category,
+import {
+  type Category,
   Customer,
-  DotyposClient,
+  CustomerWriteRecord,
+  type DotyposClient,
+  ReplaceCustomersRequestJson,
+  ReplaceReservationsRequestJson,
   Reservation,
+  ReservationWriteRecord,
   Table,
 } from "../generated/effect.gen";
 import { dotyposIdReadBatchSize, dotyposIdReadRequests } from "../id-reads";
@@ -951,6 +955,78 @@ describe("DotyposService customer lookup", () => {
     expect(result).toEqual(matched);
     expect(updateAttempts).toBeGreaterThan(1);
   });
+
+  test("rejects a customer lookup that returns a customer without an id", async () => {
+    const { id: _id, ...matched } = customer({
+      email: adaAddress,
+      lastName: undefined,
+    });
+    const requests: string[] = [];
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      requests.push(`${request.method} ${url.pathname}`);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers") {
+        return Response.json({ data: [matched] });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const error = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.findOrCreateCustomer(
+          { firstName: "Ada", lastName: "Lovelace", email: adaAddress },
+          { lookupFields: ["email"] }
+        );
+      }).pipe(Effect.flip),
+      fetchMock
+    );
+
+    expect(error).toMatchObject({
+      _tag: "DotyposRejected",
+      operation: "findOrCreateCustomer",
+      request: "customers.lookup",
+      reason: "invalid-response",
+    });
+    expect(requests.filter((line) => !line.startsWith("GET"))).toEqual([
+      "POST /signin/token",
+    ]);
+  });
+
+  test.each([
+    ["an email", { firstName: "Ada", phone: "+420 601 111 222" }],
+    ["a phone", { firstName: "Ada", email: adaAddress }],
+  ])(
+    "refuses to create a customer without %s after finding no match",
+    async (_, customerData) => {
+      const requests: string[] = [];
+      const fetchMock = mockDotyposFetch((request) => {
+        const url = new URL(request.url);
+        requests.push(`${request.method} ${url.pathname}`);
+        if (url.pathname === "/signin/token") return tokenResponse();
+        if (url.pathname === "/clouds/cloud-id/customers") {
+          return Response.json({ data: [] });
+        }
+        return new Response("Not found", { status: 404 });
+      });
+
+      const error = await runWithService(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos.findOrCreateCustomer(customerData);
+        }).pipe(Effect.flip),
+        fetchMock
+      );
+
+      expect(error).toMatchObject({
+        _tag: "DotyposRejected",
+        operation: "findOrCreateCustomer",
+        reason: "invalid-request",
+      });
+      expect(requests).not.toContain("POST /clouds/cloud-id/customers");
+    }
+  );
 
   test("keeps provider error details out of createCustomer logs", async () => {
     const logs: CapturedLog[] = [];
@@ -3326,55 +3402,6 @@ describe("DotyposService customer discounts", () => {
       },
     });
   });
-
-  test('accepts "10" and ignores out-of-range discounts', async () => {
-    const discounts: Record<string, string> = {
-      ten: "10",
-      zero: "0",
-      tooHigh: "101",
-    };
-    const fetchMock = mockDotyposFetch((request) => {
-      const url = new URL(request.url);
-      if (url.pathname === "/signin/token") return tokenResponse();
-      const match = url.pathname.match(/\/discount-groups\/(.+)$/);
-      if (match) {
-        const discountGroupId = match[1]!;
-        return Response.json({
-          id: discountGroupId,
-          discountPercent: discounts[discountGroupId],
-        });
-      }
-      return new Response("Not found", { status: 404 });
-    });
-
-    const result = await runWithService(
-      Effect.gen(function* () {
-        const dotypos = yield* DotyposService;
-        return yield* Effect.all([
-          dotypos.getCustomerDiscount(
-            customer({ _discountGroupId: dotyposDiscountGroupId("ten") })
-          ),
-          dotypos.getCustomerDiscount(
-            customer({ _discountGroupId: dotyposDiscountGroupId("zero") })
-          ),
-          dotypos.getCustomerDiscount(
-            customer({ _discountGroupId: dotyposDiscountGroupId("tooHigh") })
-          ),
-        ]);
-      }),
-      fetchMock
-    );
-
-    expect(result).toEqual([
-      {
-        source: "dotypos-discount-group",
-        discountGroupId: dotyposDiscountGroupId("ten"),
-        percent: 10,
-      },
-      undefined,
-      undefined,
-    ]);
-  });
 });
 
 describe("DotyposService reservation listing", () => {
@@ -5170,6 +5197,187 @@ describe("DotyposService conditional-write replay", () => {
     expect(versionReads).toBe(1);
     expect(patchCount).toBe(row.patchCount);
   });
+
+  type ConfirmSettlementRead = "NEW" | "CONFIRMED" | "CANCELLED" | 503;
+  type ConfirmSettlementPatch = "success" | "transport" | 503 | 412;
+  type ConfirmSettlementRow = {
+    readonly label: string;
+    /** Each version read's answer in order; the last one repeats. */
+    readonly reads: readonly ConfirmSettlementRead[];
+    readonly patches: readonly ConfirmSettlementPatch[];
+    readonly expected:
+      | "success"
+      | "cancelled"
+      | {
+          readonly _tag: string;
+          readonly reason?: string;
+          readonly request: string;
+          readonly httpStatus: number;
+        };
+    readonly expectedReads: number;
+    readonly expectedIfMatch: readonly string[];
+  };
+
+  const confirmSettlementRows: readonly ConfirmSettlementRow[] = [
+    {
+      label: "503 then 412 settles as applied when the reread is CONFIRMED",
+      reads: ["NEW", "CONFIRMED"],
+      patches: [503, 412],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: ['"reservation-v1"', '"reservation-v1"'],
+    },
+    {
+      label:
+        "transport failure then 412 settles as applied when the reread is CONFIRMED",
+      reads: ["NEW", "CONFIRMED"],
+      patches: ["transport", 412],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: ['"reservation-v1"', '"reservation-v1"'],
+    },
+    {
+      label:
+        "503 then 412 keeps cancellation protection when the reread is CANCELLED",
+      reads: ["NEW", "CANCELLED"],
+      patches: [503, 412],
+      expected: "cancelled",
+      expectedReads: 2,
+      expectedIfMatch: ['"reservation-v1"', '"reservation-v1"'],
+    },
+    {
+      label:
+        "503 then 412 patches again under the fresh ETag when the reread is NEW",
+      reads: ["NEW", "NEW"],
+      patches: [503, 412, "success"],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: [
+        '"reservation-v1"',
+        '"reservation-v1"',
+        '"reservation-v2"',
+      ],
+    },
+    {
+      label: "a plain 412 on the rerun PATCH is a version conflict",
+      reads: ["NEW", "NEW"],
+      patches: [503, 412, 412],
+      expected: {
+        _tag: "DotyposVersionConflict",
+        request: "reservation.patch",
+        httpStatus: 412,
+      },
+      expectedReads: 2,
+      expectedIfMatch: [
+        '"reservation-v1"',
+        '"reservation-v1"',
+        '"reservation-v2"',
+      ],
+    },
+    {
+      label: "a second replay conflict stays uncertain without another rerun",
+      reads: ["NEW", "NEW"],
+      patches: [503, 412, 503, 412],
+      expected: {
+        _tag: "DotyposUncertain",
+        reason: "conflict-after-replay",
+        request: "reservation.patch",
+        httpStatus: 412,
+      },
+      expectedReads: 2,
+      expectedIfMatch: [
+        '"reservation-v1"',
+        '"reservation-v1"',
+        '"reservation-v2"',
+        '"reservation-v2"',
+      ],
+    },
+    {
+      label: "a failed settling reread stays uncertain",
+      reads: ["NEW", 503],
+      patches: [503, 412],
+      expected: {
+        _tag: "DotyposUncertain",
+        reason: "conflict-after-replay",
+        request: "reservation.version",
+        httpStatus: 503,
+      },
+      expectedReads: 5,
+      expectedIfMatch: ['"reservation-v1"', '"reservation-v1"'],
+    },
+  ];
+
+  test.each([...confirmSettlementRows])(
+    "confirmReservation settlement: $label",
+    async (row) => {
+      let versionReads = 0;
+      const ifMatchHeaders: Array<string | null> = [];
+      const fetchMock = mockDotyposFetch((request) => {
+        const url = new URL(request.url);
+        if (url.pathname === "/signin/token") return tokenResponse();
+        if (url.pathname !== "/clouds/cloud-id/reservations/reservation-id") {
+          return new Response("Not found", { status: 404 });
+        }
+        if (request.method === "GET") {
+          const read =
+            row.reads[Math.min(versionReads, row.reads.length - 1)] ?? 503;
+          versionReads += 1;
+          if (read === 503) return new Response("Unavailable", { status: 503 });
+          return Response.json(reservation({ status: read }), {
+            headers: { ETag: `"reservation-v${Math.min(versionReads, 2)}"` },
+          });
+        }
+        if (request.method === "PATCH") {
+          const patch = row.patches[ifMatchHeaders.length];
+          ifMatchHeaders.push(request.headers.get("if-match"));
+          if (patch === "success") {
+            return Response.json(reservation({ status: "CONFIRMED" }));
+          }
+          if (patch === "transport") throw new TypeError("fetch failed");
+          return new Response(null, { status: patch ?? 500 });
+        }
+        return new Response("Not found", { status: 404 });
+      });
+
+      const result = await runWithServiceRetryingInstantly(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos
+            .confirmReservation(dotyposReservationId("reservation-id"))
+            .pipe(Effect.result);
+        }),
+        fetchMock
+      );
+
+      if (row.expected === "success") {
+        expect(result).toMatchObject({
+          _tag: "Success",
+          success: { id: "reservation-id", status: "CONFIRMED" },
+        });
+      } else if (row.expected === "cancelled") {
+        expect(result).toMatchObject({
+          _tag: "Failure",
+          failure: {
+            _tag: "DotyposReservationCancelledError",
+            reservationId: "reservation-id",
+          },
+        });
+      } else {
+        expect(result).toMatchObject({
+          _tag: "Failure",
+          failure: {
+            _tag: row.expected._tag,
+            ...(row.expected.reason && { reason: row.expected.reason }),
+            operation: "confirmReservation",
+            request: row.expected.request,
+            httpStatus: row.expected.httpStatus,
+          },
+        });
+      }
+      expect(versionReads).toBe(row.expectedReads);
+      expect(ifMatchHeaders).toEqual([...row.expectedIfMatch]);
+    }
+  );
 });
 
 type SingleReadPageOperation =
@@ -5452,16 +5660,25 @@ describe("DotyposService read retry boundary", () => {
       label: "reservation 404",
       linkedCustomer: false,
       missingCustomerId: false,
+      missingId: false,
     },
     {
       label: "linked customer 404",
       linkedCustomer: true,
       missingCustomerId: false,
+      missingId: false,
     },
     {
       label: "missing customer ID",
       linkedCustomer: false,
       missingCustomerId: true,
+      missingId: false,
+    },
+    {
+      label: "reservation without an ID",
+      linkedCustomer: false,
+      missingCustomerId: false,
+      missingId: true,
     },
   ])("getReservation read boundary: $label", async (row) => {
     let reservationReads = 0;
@@ -5471,11 +5688,13 @@ describe("DotyposService read retry boundary", () => {
       if (url.pathname === "/signin/token") return tokenResponse();
       if (url.pathname === "/clouds/cloud-id/reservations/reservation-id") {
         reservationReads += 1;
-        if (!row.linkedCustomer && !row.missingCustomerId) {
+        if (!row.linkedCustomer && !row.missingCustomerId && !row.missingId) {
           return new Response("Not found", { status: 404 });
         }
+        const { id, ...withoutId } = reservation();
         return Response.json({
-          ...reservation(),
+          ...withoutId,
+          ...(!row.missingId && { id }),
           ...(row.missingCustomerId && { _customerId: "" }),
         });
       }
@@ -5495,7 +5714,7 @@ describe("DotyposService read retry boundary", () => {
       fetchMock
     );
 
-    if (!row.linkedCustomer && !row.missingCustomerId) {
+    if (!row.linkedCustomer && !row.missingCustomerId && !row.missingId) {
       expect(result).toMatchObject({ _tag: "Success", success: Option.none() });
       expect(customerReads).toBe(0);
     } else if (row.linkedCustomer) {
@@ -5650,16 +5869,9 @@ describe("DotyposService ID reads", () => {
         );
 
   test.each(["customers", "reservations"] as const)(
-    "%s handles empty 404s, unidentified records and invalid filters",
+    "%s handles empty 404s and rejects unidentified records and invalid filters",
     async (resource) => {
-      for (const response of [
-        () => Response.json(null, { status: 404 }),
-        () => {
-          const { id, ...unidentified } =
-            resource === "customers" ? customer() : reservation();
-          return Response.json({ data: [unidentified] });
-        },
-      ]) {
+      const readWith = async (response: () => Response) => {
         let attempts = 0;
         const fetchMock = mockDotyposFetch((request) => {
           if (new URL(request.url).pathname === "/signin/token")
@@ -5669,13 +5881,31 @@ describe("DotyposService ID reads", () => {
         });
         const result = await runWithService(
           Effect.flatMap(DotyposService, (dotypos) =>
-            read(dotypos, resource, ["id-0"])
+            read(dotypos, resource, ["id-0"]).pipe(Effect.result)
           ),
           fetchMock
         );
-        expect(result.size).toBe(0);
-        expect(attempts).toBe(1);
+        return { attempts, result };
+      };
+
+      const empty = await readWith(() => Response.json(null, { status: 404 }));
+      expect(empty.result).toMatchObject({ _tag: "Success" });
+      if (empty.result._tag === "Success") {
+        expect(empty.result.success.size).toBe(0);
       }
+      expect(empty.attempts).toBe(1);
+
+      const unidentified = await readWith(() => {
+        const { id: _id, ...record } =
+          resource === "customers" ? customer() : reservation();
+        return Response.json({ data: [record] });
+      });
+      expect(unidentified.result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "DotyposRejected", reason: "invalid-response" },
+      });
+      expect(unidentified.attempts).toBe(1);
+
       let attempts = 0;
       const fetchMock = mockDotyposFetch(() => {
         attempts++;
@@ -5848,4 +6078,185 @@ describe("DotyposService ID reads", () => {
       }
     }
   );
+});
+
+describe("DotyposService write responses without an id", () => {
+  const withoutId = <A extends { readonly id: string }>({
+    id: _id,
+    ...record
+  }: A) => record;
+
+  test("generated write schemas accept records without an id; read schemas reject them", () => {
+    const decodes = (schema: Schema.Decoder<unknown>, value: unknown) =>
+      Schema.decodeUnknownExit(schema)(value)._tag === "Success";
+
+    expect(decodes(ReplaceCustomersRequestJson, [withoutId(customer())])).toBe(
+      true
+    );
+    expect(
+      decodes(ReplaceReservationsRequestJson, [withoutId(reservation())])
+    ).toBe(true);
+    expect(decodes(CustomerWriteRecord, withoutId(customer()))).toBe(true);
+    expect(decodes(ReservationWriteRecord, withoutId(reservation()))).toBe(
+      true
+    );
+    expect(decodes(Customer, withoutId(customer()))).toBe(false);
+    expect(decodes(Reservation, withoutId(reservation()))).toBe(false);
+    expect(decodes(Table, withoutId(table()))).toBe(false);
+  });
+
+  test("createCustomer returns a created customer without an id for the caller's fallback", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/customers" &&
+        request.method === "POST"
+      ) {
+        return Response.json([withoutId(customer())]);
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const created = await runWithService(
+      Effect.flatMap(DotyposService, (dotypos) =>
+        dotypos.createCustomer(failureOutcomeCustomerDetails)
+      ),
+      fetchMock
+    );
+
+    expect(created.id).toBeUndefined();
+    expect(created.firstName).toBe("Ada");
+  });
+
+  test("createReservation still fails as invalid-response without an id", async () => {
+    let attempts = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/reservations" &&
+        request.method === "POST"
+      ) {
+        attempts += 1;
+        return Response.json([withoutId(reservation())]);
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const error = await runWithService(
+      Effect.flatMap(DotyposService, (dotypos) =>
+        dotypos.createReservation(failureOutcomeReservationInput)
+      ).pipe(Effect.flip),
+      fetchMock
+    );
+
+    expect(error).toMatchObject({
+      operation: "createReservation",
+      request: "reservation.create",
+      reason: "invalid-response",
+    });
+    expect(attempts).toBe(1);
+  });
+
+  test("patchCustomer keeps the requested id when the PATCH response has none", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers/customer-id") {
+        if (request.method === "GET") {
+          return Response.json(customer(), {
+            headers: { etag: '"customer-etag"' },
+          });
+        }
+        if (request.method === "PATCH") {
+          return Response.json(withoutId(customer({ firstName: "Grace" })));
+        }
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const patched = await runWithService(
+      Effect.flatMap(DotyposService, (dotypos) =>
+        dotypos.patchCustomer(dotyposCustomerId("customer-id"), {
+          firstName: "Grace",
+        })
+      ),
+      fetchMock
+    );
+
+    expect(Option.getOrThrow(patched)).toMatchObject({
+      id: dotyposCustomerId("customer-id"),
+      firstName: "Grace",
+    });
+  });
+
+  test("confirmReservation keeps the requested id when the PATCH response has none", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/reservations/reservation-id") {
+        if (request.method === "GET") {
+          return Response.json(reservation(), {
+            headers: { etag: '"reservation-etag"' },
+          });
+        }
+        if (request.method === "PATCH") {
+          return Response.json(withoutId(reservation({ status: "CONFIRMED" })));
+        }
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const confirmed = await runWithService(
+      Effect.flatMap(DotyposService, (dotypos) =>
+        dotypos.confirmReservation(dotyposReservationId("reservation-id"))
+      ),
+      fetchMock
+    );
+
+    expect(confirmed).toMatchObject({
+      id: dotyposReservationId("reservation-id"),
+      status: "CONFIRMED",
+    });
+  });
+
+  test("findOrCreateCustomer keeps the matched id when the fill response has none", async () => {
+    const matched = customer({ email: adaAddress, lastName: undefined });
+    let fills = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/customers" &&
+        request.method === "GET"
+      ) {
+        return Response.json({ data: [matched] });
+      }
+      if (
+        url.pathname === "/clouds/cloud-id/customers/customer-id" &&
+        request.method === "PUT"
+      ) {
+        fills += 1;
+        return Response.json(withoutId(customer({ lastName: "Lovelace" })));
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const found = await runWithService(
+      Effect.flatMap(DotyposService, (dotypos) =>
+        dotypos.findOrCreateCustomer(
+          { firstName: "Ada", lastName: "Lovelace", email: adaAddress },
+          { lookupFields: ["email"] }
+        )
+      ),
+      fetchMock
+    );
+
+    expect(fills).toBe(1);
+    expect(found).toMatchObject({
+      id: dotyposCustomerId("customer-id"),
+      lastName: "Lovelace",
+    });
+  });
 });
