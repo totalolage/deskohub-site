@@ -3,13 +3,14 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
-import { ConfigProvider, Effect, Layer } from "effect";
+import { Effect, Layer } from "effect";
 import type { WorkspaceReservationRow } from "@/db/schema";
 import {
   type CheckoutSessionKey,
   checkoutSessionIdSchema,
 } from "@/features/checkout/checkout-identifiers";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
+import { SealedStateKeys } from "@/shared/backend/sealed-state-keys.service";
 import { deriveCheckoutSessionKeys } from "./checkout-lookup-keys.server";
 import { findKeyIdPrefixedLookupKey } from "./checkout-lookup-keys.test-utils";
 import {
@@ -20,10 +21,8 @@ import {
 const checkoutSessionId = checkoutSessionIdSchema.make("checkout-session-id");
 const keyRing = `original:${Buffer.alloc(32, 1).toString("base64url")}`;
 
-const withKeyRing = Effect.provideService(
-  ConfigProvider.ConfigProvider,
-  ConfigProvider.fromUnknown({ CHECKOUT_PAY_STATE_KEYS: keyRing })
-);
+const keyRingLayer = SealedStateKeys.fromConfiguration(keyRing);
+const withKeyRing = Effect.provide(keyRingLayer);
 
 // New rows store the active key's prefixed derivation.
 const checkoutSessionKey: CheckoutSessionKey = findKeyIdPrefixedLookupKey(
@@ -65,11 +64,12 @@ const runRequireCurrent = (input: {
   };
   const layer = PayableReservationService.Default.pipe(
     Layer.provide(
-      Layer.merge(
+      Layer.mergeAll(
         Layer.mock(WorkspaceReservationRepository, repository),
         Layer.mock(DotyposService, {
           getReservationStatus,
-        })
+        }),
+        keyRingLayer
       )
     )
   );
@@ -86,7 +86,7 @@ const runRequireCurrent = (input: {
           ),
         }),
       });
-    }).pipe(Effect.provide(layer), withKeyRing, Effect.runPromise),
+    }).pipe(Effect.provide(layer), Effect.runPromise),
   };
 };
 

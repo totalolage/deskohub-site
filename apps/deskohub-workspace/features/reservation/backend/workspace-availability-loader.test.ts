@@ -15,6 +15,7 @@ import type {
   WorkspaceAvailability,
   WorkspaceAvailabilityQuery,
 } from "@/features/reservation/workspace-availability";
+import { TestSealedStateKeys } from "@/shared/testing/sealed-state-keys.test-utils";
 import { instantStringSchema } from "@/shared/utils/temporal";
 import {
   type IWorkspaceAvailabilityService,
@@ -86,7 +87,8 @@ const testLayer = Layer.mergeAll(
     getAvailability,
     ensureAvailable: () => Effect.void,
   }),
-  Layer.succeed(ReservationSupersessionService, { findCurrent })
+  Layer.succeed(ReservationSupersessionService, { findCurrent }),
+  TestSealedStateKeys
 );
 
 const run = <A, E>(
@@ -130,7 +132,7 @@ const replacementToken = await Effect.runPromise(
       checkoutSessionId: "session-id",
     });
     return yield* sealPayState(state);
-  })
+  }).pipe(Effect.provide(TestSealedStateKeys))
 );
 
 const exclusion = { dotyposReservationId: "dotypos-reservation-1" };

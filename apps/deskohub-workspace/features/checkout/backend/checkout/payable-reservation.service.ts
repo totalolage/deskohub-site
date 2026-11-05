@@ -10,6 +10,7 @@ import {
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import type { SealedStateTokenError } from "@/shared/backend/sealed-state";
+import { SealedStateKeys } from "@/shared/backend/sealed-state-keys.service";
 import { deriveCheckoutSessionKeys } from "./checkout-lookup-keys.server";
 
 export class PayableReservationUnavailableError extends Data.TaggedError(
@@ -49,6 +50,7 @@ export class PayableReservationService extends Context.Service<
     Effect.gen(function* () {
       const reservations = yield* WorkspaceReservationRepository;
       const dotypos = yield* DotyposService;
+      const sealedStateKeys = yield* SealedStateKeys;
 
       /** The order, when it is the current reservation of this checkout session. */
       const findSessionReservation = Effect.fnUntraced(function* (input: {
@@ -57,7 +59,7 @@ export class PayableReservationService extends Context.Service<
       }) {
         const checkoutSessionKeys = yield* deriveCheckoutSessionKeys(
           input.checkoutSessionId
-        );
+        ).pipe(Effect.provideService(SealedStateKeys, sealedStateKeys));
         const reservation = yield* reservations.findById(input.orderId);
         if (!reservation) {
           return yield* unavailable(input, "missing_reservation");
@@ -112,7 +114,8 @@ export class PayableReservationService extends Context.Service<
 
   static Live = this.Default.pipe(
     Layer.provide(WorkspaceReservationRepository.Live),
-    Layer.provide(WorkspaceDotyposLayer)
+    Layer.provide(WorkspaceDotyposLayer),
+    Layer.provide(SealedStateKeys.Default)
   );
 }
 

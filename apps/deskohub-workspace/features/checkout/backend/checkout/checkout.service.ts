@@ -55,6 +55,7 @@ import {
   getWorkspaceRuntimeCallbackOrigin,
   type WorkspaceUrlConfigError,
 } from "@/shared/backend/config/workspace-url.config";
+import { SealedStateKeys } from "@/shared/backend/sealed-state-keys.service";
 import { type Money, moneyEquals } from "@/shared/money/money";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { localDateTimeToInstant } from "@/shared/utils/temporal";
@@ -235,7 +236,8 @@ export class CheckoutService extends Context.Service<
     Layer.provide(WorkspaceDatabase.Default),
     Layer.provide(WorkspaceDotyposLayer),
     Layer.provide(WorkspaceNexiLayer),
-    Layer.provide(CheckoutPricingService.Live)
+    Layer.provide(CheckoutPricingService.Live),
+    Layer.provide(SealedStateKeys.Default)
   );
 }
 
@@ -343,7 +345,7 @@ const getCheckoutDetails = (
 const openFinalPayState: (
   payStateToken: string,
   locale: Locale
-) => Effect.Effect<SignedPayState, CheckoutError> = Effect.fn(
+) => Effect.Effect<SignedPayState, CheckoutError, SealedStateKeys> = Effect.fn(
   "openFinalPayState"
 )(function* (payStateToken, locale) {
   const state = yield* openPayState(payStateToken).pipe(
@@ -370,18 +372,19 @@ const openFinalPayState: (
 
 const getFreshPayUrl: (
   input: BuildSignedPayStateInput
-) => Effect.Effect<string, CheckoutError> = Effect.fn("getFreshPayUrl")(
-  (input) =>
-    buildFreshCheckoutPayPath(input).pipe(
-      Effect.mapError(
-        (cause) =>
-          new CheckoutError({
-            code: "checkout_failed",
-            message: "A refreshed Pay state could not be created.",
-            cause,
-          })
-      )
+) => Effect.Effect<string, CheckoutError, SealedStateKeys> = Effect.fn(
+  "getFreshPayUrl"
+)((input) =>
+  buildFreshCheckoutPayPath(input).pipe(
+    Effect.mapError(
+      (cause) =>
+        new CheckoutError({
+          code: "checkout_failed",
+          message: "A refreshed Pay state could not be created.",
+          cause,
+        })
     )
+  )
 );
 
 const mapCheckoutFailure = <E>(cause: E | CheckoutError): CheckoutError =>
@@ -441,6 +444,10 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
       const pricing = yield* CheckoutPricingService;
       const payableReservations = yield* PayableReservationService;
       const accountActivity = yield* OptionalAccountActivityGuard;
+      const provideSealedStateKeys = Effect.provideService(
+        SealedStateKeys,
+        yield* SealedStateKeys
+      );
 
       const handleHostedPaymentPageCreationFailure = Effect.fn(
         "checkout.handleHostedPaymentPageCreationFailure"
@@ -913,7 +920,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
             orderId: input.reservation.id,
             requestedDiscountCode:
               state.requestedDiscountCode ?? state.submittedCode,
-          });
+          }).pipe(provideSealedStateKeys);
           return {
             status: "pricing_changed" as const,
             changedKeys: input.changedKeys,
@@ -1011,7 +1018,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
             prepared.quote.payment.discounts
           ),
           changedKeys,
-        });
+        }).pipe(provideSealedStateKeys);
         return {
           status: "pricing_changed" as const,
           changedKeys,
@@ -1044,7 +1051,10 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
               });
             }
 
-            const state = yield* openFinalPayState(input.payStateToken, locale);
+            const state = yield* openFinalPayState(
+              input.payStateToken,
+              locale
+            ).pipe(provideSealedStateKeys);
             yield* Effect.annotateLogsScoped({
               orderId: state.orderId,
               checkoutSessionId: state.checkoutSessionId,
@@ -1281,7 +1291,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                             refreshed.quote.payment.discounts
                           ),
                           changedKeys,
-                        });
+                        }).pipe(provideSealedStateKeys);
 
                         return {
                           status: "pricing_changed" as const,

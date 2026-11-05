@@ -44,6 +44,7 @@ import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer
 import { normalizedMeetingRoomReservationOrderSchema } from "@/features/reservation/meeting-room-reservation";
 import { normalizedOfficeReservationOrderSchema } from "@/features/reservation/office-reservation";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import { TestSealedStateKeys } from "@/shared/testing/sealed-state-keys.test-utils";
 import { type Instant, instantStringSchema } from "@/shared/utils/temporal";
 import {
   CheckoutPricingService,
@@ -305,7 +306,7 @@ const tokenFor = (
         ttlMilliseconds: 10 * 60 * 1000,
       });
       return yield* sealPayState(adjustState(state));
-    })
+    }).pipe(Effect.provide(TestSealedStateKeys))
   );
 
 const tokenForOrder = (input: TestPayStateInput, orderId: string) =>
@@ -319,7 +320,7 @@ const tokenForOrder = (input: TestPayStateInput, orderId: string) =>
         ttlMilliseconds: 10 * 60 * 1000,
       });
       return yield* sealPayState(state);
-    })
+    }).pipe(Effect.provide(TestSealedStateKeys))
   );
 
 const makeServiceLayer = (input: {
@@ -356,7 +357,9 @@ const makeServiceLayer = (input: {
         } as WorkspaceReservation),
     })
   );
-  return CheckoutReferralService.Default.pipe(Layer.provide(dependencies));
+  return CheckoutReferralService.Default.pipe(
+    Layer.provide(Layer.merge(dependencies, TestSealedStateKeys))
+  );
 };
 
 const runAcceptCode = (
@@ -382,7 +385,9 @@ const openFreshPayState = (result: CheckoutReferralResult) => {
     "https://deskohub.test"
   ).searchParams.get(payStateTokenQueryParam);
   if (!token) throw new Error("Expected refreshed Pay-state token");
-  return Effect.runSync(openPayState(token));
+  return Effect.runSync(
+    openPayState(token).pipe(Effect.provide(TestSealedStateKeys))
+  );
 };
 
 const expectAcceptedThenIdempotentRetry = async (input: {
@@ -418,7 +423,9 @@ const expectAcceptedThenIdempotentRetry = async (input: {
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
     if (!token) throw new Error("Expected refreshed Pay-state token");
-    const state = Effect.runSync(openPayState(token));
+    const state = Effect.runSync(
+      openPayState(token).pipe(Effect.provide(TestSealedStateKeys))
+    );
     expect(state.changedKeys).toBeUndefined();
     expect(state.submittedCode).toBeUndefined();
     expect(state.reservation.kind).toBe(input.family);
@@ -514,7 +521,9 @@ describe("CheckoutReferralService", () => {
       { reservation, quote, bookedAt: payStateBookedAt },
       signedOrderId
     );
-    const originalState = Effect.runSync(openPayState(payStateToken));
+    const originalState = Effect.runSync(
+      openPayState(payStateToken).pipe(Effect.provide(TestSealedStateKeys))
+    );
     const result = await Effect.runPromise(runAcceptCode(layer, payStateToken));
 
     expect(result.status).toBe("accepted");
@@ -523,7 +532,9 @@ describe("CheckoutReferralService", () => {
     expect(freshUrl.searchParams.get("orderId")).toBe(originalState.orderId);
     const freshToken = freshUrl.searchParams.get(payStateTokenQueryParam);
     if (!freshToken) throw new Error("Expected fresh signed Pay state");
-    const freshState = Effect.runSync(openPayState(freshToken));
+    const freshState = Effect.runSync(
+      openPayState(freshToken).pipe(Effect.provide(TestSealedStateKeys))
+    );
     expect(freshState.orderId).toBe(originalState.orderId);
     expect(freshState.changedKeys).toBeUndefined();
     expect(freshState.reservation.kind).toBe("cowork");

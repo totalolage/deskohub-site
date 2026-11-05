@@ -7,14 +7,16 @@ import type {
   PreloadedWorkspaceAvailability,
   WorkspaceAvailabilityQuery,
 } from "@/features/reservation/workspace-availability";
+import { SealedStateKeys } from "@/shared/backend/sealed-state-keys.service";
 import { pagePreload } from "./page-preload";
 import { WorkspaceAvailabilityService } from "./workspace-availability.service";
 import { recoverReplacementOccupancyExclusion } from "./workspace-availability-replacement";
 
 /** The services availability loads with replacement exclusion depend on. */
-export const WorkspaceAvailabilityLoaderLive = Layer.merge(
+export const WorkspaceAvailabilityLoaderLive = Layer.mergeAll(
   WorkspaceAvailabilityService.Live,
-  ReservationSupersessionService.Live
+  ReservationSupersessionService.Live,
+  SealedStateKeys.Default
 );
 
 /**

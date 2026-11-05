@@ -7,42 +7,39 @@ import {
   signInCallbackReturnParam,
 } from "@/features/account/routes";
 import { invoiceBuyerSchema } from "@/features/accounting/billing-identity";
+import { makeSealedState } from "@/shared/backend/sealed-state";
+import type { SealedStateKeys } from "@/shared/backend/sealed-state-keys.service";
 import {
-  makeSealedState,
-  parseSealedStateKey,
-} from "@/shared/backend/sealed-state";
+  runSealedState,
+  syntheticSealedStateKeyRing,
+} from "@/shared/testing/sealed-state-keys.test-utils";
 import { maxSameOriginPathLength } from "@/shared/utils/same-origin-path";
 import {
   makeAuthReturnState,
   maxAuthReturnStateLength,
 } from "./auth-return-state";
 
-const runSync = <A, E>(effect: Effect.Effect<A, E>) => Effect.runSync(effect);
-const keys = [
-  runSync(
-    parseSealedStateKey("active", Buffer.alloc(32, 4).toString("base64url"))
-  ),
-];
+const keys = syntheticSealedStateKeyRing(["active", 4]);
 const now = new Date("2026-10-17T10:00:00.000Z");
-const after = (minutes: number) => () =>
+const after = (minutes: number) =>
   new Date(now.getTime() + minutes * 60 * 1000);
+/** Runs auth return state work under `ringKeys`, at `at`. */
+const runAt = <A, E>(
+  at: Date,
+  effect: Effect.Effect<A, E, SealedStateKeys>,
+  ringKeys = keys
+) => runSealedState(effect, { keys: ringKeys, at });
 const contactSchema = Schema.Struct({ name: Schema.String });
 const contactState = makeAuthReturnState("checkout-contact", contactSchema);
 
 describe("auth return state", () => {
   test("stays usable for 30 minutes after it is sealed", () => {
-    const token = runSync(
-      contactState.seal({ name: "Ada" }, { keys, now: after(0) })
-    );
+    const token = runAt(after(0), contactState.seal({ name: "Ada" }));
 
-    expect(runSync(contactState.open(token, { keys, now: after(29) }))).toEqual(
-      { name: "Ada" }
-    );
+    expect(runAt(after(29), contactState.open(token))).toEqual({ name: "Ada" });
     expect(
       Result.isFailure(
-        runSync(
-          Effect.result(contactState.open(token, { keys, now: after(30) }))
-        )
+        runAt(after(30), Effect.result(contactState.open(token)))
       )
     ).toBe(true);
   });
@@ -56,16 +53,14 @@ describe("auth return state", () => {
       maxTokenLength: maxAuthReturnStateLength,
     });
     const foreignTokens = [
-      runSync(otherReturn.seal({ name: "Ada" }, { keys, now: after(0) })),
-      runSync(plain.seal({ name: "Ada" }, { keys, now: after(0) })),
+      runAt(after(0), otherReturn.seal({ name: "Ada" })),
+      runAt(after(0), plain.seal({ name: "Ada" })),
     ];
 
     for (const token of foreignTokens) {
       expect(
         Result.isFailure(
-          runSync(
-            Effect.result(contactState.open(token, { keys, now: after(0) }))
-          )
+          runAt(after(0), Effect.result(contactState.open(token)))
         )
       ).toBe(true);
     }
@@ -134,13 +129,9 @@ describe("auth return state", () => {
         billing,
       };
 
-      const token = runSync(
-        contactBillingState.seal(contact, { keys, now: after(0) })
-      );
+      const token = runAt(after(0), contactBillingState.seal(contact));
       expect(token.length).toBeLessThanOrEqual(maxAuthReturnStateLength);
-      expect(
-        runSync(contactBillingState.open(token, { keys, now: after(0) }))
-      ).toEqual(contact);
+      expect(runAt(after(0), contactBillingState.open(token))).toEqual(contact);
 
       // The page and its other parameters take the rest of the return path.
       const page = "/cs-CZ/cowork?selection=";
@@ -168,4 +159,44 @@ describe("auth return state", () => {
       expect(magicLink.toString().length).toBeLessThan(14 * 1024);
     }
   );
+});
+
+describe("auth return state token format", () => {
+  // Sealed before the sealed state codec was reworked; tokens in flight on
+  // sign-in return paths must keep opening.
+  const goldenKeys = syntheticSealedStateKeyRing(["golden", 9]);
+  const issuedAt = new Date("2026-06-01T10:00:00.000Z");
+  const beforeExpiry = new Date("2026-06-01T10:29:00.000Z");
+  const goldenState = makeAuthReturnState("golden-contact", contactSchema);
+  /** Sealed with a random IV (all bytes 7). */
+  const goldenToken =
+    "eyJraWQiOiJnb2xkZW4iLCJwdXJwb3NlIjoiYXV0aC1yZXR1cm46Z29sZGVuLWNvbnRhY3QiLCJ6aXAiOiJERUYifQ.BwcHBwcHBwcHBwcH.8u1HUSQgTUs9JZjE3w8gNGzySmbRvsBxKb4hpkNGsymT7o6YfJ_oZbENgJ_GrPzhVlsu12XM4QdMmKo_DSnu0qP8_vw_TmO144g.m91uBX7Vagghx_s2jE-EHQ";
+  /** Sealed with a synthetic IV. */
+  const stableGoldenToken =
+    "eyJraWQiOiJnb2xkZW4iLCJwdXJwb3NlIjoiYXV0aC1yZXR1cm46Z29sZGVuLWNvbnRhY3QiLCJ6aXAiOiJERUYifQ.qSULXz5f46eJZDn1.CyOAuTszJr9Qv0b5FBfhyatUJlbyWkNMcXL11IuqMjZMXR2vzOOADam3vE72mPkOcOI0o4zN-Yz7TnUlGgckLArtPtGYZ4EuSt4.-Gmh24i2EyynF94M0EdhVA";
+
+  test("seals deterministically to the pinned bytes", () => {
+    expect(
+      runAt(
+        issuedAt,
+        goldenState.seal({ name: "Golden Fixture" }, { deterministic: true }),
+        goldenKeys
+      )
+    ).toBe(stableGoldenToken);
+  });
+
+  test("opens pinned tokens until they expire", () => {
+    for (const token of [goldenToken, stableGoldenToken]) {
+      expect(runAt(beforeExpiry, goldenState.open(token), goldenKeys)).toEqual({
+        name: "Golden Fixture",
+      });
+      expect(
+        Result.isFailure(
+          runSealedState(Effect.result(goldenState.open(token)), {
+            keys: goldenKeys,
+          })
+        )
+      ).toBe(true);
+    }
+  });
 });

@@ -31,6 +31,7 @@ export {
   getSignedPayStateCheckoutSummary,
   getSignedPayStateSubmittedCodeApplication,
   openPayState,
+  type PayStateLinkOptions,
   PayStateTokenError,
   payStateContinuesOn,
   payStateDefaultTtlMilliseconds,

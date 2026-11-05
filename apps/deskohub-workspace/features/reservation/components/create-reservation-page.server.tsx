@@ -51,6 +51,7 @@ import type {
   PreloadedWorkspaceAvailability,
   WorkspaceAvailabilityQuery,
 } from "@/features/reservation/workspace-availability";
+import { SealedStateKeys } from "@/shared/backend/sealed-state-keys.service";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { getSearchParam, type SearchParamsRecord } from "@/shared/utils";
 import { ReservationPage } from "./reservation-page";
@@ -215,7 +216,10 @@ export const loadRestoredReservation = Effect.fn(
   if (!token) return undefined;
 
   const payState = Option.getOrUndefined(
-    yield* openPayState(token).pipe(Effect.option)
+    yield* openPayState(token).pipe(
+      Effect.provide(SealedStateKeys.Default),
+      Effect.option
+    )
   );
   if (
     !payState ||
@@ -243,7 +247,11 @@ const loadCheckoutContact = (token: string | undefined) =>
   token
     ? checkoutContactReturnState
         .open(token)
-        .pipe(Effect.option, Effect.map(Option.getOrUndefined))
+        .pipe(
+          Effect.provide(SealedStateKeys.Default),
+          Effect.option,
+          Effect.map(Option.getOrUndefined)
+        )
     : Effect.succeed(undefined);
 
 export function createReservationPage<

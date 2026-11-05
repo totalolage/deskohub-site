@@ -1,4 +1,4 @@
-import { Effect, Option } from "effect";
+import { Effect, Layer, Option } from "effect";
 import type { Metadata } from "next";
 import { connection } from "next/server";
 import { Suspense } from "react";
@@ -36,6 +36,7 @@ import {
   getCoworkReservationPath,
   getReservationStartPath,
 } from "@/features/reservation/routes";
+import { SealedStateKeys } from "@/shared/backend/sealed-state-keys.service";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { RouteAutoRefresh } from "@/shared/components/route-auto-refresh";
 import { Button } from "@/shared/components/ui/button";
@@ -95,6 +96,9 @@ const openCheckoutPayState = (payStateToken: string) =>
       state,
       restartKind: state.reservation.kind,
     })),
+    // A key ring that can't be read leaves the token unreadable, like any
+    // other failure to open it.
+    Effect.provide(SealedStateKeys.Default),
     Effect.catch((cause) =>
       Effect.logWarning("Checkout pay state could not be loaded", {
         cause,
@@ -106,6 +110,7 @@ const openCheckoutPayState = (payStateToken: string) =>
               state: undefined,
               restartKind,
             })),
+            Effect.provide(SealedStateKeys.Default),
             Effect.orElseSucceed(() => ({
               state: undefined,
               restartKind: undefined,
@@ -149,7 +154,9 @@ const loadPayableCheckout = (state: SignedPayState) =>
         freshPayUrl,
       })
     ),
-    Effect.provide(PayableReservationService.Live),
+    Effect.provide(
+      Layer.merge(PayableReservationService.Live, SealedStateKeys.Default)
+    ),
     Effect.catch((cause) =>
       Effect.logWarning("Checkout pay state could not be loaded", {
         cause,
