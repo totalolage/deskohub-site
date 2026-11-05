@@ -90,6 +90,17 @@ const campaignRecipientStatusSchema = Schema.Literals(
 );
 export type CampaignRecipientStatus = typeof campaignRecipientStatusSchema.Type;
 
+export const undeliveredRecipientStatuses = [
+  "pending",
+  "failed",
+  "unconfirmed",
+] as const;
+
+export const retryableRecipientStatuses = (includeUnconfirmed: boolean) =>
+  includeUnconfirmed
+    ? undeliveredRecipientStatuses
+    : (["pending", "failed"] as const);
+
 /**
  * Why a recipient was skipped at delivery: their profile no longer gives a
  * reachable email, their marketing consent was withdrawn, or (outside

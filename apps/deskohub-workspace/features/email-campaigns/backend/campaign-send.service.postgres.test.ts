@@ -11,6 +11,7 @@ import {
 import { resendSimulatorAddress, testEmailAddress } from "@deskohub/test-email";
 import { NodeCrypto } from "@effect/platform-node";
 import { Cause, Effect, Exit, Layer, Option } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type { AudienceFilter } from "../audience-filter";
 import type { CampaignLocalizedContent } from "../body/campaign-content";
@@ -38,6 +39,7 @@ import {
   seedAutomationVersion,
   seedCampaignSend,
 } from "./email-campaigns.test-utils";
+import { OnceCampaignLifecycle } from "./once-campaign-lifecycle";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 
@@ -521,6 +523,54 @@ describe.skipIf(!testDatabase)(
           [campaignId]
         )
       ).rows;
+
+    test("stale settlement and abandonment cannot change a later attempt", async () => {
+      const first = await seedCampaignSend(testDatabase.db, {
+        purpose: "marketing",
+        deliveryAttempt: 2,
+        recipients: [],
+      });
+      const other = await seedCampaignSend(testDatabase.db, {
+        purpose: "marketing",
+        recipients: [],
+      });
+      campaignIds.push(first.campaignId, other.campaignId);
+      const now = Temporal.Now.instant();
+      const runTransition = <A, E>(
+        effect: Effect.Effect<
+          A,
+          E,
+          import("@/db/database.service").WorkspaceTransaction
+        >
+      ) =>
+        Effect.runPromise(
+          Effect.flatMap(WorkspaceDatabase, ({ transaction }) =>
+            transaction(effect)
+          ).pipe(Effect.provide(testDatabase.layer))
+        );
+      for (const attempt of [
+        { sendId: first.sendId, deliveryAttempt: 1 },
+        { sendId: other.sendId, deliveryAttempt: 2 },
+      ]) {
+        const input = { campaignId: first.campaignId, ...attempt, now };
+        expect(await runTransition(OnceCampaignLifecycle.settle(input))).toBe(
+          "stale"
+        );
+        await runTransition(OnceCampaignLifecycle.abandon(input));
+        expect(await storedStatus(first.campaignId)).toBe("sending");
+      }
+      expect(
+        await runTransition(
+          OnceCampaignLifecycle.settle({
+            campaignId: first.campaignId,
+            sendId: first.sendId,
+            deliveryAttempt: 2,
+            now,
+          })
+        )
+      ).toBe("sent");
+      expect(await storedStatus(first.campaignId)).toBe("sent");
+    });
 
     test("retries only a one-off campaign's own send, never an automated send beside it", async () => {
       const { campaignId, sendId } = await seedCampaignSend(testDatabase.db, {
