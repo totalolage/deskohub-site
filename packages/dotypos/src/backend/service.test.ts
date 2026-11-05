@@ -6117,7 +6117,7 @@ describe("DotyposService conditional-write replay", () => {
   const enteredDetails: DotyposCustomerDetails = {
     firstName: " Ada ",
     lastName: "Lovelace ",
-    email: " ada@example.test",
+    email: ` ${adaAddress}`,
     phone: " 777 123 456 ",
     addressLine1: " Synthetic street 1",
     addressLine2: "  ",
@@ -6132,7 +6132,7 @@ describe("DotyposService conditional-write replay", () => {
   const writtenDetailsWithoutPhone = {
     firstName: "Ada",
     lastName: "Lovelace",
-    email: "ada@example.test",
+    email: adaAddress,
     addressLine1: "Synthetic street 1",
     addressLine2: "",
     city: "Synthetic city",
@@ -6245,7 +6245,7 @@ describe("DotyposService conditional-write replay", () => {
       entered: "without-phone",
       ...fieldsRereadOnly({
         ...writtenDetailsWithoutPhone,
-        email: "someone-else@example.test",
+        email: testEmailAddress("someone-else"),
         phone: storedPhone,
       }),
     },
@@ -6272,13 +6272,13 @@ describe("DotyposService conditional-write replay", () => {
       label: "a reread with another email stays uncertain without a PATCH",
       ...fieldsRereadOnly({
         ...writtenDetails,
-        email: "someone-else@example.test",
+        email: testEmailAddress("someone-else"),
       }),
     },
     {
       label:
         "a reread whose email differs only by case stays uncertain without a PATCH",
-      ...fieldsRereadOnly({ ...writtenDetails, email: "Ada@example.test" }),
+      ...fieldsRereadOnly({ ...writtenDetails, email: mixedCaseAdaAddress }),
     },
     {
       label: "a reread with another last name stays uncertain without a PATCH",
