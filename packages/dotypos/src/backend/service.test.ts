@@ -5199,11 +5199,13 @@ describe("DotyposService conditional-write replay", () => {
   });
 
   type ConfirmSettlementRead = "NEW" | "CONFIRMED" | "CANCELLED" | 503;
-  type ConfirmSettlementPatch = "success" | "transport" | 503 | 412;
+  type ConfirmSettlementPatch = "success" | "transport" | 503 | 412 | 404;
   type ConfirmSettlementRow = {
     readonly label: string;
     /** Each version read's answer in order; the last one repeats. */
     readonly reads: readonly ConfirmSettlementRead[];
+    /** Each version read's ETag version in order; defaults to v1, then v2. */
+    readonly readEtags?: readonly string[];
     readonly patches: readonly ConfirmSettlementPatch[];
     readonly expected:
       | "success"
@@ -5259,11 +5261,12 @@ describe("DotyposService conditional-write replay", () => {
       ],
     },
     {
-      label: "a plain 412 on the rerun PATCH is a version conflict",
+      label: "a plain 412 on the rerun PATCH stays uncertain",
       reads: ["NEW", "NEW"],
       patches: [503, 412, 412],
       expected: {
-        _tag: "DotyposVersionConflict",
+        _tag: "DotyposUncertain",
+        reason: "conflict-after-replay",
         request: "reservation.patch",
         httpStatus: 412,
       },
@@ -5273,6 +5276,57 @@ describe("DotyposService conditional-write replay", () => {
         '"reservation-v1"',
         '"reservation-v2"',
       ],
+    },
+    {
+      label: "a rejected rerun PATCH stays uncertain",
+      reads: ["NEW", "NEW"],
+      patches: [503, 412, 404],
+      expected: {
+        _tag: "DotyposUncertain",
+        reason: "conflict-after-replay",
+        request: "reservation.patch",
+        httpStatus: 404,
+      },
+      expectedReads: 2,
+      expectedIfMatch: [
+        '"reservation-v1"',
+        '"reservation-v1"',
+        '"reservation-v2"',
+      ],
+    },
+    {
+      label:
+        "a NEW reread under the replayed ETag stays uncertain without another PATCH",
+      reads: ["NEW", "NEW"],
+      readEtags: ["v1", "v1"],
+      patches: [503, 412],
+      expected: {
+        _tag: "DotyposUncertain",
+        reason: "conflict-after-replay",
+        request: "reservation.patch",
+        httpStatus: 412,
+      },
+      expectedReads: 2,
+      expectedIfMatch: ['"reservation-v1"', '"reservation-v1"'],
+    },
+    {
+      label: "a CONFIRMED reread under the replayed ETag settles as applied",
+      reads: ["NEW", "CONFIRMED"],
+      readEtags: ["v1", "v1"],
+      patches: [503, 412],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: ['"reservation-v1"', '"reservation-v1"'],
+    },
+    {
+      label:
+        "a CANCELLED reread under the replayed ETag keeps cancellation protection",
+      reads: ["NEW", "CANCELLED"],
+      readEtags: ["v1", "v1"],
+      patches: [503, 412],
+      expected: "cancelled",
+      expectedReads: 2,
+      expectedIfMatch: ['"reservation-v1"', '"reservation-v1"'],
     },
     {
       label: "a second replay conflict stays uncertain without another rerun",
@@ -5321,10 +5375,13 @@ describe("DotyposService conditional-write replay", () => {
         if (request.method === "GET") {
           const read =
             row.reads[Math.min(versionReads, row.reads.length - 1)] ?? 503;
+          const etag =
+            row.readEtags?.[versionReads] ??
+            `v${Math.min(versionReads + 1, 2)}`;
           versionReads += 1;
           if (read === 503) return new Response("Unavailable", { status: 503 });
           return Response.json(reservation({ status: read }), {
-            headers: { ETag: `"reservation-v${Math.min(versionReads, 2)}"` },
+            headers: { ETag: `"reservation-${etag}"` },
           });
         }
         if (request.method === "PATCH") {
@@ -5376,6 +5433,381 @@ describe("DotyposService conditional-write replay", () => {
       }
       expect(versionReads).toBe(row.expectedReads);
       expect(ifMatchHeaders).toEqual([...row.expectedIfMatch]);
+    }
+  );
+
+  /**
+   * A version read: the customer's discount group (null clears it) under an
+   * ETag, a 503, a 200 without an ETag, or a 200 whose body fails decoding.
+   */
+  type DiscountGroupSettlementRead =
+    | { readonly group: string | null; readonly etag: string }
+    | 503
+    | "missing-etag"
+    | "invalid-body";
+  /**
+   * A PATCH answer: `success` echoes the requested group, `null-group`
+   * answers 200 without a group, `null-body` answers 200 with a JSON null,
+   * and `invalid-body` fails decoding.
+   */
+  type DiscountGroupSettlementPatch =
+    | "success"
+    | "null-group"
+    | "null-body"
+    | "invalid-body"
+    | "transport"
+    | 503
+    | 412
+    | 404;
+  type DiscountGroupSettlementRow = {
+    readonly label: string;
+    readonly requested: string | null;
+    /** Each version read's answer in order; the last one repeats. */
+    readonly reads: readonly DiscountGroupSettlementRead[];
+    readonly patches: readonly DiscountGroupSettlementPatch[];
+    readonly expected:
+      | "success"
+      | {
+          readonly _tag: string;
+          readonly reason?: string;
+          readonly request: string;
+          readonly httpStatus?: number;
+        };
+    readonly expectedReads: number;
+    /** Each PATCH's If-Match ETag version in order. */
+    readonly expectedIfMatch: readonly string[];
+  };
+
+  const replayConflict = {
+    _tag: "DotyposUncertain",
+    reason: "conflict-after-replay",
+    request: "customer.patch",
+    httpStatus: 412,
+  } as const;
+  const replayedOnly = ["v1", "v1"] as const;
+  const confirmedOnce = ["v1", "v1", "v2"] as const;
+  const appliedReads = [
+    { group: "group-a", etag: "v1" },
+    { group: "group-b", etag: "v2" },
+  ] as const;
+
+  const discountGroupSettlementRows: readonly DiscountGroupSettlementRow[] = [
+    {
+      label:
+        "503 then 412 settles as applied when a confirming PATCH holds the reread group",
+      requested: "group-b",
+      reads: appliedReads,
+      patches: [503, 412, "success"],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label:
+        "transport failure then 412 settles as applied when a confirming PATCH holds the reread group",
+      requested: "group-b",
+      reads: appliedReads,
+      patches: ["transport", 412, "success"],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label:
+        "503 then 412 settles a cleared group when a confirming PATCH holds none",
+      requested: null,
+      reads: [
+        { group: "group-a", etag: "v1" },
+        { group: null, etag: "v2" },
+      ],
+      patches: [503, 412, "success"],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label:
+        "a stale matching reread whose confirming PATCH meets 412 stays uncertain",
+      requested: "group-b",
+      reads: appliedReads,
+      patches: [503, 412, 412],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label:
+        "a confirming PATCH that is retried and then meets 412 stays uncertain without another settlement",
+      requested: "group-b",
+      reads: appliedReads,
+      patches: [503, 412, 503, 412],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: ["v1", "v1", "v2", "v2"],
+    },
+    {
+      label: "a confirming PATCH that exhausts its retries stays uncertain",
+      requested: "group-b",
+      reads: appliedReads,
+      patches: [503, 412, 503, 503, 503, 503],
+      expected: {
+        _tag: "DotyposUncertain",
+        reason: "server",
+        request: "customer.patch",
+        httpStatus: 503,
+      },
+      expectedReads: 2,
+      expectedIfMatch: ["v1", "v1", "v2", "v2", "v2", "v2"],
+    },
+    {
+      label: "a rejected confirming PATCH stays uncertain",
+      requested: "group-b",
+      reads: appliedReads,
+      patches: [503, 412, 404],
+      expected: {
+        _tag: "DotyposUncertain",
+        reason: "conflict-after-replay",
+        request: "customer.patch",
+        httpStatus: 404,
+      },
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "a confirming PATCH that fails decoding stays uncertain",
+      requested: "group-b",
+      reads: appliedReads,
+      patches: [503, 412, "invalid-body"],
+      expected: {
+        _tag: "DotyposUncertain",
+        reason: "invalid-response",
+        request: "customer.patch",
+      },
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "a confirming PATCH that answers a null body stays uncertain",
+      requested: "group-b",
+      reads: appliedReads,
+      patches: [503, 412, "null-body"],
+      expected: {
+        _tag: "DotyposUncertain",
+        reason: "invalid-response",
+        request: "customer.patch",
+      },
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label:
+        "a confirming PATCH that answers without the group stays uncertain",
+      requested: "group-b",
+      reads: appliedReads,
+      patches: [503, 412, "null-group"],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label:
+        "a reread that holds another group stays uncertain without a PATCH",
+      requested: "group-b",
+      reads: [
+        { group: "group-a", etag: "v1" },
+        { group: "group-c", etag: "v2" },
+      ],
+      patches: [503, 412],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: replayedOnly,
+    },
+    {
+      label:
+        "a reread that holds a group after clearing stays uncertain without a PATCH",
+      requested: null,
+      reads: [
+        { group: "group-a", etag: "v1" },
+        { group: "group-c", etag: "v2" },
+      ],
+      patches: [503, 412],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: replayedOnly,
+    },
+    {
+      label:
+        "a reread that holds the group under the replayed ETag stays uncertain without a PATCH",
+      requested: "group-b",
+      reads: [
+        { group: "group-a", etag: "v1" },
+        { group: "group-b", etag: "v1" },
+      ],
+      patches: [503, 412],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: replayedOnly,
+    },
+    {
+      label: "a plain 412 is a version conflict without a reread",
+      requested: "group-b",
+      reads: appliedReads,
+      patches: [412],
+      expected: {
+        _tag: "DotyposVersionConflict",
+        request: "customer.patch",
+        httpStatus: 412,
+      },
+      expectedReads: 1,
+      expectedIfMatch: ["v1"],
+    },
+    {
+      label: "a failed settling reread stays uncertain",
+      requested: "group-b",
+      reads: [{ group: "group-a", etag: "v1" }, 503],
+      patches: [503, 412],
+      expected: {
+        _tag: "DotyposUncertain",
+        reason: "conflict-after-replay",
+        request: "customer.version",
+        httpStatus: 503,
+      },
+      expectedReads: 5,
+      expectedIfMatch: replayedOnly,
+    },
+    {
+      label: "a settling reread without an ETag stays uncertain",
+      requested: "group-b",
+      reads: [{ group: "group-a", etag: "v1" }, "missing-etag"],
+      patches: [503, 412],
+      expected: {
+        _tag: "DotyposUncertain",
+        reason: "conflict-after-replay",
+        request: "customer.version",
+      },
+      expectedReads: 2,
+      expectedIfMatch: replayedOnly,
+    },
+    {
+      label: "a settling reread that fails decoding stays uncertain",
+      requested: "group-b",
+      reads: [{ group: "group-a", etag: "v1" }, "invalid-body"],
+      patches: [503, 412],
+      expected: {
+        _tag: "DotyposUncertain",
+        reason: "conflict-after-replay",
+        request: "customer.version",
+      },
+      expectedReads: 2,
+      expectedIfMatch: replayedOnly,
+    },
+  ];
+
+  test.each([...discountGroupSettlementRows])(
+    "setCustomerDiscountGroup settlement: $label",
+    async (row) => {
+      let versionReads = 0;
+      const ifMatchHeaders: Array<string | null> = [];
+      const patchBodies: unknown[] = [];
+      const fetchMock = mockDotyposFetch(async (request) => {
+        const url = new URL(request.url);
+        if (url.pathname === "/signin/token") return tokenResponse();
+        if (url.pathname !== "/clouds/cloud-id/customers/customer-id") {
+          return new Response("Not found", { status: 404 });
+        }
+        if (request.method === "GET") {
+          const read = row.reads[
+            Math.min(versionReads, row.reads.length - 1)
+          ] as DiscountGroupSettlementRead;
+          versionReads += 1;
+          if (read === 503) return new Response("Unavailable", { status: 503 });
+          // Both hold the requested group, so only the failed read decides.
+          if (read === "missing-etag") {
+            return Response.json(customer({ _discountGroupId: "group-b" }));
+          }
+          if (read === "invalid-body") {
+            return Response.json(
+              { ...customer({ _discountGroupId: "group-b" }), _cloudId: 42 },
+              { headers: { ETag: '"customer-v9"' } }
+            );
+          }
+          return Response.json(customer({ _discountGroupId: read.group }), {
+            headers: { ETag: `"customer-${read.etag}"` },
+          });
+        }
+        if (request.method === "PATCH") {
+          const patch = row.patches[ifMatchHeaders.length];
+          ifMatchHeaders.push(request.headers.get("if-match"));
+          patchBodies.push(await request.json());
+          if (patch === "transport") throw new TypeError("fetch failed");
+          if (patch === "success") {
+            return Response.json(customer({ _discountGroupId: row.requested }));
+          }
+          if (patch === "null-group") {
+            return Response.json(customer({ _discountGroupId: null }));
+          }
+          if (patch === "null-body") return Response.json(null);
+          if (patch === "invalid-body") {
+            return Response.json({
+              ...customer({ _discountGroupId: row.requested }),
+              _cloudId: 42,
+            });
+          }
+          return new Response(null, { status: patch ?? 500 });
+        }
+        return new Response("Not found", { status: 404 });
+      });
+
+      const result = await runWithServiceRetryingInstantly(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos
+            .setCustomerDiscountGroup(
+              dotyposCustomerId("customer-id"),
+              row.requested === null
+                ? null
+                : dotyposDiscountGroupId(row.requested)
+            )
+            .pipe(Effect.result);
+        }),
+        fetchMock
+      );
+
+      if (row.expected === "success") {
+        expect(result).toMatchObject({
+          _tag: "Success",
+          success: { id: "customer-id" },
+        });
+        if (Predicate.isTagged(result, "Success")) {
+          expect(result.success._discountGroupId ?? null).toBe(
+            row.requested === null
+              ? null
+              : dotyposDiscountGroupId(row.requested)
+          );
+        }
+      } else {
+        expect(result).toMatchObject({
+          _tag: "Failure",
+          failure: {
+            _tag: row.expected._tag,
+            ...(row.expected.reason && { reason: row.expected.reason }),
+            operation: "setCustomerDiscountGroup",
+            request: row.expected.request,
+            ...(row.expected.httpStatus !== undefined && {
+              httpStatus: row.expected.httpStatus,
+            }),
+          },
+        });
+      }
+      expect(versionReads).toBe(row.expectedReads);
+      // The replay reuses the first ETag; a confirmation uses the reread's.
+      expect(ifMatchHeaders).toEqual(
+        row.expectedIfMatch.map((etag) => `"customer-${etag}"`)
+      );
+      // Every PATCH, a confirmation included, sends the same payload.
+      expect(patchBodies).toEqual(
+        row.expectedIfMatch.map(() => ({ _discountGroupId: row.requested }))
+      );
     }
   );
 });
