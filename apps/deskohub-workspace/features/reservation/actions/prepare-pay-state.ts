@@ -28,6 +28,7 @@ import {
   buildCheckoutPayPath,
   buildSignedPayState,
   CheckoutPricingService,
+  type PayStateLinkOptions,
   payStateDefaultTtlMilliseconds,
   sealPayStateForUrl,
 } from "@/features/checkout/backend/checkout";
@@ -281,11 +282,8 @@ const toReadyResult = Effect.fn("preparePayState.toReadyResult")(
      */
     readonly stableLink?: boolean;
   }) {
-    const linkOptions = input.stableLink
-      ? {
-          now: () => new Date(input.bookedAt.epochMilliseconds),
-          syntheticIv: true,
-        }
+    const linkOptions: PayStateLinkOptions = input.stableLink
+      ? { issuedAt: input.bookedAt, deterministic: true }
       : {};
     const state = yield* buildSignedPayState(
       {

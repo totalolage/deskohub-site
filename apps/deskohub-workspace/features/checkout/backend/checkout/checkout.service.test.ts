@@ -45,6 +45,7 @@ import { normalizedOfficeReservationOrderSchema } from "@/features/reservation/o
 import { reservationOrderSchema } from "@/features/reservation/reservation-order";
 import { getSlowestSuccessfulCalendarLoad } from "@/shared/backend/config/google-calendar.config.test-utils";
 import { getNexiRequestTimeoutMilliseconds } from "@/shared/backend/config/nexi.config";
+import { TestSealedStateKeys } from "@/shared/testing/sealed-state-keys.test-utils";
 import { withInstantSleeps } from "@/shared/testing/workspace-test-clock.test-utils";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { instantStringSchema } from "@/shared/utils/temporal";
@@ -253,7 +254,7 @@ const buildPayStateToken = (input: {
         ttlMilliseconds: 10 * 60 * 1000,
       });
       return yield* sealPayState(state);
-    })
+    }).pipe(Effect.provide(TestSealedStateKeys))
   );
 
 const buildMeetingRoomQuote = (
@@ -302,7 +303,7 @@ const buildMeetingRoomPayStateToken = (input: {
         ttlMilliseconds: 10 * 60 * 1000,
       });
       return yield* sealPayState(state);
-    })
+    }).pipe(Effect.provide(TestSealedStateKeys))
   );
 
 const buildStartedWholeDayReservation = () => {
@@ -408,7 +409,7 @@ const buildOfficePayStateToken = (input: {
         ttlMilliseconds: 10 * 60 * 1000,
       });
       return yield* sealPayState(state);
-    })
+    }).pipe(Effect.provide(TestSealedStateKeys))
   );
 
 const makeAttempt = (input: {
@@ -698,7 +699,8 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
             analytics.layer,
             Layer.mock(LegalEvidenceEventRepository, {
               recordMany: recordLegalEvidence,
-            })
+            }),
+            TestSealedStateKeys
           )
         )
       )
@@ -1691,7 +1693,9 @@ describe("CheckoutService", () => {
       result.freshPayUrl,
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
-    const freshState = Effect.runSync(openPayState(freshToken ?? ""));
+    const freshState = Effect.runSync(
+      openPayState(freshToken ?? "").pipe(Effect.provide(TestSealedStateKeys))
+    );
     expect(freshState.reservation.kind).toBe("meeting-room");
     expect(freshState.checkoutSessionId).toBe(checkoutSessionId);
     expect(freshState.submittedCode).toBe(submittedCode);
@@ -2276,8 +2280,9 @@ describe("CheckoutService", () => {
     const result = await Effect.runPromise(harness.effect);
 
     expect(
-      Effect.runSync(openPayState(acceptedToken)).quote.payment.discounts[0]
-        ?.discount.label
+      Effect.runSync(
+        openPayState(acceptedToken).pipe(Effect.provide(TestSealedStateKeys))
+      ).quote.payment.discounts[0]?.discount.label
     ).toBe("Letni sleva 50 %");
     expect(result.status).toBe("pricing_changed");
     if (result.status !== "pricing_changed") {
@@ -2291,7 +2296,9 @@ describe("CheckoutService", () => {
       result.freshPayUrl,
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
-    const freshState = Effect.runSync(openPayState(freshToken ?? ""));
+    const freshState = Effect.runSync(
+      openPayState(freshToken ?? "").pipe(Effect.provide(TestSealedStateKeys))
+    );
     expect(freshState.quote.payment.discounts[0]?.discount.label).toBe(
       "Edited English summer label"
     );
@@ -2331,7 +2338,9 @@ describe("CheckoutService", () => {
       result.freshPayUrl,
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
-    const freshState = Effect.runSync(openPayState(freshToken ?? ""));
+    const freshState = Effect.runSync(
+      openPayState(freshToken ?? "").pipe(Effect.provide(TestSealedStateKeys))
+    );
     expect(freshState.requestedDiscountCode).toBe(requestedCode);
     expect(freshState.submittedCode).toBeUndefined();
     expect(freshState.submittedCodeDiscountId).toBeUndefined();
@@ -2359,7 +2368,9 @@ describe("CheckoutService", () => {
       result.freshPayUrl,
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
-    const freshState = Effect.runSync(openPayState(freshToken ?? ""));
+    const freshState = Effect.runSync(
+      openPayState(freshToken ?? "").pipe(Effect.provide(TestSealedStateKeys))
+    );
     expect(freshState.requestedDiscountCode).toBe(requestedCode);
     expect(freshState.submittedCode).toBeUndefined();
   });
@@ -2394,7 +2405,9 @@ describe("CheckoutService", () => {
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
     expect(
-      Effect.runSync(openPayState(freshToken ?? "")).submittedCode
+      Effect.runSync(
+        openPayState(freshToken ?? "").pipe(Effect.provide(TestSealedStateKeys))
+      ).submittedCode
     ).toBeUndefined();
     expect(affirm).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -2613,7 +2626,9 @@ describe("CheckoutService", () => {
       result.freshPayUrl,
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
-    const freshState = Effect.runSync(openPayState(freshToken ?? ""));
+    const freshState = Effect.runSync(
+      openPayState(freshToken ?? "").pipe(Effect.provide(TestSealedStateKeys))
+    );
     expect(freshState.requestedDiscountCode).toBe(requestedCode);
   });
 
@@ -2668,7 +2683,9 @@ describe("CheckoutService", () => {
       result.freshPayUrl,
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
-    const freshState = Effect.runSync(openPayState(freshToken ?? ""));
+    const freshState = Effect.runSync(
+      openPayState(freshToken ?? "").pipe(Effect.provide(TestSealedStateKeys))
+    );
     expect(freshState.requestedDiscountCode).toBe(requestedCode);
   });
 

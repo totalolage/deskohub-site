@@ -14,7 +14,6 @@ import type {
 } from "./campaign-content";
 import {
   type CampaignContentChanges,
-  campaignContentLocales,
   changeCampaignContent,
   readCampaignContent,
   readCampaignDraftContent,
@@ -547,7 +546,6 @@ describe("writeCampaignContent", () => {
       expect(Object.keys(writeCampaignContent(reordered, form))).toEqual([
         ...locales,
       ]);
-      expect(campaignContentLocales(reordered)).toEqual(locales);
     }
   );
 

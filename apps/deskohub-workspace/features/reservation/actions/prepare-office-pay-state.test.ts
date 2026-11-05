@@ -3,7 +3,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Effect, Result, Schema } from "effect";
+import { Effect, Layer, Result, Schema } from "effect";
 import { CheckoutPricingServiceMock } from "@/features/checkout/backend/checkout/checkout-pricing.service.mock";
 import { buildCoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
 import { buildOfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
@@ -17,6 +17,7 @@ import {
   normalizedOfficeReservationOrderSchema,
 } from "@/features/reservation/office-reservation";
 import type { Money } from "@/shared/money/money";
+import { TestSealedStateKeys } from "@/shared/testing/sealed-state-keys.test-utils";
 
 mock.module("server-only", () => ({}));
 
@@ -90,7 +91,7 @@ const sealToken = (input: {
       quote: yield* buildOfficeReservationQuote(sealedReservation.details),
     });
     return yield* sealAdvertisedPriceState(state);
-  }).pipe(Effect.runPromise);
+  }).pipe(Effect.provide(TestSealedStateKeys), Effect.runPromise);
 
 const sealCoworkToken = () =>
   Effect.gen(function* () {
@@ -107,7 +108,7 @@ const sealCoworkToken = () =>
       quote: yield* buildCoworkReservationQuote(details),
     });
     return yield* sealAdvertisedPriceState(state);
-  }).pipe(Effect.runPromise);
+  }).pipe(Effect.provide(TestSealedStateKeys), Effect.runPromise);
 
 const prepare = async (input: {
   readonly advertisedPriceToken: string;
@@ -137,7 +138,12 @@ const prepare = async (input: {
     reservation,
     bookedAt,
   } as Parameters<typeof prepareOfficeAdvertisement>[0]).pipe(
-    Effect.provide(CheckoutPricingServiceMock({ affirmOfficeAdvertisement })),
+    Effect.provide(
+      Layer.merge(
+        CheckoutPricingServiceMock({ affirmOfficeAdvertisement }),
+        TestSealedStateKeys
+      )
+    ),
     Effect.result,
     Effect.runPromise
   );

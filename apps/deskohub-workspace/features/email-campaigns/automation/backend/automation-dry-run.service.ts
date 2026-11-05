@@ -39,7 +39,7 @@ import {
   type CampaignDeliveryMismatch,
   type CampaignNotFound,
 } from "../../errors";
-import { campaignLocales } from "../../recipient-locale";
+import { campaignLocaleEntries, campaignLocales } from "../../recipient-locale";
 import type { AutomationDraftHash } from "../automation-draft-hash";
 import { automationPageCursor } from "../automation-page-cursor";
 import { automationTickAtOrAfter } from "../automation-ticks";
@@ -501,11 +501,8 @@ export class AutomationDryRun extends Context.Service<
           onNone: () => Effect.succeed([]),
           onSome: ({ campaign }) =>
             Effect.forEach(
-              campaignLocales.flatMap((locale) => {
-                const content = campaign.content[locale];
-                return content === undefined ? [] : [{ locale, content }];
-              }),
-              ({ locale, content }) =>
+              campaignLocaleEntries(campaign.content, campaignLocales),
+              ([locale, content]) =>
                 renderCampaignEmailPreview({
                   templateKey: campaign.templateKey,
                   purpose: campaign.purpose,
