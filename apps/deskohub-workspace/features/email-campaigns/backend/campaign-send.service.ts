@@ -24,7 +24,7 @@ import {
   emailCampaignSends,
   emailCampaigns,
 } from "@/db/schema";
-import { type Locale, locales } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { WorkspaceEmailLayer } from "@/shared/backend/config/email.config";
@@ -60,7 +60,10 @@ import {
   CampaignTestRecipientInvalid,
 } from "../errors";
 import { ensureCampaignRecipientsAllowed } from "../recipient-domain-guard";
-import { campaignContentCoversAudience } from "../recipient-locale";
+import {
+  campaignContentCoversAudience,
+  campaignContentLocales,
+} from "../recipient-locale";
 import { AudienceFactsService } from "./audience-facts.service";
 import { CampaignService } from "./campaign.service";
 import { CampaignAudienceService } from "./campaign-audience.service";
@@ -230,11 +233,9 @@ export class CampaignSendService extends Context.Service<
           emails,
         });
 
-      /** The locales the campaign has content for, in locale order. */
+      /** The locales the campaign has content for, in content order. */
       const requireContentLocales = (campaign: CampaignRow) =>
-        Effect.succeed(
-          locales.filter((locale) => campaign.content[locale] !== undefined)
-        ).pipe(
+        Effect.succeed(campaignContentLocales(campaign.content)).pipe(
           Effect.filterOrFail(
             (contentLocales) => contentLocales.length > 0,
             () => new CampaignContentMissing({ campaignId: campaign.id })

@@ -3,7 +3,7 @@ import "server-only";
 import type { AdministrationCampaignDetailType } from "@deskohub/workspace-admin-api";
 import { Effect } from "effect";
 import { runAdministrationPage } from "@/features/administrators/server/administration-request.server";
-import { campaignLocales } from "../../recipient-locale";
+import { campaignLocaleEntries, campaignLocales } from "../../recipient-locale";
 import {
   campaignOperationCapabilities,
   invokeCampaignOperation,
@@ -13,11 +13,8 @@ const sentCampaignEmails = Effect.fn("loadSentCampaignEmails")(function* (
   campaign: AdministrationCampaignDetailType
 ) {
   return yield* Effect.forEach(
-    campaignLocales.flatMap((locale) => {
-      const content = campaign.content[locale];
-      return content === undefined ? [] : [{ locale, content }];
-    }),
-    ({ locale, content }) =>
+    campaignLocaleEntries(campaign.content, campaignLocales),
+    ([locale, content]) =>
       invokeCampaignOperation("previewCampaignTemplate", {
         templateKey: campaign.templateKey,
         preview: { _tag: "Campaign", campaignId: campaign.id, locale },
