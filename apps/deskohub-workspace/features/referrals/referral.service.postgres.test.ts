@@ -2240,6 +2240,8 @@ const makeAccountPrerequisiteLayer = (input: {
   readonly failingAt?: {
     readonly reads: Parameters<typeof accountLinksFailingAt>[0];
     readonly unreachable: CustomerAccountLinkRepository["Service"];
+    /** How many times each named read answers before it fails. */
+    readonly afterHealthyReads?: number;
   };
 }) => {
   const databaseLayer = Layer.succeed(
@@ -2254,6 +2256,9 @@ const makeAccountPrerequisiteLayer = (input: {
     ? accountLinksFailingAt(input.failingAt.reads, {
         healthy: healthyLinks,
         unreachable: input.failingAt.unreachable,
+        ...(input.failingAt.afterHealthyReads !== undefined && {
+          afterHealthyReads: input.failingAt.afterHealthyReads,
+        }),
       })
     : healthyLinks;
 
@@ -2370,6 +2375,43 @@ describe.skipIf(!testDatabase)(
         }
       }
     );
+
+    test("reports a failed link recheck under acceptance's locks as a database outage and writes nothing", async () => {
+      const context = await createVerdictContext();
+      const unreachable = await connectUnreachableWorkspaceDatabase();
+      try {
+        // The identity check reads the link before the locks; the recheck
+        // inside the attribution transaction fails.
+        const recheckDown = makeAccountPrerequisiteLayer({
+          authentication: signedInAuthentication(context.invitee.accountId),
+          failingAt: {
+            reads: ["find"],
+            unreachable: await unreachableAccountLinks(unreachable),
+            afterHealthyReads: 1,
+          },
+        });
+
+        const failure = await acceptAtAccount(
+          context,
+          context.referrer.code,
+          recheckDown
+        );
+        expect(failure._tag).toBe("Failure");
+        expect(
+          failure._tag === "Failure" && isDatabaseQueryError(failure.failure)
+        ).toBe(true);
+        expect(
+          await readInviteeReferrer(context.invitee.dotyposCustomerId)
+        ).toBeUndefined();
+
+        expect(
+          outcomeOf(await acceptAtAccount(context, context.referrer.code))
+        ).toBe("accepted");
+      } finally {
+        await unreachable.pool.end();
+        await context.cleanup();
+      }
+    });
 
     test("still reports a gone, other, deleting, or relinked account as account_unavailable", async () => {
       const context = await createVerdictContext();

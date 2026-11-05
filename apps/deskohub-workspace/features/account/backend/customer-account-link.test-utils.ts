@@ -27,30 +27,39 @@ export const unreachableAccountLinks = (
 /**
  * The healthy account link repository with the named reads served by the
  * unreachable one, so each fails with a real connection error while the
- * others answer.
+ * others answer. With `afterHealthyReads`, each named read first answers that
+ * many times, so a later read of the same fact fails.
  */
 export const accountLinksFailingAt = (
   reads: readonly ("find" | "findActivityState" | "withAccountLock")[],
   repositories: {
     readonly healthy: Layer.Layer<CustomerAccountLinkRepository>;
     readonly unreachable: AccountLinks;
+    readonly afterHealthyReads?: number;
   }
 ) =>
   Layer.effect(
     CustomerAccountLinkRepository,
-    Effect.map(
-      CustomerAccountLinkRepository,
-      (healthy): AccountLinks => ({
+    Effect.map(CustomerAccountLinkRepository, (healthy): AccountLinks => {
+      const { unreachable } = repositories;
+      const healthyReads = repositories.afterHealthyReads ?? 0;
+      const calls = { find: 0, findActivityState: 0, withAccountLock: 0 };
+      const fails = (read: (typeof reads)[number]) =>
+        reads.includes(read) && calls[read]++ >= healthyReads;
+      return {
         ...healthy,
-        ...(reads.includes("find") && {
-          find: repositories.unreachable.find,
-        }),
-        ...(reads.includes("findActivityState") && {
-          findActivityState: repositories.unreachable.findActivityState,
-        }),
-        ...(reads.includes("withAccountLock") && {
-          withAccountLock: repositories.unreachable.withAccountLock,
-        }),
-      })
-    )
+        find: (accountId) =>
+          (fails("find") ? unreachable : healthy).find(accountId),
+        findActivityState: (accountId) =>
+          (fails("findActivityState")
+            ? unreachable
+            : healthy
+          ).findActivityState(accountId),
+        withAccountLock: (accountId, effect) =>
+          (fails("withAccountLock") ? unreachable : healthy).withAccountLock(
+            accountId,
+            effect
+          ),
+      };
+    })
   ).pipe(Layer.provide(repositories.healthy));
