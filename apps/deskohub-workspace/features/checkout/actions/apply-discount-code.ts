@@ -17,6 +17,7 @@ import { defaultLocale, isLocale, type Locale } from "@/features/i18n";
 import { ReferralService } from "@/features/referrals";
 import { ReferralReleaseGateRequest } from "@/features/referrals/referral-release-gate.server";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
+import { SealedStateKeys } from "@/shared/backend/sealed-state-keys.service";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { applyDiscountCodeSchema } from "./apply-discount-code-input";
 import {
@@ -41,7 +42,8 @@ const applyDiscountCodeAction = defineWorkspaceAction(
               PayableReservationService.Live,
               ReferralService.Live,
               CheckoutReferralService.Live,
-              CustomerAccountContactService.Live
+              CustomerAccountContactService.Live,
+              SealedStateKeys.Default
             )
           ),
           Layer.provideMerge(ReferralReleaseGateRequest)

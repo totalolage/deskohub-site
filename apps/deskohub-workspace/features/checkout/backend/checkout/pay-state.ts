@@ -6,14 +6,10 @@ import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-o
 import { payStateTokenQueryParam } from "@/features/checkout/pay-state-token-query";
 import type { AppliedDiscount } from "@/features/discounts";
 import {
-  createSealedStateClaims,
-  decodeSealedState,
-  openSealedState,
-  parseSealedStateKey,
-  type SealedStateCryptoOptions,
-  type SealedStateKey,
-  SealedStateTokenError,
-  sealState,
+  makeLegacySealedState,
+  type SealedStateIssueOptions,
+  type SealedStateSealOptions,
+  type SealedStateTokenError,
 } from "@/shared/backend/sealed-state";
 import {
   type BuildSignedCoworkPayStateInput,
@@ -63,7 +59,18 @@ const preserveSignedPayStateMetadataInvariant = (
   state: typeof signedPayStateSchema.Type
 ): SignedPayState => state as SignedPayState;
 
-export type PayStateKey = SealedStateKey;
+/**
+ * Pay-state tokens live in open Pay pages and agent links, so they keep the
+ * sealed state format that predates purposes.
+ */
+const payStateCodec = makeLegacySealedState({
+  schema: signedPayStateSchema,
+  ttlMilliseconds: payStateDefaultTtlMilliseconds,
+});
+
+/** How a Pay link is issued and sealed; agents' stable links set both. */
+export type PayStateLinkOptions = SealedStateIssueOptions &
+  SealedStateSealOptions;
 
 export type SealPayStateForUrlResult = {
   readonly type: "sealedPayState";
@@ -125,40 +132,44 @@ export const getSignedPayStateBookedAt = (
   state: Pick<SignedPayState, "bookedAt">
 ) => Temporal.Instant.from(state.bookedAt);
 
+const payStateTokenMessages = {
+  "missing-secret": "At least one Pay state encryption key is required.",
+  "invalid-secret": "Pay state configuration is invalid.",
+  "invalid-token": "Invalid Pay state token.",
+  "unknown-kid": "Pay state token used an unknown key id.",
+  expired: "Pay state token expired.",
+} as const satisfies Record<SealedStateTokenError["code"], string>;
+
 export class PayStateTokenError extends Data.TaggedError("PayStateTokenError")<{
   readonly code: SealedStateTokenError["code"];
   readonly message: string;
   readonly cause?: unknown;
-}> {}
+}> {
+  static fromSealedState = (cause: SealedStateTokenError) =>
+    new PayStateTokenError({
+      code: cause.code,
+      message: payStateTokenMessages[cause.code],
+      cause,
+    });
 
-const toPayStateTokenError = (cause: unknown) =>
-  cause instanceof SealedStateTokenError
-    ? new PayStateTokenError({
-        code: cause.code,
-        message: cause.message.replaceAll("sealed state", "Pay state"),
-        cause,
-      })
-    : new PayStateTokenError({
-        code: "invalid-token",
-        message: "Invalid Pay state.",
-        cause,
-      });
-
-export const parsePayStateKey = Effect.fn("payState.parseKey")(
-  (kid: string, base64UrlKey: string) =>
-    parseSealedStateKey(kid, base64UrlKey).pipe(
-      Effect.mapError(toPayStateTokenError)
-    )
-);
+  static invalidState = (cause: Schema.SchemaError) =>
+    new PayStateTokenError({
+      code: "invalid-token",
+      message: "Invalid Pay state.",
+      cause,
+    });
+}
 
 export const buildSignedPayState = Effect.fn("payState.build")(function* (
   input: BuildSignedPayStateInput,
-  options: SealedStateCryptoOptions = {}
+  options: SealedStateIssueOptions = {}
 ) {
-  const claims = yield* createSealedStateClaims(
-    input.ttlMilliseconds ?? payStateDefaultTtlMilliseconds,
-    options
-  ).pipe(Effect.mapError(toPayStateTokenError));
+  const claims = yield* payStateCodec
+    .issueClaims({
+      issuedAt: options.issuedAt,
+      ttlMilliseconds: input.ttlMilliseconds,
+    })
+    .pipe(Effect.mapError(PayStateTokenError.fromSealedState));
   const envelope = {
     ...claims,
     locale: input.locale,
@@ -182,28 +193,23 @@ export const buildSignedPayState = Effect.fn("payState.build")(function* (
     onExcessProperty: "error",
   })(state).pipe(
     Effect.map(preserveSignedPayStateMetadataInvariant),
-    Effect.mapError(toPayStateTokenError)
+    Effect.mapError(PayStateTokenError.invalidState)
   );
 });
 
-export const sealPayState = Effect.fn("payState.seal")(function* (
-  state: SignedPayState,
-  options: SealedStateCryptoOptions = {}
-) {
-  const encodedState = yield* Schema.encodeUnknownEffect(signedPayStateSchema, {
-    onExcessProperty: "error",
-  })(state).pipe(Effect.mapError(toPayStateTokenError));
+export const sealPayState = Effect.fn("payState.seal")(
+  (state: SignedPayState, options: SealedStateSealOptions = {}) =>
+    payStateCodec
+      .seal(state, options)
+      .pipe(Effect.mapError(PayStateTokenError.fromSealedState))
+);
 
-  return yield* sealState(encodedState, state.kid, options).pipe(
-    Effect.mapError(toPayStateTokenError)
-  );
-});
-
-export const openPayState = Effect.fn("payState.open")(
-  (token: string, options: SealedStateCryptoOptions = {}) =>
-    openSealedState(token, signedPayStateSchema, options).pipe(
+export const openPayState = Effect.fn("payState.open")((token: string) =>
+  payStateCodec
+    .open(token)
+    .pipe(
       Effect.map(preserveSignedPayStateMetadataInvariant),
-      Effect.mapError(toPayStateTokenError)
+      Effect.mapError(PayStateTokenError.fromSealedState)
     )
 );
 
@@ -224,17 +230,22 @@ export const payStateContinuesOn = (
   (page.reservationKind === undefined ||
     state.reservation.kind === page.reservationKind);
 
+/**
+ * The reservation kind of an authenticated Pay state, expired or not, so an
+ * expired Pay page can restart its reservation. Nothing else may act on
+ * state read this way.
+ */
 export const getPayStateRestartKind = Effect.fn("payState.getRestartKind")(
-  (token: string, options: SealedStateCryptoOptions = {}) =>
-    decodeSealedState(token, signedPayStateSchema, options).pipe(
+  (token: string) =>
+    payStateCodec.inspect(token).pipe(
       Effect.map((state) => state.reservation.kind),
-      Effect.mapError(toPayStateTokenError)
+      Effect.mapError(PayStateTokenError.fromSealedState)
     )
 );
 
 export const sealPayStateForUrl = Effect.fn("payState.sealForUrl")(function* (
   state: SignedPayState,
-  options: SealedStateCryptoOptions = {}
+  options: SealedStateSealOptions = {}
 ) {
   const token = yield* sealPayState(state, options);
 

@@ -9,6 +9,7 @@ export {
   getSignedPayStateSubmittedCode,
   getSignedPayStateSubmittedCodeApplication,
   openPayState,
+  type PayStateLinkOptions,
   PayStateTokenError,
   payStateContinuesOn,
   payStateDefaultTtlMilliseconds,

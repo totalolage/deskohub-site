@@ -22,6 +22,7 @@ import { WorkspaceAvailabilityService } from "@/features/reservation/backend/wor
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { moneyWithValue } from "@/shared/money/money";
+import { TestSealedStateKeys } from "@/shared/testing/sealed-state-keys.test-utils";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
 const decodeTable = Schema.decodeSync(DotyposTableSchema);
@@ -220,7 +221,8 @@ export const makeAgentToolTestServices = ({
         })
       )
     ),
-    officeFlag
+    officeFlag,
+    TestSealedStateKeys
   );
 
   return { layer, dotyposRequests, snapshotReads };
