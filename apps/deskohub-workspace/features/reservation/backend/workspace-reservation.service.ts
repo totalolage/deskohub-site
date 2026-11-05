@@ -1,9 +1,9 @@
+import type { DotyposCustomer } from "@deskohub/dotypos";
 import {
   type DotyposReservationId,
   DotyposReservationIdSchema,
   DotyposService,
 } from "@deskohub/dotypos";
-import type { Customer } from "@deskohub/dotypos/generated";
 import { Context, Data, Effect, Layer, Option, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -46,7 +46,7 @@ export type WorkspaceReservationDetails = Pick<
   | "locale"
 > & {
   readonly dotyposReservationId: DotyposReservationId;
-  readonly customer: Customer;
+  readonly customer: DotyposCustomer;
   readonly reservedFrom: Temporal.Instant;
   readonly reservedUntil: Temporal.Instant;
   /**

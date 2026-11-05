@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   type DotyposCustomer,
+  type DotyposCustomerWriteRecord,
   DotyposRejected,
   DotyposService,
   DotyposUnavailable,
@@ -34,6 +35,12 @@ const makeCustomer = (
     expireDate: null,
     ...overrides,
   }) as DotyposCustomer;
+
+/** A customer as a create may return it, without the id Dotypos assigned. */
+const createdCustomerWithoutId = (): DotyposCustomerWriteRecord => {
+  const { id: _id, ...customer } = makeCustomer();
+  return customer;
+};
 
 const activeCustomer = makeCustomer();
 
@@ -1148,7 +1155,7 @@ describe("CustomerDotyposAdapter", () => {
         {
           createCustomer: () => {
             calls.push("create");
-            return Effect.succeed(makeCustomer({ id: undefined }));
+            return Effect.succeed(createdCustomerWithoutId());
           },
           findCustomer: () => {
             calls.push("find");
@@ -1186,7 +1193,7 @@ describe("CustomerDotyposAdapter", () => {
     test("fails with the unusable-create error when the exact-email fallback has no match", async () => {
       const outcome = await runWithDotypos(
         {
-          createCustomer: () => Effect.succeed(makeCustomer({ id: undefined })),
+          createCustomer: () => Effect.succeed(createdCustomerWithoutId()),
           findCustomer: () =>
             Effect.succeed(FindCustomerResult.NotFound({ matches: [] })),
         },

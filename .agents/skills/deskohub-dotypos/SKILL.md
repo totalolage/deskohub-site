@@ -20,7 +20,7 @@ description: Dotypos API, @deskohub/dotypos, DotyposService, OpenAPI contract, g
 
 ## Reading many records by id
 
-Use `getCustomersByIds(ids, options?)` or `getReservationsByIds(ids, options?)`. They deduplicate, batch internally and return a `ReadonlyMap`; missing records and records without an id are omitted. List and paginated operations serve unfiltered, customer and time-range reads.
+Use `getCustomersByIds(ids, options?)` or `getReservationsByIds(ids, options?)`. They deduplicate, batch internally and return a `ReadonlyMap`; missing records are omitted. List and paginated operations serve unfiltered, customer and time-range reads.
 
 - `dotyposIdReadBatchSize` is an operational batch of 100, not a provider ID-filter maximum. The [official paging contract](https://docs.api.dotypos.com/api-reference/general/paging/) caps each page at 100 records. The [filtering contract](https://docs.api.dotypos.com/api-reference/general/filter/) gives no ID-count or URL-length maximum. Authenticated read-only probes on 2026-10-30 accepted 50, 100 and 101 distinct nonexistent signed-long IDs for customers and reservations, returning the documented empty 404 with a null body. Both resource OPTIONS requests returned 200 with GET allowed. The largest encoded URL was 2432 bytes. These probes establish bounded query acceptance, not positive-result cardinality or the actual provider ceiling.
 - `dotyposIdReadRequests(uniqueIdCount)` uses the same batch rule. Count unique requested IDs, not returned records. It is exact for successful, unretried, single-page transport batches, excluding access-token exchanges. Failures may stop unsent batches. Both ID operations never retry or follow pagination; unexpected paging is `DotyposRejected{invalid-response}`. Keep retry-policy changes in the request-profile work.
@@ -47,12 +47,26 @@ If a real response fails generated decoding, fix the OpenAPI schema and regenera
 `@deskohub/dotypos` reports failures as `DotyposUnavailable`, `DotyposRejected`, `DotyposUncertain`, `DotyposVersionConflict` and `DotyposReservationCancelledError`, following the provider-outcome convention in `deskohub-effect-v4` (services-and-layers.md, "Report provider outcomes").
 
 - `getCustomer`, `getReservation` and `patchCustomer` return `Option`: `none` means Dotypos has no such record. A missing reservation at confirm time is `DotyposRejected{not-found}`.
+- `confirmReservation` settles a replayed PATCH that meets 412 (`DotyposUncertain{conflict-after-replay}`) by rerunning its read, status match and PATCH once: CONFIRMED succeeds, CANCELLED fails `DotyposReservationCancelledError`, and NEW patches under the fresh ETag. A failed settling read stays `DotyposUncertain`. A plain 412 stays `DotyposVersionConflict` and is not rerun. A live non-production check found that replaying a landed reservation PATCH with its original ETag returns an empty 412, and that a stale confirmation leaves a NEW reservation unchanged. Customer writes don't settle this way yet.
 - Annotate error channels with `DotyposReadFailure`, `DotyposWriteFailure` or `DotyposConditionalWriteFailure`.
 - Log a failure with `dotyposFailureLogFields(failure)` and store `dotyposFailureCode(failure)` as a failure code.
 - The status-to-outcome classifier, the retry ceilings (`src/backend/request-profiles.ts`) and ETag replay stay private to the package. To change how a status or request is treated, edit the classifier or the table and the table-driven test in `src/backend/service.test.ts`. Creation requests retry only `rate-limited` and `empty-response`.
 - In tests, fail a `DotyposServiceMock` operation with the public classes, for example `new DotyposUnavailable({ operation: "getCustomer", reason: "timeout" })`. Return `Option.none()` for a missing record. Never fabricate an HTTP status.
 
+## Record ids
+
+Read records always carry an id. `id` is required on the `Reservation`, `Customer` and `Table` schemas in `openapi/dotypos-api.yaml`, which every read references, so `DotyposReservation`, `DotyposCustomer` and `DotyposTable` carry a branded, trimmed id. Don't guard a read record against a missing id or re-decode one. A read response without an id fails generated decoding as `DotyposRejected{invalid-response}`. Read-only probes on a non-production cloud on 2026-11-04 found a string id on every list and item read of tables, reservations and customers, deleted customers included, and every item read returned the requested id; some customer ids are negative signed longs. Item reads keep the returned id rather than substituting the requested one.
+
+Write responses are unprobed, so they keep their id fallbacks:
+
+- Writes and the bulk `replace*` request items reference `ReservationWriteRecord` and `CustomerWriteRecord`, whose id is optional. Keep new write operations on these schemas until a write probe proves the id.
+- A write that addresses a known id (reservation and customer PATCH, the customer fill PUT) keeps that id when the response omits it.
+- `createReservation` fails as `invalid-response` without a response id.
+- `createCustomer` and `findOrCreateCustomer` return `DotyposCustomerWriteRecord`, which may lack the id. Callers keep their fallback: the account adapter rereads by exact email, and checkout and invoice administration fail with their missing-id errors.
+
 ## Customer records
+
+- Compute lifecycle with `customerLifecycle(customer, now)` (`"active" | "expired" | "deleted"`) when you read the record; expiry depends on time, so never store it on a record. Each caller decides which lifecycles to show: Administration hides only deleted customers.
 
 - Dotypos filters customer `email` only with `email|like|value`, a case-insensitive substring match (`ILIKE '%value%'`). Treat results as candidates and identify a customer only by a whole-address, case-insensitive comparison. Customers whose emails differ only by case are ambiguous; never merge them silently.
 - Customer `versionDate` and `created` carry microseconds, and filters compare at that precision. Decode them with `DotyposTimestampFromString` and filter with `formatDotyposTimestamp`; `Date`, `DateTime`, and epoch-millisecond filter values drop the microseconds. Dotypos can't sort customers by `id`.

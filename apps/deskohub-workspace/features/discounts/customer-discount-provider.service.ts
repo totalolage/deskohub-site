@@ -1,5 +1,5 @@
+import type { DotyposDiscountGroup } from "@deskohub/dotypos";
 import { type DotyposDiscountGroupId, DotyposService } from "@deskohub/dotypos";
-import type { DiscountGroup } from "@deskohub/dotypos/generated";
 import { Context, Data, Effect, Layer, Option } from "effect";
 import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
 import { type Locale, m } from "@/features/i18n";
@@ -26,7 +26,7 @@ class CustomerDiscountConfigurationError extends Data.TaggedError(
 )<{
   readonly message: string;
   readonly discountGroupId: DotyposDiscountGroupId;
-  readonly discountPercent: DiscountGroup["discountPercent"];
+  readonly discountPercent: DotyposDiscountGroup["discountPercent"];
 }> {}
 
 export class CustomerDiscountProvider extends Context.Service<
@@ -75,7 +75,7 @@ const toCustomerDiscountCandidate = (input: {
   readonly discountGroup:
     | {
         readonly discountGroupId: DotyposDiscountGroupId;
-        readonly discountPercent: DiscountGroup["discountPercent"];
+        readonly discountPercent: DotyposDiscountGroup["discountPercent"];
       }
     | undefined;
   readonly dotyposCustomerId: DotyposCustomerId;

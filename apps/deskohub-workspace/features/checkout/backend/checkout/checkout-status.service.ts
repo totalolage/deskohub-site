@@ -1,9 +1,9 @@
+import type { DotyposCustomer } from "@deskohub/dotypos";
 import {
   type DotyposReservationId,
   DotyposService,
   getCustomerDisplayName,
 } from "@deskohub/dotypos";
-import type { Customer } from "@deskohub/dotypos/generated";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Clock, Context, Duration, Effect, Layer, Match, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
@@ -260,7 +260,7 @@ const toOptionalString = (value: string | null | undefined) => {
 };
 
 const getSupportContactPrefill = (
-  customer: Customer
+  customer: DotyposCustomer
 ): CheckoutStatusContactPrefill | undefined => {
   const prefill: CheckoutStatusContactPrefill = {
     name: getCustomerDisplayName(customer),

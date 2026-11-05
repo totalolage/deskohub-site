@@ -129,12 +129,10 @@ const mergeReservations = (
   own: readonly ReservationRecord[],
   bookedForOthers: readonly ReservationRecord[]
 ) => {
-  const ownIds = new Set(own.flatMap((reservation) => reservation.id ?? []));
+  const ownIds = new Set(own.map((reservation) => reservation.id));
   return [
     ...own,
-    ...bookedForOthers.filter(
-      (reservation) => !reservation.id || !ownIds.has(reservation.id)
-    ),
+    ...bookedForOthers.filter((reservation) => !ownIds.has(reservation.id)),
   ];
 };
 
@@ -216,10 +214,9 @@ const getBookedStartFields = (
 
 const toReservationSummary = (
   { reservation, row, booked }: HistoryEntry,
-  party: CustomerReservationParty | undefined,
-  index: number
+  party: CustomerReservationParty | undefined
 ): CustomerReservationSummary => ({
-  id: row?.id ?? reservation.id ?? `${reservation.startDate}:${index}`,
+  id: row?.id ?? reservation.id,
   ...(row?.id && { workspaceReservationId: row.id }),
   ...(party && { party }),
   product: getReservationProduct(row),
@@ -270,9 +267,7 @@ const relateReservations = ({
   );
   return mergeReservations(sources.own, sources.bookedForOthers)
     .map((reservation): HistoryEntry => {
-      const row = reservation.id
-        ? rowsByReservationId.get(reservation.id)
-        : undefined;
+      const row = rowsByReservationId.get(reservation.id);
       return {
         reservation,
         row,
@@ -292,11 +287,10 @@ const toReservationHistory = ({
 }): CustomerReservationHistory => ({
   kind: "available",
   groups: groupCustomerReservations(
-    entries.map((entry, index) =>
+    entries.map((entry) =>
       toReservationSummary(
         entry,
-        entry.relation && toReservationParty(entry.relation, names),
-        index
+        entry.relation && toReservationParty(entry.relation, names)
       )
     )
   ),

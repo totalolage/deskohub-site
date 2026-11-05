@@ -356,6 +356,8 @@ describe.skipIf(!testDatabase)(
       const foreignDotyposReservationId = DotyposReservationIdSchema.make(
         `dotypos-${uniqueId()}`
       );
+      const laterProviderOnlyDotyposReservationId =
+        DotyposReservationIdSchema.make(`dotypos-${uniqueId()}`);
 
       await insertAuthUser(account, testEmailAddress(`h-${account}`));
       await testDatabase!.pool.query(
@@ -393,6 +395,7 @@ describe.skipIf(!testDatabase)(
                 endDate: "2000-01-02T11:00:00.000Z",
               }),
               makeDotyposReservation({
+                id: laterProviderOnlyDotyposReservationId,
                 startDate: "2000-01-03T10:00:00.000Z",
                 endDate: "2000-01-03T11:00:00.000Z",
               }),
@@ -412,7 +415,7 @@ describe.skipIf(!testDatabase)(
       const summaries = history.groups.past;
       expect(summaries.map((summary) => summary.id)).toEqual([
         foreignDotyposReservationId,
-        "2000-01-03T10:00:00.000Z:1",
+        laterProviderOnlyDotyposReservationId,
         providerOnlyDotyposReservationId,
         matchedWorkspaceReservationId,
       ]);

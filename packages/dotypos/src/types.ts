@@ -92,7 +92,7 @@ export type DotyposDiscountGroupId = typeof DotyposDiscountGroupIdSchema.Type;
 
 export const DotyposReservationSchema = Schema.Struct({
   ...GeneratedReservationSchema.fields,
-  id: Schema.optionalKey(DotyposReservationIdSchema),
+  id: DotyposReservationIdSchema,
   _branchId: DotyposBranchIdSchema,
   _cloudId: DotyposCloudIdSchema,
   _customerId: Schema.optionalKey(DotyposCustomerIdSchema),
@@ -107,7 +107,7 @@ export type DotyposReservation = typeof DotyposReservationSchema.Type;
 
 export const DotyposCustomerSchema = Schema.Struct({
   ...GeneratedCustomerSchema.fields,
-  id: Schema.optionalKey(DotyposCustomerIdSchema),
+  id: DotyposCustomerIdSchema,
   _cloudId: DotyposCloudIdSchema,
   _discountGroupId: Schema.optionalKey(
     Schema.NullOr(DotyposDiscountGroupIdSchema)
@@ -118,6 +118,17 @@ export const DotyposCustomerSchema = Schema.Struct({
   description: "A Dotypos customer with provider identifiers decoded by role.",
 });
 export type DotyposCustomer = typeof DotyposCustomerSchema.Type;
+
+export const DotyposCustomerWriteRecordSchema = Schema.Struct({
+  ...DotyposCustomerSchema.fields,
+  id: Schema.optionalKey(DotyposCustomerIdSchema),
+}).annotate({
+  identifier: "DotyposCustomerWriteRecord",
+  description:
+    "A Dotypos customer a create returned. Create responses aren't known to carry the id, so callers keep a fallback.",
+});
+export type DotyposCustomerWriteRecord =
+  typeof DotyposCustomerWriteRecordSchema.Type;
 
 export const DotyposDiscountGroupSchema = Schema.Struct({
   ...GeneratedDiscountGroupSchema.fields,
@@ -132,7 +143,7 @@ export type DotyposDiscountGroup = typeof DotyposDiscountGroupSchema.Type;
 
 export const DotyposTableSchema = Schema.Struct({
   ...GeneratedTableSchema.fields,
-  id: Schema.optionalKey(DotyposTableIdSchema),
+  id: DotyposTableIdSchema,
   _branchId: Schema.optionalKey(DotyposBranchIdSchema),
   _cloudId: DotyposCloudIdSchema,
   _sellerId: Schema.optionalKey(Schema.NullOr(DotyposSellerIdSchema)),

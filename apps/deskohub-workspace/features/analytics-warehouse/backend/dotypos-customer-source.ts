@@ -180,14 +180,8 @@ type StampedCustomer = {
   readonly created: Option.Option<DotyposTimestamp>;
 };
 
-type IdentifiedStampedCustomer = StampedCustomer & {
-  readonly customer: DotyposCustomer & {
-    readonly id: NonNullable<DotyposCustomer["id"]>;
-  };
-};
-
 type PageContinuation = {
-  readonly served: readonly IdentifiedStampedCustomer[];
+  readonly served: readonly StampedCustomer[];
   readonly next: Option.Option<CustomerVersionSelection>;
 };
 
@@ -357,17 +351,12 @@ const readTimestamp = (value: string | null | undefined) =>
 
 const readCustomerTimestamps = (
   customer: DotyposCustomer
-): Effect.Effect<IdentifiedStampedCustomer, UnexpectedDotyposCustomerPage> =>
+): Effect.Effect<StampedCustomer, UnexpectedDotyposCustomerPage> =>
   Effect.all({
-    id: Effect.fromOption(Option.fromNullishOr(customer.id)),
     version: readTimestamp(customer.versionDate),
     created: readTimestamp(customer.created),
   }).pipe(
-    Effect.map(({ id, version, created }) => ({
-      customer: { ...customer, id },
-      version,
-      created,
-    })),
+    Effect.map(({ version, created }) => ({ customer, version, created })),
     Effect.mapError(() => new UnexpectedDotyposCustomerPage())
   );
 
@@ -430,7 +419,7 @@ const isAscendingFrom = (
 const continueSelection = (input: {
   readonly selection: CustomerVersionSelection;
   readonly changes: CustomerChanges;
-  readonly customers: readonly IdentifiedStampedCustomer[];
+  readonly customers: readonly StampedCustomer[];
 }): Effect.Effect<
   PageContinuation,
   UnexpectedDotyposCustomerPage | UnpageableDotyposCustomerGroup
@@ -450,7 +439,7 @@ const continueSelection = (input: {
  * back, so it is served and its version date is read as a group.
  */
 const continueRange = (input: {
-  readonly customers: readonly IdentifiedStampedCustomer[];
+  readonly customers: readonly StampedCustomer[];
   readonly changes: CustomerChanges;
 }): Effect.Effect<PageContinuation, UnexpectedDotyposCustomerPage> =>
   input.changes.hasMore
@@ -489,7 +478,7 @@ const continueRange = (input: {
  */
 const continueGroup = (input: {
   readonly selection: GroupSelection;
-  readonly customers: readonly IdentifiedStampedCustomer[];
+  readonly customers: readonly StampedCustomer[];
   readonly changes: CustomerChanges;
 }): Effect.Effect<
   PageContinuation,
@@ -699,7 +688,7 @@ const customerProfile = (customer: DotyposCustomer): CustomerProfileFields => ({
 const toSourceRow = ({
   customer,
   version,
-}: IdentifiedStampedCustomer): DotyposCustomerSourceRow => {
+}: StampedCustomer): DotyposCustomerSourceRow => {
   const optedOut = isAnalyticsOptedOut(customer);
 
   return {

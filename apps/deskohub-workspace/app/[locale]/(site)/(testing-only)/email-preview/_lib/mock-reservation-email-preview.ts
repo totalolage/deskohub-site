@@ -1,11 +1,11 @@
 import {
   DotyposCloudIdSchema,
+  type DotyposCustomer,
   DotyposCustomerIdSchema,
   DotyposReservationIdSchema,
   type DotyposTable,
   DotyposTableIdSchema,
 } from "@deskohub/dotypos";
-import type { Customer } from "@deskohub/dotypos/generated";
 import { getCustomerReservationPlacement } from "@/features/reservation/backend/customer-reservation-placement";
 import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
 import "@/shared/polyfills/temporal";
@@ -53,8 +53,9 @@ const makePreviewTable = (input: {
   tags: [...input.tags],
 });
 
-const workspaceReservationEmailPreviewCustomer: Customer = {
-  _cloudId: "preview-cloud-id",
+const workspaceReservationEmailPreviewCustomer: DotyposCustomer = {
+  id: DotyposCustomerIdSchema.make("987654321"),
+  _cloudId: DotyposCloudIdSchema.make("preview-cloud-id"),
   firstName: "Ada",
   lastName: "Lovelace",
   companyName: "Analytical Engines Ltd.",

@@ -7,7 +7,6 @@ export type {
   CustomerLookupField,
   DotyposCustomerBillingDetails,
   DotyposCustomerDetails,
-  DotyposCustomerDiscount,
   DotyposCustomerDiscountGroup,
   DotyposCustomerLookupData,
   FindCustomerOptions,
@@ -62,6 +61,7 @@ export type {
   DotyposCloudId,
   DotyposCustomer,
   DotyposCustomerId,
+  DotyposCustomerWriteRecord,
   DotyposDiscountGroup,
   DotyposDiscountGroupId,
   DotyposEmployeeId,
@@ -99,5 +99,9 @@ export {
   DotyposTableSchema,
 } from "./types";
 export { toCustomerEmailIdentity } from "./utils/customer-email";
+export {
+  customerLifecycle,
+  type DotyposCustomerLifecycle,
+} from "./utils/customer-lifecycle";
 export { getCustomerDisplayName } from "./utils/customer-name";
 export { normalizePhoneNumber } from "./utils/phone-formatting";

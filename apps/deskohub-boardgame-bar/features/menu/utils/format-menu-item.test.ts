@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Product } from "@deskohub/dotypos/generated";
+import type { DotyposProduct } from "@deskohub/dotypos";
 import {
   menuCategory,
   menuProduct,
@@ -58,7 +58,7 @@ describe("formatMenuItem", () => {
     } = menuProduct({ priceWithVat: null });
 
     // Dotypos data can still arrive without the documented name.
-    expect(formatMenuItem(unnamedProduct as Product, "en-US")).toEqual({
+    expect(formatMenuItem(unnamedProduct as DotyposProduct, "en-US")).toEqual({
       id: "",
       name: "",
       description: undefined,

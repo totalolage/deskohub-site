@@ -55,10 +55,11 @@ const makeWorkspaceReservation = (
 const makeDotyposReservation = (
   overrides: Partial<Reservation> = {}
 ): Reservation => ({
+  id: "dotypos-reservation-id",
   _branchId: "branch",
   _cloudId: "cloud",
   _customerId: "customer-id",
-  _tableId: " table-id ",
+  _tableId: "table-id",
   startDate: "2026-06-15T22:00:00.000Z",
   endDate: "2026-06-16T22:00:00.000Z",
   seats: "1",

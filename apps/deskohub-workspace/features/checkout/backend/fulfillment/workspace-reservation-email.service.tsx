@@ -1,5 +1,5 @@
+import type { DotyposCustomer } from "@deskohub/dotypos";
 import { getCustomerDisplayName } from "@deskohub/dotypos";
-import type { Customer } from "@deskohub/dotypos/generated";
 import type { EmailDeliveryId } from "@deskohub/email";
 import {
   EmailConfigTag,
@@ -187,7 +187,7 @@ export const createCustomerEmailLocaleResolver =
       )
     );
 
-const getCustomerName = (customer: Customer) =>
+const getCustomerName = (customer: DotyposCustomer) =>
   getCustomerDisplayName(customer) ||
   customer.email?.trim() ||
   "Workspace customer";
@@ -373,7 +373,7 @@ export const createReservationRows = (
 
 const createInternalReservationDetails = (
   reservation: WorkspaceReservationDetails,
-  customer: Customer,
+  customer: DotyposCustomer,
   locale: Locale
 ): WorkspaceEmailDetail[] => {
   const customerEmail = customer.email?.trim();

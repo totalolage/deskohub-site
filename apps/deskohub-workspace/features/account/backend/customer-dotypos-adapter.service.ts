@@ -1,7 +1,9 @@
 import {
+  customerLifecycle,
   type DotyposConditionalWriteFailure,
   type DotyposCustomer,
   type DotyposCustomerId,
+  type DotyposCustomerWriteRecord,
   DotyposService,
   type DotyposUncertain,
   type FindCustomerResult,
@@ -64,12 +66,6 @@ type CreatedCustomerProfile = {
   readonly profile: CustomerProfile;
 };
 
-const isCustomerProfileExpired = (
-  customer: DotyposCustomer,
-  now: Date = new Date()
-): boolean =>
-  customer.expireDate != null && new Date(customer.expireDate) <= now;
-
 const nonEmpty = (value: string | null | undefined): string | null => {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
@@ -121,7 +117,9 @@ const providerTextMatches = <Field extends BillingTextField>(
 ): boolean =>
   fields.every((field) => (stored[field] ?? "") === (requested[field] ?? ""));
 
-const toCustomerBilling = (customer: DotyposCustomer): StoredBilling | null => {
+const toCustomerBilling = (
+  customer: DotyposCustomerWriteRecord
+): StoredBilling | null => {
   const billing = {
     addressLine1: nonEmpty(customer.addressLine1),
     addressLine2: nonEmpty(customer.addressLine2),
@@ -142,7 +140,9 @@ const toCustomerBilling = (customer: DotyposCustomer): StoredBilling | null => {
   return { kind: isBusiness ? "business" : "personal", ...billing };
 };
 
-const toCustomerProfile = (customer: DotyposCustomer): CustomerProfile => ({
+const toCustomerProfile = (
+  customer: DotyposCustomerWriteRecord
+): CustomerProfile => ({
   firstName: nonEmpty(customer.firstName) ?? "",
   lastName: nonEmpty(customer.lastName),
   phone: nonEmpty(customer.phone),
@@ -336,11 +336,13 @@ export class CustomerDotyposAdapter extends Context.Service<
         if (result._tag === "Deleted") return { kind: "unusable" };
 
         const customer = result.customer;
-        if (!customer.id) return { kind: "ambiguous" };
 
         return {
           kind: "matched",
-          state: isCustomerProfileExpired(customer) ? "expired" : "active",
+          state:
+            customerLifecycle(customer, new Date()) === "expired"
+              ? "expired"
+              : "active",
           customerId: customer.id,
           customer,
         };
@@ -425,7 +427,7 @@ export class CustomerDotyposAdapter extends Context.Service<
             customerId,
             payload: expirationPatch(true),
             isApplied: (customer) =>
-              customer.deleted || isCustomerProfileExpired(customer),
+              customerLifecycle(customer, new Date()) !== "active",
           })
       );
 
@@ -436,7 +438,7 @@ export class CustomerDotyposAdapter extends Context.Service<
           customerId,
           payload: expirationPatch(false),
           isApplied: (customer) =>
-            !customer.deleted && !isCustomerProfileExpired(customer),
+            customerLifecycle(customer, new Date()) === "active",
         })
       );
 

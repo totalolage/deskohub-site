@@ -217,8 +217,9 @@ test("activates a table from Enter or Space and ignores other keys", () => {
   expect(prevented).toEqual(["Enter", " "]);
 });
 
-test("renders a static image with fallback keys and button labels for tables without an id or name", () => {
+test("renders a static image keyed by table id with fallback button labels for unnamed tables", () => {
   const unnamed: Table = {
+    id: "table-unnamed",
     _cloudId: "cloud",
     name: "",
     positionX: "not a number",
@@ -235,14 +236,14 @@ test("renders a static image with fallback keys and button labels for tables wit
     throw new Error("Expected table geometry and label");
 
   expect(staticSvg.props.role).toBe("img");
-  expect(geometry.key).toBe("-0-5");
+  expect(geometry.key).toBe("table-unnamed");
   expect(geometry.props.role).toBeUndefined();
   expect(geometry.props.transform).toBe("translate(0 5)");
-  expect(label.key).toBe("-0-5-label");
+  expect(label.key).toBe("table-unnamed-label");
   expect(staticSvg.props.viewBox).toBe("-52 -47 104 104");
 
   const interactiveSvg = TableMap({
-    tables: [unnamed, { ...unnamed, name: "  " }],
+    tables: [unnamed, { ...unnamed, id: "table-blank", name: "  " }],
     tableStyle: () => "is-muted",
     onTableClick: () => undefined,
   }) as ReactElementLike;
