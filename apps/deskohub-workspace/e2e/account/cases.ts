@@ -1,9 +1,9 @@
-import {
-  type DotyposCustomerId,
-  type DotyposReservationId,
-  normalizePhoneNumber,
+import type {
+  DotyposCustomerId,
+  DotyposReservationId,
 } from "@deskohub/dotypos";
-import { Effect } from "effect";
+import { parsePhoneNumber } from "@deskohub/phone-number";
+import { Effect, Option } from "effect";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import {
   getAccountSectionPath,
@@ -1154,8 +1154,10 @@ export const makeWorkspaceE2EAccountCases = ({
                 "the optional last name did not reach the provider profile"
               );
               assert(
-                normalizePhoneNumber(customer.phone) ===
-                  normalizePhoneNumber(workspaceE2EAccountProfileFixture.phone),
+                Option.getOrNull(parsePhoneNumber(customer.phone ?? "")) ===
+                  Option.getOrNull(
+                    parsePhoneNumber(workspaceE2EAccountProfileFixture.phone)
+                  ),
                 "the optional phone did not reach the provider profile"
               );
               assert(

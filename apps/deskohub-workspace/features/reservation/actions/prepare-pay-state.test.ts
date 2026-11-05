@@ -2825,7 +2825,7 @@ describe("prepareWorkspacePayState", () => {
             {
               firstName: "Grace",
               lastName: "Hopper",
-              phone: "+420 602 123 456",
+              phone: "+420602123456",
               ...(profileBilling && { billing: profileBilling }),
             },
           ],
@@ -3446,7 +3446,7 @@ describe("prepareWorkspacePayState", () => {
       expect(scenario.findOrCreateCustomer).toHaveBeenCalledTimes(1);
       expect(scenario.findOrCreateCustomer.mock.calls[0]?.[0]).toMatchObject({
         email: reservation.email,
-        phone: reservation.phone,
+        phone: "+420777777777",
       });
       expect(scenario.createDraft.mock.calls[0]?.[0]).toMatchObject({
         dotyposCustomerId: "customer-id",

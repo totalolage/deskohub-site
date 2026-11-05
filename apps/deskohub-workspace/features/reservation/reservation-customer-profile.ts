@@ -1,4 +1,5 @@
-import { Match } from "effect";
+import { parsePhoneNumber } from "@deskohub/phone-number";
+import { Match, Option } from "effect";
 import type { CustomerProfileInput } from "@/features/account/contracts";
 import type { InvoiceBuyerAddressInput } from "@/features/accounting/billing-identity";
 import { splitCustomerName } from "@/features/checkout/backend/reservation";
@@ -42,7 +43,7 @@ export const getReservationCustomerProfile = (reservation: {
 
   return {
     ...splitCustomerName(reservation.name),
-    phone: reservation.phone,
+    phone: Option.getOrUndefined(parsePhoneNumber(reservation.phone)),
     ...(billing && { billing }),
   };
 };

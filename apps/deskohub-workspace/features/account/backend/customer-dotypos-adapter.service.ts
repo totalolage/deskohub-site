@@ -7,7 +7,6 @@ import {
   type DotyposCustomerWriteRecord,
   DotyposService,
   type FindCustomerResult,
-  normalizePhoneNumber,
 } from "@deskohub/dotypos";
 import { Context, Data, Effect, Layer, Option, Schedule } from "effect";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
@@ -140,8 +139,8 @@ const toCustomerProfile = (
  * The provider profile write, with every editable field explicit: optional
  * fields the user cleared send the provider's clearing value instead of being
  * omitted, which would leave the previous provider state in place. The
- * contract already rejects a nonblank phone the normalizer can't parse, so a
- * blank phone here is the customer's explicit clearing.
+ * contract decodes any nonblank phone to a phone number, so a blank phone
+ * here is the customer's explicit clearing.
  */
 const toProviderProfile = (
   input: CustomerProfileInput
@@ -160,9 +159,7 @@ const toCustomerDetails = (input: {
   firstName: input.profile.firstName,
   lastName: input.profile.lastName ?? "",
   email: input.email,
-  phone: input.profile.phone
-    ? normalizePhoneNumber(input.profile.phone) || undefined
-    : undefined,
+  phone: input.profile.phone || undefined,
   ...toProviderText(billingAddressFields, input.profile.billing),
   ...toProviderText(
     businessBillingFields,

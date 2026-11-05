@@ -447,13 +447,13 @@ describe("CustomerDotyposAdapter", () => {
       ]);
     });
 
-    test("passes the validated phone for the package to normalize", async () => {
+    test("writes the phone number the profile contract decoded", async () => {
       const profiles = await writeProfile({
         firstName: "Ada",
-        phone: "+420 601 111 222",
+        phone: "+420601111222",
       });
 
-      expect(profiles[0]?.phone).toBe("+420 601 111 222");
+      expect(profiles[0]?.phone).toBe("+420601111222");
     });
 
     test("clears business billing when the profile switches to personal", async () => {

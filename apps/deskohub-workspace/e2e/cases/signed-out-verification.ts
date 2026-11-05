@@ -1,5 +1,5 @@
-import { normalizePhoneNumber } from "@deskohub/dotypos";
-import { Effect } from "effect";
+import { parsePhoneNumber } from "@deskohub/phone-number";
+import { Effect, Option } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import {
   getAccountSignInPath,
@@ -643,7 +643,8 @@ export const assertSavedCheckoutProfile = ({
     "saved profile name does not match the typed contact"
   );
   assert(
-    normalizePhoneNumber(profile.phone) === normalizePhoneNumber(contact.phone),
+    Option.getOrNull(parsePhoneNumber(profile.phone ?? "")) ===
+      Option.getOrNull(parsePhoneNumber(contact.phone)),
     "saved profile phone does not match the typed contact"
   );
   assert(

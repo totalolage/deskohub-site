@@ -1,4 +1,4 @@
-import { normalizePhoneNumber } from "@deskohub/dotypos/phone-number";
+import { PhoneNumberSchema } from "@deskohub/phone-number";
 import { Option, Schema } from "effect";
 import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
@@ -13,20 +13,15 @@ const customerProfileNameFieldSchema = trimmedRequiredText(100);
 
 /**
  * Dotypos owns the stored phone, so a blank value only means "clear the
- * field". A nonblank value the provider normalizer cannot parse is rejected
- * at this boundary: accepting it would let a profile save silently clear the
- * phone, including a legacy stored value that the user was merely rendering
- * back. The form therefore forces an explicit correction or an explicit
- * clearing.
+ * field". Any other value decodes to the phone number it holds, and one
+ * without a phone number is rejected at this boundary: accepting it would let
+ * a profile save silently clear the phone, including a legacy stored value
+ * that the user was merely rendering back. The form therefore forces an
+ * explicit correction or an explicit clearing.
  */
 const customerProfilePhoneFieldSchema = Schema.Trim.check(
-  Schema.isMaxLength(32),
-  Schema.makeFilter((value: string): boolean | string =>
-    value === "" || normalizePhoneNumber(value) != null
-      ? true
-      : "Invalid phone number"
-  )
-);
+  Schema.isMaxLength(32)
+).pipe(Schema.decodeTo(Schema.Union([Schema.Literal(""), PhoneNumberSchema])));
 
 const customerProfileAddressFields = {
   addressLine1: trimmedOptionalText(200),
@@ -120,9 +115,6 @@ export const completeCustomerProfileStandardSchema = Schema.toStandardSchemaV1(
   completeCustomerProfileSchema,
   { parseOptions: { errors: "all", onExcessProperty: "error" } }
 );
-
-export type CustomerProfileCompletionInput =
-  typeof completeCustomerProfileSchema.Type;
 
 /**
  * What happened to the referral code entered at first-time completion. A

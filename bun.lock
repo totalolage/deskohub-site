@@ -138,6 +138,7 @@
         "@deskohub/igloohome": "workspace:*",
         "@deskohub/nexi": "workspace:*",
         "@deskohub/next-effect": "workspace:*",
+        "@deskohub/phone-number": "workspace:*",
         "@deskohub/posthog": "workspace:*",
         "@deskohub/qr-code": "workspace:*",
         "@deskohub/secret-comparison": "workspace:*",
@@ -213,7 +214,6 @@
         "effect": "4.0.0-beta.85",
         "input-otp": "^1.5.0",
         "leaflet": "^1.9.4",
-        "libphonenumber-js": "^1.13.15",
         "lucide-react": "^1.53.0",
         "marked": "17.0.6",
         "mdast-util-to-markdown": "^2.2.0",
@@ -350,9 +350,9 @@
       "name": "@deskohub/dotypos",
       "version": "0.1.0",
       "dependencies": {
+        "@deskohub/phone-number": "workspace:*",
         "@deskohub/provider-request": "workspace:*",
         "effect": "4.0.0-beta.85",
-        "libphonenumber-js": "^1.13.15",
       },
       "devDependencies": {
         "@deskohub/test-email": "workspace:*",
@@ -484,6 +484,17 @@
       "dependencies": {
         "effect": "4.0.0-beta.85",
         "sharp": "^0.35.5",
+      },
+      "devDependencies": {
+        "typescript": "npm:@typescript/typescript6@6.0.2",
+      },
+    },
+    "packages/phone-number": {
+      "name": "@deskohub/phone-number",
+      "version": "0.1.0",
+      "dependencies": {
+        "effect": "4.0.0-beta.85",
+        "libphonenumber-js": "^1.13.15",
       },
       "devDependencies": {
         "typescript": "npm:@typescript/typescript6@6.0.2",
@@ -819,6 +830,8 @@
     "@deskohub/nexi": ["@deskohub/nexi@workspace:packages/nexi"],
 
     "@deskohub/next-effect": ["@deskohub/next-effect@workspace:packages/next-effect"],
+
+    "@deskohub/phone-number": ["@deskohub/phone-number@workspace:packages/phone-number"],
 
     "@deskohub/posthog": ["@deskohub/posthog@workspace:packages/posthog"],
 

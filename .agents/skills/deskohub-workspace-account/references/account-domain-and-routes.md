@@ -277,6 +277,9 @@ glossary defines the customer account, reservation author, and tombstone.
   and the auth guard rejects `name` or `image` in a magic-link request.
 - The verified login email is immutable because it's the reservation-linking
   trust boundary. Profile input never accepts an email.
+- The profile contract decodes a nonblank phone to a `PhoneNumber` and rejects
+  text that holds none, so a save never clears a phone by accident. A blank
+  phone is the explicit clearing. The form keeps the phone as entered text.
 
 ## Deletion
 
