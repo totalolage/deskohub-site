@@ -2,8 +2,8 @@ import { Effect, Match, Result } from "effect";
 import type { ReferralSignupOutcome } from "@/db/schema/referrals";
 import { ReferralService } from "@/features/referrals";
 import type {
+  ReferralAccountOutage,
   ReferralError,
-  ReferralOutage,
 } from "@/features/referrals/contracts";
 import { referralFailureLogFields } from "@/features/referrals/referral-failure";
 import {
@@ -104,14 +104,16 @@ const classifyRejection = (
   );
 
 /**
- * Only a verdict settles the stored code. A failed database or Dotypos read
- * says nothing about it, so the intent stays pending for the next load.
+ * Only a verdict settles the stored code. A failed database, Dotypos, or
+ * session read says nothing about it, so the intent stays pending for the
+ * next load.
  */
 const classifyAcceptanceFailure = Match.type<
-  ReferralError | ReferralOutage
+  ReferralError | ReferralAccountOutage
 >().pipe(
   Match.tagsExhaustive({
     ReferralError: ({ reason }) => classifyRejection(reason),
+    ReferralAuthenticationUnavailable: () => pending,
     EffectDrizzleQueryError: () => pending,
     SqlError: () => pending,
     DotyposUnavailable: () => pending,

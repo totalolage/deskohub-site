@@ -10,9 +10,9 @@ import { referralAttributions, referralCodes } from "@/db/schema/referrals";
 import { workspaceReservations } from "@/db/schema/workspace-reservations";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
 import { WorkspaceLocks } from "@/db/workspace-locks";
-import { requireAccountActivity } from "@/features/account/backend/customer-account-activity";
+import { isAccountActive } from "@/features/account/backend/customer-account-activity";
 import { CustomerAccountLinkRepository } from "@/features/account/backend/customer-account-link.repository";
-import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
+import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import type { LinkedCustomerAccount } from "@/features/account/customer-account";
 import {
   type CustomerAccountId,
@@ -32,7 +32,9 @@ import { parseReferralCode, type ReferralCode } from "./client";
 import {
   type CheckoutReferralEvaluation,
   type ReferralAcceptance,
+  type ReferralAccountOutage,
   type ReferralAccountSummary,
+  ReferralAuthenticationUnavailable,
   type ReferralCodeKind,
   ReferralError,
   type ReferralOutage,
@@ -55,18 +57,28 @@ import {
 /**
  * Each operation fails with a `ReferralError` for a verdict or a withheld
  * program, and with a `ReferralOutage` when the referral store or Dotypos
- * could not be read, which says nothing about the code or the customer.
+ * could not be read, which says nothing about the code or the customer. The
+ * signed-in account's operations also fail with
+ * `ReferralAuthenticationUnavailable` when its session could not be read;
+ * `account_unavailable` means the account itself is gone, awaits deletion, or
+ * is no longer linked to that customer.
  */
 export interface IReferralService {
   readonly getAccountSummary: (input: {
     readonly customerAccountId: CustomerAccountId;
     readonly dotyposCustomerId: DotyposCustomerId;
-  }) => Effect.Effect<ReferralAccountSummary, ReferralError | ReferralOutage>;
+  }) => Effect.Effect<
+    ReferralAccountSummary,
+    ReferralError | ReferralAccountOutage
+  >;
   readonly acceptReferral: (input: {
     readonly code: unknown;
     readonly customerAccountId: CustomerAccountId;
     readonly dotyposCustomerId: DotyposCustomerId;
-  }) => Effect.Effect<ReferralAcceptance, ReferralError | ReferralOutage>;
+  }) => Effect.Effect<
+    ReferralAcceptance,
+    ReferralError | ReferralAccountOutage
+  >;
   readonly lookupCodeKind: (input: {
     readonly code: unknown;
   }) => Effect.Effect<ReferralCodeKind, DatabaseQueryError>;
@@ -199,27 +211,69 @@ export class ReferralService extends Context.Service<
       const { db, transaction } = yield* WorkspaceDatabase;
       const advisoryLock = yield* WorkspaceDatabaseAdvisoryLock;
       const standing = yield* makeReferralStandingReads;
-      const accountResolver = yield* CustomerAccountResolver;
+      const authentication = yield* CustomerAuthentication;
       const accountLinks = yield* CustomerAccountLinkRepository;
       const releaseGate = yield* ReferralReleaseGate;
 
-      const requireCurrentIdentity = Effect.fn(
-        "ReferralService.requireCurrentIdentity"
-      )(
-        (input: {
-          readonly customerAccountId: CustomerAccountId;
-          readonly dotyposCustomerId: DotyposCustomerId;
-        }) =>
-          accountResolver.resolve.pipe(
-            Effect.mapError(() => fail("account_unavailable")),
-            Effect.flatMap((identity) =>
-              identity.accountId === input.customerAccountId &&
-              identity.dotyposCustomerId === input.dotyposCustomerId
-                ? Effect.succeed(identity)
+      /** The account exists and awaits no deletion. */
+      const requireActiveAccount = (accountId: CustomerAccountId) =>
+        accountLinks
+          .findActivityState(accountId)
+          .pipe(
+            Effect.flatMap((activity) =>
+              isAccountActive(activity)
+                ? Effect.void
                 : Effect.fail(fail("account_unavailable"))
             )
+          );
+
+      /** The account is active and still linked to the same customer. */
+      const requireCurrentLink = Effect.fnUntraced(function* (
+        identity: LinkedCustomerAccount
+      ) {
+        yield* requireActiveAccount(identity.accountId);
+        const customerId = yield* accountLinks.find(identity.accountId);
+        if (customerId !== identity.dotyposCustomerId) {
+          return yield* fail("account_unavailable");
+        }
+      });
+
+      /**
+       * The signed-in session is the given account, linked to the given
+       * customer. A session that couldn't be read is an outage, and a failed
+       * database read passes through; neither is a verdict on the account.
+       */
+      const requireCurrentIdentity = Effect.fn(
+        "ReferralService.requireCurrentIdentity"
+      )(function* (input: {
+        readonly customerAccountId: CustomerAccountId;
+        readonly dotyposCustomerId: DotyposCustomerId;
+      }) {
+        const session = yield* authentication.currentUser.pipe(
+          Effect.mapError((error) =>
+            error.reason === "unavailable"
+              ? new ReferralAuthenticationUnavailable(
+                  error.diagnostic ? { diagnostic: error.diagnostic } : {}
+                )
+              : fail("account_unavailable")
           )
-      );
+        );
+        if (
+          !session ||
+          session.deletionRequested ||
+          session.accountId !== input.customerAccountId
+        ) {
+          return yield* fail("account_unavailable");
+        }
+        const customerId = yield* accountLinks.find(session.accountId);
+        if (customerId !== input.dotyposCustomerId) {
+          return yield* fail("account_unavailable");
+        }
+        return {
+          accountId: session.accountId,
+          dotyposCustomerId: customerId,
+        } satisfies LinkedCustomerAccount;
+      });
 
       const withActiveCurrentAccount = <A, E, R>(
         identity: LinkedCustomerAccount,
@@ -227,13 +281,7 @@ export class ReferralService extends Context.Service<
       ) =>
         accountLinks.withAccountLock(
           identity.accountId,
-          Effect.gen(function* () {
-            yield* requireAccountActivity(
-              accountLinks,
-              identity.accountId
-            ).pipe(Effect.mapError(() => fail("account_unavailable")));
-            return yield* effect;
-          })
+          requireActiveAccount(identity.accountId).pipe(Effect.andThen(effect))
         );
 
       const findCodeKind = Effect.fn("ReferralService.findCodeKind")(
@@ -636,32 +684,6 @@ export class ReferralService extends Context.Service<
           )
       );
 
-      /** The invitee's account is still active and linked to the same customer. */
-      const requireCurrentInviteeLink = Effect.fnUntraced(function* (
-        identity: LinkedCustomerAccount
-      ) {
-        const [inviteeActivity] = yield* db
-          .select({
-            deletionRequestedAt: authUser.deletionRequestedAt,
-          })
-          .from(authUser)
-          .where(eq(authUser.id, identity.accountId))
-          .limit(1);
-        if (!inviteeActivity || inviteeActivity.deletionRequestedAt !== null) {
-          return yield* fail("account_unavailable");
-        }
-        const [currentLink] = yield* db
-          .select({
-            dotyposCustomerId: customerAccounts.dotyposCustomerId,
-          })
-          .from(customerAccounts)
-          .where(eq(customerAccounts.id, identity.accountId))
-          .limit(1);
-        if (currentLink?.dotyposCustomerId !== identity.dotyposCustomerId) {
-          return yield* fail("account_unavailable");
-        }
-      });
-
       /**
        * The code's invitation, read again under the locks. It must still come
        * from the referrer whose account this acceptance locked: a code that
@@ -798,7 +820,7 @@ export class ReferralService extends Context.Service<
                   identity.dotyposCustomerId
                 );
 
-                yield* requireCurrentInviteeLink(identity);
+                yield* requireCurrentLink(identity);
                 const verdict = yield* decideAcceptedReferral({
                   code,
                   identity,
@@ -886,7 +908,7 @@ export class ReferralService extends Context.Service<
         WorkspaceDatabase.Default,
         WorkspaceDatabaseAdvisoryLock.Default,
         WorkspaceDotyposLayer,
-        CustomerAccountResolver.Live,
+        CustomerAuthentication.Default,
         CustomerAccountLinkRepository.Live
       )
     )

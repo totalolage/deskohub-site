@@ -24,16 +24,23 @@ import { ReferralService } from "@/features/referrals";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { ReferralSignupIntentRepository } from "@/features/referrals/signup-intent.repository";
 import { NoReviewAccounts } from "@/features/review-accounts/backend/review-accounts.repository.mock";
+import { connectUnreachableWorkspaceDatabase } from "@/shared/testing/unreachable-workspace-database.test-utils";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   type CustomerAccountId,
   customerAccountIdSchema,
-  customerAccountUnavailable,
 } from "../customer-account";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
+import {
+  accountLinksFailingAt,
+  unreachableAccountLinks,
+} from "./customer-account-link.test-utils";
 import { waitForAccountAdvisoryLockWait } from "./customer-account-lock.test-utils";
-import { CustomerAccountResolver } from "./customer-account-resolver.service";
+import {
+  signedInAuthentication,
+  unreachableSessionAuthentication,
+} from "./customer-authentication.test-utils";
 import { CustomerDotyposAdapter } from "./customer-dotypos-adapter.service";
 import { CustomerProfileService } from "./customer-profile.service";
 import { completeNewCustomerProfile } from "./profile-completion";
@@ -175,9 +182,9 @@ const databaseLayer = () =>
 /**
  * The real link repository, advisory locks, intent repository, and referral
  * service on the disposable database. Only the providers are fake: Dotypos
- * creates a fresh customer with no booking history, and the session resolver
- * reads the account's link, or fails as a transient outage when
- * `identityUnavailable` is set. `createGate` holds the
+ * creates a fresh customer with no booking history, and the session is the
+ * account's, or its read fails as a session-store outage when
+ * `sessionUnavailable` is set. `createGate` holds the
  * Dotypos creation inside the account lock; `recordGate` holds acceptance
  * before its identity check, after the account lock was released.
  */
@@ -185,7 +192,12 @@ const completionLayer = (options: {
   readonly accountId: CustomerAccountId;
   readonly createGate?: Gate;
   readonly recordGate?: Gate;
-  readonly identityUnavailable?: boolean;
+  readonly sessionUnavailable?: boolean;
+  /**
+   * The referral service's reads of the account's activity fail to connect
+   * to this database.
+   */
+  readonly accountActivityUnreachable?: CustomerAccountLinkRepository["Service"];
   /** Dotypos fails every booking-history read. */
   readonly dotyposUnavailable?: boolean;
   readonly createdCustomers?: DotyposCustomerId[];
@@ -219,31 +231,25 @@ const completionLayer = (options: {
       ),
     readCustomerProfile: () => Effect.succeed(profile),
   } satisfies Partial<CustomerDotyposAdapter["Service"]>);
-  const resolver = Layer.effect(
-    CustomerAccountResolver,
-    Effect.map(CustomerAccountLinkRepository, (repository) => ({
-      resolve: passGate(options.recordGate).pipe(
-        Effect.andThen(repository.find(options.accountId)),
-        Effect.mapError(() => customerAccountUnavailable("account-link.read")),
-        Effect.flatMap((customerId) =>
-          customerId && !options.identityUnavailable
-            ? Effect.succeed({
-                accountId: options.accountId,
-                dotyposCustomerId: customerId,
-              })
-            : Effect.fail(customerAccountUnavailable("account-link.read"))
-        )
-      ),
-    }))
-  ).pipe(Layer.provide(links));
+  const authentication = options.sessionUnavailable
+    ? unreachableSessionAuthentication
+    : signedInAuthentication(options.accountId, {
+        beforeRead: passGate(options.recordGate),
+      });
+  const referralLinks = options.accountActivityUnreachable
+    ? accountLinksFailingAt(["findActivityState"], {
+        healthy: links,
+        unreachable: options.accountActivityUnreachable,
+      })
+    : links;
   const referrals = ReferralService.Default.pipe(
     Layer.provide(
       Layer.mergeAll(
         featureFlag,
         database,
         lock,
-        links,
-        resolver,
+        referralLinks,
+        authentication,
         Layer.mock(DotyposService, {
           listReservations: () =>
             options.dotyposUnavailable
@@ -293,7 +299,7 @@ const completeWithStoredIntent = async (code: string) => {
   const accountId = await newAccount();
   const outcome = await complete(accountId, { code }).pipe(
     withinLockBudget,
-    Effect.provide(completionLayer({ accountId, identityUnavailable: true })),
+    Effect.provide(completionLayer({ accountId, sessionUnavailable: true })),
     Effect.runPromise
   );
   expect(outcome).toMatchObject({
@@ -474,14 +480,14 @@ describe.skipIf(!testDatabase)(
       expect(await readIntentCodes(accountId)).toEqual([]);
     });
 
-    test("keeps the intent after a transient failure and records it on the next linked visit", async () => {
+    test("keeps the intent while the session can't be read and records it on the next linked visit", async () => {
       const referrer = await insertReferrer();
       const accountId = await newAccount();
 
       const outcome = await complete(accountId, { code: referrer.code }).pipe(
         withinLockBudget,
         Effect.provide(
-          completionLayer({ accountId, identityUnavailable: true })
+          completionLayer({ accountId, sessionUnavailable: true })
         ),
         Effect.runPromise
       );
@@ -508,6 +514,42 @@ describe.skipIf(!testDatabase)(
       expect(retried).toEqual({ status: "applied" });
       expect(await readReferrer(customerId!)).toBe(referrer.customerId);
       expect(await readIntentCodes(accountId)).toEqual([]);
+    });
+
+    test("keeps a stored code pending while the account's activity can't be read and records it once it can", async () => {
+      const referrer = await insertReferrer();
+      const account = await completeWithStoredIntent(referrer.code);
+      const unreachable = await connectUnreachableWorkspaceDatabase();
+      try {
+        const unreadable = await recordSignupReferral({
+          accountId: account.accountId,
+          dotyposCustomerId: account.customerId,
+        }).pipe(
+          withinLockBudget,
+          Effect.provide(
+            completionLayer({
+              accountId: account.accountId,
+              accountActivityUnreachable:
+                await unreachableAccountLinks(unreachable),
+            })
+          ),
+          Effect.runPromise
+        );
+
+        expect(unreadable).toEqual({ status: "pending" });
+        expect(await readReferrer(account.customerId)).toBeUndefined();
+        expect(await readIntentCodes(account.accountId)).toEqual([
+          referrer.promotionCodeId,
+        ]);
+      } finally {
+        await unreachable.pool.end();
+      }
+
+      expect(await retrySignupReferral(account)).toEqual({
+        status: "applied",
+      });
+      expect(await readReferrer(account.customerId)).toBe(referrer.customerId);
+      expect(await readIntentCodes(account.accountId)).toEqual([]);
     });
 
     test("keeps a stored code pending while Dotypos history can't be read and records it once it can", async () => {

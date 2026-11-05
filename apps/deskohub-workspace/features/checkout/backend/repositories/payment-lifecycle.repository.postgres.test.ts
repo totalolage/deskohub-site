@@ -31,7 +31,8 @@ import {
 } from "@/db/schema";
 import { WorkspaceLockSections } from "@/db/workspace-locks";
 import { CustomerAccountLinkRepository } from "@/features/account/backend/customer-account-link.repository";
-import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
+import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
+import { signedInAuthentication } from "@/features/account/backend/customer-authentication.test-utils";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import {
   type AccountingDocumentSnapshot,
@@ -175,11 +176,13 @@ const makeReferralService = async (input?: {
               databaseLayer,
               lockLayer,
               accountLinksLayer,
-              Layer.mock(CustomerAccountResolver, {
-                resolve: input?.identity
-                  ? Effect.succeed(input.identity)
-                  : Effect.die("Identity is not used by quote lookup"),
-              }),
+              input?.identity
+                ? signedInAuthentication(input.identity.accountId)
+                : Layer.succeed(CustomerAuthentication, {
+                    currentUser: Effect.die(
+                      "Identity is not used by quote lookup"
+                    ),
+                  }),
               Layer.mock(DotyposService, {
                 listReservations:
                   input?.listReservations ?? (() => Effect.succeed([])),

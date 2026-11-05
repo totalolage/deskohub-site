@@ -1,6 +1,7 @@
 import type { DotyposReadFailure } from "@deskohub/dotypos";
 import { Data } from "effect";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
+import type { CustomerSessionReadDiagnostic } from "@/features/account/customer-account";
 import type { Money } from "@/shared/money/money";
 import type { ReferralCode } from "./client";
 
@@ -89,3 +90,19 @@ export class ReferralError extends Data.TaggedError("ReferralError")<{
  * nothing about the code or the customer, and a later attempt can succeed.
  */
 export type ReferralOutage = DatabaseQueryError | DotyposReadFailure;
+
+/**
+ * The signed-in session could not be read, so the account behind an account
+ * operation could not be checked. Like an outage, it says nothing about the
+ * code or the customer, and a later attempt can succeed.
+ */
+export class ReferralAuthenticationUnavailable extends Data.TaggedError(
+  "ReferralAuthenticationUnavailable"
+)<{
+  readonly diagnostic?: CustomerSessionReadDiagnostic;
+}> {}
+
+/** How an operation for the signed-in account fails without a verdict. */
+export type ReferralAccountOutage =
+  | ReferralOutage
+  | ReferralAuthenticationUnavailable;

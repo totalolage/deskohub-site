@@ -10,8 +10,6 @@ import {
 } from "@deskohub/dotypos";
 import { Cause, Effect, Exit, Layer, Result } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import { makeDatabaseClient, makeDatabasePool } from "@/db/database-client";
-import { databasePoolTimeouts } from "@/db/database-pool-timeouts";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import {
   promotionCodes,
@@ -20,7 +18,15 @@ import {
 } from "@/db/schema";
 import { isDatabaseQueryError } from "@/db/sql-constraint";
 import { CustomerAccountLinkRepository } from "@/features/account/backend/customer-account-link.repository";
-import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
+import {
+  accountLinksFailingAt,
+  unreachableAccountLinks,
+} from "@/features/account/backend/customer-account-link.test-utils";
+import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
+import {
+  signedInAuthentication,
+  unreachableSessionAuthentication,
+} from "@/features/account/backend/customer-authentication.test-utils";
 import {
   type CustomerAccountId,
   customerAccountIdSchema,
@@ -28,6 +34,7 @@ import {
 import { canonicalPromotionCodeSchema } from "@/features/discounts/persistence-contracts";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { currencyCZK } from "@/shared/money/currencies";
+import { connectUnreachableWorkspaceDatabase } from "@/shared/testing/unreachable-workspace-database.test-utils";
 import {
   collectDatabaseQueryLogs,
   expectQueryLogsToOmit,
@@ -151,9 +158,7 @@ const makeReferralLayer = (
         databaseLayer,
         lockLayer,
         accountLinksLayer,
-        Layer.mock(CustomerAccountResolver, {
-          resolve: Effect.succeed(identity),
-        }),
+        signedInAuthentication(identity.accountId),
         Layer.mock(DotyposService, {
           listReservations,
         } as Partial<DotyposService["Service"]>)
@@ -2122,22 +2127,10 @@ describe.skipIf(!testDatabase)(
 
     test("reports an unreachable referral store as a database failure, never as an unusable code", async () => {
       const context = await createVerdictContext();
-      // Nothing listens on port 1, so every statement fails to connect.
-      const unreachablePool = makeDatabasePool({
-        connectionString:
-          "postgres://workspace:workspace@127.0.0.1:1/workspace",
-        ...databasePoolTimeouts,
-      });
+      const unreachable = await connectUnreachableWorkspaceDatabase();
       try {
-        const unreachableDb = await Effect.runPromise(
-          makeDatabaseClient(unreachablePool)
-        );
-        const databaseLayer = Layer.succeed(
-          WorkspaceDatabase,
-          WorkspaceDatabase.make(unreachableDb)
-        );
-        const lockLayer =
-          WorkspaceDatabaseAdvisoryLock.makeLayer(unreachablePool);
+        const databaseLayer = unreachable.database;
+        const lockLayer = unreachable.advisoryLock;
         const storeDown = ReferralService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
@@ -2147,9 +2140,7 @@ describe.skipIf(!testDatabase)(
               CustomerAccountLinkRepository.Default.pipe(
                 Layer.provide(Layer.mergeAll(databaseLayer, lockLayer))
               ),
-              Layer.mock(CustomerAccountResolver, {
-                resolve: Effect.succeed(context.invitee),
-              }),
+              signedInAuthentication(context.invitee.accountId),
               Layer.mock(DotyposService, {
                 listReservations: () => Effect.succeed([]),
               } as Partial<DotyposService["Service"]>)
@@ -2181,7 +2172,7 @@ describe.skipIf(!testDatabase)(
           "eligible"
         );
       } finally {
-        await unreachablePool.end();
+        await unreachable.pool.end();
         await context.cleanup();
       }
     });
@@ -2233,6 +2224,219 @@ describe.skipIf(!testDatabase)(
           "delete from customer_accounts where id = $1",
           [relinkedAccountId]
         );
+        await context.cleanup();
+      }
+    });
+  }
+);
+
+/**
+ * The referral service on the disposable database with this session, and with
+ * the named account reads failing to connect, so a test fails one account
+ * prerequisite at a time while the others answer.
+ */
+const makeAccountPrerequisiteLayer = (input: {
+  readonly authentication: Layer.Layer<CustomerAuthentication>;
+  readonly failingAt?: {
+    readonly reads: Parameters<typeof accountLinksFailingAt>[0];
+    readonly unreachable: CustomerAccountLinkRepository["Service"];
+  };
+}) => {
+  const databaseLayer = Layer.succeed(
+    WorkspaceDatabase,
+    WorkspaceDatabase.make(testDatabase!.db)
+  );
+  const lockLayer = WorkspaceDatabaseAdvisoryLock.makeLayer(testDatabase!.pool);
+  const healthyLinks = CustomerAccountLinkRepository.Default.pipe(
+    Layer.provide(Layer.mergeAll(databaseLayer, lockLayer))
+  );
+  const accountLinks = input.failingAt
+    ? accountLinksFailingAt(input.failingAt.reads, {
+        healthy: healthyLinks,
+        unreachable: input.failingAt.unreachable,
+      })
+    : healthyLinks;
+
+  return ReferralService.Default.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        ReferralReleaseGate.fromDecision(true),
+        databaseLayer,
+        lockLayer,
+        accountLinks,
+        input.authentication,
+        Layer.mock(DotyposService, {
+          listReservations: () => Effect.succeed([]),
+        } as Partial<DotyposService["Service"]>)
+      )
+    )
+  );
+};
+
+const summarizeAtAccount = (
+  context: VerdictContext,
+  layer: Layer.Layer<ReferralService>,
+  dotyposCustomerId = context.invitee.dotyposCustomerId
+) =>
+  runReferrals(
+    (referrals) =>
+      referrals
+        .getAccountSummary({
+          customerAccountId: context.invitee.accountId,
+          dotyposCustomerId,
+        })
+        .pipe(Effect.as({ kind: "summarized" } as const)),
+    layer
+  );
+
+describe.skipIf(!testDatabase)(
+  "ReferralService account prerequisites on disposable Postgres",
+  () => {
+    test("reports a session that can't be read as an authentication outage, never as an unavailable account", async () => {
+      const context = await createVerdictContext();
+      try {
+        const sessionDown = makeAccountPrerequisiteLayer({
+          authentication: unreachableSessionAuthentication,
+        });
+
+        for (const failure of [
+          await summarizeAtAccount(context, sessionDown),
+          await acceptAtAccount(context, context.referrer.code, sessionDown),
+        ]) {
+          expect(failure).toMatchObject({
+            _tag: "Failure",
+            failure: {
+              _tag: "ReferralAuthenticationUnavailable",
+              diagnostic: "authentication.session.unclassified",
+            },
+          });
+        }
+        expect(
+          await readInviteeReferrer(context.invitee.dotyposCustomerId)
+        ).toBeUndefined();
+
+        expect(
+          outcomeOf(await acceptAtAccount(context, context.referrer.code))
+        ).toBe("accepted");
+      } finally {
+        await context.cleanup();
+      }
+    });
+
+    test.each([
+      { read: "find", operations: ["summary", "acceptance"] },
+      { read: "findActivityState", operations: ["summary", "acceptance"] },
+      { read: "withAccountLock", operations: ["summary"] },
+    ] as const)(
+      "reports a failed $read as a database outage, never as an unavailable account, and writes nothing",
+      async ({ read, operations }) => {
+        const context = await createVerdictContext();
+        const unreachable = await connectUnreachableWorkspaceDatabase();
+        try {
+          const readDown = makeAccountPrerequisiteLayer({
+            authentication: signedInAuthentication(context.invitee.accountId),
+            failingAt: {
+              reads: [read],
+              unreachable: await unreachableAccountLinks(unreachable),
+            },
+          });
+
+          for (const operation of operations) {
+            const failure =
+              operation === "summary"
+                ? await summarizeAtAccount(context, readDown)
+                : await acceptAtAccount(
+                    context,
+                    context.referrer.code,
+                    readDown
+                  );
+            expect(failure._tag).toBe("Failure");
+            expect(
+              failure._tag === "Failure" &&
+                isDatabaseQueryError(failure.failure)
+            ).toBe(true);
+          }
+          expect(
+            await readInviteeReferrer(context.invitee.dotyposCustomerId)
+          ).toBeUndefined();
+
+          // Once the account can be read again, acceptance decides.
+          expect(
+            outcomeOf(await acceptAtAccount(context, context.referrer.code))
+          ).toBe("accepted");
+        } finally {
+          await unreachable.pool.end();
+          await context.cleanup();
+        }
+      }
+    );
+
+    test("still reports a gone, other, deleting, or relinked account as account_unavailable", async () => {
+      const context = await createVerdictContext();
+      try {
+        const otherSession = makeAccountPrerequisiteLayer({
+          authentication: signedInAuthentication(context.referrer.accountId),
+        });
+        const deletingSession = makeAccountPrerequisiteLayer({
+          authentication: signedInAuthentication(context.invitee.accountId, {
+            deletionRequested: true,
+          }),
+        });
+        const noSession = makeAccountPrerequisiteLayer({
+          authentication: Layer.succeed(CustomerAuthentication, {
+            currentUser: Effect.succeed(null),
+          }),
+        });
+        const ownSession = makeAccountPrerequisiteLayer({
+          authentication: signedInAuthentication(context.invitee.accountId),
+        });
+
+        for (const layer of [otherSession, deletingSession, noSession]) {
+          expect(outcomeOf(await summarizeAtAccount(context, layer))).toBe(
+            "account_unavailable"
+          );
+          expect(
+            outcomeOf(
+              await acceptAtAccount(context, context.referrer.code, layer)
+            )
+          ).toBe("account_unavailable");
+        }
+
+        // The account is linked to another customer than the caller named.
+        expect(
+          outcomeOf(
+            await summarizeAtAccount(context, ownSession, uniqueDotyposId())
+          )
+        ).toBe("account_unavailable");
+
+        // The account awaits deletion: the summary checks it under the
+        // account lock, acceptance under its transaction's locks.
+        await testDatabase!.pool.query(
+          `update auth."user" set deletion_requested_at = now() where id = $1`,
+          [context.invitee.accountId]
+        );
+        expect(outcomeOf(await summarizeAtAccount(context, ownSession))).toBe(
+          "account_unavailable"
+        );
+        expect(
+          outcomeOf(
+            await acceptAtAccount(context, context.referrer.code, ownSession)
+          )
+        ).toBe("account_unavailable");
+        await testDatabase!.pool.query(
+          `update auth."user" set deletion_requested_at = null where id = $1`,
+          [context.invitee.accountId]
+        );
+
+        expect(
+          await readInviteeReferrer(context.invitee.dotyposCustomerId)
+        ).toBeUndefined();
+        expect(
+          outcomeOf(
+            await acceptAtAccount(context, context.referrer.code, ownSession)
+          )
+        ).toBe("accepted");
+      } finally {
         await context.cleanup();
       }
     });
