@@ -136,13 +136,15 @@ type DotyposPage<A> = {
 const isNotFound = (failure: DotyposAttemptFailure) =>
   failure._tag === "DotyposRejected" && failure.reason === "not-found";
 
-/** A replayed reservation PATCH that met 412 after an uncertain attempt. */
-const isReplayConflict = (
-  failure: DotyposConditionalWriteFailure | DotyposReservationCancelledError
-): failure is DotyposUncertain =>
-  failure._tag === "DotyposUncertain" &&
-  failure.reason === "conflict-after-replay" &&
-  failure.request === "reservation.patch";
+/** A replayed PATCH of `request` that met 412 after an uncertain attempt. */
+const isReplayConflict =
+  (request: "reservation.patch" | "customer.patch") =>
+  (
+    failure: DotyposConditionalWriteFailure | DotyposReservationCancelledError
+  ): failure is DotyposUncertain =>
+    failure._tag === "DotyposUncertain" &&
+    failure.reason === "conflict-after-replay" &&
+    failure.request === request;
 
 /**
  * Reads the addressed record as some, or none when Dotypos answers 404 for
@@ -797,7 +799,8 @@ export interface IDotyposService {
   ) => Effect.Effect<DotyposReservation, DotyposConditionalWriteFailure>;
   /**
    * CONFIRMED already: succeeds without a PATCH. CANCELLED: DotyposReservationCancelledError. A vanished reservation: DotyposRejected{not-found}.
-   * A replayed PATCH that meets 412 reruns the read, status match and PATCH once to settle it; a plain 412 is DotyposVersionConflict.
+   * A replayed PATCH that meets 412 reruns the read, status match and PATCH once to settle it; a NEW reread under the replayed
+   * ETag, or any failure of the rerun, stays DotyposUncertain. A plain 412 on the first PATCH is DotyposVersionConflict.
    */
   readonly confirmReservation: (
     reservationId: DotyposReservationId
@@ -813,7 +816,12 @@ export interface IDotyposService {
     Option.Option<DotyposCustomer>,
     DotyposConditionalWriteFailure
   >;
-  /** The next three patch the customer and fail DotyposRejected{not-found} when it does not exist. */
+  /**
+   * The next three patch the customer and fail DotyposRejected{not-found} when it does not exist.
+   * setCustomerDiscountGroup settles a replayed PATCH that meets 412 by rereading the customer once: a reread with a new
+   * ETag and the requested group gets one confirming PATCH under that ETag, which succeeds when it holds the group; any
+   * other reread, a failed one, or a failed confirmation stays DotyposUncertain. A plain 412 is DotyposVersionConflict.
+   */
   readonly setCustomerDiscountGroup: (
     customerId: DotyposCustomerId,
     discountGroupId: DotyposDiscountGroupId | null
@@ -1202,65 +1210,89 @@ const makeDotyposService: Effect.Effect<
 
       yield* Effect.logInfo("Dotypos reservation confirmation patch started");
 
-      // The replay conflict that makes the next attempt a settling rerun.
-      const unsettled = yield* Ref.make(Option.none<DotyposUncertain>());
+      // The replay conflict, and the ETag its PATCH replayed, that make the
+      // next attempt a settling rerun.
+      const unsettled = yield* Ref.make(
+        Option.none<{
+          readonly uncertain: DotyposUncertain;
+          readonly replayedEtag: string;
+        }>()
+      );
 
-      // The If-Match ETag makes the status check and the PATCH one atomic
-      // transition: a cancellation after this read fails the PATCH instead of
-      // being overwritten, so a cancelled hold is never revived.
-      const reservation = yield* readReservationVersion(
-        id,
-        "confirmReservation"
-      ).pipe(
-        // A failed settling read leaves the earlier attempt uncertain.
-        Effect.catch((failure) =>
-          Ref.get(unsettled).pipe(
-            Effect.flatMap((uncertain) =>
-              Effect.fail(keepUncertainty(failure, uncertain))
-            )
-          )
-        ),
-        Effect.flatMap((current) =>
-          Match.value(current.reservation.status).pipe(
-            Match.when("CANCELLED", () =>
-              Effect.fail(
-                new DotyposReservationCancelledError({
-                  reservationId: id,
-                  message: "Dotypos reservation is already cancelled.",
-                })
-              )
-            ),
-            Match.when("CONFIRMED", () => Effect.succeed(current.reservation)),
-            Match.when("NEW", () =>
-              patchReservationVersion({
+      // A replayed PATCH that meets 412 has probably already landed: the
+      // replay carries the ETag the landed PATCH replaced. Rerun the read,
+      // status match and PATCH once to settle it. CONFIRMED means it landed,
+      // CANCELLED keeps the cancellation, and NEW patches under the fresh
+      // ETag. A reread that still carries the replayed ETag can't postdate
+      // the version that rejected the replay, so it stays uncertain without
+      // another PATCH. Any failure of the rerun stays uncertain. A plain 412
+      // stays a version conflict and is not rerun.
+      const attempt = Effect.gen(function* () {
+        const earlier = yield* Ref.get(unsettled);
+        const stayUncertain = (failure: DotyposConditionalWriteFailure) =>
+          keepUncertainty(
+            failure,
+            Option.map(earlier, ({ uncertain }) => uncertain)
+          );
+
+        // The If-Match ETag makes the status check and the PATCH one atomic
+        // transition: a cancellation after this read fails the PATCH instead
+        // of being overwritten, so a cancelled hold is never revived.
+        const current = yield* readReservationVersion(
+          id,
+          "confirmReservation"
+        ).pipe(Effect.mapError(stayUncertain));
+
+        return yield* Match.value(current.reservation.status).pipe(
+          Match.when("CANCELLED", () =>
+            Effect.fail(
+              new DotyposReservationCancelledError({
                 reservationId: id,
-                etag: current.etag,
-                payload: { status: "CONFIRMED" },
-                operation: "confirmReservation",
+                message: "Dotypos reservation is already cancelled.",
               })
-            ),
-            Match.exhaustive
-          )
-        ),
-        // A replayed PATCH that meets 412 has probably already landed: the
-        // replay carries the ETag the landed PATCH replaced. Rerun the read,
-        // status match and PATCH once to settle it. CONFIRMED means it landed,
-        // CANCELLED keeps the cancellation, and NEW patches under the fresh
-        // ETag. A plain 412 stays a version conflict and is not rerun.
-        Effect.tapError((failure) =>
-          isReplayConflict(failure)
-            ? Ref.getAndSet(unsettled, Option.some(failure)).pipe(
-                Effect.flatMap((earlier) =>
-                  Option.isNone(earlier)
-                    ? Effect.logWarning(
-                        "Dotypos reservation confirmation replay conflicted; rereading to settle it"
-                      )
-                    : Effect.void
+            )
+          ),
+          Match.when("CONFIRMED", () => Effect.succeed(current.reservation)),
+          Match.when("NEW", () =>
+            Option.isSome(earlier) &&
+            earlier.value.replayedEtag === current.etag
+              ? Effect.fail(earlier.value.uncertain)
+              : patchReservationVersion({
+                  reservationId: id,
+                  etag: current.etag,
+                  payload: { status: "CONFIRMED" },
+                  operation: "confirmReservation",
+                }).pipe(
+                  Effect.mapError(stayUncertain),
+                  Effect.tapError((failure) =>
+                    Option.isNone(earlier) &&
+                    isReplayConflict("reservation.patch")(failure)
+                      ? Ref.set(
+                          unsettled,
+                          Option.some({
+                            uncertain: failure,
+                            replayedEtag: current.etag,
+                          })
+                        ).pipe(
+                          Effect.andThen(
+                            Effect.logWarning(
+                              "Dotypos reservation confirmation replay conflicted; rereading to settle it"
+                            )
+                          )
+                        )
+                      : Effect.void
+                  )
                 )
-              )
-            : Effect.void
-        ),
-        Effect.retry({ schedule: Schedule.recurs(1), while: isReplayConflict }),
+          ),
+          Match.exhaustive
+        );
+      });
+
+      const reservation = yield* attempt.pipe(
+        Effect.retry({
+          schedule: Schedule.recurs(1),
+          while: isReplayConflict("reservation.patch"),
+        }),
         Effect.tapError((error) =>
           Effect.logError("Dotypos reservation confirmation failed", {
             error,
@@ -1950,16 +1982,136 @@ const makeDotyposService: Effect.Effect<
     }).pipe(retryDotyposRequest(discountGroupsCall.request))
   );
 
+  const readCustomerVersion = (
+    customerId: DotyposCustomerId,
+    operation: PatchCustomerOperation
+  ) => {
+    const call = { operation, request: "customer.version" } as const;
+    return runDotyposRequest(
+      client.getCustomer(config.cloudId, customerId, {
+        config: { includeResponse: true },
+      }),
+      call
+    ).pipe(
+      retryDotyposRequest(call.request),
+      Effect.flatMap(([record, response]) => {
+        const etag = response.headers.etag ?? response.headers.ETag;
+        return etag
+          ? Effect.succeed({ etag, record })
+          : Effect.fail(
+              dotyposInvalidResponse(call, {
+                message: "Customer ETag header was missing.",
+              })
+            );
+      })
+    );
+  };
+
+  /**
+   * Sends an If-Match customer PATCH that the package replays on transient
+   * failures, and decodes the patched customer.
+   */
+  const patchCustomerVersion = (input: {
+    readonly customerId: DotyposCustomerId;
+    readonly etag: string;
+    readonly payload: UpdateCustomerRequest;
+    readonly operation: PatchCustomerOperation;
+  }) => {
+    const call = {
+      operation: input.operation,
+      request: "customer.patch",
+    } as const;
+    return runDotyposRequest(
+      client.patchCustomer(config.cloudId, input.customerId, {
+        params: { "If-Match": input.etag },
+        payload: input.payload,
+      }),
+      call
+    ).pipe(
+      retryDotyposRequest(call.request),
+      Effect.flatMap((customer) =>
+        decodeProviderEntity(
+          DotyposCustomerSchema,
+          { ...customer, id: customer.id ?? input.customerId },
+          call
+        )
+      )
+    );
+  };
+
+  /**
+   * Settles a replayed customer PATCH that met 412. It rereads the customer
+   * once; a reread that holds the write under a new ETag gets one confirming
+   * PATCH of the same payload under the reread's ETag, and a confirmation
+   * that holds the write is the result. A differing ETag alone doesn't prove
+   * the reread postdates the replay, since nothing shows Dotypos reads are
+   * monotonic, so only the conditional PATCH can confirm the write still
+   * holds. Every other outcome stays DotyposUncertain without another PATCH:
+   * a failed reread, one that still carries the replayed ETag, and one that
+   * doesn't hold the write, because a mismatch can't prove a concurrent
+   * change won. A failed confirmation stays DotyposUncertain too and is not
+   * settled again. Never infer whose write landed from the ETag: same-value
+   * PATCHes change it too.
+   */
+  const settleCustomerReplay = Effect.fn("DotyposService.settleCustomerReplay")(
+    function* (input: {
+      readonly customerId: DotyposCustomerId;
+      readonly payload: UpdateCustomerRequest;
+      readonly operation: PatchCustomerOperation;
+      readonly holds: (customer: DotyposCustomer) => boolean;
+      readonly replayedEtag: string;
+      readonly uncertain: DotyposUncertain;
+    }) {
+      yield* Effect.logWarning(
+        "Dotypos customer write replay conflicted; rereading to settle it"
+      );
+      const stayUncertain = (failure: DotyposConditionalWriteFailure) =>
+        keepUncertainty(failure, Option.some(input.uncertain));
+      const versionCall = {
+        operation: input.operation,
+        request: "customer.version",
+      } as const;
+      const reread = yield* readCustomerVersion(
+        input.customerId,
+        input.operation
+      ).pipe(
+        Effect.flatMap(({ etag, record }) =>
+          decodeProviderEntity(DotyposCustomerSchema, record, versionCall).pipe(
+            Effect.map((customer) => ({ etag, customer }))
+          )
+        ),
+        Effect.mapError(stayUncertain)
+      );
+      if (reread.etag === input.replayedEtag || !input.holds(reread.customer)) {
+        return yield* input.uncertain;
+      }
+      const confirmed = yield* patchCustomerVersion({
+        customerId: input.customerId,
+        etag: reread.etag,
+        payload: input.payload,
+        operation: input.operation,
+      }).pipe(Effect.mapError(stayUncertain));
+      if (!input.holds(confirmed)) return yield* input.uncertain;
+      return confirmed;
+    }
+  );
+
   /**
    * Reads the customer's ETag, then sends an If-Match PATCH that the package
    * replays on transient failures. A missing customer fails
    * DotyposRejected{not-found}, and nothing was applied.
+   *
+   * `holds` is the operation's own check that a customer record holds the
+   * write. With it, a replayed PATCH that meets 412 is settled by
+   * settleCustomerReplay; without it, that failure stays DotyposUncertain.
+   * A plain 412 is always DotyposVersionConflict and is never reapplied.
    */
   const updateCustomerVersion = Effect.fn("DotyposService.patchCustomer")(
     function* (
       customerId: DotyposCustomerId,
       payload: UpdateCustomerRequest,
-      operation: PatchCustomerOperation
+      operation: PatchCustomerOperation,
+      holds?: (customer: DotyposCustomer) => boolean
     ) {
       const normalizedCustomerId = yield* normalizeInputIdentifier(
         DotyposCustomerIdSchema,
@@ -1968,32 +2120,29 @@ const makeDotyposService: Effect.Effect<
         operation
       );
 
-      const versionCall = { operation, request: "customer.version" } as const;
-      const [, response] = yield* runDotyposRequest(
-        client.getCustomer(config.cloudId, normalizedCustomerId, {
-          config: { includeResponse: true },
-        }),
-        versionCall
-      ).pipe(retryDotyposRequest(versionCall.request));
-      const etag = response.headers.etag ?? response.headers.ETag;
-      if (!etag) {
-        return yield* dotyposInvalidResponse(versionCall, {
-          message: "Customer ETag header was missing.",
-        });
-      }
+      const { etag } = yield* readCustomerVersion(
+        normalizedCustomerId,
+        operation
+      );
 
-      const patchCall = { operation, request: "customer.patch" } as const;
-      const customer = yield* runDotyposRequest(
-        client.patchCustomer(config.cloudId, normalizedCustomerId, {
-          params: { "If-Match": etag },
-          payload,
-        }),
-        patchCall
-      ).pipe(retryDotyposRequest(patchCall.request));
-      return yield* decodeProviderEntity(
-        DotyposCustomerSchema,
-        { ...customer, id: customer.id ?? normalizedCustomerId },
-        patchCall
+      return yield* patchCustomerVersion({
+        customerId: normalizedCustomerId,
+        etag,
+        payload,
+        operation,
+      }).pipe(
+        Effect.catchIf(isReplayConflict("customer.patch"), (uncertain) =>
+          holds
+            ? settleCustomerReplay({
+                customerId: normalizedCustomerId,
+                payload,
+                operation,
+                holds,
+                replayedEtag: etag,
+                uncertain,
+              })
+            : Effect.fail(uncertain)
+        )
       );
     }
   );
@@ -2032,7 +2181,9 @@ const makeDotyposService: Effect.Effect<
     return yield* updateCustomerVersion(
       customerId,
       { _discountGroupId: normalizedDiscountGroupId },
-      "setCustomerDiscountGroup"
+      "setCustomerDiscountGroup",
+      (customer) =>
+        (customer._discountGroupId ?? null) === normalizedDiscountGroupId
     );
   });
 
