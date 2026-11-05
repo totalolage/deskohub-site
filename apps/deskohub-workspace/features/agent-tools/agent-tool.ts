@@ -24,7 +24,7 @@ import {
 import type { AgentToolView } from "./agent-tool-view";
 import {
   type CustomerAgentCaller,
-  customerAgentCallServices,
+  CustomerAgentCallServices,
   type SignedInAgentToolRequirements,
   type SignedInAgentToolServices,
 } from "./customer-agent-caller";
@@ -199,7 +199,8 @@ export const defineAgentTool = <
  * A tool only an agent the customer signed in through may call. The MCP
  * route refuses a call without a token granting `scope` before it runs; the
  * tool reads the customer through its `CurrentCustomerAgentGrant` and
- * the account services backed by the caller's token.
+ * the account services `CustomerAgentCallServices` builds for the caller,
+ * backed by the caller's token unless a test provides its own.
  */
 export const defineSignedInAgentTool = <
   Input extends Schema.Top & { readonly DecodingServices: never },
@@ -228,9 +229,9 @@ export const defineSignedInAgentTool = <
         // challenge before any tool runs.
         onNone: () => Effect.fail(AgentToolError.serviceUnavailable()),
         onSome: (signedIn) =>
-          run.pipe(
-            Effect.provide(
-              customerAgentCallServices(signedIn).pipe(Layer.orDie)
+          CustomerAgentCallServices.pipe(
+            Effect.flatMap(({ forCaller }) =>
+              run.pipe(Effect.provide(forCaller(signedIn).pipe(Layer.orDie)))
             )
           ),
       })

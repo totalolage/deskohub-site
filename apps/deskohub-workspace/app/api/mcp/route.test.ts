@@ -83,7 +83,8 @@ mock.module("@/features/account/server/auth.server", () => ({
   },
 }));
 
-// Signed-in calls build their account services, which never query here.
+// The route provides the database on every request; these tests never
+// query it.
 mock.module("@/db/database-provider.server", () => ({
   workspaceDatabaseLayer: Layer.succeed(
     WorkspaceDatabase,
@@ -177,9 +178,11 @@ mock.module(
   })
 );
 
-const { makeAgentToolTestServices, workspaceDateFromToday } = await import(
-  "@/features/agent-tools/agent-tools.test-utils"
-);
+const {
+  inMemoryCustomerAgentCallServices,
+  makeAgentToolTestServices,
+  workspaceDateFromToday,
+} = await import("@/features/agent-tools/agent-tools.test-utils");
 const services = makeAgentToolTestServices();
 const preparePayStateModule = await import(
   "@/features/reservation/actions/prepare-pay-state"
@@ -241,8 +244,13 @@ mock.module("@/features/agent-tools/customer-agent-catalog", () => ({
     },
   },
 }));
+// Signed-in tools read the grant the route verified, never the account
+// services its token backs.
 mock.module("@/features/agent-tools/customer-agent-tools", () => ({
-  CustomerAgentToolsLive: services.layer,
+  CustomerAgentToolsLive: Layer.merge(
+    services.layer,
+    inMemoryCustomerAgentCallServices()
+  ),
 }));
 
 const { Client } = await import("@modelcontextprotocol/client");
