@@ -14,7 +14,29 @@ const recipient = {
   dotyposCustomerId: DotyposCustomerIdSchema.make("42"),
 };
 
+// The tokens this module signs for the recipient under each key today.
+// Unsubscribe links in sent emails must keep opening, so the format can't
+// change.
+const goldenToken =
+  "WyJzZW5kLTEiLCI0MiJd.766UFxUziQ368Ko3FdnJpEt3Ws48QDR2IULn2-C1aS4";
+const goldenPreviousKeyToken =
+  "WyJzZW5kLTEiLCI0MiJd.qjIg7vrg5HqB3qM8x6rCwGTzH2PCVy5C6uvrM5mTX_c";
+
 describe("campaign unsubscribe token", () => {
+  test("keeps the signed token format", () => {
+    expect(signCampaignUnsubscribeToken(currentKey, recipient)).toBe(
+      goldenToken
+    );
+    expect(signCampaignUnsubscribeToken(previousKey, recipient)).toBe(
+      goldenPreviousKeyToken
+    );
+    for (const token of [goldenToken, goldenPreviousKeyToken]) {
+      expect(
+        openCampaignUnsubscribeToken([currentKey, previousKey], token)
+      ).toEqual(Option.some(recipient));
+    }
+  });
+
   test("opens to the signed recipient", () => {
     const token = signCampaignUnsubscribeToken(currentKey, recipient);
 

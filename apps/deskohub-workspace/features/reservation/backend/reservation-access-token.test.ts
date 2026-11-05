@@ -14,6 +14,11 @@ const secret = Buffer.alloc(32, 9);
 const orderId = workspaceReservationIdSchema.make("reservation-1");
 const now = Temporal.Instant.from("2026-06-20T08:00:00Z");
 
+// The token this module issues for these inputs today. Access links already
+// sent must keep opening, so the format can't change.
+const goldenToken =
+  "eyJwdXJwb3NlIjoicmVzZXJ2YXRpb24tYWNjZXNzIiwib3JkZXJJZCI6InJlc2VydmF0aW9uLTEiLCJsb2NhbGUiOiJlbi1VUyIsImlzc3VlZEF0RXBvY2hNaWxsaXNlY29uZHMiOjE3ODE5NDI0MDAwMDB9.bdiqEW-XmvyeCmoctnVagNsr-L4Tm3s0Fym2bp1pD6w";
+
 const createToken = () =>
   createReservationAccessToken(
     {
@@ -34,6 +39,27 @@ describe("reservation access token", () => {
     );
 
     expect(claims).toMatchObject({ orderId, locale: "en-US" });
+  });
+
+  test("keeps the issued token format", async () => {
+    expect(await Effect.runPromise(createToken())).toBe(goldenToken);
+    expect(
+      await Effect.runPromise(
+        openReservationAccessToken(
+          {
+            token: reservationAccessTokenSchema.make(goldenToken),
+            orderId,
+            locale: "en-US",
+          },
+          { secret }
+        )
+      )
+    ).toEqual({
+      purpose: "reservation-access",
+      orderId,
+      locale: "en-US",
+      issuedAtEpochMilliseconds: now.epochMilliseconds,
+    });
   });
 
   test("reproduces identical bytes for the same issuance timestamp input", async () => {
