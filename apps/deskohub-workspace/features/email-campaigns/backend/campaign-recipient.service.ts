@@ -1,9 +1,8 @@
 import "server-only";
 
 import type { DotyposCustomer, DotyposCustomerId } from "@deskohub/dotypos";
-import { Context, Effect, Layer, Option, Order, Result, Schema } from "effect";
+import { Context, Effect, Layer, Option, Order, Result } from "effect";
 import type { Locale } from "@/features/i18n";
-import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import { currentInstant } from "@/shared/utils/temporal";
 import type {
   AudienceCandidate,
@@ -26,6 +25,7 @@ import {
   type CampaignCandidateFacts,
   CampaignCandidateRepository,
 } from "./campaign-candidate.repository";
+import { reachableCampaignEmail } from "./campaign-reachability";
 
 /** A customer the campaign reaches, with the Dotypos profile email. */
 type CampaignRecipient = {
@@ -244,25 +244,6 @@ const classifyRecipients = ({
       .filter((entry): entry is CampaignRecipientExclusion => "reason" in entry)
       .sort(byCustomerId),
   };
-};
-
-const decodeEmail = Schema.decodeUnknownOption(reservationCustomerEmailSchema);
-
-/**
- * The email a campaign can reach a customer at, or why it can't. Resolution
- * and delivery both apply it, so a profile that changed since the send was
- * frozen is excluded the same way.
- */
-export const reachableCampaignEmail = (
-  profile: Option.Option<DotyposCustomer>
-): Result.Result<string, CampaignRecipientExclusionReason> => {
-  if (Option.isNone(profile)) return Result.fail("missing-from-dotypos");
-  if (profile.value.deleted) return Result.fail("deleted-customer");
-  if (!profile.value.email?.trim()) return Result.fail("missing-email");
-  return Option.match(decodeEmail(profile.value.email), {
-    onNone: () => Result.fail("invalid-email" as const),
-    onSome: Result.succeed,
-  });
 };
 
 const classify = (

@@ -6,7 +6,6 @@ import {
   DotyposService,
 } from "@deskohub/dotypos";
 import { type EmailMessage, EmailServiceTag } from "@deskohub/email";
-import { isTestEmailRecipient } from "@deskohub/email/backend/test-recipients";
 import {
   and,
   asc,
@@ -38,7 +37,6 @@ import {
   type WorkspaceTransaction,
 } from "@/db/database.service";
 import {
-  customerMarketingConsents,
   emailCampaignAutomationVersions,
   emailCampaignDeliveryBatches,
   emailCampaignRecipients,
@@ -47,7 +45,6 @@ import {
 } from "@/db/schema";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
 import type { Locale } from "@/features/i18n";
-import { marketingConsentState } from "@/features/legal/backend/marketing-consent-ledger";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { WorkspaceEmailLayer } from "@/shared/backend/config/email.config";
 import { currentInstant } from "@/shared/utils/temporal";
@@ -73,7 +70,10 @@ import type { CampaignId, CampaignSendId } from "../campaign-identifiers";
 import type { CampaignRecipientSkipReason } from "../campaign-states";
 import { campaignContentForRecipient } from "../recipient-locale";
 import { CampaignEmailConfig } from "./campaign-email.config";
-import { reachableCampaignEmail } from "./campaign-recipient.service";
+import {
+  campaignEligibility,
+  consentingCampaignCustomers,
+} from "./campaign-reachability";
 import type { CampaignDeliveryAttempt } from "./campaign-send-queue.service";
 import { sendAutomationVersion } from "./campaign-send-selection";
 import { CampaignUnsubscribeService } from "./campaign-unsubscribe.service";
@@ -530,40 +530,15 @@ export class CampaignDeliveryService extends Context.Service<
             })
           );
 
-      const loadActiveConsents = (customerIds: readonly DotyposCustomerId[]) =>
-        db
-          .select({
-            dotyposCustomerId: customerMarketingConsents.dotyposCustomerId,
-          })
-          .from(customerMarketingConsents)
-          .where(
-            and(
-              inArray(customerMarketingConsents.dotyposCustomerId, [
-                ...customerIds,
-              ]),
-              eq(
-                marketingConsentState(
-                  customerMarketingConsents.dotyposCustomerId
-                ),
-                "active"
-              )
-            )
-          )
-          .pipe(
-            Effect.map(
-              (rows) => new Set(rows.map((row) => row.dotyposCustomerId))
-            )
-          );
-
-      /** The recipients who may receive the campaign's purpose of email. */
       const loadConsenting = (input: {
         readonly campaign: DeliveredCampaign;
         readonly customerIds: readonly DotyposCustomerId[];
       }) =>
-        Match.value(input.campaign.purpose).pipe(
-          Match.when("marketing", () => loadActiveConsents(input.customerIds)),
-          Match.orElse(() => Effect.succeed(new Set(input.customerIds)))
-        );
+        consentingCampaignCustomers({
+          db,
+          purpose: input.campaign.purpose,
+          customerIds: input.customerIds,
+        });
 
       const loadProfiles = (customerIds: readonly DotyposCustomerId[]) =>
         dotypos.getCustomersByIds(customerIds);
@@ -579,18 +554,14 @@ export class CampaignDeliveryService extends Context.Service<
           dotyposCustomerId: recipient.dotyposCustomerId,
           reason,
         });
-        if (!input.consenting.has(recipient.dotyposCustomerId)) {
-          return Result.fail(skip("consent-withdrawn"));
-        }
-        return reachableCampaignEmail(
-          Option.fromNullishOr(input.profiles.get(recipient.dotyposCustomerId))
-        ).pipe(
-          Result.flatMap((to) =>
-            config.deploymentEnvironment === "production" ||
-            isTestEmailRecipient(to)
-              ? Result.succeed({ ...recipient, to })
-              : Result.fail("outside-test-domain" as const)
+        return campaignEligibility({
+          profile: Option.fromNullishOr(
+            input.profiles.get(recipient.dotyposCustomerId)
           ),
+          consenting: input.consenting.has(recipient.dotyposCustomerId),
+          deploymentEnvironment: config.deploymentEnvironment,
+        }).pipe(
+          Result.map((to) => ({ ...recipient, to })),
           Result.mapError(skip)
         );
       };
