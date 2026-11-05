@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { DotyposCustomerId } from "@deskohub/dotypos";
-import { Effect } from "effect";
 import type { PromotionCodeId } from "@/features/discounts/persistence-contracts";
 import {
   evaluateReferral,
   type InvitationReferral,
   type InvitationWindow,
+  type ReferralEvaluation,
+  type ReferrerByInvitee,
 } from "./referral-verdict";
 
 const customer = (value: string) => value as DotyposCustomerId;
@@ -15,65 +16,60 @@ const referral = (referrer: string): InvitationReferral => ({
   promotionCodeId: `code-of-${referrer}` as PromotionCodeId,
 });
 
-/** Runs the evaluation and records which facts it loaded, in order. */
+/** Answers each fact the evaluation asks for and records the order asked. */
 const evaluate = (facts: {
   readonly target?: InvitationReferral;
   readonly attribution?: InvitationReferral;
   readonly invitationWindow?: InvitationWindow;
-  readonly referrerByInvitee?: ReadonlyMap<
-    DotyposCustomerId,
-    DotyposCustomerId
-  >;
+  readonly referrerByInvitee?: ReferrerByInvitee;
 }) => {
-  const loaded: string[] = [];
-  const load = <A>(name: string, value: A) =>
-    Effect.sync(() => {
-      loaded.push(name);
-      return value;
-    });
-  const verdict = Effect.runSync(
+  const asked: string[] = [];
+  const answer = (evaluation: ReferralEvaluation) => {
+    if (evaluation.kind !== "decided") asked.push(evaluation.kind);
+    switch (evaluation.kind) {
+      case "decided":
+        return evaluation.verdict;
+      case "needs_attribution":
+        return answer(evaluation.resume(facts.attribution));
+      case "needs_invitation_window":
+        return answer(evaluation.resume(facts.invitationWindow ?? "open"));
+      case "needs_referrer_by_invitee":
+        return answer(evaluation.resume(facts.referrerByInvitee ?? new Map()));
+    }
+  };
+  const verdict = answer(
     evaluateReferral({
       invitedDotyposCustomerId: invited,
-      target: load("target", facts.target),
-      attribution: load("attribution", facts.attribution),
-      invitationWindow: load(
-        "invitationWindow",
-        facts.invitationWindow ?? "open"
-      ),
-      referrerByInvitee: load(
-        "referrerByInvitee",
-        facts.referrerByInvitee ?? new Map()
-      ),
+      target: facts.target,
     })
   );
-  return { verdict, loaded };
+  return { verdict, asked };
 };
 
 describe("referral verdict", () => {
   test("invites through an open window when the referral graph stays acyclic", () => {
     expect(evaluate({ target: referral("referrer") })).toEqual({
       verdict: { kind: "eligible", referral: referral("referrer") },
-      loaded: [
-        "target",
-        "attribution",
-        "invitationWindow",
-        "referrerByInvitee",
+      asked: [
+        "needs_attribution",
+        "needs_invitation_window",
+        "needs_referrer_by_invitee",
       ],
     });
   });
 
-  test("rejects a code that can't refer anyone, or refers its own owner, before reading the customer", () => {
+  test("rejects a code that can't refer anyone, or refers its own owner, before asking about the customer", () => {
     expect(evaluate({})).toEqual({
       verdict: { kind: "rejected", reason: "unavailable" },
-      loaded: ["target"],
+      asked: [],
     });
     expect(evaluate({ target: referral("invited") })).toEqual({
       verdict: { kind: "rejected", reason: "self_referral" },
-      loaded: ["target"],
+      asked: [],
     });
   });
 
-  test("settles an existing referral without reading the invitation window", () => {
+  test("settles an existing referral without asking for the invitation window", () => {
     expect(
       evaluate({
         target: referral("referrer"),
@@ -82,7 +78,7 @@ describe("referral verdict", () => {
       })
     ).toEqual({
       verdict: { kind: "already_accepted", referral: referral("referrer") },
-      loaded: ["target", "attribution"],
+      asked: ["needs_attribution"],
     });
     expect(
       evaluate({
@@ -91,7 +87,7 @@ describe("referral verdict", () => {
       })
     ).toEqual({
       verdict: { kind: "rejected", reason: "already_attributed" },
-      loaded: ["target", "attribution"],
+      asked: ["needs_attribution"],
     });
   });
 
@@ -99,13 +95,13 @@ describe("referral verdict", () => {
     ["closed", "ineligible"],
     ["held", "pending_payment"],
   ] as const)(
-    "rejects a %s invitation window as %s before reading the referral graph",
+    "rejects a %s invitation window as %s before asking for the referral graph",
     (invitationWindow, reason) => {
       expect(
         evaluate({ target: referral("referrer"), invitationWindow })
       ).toEqual({
         verdict: { kind: "rejected", reason },
-        loaded: ["target", "attribution", "invitationWindow"],
+        asked: ["needs_attribution", "needs_invitation_window"],
       });
     }
   );
@@ -123,21 +119,12 @@ describe("referral verdict", () => {
     ).toEqual({ kind: "rejected", reason: "cycle" });
   });
 
-  test("stops at the first failing fact and passes its failure through", () => {
-    const loaded: string[] = [];
-    const failure = Effect.runSync(
-      evaluateReferral({
-        invitedDotyposCustomerId: invited,
-        target: Effect.succeed(referral("referrer")),
-        attribution: Effect.succeed(undefined),
-        invitationWindow: Effect.fail("history unavailable" as const),
-        referrerByInvitee: Effect.sync(() => {
-          loaded.push("referrerByInvitee");
-          return new Map();
-        }),
-      }).pipe(Effect.flip)
-    );
-    expect(failure).toBe("history unavailable");
-    expect(loaded).toEqual([]);
+  test("confirms a same-referrer attribution recorded after the customer's own was read", () => {
+    expect(
+      evaluate({
+        target: referral("referrer"),
+        referrerByInvitee: new Map([[invited, customer("referrer")]]),
+      }).verdict
+    ).toEqual({ kind: "already_accepted", referral: referral("referrer") });
   });
 });

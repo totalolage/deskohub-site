@@ -47,7 +47,9 @@ import {
   evaluateReferral,
   type InvitationReferral,
   type InvitationWindow,
-  type ReferralFacts,
+  type ReferralEvaluation,
+  type ReferralVerdict,
+  type ReferrerByInvitee,
 } from "./referral-verdict";
 
 /**
@@ -150,6 +152,42 @@ const isReferralCodeActive = (
     Temporal.Instant.compare(now, referral.validFrom) >= 0) &&
   (referral.validUntil === null ||
     Temporal.Instant.compare(now, referral.validUntil) < 0);
+
+/**
+ * How a context reads the facts a referral evaluation may ask for. Its
+ * failures are the context's own and pass through as is.
+ */
+type ReferralFactReads<E> = {
+  readonly attribution: Effect.Effect<InvitationReferral | undefined, E>;
+  readonly invitationWindow: Effect.Effect<InvitationWindow, E>;
+  readonly referrerByInvitee: Effect.Effect<ReferrerByInvitee, E>;
+};
+
+/**
+ * Reads the fact the evaluation asks for, one at a time, and resumes it until
+ * it decides. Holds no rule: the evaluation decides what to read next.
+ */
+const decideReferral = <E>(
+  evaluation: ReferralEvaluation,
+  reads: ReferralFactReads<E>
+): Effect.Effect<ReferralVerdict, E> =>
+  Match.value(evaluation).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      decided: ({ verdict }) => Effect.succeed(verdict),
+      needs_attribution: ({ resume }) =>
+        Effect.flatMap(reads.attribution, (attribution) =>
+          decideReferral(resume(attribution), reads)
+        ),
+      needs_invitation_window: ({ resume }) =>
+        Effect.flatMap(reads.invitationWindow, (invitationWindow) =>
+          decideReferral(resume(invitationWindow), reads)
+        ),
+      needs_referrer_by_invitee: ({ resume }) =>
+        Effect.flatMap(reads.referrerByInvitee, (referrerByInvitee) =>
+          decideReferral(resume(referrerByInvitee), reads)
+        ),
+    })
+  );
 
 export class ReferralService extends Context.Service<
   ReferralService,
@@ -321,7 +359,7 @@ export class ReferralService extends Context.Service<
           .from(referralAttributions)
       ).pipe(
         Effect.map(
-          (rows): ReadonlyMap<DotyposCustomerId, DotyposCustomerId> =>
+          (rows): ReferrerByInvitee =>
             new Map(
               rows.map((row) => [
                 row.invitedDotyposCustomerId,
@@ -338,17 +376,27 @@ export class ReferralService extends Context.Service<
        * an active invitation claim holds the invitation: the checkout's own
        * booking may be the pending one.
        */
-      const checkoutReferralFacts = (input: {
+      const checkoutReferralFactReads = (
+        dotyposCustomerId: DotyposCustomerId
+      ): ReferralFactReads<ReferralOutage> => ({
+        attribution: findAttribution(dotyposCustomerId),
+        invitationWindow: standing.findInvitationWindow(dotyposCustomerId),
+        referrerByInvitee: loadReferrerByInvitee,
+      });
+
+      const decideCheckoutReferral = Effect.fnUntraced(function* (input: {
         readonly code: ReferralCode;
         readonly dotyposCustomerId: DotyposCustomerId;
-      }): ReferralFacts<ReferralOutage, never> => ({
-        invitedDotyposCustomerId: input.dotyposCustomerId,
-        target: findActiveReferralTarget(input.code),
-        attribution: findAttribution(input.dotyposCustomerId),
-        invitationWindow: standing.findInvitationWindow(
-          input.dotyposCustomerId
-        ),
-        referrerByInvitee: loadReferrerByInvitee,
+        readonly reads: ReferralFactReads<ReferralOutage>;
+      }) {
+        const target = yield* findActiveReferralTarget(input.code);
+        return yield* decideReferral(
+          evaluateReferral({
+            invitedDotyposCustomerId: input.dotyposCustomerId,
+            target,
+          }),
+          input.reads
+        );
       });
 
       const evaluateCheckoutReferral = Effect.fn(
@@ -359,12 +407,11 @@ export class ReferralService extends Context.Service<
       }) {
         const code = normalizeCode(input.code);
         if (!code) return yield* fail("invalid_code");
-        const verdict = yield* evaluateReferral(
-          checkoutReferralFacts({
-            code,
-            dotyposCustomerId: input.dotyposCustomerId,
-          })
-        );
+        const verdict = yield* decideCheckoutReferral({
+          code,
+          dotyposCustomerId: input.dotyposCustomerId,
+          reads: checkoutReferralFactReads(input.dotyposCustomerId),
+        });
         return yield* Match.value(verdict).pipe(
           Match.discriminatorsExhaustive("kind")({
             eligible: () =>
@@ -404,12 +451,14 @@ export class ReferralService extends Context.Service<
         const code = normalizeCode(input.referralCode);
         if (!code) return undefined;
         // A carried code that is no longer usable simply stops pricing.
-        const verdict = yield* evaluateReferral({
-          ...checkoutReferralFacts({
-            code,
-            dotyposCustomerId: input.dotyposCustomerId,
-          }),
-          attribution: Effect.succeed(attribution),
+        const verdict = yield* decideCheckoutReferral({
+          code,
+          dotyposCustomerId: input.dotyposCustomerId,
+          // The attribution was read above: the customer has none.
+          reads: {
+            ...checkoutReferralFactReads(input.dotyposCustomerId),
+            attribution: Effect.succeed(attribution),
+          },
         });
         return Match.value(verdict).pipe(
           Match.discriminatorsExhaustive("kind")({
@@ -665,19 +714,29 @@ export class ReferralService extends Context.Service<
         return window;
       });
 
-      const acceptanceReferralFacts = (input: {
+      /**
+       * Acceptance reads every fact under its locks, inside its transaction,
+       * one at a time.
+       */
+      const decideAcceptedReferral = Effect.fnUntraced(function* (input: {
         readonly code: ReferralCode;
         readonly identity: LinkedCustomerAccount;
         readonly referrerDotyposCustomerId: DotyposCustomerId;
         readonly referrerAccountId: CustomerAccountId | undefined;
-      }): ReferralFacts<ReferralError | ReferralOutage, never> => ({
-        invitedDotyposCustomerId: input.identity.dotyposCustomerId,
-        target: findLockedReferralTarget(input),
-        attribution: findAttribution(input.identity.dotyposCustomerId),
-        invitationWindow: findAcceptanceWindow(
-          input.identity.dotyposCustomerId
-        ),
-        referrerByInvitee: loadReferrerByInvitee,
+      }) {
+        const { dotyposCustomerId } = input.identity;
+        const target = yield* findLockedReferralTarget(input);
+        return yield* decideReferral(
+          evaluateReferral({
+            invitedDotyposCustomerId: dotyposCustomerId,
+            target,
+          }),
+          {
+            attribution: findAttribution(dotyposCustomerId),
+            invitationWindow: findAcceptanceWindow(dotyposCustomerId),
+            referrerByInvitee: loadReferrerByInvitee,
+          }
+        );
       });
 
       /** Records the permanent referral the verdict admitted. */
@@ -740,14 +799,12 @@ export class ReferralService extends Context.Service<
                 );
 
                 yield* requireCurrentInviteeLink(identity);
-                const verdict = yield* evaluateReferral(
-                  acceptanceReferralFacts({
-                    code,
-                    identity,
-                    referrerDotyposCustomerId,
-                    referrerAccountId,
-                  })
-                );
+                const verdict = yield* decideAcceptedReferral({
+                  code,
+                  identity,
+                  referrerDotyposCustomerId,
+                  referrerAccountId,
+                });
                 return yield* Match.value(verdict).pipe(
                   Match.discriminatorsExhaustive("kind")({
                     eligible: ({ referral }) =>
