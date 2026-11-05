@@ -6472,7 +6472,10 @@ describe("DotyposService conditional-write replay", () => {
       reads: [
         fieldsBefore,
         {
-          fields: { ...writtenProfile, email: "someone-else@example.test" },
+          fields: {
+            ...writtenProfile,
+            email: testEmailAddress("someone-else"),
+          },
           etag: "v2",
         },
       ],
@@ -6480,7 +6483,10 @@ describe("DotyposService conditional-write replay", () => {
         503,
         412,
         {
-          fields: { ...writtenProfile, email: "someone-else@example.test" },
+          fields: {
+            ...writtenProfile,
+            email: testEmailAddress("someone-else"),
+          },
         },
       ],
       expected: "success",
