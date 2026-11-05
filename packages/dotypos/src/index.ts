@@ -9,6 +9,7 @@ export type {
   DotyposCustomerDetails,
   DotyposCustomerDiscountGroup,
   DotyposCustomerLookupData,
+  DotyposCustomerProfile,
   FindCustomerOptions,
   IDotyposService,
   ReservationListOptions,

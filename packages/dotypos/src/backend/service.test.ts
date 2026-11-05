@@ -19,6 +19,7 @@ import {
   DotyposRuntimeConfigSchema,
   makeDotyposRuntimeConfigLayer,
 } from "../config";
+import type { DotyposConditionalWriteFailure } from "../errors";
 import {
   type Category,
   Customer,
@@ -35,6 +36,7 @@ import {
   DotyposTimestampFromString,
   DotyposTimestampSchema,
 } from "../timestamp";
+import type { DotyposCustomer } from "../types";
 import {
   DotyposCategorySchema,
   DotyposCustomerIdSchema,
@@ -54,6 +56,7 @@ import {
   CustomerVersionSelection,
   type DotyposCustomerBillingDetails,
   type DotyposCustomerDetails,
+  type DotyposCustomerProfile,
   DotyposService,
   type IDotyposService,
 } from "./service";
@@ -216,14 +219,17 @@ const runWithService = <A, E>(
  * Runs on a TestClock that advances in steps far shorter than the request
  * timeout until the effect finishes, so retry backoff elapses instantly. Only
  * for fetch mocks that answer without real-time delays: a mock that waits on a
- * real timer would hit the request timeout.
+ * real timer would hit the request timeout. `startsAt` sets the clock before
+ * the effect starts.
  */
 const runWithServiceRetryingInstantly = <A, E>(
   effect: Effect.Effect<A, E, DotyposService>,
-  fetchMock: typeof globalThis.fetch
+  fetchMock: typeof globalThis.fetch,
+  startsAt?: number
 ) =>
   Effect.runPromise(
     Effect.gen(function* () {
+      if (startsAt !== undefined) yield* TestClock.setTime(startsAt);
       const fiber = yield* effect.pipe(
         Effect.provide(makeServiceLayer(fetchMock)),
         Effect.forkChild
@@ -5813,9 +5819,12 @@ describe("DotyposService conditional-write replay", () => {
     }
   );
 
-  /** Customer detail fields an answer carries; undefined leaves one out. */
+  /** Customer fields an answer carries; undefined leaves one out. */
   type CustomerFieldsSettlementFields = {
     readonly [Field in keyof DotyposCustomerDetails]?: string | null;
+  } & {
+    readonly expireDate?: string | null;
+    readonly deleted?: boolean;
   };
   /** A version read: the customer's detail fields under an ETag, or a 503. */
   type CustomerFieldsSettlementRead =
@@ -5855,10 +5864,17 @@ describe("DotyposService conditional-write replay", () => {
     readonly row: CustomerFieldsSettlementRow;
     readonly operation:
       | "updateCustomerBillingDetails"
-      | "updateCustomerDetails";
+      | "updateCustomerDetails"
+      | "updateCustomerProfile"
+      | "expireCustomer"
+      | "reactivateCustomer";
+    /** The write; one that returns an Option must answer some. */
     readonly write: (
       dotypos: IDotyposService
-    ) => ReturnType<IDotyposService["updateCustomerDetails"]>;
+    ) => Effect.Effect<
+      DotyposCustomer | Option.Option<DotyposCustomer>,
+      DotyposConditionalWriteFailure
+    >;
     readonly written: CustomerFieldsSettlementFields;
   }) => {
     const { row } = input;
@@ -5898,9 +5914,15 @@ describe("DotyposService conditional-write replay", () => {
     const result = await runWithServiceRetryingInstantly(
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
-        return yield* input.write(dotypos).pipe(Effect.result);
+        return yield* input.write(dotypos).pipe(
+          Effect.map((written) =>
+            Option.isOption(written) ? Option.getOrUndefined(written) : written
+          ),
+          Effect.result
+        );
       }),
-      fetchMock
+      fetchMock,
+      settlementNow
     );
 
     if (row.expected === "success") {
@@ -5933,6 +5955,8 @@ describe("DotyposService conditional-write replay", () => {
     );
   };
 
+  /** The settlement tests' clock, so an expiry is written at a known instant. */
+  const settlementNow = Date.parse("2026-11-05T12:00:00.000Z");
   const fieldsBefore = { fields: {}, etag: "v1" } as const;
   const fieldsRereadOnly = (fields: CustomerFieldsSettlementFields) =>
     ({
@@ -6371,6 +6395,439 @@ describe("DotyposService conditional-write replay", () => {
           ),
         written: withoutPhone ? writtenDetailsWithoutPhone : writtenDetails,
       });
+    }
+  );
+
+  /** A profile as the account passes it: padded, with a local-format phone. */
+  const enteredProfile: DotyposCustomerProfile = {
+    firstName: " Ada ",
+    lastName: "Lovelace ",
+    phone: " 777 123 456 ",
+    addressLine1: " Synthetic street 1",
+    addressLine2: "  ",
+    city: "Synthetic city ",
+    zip: " 12345",
+    country: "CZ ",
+    companyName: " ",
+    companyId: "",
+    vatId: " ",
+  };
+  /** What updateCustomerProfile writes for enteredProfile: trimmed, E.164 phone, no email. */
+  const writtenProfile = {
+    firstName: "Ada",
+    lastName: "Lovelace",
+    phone: "+420777123456",
+    addressLine1: "Synthetic street 1",
+    addressLine2: "",
+    city: "Synthetic city",
+    zip: "12345",
+    country: "CZ",
+    companyName: "",
+    companyId: "",
+    vatId: "",
+  } as const;
+  /** What updateCustomerProfile writes when the customer clears the phone. */
+  const writtenProfileClearingPhone = { ...writtenProfile, phone: "" } as const;
+  const profileApplied = [
+    fieldsBefore,
+    { fields: writtenProfile, etag: "v2" },
+  ] as const;
+
+  type CustomerProfileSettlementRow = CustomerFieldsSettlementRow & {
+    /** `clearing-phone` passes a blank phone, which explicitly clears it. */
+    readonly entered?: "clearing-phone";
+  };
+
+  const profileSettlementRows: readonly CustomerProfileSettlementRow[] = [
+    {
+      label:
+        "503 then 412 settles when a confirming PATCH holds the trimmed profile and normalized phone",
+      reads: profileApplied,
+      patches: [503, 412, "success"],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "null and missing blank fields hold the profile",
+      reads: [
+        fieldsBefore,
+        {
+          fields: { ...writtenProfile, addressLine2: null, vatId: undefined },
+          etag: "v2",
+        },
+      ],
+      patches: [
+        503,
+        412,
+        { fields: { ...writtenProfile, addressLine2: null, vatId: undefined } },
+      ],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label:
+        "the profile leaves the email out, so a reread with another email still settles",
+      reads: [
+        fieldsBefore,
+        {
+          fields: {
+            ...writtenProfile,
+            email: testEmailAddress("someone-else"),
+          },
+          etag: "v2",
+        },
+      ],
+      patches: [
+        503,
+        412,
+        {
+          fields: {
+            ...writtenProfile,
+            email: testEmailAddress("someone-else"),
+          },
+        },
+      ],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "a cleared phone settles on a customer without a phone",
+      entered: "clearing-phone",
+      reads: [
+        fieldsBefore,
+        { fields: { ...writtenProfileClearingPhone, phone: null }, etag: "v2" },
+      ],
+      patches: [
+        503,
+        412,
+        { fields: { ...writtenProfileClearingPhone, phone: null } },
+      ],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label:
+        "a cleared phone stays uncertain without a PATCH while the reread still has one",
+      entered: "clearing-phone",
+      ...fieldsRereadOnly({
+        ...writtenProfileClearingPhone,
+        phone: "+420777000111",
+      }),
+    },
+    {
+      label: "a reread with another phone stays uncertain without a PATCH",
+      ...fieldsRereadOnly({ ...writtenProfile, phone: "+420777000111" }),
+    },
+    {
+      label:
+        "a reread holding the phone as entered rather than normalized stays uncertain without a PATCH",
+      ...fieldsRereadOnly({ ...writtenProfile, phone: "777 123 456" }),
+    },
+    {
+      label: "a reread with another last name stays uncertain without a PATCH",
+      ...fieldsRereadOnly({ ...writtenProfile, lastName: "Byron" }),
+    },
+    {
+      label:
+        "a deleted reread that holds every field stays uncertain without a PATCH",
+      ...fieldsRereadOnly({ ...writtenProfile, deleted: true }),
+    },
+    {
+      label:
+        "a reread that holds the profile under the replayed ETag stays uncertain without a PATCH",
+      reads: [fieldsBefore, { fields: writtenProfile, etag: "v1" }],
+      patches: [503, 412],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: replayedOnly,
+    },
+    {
+      label: "a confirming PATCH that answers another phone stays uncertain",
+      reads: profileApplied,
+      patches: [
+        503,
+        412,
+        { fields: { ...writtenProfile, phone: "+420777000111" } },
+      ],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "a confirming PATCH that meets 412 stays uncertain",
+      reads: profileApplied,
+      patches: [503, 412, 412],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "a failed settling reread stays uncertain",
+      reads: [fieldsBefore, 503],
+      patches: [503, 412],
+      expected: settlingRereadFailed,
+      expectedReads: 5,
+      expectedIfMatch: replayedOnly,
+    },
+    {
+      label: "a plain 412 is a version conflict without a reread",
+      reads: profileApplied,
+      patches: [412],
+      expected: plainCustomerConflict,
+      expectedReads: 1,
+      expectedIfMatch: ["v1"],
+    },
+  ];
+
+  test.each([...profileSettlementRows])(
+    "updateCustomerProfile settlement: $label",
+    (row) => {
+      const clearingPhone = row.entered === "clearing-phone";
+      return expectCustomerFieldsSettlement({
+        row,
+        operation: "updateCustomerProfile",
+        write: (dotypos) =>
+          dotypos.updateCustomerProfile(
+            dotyposCustomerId("customer-id"),
+            clearingPhone ? { ...enteredProfile, phone: "  " } : enteredProfile
+          ),
+        written: clearingPhone ? writtenProfileClearingPhone : writtenProfile,
+      });
+    }
+  );
+
+  test("updateCustomerProfile rejects an unparseable phone before any request", async () => {
+    const requests: string[] = [];
+    const fetchMock = mockDotyposFetch((request) => {
+      requests.push(`${request.method} ${new URL(request.url).pathname}`);
+      return tokenResponse();
+    });
+
+    const result = await runWithServiceRetryingInstantly(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos
+          .updateCustomerProfile(dotyposCustomerId("customer-id"), {
+            ...enteredProfile,
+            phone: "not a phone",
+          })
+          .pipe(Effect.result);
+      }),
+      fetchMock
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "DotyposRejected",
+        reason: "invalid-request",
+        operation: "updateCustomerProfile",
+      },
+    });
+    expect(requests).toEqual([]);
+  });
+
+  /** The expiry expireCustomer writes: a minute before settlementNow. */
+  const writtenExpiry = { expireDate: "2026-11-05T11:59:00.000Z" } as const;
+  const expiryApplied = [
+    fieldsBefore,
+    { fields: writtenExpiry, etag: "v2" },
+  ] as const;
+
+  const expirySettlementRows: readonly CustomerFieldsSettlementRow[] = [
+    {
+      label:
+        "503 then 412 settles when a confirming PATCH answers an expired customer",
+      reads: expiryApplied,
+      patches: [503, 412, "success"],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label:
+        "a reread expired by an earlier expiry settles through the confirming PATCH",
+      reads: [
+        fieldsBefore,
+        { fields: { expireDate: "2026-01-01T00:00:00.000Z" }, etag: "v2" },
+      ],
+      patches: [503, 412, "success"],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "an active reread stays uncertain without a PATCH",
+      ...fieldsRereadOnly({ expireDate: null }),
+    },
+    {
+      label:
+        "a reread whose expiry is still ahead stays uncertain without a PATCH",
+      ...fieldsRereadOnly({ expireDate: "2026-11-06T00:00:00.000Z" }),
+    },
+    {
+      label: "a deleted reread stays uncertain without a PATCH",
+      ...fieldsRereadOnly({ ...writtenExpiry, deleted: true }),
+    },
+    {
+      label:
+        "an expired reread under the replayed ETag stays uncertain without a PATCH",
+      reads: [fieldsBefore, { fields: writtenExpiry, etag: "v1" }],
+      patches: [503, 412],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: replayedOnly,
+    },
+    {
+      label:
+        "a confirming PATCH that answers a deleted customer stays uncertain",
+      reads: expiryApplied,
+      patches: [503, 412, { fields: { ...writtenExpiry, deleted: true } }],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "a confirming PATCH that meets 412 stays uncertain",
+      reads: expiryApplied,
+      patches: [503, 412, 412],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "a failed settling reread stays uncertain",
+      reads: [fieldsBefore, 503],
+      patches: [503, 412],
+      expected: settlingRereadFailed,
+      expectedReads: 5,
+      expectedIfMatch: replayedOnly,
+    },
+    {
+      label: "a plain 412 is a version conflict without a reread",
+      reads: expiryApplied,
+      patches: [412],
+      expected: plainCustomerConflict,
+      expectedReads: 1,
+      expectedIfMatch: ["v1"],
+    },
+  ];
+
+  test.each([...expirySettlementRows])(
+    "expireCustomer settlement: $label",
+    (row) =>
+      expectCustomerFieldsSettlement({
+        row,
+        operation: "expireCustomer",
+        write: (dotypos) =>
+          dotypos.expireCustomer(dotyposCustomerId("customer-id")),
+        written: writtenExpiry,
+      })
+  );
+
+  const clearedExpiry = { expireDate: null } as const;
+  const reactivationApplied = [
+    { fields: writtenExpiry, etag: "v1" },
+    { fields: clearedExpiry, etag: "v2" },
+  ] as const;
+
+  const reactivationSettlementRows: readonly CustomerFieldsSettlementRow[] = [
+    {
+      label: "503 then 412 settles when a confirming PATCH answers no expiry",
+      reads: reactivationApplied,
+      patches: [503, 412, "success"],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "a missing expiry holds the reactivation",
+      reads: [
+        { fields: writtenExpiry, etag: "v1" },
+        { fields: {}, etag: "v2" },
+      ],
+      patches: [503, 412, { fields: {} }],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "a still expired reread stays uncertain without a PATCH",
+      ...fieldsRereadOnly(writtenExpiry),
+    },
+    {
+      label:
+        "an active reread with an expiry ahead stays uncertain without a PATCH",
+      ...fieldsRereadOnly({ expireDate: "2026-11-06T00:00:00.000Z" }),
+    },
+    {
+      label:
+        "a deleted reread without an expiry stays uncertain without a PATCH",
+      ...fieldsRereadOnly({ ...clearedExpiry, deleted: true }),
+    },
+    {
+      label: "a plain 412 is a version conflict without a reread",
+      reads: reactivationApplied,
+      patches: [412],
+      expected: plainCustomerConflict,
+      expectedReads: 1,
+      expectedIfMatch: ["v1"],
+    },
+  ];
+
+  test.each([...reactivationSettlementRows])(
+    "reactivateCustomer settlement: $label",
+    (row) =>
+      expectCustomerFieldsSettlement({
+        row,
+        operation: "reactivateCustomer",
+        write: (dotypos) =>
+          dotypos.reactivateCustomer(dotyposCustomerId("customer-id")),
+        written: clearedExpiry,
+      })
+  );
+
+  const accountCustomerWrites = {
+    updateCustomerProfile: (dotypos: IDotyposService) =>
+      dotypos.updateCustomerProfile(
+        dotyposCustomerId("customer-id"),
+        enteredProfile
+      ),
+    expireCustomer: (dotypos: IDotyposService) =>
+      dotypos.expireCustomer(dotyposCustomerId("customer-id")),
+    reactivateCustomer: (dotypos: IDotyposService) =>
+      dotypos.reactivateCustomer(dotyposCustomerId("customer-id")),
+  } as const;
+
+  test.each(
+    Object.keys(accountCustomerWrites) as Array<
+      keyof typeof accountCustomerWrites
+    >
+  )(
+    "%s answers none without a PATCH when the customer is missing",
+    async (operation) => {
+      const methods: string[] = [];
+      const fetchMock = mockDotyposFetch((request) => {
+        const url = new URL(request.url);
+        if (url.pathname === "/signin/token") return tokenResponse();
+        methods.push(request.method);
+        return new Response(null, { status: 404 });
+      });
+
+      const result = await runWithServiceRetryingInstantly(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* accountCustomerWrites[operation](dotypos);
+        }),
+        fetchMock
+      );
+
+      expect(Option.isNone(result)).toBe(true);
+      expect(methods).toEqual(["GET"]);
     }
   );
 });

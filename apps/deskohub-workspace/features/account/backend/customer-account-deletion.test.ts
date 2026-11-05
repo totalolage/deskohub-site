@@ -1,12 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import {
   type DotyposCustomer,
+  DotyposCustomerSchema,
   DotyposRejected,
   DotyposService,
   DotyposUnavailable,
   DotyposUncertain,
+  DotyposVersionConflict,
 } from "@deskohub/dotypos";
-import { Effect, Layer, Logger, Option } from "effect";
+import { Effect, Layer, Logger, Option, Schema } from "effect";
 import { customerAccountIdSchema } from "../customer-account";
 import {
   type CustomerAccountDeletionDependencies,
@@ -111,7 +113,7 @@ describe("Customer account deletion", () => {
     const { dependencies, calls } = makeDependencies({
       expireOutcome: Effect.fail(
         new DotyposUncertain({
-          operation: "patchCustomer",
+          operation: "expireCustomer",
           reason: "transport",
         })
       ),
@@ -179,22 +181,26 @@ describe("Customer account deletion", () => {
 
   describe("with the Dotypos adapter", () => {
     const tokenNotFound = new DotyposRejected({
-      operation: "patchCustomer",
+      operation: "expireCustomer",
       request: "customer.version",
       reason: "unauthorized",
       httpStatus: 404,
     });
-    const replayNotFound = new DotyposUncertain({
-      operation: "patchCustomer",
+    const expiredCustomer = Schema.decodeSync(DotyposCustomerSchema)({
+      id: "60111",
+      _cloudId: "cloud",
+      firstName: "Ada",
+      points: "0",
+      flags: "0",
+      display: true,
+      deleted: false,
+      expireDate: "2020-01-01T00:00:00Z",
+    });
+    const replayConflict = new DotyposUncertain({
+      operation: "expireCustomer",
       request: "customer.patch",
-      reason: "server",
-      httpStatus: 404,
-      cause: new DotyposRejected({
-        operation: "patchCustomer",
-        request: "customer.patch",
-        reason: "not-found",
-        httpStatus: 404,
-      }),
+      reason: "conflict-after-replay",
+      httpStatus: 412,
     });
 
     const deleteWithDotypos = async (
@@ -230,9 +236,9 @@ describe("Customer account deletion", () => {
       return { ...outcome, logCodes };
     };
 
-    test("keeps deletion retryable when an access-token 404 ends the expiration patch", async () => {
+    test("keeps deletion retryable when an access-token 404 ends the expiration", async () => {
       const { result, calls, logCodes } = await deleteWithDotypos({
-        patchCustomer: () => Effect.fail(tokenNotFound),
+        expireCustomer: () => Effect.fail(tokenNotFound),
       });
 
       expect(result._tag).toBe("Failure");
@@ -241,22 +247,11 @@ describe("Customer account deletion", () => {
       expect(logCodes).toContain("account.deletion.retryable");
     });
 
-    test("treats a replayed expiration patch that ends in 404 as a missing profile once the replay finds none", async () => {
-      const dotyposCalls: string[] = [];
+    test("completes deletion once the expiration finds the customer missing", async () => {
       const { result, calls, logCodes } = await deleteWithDotypos({
-        patchCustomer: () => {
-          dotyposCalls.push("patch");
-          return dotyposCalls.length === 1
-            ? Effect.fail(replayNotFound)
-            : Effect.succeed(Option.none<DotyposCustomer>());
-        },
-        getCustomer: () => {
-          dotyposCalls.push("read");
-          return Effect.succeed(Option.none<DotyposCustomer>());
-        },
+        expireCustomer: () => Effect.succeed(Option.none<DotyposCustomer>()),
       });
 
-      expect(dotyposCalls).toEqual(["patch", "read", "patch"]);
       expect(result._tag).toBe("Success");
       expect(calls).toContain("destroy-avatar");
       expect(calls).toContain("tombstone");
@@ -264,12 +259,12 @@ describe("Customer account deletion", () => {
       expect(logCodes).not.toContain("account.deletion.retryable");
     });
 
-    test("keeps deletion retryable while replayed expiration patches stay uncertain and rereads find none", async () => {
+    test("keeps deletion retryable while the expiration stays uncertain, without repeating it", async () => {
       const dotyposCalls: string[] = [];
       const { result, calls, logCodes } = await deleteWithDotypos({
-        patchCustomer: () => {
-          dotyposCalls.push("patch");
-          return Effect.fail(replayNotFound);
+        expireCustomer: () => {
+          dotyposCalls.push("expire");
+          return Effect.fail(replayConflict);
         },
         getCustomer: () => {
           dotyposCalls.push("read");
@@ -277,53 +272,46 @@ describe("Customer account deletion", () => {
         },
       });
 
-      expect(dotyposCalls).toEqual(["patch", "read", "patch", "read"]);
+      expect(dotyposCalls).toEqual(["expire"]);
       expect(result._tag).toBe("Failure");
       expect(calls).not.toContain("tombstone");
       expect(logCodes).not.toContain("dotypos.customer-expiration.missing");
       expect(logCodes).toContain("account.deletion.retryable");
     });
 
-    test("keeps deletion retryable when an access-token 404 ends the settlement reread", async () => {
-      const { result, calls, logCodes } = await deleteWithDotypos({
-        patchCustomer: () =>
-          Effect.fail(
-            new DotyposUncertain({
-              operation: "patchCustomer",
-              request: "customer.patch",
-              reason: "server",
-              httpStatus: 503,
-            })
-          ),
-        getCustomer: () =>
-          Effect.fail(
-            new DotyposRejected({
-              operation: "getCustomer",
-              request: "customer.get",
-              reason: "unauthorized",
-              httpStatus: 404,
-            })
-          ),
+    test("expires again once after a genuine version conflict and completes deletion", async () => {
+      const dotyposCalls: string[] = [];
+      const { result, calls } = await deleteWithDotypos({
+        expireCustomer: () => {
+          dotyposCalls.push("expire");
+          return dotyposCalls.length === 1
+            ? Effect.fail(
+                new DotyposVersionConflict({
+                  operation: "expireCustomer",
+                  request: "customer.patch",
+                  httpStatus: 412,
+                })
+              )
+            : Effect.succeed(Option.some(expiredCustomer));
+        },
       });
 
-      expect(result._tag).toBe("Failure");
-      expect(calls).not.toContain("tombstone");
-      expect(logCodes).not.toContain("dotypos.customer-expiration.missing");
-      expect(logCodes).toContain("account.deletion.retryable");
+      expect(dotyposCalls).toEqual(["expire", "expire"]);
+      expect(result._tag).toBe("Success");
+      expect(calls).toContain("tombstone");
     });
 
     test("keeps deletion retryable when the expiration fails with a 503", async () => {
       const { result, calls, logCodes } = await deleteWithDotypos({
-        patchCustomer: () =>
+        expireCustomer: () =>
           Effect.fail(
             new DotyposUnavailable({
-              operation: "patchCustomer",
+              operation: "expireCustomer",
               request: "customer.patch",
               reason: "server",
               httpStatus: 503,
             })
           ),
-        getCustomer: () => Effect.succeed(Option.none<DotyposCustomer>()),
       });
 
       expect(result._tag).toBe("Failure");
