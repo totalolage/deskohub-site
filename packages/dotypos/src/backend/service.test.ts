@@ -5197,6 +5197,187 @@ describe("DotyposService conditional-write replay", () => {
     expect(versionReads).toBe(1);
     expect(patchCount).toBe(row.patchCount);
   });
+
+  type ConfirmSettlementRead = "NEW" | "CONFIRMED" | "CANCELLED" | 503;
+  type ConfirmSettlementPatch = "success" | "transport" | 503 | 412;
+  type ConfirmSettlementRow = {
+    readonly label: string;
+    /** Each version read's answer in order; the last one repeats. */
+    readonly reads: readonly ConfirmSettlementRead[];
+    readonly patches: readonly ConfirmSettlementPatch[];
+    readonly expected:
+      | "success"
+      | "cancelled"
+      | {
+          readonly _tag: string;
+          readonly reason?: string;
+          readonly request: string;
+          readonly httpStatus: number;
+        };
+    readonly expectedReads: number;
+    readonly expectedIfMatch: readonly string[];
+  };
+
+  const confirmSettlementRows: readonly ConfirmSettlementRow[] = [
+    {
+      label: "503 then 412 settles as applied when the reread is CONFIRMED",
+      reads: ["NEW", "CONFIRMED"],
+      patches: [503, 412],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: ['"reservation-v1"', '"reservation-v1"'],
+    },
+    {
+      label:
+        "transport failure then 412 settles as applied when the reread is CONFIRMED",
+      reads: ["NEW", "CONFIRMED"],
+      patches: ["transport", 412],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: ['"reservation-v1"', '"reservation-v1"'],
+    },
+    {
+      label:
+        "503 then 412 keeps cancellation protection when the reread is CANCELLED",
+      reads: ["NEW", "CANCELLED"],
+      patches: [503, 412],
+      expected: "cancelled",
+      expectedReads: 2,
+      expectedIfMatch: ['"reservation-v1"', '"reservation-v1"'],
+    },
+    {
+      label:
+        "503 then 412 patches again under the fresh ETag when the reread is NEW",
+      reads: ["NEW", "NEW"],
+      patches: [503, 412, "success"],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: [
+        '"reservation-v1"',
+        '"reservation-v1"',
+        '"reservation-v2"',
+      ],
+    },
+    {
+      label: "a plain 412 on the rerun PATCH is a version conflict",
+      reads: ["NEW", "NEW"],
+      patches: [503, 412, 412],
+      expected: {
+        _tag: "DotyposVersionConflict",
+        request: "reservation.patch",
+        httpStatus: 412,
+      },
+      expectedReads: 2,
+      expectedIfMatch: [
+        '"reservation-v1"',
+        '"reservation-v1"',
+        '"reservation-v2"',
+      ],
+    },
+    {
+      label: "a second replay conflict stays uncertain without another rerun",
+      reads: ["NEW", "NEW"],
+      patches: [503, 412, 503, 412],
+      expected: {
+        _tag: "DotyposUncertain",
+        reason: "conflict-after-replay",
+        request: "reservation.patch",
+        httpStatus: 412,
+      },
+      expectedReads: 2,
+      expectedIfMatch: [
+        '"reservation-v1"',
+        '"reservation-v1"',
+        '"reservation-v2"',
+        '"reservation-v2"',
+      ],
+    },
+    {
+      label: "a failed settling reread stays uncertain",
+      reads: ["NEW", 503],
+      patches: [503, 412],
+      expected: {
+        _tag: "DotyposUncertain",
+        reason: "conflict-after-replay",
+        request: "reservation.version",
+        httpStatus: 503,
+      },
+      expectedReads: 5,
+      expectedIfMatch: ['"reservation-v1"', '"reservation-v1"'],
+    },
+  ];
+
+  test.each([...confirmSettlementRows])(
+    "confirmReservation settlement: $label",
+    async (row) => {
+      let versionReads = 0;
+      const ifMatchHeaders: Array<string | null> = [];
+      const fetchMock = mockDotyposFetch((request) => {
+        const url = new URL(request.url);
+        if (url.pathname === "/signin/token") return tokenResponse();
+        if (url.pathname !== "/clouds/cloud-id/reservations/reservation-id") {
+          return new Response("Not found", { status: 404 });
+        }
+        if (request.method === "GET") {
+          const read =
+            row.reads[Math.min(versionReads, row.reads.length - 1)] ?? 503;
+          versionReads += 1;
+          if (read === 503) return new Response("Unavailable", { status: 503 });
+          return Response.json(reservation({ status: read }), {
+            headers: { ETag: `"reservation-v${Math.min(versionReads, 2)}"` },
+          });
+        }
+        if (request.method === "PATCH") {
+          const patch = row.patches[ifMatchHeaders.length];
+          ifMatchHeaders.push(request.headers.get("if-match"));
+          if (patch === "success") {
+            return Response.json(reservation({ status: "CONFIRMED" }));
+          }
+          if (patch === "transport") throw new TypeError("fetch failed");
+          return new Response(null, { status: patch ?? 500 });
+        }
+        return new Response("Not found", { status: 404 });
+      });
+
+      const result = await runWithServiceRetryingInstantly(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos
+            .confirmReservation(dotyposReservationId("reservation-id"))
+            .pipe(Effect.result);
+        }),
+        fetchMock
+      );
+
+      if (row.expected === "success") {
+        expect(result).toMatchObject({
+          _tag: "Success",
+          success: { id: "reservation-id", status: "CONFIRMED" },
+        });
+      } else if (row.expected === "cancelled") {
+        expect(result).toMatchObject({
+          _tag: "Failure",
+          failure: {
+            _tag: "DotyposReservationCancelledError",
+            reservationId: "reservation-id",
+          },
+        });
+      } else {
+        expect(result).toMatchObject({
+          _tag: "Failure",
+          failure: {
+            _tag: row.expected._tag,
+            ...(row.expected.reason && { reason: row.expected.reason }),
+            operation: "confirmReservation",
+            request: row.expected.request,
+            httpStatus: row.expected.httpStatus,
+          },
+        });
+      }
+      expect(versionReads).toBe(row.expectedReads);
+      expect(ifMatchHeaders).toEqual([...row.expectedIfMatch]);
+    }
+  );
 });
 
 type SingleReadPageOperation =
