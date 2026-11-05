@@ -280,6 +280,68 @@ describe("promotion customer picker", () => {
     expect(push).toHaveBeenCalledWith(`/${locale}/admin/codes`);
     expect(refresh).not.toHaveBeenCalled();
   });
+
+  test("stays on the page when removing the only customer opens the code to everyone", async () => {
+    const { administrationHref } = await import(
+      "@/features/administration/administration-href"
+    );
+    const { PromotionCustomerPicker } = await import("./promotion-customers");
+    const view = await renderInLocale(
+      <PromotionCustomerPicker
+        audienceCustomerIds={[customerId]}
+        code="SUMMER10"
+        deleteRedirect={administrationHref("/[locale]/admin/codes")}
+        promotion={{ kind: "discount-code", id: codeId }}
+      />
+    );
+    await findCustomer(view);
+
+    fireEvent.click(
+      view.getByRole("button", { name: "Remove Test Customer from SUMMER10" })
+    );
+    await confirmDialog(view, m.discountsMakeAvailableToAll({}, { locale }));
+    const mutation: DiscountAdminMutation = {
+      kind: "make-code-unrestricted",
+      codeId,
+    };
+    expect(executeOf(mutateDiscountAdmin)).toHaveBeenLastCalledWith(mutation);
+
+    await report(mutateDiscountAdmin, {
+      data: { notice: "Code opened to everyone." },
+      input: mutation,
+    });
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  test("keeps the search results and offers removal once the refreshed audience includes the added customer", async () => {
+    const { RouteLocaleProvider } = await import(
+      "@/features/i18n/route-locale"
+    );
+    const { PromotionCustomerPicker } = await import("./promotion-customers");
+    const picker = (audienceCustomerIds: readonly DotyposCustomerId[]) => (
+      <RouteLocaleProvider locale={locale}>
+        <PromotionCustomerPicker
+          audienceCustomerIds={audienceCustomerIds}
+          code="SUMMER10"
+          promotion={{ kind: "discount-code", id: codeId }}
+        />
+      </RouteLocaleProvider>
+    );
+    const view = render(picker([otherCustomerId]));
+    await findCustomer(view);
+    expect(
+      view.getByRole("button", { name: "Add Test Customer to SUMMER10" })
+    ).toBeDefined();
+
+    view.rerender(picker([otherCustomerId, customerId]));
+    expect(
+      view.getByRole("button", { name: "Remove Test Customer from SUMMER10" })
+    ).toBeDefined();
+    expect(
+      view.getByText(m.discountsCustomerInAudience({}, { locale }))
+    ).toBeDefined();
+  });
 });
 
 describe("promotion customers panel", () => {
