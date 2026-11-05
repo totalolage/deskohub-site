@@ -213,6 +213,11 @@ export const workspaceE2EPollIntervalMs = {
   automationPlanner: 10 * SECOND,
   browser: SECOND,
   datasource: 5 * SECOND,
+  // React handler waits read DOM state, so they poll on a timer. Playwright's
+  // default animation-frame polling stops when WebKit stops delivering
+  // frames, which it can do for many seconds on a loaded runner after the
+  // page has hydrated.
+  reactHandler: 100,
 } as const;
 
 // Postgres reads are not rate-limited, so database polls start here and back
