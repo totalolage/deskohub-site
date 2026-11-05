@@ -90,18 +90,18 @@ type ToolbarLayout = keyof typeof toolbarLayoutClassNames;
  * The count group fills what the controls leave on its row. A stacked count
  * never gets narrower than its own content, so the controls wrap below it.
  */
-const countGroupClassNames: Record<ToolbarLayout, string | undefined> = {
+const countGroupClassNames = {
   inline: "min-h-10 flex-auto justify-center sm:justify-start",
   stacked: "2xl:min-w-min 2xl:flex-1",
   unfiltered: undefined,
-};
+} as const satisfies Record<ToolbarLayout, string | undefined>;
 
-const controlsClassNames: Record<ToolbarLayout, string> = {
+const controlsClassNames = {
   inline: "ml-auto flex flex-wrap items-end justify-end gap-3",
   stacked:
     "flex flex-col gap-3 2xl:ml-auto 2xl:flex-row 2xl:items-end 2xl:justify-end",
   unfiltered: "flex flex-col gap-3 2xl:flex-row 2xl:items-end 2xl:justify-end",
-};
+} as const satisfies Record<ToolbarLayout, string>;
 
 type ToolbarActionsProps = {
   readonly actions?: ReactNode;
