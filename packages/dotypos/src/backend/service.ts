@@ -1,4 +1,5 @@
 import {
+  Clock,
   Context,
   Data,
   Effect,
@@ -60,6 +61,7 @@ import {
   DotyposTableSchema,
 } from "../types";
 import { toCustomerEmailIdentity } from "../utils/customer-email";
+import { customerLifecycle } from "../utils/customer-lifecycle";
 import { normalizePhoneNumber } from "../utils/phone-formatting";
 import {
   DotyposAccessToken,
@@ -440,6 +442,17 @@ export type DotyposCustomerDetails = DotyposCustomerBillingDetails & {
   readonly phone?: string;
 };
 
+/**
+ * A customer's own profile edit. Every field is written; the email is not
+ * part of it. A blank phone explicitly clears the stored phone, and any other
+ * phone must normalize to E.164.
+ */
+export type DotyposCustomerProfile = DotyposCustomerBillingDetails & {
+  readonly firstName: string;
+  readonly lastName: string;
+  readonly phone: string;
+};
+
 /** A customer text field a details write always sets. */
 type CustomerDetailTextField = Exclude<keyof DotyposCustomerDetails, "phone">;
 
@@ -492,6 +505,65 @@ const holdsCustomerDetails = (details: DotyposCustomerDetails) => {
     holdsText(customer) &&
     (details.phone === undefined || customer.phone === details.phone);
 };
+
+/** Every customer profile text field; the type check keeps the list complete. */
+const customerProfileTextFields = Struct.keys({
+  ...customerBillingDetailFieldSet,
+  firstName: true,
+  lastName: true,
+} as const satisfies {
+  readonly [Field in Exclude<keyof DotyposCustomerProfile, "phone">]: true;
+});
+
+/**
+ * Whether a customer that is not deleted holds a profile write: every text
+ * field as holdsCustomerText checks it, and the written phone exactly, where a
+ * blank phone also matches a missing or null one.
+ */
+const holdsCustomerProfile = (profile: DotyposCustomerProfile) => {
+  const holdsText = holdsCustomerText(customerProfileTextFields, profile);
+  return (customer: DotyposCustomer) =>
+    !customer.deleted &&
+    holdsText(customer) &&
+    (customer.phone ?? "") === profile.phone;
+};
+
+/**
+ * The trimmed profile an update writes, with the phone normalized to E.164.
+ * A nonblank phone that doesn't normalize fails DotyposRejected{invalid-request}
+ * instead of clearing the stored phone.
+ */
+const toCustomerProfileUpdate = (profile: DotyposCustomerProfile) => {
+  const enteredPhone = profile.phone.trim();
+  const phone = enteredPhone ? normalizePhoneNumber(enteredPhone) : "";
+  if (phone == null) {
+    return Effect.fail(
+      dotyposInvalidRequest(
+        "updateCustomerProfile",
+        "Phone number must be blank or a valid phone number"
+      )
+    );
+  }
+  return Effect.succeed<DotyposCustomerProfile>({
+    addressLine1: profile.addressLine1.trim(),
+    addressLine2: profile.addressLine2.trim(),
+    city: profile.city.trim(),
+    companyId: profile.companyId.trim(),
+    companyName: profile.companyName.trim(),
+    country: profile.country.trim(),
+    firstName: profile.firstName.trim(),
+    lastName: profile.lastName.trim(),
+    phone,
+    vatId: profile.vatId.trim(),
+    zip: profile.zip.trim(),
+  });
+};
+
+/**
+ * How far in the past an expiration sets the expiry, so the customer reads
+ * as expired at once despite clock skew between Workspace and Dotypos.
+ */
+const customerExpiryLeadMilliseconds = 60_000;
 
 /**
  * The trimmed details an update writes. An absent or unparseable phone is
@@ -768,7 +840,10 @@ type PatchCustomerOperation =
   | "patchCustomer"
   | "setCustomerDiscountGroup"
   | "updateCustomerBillingDetails"
-  | "updateCustomerDetails";
+  | "updateCustomerDetails"
+  | "updateCustomerProfile"
+  | "expireCustomer"
+  | "reactivateCustomer";
 
 export interface IDotyposService {
   // ---- Reads: DotyposReadFailure only ----
@@ -913,6 +988,34 @@ export interface IDotyposService {
     customerId: DotyposCustomerId,
     details: DotyposCustomerDetails
   ) => Effect.Effect<DotyposCustomer, DotyposConditionalWriteFailure>;
+  /**
+   * The next three settle a replayed PATCH that meets 412 like the three above, and none means the customer does not
+   * exist and nothing was applied. A genuine 412 is DotyposVersionConflict; refreshing after it is the caller's choice.
+   *
+   * updateCustomerProfile writes the trimmed profile; it holds when a customer that is not deleted carries every
+   * field, the blank-cleared phone included. A nonblank phone that doesn't normalize fails DotyposRejected{invalid-request}.
+   */
+  readonly updateCustomerProfile: (
+    customerId: DotyposCustomerId,
+    profile: DotyposCustomerProfile
+  ) => Effect.Effect<
+    Option.Option<DotyposCustomer>,
+    DotyposConditionalWriteFailure
+  >;
+  /** Sets an expiry a minute in the past; holds when the customer reads as expired, not deleted. */
+  readonly expireCustomer: (
+    customerId: DotyposCustomerId
+  ) => Effect.Effect<
+    Option.Option<DotyposCustomer>,
+    DotyposConditionalWriteFailure
+  >;
+  /** Clears the expiry; holds when the customer is not deleted and has no expiry. */
+  readonly reactivateCustomer: (
+    customerId: DotyposCustomerId
+  ) => Effect.Effect<
+    Option.Option<DotyposCustomer>,
+    DotyposConditionalWriteFailure
+  >;
 }
 
 const makeDotyposService: Effect.Effect<
@@ -2231,15 +2334,22 @@ const makeDotyposService: Effect.Effect<
    * uncertain attempt the failure is DotyposUncertain, so it never reads as
    * none.
    */
-  const patchCustomer = (
-    customerId: DotyposCustomerId,
-    payload: UpdateCustomerRequest
+  const noneWhenCustomerMissing = <E extends DotyposConditionalWriteFailure>(
+    write: Effect.Effect<DotyposCustomer, E>
   ) =>
-    updateCustomerVersion(customerId, payload, "patchCustomer").pipe(
+    write.pipe(
       Effect.map(Option.some),
       Effect.catchIf(isNotFound, () =>
         Effect.succeed(Option.none<DotyposCustomer>())
       )
+    );
+
+  const patchCustomer = (
+    customerId: DotyposCustomerId,
+    payload: UpdateCustomerRequest
+  ) =>
+    noneWhenCustomerMissing(
+      updateCustomerVersion(customerId, payload, "patchCustomer")
     );
 
   const setCustomerDiscountGroup = Effect.fn(
@@ -2289,6 +2399,49 @@ const makeDotyposService: Effect.Effect<
       holdsCustomerDetails(update)
     );
   });
+
+  const updateCustomerProfile = Effect.fn(
+    "DotyposService.updateCustomerProfile"
+  )(function* (customerId: DotyposCustomerId, profile: DotyposCustomerProfile) {
+    const update = yield* toCustomerProfileUpdate(profile);
+    return yield* noneWhenCustomerMissing(
+      updateCustomerVersion(
+        customerId,
+        update,
+        "updateCustomerProfile",
+        holdsCustomerProfile(update)
+      )
+    );
+  });
+
+  const expireCustomer = Effect.fn("DotyposService.expireCustomer")(function* (
+    customerId: DotyposCustomerId
+  ) {
+    const now = yield* Clock.currentTimeMillis;
+    const expireDate = new Date(
+      now - customerExpiryLeadMilliseconds
+    ).toISOString();
+    return yield* noneWhenCustomerMissing(
+      updateCustomerVersion(
+        customerId,
+        { expireDate },
+        "expireCustomer",
+        (customer) => customerLifecycle(customer, new Date(now)) === "expired"
+      )
+    );
+  });
+
+  const reactivateCustomer = Effect.fn("DotyposService.reactivateCustomer")(
+    (customerId: DotyposCustomerId) =>
+      noneWhenCustomerMissing(
+        updateCustomerVersion(
+          customerId,
+          { expireDate: null },
+          "reactivateCustomer",
+          (customer) => !customer.deleted && customer.expireDate == null
+        )
+      )
+  );
 
   const getTables = Effect.fn("getTables")(
     function* () {
@@ -2542,6 +2695,9 @@ const makeDotyposService: Effect.Effect<
     listCustomerChanges,
     createCustomer,
     patchCustomer,
+    expireCustomer,
+    reactivateCustomer,
+    updateCustomerProfile,
     searchCustomers,
     getCustomerDiscountGroup,
     getDiscountGroups,
