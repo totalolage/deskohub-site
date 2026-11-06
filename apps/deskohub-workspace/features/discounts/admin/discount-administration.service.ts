@@ -94,6 +94,8 @@ export type AdminDiscountCode = {
   readonly maxUses: number | null;
   readonly maxUsesPerCustomer: number | null;
   readonly audienceSize: number;
+  /** The customers the code is limited to; empty when it is unrestricted. */
+  readonly audienceCustomerIds: readonly DotyposCustomerId[];
   readonly reservedUses: number;
   readonly redeemedUses: number;
   readonly releasedUses: number;
@@ -111,6 +113,8 @@ export type AdminVoucher = {
   readonly validFrom: Temporal.Instant | null;
   readonly validUntil: Temporal.Instant | null;
   readonly audienceSize: number;
+  /** The customers the voucher is limited to; empty when it is unrestricted. */
+  readonly audienceCustomerIds: readonly DotyposCustomerId[];
   readonly reservedUses: number;
   readonly redeemedUses: number;
   readonly releasedUses: number;
