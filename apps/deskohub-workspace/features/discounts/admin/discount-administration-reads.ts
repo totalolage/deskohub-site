@@ -480,6 +480,9 @@ const toAdminDiscountCode = (row: AdminDiscountCodeRow): AdminDiscountCode => {
     maxUses: row.maxUses,
     maxUsesPerCustomer: row.maxUsesPerCustomer,
     audienceSize: row.promotion.customers.length,
+    audienceCustomerIds: row.promotion.customers.map(
+      ({ dotyposCustomerId }) => dotyposCustomerId
+    ),
     ...usage,
     createdAt: row.promotion.createdAt,
     updatedAt: row.promotion.updatedAt,
@@ -526,6 +529,9 @@ const toAdminVoucher = (row: AdminVoucherRow): AdminVoucher => {
       value: Math.max(0, issuedCredit.value - usedValue),
     },
     audienceSize: row.promotion.customers.length,
+    audienceCustomerIds: row.promotion.customers.map(
+      ({ dotyposCustomerId }) => dotyposCustomerId
+    ),
     reservedUses: usage.reservedUses,
     redeemedUses: usage.redeemedUses,
     releasedUses: usage.releasedUses,

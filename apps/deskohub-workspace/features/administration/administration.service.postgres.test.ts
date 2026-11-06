@@ -1,7 +1,4 @@
-import {
-  seededCustomerReads,
-  seededReservationReads,
-} from "@deskohub/dotypos/backend/service.mock";
+import { makeInMemoryDotypos } from "@deskohub/dotypos/testing";
 import "@/shared/testing/workspace-test-env";
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -153,7 +150,9 @@ describe.skipIf(!testDatabase)(
                           : []
                       ).pipe(
                         Effect.flatMap((records) =>
-                          seededCustomerReads(records).getCustomersByIds(ids)
+                          makeInMemoryDotypos({
+                            customers: records,
+                          }).service.getCustomersByIds(ids)
                         )
                       ),
                     ...(getReservation && { getReservation }),
@@ -162,9 +161,9 @@ describe.skipIf(!testDatabase)(
                     getReservationsByIds: (ids, options) =>
                       listReservations({ ...options, ids: [...ids] }).pipe(
                         Effect.flatMap((records) =>
-                          seededReservationReads(records).getReservationsByIds(
-                            ids
-                          )
+                          makeInMemoryDotypos({
+                            reservations: records,
+                          }).service.getReservationsByIds(ids)
                         )
                       ),
                   }),
@@ -569,7 +568,9 @@ describe.skipIf(!testDatabase)(
           getReservationsByIds: (ids) =>
             Effect.succeed(bookings).pipe(
               Effect.flatMap((records) =>
-                seededReservationReads(records).getReservationsByIds(ids)
+                makeInMemoryDotypos({
+                  reservations: records,
+                }).service.getReservationsByIds(ids)
               )
             ),
         });
@@ -607,7 +608,9 @@ describe.skipIf(!testDatabase)(
                 return inRangeLabels.map(booking);
               }).pipe(
                 Effect.flatMap((records) =>
-                  seededReservationReads(records).getReservationsByIds(ids)
+                  makeInMemoryDotypos({
+                    reservations: records,
+                  }).service.getReservationsByIds(ids)
                 )
               );
             },
@@ -682,7 +685,9 @@ describe.skipIf(!testDatabase)(
                 getReservationsByIds: (ids) =>
                   Effect.succeed(bookings("CANCELLED")).pipe(
                     Effect.flatMap((records) =>
-                      seededReservationReads(records).getReservationsByIds(ids)
+                      makeInMemoryDotypos({
+                        reservations: records,
+                      }).service.getReservationsByIds(ids)
                     )
                   ),
               }
@@ -785,7 +790,9 @@ describe.skipIf(!testDatabase)(
                 })
               ).pipe(
                 Effect.flatMap((records) =>
-                  seededReservationReads(records).getReservationsByIds(ids)
+                  makeInMemoryDotypos({
+                    reservations: records,
+                  }).service.getReservationsByIds(ids)
                 )
               ),
           }
@@ -809,7 +816,9 @@ describe.skipIf(!testDatabase)(
             getReservationsByIds: (ids) =>
               Effect.succeed(bookings).pipe(
                 Effect.flatMap((records) =>
-                  seededReservationReads(records).getReservationsByIds(ids)
+                  makeInMemoryDotypos({
+                    reservations: records,
+                  }).service.getReservationsByIds(ids)
                 )
               ),
           });
@@ -860,7 +869,9 @@ describe.skipIf(!testDatabase)(
                   })
                 ).pipe(
                   Effect.flatMap((records) =>
-                    seededReservationReads(records).getReservationsByIds(ids)
+                    makeInMemoryDotypos({
+                      reservations: records,
+                    }).service.getReservationsByIds(ids)
                   )
                 ),
             }
@@ -882,7 +893,9 @@ describe.skipIf(!testDatabase)(
             getReservationsByIds: (ids) =>
               Effect.die(new Error("Dotypos must not be read")).pipe(
                 Effect.flatMap((records) =>
-                  seededReservationReads(records).getReservationsByIds(ids)
+                  makeInMemoryDotypos({
+                    reservations: records,
+                  }).service.getReservationsByIds(ids)
                 )
               ),
           }
@@ -1005,7 +1018,9 @@ describe.skipIf(!testDatabase)(
                 getReservationsByIds: (ids) =>
                   Effect.succeed(pagedLabels.map(booking)).pipe(
                     Effect.flatMap((records) =>
-                      seededReservationReads(records).getReservationsByIds(ids)
+                      makeInMemoryDotypos({
+                        reservations: records,
+                      }).service.getReservationsByIds(ids)
                     )
                   ),
               }
@@ -1374,7 +1389,9 @@ describe.skipIf(!testDatabase)(
             getReservationsByIds: (ids) =>
               Effect.succeed(bookings).pipe(
                 Effect.flatMap((records) =>
-                  seededReservationReads(records).getReservationsByIds(ids)
+                  makeInMemoryDotypos({
+                    reservations: records,
+                  }).service.getReservationsByIds(ids)
                 )
               ),
           }
@@ -1459,7 +1476,9 @@ describe.skipIf(!testDatabase)(
                     : bookings
                 ).pipe(
                   Effect.flatMap((records) =>
-                    seededReservationReads(records).getReservationsByIds(ids)
+                    makeInMemoryDotypos({
+                      reservations: records,
+                    }).service.getReservationsByIds(ids)
                   )
                 );
               },
