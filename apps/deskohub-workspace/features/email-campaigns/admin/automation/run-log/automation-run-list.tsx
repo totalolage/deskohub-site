@@ -80,7 +80,7 @@ function AutomationRunFilterForm({
   return (
     <AdministrationFilterForm
       action={action}
-      className="grid @2xl:grid-cols-3 @6xl:flex @6xl:flex-nowrap"
+      className="grid @2xl:grid-cols-3 @6xl:flex"
       variant="standalone"
     >
       <AdministrationFilterField

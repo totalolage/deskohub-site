@@ -35,6 +35,9 @@ export const adminCustomerCode = (
   maxUses: 100,
   maxUsesPerCustomer: 2,
   audienceSize: 1,
+  audienceCustomerIds: [
+    "dotypos-customer" as CustomerCode["audienceCustomerIds"][number],
+  ],
   reservedUses: 1,
   redeemedUses: 3,
   releasedUses: 1,
@@ -60,6 +63,7 @@ export const adminCustomerVoucher = (
   validFrom: null,
   validUntil: null,
   audienceSize: 0,
+  audienceCustomerIds: [],
   reservedUses: 0,
   redeemedUses: 1,
   releasedUses: 0,
