@@ -2,10 +2,8 @@ import "@/shared/testing/workspace-test-env";
 
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
-import {
-  DotyposServiceMock,
-  seededReservationReads,
-} from "@deskohub/dotypos/backend/service.mock";
+import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
+import { makeInMemoryDotypos } from "@deskohub/dotypos/testing";
 import {
   AdministrationCampaignId,
   type AudienceCountOperatorType,
@@ -144,7 +142,9 @@ describe.skipIf(!testDatabase)(
                   CampaignCandidateRepository.Default.pipe(
                     Layer.provide(testDatabase.layer)
                   ),
-                  DotyposServiceMock(seededReservationReads([]))
+                  DotyposServiceMock(
+                    makeInMemoryDotypos({ reservations: [] }).service
+                  )
                 )
               )
             )
