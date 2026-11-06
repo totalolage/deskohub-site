@@ -181,6 +181,10 @@ const dashboard: DiscountAdminDashboard = {
       maxUses: 100,
       maxUsesPerCustomer: 2,
       audienceSize: 2,
+      audienceCustomerIds: [
+        "dotypos-customer",
+        "other-customer",
+      ] as DiscountAdminDashboard["codes"][number]["audienceCustomerIds"],
       reservedUses: 1,
       redeemedUses: 3,
       releasedUses: 1,
@@ -327,6 +331,7 @@ describe("discount administration pages", () => {
       validFrom: Temporal.Instant.from("2026-08-01T08:00:00Z"),
       validUntil: Temporal.Instant.from("2026-09-01T08:00:00Z"),
       audienceSize: 0,
+      audienceCustomerIds: [],
       reservedUses: 0,
       redeemedUses: 0,
       releasedUses: 0,
@@ -803,6 +808,7 @@ describe("discount administration pages", () => {
           validFrom: null,
           validUntil: null,
           audienceSize: 0,
+          audienceCustomerIds: [],
           reservedUses: 0,
           redeemedUses: 1,
           releasedUses: 0,
@@ -1747,6 +1753,7 @@ describe("discount administration pages", () => {
       validFrom: null,
       validUntil: null,
       audienceSize: 0,
+      audienceCustomerIds: [],
       reservedUses: 0,
       redeemedUses: 0,
     };
@@ -1851,6 +1858,7 @@ describe("discount administration pages", () => {
           validFrom: null,
           validUntil: null,
           audienceSize: 0,
+          audienceCustomerIds: [],
           reservedUses: 0,
           redeemedUses: 0,
         }}
@@ -1955,6 +1963,34 @@ describe("discount administration pages", () => {
         },
       })
     );
+  });
+
+  test("manages a code's customers from its expanded row", async () => {
+    captureWorkspaceActions();
+    const { m } = await import("@/features/administration/i18n");
+    const { CodesAdministrationCollection } = await import("./components");
+    const view = render(
+      <CodesAdministrationCollection dashboard={dashboard} locale="en-US" />
+    );
+
+    fireEvent.click(view.getByRole("button", { name: "Edit SUMMER10" }));
+    const panel = view
+      .getByRole("heading", {
+        name: m.discountsColumnAudience({}, { locale: "en-US" }),
+      })
+      .closest("section")!;
+    expect(
+      within(panel).getByRole("searchbox", {
+        name: m.discountsCustomerSearchLabel({}, { locale: "en-US" }),
+      })
+    ).toBeDefined();
+    expect(
+      within(panel)
+        .getByRole("link", {
+          name: m.discountsShowAudienceCustomers({}, { locale: "en-US" }),
+        })
+        .getAttribute("href")
+    ).toBe(`/en-US/admin/codes/${dashboard.codes[0].id}`);
   });
 
   test("shows and edits cowork tier targets in the code table", async () => {
