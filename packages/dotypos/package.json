@@ -8,6 +8,7 @@
     "./api-timeout": "./src/api-timeout.ts",
     "./backend/service.mock": "./src/backend/service.mock.ts",
     "./table-map": "./src/table-map.tsx",
+    "./testing": "./src/backend/in-memory-dotypos.ts",
     "./generated": "./src/generated/index.ts",
     "./generated/*": "./src/generated/*.ts",
     "./phone-number": "./src/utils/phone-formatting.ts",

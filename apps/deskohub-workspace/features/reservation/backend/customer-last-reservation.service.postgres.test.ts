@@ -1,4 +1,4 @@
-import { seededReservationReads } from "@deskohub/dotypos/backend/service.mock";
+import { makeInMemoryDotypos } from "@deskohub/dotypos/testing";
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
@@ -92,7 +92,9 @@ const loadLastReservation = async (
           getReservationsByIds: (ids) =>
             listReservations({ ids: [...ids] }).pipe(
               Effect.flatMap((records) =>
-                seededReservationReads(records).getReservationsByIds(ids)
+                makeInMemoryDotypos({
+                  reservations: records,
+                }).service.getReservationsByIds(ids)
               )
             ),
         } as Partial<DotyposService["Service"]>)

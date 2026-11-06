@@ -1,7 +1,4 @@
-import {
-  seededCustomerReads,
-  seededReservationReads,
-} from "@deskohub/dotypos/backend/service.mock";
+import { makeInMemoryDotypos } from "@deskohub/dotypos/testing";
 import "@/shared/testing/workspace-test-env";
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import {
@@ -124,7 +121,9 @@ describe("AdministrationService", () => {
                 getCustomersByIds: (ids) =>
                   Effect.succeed([]).pipe(
                     Effect.flatMap((records) =>
-                      seededCustomerReads(records).getCustomersByIds(ids)
+                      makeInMemoryDotypos({
+                        customers: records,
+                      }).service.getCustomersByIds(ids)
                     )
                   ),
                 getTables: () => Effect.succeed([]),
@@ -134,9 +133,9 @@ describe("AdministrationService", () => {
                     ? Effect.succeed(new Map())
                     : Effect.succeed(bookings).pipe(
                         Effect.flatMap((records) =>
-                          seededReservationReads(records).getReservationsByIds(
-                            ids
-                          )
+                          makeInMemoryDotypos({
+                            reservations: records,
+                          }).service.getReservationsByIds(ids)
                         )
                       ),
               }),
@@ -223,7 +222,9 @@ describe("AdministrationService", () => {
                 getCustomersByIds: (ids) =>
                   Effect.succeed([]).pipe(
                     Effect.flatMap((records) =>
-                      seededCustomerReads(records).getCustomersByIds(ids)
+                      makeInMemoryDotypos({
+                        customers: records,
+                      }).service.getCustomersByIds(ids)
                     )
                   ),
                 getTables: () => Effect.succeed([]),
@@ -268,7 +269,9 @@ describe("AdministrationService", () => {
                       }));
                   }).pipe(
                     Effect.flatMap((records) =>
-                      seededReservationReads(records).getReservationsByIds(ids)
+                      makeInMemoryDotypos({
+                        reservations: records,
+                      }).service.getReservationsByIds(ids)
                     )
                   );
                 },
@@ -342,7 +345,9 @@ describe("AdministrationService", () => {
                     return [];
                   }).pipe(
                     Effect.flatMap((records) =>
-                      seededReservationReads(records).getReservationsByIds(ids)
+                      makeInMemoryDotypos({
+                        reservations: records,
+                      }).service.getReservationsByIds(ids)
                     )
                   );
                 },
@@ -452,9 +457,9 @@ describe("AdministrationService", () => {
                         }))
                       ).pipe(
                         Effect.flatMap((records) =>
-                          seededReservationReads(records).getReservationsByIds(
-                            ids
-                          )
+                          makeInMemoryDotypos({
+                            reservations: records,
+                          }).service.getReservationsByIds(ids)
                         )
                       ),
               }),
@@ -524,7 +529,9 @@ describe("AdministrationService", () => {
                     return [];
                   }).pipe(
                     Effect.flatMap((records) =>
-                      seededReservationReads(records).getReservationsByIds(ids)
+                      makeInMemoryDotypos({
+                        reservations: records,
+                      }).service.getReservationsByIds(ids)
                     )
                   );
                 },
@@ -602,7 +609,9 @@ describe("AdministrationService", () => {
                 getCustomersByIds: (ids) =>
                   Effect.succeed([{ id: "dotypos-customer" }]).pipe(
                     Effect.flatMap((records) =>
-                      seededCustomerReads(records).getCustomersByIds(ids)
+                      makeInMemoryDotypos({
+                        customers: records,
+                      }).service.getCustomersByIds(ids)
                     )
                   ),
                 listReservations: () =>
@@ -622,9 +631,9 @@ describe("AdministrationService", () => {
                         })
                       ).pipe(
                         Effect.flatMap((records) =>
-                          seededReservationReads(records).getReservationsByIds(
-                            ids
-                          )
+                          makeInMemoryDotypos({
+                            reservations: records,
+                          }).service.getReservationsByIds(ids)
                         )
                       ),
               }),
@@ -718,7 +727,9 @@ describe("AdministrationService", () => {
                 getCustomersByIds: (ids) =>
                   Effect.succeed([{ id: "dotypos-customer" }]).pipe(
                     Effect.flatMap((records) =>
-                      seededCustomerReads(records).getCustomersByIds(ids)
+                      makeInMemoryDotypos({
+                        customers: records,
+                      }).service.getCustomersByIds(ids)
                     )
                   ),
                 listReservations: () =>
@@ -750,9 +761,9 @@ describe("AdministrationService", () => {
                         },
                       ]).pipe(
                         Effect.flatMap((records) =>
-                          seededReservationReads(records).getReservationsByIds(
-                            ids
-                          )
+                          makeInMemoryDotypos({
+                            reservations: records,
+                          }).service.getReservationsByIds(ids)
                         )
                       ),
               }),
@@ -828,7 +839,9 @@ describe("AdministrationService", () => {
                     return ids.map((id) => ({ id }));
                   }).pipe(
                     Effect.flatMap((records) =>
-                      seededCustomerReads(records).getCustomersByIds(ids)
+                      makeInMemoryDotypos({
+                        customers: records,
+                      }).service.getCustomersByIds(ids)
                     )
                   );
                 },
@@ -867,7 +880,9 @@ describe("AdministrationService", () => {
                     }));
                   }).pipe(
                     Effect.flatMap((records) =>
-                      seededReservationReads(records).getReservationsByIds(ids)
+                      makeInMemoryDotypos({
+                        reservations: records,
+                      }).service.getReservationsByIds(ids)
                     )
                   );
                 },
@@ -957,7 +972,9 @@ describe("AdministrationService", () => {
                 getCustomersByIds: (ids, _readOptions) => {
                   return Effect.succeed(ids.map((id) => ({ id }))).pipe(
                     Effect.flatMap((records) =>
-                      seededCustomerReads(records).getCustomersByIds(ids)
+                      makeInMemoryDotypos({
+                        customers: records,
+                      }).service.getCustomersByIds(ids)
                     )
                   );
                 },
@@ -992,7 +1009,9 @@ describe("AdministrationService", () => {
                     }))
                   ).pipe(
                     Effect.flatMap((records) =>
-                      seededReservationReads(records).getReservationsByIds(ids)
+                      makeInMemoryDotypos({
+                        reservations: records,
+                      }).service.getReservationsByIds(ids)
                     )
                   );
                 },
@@ -1087,7 +1106,9 @@ describe("AdministrationService", () => {
                       : Effect.succeed([])
                     ).pipe(
                       Effect.flatMap((records) =>
-                        seededCustomerReads(records).getCustomersByIds(ids)
+                        makeInMemoryDotypos({
+                          customers: records,
+                        }).service.getCustomersByIds(ids)
                       )
                     ),
                 }),
@@ -1150,7 +1171,9 @@ describe("AdministrationService", () => {
                     { companyName: " ", id: "unnamed-customer" },
                   ]).pipe(
                     Effect.flatMap((records) =>
-                      seededCustomerReads(records).getCustomersByIds(ids)
+                      makeInMemoryDotypos({
+                        customers: records,
+                      }).service.getCustomersByIds(ids)
                     )
                   ),
               }),
@@ -1220,7 +1243,9 @@ describe("AdministrationService", () => {
                     })
                   ).pipe(
                     Effect.flatMap((records) =>
-                      seededCustomerReads(records).getCustomersByIds(ids)
+                      makeInMemoryDotypos({
+                        customers: records,
+                      }).service.getCustomersByIds(ids)
                     )
                   ),
               }),
@@ -1441,7 +1466,9 @@ describe("AdministrationService", () => {
                       }));
                     }).pipe(
                       Effect.flatMap((records) =>
-                        seededCustomerReads(records).getCustomersByIds(ids)
+                        makeInMemoryDotypos({
+                          customers: records,
+                        }).service.getCustomersByIds(ids)
                       )
                     );
                   },
@@ -1475,9 +1502,9 @@ describe("AdministrationService", () => {
                         })
                       ).pipe(
                         Effect.flatMap((records) =>
-                          seededReservationReads(records).getReservationsByIds(
-                            ids
-                          )
+                          makeInMemoryDotypos({
+                            reservations: records,
+                          }).service.getReservationsByIds(ids)
                         )
                       );
                     }
@@ -1487,9 +1514,9 @@ describe("AdministrationService", () => {
                       )
                     ).pipe(
                       Effect.flatMap((records) =>
-                        seededReservationReads(records).getReservationsByIds(
-                          ids
-                        )
+                        makeInMemoryDotypos({
+                          reservations: records,
+                        }).service.getReservationsByIds(ids)
                       )
                     );
                   },
@@ -1672,7 +1699,9 @@ describe("AdministrationService", () => {
             getCustomersByIds: (ids) =>
               Effect.succeed([]).pipe(
                 Effect.flatMap((records) =>
-                  seededCustomerReads(records).getCustomersByIds(ids)
+                  makeInMemoryDotypos({
+                    customers: records,
+                  }).service.getCustomersByIds(ids)
                 )
               ),
             listReservations: () =>
@@ -1688,7 +1717,9 @@ describe("AdministrationService", () => {
                     return reservations;
                   }).pipe(
                     Effect.flatMap((records) =>
-                      seededReservationReads(records).getReservationsByIds(ids)
+                      makeInMemoryDotypos({
+                        reservations: records,
+                      }).service.getReservationsByIds(ids)
                     )
                   ),
           }),
@@ -1770,7 +1801,9 @@ describe("AdministrationService", () => {
                     }))
                   ).pipe(
                     Effect.flatMap((records) =>
-                      seededCustomerReads(records).getCustomersByIds(ids)
+                      makeInMemoryDotypos({
+                        customers: records,
+                      }).service.getCustomersByIds(ids)
                     )
                   );
                 },
@@ -1782,9 +1815,9 @@ describe("AdministrationService", () => {
                         .listReservations({ ...options, ids: [...ids] })
                         .pipe(
                           Effect.flatMap((records) =>
-                            seededReservationReads(
-                              records
-                            ).getReservationsByIds(ids)
+                            makeInMemoryDotypos({
+                              reservations: records,
+                            }).service.getReservationsByIds(ids)
                           )
                         ),
               }),
@@ -2417,7 +2450,9 @@ describe("AdministrationService", () => {
                     ];
                   }).pipe(
                     Effect.flatMap((records) =>
-                      seededReservationReads(records).getReservationsByIds(ids)
+                      makeInMemoryDotypos({
+                        reservations: records,
+                      }).service.getReservationsByIds(ids)
                     )
                   );
                 },
@@ -2502,9 +2537,9 @@ describe("AdministrationService", () => {
                         })
                       ).pipe(
                         Effect.flatMap((records) =>
-                          seededReservationReads(records).getReservationsByIds(
-                            ids
-                          )
+                          makeInMemoryDotypos({
+                            reservations: records,
+                          }).service.getReservationsByIds(ids)
                         )
                       ),
               }),
@@ -2562,9 +2597,9 @@ describe("AdministrationService", () => {
                         .listReservations({ ...options, ids: [...ids] })
                         .pipe(
                           Effect.flatMap((records) =>
-                            seededReservationReads(
-                              records
-                            ).getReservationsByIds(ids)
+                            makeInMemoryDotypos({
+                              reservations: records,
+                            }).service.getReservationsByIds(ids)
                           )
                         ),
               }),
@@ -3084,7 +3119,9 @@ describe("AdministrationService", () => {
                     return providerBookings;
                   }).pipe(
                     Effect.flatMap((records) =>
-                      seededReservationReads(records).getReservationsByIds(ids)
+                      makeInMemoryDotypos({
+                        reservations: records,
+                      }).service.getReservationsByIds(ids)
                     )
                   );
                 },
@@ -3355,7 +3392,9 @@ describe("AdministrationService reservation author", () => {
                       : []
                   ).pipe(
                     Effect.flatMap((records) =>
-                      seededCustomerReads(records).getCustomersByIds(ids)
+                      makeInMemoryDotypos({
+                        customers: records,
+                      }).service.getCustomersByIds(ids)
                     )
                   ),
                 getTables: () => Effect.succeed([]),
@@ -3365,9 +3404,9 @@ describe("AdministrationService reservation author", () => {
                     ? Effect.succeed(new Map())
                     : Effect.succeed([]).pipe(
                         Effect.flatMap((records) =>
-                          seededReservationReads(records).getReservationsByIds(
-                            ids
-                          )
+                          makeInMemoryDotypos({
+                            reservations: records,
+                          }).service.getReservationsByIds(ids)
                         )
                       ),
               }),

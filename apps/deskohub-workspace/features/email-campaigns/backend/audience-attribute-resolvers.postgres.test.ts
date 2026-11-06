@@ -7,10 +7,8 @@ import {
   type DotyposReservation,
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
-import {
-  DotyposServiceMock,
-  seededReservationReads,
-} from "@deskohub/dotypos/backend/service.mock";
+import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
+import { makeInMemoryDotypos } from "@deskohub/dotypos/testing";
 import type {
   AudienceCountOperatorType,
   CampaignEmailSourceType,
@@ -562,7 +560,9 @@ describe.skipIf(!testDatabase)(
                   CampaignCandidateRepository.Default.pipe(
                     Layer.provide(testDatabase.layer)
                   ),
-                  DotyposServiceMock(seededReservationReads(visits))
+                  DotyposServiceMock(
+                    makeInMemoryDotypos({ reservations: visits }).service
+                  )
                 )
               )
             )
