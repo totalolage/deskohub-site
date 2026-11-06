@@ -10,11 +10,8 @@ import {
   DotyposUnavailable,
   dotyposIdReadBatchSize,
 } from "@deskohub/dotypos";
-import {
-  DotyposServiceMock,
-  seededCustomerReads,
-  seededReservationReads,
-} from "@deskohub/dotypos/backend/service.mock";
+import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
+import { makeInMemoryDotypos } from "@deskohub/dotypos/testing";
 import type { AutomationConditionFilter } from "@deskohub/workspace-admin-api";
 import { Cause, Effect, Exit, Layer, Option } from "effect";
 import { emailCampaignAudiences } from "@/db/schema";
@@ -120,9 +117,10 @@ const makeDotypos = (input: {
   readonly reservations?: readonly DotyposReservation[];
   readonly customerPageError?: DotyposReadFailure;
 }) => {
-  const customers = input.customers ?? [];
-  const customerReads = seededCustomerReads(customers);
-  const reservationReads = seededReservationReads(input.reservations ?? []);
+  const reads = makeInMemoryDotypos({
+    customers: input.customers,
+    reservations: input.reservations,
+  }).service;
   const calls = {
     getCustomersByIds: 0,
     getReservationsByIds: 0,
@@ -137,31 +135,24 @@ const makeDotypos = (input: {
         calls.getCustomersByIds += 1;
         return input.customerPageError
           ? Effect.fail(input.customerPageError)
-          : customerReads.getCustomersByIds(ids);
+          : reads.getCustomersByIds(ids);
       },
 
       listReservationsPage: (options) => {
         calls.listReservationsPage += 1;
-        return reservationReads.listReservationsPage(options);
+        return reads.listReservationsPage(options);
       },
       listReservations: (options) => {
         calls.listReservations += 1;
-        return reservationReads.listReservations(options);
+        return reads.listReservations(options);
       },
       getReservationsByIds: (ids, readOptions) => {
-        const options = { ...readOptions, ids: [...ids] };
         calls.getReservationsByIds += 1;
-        return reservationReads
-          .listReservations(options)
-          .pipe(
-            Effect.flatMap((records) =>
-              seededReservationReads(records).getReservationsByIds(ids)
-            )
-          );
+        return reads.getReservationsByIds(ids, readOptions);
       },
       listActiveReservationsPage: (interval, page) => {
         calls.listActiveReservationsPage += 1;
-        return reservationReads.listActiveReservationsPage(interval, page);
+        return reads.listActiveReservationsPage(interval, page);
       },
     }),
   };

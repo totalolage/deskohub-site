@@ -192,7 +192,7 @@ const emptyFirstPageWhenNotFound =
       )
     );
 
-const validateReservationInterval = (
+export const validateReservationInterval = (
   interval: DotyposReservationInterval,
   operation: DotyposOperation
 ): Effect.Effect<void, DotyposRejected> => {
@@ -269,7 +269,7 @@ type ReservationListQuery = {
 };
 
 /** The reservation list request's filter and sort. */
-const reservationListQuery = (
+export const reservationListQuery = (
   options: ReservationListOptions,
   operation: DotyposOperation
 ): Effect.Effect<ReservationListQuery, DotyposRejected> => {
@@ -325,7 +325,7 @@ const singleIdPage = <A>(
     Effect.as(page.data ?? [])
   );
 
-const validateReservationPageNumber = (
+export const validateReservationPageNumber = (
   page: number,
   operation: DotyposOperation
 ): Effect.Effect<void, DotyposRejected> =>
