@@ -206,9 +206,16 @@ describe.skipIf(!testDatabase)(
         exponent: 2,
         currency: "CZK",
       });
+      // The resolved customer list and the read model's audience ids agree.
       const audience = (detail: {
         readonly customers: readonly { readonly customerId: string }[];
-      }) => detail.customers.map(({ customerId }) => customerId);
+        readonly code?: { readonly audienceCustomerIds: readonly string[] };
+        readonly voucher?: { readonly audienceCustomerIds: readonly string[] };
+      }) => ({
+        customers: detail.customers.map(({ customerId }) => customerId),
+        audienceCustomerIds: (detail.code ?? detail.voucher)
+          ?.audienceCustomerIds,
+      });
 
       const outcome = await run(
         Effect.fn(function* (administration) {
@@ -329,12 +336,15 @@ describe.skipIf(!testDatabase)(
       expect(outcome).toMatchObject({
         _tag: "Success",
         success: {
-          narrowedCode: [second],
-          unrestrictedCode: [],
+          narrowedCode: { customers: [second], audienceCustomerIds: [second] },
+          unrestrictedCode: { customers: [], audienceCustomerIds: [] },
           updatedAdjustment: { kind: "percentage", basisPoints: 1500 },
           updatedCodeMaxUses: 3,
-          narrowedVoucher: [second],
-          unrestrictedVoucher: [],
+          narrowedVoucher: {
+            customers: [second],
+            audienceCustomerIds: [second],
+          },
+          unrestrictedVoucher: { customers: [], audienceCustomerIds: [] },
           updatedVoucherCredit: 60_000,
         },
       });
