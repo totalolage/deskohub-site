@@ -1,7 +1,4 @@
-import {
-  seededCustomerReads,
-  seededReservationReads,
-} from "@deskohub/dotypos/backend/service.mock";
+import { makeInMemoryDotypos } from "@deskohub/dotypos/testing";
 import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import { DotyposUnavailable } from "@deskohub/dotypos";
@@ -170,7 +167,9 @@ describe("AdministrationService.exportReservations", () => {
                   );
                 }).pipe(
                   Effect.flatMap((records) =>
-                    seededReservationReads(records).getReservationsByIds(ids)
+                    makeInMemoryDotypos({
+                      reservations: records,
+                    }).service.getReservationsByIds(ids)
                   )
                 ),
         },
@@ -215,7 +214,9 @@ describe("AdministrationService.exportReservations", () => {
                   makeBooking(2, "2026-08-04T08:00:00Z"),
                 ]).pipe(
                   Effect.flatMap((records) =>
-                    seededReservationReads(records).getReservationsByIds(ids)
+                    makeInMemoryDotypos({
+                      reservations: records,
+                    }).service.getReservationsByIds(ids)
                   )
                 ),
         },
@@ -253,7 +254,9 @@ describe("AdministrationService.exportReservations", () => {
           getCustomersByIds: (ids) =>
             Effect.succeed([]).pipe(
               Effect.flatMap((records) =>
-                seededCustomerReads(records).getCustomersByIds(ids)
+                makeInMemoryDotypos({
+                  customers: records,
+                }).service.getCustomersByIds(ids)
               )
             ),
           listReservations: () => Effect.succeed([]),
@@ -262,7 +265,9 @@ describe("AdministrationService.exportReservations", () => {
               ? Effect.succeed(new Map())
               : Effect.succeed([]).pipe(
                   Effect.flatMap((records) =>
-                    seededReservationReads(records).getReservationsByIds(ids)
+                    makeInMemoryDotypos({
+                      reservations: records,
+                    }).service.getReservationsByIds(ids)
                   )
                 ),
         },
@@ -287,7 +292,9 @@ describe("AdministrationService.exportReservations", () => {
               ? Effect.succeed(new Map())
               : providerUnavailable({ ...options, ids: [...ids] }).pipe(
                   Effect.flatMap((records) =>
-                    seededReservationReads(records).getReservationsByIds(ids)
+                    makeInMemoryDotypos({
+                      reservations: records,
+                    }).service.getReservationsByIds(ids)
                   )
                 ),
         },
@@ -303,7 +310,9 @@ describe("AdministrationService.exportReservations", () => {
               ? Effect.succeed(new Map())
               : providerUnavailable({ ...options, ids: [...ids] }).pipe(
                   Effect.flatMap((records) =>
-                    seededReservationReads(records).getReservationsByIds(ids)
+                    makeInMemoryDotypos({
+                      reservations: records,
+                    }).service.getReservationsByIds(ids)
                   )
                 ),
         },
@@ -320,7 +329,9 @@ describe("AdministrationService.exportReservations", () => {
               ? Effect.succeed(new Map())
               : providerUnavailable({ ...options, ids: [...ids] }).pipe(
                   Effect.flatMap((records) =>
-                    seededReservationReads(records).getReservationsByIds(ids)
+                    makeInMemoryDotypos({
+                      reservations: records,
+                    }).service.getReservationsByIds(ids)
                   )
                 ),
         },
@@ -338,7 +349,9 @@ describe("AdministrationService.exportReservations", () => {
               ? Effect.succeed(new Map())
               : Effect.succeed([makeBooking(1)]).pipe(
                   Effect.flatMap((records) =>
-                    seededReservationReads(records).getReservationsByIds(ids)
+                    makeInMemoryDotypos({
+                      reservations: records,
+                    }).service.getReservationsByIds(ids)
                   )
                 ),
         },
@@ -388,7 +401,9 @@ describe("AdministrationService.exportReservations", () => {
                 ? Effect.succeed(new Map())
                 : Effect.succeed([makeBooking(1), makeBooking(2)]).pipe(
                     Effect.flatMap((records) =>
-                      seededReservationReads(records).getReservationsByIds(ids)
+                      makeInMemoryDotypos({
+                        reservations: records,
+                      }).service.getReservationsByIds(ids)
                     )
                   ),
           },
@@ -454,7 +469,9 @@ describe("AdministrationService.exportCustomers", () => {
               ? Effect.succeed(new Map())
               : Effect.die("no date range").pipe(
                   Effect.flatMap((records) =>
-                    seededReservationReads(records).getReservationsByIds(ids)
+                    makeInMemoryDotypos({
+                      reservations: records,
+                    }).service.getReservationsByIds(ids)
                   )
                 ),
           ...dotypos,
@@ -543,7 +560,9 @@ describe("AdministrationService.listReservations under the same Dotypos failures
               ? Effect.succeed(new Map())
               : providerUnavailable({ ...options, ids: [...ids] }).pipe(
                   Effect.flatMap((records) =>
-                    seededReservationReads(records).getReservationsByIds(ids)
+                    makeInMemoryDotypos({
+                      reservations: records,
+                    }).service.getReservationsByIds(ids)
                   )
                 ),
         },
@@ -567,7 +586,9 @@ describe("AdministrationService.listReservations under the same Dotypos failures
               ? Effect.succeed(new Map())
               : providerUnavailable({ ...options, ids: [...ids] }).pipe(
                   Effect.flatMap((records) =>
-                    seededReservationReads(records).getReservationsByIds(ids)
+                    makeInMemoryDotypos({
+                      reservations: records,
+                    }).service.getReservationsByIds(ids)
                   )
                 ),
         },
@@ -600,7 +621,9 @@ describe("AdministrationService.listReservations under the same Dotypos failures
               ? Effect.succeed(new Map())
               : Effect.succeed([makeBooking(1)]).pipe(
                   Effect.flatMap((records) =>
-                    seededReservationReads(records).getReservationsByIds(ids)
+                    makeInMemoryDotypos({
+                      reservations: records,
+                    }).service.getReservationsByIds(ids)
                   )
                 ),
         },
@@ -623,7 +646,9 @@ describe("AdministrationService.listReservations under the same Dotypos failures
           getCustomersByIds: (ids) =>
             Effect.succeed([]).pipe(
               Effect.flatMap((records) =>
-                seededCustomerReads(records).getCustomersByIds(ids)
+                makeInMemoryDotypos({
+                  customers: records,
+                }).service.getCustomersByIds(ids)
               )
             ),
           listReservations: () => Effect.succeed([makeBooking(1)]),
@@ -632,7 +657,9 @@ describe("AdministrationService.listReservations under the same Dotypos failures
               ? Effect.succeed(new Map())
               : Effect.succeed([makeBooking(1)]).pipe(
                   Effect.flatMap((records) =>
-                    seededReservationReads(records).getReservationsByIds(ids)
+                    makeInMemoryDotypos({
+                      reservations: records,
+                    }).service.getReservationsByIds(ids)
                   )
                 ),
         },

@@ -12,7 +12,11 @@ import { useRouter } from "next/navigation";
 import { type ReactNode, useState } from "react";
 import { type DefaultValues, type FieldValues, useForm } from "react-hook-form";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
-import { administrationHref } from "@/features/administration/administration-href";
+import {
+  type AdministrationHref,
+  administrationHref,
+  localizeAdministrationHref,
+} from "@/features/administration/administration-href";
 import { m } from "@/features/administration/i18n";
 import { AdministrationAlert } from "@/features/administration/notice";
 import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
@@ -91,10 +95,20 @@ const createSearchFormSchema = (locale: Locale) =>
 const formatDiscountGroupPercentage = (basisPoints: number, locale: Locale) =>
   formatDiscountAdjustment({ kind: "percentage", basisPoints }, locale);
 
+type AdminCustomerSearchMatch = AdminCustomerSearchResult["customers"][number];
+
+/**
+ * Searches Dotypos customers by name or email. Each match opens its customer
+ * page unless `renderCustomerAction` offers another action for it.
+ */
 export function CustomerSearch({
+  renderCustomerAction,
   variant = "card",
 }: {
-  readonly variant?: "card" | "toolbar";
+  readonly renderCustomerAction?: (
+    customer: AdminCustomerSearchMatch
+  ) => ReactNode;
+  readonly variant?: "card" | "toolbar" | "inline";
 }) {
   const locale = useRouteLocale();
   const [result, setResult] = useState<AdminCustomerSearchResult | null>(null);
@@ -128,7 +142,15 @@ export function CustomerSearch({
   );
 
   return (
-    <div className="space-y-4">
+    <div
+      className={
+        {
+          card: "space-y-4",
+          toolbar: "space-y-4",
+          inline: "@container space-y-4",
+        }[variant]
+      }
+    >
       <Form {...form}>
         <form
           className={
@@ -136,6 +158,8 @@ export function CustomerSearch({
               card: "grid gap-3 rounded-xl border border-navy-blue/10 bg-white p-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-end",
               toolbar:
                 "grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end",
+              inline:
+                "grid gap-3 @md:grid-cols-[minmax(0,1fr)_auto] @md:items-end",
             }[variant]
           }
           noValidate
@@ -221,16 +245,20 @@ export function CustomerSearch({
                         {formatDiscountAdminCustomerContact(customer, locale)}
                       </p>
                     </div>
-                    <Button asChild size="sm" variant="secondary">
-                      <Link
-                        href={administrationHref(
-                          "/[locale]/admin/customers/[customerId]",
-                          { customerId: customer.id }
-                        )}
-                      >
-                        {m.discountsOpenCustomer({}, { locale })}
-                      </Link>
-                    </Button>
+                    {renderCustomerAction ? (
+                      renderCustomerAction(customer)
+                    ) : (
+                      <Button asChild size="sm" variant="secondary">
+                        <Link
+                          href={administrationHref(
+                            "/[locale]/admin/customers/[customerId]",
+                            { customerId: customer.id }
+                          )}
+                        >
+                          {m.discountsOpenCustomer({}, { locale })}
+                        </Link>
+                      </Button>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -441,28 +469,43 @@ export function AdminMutationButton({
   );
 }
 
+/**
+ * Adds a customer to a code or voucher, or removes them, after a dialog that
+ * explains how the change moves the promotion's audience.
+ */
 export function CustomerPromotionCodeAction({
   audienceSize,
   code,
   customerId,
   customerName,
+  deleteRedirect,
   eligible,
+  labeled = false,
   promotion,
 }: {
   readonly audienceSize: number;
   readonly code: string;
   readonly customerId: DotyposCustomerId;
   readonly customerName: string;
+  /** Where to go after the dialog deletes the promotion whose page is open. */
+  readonly deleteRedirect?: AdministrationHref;
   readonly eligible: boolean;
+  /** Shows the action's verb beside its icon instead of the icon alone. */
+  readonly labeled?: boolean;
   readonly promotion: CustomerPromotionCode;
 }) {
   const router = useRouter();
   const locale = useRouteLocale();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const mutations = customerPromotionCodeMutations(promotion, customerId);
   const { execute, isExecuting } = useWorkspaceAction(mutateDiscountAdmin, {
-    onSuccess: () => {
+    onSuccess: ({ input }) => {
       setOpen(false);
+      if (deleteRedirect && input.kind === mutations.delete.kind) {
+        router.push(localizeAdministrationHref(deleteRedirect, locale));
+        return;
+      }
       router.refresh();
     },
     onError: ({ error: actionError }) =>
@@ -473,7 +516,6 @@ export function CustomerPromotionCodeAction({
       setError(m.discountsSaveFailedRetry({}, { locale })),
   });
 
-  const mutations = customerPromotionCodeMutations(promotion, customerId);
   const copy = customerPromotionEligibilityCopy(promotion.kind);
   const names = { code, customerName };
   const label = (eligible ? copy.removeLabel : copy.addLabel)(names, {
@@ -500,11 +542,15 @@ export function CustomerPromotionCodeAction({
         <Button
           aria-label={label}
           className="relative z-10"
-          size="icon-sm"
+          size={labeled ? "sm" : "icon-sm"}
           title={label}
-          variant="ghost"
+          variant={labeled ? "secondary" : "ghost"}
         >
           <Icon aria-hidden className="size-4" />
+          {labeled &&
+            (eligible
+              ? m.discountsRemove({}, { locale })
+              : m.discountsAdd({}, { locale }))}
         </Button>
       </DialogTrigger>
       <DialogContent locale={locale}>

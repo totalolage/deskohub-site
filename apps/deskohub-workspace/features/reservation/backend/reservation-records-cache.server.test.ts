@@ -1,4 +1,4 @@
-import { seededReservationReads } from "@deskohub/dotypos/backend/service.mock";
+import { makeInMemoryDotypos } from "@deskohub/dotypos/testing";
 import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -58,7 +58,9 @@ mock.module("@/shared/backend/config/dotypos.config", () => ({
     getReservationsByIds: (ids, options) =>
       listReservations({ ...options, ids: [...ids] }).pipe(
         Effect.flatMap((records) =>
-          seededReservationReads(records).getReservationsByIds(ids)
+          makeInMemoryDotypos({
+            reservations: records,
+          }).service.getReservationsByIds(ids)
         )
       ),
   } as never),
