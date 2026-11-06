@@ -171,12 +171,10 @@ describe("customer administration pages", () => {
         view.getByText(m.discountsCodeClaimsEmpty({}, { locale }))
       ).toBeDefined();
       expect(
-        view
-          .getByRole("link", {
-            name: m.discountsFindDotyposCustomer({}, { locale }),
-          })
-          .getAttribute("href")
-      ).toBe(`/${locale}/admin/customers`);
+        view.getByRole("searchbox", {
+          name: m.discountsCustomerSearchLabel({}, { locale }),
+        })
+      ).toBeDefined();
     });
 
     test("lists each audience customer and removes one after confirmation", async () => {

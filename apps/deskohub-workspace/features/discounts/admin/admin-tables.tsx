@@ -93,6 +93,7 @@ import {
   formatDiscountProductTargets,
   getDiscountProductTargetLabel,
 } from "./product-target-options";
+import { PromotionCustomersPanel } from "./promotion-customers";
 import { formatDiscountUsageLimit } from "./usage-limit";
 
 export type DiscountTableItem = {
@@ -116,6 +117,7 @@ export type DiscountCodeTableItem = {
   readonly maxUses: number | null;
   readonly maxUsesPerCustomer: number | null;
   readonly audienceSize: number;
+  readonly audienceCustomerIds: readonly DotyposCustomerId[];
   readonly reservedUses: number;
   readonly redeemedUses: number;
   readonly remainingUses: number | null;
@@ -135,6 +137,7 @@ export type VoucherTableItem = {
   readonly validFrom: string | null;
   readonly validUntil: string | null;
   readonly audienceSize: number;
+  readonly audienceCustomerIds: readonly DotyposCustomerId[];
   readonly reservedUses: number;
   readonly redeemedUses: number;
 };
@@ -280,12 +283,19 @@ export function DiscountCodesAdminTable({
         />
       )}
       renderExpanded={(code) => (
-        <CodeAndDiscountEditor
-          code={code}
-          discount={discounts.find(({ id }) => id === code.discountId)}
-          discounts={discounts}
-          onDeleted={() => setExpandedId(null)}
-        />
+        <div className="grid gap-7">
+          <CodeAndDiscountEditor
+            code={code}
+            discount={discounts.find(({ id }) => id === code.discountId)}
+            discounts={discounts}
+            onDeleted={() => setExpandedId(null)}
+          />
+          <PromotionCustomersPanel
+            audienceCustomerIds={code.audienceCustomerIds}
+            code={code.code}
+            promotion={{ kind: "discount-code", id: code.id }}
+          />
+        </div>
       )}
     />
   );
@@ -380,7 +390,16 @@ export function VouchersAdminTable({
           onEdit={() => setExpandedId(expanded ? null : voucher.id)}
         />
       )}
-      renderExpanded={(voucher) => <VoucherEditor voucher={voucher} />}
+      renderExpanded={(voucher) => (
+        <div className="grid gap-7">
+          <VoucherEditor voucher={voucher} />
+          <PromotionCustomersPanel
+            audienceCustomerIds={voucher.audienceCustomerIds}
+            code={voucher.code}
+            promotion={{ kind: "voucher", id: voucher.id }}
+          />
+        </div>
+      )}
     />
   );
 }
