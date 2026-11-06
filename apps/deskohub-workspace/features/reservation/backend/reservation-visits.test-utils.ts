@@ -1,9 +1,7 @@
 import type { DotyposReservation } from "@deskohub/dotypos";
 import { dotyposIdReadRequests } from "@deskohub/dotypos";
-import {
-  DotyposServiceMock,
-  seededReservationReads,
-} from "@deskohub/dotypos/backend/service.mock";
+import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
+import { makeInMemoryDotypos } from "@deskohub/dotypos/testing";
 import { Effect, Layer, Option } from "effect";
 import {
   type ReservationVisit,
@@ -12,18 +10,20 @@ import {
 } from "./reservation-visits.service";
 
 /**
- * A `DotyposService` mock answering reservation reads from `reservations`
- * that counts every request and the most open at once. Each request yields
- * before answering, so concurrent requests overlap. Edit the array between
- * reads to change what Dotypos holds.
+ * A `DotyposService` mock answering reservation reads from an in-memory
+ * Dotypos holding `reservations`, that counts every request and the most
+ * open at once. Each request yields before answering, so concurrent requests
+ * overlap. Change the returned `reservations` between reads to change what
+ * Dotypos holds.
  */
 export const countedDotyposReservationReads = (
-  reservations: DotyposReservation[]
+  reservations: Iterable<DotyposReservation>
 ) => {
   let requests = 0;
   let open = 0;
   let peakOpen = 0;
-  const reads = seededReservationReads(reservations);
+  const dotypos = makeInMemoryDotypos({ reservations });
+  const reads = dotypos.service;
   const counted = <A, E>(read: () => Effect.Effect<A, E>, cost = 1) =>
     Effect.suspend(() => {
       requests += cost;
@@ -48,6 +48,7 @@ export const countedDotyposReservationReads = (
       listActiveReservationsPage: (interval, page) =>
         counted(() => reads.listActiveReservationsPage(interval, page)),
     }),
+    reservations: dotypos.reservations,
     requests: () => requests,
     peakOpenRequests: () => peakOpen,
   };
