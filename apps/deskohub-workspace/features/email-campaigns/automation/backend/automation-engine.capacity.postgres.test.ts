@@ -191,7 +191,7 @@ describe("engine Dotypos transport batches", () => {
       for (const id of ids) {
         const customerId = DotyposCustomerIdSchema.make(id);
         fake.customers.set(customerId, engineProfile(customerId));
-        fake.reservations.set(id, {
+        fake.reservations.set(DotyposReservationIdSchema.make(id), {
           id: DotyposReservationIdSchema.make(id),
           _customerId: customerId,
           _branchId: DotyposBranchIdSchema.make("batch-branch"),
