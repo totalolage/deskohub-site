@@ -8,10 +8,8 @@ import {
   type DotyposService,
   DotyposUnavailable,
 } from "@deskohub/dotypos";
-import {
-  DotyposServiceMock,
-  seededCustomerReads,
-} from "@deskohub/dotypos/backend/service.mock";
+import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
+import { makeInMemoryDotypos } from "@deskohub/dotypos/testing";
 import { testEmailAddress } from "@deskohub/test-email";
 import type {
   AutomationRunListInputType as AutomationRunListInput,
@@ -106,7 +104,9 @@ describe.skipIf(!testDatabase)(
       getCustomersByIds: (ids) =>
         Effect.succeed([]).pipe(
           Effect.flatMap((records) =>
-            seededCustomerReads(records).getCustomersByIds(ids)
+            makeInMemoryDotypos({
+              customers: records,
+            }).service.getCustomersByIds(ids)
           )
         ),
     });
@@ -632,14 +632,16 @@ describe.skipIf(!testDatabase)(
       const dotypos = DotyposServiceMock({
         getCustomersByIds: (ids) => {
           reads.push(ids);
-          return seededCustomerReads([
-            profile(customerId("ana"), {
-              firstName: anaFirstName,
-              lastName: anaLastName,
-              email: ` ${anaEmail} `,
-            }),
-            profile(customerId("bob"), { companyName: "Bob Test s.r.o." }),
-          ]).getCustomersByIds(ids);
+          return makeInMemoryDotypos({
+            customers: [
+              profile(customerId("ana"), {
+                firstName: anaFirstName,
+                lastName: anaLastName,
+                email: ` ${anaEmail} `,
+              }),
+              profile(customerId("bob"), { companyName: "Bob Test s.r.o." }),
+            ],
+          }).service.getCustomersByIds(ids);
         },
       });
       const contactsOf = (page: {
@@ -734,7 +736,9 @@ describe.skipIf(!testDatabase)(
             })
           ).pipe(
             Effect.flatMap((records) =>
-              seededCustomerReads(records).getCustomersByIds(ids)
+              makeInMemoryDotypos({
+                customers: records,
+              }).service.getCustomersByIds(ids)
             )
           ),
       });

@@ -1,6 +1,6 @@
 ---
 name: deskohub-dotypos
-description: Dotypos API, @deskohub/dotypos, DotyposService, OpenAPI contract, generated client, new endpoint, refresh token, Connector authorization, manual API inspection, request timeout, Dotypos customer email or phone, PostHog customer source, Custom REST warehouse source, customer export, ANALYTICS_WAREHOUSE_SOURCE_TOKEN.
+description: Dotypos API, @deskohub/dotypos, DotyposService, OpenAPI contract, generated client, new endpoint, refresh token, Connector authorization, manual API inspection, request timeout, Dotypos customer email or phone, PostHog customer source, Custom REST warehouse source, customer export, ANALYTICS_WAREHOUSE_SOURCE_TOKEN, in-memory Dotypos, makeInMemoryDotypos, @deskohub/dotypos/testing, DotyposServiceMock, Dotypos test fake.
 ---
 
 # Deskohub Dotypos
@@ -53,6 +53,14 @@ If a real response fails generated decoding, fix the OpenAPI schema and regenera
 - Log a failure with `dotyposFailureLogFields(failure)` and store `dotyposFailureCode(failure)` as a failure code.
 - The status-to-outcome classifier, the retry ceilings (`src/backend/request-profiles.ts`) and ETag replay stay private to the package. To change how a status or request is treated, edit the classifier or the table and the table-driven test in `src/backend/service.test.ts`. Creation requests retry only `rate-limited` and `empty-response`.
 - In tests, fail a `DotyposServiceMock` operation with the public classes, for example `new DotyposUnavailable({ operation: "getCustomer", reason: "timeout" })`. Return `Option.none()` for a missing record. Never fabricate an HTTP status.
+
+## Test adapters
+
+- `makeInMemoryDotypos(seed, options?)` from `@deskohub/dotypos/testing` is a stateful `DotyposService` (`.service`, `.layer`). Seed customers, reservations, tables and discount groups; a write changes what later reads return, so assert a write by reading it back. Change `.customers` or `.reservations` directly only to model an edit made outside Workspace.
+- It models ID lookups and ID reads through the package's own batching and validation, the customer, start-time and order filters, 100-record pages, the active-overlap filter, a new `versionDate` on every write, and the create, confirm and cancel transitions. Customer search and lookup, customer creation, details and profile writes, `patchCustomer`, products, categories and change listings die naming the operation; stub them yourself.
+- Inject failures by spreading `.service` into `DotyposServiceMock` with an override. `onRequest` runs before each request it answers, once per ID batch; use it for request counts, latency or gating, not to fail whole operations.
+- `in-memory-dotypos.contract.test.ts` runs the same cases against Live over fixture responses. It shows the two adapters read those shapes alike, not that the fake matches live Dotypos. When a probe or a Live change alters an outcome the fake models, update the fake and that suite together.
+- Prefer it over a hand-built `DotyposServiceMock` when a test reads records back or spans several operations; a test that stubs one call can keep `DotyposServiceMock`.
 
 ## Record ids
 

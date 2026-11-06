@@ -1,4 +1,4 @@
-import { seededReservationReads } from "@deskohub/dotypos/backend/service.mock";
+import { makeInMemoryDotypos } from "@deskohub/dotypos/testing";
 import "@/shared/testing/workspace-test-env";
 
 import { afterAll, describe, expect, test } from "bun:test";
@@ -116,7 +116,9 @@ describe.skipIf(!testDatabase)(
           });
         }).pipe(
           Effect.flatMap((records) =>
-            seededReservationReads(records).getReservationsByIds(ids)
+            makeInMemoryDotypos({
+              reservations: records,
+            }).service.getReservationsByIds(ids)
           )
         );
       },

@@ -1,4 +1,5 @@
 import { errors, type Locator, type Page } from "@playwright/test";
+import { workspaceE2EPollIntervalMs } from "./timeouts";
 
 const reactClickHandlerTimeoutMs = 15_000;
 
@@ -64,7 +65,10 @@ export const waitForReactClickHandler = async (
       const state = await page.waitForFunction(
         reactClickHandlerState,
         element,
-        { timeout: remainingBudgetMs() }
+        {
+          polling: workspaceE2EPollIntervalMs.reactHandler,
+          timeout: remainingBudgetMs(),
+        }
       );
       try {
         if ((await state.jsonValue()) !== "detached") return;
@@ -108,7 +112,7 @@ export const waitForReactSubmitHandler = async (
         );
       },
       element,
-      { timeout: timeoutMs }
+      { polling: workspaceE2EPollIntervalMs.reactHandler, timeout: timeoutMs }
     );
     await state.dispose();
   } finally {
