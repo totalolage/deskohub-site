@@ -179,12 +179,16 @@ export class AnalyticsConsentLedger extends Context.Service<
                 // A future date would outrank every later decision, and
                 // dating it now would let each replay of the same copy
                 // outrank them again, so it counts as undated.
-                // Compared as the database stores it, so a stored decision
-                // and a copy of its own instant compare equal.
+                // A date is checked against now as given, then compared as
+                // the database stores it, so a stored decision and a copy of
+                // its own instant compare equal.
                 const decidedAt = Option.match(
-                  Option.filter(
-                    Option.map(input.decidedAt, toStoredInstant),
-                    (instant) => Temporal.Instant.compare(instant, now) <= 0
+                  Option.map(
+                    Option.filter(
+                      input.decidedAt,
+                      (instant) => Temporal.Instant.compare(instant, now) <= 0
+                    ),
+                    toStoredInstant
                   ),
                   {
                     // An undated decision seeds only an empty ledger.

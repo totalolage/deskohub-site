@@ -409,6 +409,28 @@ describe.skipIf(!testDatabase)("AnalyticsConsentLedger", () => {
       ]);
     });
 
+    test("treats a date in the future by less than a microsecond as undated", async () => {
+      const accountId = await newAccount();
+      await runLedgerAt("2026-11-05T10:00:00Z", (ledger) =>
+        ledger.record({
+          accountId,
+          decision: "withdraw",
+          locale: "cs-CZ",
+          source: "banner",
+        })
+      );
+
+      expect(
+        await mirrorAt("2026-11-07T10:00:00.123456100Z", {
+          accountId,
+          decision: "grant",
+          source: "hydration_mirror",
+          decidedAt: "2026-11-07T10:00:00.123456999Z",
+        })
+      ).toBe(false);
+      expect((await currentDecisionOf(accountId))?.decision).toBe("withdraw");
+    });
+
     test("keeps each account's decisions apart", async () => {
       const decided = await newAccount();
       const other = await newAccount();
