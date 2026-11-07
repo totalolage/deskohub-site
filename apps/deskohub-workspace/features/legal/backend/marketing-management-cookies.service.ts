@@ -36,11 +36,29 @@ const commonCookieOptions = {
 } as const;
 const cookieDeletionOptions = { ...commonCookieOptions, maxAge: 0 } as const;
 
-/** Request cookies are acquired on each operation; only actions and routes may write. */
+/**
+ * The e-mail-link management credentials a request presents. `Default` reads
+ * the browser's cookies; request cookies are acquired on each operation, and
+ * only actions and routes may write.
+ */
 export class MarketingManagementCookies extends Context.Service<
   MarketingManagementCookies,
   IMarketingManagementCookies
 >()("@deskohub-workspace/legal/MarketingManagementCookies") {
+  /**
+   * A client that holds no management credentials, such as the native app
+   * through the customer HTTP API, so marketing preferences always resolve
+   * the signed-in account's authority and never a browser's e-mail link.
+   * Clearing has nothing to remove; installing a pending link or a session
+   * is refused, so a single-use credential is never silently dropped.
+   */
+  static none = Layer.succeed(this, {
+    read: Effect.succeed({ pending: undefined, session: undefined }),
+    setPending: () => Effect.fail(new MarketingManagementCookiesUnavailable()),
+    setSession: () => Effect.fail(new MarketingManagementCookiesUnavailable()),
+    clear: Effect.void,
+  });
+
   static Default = Layer.succeed(this, {
     read: getRequestCookies.pipe(
       Effect.map((store) => ({
