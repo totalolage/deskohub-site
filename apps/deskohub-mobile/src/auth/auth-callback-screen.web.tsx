@@ -19,7 +19,10 @@ import {
   clearNativeHandoffRequest,
   loadNativeHandoffRequest,
 } from "./web-native-request-store";
-import { loadReauthenticatingUser } from "./web-reauthentication-store";
+import {
+  loadReauthentication,
+  type StoredReauthentication,
+} from "./web-reauthentication-store";
 import { completeWebMagicLink, mintNativeHandoff } from "./web-sign-in";
 import { WebSignInFailure } from "./web-sign-in-failure";
 
@@ -27,13 +30,17 @@ const linkRejected = () =>
   new WebSignInFailure({ operation: "verify-link", reason: "link-rejected" });
 
 /** Only a magic-link token signs in on the web; anything else is refused. */
-const completeWebCallback = (callback: AuthCallback, nativePending: boolean) =>
+const completeWebCallback = (
+  callback: AuthCallback,
+  nativePending: boolean,
+  reauthentication: Option.Option<StoredReauthentication>
+) =>
   Match.value(callback).pipe(
     Match.discriminatorsExhaustive("kind")({
       token: ({ token }) =>
         completeWebMagicLink(token, {
           nativePending,
-          storedUserId: loadReauthenticatingUser(Date.now()),
+          storedUserId: Option.map(reauthentication, ({ userId }) => userId),
         }),
       handoff: () => Effect.fail(linkRejected()),
       error: () => Effect.fail(linkRejected()),
@@ -69,6 +76,13 @@ export function AuthCallbackScreen() {
   const locale = useAppLocale();
   const [callback] = useState(capturedAuthCallback);
   const [nativeRequest] = useState(() => loadNativeHandoffRequest(Date.now()));
+  // Read before verifying: a confirmed sign-in clears it. A reauthentication
+  // returns to the screen that asked for it, else home.
+  const [reauthentication] = useState(() => loadReauthentication(Date.now()));
+  const returnPath = Option.getOrElse(
+    Option.flatMap(reauthentication, (stored) => stored.returnPath),
+    () => "/"
+  );
   const verify = useAuthTask(
     standaloneTaskRuntime,
     completeWebCallback,
@@ -81,16 +95,16 @@ export function AuthCallbackScreen() {
   );
 
   useEffect(() => {
-    void verify.start(callback, Option.isSome(nativeRequest));
-  }, [verify.start, callback, nativeRequest]);
+    void verify.start(callback, Option.isSome(nativeRequest), reauthentication);
+  }, [verify.start, callback, nativeRequest, reauthentication]);
 
   const verified = verify.state.status === "succeeded";
   const offerApp = verified && Option.isSome(nativeRequest);
   useEffect(() => {
     if (!verified || offerApp) return;
     trackSignInCompleted("link");
-    router.replace("/");
-  }, [verified, offerApp]);
+    router.replace(returnPath);
+  }, [verified, offerApp, returnPath]);
 
   const appUrl =
     handoff.state.status === "succeeded" ? handoff.state.value : undefined;

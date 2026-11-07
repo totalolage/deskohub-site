@@ -1,3 +1,5 @@
+import { Option } from "effect";
+
 /** The signed-in customer as the app needs it. */
 export interface AuthUser {
   readonly id: string;
@@ -69,12 +71,43 @@ export const isReauthenticationRequired = (error: unknown): boolean =>
 
 const authRoutes = new Set(["/sign-in", "/auth/callback"]);
 
+/** Only resolves relative paths; never requested. */
+const pathBase = "https://app.invalid";
+const parsePath = Option.liftThrowable(
+  (value: string) => new URL(value, pathBase)
+);
+
+/**
+ * ASCII control characters, whitespace and backslashes. Other characters
+ * outside ASCII are percent-encoded when parsed, so they fail the round trip.
+ */
+const hasUnsafeCharacter = (value: string): boolean =>
+  Array.from(value).some(
+    (character) =>
+      character <= " " || character === "\x7f" || character === "\\"
+  );
+
+/**
+ * Whether `value` is an in-app route to return to after signing in: a
+ * router path such as `/account?tab=x`, which the router keeps under the
+ * app's `/app` base, so a valid one can't leave the app. It must resolve to
+ * itself on its own origin, which refuses schemes, `//host`, dot segments and
+ * characters browsers strip or rewrite (a tab in `/\t/host` leaves
+ * `//host`), and it must not lead back into sign-in.
+ */
+export const isSafeReturnPath = (value: unknown): value is string => {
+  if (typeof value !== "string" || !value.startsWith("/")) return false;
+  if (value.startsWith("//") || hasUnsafeCharacter(value)) return false;
+  return Option.exists(
+    parsePath(value),
+    (url) =>
+      url.origin === pathBase &&
+      `${url.pathname}${url.search}${url.hash}` === value &&
+      !authRoutes.has(url.pathname.replace(/\/+$/, ""))
+  );
+};
+
 /** An in-app route to return to after signing in, or home. */
 export const safeReturnPath = (
   value: string | ReadonlyArray<string> | undefined
-): string => {
-  if (typeof value !== "string") return "/";
-  if (!value.startsWith("/") || value.startsWith("//")) return "/";
-  if (value.includes("\\") || authRoutes.has(value)) return "/";
-  return value;
-};
+): string => (isSafeReturnPath(value) ? value : "/");
