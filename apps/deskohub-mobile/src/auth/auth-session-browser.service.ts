@@ -1,6 +1,10 @@
-import { Context, Data, Effect, Layer } from "effect";
+import { brandColors } from "@deskohub/brand-tokens";
+import { Context, Data, Deferred, Effect, Layer } from "effect";
 import * as WebBrowser from "expo-web-browser";
 import { Platform } from "react-native";
+import type { TrustedWebActivityProvider } from "../../modules/trusted-web-activity";
+import { AuthSessionDevice } from "./auth-session-device.service";
+import { chooseSignInBrowser } from "./sign-in-browser-choice";
 
 /**
  * How the in-app auth session ended: it returned to the app with a URL, or
@@ -28,27 +32,161 @@ interface IAuthSessionBrowser {
   readonly dismiss: Effect.Effect<void>;
 }
 
+/**
+ * Opens sign-in pages in a Trusted Web Activity where Android has a browser
+ * for one, else in Expo's auth session.
+ */
 export class AuthSessionBrowser extends Context.Service<
   AuthSessionBrowser,
   IAuthSessionBrowser
 >()("deskohub-mobile/AuthSessionBrowser") {
-  static Live = Layer.succeed(this, {
-    open: (url, returnUri) =>
-      Effect.tryPromise({
-        try: () => WebBrowser.openAuthSessionAsync(url, returnUri),
+  static Default = Layer.effect(
+    this,
+    Effect.gen(function* () {
+      const device = yield* AuthSessionDevice;
+      const trustedWebActivity = makeTrustedWebActivitySessions(device);
+      return {
+        open: (url, returnUri) =>
+          Effect.suspend(() => {
+            const browser = chooseSignInBrowser({
+              platform: device.platform,
+              findProvider: device.trustedWebActivity.findProvider,
+            });
+            return browser._tag === "TrustedWebActivity"
+              ? trustedWebActivity.open(url, returnUri, browser.provider)
+              : openAuthSession(device, url, returnUri);
+          }),
+        // Only iOS can close its auth sheet; Expo throws on Android. Closing
+        // is a courtesy, so a failure is ignored.
+        dismiss: Effect.when(
+          Effect.try(() => WebBrowser.dismissAuthSession()).pipe(Effect.ignore),
+          Effect.sync(() => Platform.OS === "ios")
+        ).pipe(Effect.asVoid),
+      };
+    })
+  );
+
+  static Live = this.Default.pipe(Layer.provide(AuthSessionDevice.Live));
+}
+
+// The brand navy, so the browser's bars match the app around them.
+const signInBarColors = {
+  toolbar: brandColors.navyBlue,
+  navigationBar: brandColors.navyBlue,
+};
+
+/**
+ * How long the browser may take to show the page. Android Browser Helper
+ * reports nothing when its browser connection drops before the launch.
+ */
+const launchTimeout = "10 seconds";
+
+const makeTrustedWebActivitySessions = (
+  device: AuthSessionDevice["Service"]
+) => {
+  let sessionOpen = false;
+
+  // One page at a time; ending a session drops its browser connection.
+  const claimSession = Effect.acquireRelease(
+    Effect.suspend(() => {
+      if (sessionOpen) {
+        return Effect.fail(
+          new AuthSessionUnavailable({
+            cause: new Error("A sign-in page is already open"),
+          })
+        );
+      }
+      sessionOpen = true;
+      return Effect.void;
+    }),
+    () =>
+      Effect.tryPromise(() => device.trustedWebActivity.release()).pipe(
+        Effect.ignore,
+        Effect.ensuring(
+          Effect.sync(() => {
+            sessionOpen = false;
+          })
+        )
+      )
+  );
+
+  const listen = (subscribe: () => { readonly remove: () => void }) =>
+    Effect.acquireRelease(Effect.sync(subscribe), (subscription) =>
+      Effect.sync(() => subscription.remove())
+    );
+
+  // Like Expo's Android auth session: the page returns with a link to
+  // `returnUri`, or the customer comes back to the app without one.
+  const awaitReturn = (returnUri: string) =>
+    Effect.gen(function* () {
+      const outcome = yield* Deferred.make<AuthSessionResult>();
+      yield* listen(() =>
+        device.onUrl((url) => {
+          if (url.startsWith(returnUri)) {
+            Deferred.doneUnsafe(
+              outcome,
+              Effect.succeed(AuthSessionResult.Returned({ url }))
+            );
+          }
+        })
+      );
+      let leftApp = false;
+      yield* listen(() =>
+        device.onAppStateChange((state) => {
+          if (state !== "active") leftApp = true;
+          else if (leftApp) {
+            Deferred.doneUnsafe(
+              outcome,
+              Effect.succeed(AuthSessionResult.Closed())
+            );
+          }
+        })
+      );
+      return outcome;
+    });
+
+  const open = (
+    url: string,
+    returnUri: string,
+    provider: TrustedWebActivityProvider
+  ) =>
+    Effect.gen(function* () {
+      yield* claimSession;
+      // Listening before the launch, so no return goes unseen.
+      const outcome = yield* awaitReturn(returnUri);
+      yield* Effect.tryPromise({
+        try: () =>
+          device.trustedWebActivity.launch(url, provider, signInBarColors),
         catch: (cause) => new AuthSessionUnavailable({ cause }),
       }).pipe(
-        Effect.map((result) =>
-          result.type === "success"
-            ? AuthSessionResult.Returned({ url: result.url })
-            : AuthSessionResult.Closed()
-        )
-      ),
-    // Only iOS can close its auth sheet; Expo throws on Android. Closing is a
-    // courtesy, so a failure is ignored.
-    dismiss: Effect.when(
-      Effect.try(() => WebBrowser.dismissAuthSession()).pipe(Effect.ignore),
-      Effect.sync(() => Platform.OS === "ios")
-    ).pipe(Effect.asVoid),
-  });
-}
+        Effect.timeoutOrElse({
+          duration: launchTimeout,
+          orElse: () =>
+            Effect.fail(
+              new AuthSessionUnavailable({
+                cause: new Error("The browser didn't open the sign-in page"),
+              })
+            ),
+        })
+      );
+      return yield* Deferred.await(outcome);
+    }).pipe(Effect.scoped);
+
+  return { open };
+};
+
+const openAuthSession = (
+  device: AuthSessionDevice["Service"],
+  url: string,
+  returnUri: string
+) =>
+  Effect.tryPromise({
+    try: () => device.openAuthSession(url, returnUri),
+    catch: (cause) => new AuthSessionUnavailable({ cause }),
+  }).pipe(
+    Effect.map((result) =>
+      result.type === "success"
+        ? AuthSessionResult.Returned({ url: result.url })
+        : AuthSessionResult.Closed()
+    )
+  );
