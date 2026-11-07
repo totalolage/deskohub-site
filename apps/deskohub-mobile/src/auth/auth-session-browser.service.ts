@@ -32,8 +32,9 @@ interface IAuthSessionBrowser {
  * The Custom Tabs browser to open the auth session in. The app claims its
  * host's /app/ links, sign-in page included, and Android hands an https link
  * without a named package to the app that claims it before any browser, so
- * the sign-in page would open in the app itself. Only Android has Custom Tabs;
- * with no known browser, the system chooses.
+ * the sign-in page would open in the app itself. Android without a known
+ * Custom Tabs browser therefore can't open the auth session; only Android has
+ * Custom Tabs, so other platforms skip the lookup.
  */
 export const customTabsBrowserPackage = (
   browsers: WebBrowser.WebBrowserCustomTabsResults
@@ -42,16 +43,27 @@ export const customTabsBrowserPackage = (
   browsers.defaultBrowserPackage ??
   browsers.browserPackages[0];
 
-const customTabsBrowser: Effect.Effect<string | undefined> = Effect.suspend(
-  () =>
-    Platform.OS === "android"
-      ? Effect.tryPromise(() =>
-          WebBrowser.getCustomTabsSupportingBrowsersAsync()
-        ).pipe(
-          Effect.map(customTabsBrowserPackage),
-          Effect.orElseSucceed(() => undefined)
+const customTabsBrowser: Effect.Effect<
+  string | undefined,
+  AuthSessionUnavailable
+> = Effect.suspend(() =>
+  Platform.OS === "android"
+    ? Effect.tryPromise({
+        try: () => WebBrowser.getCustomTabsSupportingBrowsersAsync(),
+        catch: (cause) => new AuthSessionUnavailable({ cause }),
+      }).pipe(
+        Effect.map(customTabsBrowserPackage),
+        Effect.flatMap((browserPackage) =>
+          browserPackage === undefined
+            ? Effect.fail(
+                new AuthSessionUnavailable({
+                  cause: "No browser supports Custom Tabs.",
+                })
+              )
+            : Effect.succeed(browserPackage)
         )
-      : Effect.succeed(undefined)
+      )
+    : Effect.succeed(undefined)
 );
 
 export class AuthSessionBrowser extends Context.Service<
