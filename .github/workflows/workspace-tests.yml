@@ -127,6 +127,10 @@ jobs:
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      # Turbo hashes CI and TZ into each shard's cache key; the local runner
+      # (apps/deskohub-workspace/scripts/local-test-shards.ts) sets the same
+      # values, so a shard either side ran is a cache hit on the other.
+      TZ: UTC
       WORKSPACE_TEST_DATABASE_URL: postgresql://workspace:workspace@127.0.0.1:5432/workspace
 
     steps:
@@ -167,22 +171,19 @@ jobs:
         working-directory: apps/deskohub-workspace
         run: bun ./node_modules/@playwright/test/cli.js install --with-deps chromium
 
-      # The Workspace test script balances shards with the committed
-      # test-timings.json. --update-timings needs a --timings file in every
-      # package Turborepo passes these arguments to; in the Workspace it
-      # rewrites test-timings.json with this shard's measured durations.
+      # Each shard is a cached Turbo task that balances by the committed
+      # test-timings.json and records this run's durations beside it. A
+      # cache hit replays the logs and restores the recording.
       - name: Run Workspace tests
         run: >-
-          bun turbo test
+          bun turbo run test:shard-${{ matrix.shard }}
           --filter=./apps/deskohub-workspace
-          -- --shard=${{ matrix.shard }}/4
-          --timings=test-timings.json --update-timings
 
       - name: Upload Workspace test timings
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: workspace-test-timings-shard-${{ matrix.shard }}
-          path: apps/deskohub-workspace/test-timings.json
+          path: apps/deskohub-workspace/test-timings.shard-${{ matrix.shard }}.json
           if-no-files-found: error
           retention-days: 30
 

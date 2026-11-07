@@ -14,7 +14,7 @@ bun turbo build --filter=<package-name>
 ```
 
 - Both Next.js apps use the same default dev port. Set `PORT` when you run them together.
-- Turbo runs tasks in strict env mode, which drops `TMPDIR`. To give tests a different temporary directory, run Turbo with `--env-mode=loose`.
+- Turbo runs tasks in strict env mode. `TMPDIR` passes through to every task, so don't use `--env-mode=loose`: the env mode is part of every task hash, and a loose run never shares the remote cache with CI.
 - Before you run Workspace database or E2E tasks against a shared or hosted environment, load `deskohub-workspace-operations` or `deskohub-workspace-e2e`.
 
 ## Turbo task graph

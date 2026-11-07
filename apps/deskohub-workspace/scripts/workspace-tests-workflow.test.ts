@@ -1,10 +1,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { relative, resolve } from "node:path";
-import {
-  shardTimingsArtifactPattern,
-  testTimingsPath,
-} from "./refresh-test-timings";
+import { resolve } from "node:path";
+import { shardTimingsArtifactPattern } from "./refresh-test-timings";
 import { runCommand } from "./shared/command";
 import { identifierNames, parseTrackedSource } from "./shared/source-ast";
 import {
@@ -13,6 +10,7 @@ import {
   type WorkflowStep,
   workflowSteps,
 } from "./shared/workflow-contract";
+import { shardTimingsRecording, testShardCount } from "./test-shard";
 
 const workflowPath = resolve(
   import.meta.dir,
@@ -82,21 +80,20 @@ test("fails each shard before its tests when the disposable database is missing"
   ).toBe(0);
 });
 
-test("balances shards by committed durations and uploads each shard's recording", () => {
-  const packageJson = JSON.parse(
-    readFileSync(resolve(import.meta.dir, "../package.json"), "utf8")
-  ) as { readonly scripts: { readonly test: string } };
-  const timingsFile = relative(resolve(import.meta.dir, ".."), testTimingsPath);
-  // Every shard reads the same committed file, so the split is deterministic.
-  expect(packageJson.scripts.test).toContain(`--timings=./${timingsFile}`);
-  expect(stepByName("Run Workspace tests").run).toContain(
-    `--timings=${timingsFile} --update-timings`
+test("runs each matrix shard as its cached Turbo task and uploads the shard's recording", () => {
+  // The shard task balances by the committed test-timings.json and records
+  // into its own file, which a cache hit restores.
+  expect(stepByName("Run Workspace tests").run).toBe(
+    "bun turbo run test:shard-$" +
+      "{{ matrix.shard }} --filter=./apps/deskohub-workspace"
   );
 
   const upload = stepByName("Upload Workspace test timings");
   // Only a passing shard's recording is trustworthy for rebalancing.
   expect(upload.if).toBeUndefined();
-  expect(upload.with?.path).toBe(`apps/deskohub-workspace/${timingsFile}`);
+  expect(
+    String(upload.with?.path).replace("$" + "{{ matrix.shard }}", "1")
+  ).toBe(`apps/deskohub-workspace/${shardTimingsRecording(1)}`);
   const artifactName = String(upload.with?.name);
   expect(
     new Bun.Glob(shardTimingsArtifactPattern).match(
@@ -105,15 +102,23 @@ test("balances shards by committed durations and uploads each shard's recording"
   ).toBe(true);
 });
 
+test("runs the shards with the Bun the repository pins", () => {
+  const rootPackage = JSON.parse(
+    readFileSync(resolve(import.meta.dir, "../../../package.json"), "utf8")
+  ) as { readonly packageManager: string };
+  const setupBun = workflowSteps(doc, "test-functional-shards").find((step) =>
+    step.uses?.startsWith("oven-sh/setup-bun@")
+  );
+  expect(`bun@${setupBun?.with?.["bun-version"]}`).toBe(
+    rootPackage.packageManager
+  );
+});
+
 test("splits the suite across every matrix shard and keeps test-functional as a fail-closed gate", async () => {
   // A shard count that disagrees with the matrix skips or repeats test files.
   expect(shardContract.strategy?.["fail-fast"]).toBe(false);
   const shards = shardContract.strategy?.matrix?.shard ?? [];
-  const shardFlag = stepByName("Run Workspace tests").run?.match(
-    /--shard=\$\{\{ matrix\.shard \}\}\/(\d+)/
-  );
-  expect(shardFlag).not.toBeNull();
-  expect(shards).toHaveLength(Number(shardFlag?.[1]));
+  expect(shards).toHaveLength(testShardCount);
   expect(shards).toEqual(shards.map((_, index) => index + 1));
 
   // Suites mutate process-wide state, so each shard runs one test process.
