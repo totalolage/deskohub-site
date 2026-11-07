@@ -52,5 +52,6 @@
   "consent_prompt_message": "May we measure how you use the app so we can improve it?",
   "consent_prompt_accept": "Allow analytics",
   "consent_prompt_decline": "Decline",
-  "signin_error_reauth_unconfirmed": "We couldn't confirm this is the same account, so you were signed out. Sign in again."
+  "signin_error_reauth_unconfirmed": "We couldn't confirm this is the same account, so you were signed out. Sign in again.",
+  "signin_error_reauth_storage": "This browser won't store what we need to confirm it's you. Allow site storage for Deskohub and try again."
 }

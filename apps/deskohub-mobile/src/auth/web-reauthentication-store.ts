@@ -2,11 +2,13 @@ import { Option, Schema } from "effect";
 
 /**
  * The account a web reauthentication started from, kept in `localStorage`
- * because the sign-in email may open in another tab. It expires with the
- * sign-in it belongs to.
+ * because the sign-in email may open in another tab. A reauthentication only
+ * starts, and only sends its email, once this is stored, and it outlives the
+ * email's link (ten minutes, the server's `betterAuthMagicLinkOptions`), so a
+ * link that can still sign in always finds it.
  */
 const storageKey = "deskohub.reauthentication";
-const ttlMs = 10 * 60 * 1000;
+export const reauthenticationMarkerTtlMs = 30 * 60 * 1000;
 
 const storedSchema = Schema.fromJsonString(
   Schema.Struct({ userId: Schema.String, expiresAt: Schema.Finite })
@@ -23,9 +25,16 @@ const remove = Option.liftThrowable(() =>
   globalThis.localStorage.removeItem(storageKey)
 );
 
-export const saveReauthenticatingUser = (userId: string, now: number): void => {
-  write(JSON.stringify({ userId, expiresAt: now + ttlMs }));
-};
+/** Stores the account; `false` when this browser refuses storage. */
+export const saveReauthenticatingUser = (
+  userId: string,
+  now: number
+): boolean =>
+  Option.isSome(
+    write(
+      JSON.stringify({ userId, expiresAt: now + reauthenticationMarkerTtlMs })
+    )
+  );
 
 export const loadReauthenticatingUser = (now: number): Option.Option<string> =>
   read().pipe(

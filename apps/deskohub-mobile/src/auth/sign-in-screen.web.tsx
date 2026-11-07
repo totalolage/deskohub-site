@@ -35,6 +35,7 @@ import {
 import {
   confirmWebAccount,
   mintNativeHandoff,
+  prepareReauthenticationEmail,
   reauthenticationExpectation,
   sendSignInEmail,
   verifySignInCode,
@@ -128,7 +129,14 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
   const [invalidEmail, setInvalidEmail] = useState(false);
   const [useAnotherAccount, setUseAnotherAccount] = useState(false);
 
-  const send = useAuthTask(standaloneTaskRuntime, sendSignInEmail, unexpected);
+  const send = useAuthTask(
+    standaloneTaskRuntime,
+    (address: string, expectation: WebAccountExpectation) =>
+      prepareReauthenticationEmail(expectation).pipe(
+        Effect.andThen(sendSignInEmail(address, locale))
+      ),
+    unexpected
+  );
   // A web reauthentication must come back as the account it started from:
   // the one this page's browser session had, else the one stored for it.
   const reauthenticating =
@@ -211,12 +219,21 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
     locale,
   });
 
+  const accountExpectation = () =>
+    reauthenticationExpectation({
+      reauthenticating,
+      sessionUserId: pageSessionUserId,
+      storedUserId: reauthenticating
+        ? loadReauthenticatingUser(Date.now())
+        : Option.none(),
+    });
+
   const submitEmail = () => {
     const address = email.trim();
     const valid = emailPattern.test(address);
     setInvalidEmail(!valid);
     if (!valid) return;
-    void send.start(address, locale).then((exit) => {
+    void send.start(address, accountExpectation()).then((exit) => {
       if (!Option.exists(exit, Exit.isSuccess)) return;
       trackSignInStarted("link");
       setSentTo(address);
@@ -225,17 +242,7 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
 
   const submitCode = () => {
     if (sentTo === undefined) return;
-    void verify.start(
-      sentTo,
-      code.trim(),
-      reauthenticationExpectation({
-        reauthenticating,
-        sessionUserId: pageSessionUserId,
-        storedUserId: reauthenticating
-          ? loadReauthenticatingUser(Date.now())
-          : Option.none(),
-      })
-    );
+    void verify.start(sentTo, code.trim(), accountExpectation());
   };
 
   const startOver = () => {

@@ -3,6 +3,7 @@ import type { AppLocale } from "../i18n/app-locale";
 import { webCallbackPath } from "./auth-callback";
 import { authClient } from "./auth-client.web";
 import type { NativeHandoffRequest } from "./native-handoff-request";
+import { saveReauthenticatingUser } from "./web-reauthentication-store";
 import {
   WebSignInFailure,
   type WebSignInOperation,
@@ -169,12 +170,43 @@ export const confirmWebAccount = (expectation: WebAccountExpectation) =>
   );
 
 /**
+ * Before a reauthentication's email goes out, stores the account it must
+ * come back as, so the email's link can be checked in any tab. An account
+ * that can't be recovered or stored stops the email.
+ */
+export const prepareReauthenticationEmail = (
+  expectation: WebAccountExpectation
+) =>
+  Match.value(expectation).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      none: () => Effect.void,
+      unrecoverable: () => Effect.fail(reauthenticationUnavailable()),
+      account: ({ userId }) =>
+        Effect.sync(() => saveReauthenticatingUser(userId, Date.now())).pipe(
+          Effect.filterOrFail(
+            (saved) => saved,
+            () => reauthenticationUnavailable()
+          ),
+          Effect.asVoid
+        ),
+    })
+  );
+
+const reauthenticationUnavailable = () =>
+  new WebSignInFailure({
+    operation: "send-email",
+    reason: "reauthentication-unavailable",
+  });
+
+/**
  * The account a magic link opened in a browser must come back as. A pending
  * native request hands the session to the app, which checks the account
- * itself. Otherwise a stored reauthentication names the account; without
- * one, a browser that is already signed in can only reach a link through a
- * reauthentication, so its current account is expected. A session that
- * can't be read fails closed.
+ * itself. Otherwise a stored reauthentication names the account: every
+ * reauthentication email is sent only after it is stored, and it outlives the
+ * link. Without one, a browser that is still signed in can only reach a link
+ * through a reauthentication, so its current account is expected; a signed-out
+ * browser without one holds no account to switch from. A session that can't
+ * be read fails closed.
  */
 export const magicLinkExpectation = ({
   nativePending,

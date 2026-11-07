@@ -1,7 +1,11 @@
 import { router, usePathname } from "expo-router";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import type { AuthUser } from "./auth-session-state";
-import type { NativeSignInFailure } from "./native-sign-in-errors";
+import {
+  type NativeSignInFailure,
+  NotSignedIn,
+  SignInUnavailable,
+} from "./native-sign-in-errors";
 import type {
   Reauthentication,
   ReauthenticationOutcome,
@@ -16,7 +20,9 @@ export type {
   ReauthenticationOutcome,
 } from "./reauthentication.native";
 
-const idle: AuthTaskState<AuthUser, NativeSignInFailure> = { status: "idle" };
+const idle: AuthTaskState<AuthUser, NativeSignInFailure> = {
+  status: "idle",
+};
 
 /**
  * Web reauthentication goes through the sign-in page with `prompt=login`,
@@ -27,15 +33,32 @@ const idle: AuthTaskState<AuthUser, NativeSignInFailure> = { status: "idle" };
 export const useReauthentication = (): Reauthentication => {
   const pathname = usePathname();
   const session = useAuthSession();
+  const [state, setState] =
+    useState<AuthTaskState<AuthUser, NativeSignInFailure>>(idle);
   const userId = session.status === "signed-in" ? session.user.id : undefined;
   const reauthenticate =
     useCallback(async (): Promise<ReauthenticationOutcome> => {
-      if (userId !== undefined) saveReauthenticatingUser(userId, Date.now());
+      // Without a stored account the sign-in page couldn't refuse a switch to
+      // another one, so a browser that refuses storage doesn't start.
+      if (
+        userId === undefined ||
+        !saveReauthenticatingUser(userId, Date.now())
+      ) {
+        setState({
+          status: "failed",
+          failure:
+            userId === undefined
+              ? new NotSignedIn()
+              : new SignInUnavailable({}),
+        });
+        return "failed";
+      }
+      setState(idle);
       router.push({
         pathname: "/sign-in",
         params: { prompt: "login", return_to: pathname },
       });
       return "redirected";
     }, [pathname, userId]);
-  return { state: idle, reauthenticate };
+  return { state, reauthenticate };
 };

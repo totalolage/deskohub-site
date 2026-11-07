@@ -25,6 +25,8 @@ export type WebSignInFailureReason =
   | "account-switch"
   /** A reauthentication's account couldn't be confirmed; it was signed out. */
   | "reauthentication-unconfirmed"
+  /** This browser can't keep the account a reauthentication must confirm. */
+  | "reauthentication-unavailable"
   | "unavailable"
   | "failed";
 
