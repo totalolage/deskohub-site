@@ -1,5 +1,8 @@
 import {
+  type ApplyCustomerCheckoutDiscountCode,
+  type CreateCustomerCheckout,
   CustomerAccountLinkRequired,
+  type CustomerAccountState,
   type CustomerAvailability,
   type CustomerBookableCoworkTier,
   type CustomerBookingApi,
@@ -9,7 +12,10 @@ import {
   type CustomerBookingSelectionQuery,
   type CustomerCheckout,
   type CustomerCheckoutChangedKeys,
+  type CustomerCheckoutDiscountCodeResult,
   CustomerCheckoutNotFound,
+  type CustomerCheckoutStart,
+  type CustomerCheckoutSubmission,
   CustomerCheckoutUnavailable,
   type CustomerCheckoutUnavailableReason,
   CustomerConsentRequired,
@@ -23,9 +29,10 @@ import {
   CustomerSelectionUnavailable,
   customerReferralCodeHeader,
   ReferralCode,
+  type SubmitCustomerCheckout,
   WorkspaceCustomerApi,
 } from "@deskohub/workspace-customer-api";
-import { Effect } from "effect";
+import { Effect, Match, Option } from "effect";
 import {
   HttpApiBuilder,
   type HttpApiEndpoint,
@@ -383,14 +390,6 @@ export const fakeBookingGroup = (workspace: FakeWorkspace) => {
       return own(scripted);
     });
 
-  const linkRequired = Effect.suspend(() => {
-    const { account } = workspace.data;
-    return account.kind === "deletion-pending" ||
-      account.kind === "support-required"
-      ? Effect.fail(new CustomerAccountLinkRequired({ reason: account.kind }))
-      : Effect.void;
-  });
-
   return HttpApiBuilder.group(WorkspaceCustomerApi, "booking", (handlers) =>
     handlers
       .handle("listOfferings", ({ query, request }) =>
@@ -464,65 +463,12 @@ export const fakeBookingGroup = (workspace: FakeWorkspace) => {
         received("createCheckout", payload, request.headers).pipe(
           Effect.andThen(
             answer("createCheckout", (scripted) =>
-              Effect.gen(function* () {
-                yield* linkRequired;
-                // A retry of the same attempt gets the order it already made.
-                const earlier = booking.attempted(
-                  payload.checkoutSessionId,
-                  payload.checkoutAttemptId
-                );
-                if (earlier !== undefined) {
-                  return checkoutAnswer(booking, earlier);
-                }
-                yield* checkedSelection(booking, payload.selection);
-                if (
-                  !booking.quoteMatches(
-                    payload.advertisedPriceToken,
-                    payload.selection
-                  )
-                ) {
-                  return yield* new CustomerQuoteExpired();
-                }
-                if (booking.unavailableDates.includes(payload.selection.date)) {
-                  return yield* new CustomerSelectionUnavailable({
-                    reason: "availability_changed",
-                  });
-                }
-                const orderId = booking.nextId("sample-booking-order");
-                if (scripted?._tag === "PaymentDisabled") {
-                  return { status: "payment_disabled" as const, orderId };
-                }
-                const now = booking.now();
-                // A remembered referral code gives the referral benefit; any
-                // other remembered code counts as used up, so the app forgets it.
-                const remembered = request.headers[customerReferralCodeHeader];
-                const checkout: FakeBookingCheckout = {
-                  orderId,
-                  selection: payload.selection,
-                  locale: payload.locale,
-                  expiresAt: new Date(now.getTime() + fakeHoldDuration),
-                  status: "ready",
-                  changedKeys: undefined,
-                  surcharge: 0,
-                  code: undefined,
-                  referralApplied: remembered === fakeBookingCodes.referral,
-                  earlyPerformanceRequired:
-                    inclusiveDays(pragueDate(now), payload.selection.date) <=
-                    withdrawalPeriodDays,
-                };
-                const held = priceChanged(checkout, scripted);
-                booking.attempt(
-                  payload.checkoutSessionId,
-                  payload.checkoutAttemptId,
-                  orderId
-                );
-                return {
-                  ...checkoutAnswer(booking, held),
-                  ...(remembered !== undefined &&
-                  remembered !== fakeBookingCodes.referral
-                    ? { rememberedReferralCodeUsed: true as const }
-                    : {}),
-                };
+              createCheckout({
+                workspace,
+                booking,
+                payload,
+                remembered: request.headers[customerReferralCodeHeader],
+                scripted,
               })
             )
           )
@@ -532,57 +478,7 @@ export const fakeBookingGroup = (workspace: FakeWorkspace) => {
         received("applyCheckoutDiscountCode", payload, request.headers).pipe(
           Effect.andThen(
             answer("applyCheckoutDiscountCode", (scripted) =>
-              Effect.gen(function* () {
-                const current = yield* held(booking, payload.payStateToken);
-                const code = payload.code.trim().toUpperCase();
-                if (current.status === "price_review") {
-                  return yield* unavailable("price_review_pending");
-                }
-                if (current.code !== undefined) {
-                  return yield* new CustomerDiscountCodeRejected({
-                    reason: "code_already_applied",
-                  });
-                }
-                if (code === fakeBookingCodes.expiredWithReplacement) {
-                  return yield* new CustomerDiscountCodeRejected({
-                    reason: "unavailable",
-                    payStateToken: booking.hold(current),
-                    expiresAt: current.expiresAt.toISOString(),
-                  });
-                }
-                const known =
-                  code === fakeBookingCodes.discount ||
-                  code === fakeBookingCodes.free ||
-                  code === fakeBookingCodes.referral;
-                if (!known) {
-                  return yield* new CustomerDiscountCodeRejected({
-                    reason: "unavailable",
-                  });
-                }
-                if (scripted?._tag === "PriceReview") {
-                  // The price changed first: the code isn't applied yet.
-                  return checkoutAnswer(
-                    booking,
-                    priceChanged(current, scripted)
-                  );
-                }
-                const applied: FakeBookingCheckout = {
-                  ...current,
-                  code,
-                  referralApplied:
-                    current.referralApplied ||
-                    code === fakeBookingCodes.referral,
-                };
-                return {
-                  ...checkoutAnswer(booking, applied),
-                  ...(code === fakeBookingCodes.referral
-                    ? {
-                        discountCode: "referral_accepted" as const,
-                        rememberReferralCode: fakeBookingCodes.referral,
-                      }
-                    : { discountCode: "applied" as const }),
-                };
-              })
+              applyDiscountCode({ booking, payload, scripted })
             )
           )
         )
@@ -591,14 +487,14 @@ export const fakeBookingGroup = (workspace: FakeWorkspace) => {
         received("acceptCheckoutPriceChange", payload, request.headers).pipe(
           Effect.andThen(
             answer("acceptCheckoutPriceChange", () =>
-              Effect.map(
-                held(booking, payload.payStateToken),
-                (current): CustomerCheckout =>
-                  checkoutAnswer(booking, {
+              held(booking, payload.payStateToken).pipe(
+                Effect.flatMap((current) =>
+                  answerCheckout(booking, {
                     ...current,
                     status: "ready",
                     changedKeys: undefined,
                   })
+                )
               )
             )
           )
@@ -608,61 +504,11 @@ export const fakeBookingGroup = (workspace: FakeWorkspace) => {
         received("submitCheckout", payload, request.headers).pipe(
           Effect.andThen(
             answer("submitCheckout", (scripted) =>
-              Effect.gen(function* () {
-                const current = yield* held(booking, payload.payStateToken);
-                if (scripted?._tag === "PriceReview") {
-                  return checkoutAnswer(
-                    booking,
-                    priceChanged(current, scripted)
-                  );
-                }
-                if (current.status === "price_review") {
-                  return yield* unavailable("price_review_pending");
-                }
-                if (!payload.legalConsent) {
-                  return yield* new CustomerConsentRequired({
-                    consent: "legal",
-                  });
-                }
-                const documents = sampleLegalDocuments(
-                  current.locale,
-                  booking.legalVersion
-                );
-                const accepted = documents.every((document) =>
-                  payload.acceptedLegalDocuments.some(
-                    (sent) =>
-                      sent.key === document.key && sent.hash === document.hash
-                  )
-                );
-                if (!accepted) {
-                  return yield* new CustomerLegalDocumentsChanged();
-                }
-                if (
-                  current.earlyPerformanceRequired &&
-                  payload.earlyPerformanceConsent !== true
-                ) {
-                  return yield* new CustomerConsentRequired({
-                    consent: "early_performance",
-                  });
-                }
-                booking.submit(current);
-                const statusUrl = `${fakeWorkspaceOrigin}/reservation/status?orderId=${current.orderId}`;
-                const remembered = request.headers[customerReferralCodeHeader];
-                return summaryOf(current).total.value === 0
-                  ? {
-                      status: "paid" as const,
-                      orderId: current.orderId,
-                      statusUrl,
-                      ...(remembered === undefined
-                        ? {}
-                        : { rememberedReferralCodeUsed: true as const }),
-                    }
-                  : {
-                      status: "payment_required" as const,
-                      orderId: current.orderId,
-                      paymentUrl: `https://pay.sample.example/checkout/${current.orderId}`,
-                      statusUrl,
-                    };
+              submitCheckout({
+                booking,
+                payload,
+                remembered: request.headers[customerReferralCodeHeader],
+                scripted,
               })
             )
           )
@@ -695,18 +541,329 @@ type OwnFlowScript =
   | { readonly _tag: "PriceReview"; readonly changedKeys: ChangedKeys }
   | { readonly _tag: "PaymentDisabled" };
 
+/** The changed keys a scripted price change brings, if one is queued. */
+const scriptedPriceChange = (scripted: OwnFlowScript | undefined) =>
+  Option.fromNullishOr(
+    scripted?._tag === "PriceReview" ? scripted.changedKeys : undefined
+  );
+
+/** The checkout after its price changed by the scripted keys. */
 const priceChanged = (
   checkout: FakeBookingCheckout,
+  changedKeys: ChangedKeys
+): FakeBookingCheckout => ({
+  ...checkout,
+  status: "price_review",
+  changedKeys,
+  surcharge: checkout.surcharge + 50,
+});
+
+/** Applies a queued price change, if any. */
+const withScriptedPriceChange = (
+  checkout: FakeBookingCheckout,
   scripted: OwnFlowScript | undefined
-): FakeBookingCheckout =>
-  scripted?._tag === "PriceReview"
-    ? {
-        ...checkout,
-        status: "price_review",
-        changedKeys: scripted.changedKeys,
-        surcharge: checkout.surcharge + 50,
-      }
-    : checkout;
+) =>
+  Option.match(scriptedPriceChange(scripted), {
+    onNone: () => checkout,
+    onSome: (changedKeys) => priceChanged(checkout, changedKeys),
+  });
+
+/** Stores the checkout's new state and answers it with a new token. */
+const answerCheckout = (
+  booking: FakeBookingApi,
+  checkout: FakeBookingCheckout
+) => Effect.sync(() => checkoutAnswer(booking, checkout));
+
+interface CreateCheckoutInput {
+  readonly workspace: FakeWorkspace;
+  readonly booking: FakeBookingApi;
+  readonly payload: CreateCustomerCheckout;
+  /** The `x-deskohub-referral-code` header, when sent. */
+  readonly remembered: string | undefined;
+  readonly scripted: OwnFlowScript | undefined;
+}
+
+/**
+ * Holds a quoted selection. A retry of the same checkout attempt gets the
+ * order that attempt already made, whatever changed since.
+ */
+const createCheckout = (input: CreateCheckoutInput) =>
+  usableAccountLink(input.workspace).pipe(
+    Effect.andThen(() =>
+      Option.match(
+        Option.fromNullishOr(
+          input.booking.attempted(
+            input.payload.checkoutSessionId,
+            input.payload.checkoutAttemptId
+          )
+        ),
+        {
+          onSome: (earlier) => answerCheckout(input.booking, earlier),
+          onNone: () => holdNewCheckout(input),
+        }
+      )
+    )
+  );
+
+/** Account states the Workspace can't book for, with the reason it gives. */
+const accountLinkBlocker = (account: CustomerAccountState) =>
+  account.kind === "deletion-pending" || account.kind === "support-required"
+    ? Option.some(account.kind)
+    : Option.none();
+
+const usableAccountLink = (workspace: FakeWorkspace) =>
+  Effect.sync(() => accountLinkBlocker(workspace.data.account)).pipe(
+    Effect.flatMap(
+      Option.match({
+        onNone: () => Effect.void,
+        onSome: (reason) =>
+          Effect.fail(new CustomerAccountLinkRequired({ reason })),
+      })
+    )
+  );
+
+const holdNewCheckout = (input: CreateCheckoutInput) =>
+  checkedSelection(input.booking, input.payload.selection).pipe(
+    Effect.as(input),
+    Effect.filterOrFail(
+      ({ booking, payload }) =>
+        booking.quoteMatches(payload.advertisedPriceToken, payload.selection),
+      () => new CustomerQuoteExpired()
+    ),
+    Effect.filterOrFail(
+      ({ booking, payload }) =>
+        !booking.unavailableDates.includes(payload.selection.date),
+      () => new CustomerSelectionUnavailable({ reason: "availability_changed" })
+    ),
+    Effect.flatMap((checked) => Effect.sync(() => startCheckout(checked)))
+  );
+
+/** Allocates the order and answers its first checkout state. */
+const startCheckout = ({
+  booking,
+  payload,
+  remembered,
+  scripted,
+}: CreateCheckoutInput): CustomerCheckoutStart => {
+  const orderId = booking.nextId("sample-booking-order");
+  if (scripted?._tag === "PaymentDisabled") {
+    return { status: "payment_disabled", orderId };
+  }
+  const now = booking.now();
+  const checkout: FakeBookingCheckout = withScriptedPriceChange(
+    {
+      orderId,
+      selection: payload.selection,
+      locale: payload.locale,
+      expiresAt: new Date(now.getTime() + fakeHoldDuration),
+      status: "ready",
+      changedKeys: undefined,
+      surcharge: 0,
+      code: undefined,
+      // A remembered referral code gives the referral benefit.
+      referralApplied: remembered === fakeBookingCodes.referral,
+      earlyPerformanceRequired:
+        inclusiveDays(pragueDate(now), payload.selection.date) <=
+        withdrawalPeriodDays,
+    },
+    scripted
+  );
+  booking.attempt(
+    payload.checkoutSessionId,
+    payload.checkoutAttemptId,
+    orderId
+  );
+  // Any other remembered code counts as used up, so the app forgets it.
+  const usedUp =
+    remembered !== undefined && remembered !== fakeBookingCodes.referral;
+  return {
+    ...checkoutAnswer(booking, checkout),
+    ...(usedUp ? { rememberedReferralCodeUsed: true as const } : {}),
+  };
+};
+
+interface DiscountCodeInput {
+  readonly booking: FakeBookingApi;
+  readonly payload: typeof ApplyCustomerCheckoutDiscountCode.Type;
+  readonly scripted: OwnFlowScript | undefined;
+}
+
+/** How the fake treats an entered code. */
+const codeKind = (code: string) => {
+  if (code === fakeBookingCodes.expiredWithReplacement) return "replaced";
+  return code === fakeBookingCodes.discount ||
+    code === fakeBookingCodes.free ||
+    code === fakeBookingCodes.referral
+    ? "known"
+    : "unknown";
+};
+
+/** Applies a code to a held checkout that has no code and no pending review. */
+const applyDiscountCode = ({ booking, payload, scripted }: DiscountCodeInput) =>
+  Effect.Do.pipe(
+    Effect.bind("current", () => held(booking, payload.payStateToken)),
+    Effect.let("code", () => payload.code.trim().toUpperCase()),
+    Effect.filterOrFail(
+      ({ current }) => current.status !== "price_review",
+      () => unavailable("price_review_pending")
+    ),
+    Effect.filterOrFail(
+      ({ current }) => current.code === undefined,
+      () => new CustomerDiscountCodeRejected({ reason: "code_already_applied" })
+    ),
+    Effect.flatMap(({ current, code }) =>
+      Match.value(codeKind(code)).pipe(
+        Match.when("replaced", () => rejectWithReplacement(booking, current)),
+        Match.when("unknown", () =>
+          Effect.fail(
+            new CustomerDiscountCodeRejected({ reason: "unavailable" })
+          )
+        ),
+        Match.when("known", () =>
+          Effect.sync(() => codeAnswer({ booking, current, code, scripted }))
+        ),
+        Match.exhaustive
+      )
+    )
+  );
+
+/** Rejects the code but signs a replacement pay state that keeps it. */
+const rejectWithReplacement = (
+  booking: FakeBookingApi,
+  current: FakeBookingCheckout
+) =>
+  Effect.sync(() => booking.hold(current)).pipe(
+    Effect.flatMap((payStateToken) =>
+      Effect.fail(
+        new CustomerDiscountCodeRejected({
+          reason: "unavailable",
+          payStateToken,
+          expiresAt: current.expiresAt.toISOString(),
+        })
+      )
+    )
+  );
+
+/**
+ * A known code's answer: applied, or, when the price changed first, the
+ * reviewed checkout without the code.
+ */
+const codeAnswer = ({
+  booking,
+  current,
+  code,
+  scripted,
+}: {
+  readonly booking: FakeBookingApi;
+  readonly current: FakeBookingCheckout;
+  readonly code: string;
+  readonly scripted: OwnFlowScript | undefined;
+}): CustomerCheckoutDiscountCodeResult =>
+  Option.match(scriptedPriceChange(scripted), {
+    onSome: (changedKeys) =>
+      checkoutAnswer(booking, priceChanged(current, changedKeys)),
+    onNone: () => ({
+      ...checkoutAnswer(booking, {
+        ...current,
+        code,
+        referralApplied:
+          current.referralApplied || code === fakeBookingCodes.referral,
+      }),
+      ...(code === fakeBookingCodes.referral
+        ? {
+            discountCode: "referral_accepted" as const,
+            rememberReferralCode: fakeBookingCodes.referral,
+          }
+        : { discountCode: "applied" as const }),
+    }),
+  });
+
+interface SubmitCheckoutInput {
+  readonly booking: FakeBookingApi;
+  readonly payload: typeof SubmitCustomerCheckout.Type;
+  readonly remembered: string | undefined;
+  readonly scripted: OwnFlowScript | undefined;
+}
+
+/** Submits a held checkout, unless a scripted price change comes first. */
+const submitCheckout = (input: SubmitCheckoutInput) =>
+  held(input.booking, input.payload.payStateToken).pipe(
+    Effect.flatMap((current) =>
+      Option.match(scriptedPriceChange(input.scripted), {
+        onSome: (changedKeys) =>
+          answerCheckout(input.booking, priceChanged(current, changedKeys)),
+        onNone: () => submitHeld({ ...input, current }),
+      })
+    )
+  );
+
+/** Checks the price and consents, then starts the payment. */
+const submitHeld = ({
+  booking,
+  payload,
+  remembered,
+  current,
+}: SubmitCheckoutInput & { readonly current: FakeBookingCheckout }) =>
+  Effect.succeed(current).pipe(
+    Effect.filterOrFail(
+      (checkout) => checkout.status !== "price_review",
+      () => unavailable("price_review_pending")
+    ),
+    Effect.filterOrFail(
+      () => payload.legalConsent,
+      () => new CustomerConsentRequired({ consent: "legal" })
+    ),
+    Effect.filterOrFail(
+      (checkout) =>
+        acceptsCurrentDocuments(
+          sampleLegalDocuments(checkout.locale, booking.legalVersion),
+          payload.acceptedLegalDocuments
+        ),
+      () => new CustomerLegalDocumentsChanged()
+    ),
+    Effect.filterOrFail(
+      (checkout) =>
+        !checkout.earlyPerformanceRequired ||
+        payload.earlyPerformanceConsent === true,
+      () => new CustomerConsentRequired({ consent: "early_performance" })
+    ),
+    Effect.tap((checkout) => Effect.sync(() => booking.submit(checkout))),
+    Effect.map((checkout) => submission(checkout, remembered))
+  );
+
+const acceptsCurrentDocuments = (
+  documents: ReadonlyArray<{ readonly key: string; readonly hash: string }>,
+  accepted: ReadonlyArray<{ readonly key: string; readonly hash: string }>
+) =>
+  documents.every((document) =>
+    accepted.some(
+      (sent) => sent.key === document.key && sent.hash === document.hash
+    )
+  );
+
+/** What a submitted checkout answers: pay, or nothing left to pay. */
+const submission = (
+  checkout: FakeBookingCheckout,
+  remembered: string | undefined
+): CustomerCheckoutSubmission => {
+  const statusUrl = `${fakeWorkspaceOrigin}/reservation/status?orderId=${checkout.orderId}`;
+  if (summaryOf(checkout).total.value === 0) {
+    return {
+      status: "paid",
+      orderId: checkout.orderId,
+      statusUrl,
+      ...(remembered === undefined
+        ? {}
+        : { rememberedReferralCodeUsed: true as const }),
+    };
+  }
+  return {
+    status: "payment_required",
+    orderId: checkout.orderId,
+    paymentUrl: `https://pay.sample.example/checkout/${checkout.orderId}`,
+    statusUrl,
+  };
+};
 
 /** The share of the price the code or the referral benefit takes off. */
 const discountShare = ({ code, referralApplied }: FakeBookingCheckout) => {
