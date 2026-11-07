@@ -285,18 +285,23 @@ describe("ReservationAuthorizationService", () => {
       true,
     ],
   ] as const)(
-    "decides the access code for %s by customer ownership only",
+    "decides the access code and invoice for %s by customer ownership only",
     async (_label, options, expected) => {
-      const result = await runAuthorization({
+      const accessCode = await runAuthorization({
         ...options,
         input: { permission: "view-access-code" },
       });
+      const invoice = await runAuthorization({
+        ...options,
+        input: { permission: "view-invoice" },
+      });
 
-      expect(result.authorized).toBe(expected);
+      expect(accessCode.authorized).toBe(expected);
+      expect(invoice.authorized).toBe(expected);
     }
   );
 
-  test.each(["view-status", "view-access-code"] as const)(
+  test.each(["view-status", "view-access-code", "view-invoice"] as const)(
     "accepts a valid capability for %s without an account",
     async (permission) => {
       const result = await runAuthorization({
@@ -310,7 +315,7 @@ describe("ReservationAuthorizationService", () => {
 });
 
 describe("a review account's sandbox order", () => {
-  test("shows its status to the account but never its access code", async () => {
+  test("shows its status to the account but never its access code or invoice", async () => {
     const status = await runAuthorization({
       reservation: null,
       sandboxOrder: true,
@@ -320,9 +325,15 @@ describe("a review account's sandbox order", () => {
       reservation: null,
       sandboxOrder: true,
     });
+    const invoice = await runAuthorization({
+      input: { permission: "view-invoice" },
+      reservation: null,
+      sandboxOrder: true,
+    });
 
     expect(status.authorized).toBe(true);
     expect(accessCode.authorized).toBe(false);
+    expect(invoice.authorized).toBe(false);
   });
 
   test("stays hidden from every other account", async () => {

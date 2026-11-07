@@ -17,17 +17,20 @@ import {
 } from "./workspace-reservation.repository";
 
 /** What a visitor may see of a reservation. */
-type ReservationPermission = "view-status" | "view-access-code";
+type ReservationPermission =
+  | "view-status"
+  | "view-access-code"
+  | "view-invoice";
 
 /**
  * Who may see what. The customer's emailed capability links, the access
  * cookie, and the account linked to the reservation's customer see
  * everything. The author's session sees the status only, so the door access
- * code stays with the customer the reservation was booked for.
+ * code and the invoice stay with the customer the reservation was booked for.
  */
 const reservationAccessPolicy = {
-  capability: ["view-status", "view-access-code"],
-  customer: ["view-status", "view-access-code"],
+  capability: ["view-status", "view-access-code", "view-invoice"],
+  customer: ["view-status", "view-access-code", "view-invoice"],
   author: ["view-status"],
 } as const satisfies Record<string, readonly ReservationPermission[]>;
 
