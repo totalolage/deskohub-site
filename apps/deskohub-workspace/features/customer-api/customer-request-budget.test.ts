@@ -27,7 +27,7 @@ describe("customer request budget classes", () => {
       )
       .toSorted();
 
-    expect(contractEndpoints()).toHaveLength(16);
+    expect(contractEndpoints()).toHaveLength(25);
     expect(classified).toEqual(contractEndpoints());
   });
 
@@ -35,6 +35,10 @@ describe("customer request budget classes", () => {
     expect(customerRequestBudgetClasses.account).toMatchObject({
       listPasskeys: "workspace-only",
       listAssistantConnections: "workspace-only",
+    });
+    expect(customerRequestBudgetClasses.booking).toMatchObject({
+      listLegalDocuments: "workspace-only",
+      acceptCheckoutPriceChange: "workspace-only",
     });
   });
 
@@ -65,5 +69,15 @@ describe("customer request budget classes", () => {
         (budgetClass) => budgetClass === "dotypos-read"
       )
     ).toHaveLength(4);
+    expect(
+      Object.values(customerRequestBudgetClasses.booking).filter(
+        (budgetClass) => budgetClass === "dotypos-read"
+      )
+    ).toHaveLength(4);
+    expect(
+      Object.values(customerRequestBudgetClasses.booking).filter(
+        (budgetClass) => budgetClass === "dotypos-mutation"
+      )
+    ).toHaveLength(3);
   });
 });

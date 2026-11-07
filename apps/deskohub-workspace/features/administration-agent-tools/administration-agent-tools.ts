@@ -29,7 +29,6 @@ import {
   type AgentTool,
   type AgentToolAttachment,
   AgentToolReply,
-  getInvalidField,
 } from "@/features/agent-tools/agent-tool";
 import {
   AgentToolError,
@@ -37,6 +36,7 @@ import {
   decodeAdministrationError,
 } from "@/features/agent-tools/agent-tool-error";
 import type { CustomerAgentCaller } from "@/features/agent-tools/customer-agent-caller";
+import { getFirstInvalidFieldPath } from "@/shared/utils/schema-issue";
 import {
   AdministrationAgentAccessToken,
   AdministrationApiClient,
@@ -161,7 +161,9 @@ const decodePart = (
     errors: "first",
   }).pipe(
     Effect.mapError((error) =>
-      AgentToolError.invalidInput(fieldOf(getInvalidField(error.issue)))
+      AgentToolError.invalidInput(
+        fieldOf(getFirstInvalidFieldPath(error.issue))
+      )
     )
   );
 
@@ -886,7 +888,7 @@ const callAdministrationTool = Effect.fn("administrationAgentTools.call")(
       confirmationSchema
     )(object, { onExcessProperty: "ignore" }).pipe(
       Effect.mapError((error) =>
-        AgentToolError.invalidInput(getInvalidField(error.issue))
+        AgentToolError.invalidInput(getFirstInvalidFieldPath(error.issue))
       )
     );
     // Validates every argument before anything runs, previews included.

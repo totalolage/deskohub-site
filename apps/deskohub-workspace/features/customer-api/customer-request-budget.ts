@@ -81,7 +81,26 @@ export const customerRequestBudgetClasses = {
     // Authorizing the invoice can resolve the account's Dotypos customer.
     getReservationInvoice: "dotypos-read",
   },
-  booking: {},
+  booking: {
+    // The office's seat maximum reads the shared table snapshot, which
+    // reads Dotypos when it misses.
+    listOfferings: "dotypos-read",
+    // The shared table and reservation snapshots, read from Dotypos on a
+    // miss.
+    getAvailability: "dotypos-read",
+    getMeetingRoomStartTimes: "dotypos-read",
+    // An office quote checks the seats against the shared table snapshot.
+    getQuote: "dotypos-read",
+    // The published documents' versions.
+    listLegalDocuments: "workspace-only",
+    // A booking spends two to four Dotypos mutations: the hold, an
+    // optional code, the submission, and one retry after a price change.
+    createCheckout: "dotypos-mutation",
+    applyCheckoutDiscountCode: "dotypos-mutation",
+    submitCheckout: "dotypos-mutation",
+    // Reseals the signed checkout state only.
+    acceptCheckoutPriceChange: "workspace-only",
+  },
 } as const satisfies CustomerApiEndpointClassification;
 
 /**
