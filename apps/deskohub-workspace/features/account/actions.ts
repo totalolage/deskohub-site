@@ -182,7 +182,7 @@ const deleteCustomerAccountAction = defineWorkspaceAction(
     logInput: false,
   },
   (_input, { locale }) =>
-    requestCurrentAccountDeletion().pipe(
+    requestCurrentAccountDeletion.pipe(
       Effect.tap(() =>
         Effect.sync(() => {
           revalidatePath(getAccountPath(locale), "layout");

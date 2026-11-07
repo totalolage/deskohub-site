@@ -1,4 +1,4 @@
-import { Effect, Result } from "effect";
+import { Effect, Match } from "effect";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import type {
   CustomerProfileCompletionInput,
@@ -18,12 +18,11 @@ import { requireVerifiedSession } from "./verified-customer-session";
  * account updates its Dotypos customer, a not-yet-linked one creates and
  * claims it without a referral code.
  */
-export const updateCurrentCustomerProfile = Effect.fn(
-  "account.updateCurrentCustomerProfile"
-)(function* (input: CustomerProfileInput) {
-  yield* saveCustomerProfile(input, undefined);
-  return { status: "updated" } as const;
-});
+export const updateCurrentCustomerProfile = (input: CustomerProfileInput) =>
+  saveCustomerProfile(input, noReferral).pipe(
+    Effect.as({ status: "updated" } as const),
+    Effect.withSpan("account.updateCurrentCustomerProfile")
+  );
 
 /**
  * First-time profile completion of the current session's account. A
@@ -33,28 +32,46 @@ export const updateCurrentCustomerProfile = Effect.fn(
  * settled, whether by this completion or earlier. The completion field, not
  * the remembered code, decides which code this save records.
  */
-export const completeCurrentCustomerProfile = Effect.fn(
-  "account.completeCurrentCustomerProfile"
-)(function* ({
+export const completeCurrentCustomerProfile = ({
   referralCode,
   prefilledReferralCode,
   ...input
-}: CustomerProfileCompletionInput) {
-  const outcome = yield* saveCustomerProfile(input, {
+}: CustomerProfileCompletionInput) =>
+  saveCustomerProfile(input, {
     code: referralCode,
     prefilledCode: prefilledReferralCode,
-  });
-  if (outcome.status === "referral-code-unavailable") return outcome;
-
-  yield* forgetSettledRememberedReferral(outcome.account);
-  return outcome.status === "completed" && outcome.referral
-    ? { status: "completed" as const, referral: outcome.referral }
-    : { status: "completed" as const };
-});
+  }).pipe(
+    Effect.flatMap((outcome) =>
+      Match.value(outcome).pipe(
+        Match.discriminatorsExhaustive("status")({
+          "referral-code-unavailable": (unavailable) =>
+            Effect.succeed(unavailable),
+          saved: ({ account }) =>
+            forgetSettledRememberedReferral(account).pipe(
+              Effect.as({ status: "completed" } as const)
+            ),
+          completed: ({ account, referral }) =>
+            forgetSettledRememberedReferral(account).pipe(
+              Effect.as(
+                referral
+                  ? ({ status: "completed", referral } as const)
+                  : ({ status: "completed" } as const)
+              )
+            ),
+        })
+      )
+    ),
+    Effect.withSpan("account.completeCurrentCustomerProfile")
+  );
 
 type ProfileCompletionReferral = {
   readonly code: string | undefined;
   readonly prefilledCode: string | undefined;
+};
+
+const noReferral: ProfileCompletionReferral = {
+  code: undefined,
+  prefilledCode: undefined,
 };
 
 /**
@@ -65,33 +82,45 @@ type ProfileCompletionReferral = {
  * profile input has no email field and the verified login email is read only
  * from the session.
  */
-const saveCustomerProfile = Effect.fnUntraced(function* (
+const saveCustomerProfile = (
   input: CustomerProfileInput,
-  referral: ProfileCompletionReferral | undefined
-) {
-  const user = yield* requireVerifiedSession;
-  const resolution = yield* CustomerAccountResolver.pipe(
-    Effect.flatMap((resolver) => resolver.resolve),
-    Effect.result
+  referral: ProfileCompletionReferral
+) =>
+  Effect.Do.pipe(
+    Effect.bind("user", () => requireVerifiedSession),
+    Effect.bind("resolution", () => resolveSavingAccount),
+    Effect.flatMap(({ user, resolution }) =>
+      Match.value(resolution).pipe(
+        Match.discriminatorsExhaustive("kind")({
+          linked: ({ account }) => updateLinkedProfile(account, input),
+          "profile-missing": () =>
+            completeNewCustomerProfile(user, input, referral),
+        })
+      )
+    )
   );
 
-  if (Result.isSuccess(resolution)) {
-    yield* Effect.flatMap(CustomerProfileService, (profile) =>
-      profile.update(resolution.success, input)
-    );
-    return { status: "saved", account: resolution.success } as const;
-  }
+/**
+ * The session's linked account, or that no Dotypos profile matches it yet.
+ * Every other resolution failure fails the save.
+ */
+const resolveSavingAccount = Effect.flatMap(
+  CustomerAccountResolver,
+  (resolver) => resolver.resolve
+).pipe(
+  Effect.map((account) => ({ kind: "linked", account }) as const),
+  Effect.catchIf(isCustomerProfileMissing, () =>
+    Effect.succeed({ kind: "profile-missing" } as const)
+  )
+);
 
-  const failure = resolution.failure;
-  if (isCustomerProfileMissing(failure)) {
-    return yield* completeNewCustomerProfile(
-      user,
-      input,
-      referral ?? { code: undefined, prefilledCode: undefined }
-    );
-  }
-  return yield* failure;
-});
+const updateLinkedProfile = (
+  account: LinkedCustomerAccount,
+  input: CustomerProfileInput
+) =>
+  Effect.flatMap(CustomerProfileService, (profile) =>
+    profile.update(account, input)
+  ).pipe(Effect.as({ status: "saved", account } as const));
 
 const forgetSettledRememberedReferral = (account: LinkedCustomerAccount) =>
   Effect.flatMap(RememberedReferral, (remembered) =>

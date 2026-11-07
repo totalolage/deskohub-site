@@ -28,7 +28,7 @@ const run = async (options: {
 }) => {
   const endpointCalls: Headers[] = [];
   const exit = await Effect.runPromiseExit(
-    requestCurrentAccountDeletion().pipe(
+    requestCurrentAccountDeletion.pipe(
       Effect.provide(
         Layer.mergeAll(
           authenticatedAs(
