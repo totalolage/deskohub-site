@@ -60,6 +60,12 @@
         // public/app, so its changes must deploy the Workspace too.
         "deskohub-mobile"
       ]
+    },
+    "apps/deskohub-mobile": {
+      // app.config.ts derives the Android version code from the version that
+      // Expo merges in from app.json; the plugin loads it without that merge,
+      // so it reads the static app.json instead.
+      "expo": { "config": ["app.json"] }
     }
   }
 }
