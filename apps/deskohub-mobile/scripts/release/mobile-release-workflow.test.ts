@@ -4,8 +4,9 @@ import { resolve } from "node:path";
 
 // Pull request runs use the workflow file from the PR branch, so these
 // conditions keep the release key out of dry runs by mistake, not against a
-// PR that edits them. The secrets themselves stay readable by same-repository
-// branches.
+// PR that edits them. Against that, the keystore lives only in the
+// mobile-release environment, whose mobile-v* tag policy GitHub matches
+// against the run's ref, which no workflow edit changes.
 
 type Step = {
   readonly env?: Readonly<Record<string, string>>;
@@ -19,6 +20,7 @@ type Step = {
 
 type Job = {
   readonly env?: Readonly<Record<string, string>>;
+  readonly environment?: unknown;
   readonly if?: string;
   readonly steps: readonly Step[];
 };
@@ -42,6 +44,12 @@ const workflow = Bun.YAML.parse(
 const releaseKeySecret = /\bsecrets\.ANDROID_KEYSTORE_\w+/;
 const tagOnly = "github.event_name == 'push'";
 const pullRequestOnly = "github.event_name == 'pull_request'";
+// An empty environment name leaves pull request dry runs without one.
+const releaseEnvironment = `\${{ ${tagOnly} && 'mobile-release' || '' }}`;
+// Secrets kept only in the mobile-release environment. EXPO_TOKEN is not one:
+// pull request dry runs read the repository's copy.
+const environmentSecret =
+  /\bsecrets\.(ANDROID_KEYSTORE_\w+|BLOB_READ_WRITE_TOKEN|MOBILE_UPDATES_PUBLISH_TOKEN)\b/;
 
 const mentionsReleaseKey = (value: unknown) =>
   releaseKeySecret.test(JSON.stringify(value ?? null));
@@ -71,6 +79,28 @@ describe("mobile-release.yml release key", () => {
     expect(mentionsReleaseKey(workflow.env)).toBe(false);
     for (const job of Object.values(workflow.jobs)) {
       expect(mentionsReleaseKey(job.env)).toBe(false);
+    }
+  });
+
+  test("only the build job reads the release key, from the mobile-release environment on tag pushes", () => {
+    const jobs = Object.entries(workflow.jobs).filter(([, job]) =>
+      mentionsReleaseKey(job)
+    );
+    expect(jobs.map(([name]) => name)).toEqual(["build"]);
+    expect(build.environment).toBe(releaseEnvironment);
+  });
+
+  test("every other job that reads a mobile-release secret runs only on tag pushes, in that environment", () => {
+    const jobs = Object.entries(workflow.jobs).filter(
+      ([name, job]) =>
+        name !== "build" && environmentSecret.test(JSON.stringify(job))
+    );
+    for (const [name, job] of jobs) {
+      expect({ name, if: job.if, environment: job.environment }).toEqual({
+        name,
+        if: tagOnly,
+        environment: "mobile-release",
+      });
     }
   });
 

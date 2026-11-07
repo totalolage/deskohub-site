@@ -6,6 +6,11 @@
   "smoke_running": "Running checks…",
   "smoke_finished": "Checks finished.",
   "smoke_totals": "{passed} of {total} passed, {failed} failed",
+  "update_ready": "An app update is ready. Restart to use it.",
+  "update_ready_restart": "Restart",
+  "native_update_available": "Version {versionName} of the app is available.",
+  "native_update_download": "Download",
+  "update_prompt_dismiss": "Not now",
   "consent_prompt_message": "May we measure how you use the app so we can improve it?",
   "consent_prompt_accept": "Allow analytics",
   "consent_prompt_decline": "Decline"
