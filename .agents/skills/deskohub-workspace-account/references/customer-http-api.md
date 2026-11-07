@@ -36,8 +36,9 @@ authenticates every request.
    version it instead.
 3. Implement it in the group's `HttpApiBuilder.group` in the adapter, in the
    group's own handlers module (`customer-account-handlers.ts`,
-   `customer-reservation-handlers.ts`). The `booking` group is a pass-through
-   placeholder in `customer-api.server.ts` until it gets one.
+   `customer-reservation-handlers.ts`, `customer-booking-handlers.ts`, which
+   joins `customer-booking-catalog-handlers.ts` and
+   `customer-booking-checkout-handlers.ts`).
 4. Classify it in `customerRequestBudgetClasses`. The Record is exhaustive
    over the contract, so an unclassified endpoint is a type error, and
    `customer-request-budget.test.ts` pins the endpoint counts: update them.
