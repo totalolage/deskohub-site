@@ -1,9 +1,9 @@
 import "server-only";
 
-import { Effect, Option } from "effect";
+import { Cause, Effect, Option } from "effect";
 import "@/shared/polyfills/temporal";
 import { loadLatestAndroidRelease } from "@/features/mobile-releases/backend/latest-android-release.server";
-import { catchRecoverableCause } from "@/shared/backend/workspace-effect";
+import { findNextControlFlow } from "@/shared/backend/workspace-effect";
 import type { AndroidDownload } from "../android-download";
 
 /**
@@ -24,9 +24,10 @@ export const loadAndroidDownload: Effect.Effect<AndroidDownload> =
         onSome: (release): AndroidDownload => ({ kind: "release", release }),
       })
     ),
-    catchRecoverableCause(
-      (): Effect.Effect<AndroidDownload> =>
-        Effect.succeed({ kind: "unavailable" })
+    Effect.catchTag("MobileReleaseLookupError", (error) =>
+      findNextControlFlow(Cause.fail(error)) === undefined
+        ? Effect.succeed<AndroidDownload>({ kind: "unavailable" })
+        : Effect.die(error)
     ),
     Effect.withSpan("MobileDistribution.loadAndroidDownload")
   );

@@ -7,6 +7,7 @@ import type {
   AndroidRelease,
   MobileReleaseLookupError,
 } from "@/features/mobile-releases/backend/latest-android-release.server";
+import { SharedSnapshotLoadFailure } from "@/shared/backend/shared-snapshot";
 import { findNextControlFlow } from "@/shared/backend/workspace-effect";
 
 // A copy taken before the mock below replaces the module's exports.
@@ -91,6 +92,7 @@ test("turns a failed lookup into the fallback state without reading the current 
 
   try {
     expect(await Effect.runPromise(download)).toEqual({ kind: "unavailable" });
+    expect(now).not.toHaveBeenCalled();
   } finally {
     now.mockRestore();
   }
@@ -109,7 +111,13 @@ test("lets Next.js control flow from the lookup through", async () => {
     }
   })();
   lookup = Effect.fail(
-    new releaseModule.MobileReleaseLookupError({ cause: controlFlow })
+    new releaseModule.MobileReleaseLookupError({
+      cause: new SharedSnapshotLoadFailure({
+        service: "mobile-releases",
+        operation: "loadLatestAndroidRelease",
+        cause: controlFlow,
+      }),
+    })
   );
 
   const exit = await Effect.runPromiseExit(loadAndroidDownload);
