@@ -1,5 +1,4 @@
-import type { Effect } from "effect";
-import { Context, Layer } from "effect";
+import { Context, Effect, Layer } from "effect";
 import { nativePasskeyCeremonies } from "./native-passkey-ceremonies";
 import type { PasskeyFailure } from "./passkey-failure";
 import { webPasskeyCeremonies } from "./web-passkey-ceremonies";
@@ -30,7 +29,8 @@ export interface PasskeyCeremonyApi {
 /**
  * The passkey ceremonies of one platform: `Native` runs them through the
  * native passkey module and the Expo auth client, `Web` through Better
- * Auth's browser passkey client. Each runs one ceremony at a time.
+ * Auth's browser passkey client. Each runs one ceremony at a time; `Live`
+ * picks the running platform's.
  */
 export class PasskeyCeremonies extends Context.Service<
   PasskeyCeremonies,
@@ -38,4 +38,17 @@ export class PasskeyCeremonies extends Context.Service<
 >()("deskohub-mobile/PasskeyCeremonies") {
   static Native = Layer.effect(this, nativePasskeyCeremonies);
   static Web = Layer.effect(this, webPasskeyCeremonies);
+  /**
+   * This platform's ceremonies on its live clients. Metro resolves the
+   * platform's layer module; it loads lazily because it imports the native
+   * module and the auth clients, which the tests' runtime can't load.
+   */
+  static Live: Layer.Layer<PasskeyCeremonies> = Layer.unwrap(
+    Effect.promise(async () => {
+      const { makePasskeyCeremoniesLayer } = await import(
+        "./passkey-ceremonies-layer"
+      );
+      return makePasskeyCeremoniesLayer();
+    })
+  );
 }

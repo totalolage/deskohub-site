@@ -1,5 +1,8 @@
+import { ManagedRuntime } from "effect";
+import { PasskeyCeremonies } from "./passkey-ceremony";
+
 /**
- * Metro bundles `passkey-runtime.native.ts` or `passkey-runtime.web.ts`; this
- * file only gives TypeScript the shape both share.
+ * The app's one passkey runtime, so every passkey control shares the
+ * one-ceremony-at-a-time gate.
  */
-export { passkeyRuntime } from "./passkey-runtime.native";
+export const passkeyRuntime = ManagedRuntime.make(PasskeyCeremonies.Live);
