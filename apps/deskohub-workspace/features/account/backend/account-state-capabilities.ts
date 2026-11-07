@@ -76,8 +76,23 @@ export type AccountStateLayers = {
   readonly avatarRelease: Layer.Layer<AccountAvatarReleaseGate>;
 };
 
-/** The account services every edge reads through, independent of the request. */
-export const liveAccountServiceLayers = {
+/**
+ * The layers of the account services every edge reads through, independent
+ * of how the request decides its release gates or remembers a referral code.
+ */
+export type AccountServiceLayers = Omit<
+  AccountStateLayers,
+  "referralRelease" | "rememberedReferral" | "passkeyRelease" | "avatarRelease"
+> & {
+  /** The session's customer, for the remembered referral's order bookers. */
+  readonly contacts: Layer.Layer<
+    CustomerAccountContactService,
+    Layer.Error<typeof CustomerAccountContactService.Live>
+  >;
+};
+
+/** The account services' live layers. */
+export const liveAccountServiceLayers: AccountServiceLayers = {
   authentication: CustomerAuthentication.Default,
   resolver: CustomerAccountResolver.Live,
   profile: CustomerProfileService.Live,
@@ -87,7 +102,8 @@ export const liveAccountServiceLayers = {
   reviewAccounts: ReviewAccounts.Live,
   referrals: ReferralService.Live,
   signupIntents: ReferralSignupIntentRepository.Live,
-} satisfies Partial<AccountStateLayers>;
+  contacts: CustomerAccountContactService.Live,
+};
 
 /**
  * The account state's capabilities for one request served outside Next.js,
@@ -96,16 +112,19 @@ export const liveAccountServiceLayers = {
  * sent, which this request never writes. Build it once per request, inside
  * the request's Workspace request context.
  */
-export const accountStateCapabilitiesForRun = (request: {
-  /** The referral code the client remembers, as it sent it. */
-  readonly referralCode: string | undefined;
-}): Layer.Layer<AccountStateCapabilities> =>
+export const accountStateCapabilitiesForRun = (
+  request: {
+    /** The referral code the client remembers, as it sent it. */
+    readonly referralCode: string | undefined;
+  },
+  services: AccountServiceLayers = liveAccountServiceLayers
+): Layer.Layer<AccountStateCapabilities> =>
   accountStateCapabilities({
-    ...liveAccountServiceLayers,
+    ...services,
     referralRelease: ReferralReleaseGateForRun,
     rememberedReferral: RememberedReferral.fromClient(
       request.referralCode
-    ).pipe(Layer.provide(CustomerAccountContactService.Live)),
+    ).pipe(Layer.provide(services.contacts)),
     passkeyRelease: PasskeyReleaseGateForRun,
     avatarRelease: AccountAvatarReleaseGateForRun,
   });

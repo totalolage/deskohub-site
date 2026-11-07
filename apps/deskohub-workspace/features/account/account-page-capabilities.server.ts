@@ -9,7 +9,6 @@ import {
   liveAccountServiceLayers,
   unavailableUntilUsed,
 } from "@/features/account/backend/account-state-capabilities";
-import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
 import { CustomerReservationHistoryService } from "@/features/account/backend/customer-reservation-history.service";
 import { PasskeyReleaseGateRequest } from "@/features/account/server/account-release-gates.server";
 import { ReferralReleaseGateRequest } from "@/features/referrals/referral-release-gate.server";
@@ -37,7 +36,7 @@ export const liveAccountPageLayers: AccountPageLayers = {
   history: CustomerReservationHistoryService.Live,
   referralRelease: ReferralReleaseGateRequest,
   rememberedReferral: RememberedReferral.Cookies.pipe(
-    Layer.provide(CustomerAccountContactService.Live)
+    Layer.provide(liveAccountServiceLayers.contacts)
   ),
   passkeyRelease: PasskeyReleaseGateRequest,
   avatarRelease: AccountAvatarReleaseGate.Live,

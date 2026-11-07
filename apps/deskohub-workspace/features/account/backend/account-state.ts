@@ -105,9 +105,9 @@ type SignedInAccountContent =
       readonly referralsEnabled: boolean;
       readonly referrals?: ReferralAccountOverview;
       /**
-       * Outcome of retrying the code a profile completion could not record
-       * yet, present only on the load that ran the retry. A definitive
-       * outcome removes the stored code, so it appears exactly once.
+       * Outcome of the code a profile completion could not record at once:
+       * the retry's result, then the stored outcome on every load until the
+       * customer acknowledges it (`recordSignupReferral`).
        */
       readonly signupReferral?: ProfileCompletionReferralOutcome;
       /**
@@ -141,26 +141,35 @@ type WithReservationHistory<State> = State extends {
     : State;
 
 /**
- * The reservations a state shows: `always` for the account's own history,
- * `when-any` for what an account without a usable profile authored for
- * others, shown only when it has any or they can't be read.
+ * A loaded state with the reservations it shows: a linked or review account
+ * always shows its own history; an account without a usable profile may show
+ * what it authored for others, only when it has any or they can't be read.
  */
-type HistoryScope = {
-  readonly account: ReservationHistoryAccount;
-  readonly shown: "always" | "when-any";
-};
+type WithHistoryScope<State> = State extends {
+  readonly kind: "linked" | "review-account";
+}
+  ? {
+      readonly state: State;
+      readonly shown: "always";
+      readonly history: ReservationHistoryAccount;
+    }
+  : State extends { readonly kind: "completion-required" | "support-required" }
+    ? { readonly state: State } & (
+        | {
+            readonly shown: "when-any";
+            readonly history: ReservationHistoryAccount;
+          }
+        | NoHistory
+      )
+    : { readonly state: State } & NoHistory;
 
-type LoadedAccount = {
-  readonly state: CustomerAccountState;
-  readonly history?: HistoryScope;
-};
+type NoHistory = { readonly shown?: undefined; readonly history?: undefined };
 
-type LoadedContent = {
-  readonly content:
-    | SignedInAccountContent
-    | { readonly kind: "unauthenticated" };
-  readonly history?: HistoryScope;
-};
+type LoadedAccount = WithHistoryScope<CustomerAccountState>;
+
+type LoadedContent = WithHistoryScope<
+  SignedInAccountContent | { readonly kind: "unauthenticated" }
+>;
 
 /** The fixed, non-PII codes of the sections that degrade without blocking. */
 type AccountSectionFailureCode =
@@ -188,7 +197,8 @@ type AccountSectionFailureCode =
  *   customer for the account (auto-link), and then records the remembered
  *   referral code for that newly linked customer;
  * - retries, for a linked account, the referral code its profile completion
- *   could not record yet, reporting the outcome once in `signupReferral`.
+ *   could not record yet, reporting its outcome in `signupReferral` on every
+ *   load until the customer acknowledges it.
  * Writes to the remembered code itself are left to the caller: the state
  * reports `rememberedReferralCodeUsed` so the client forgets it.
  */
@@ -207,29 +217,33 @@ export const loadAccountStateWithHistory: Effect.Effect<
   CustomerAccountStateWithHistory,
   never,
   AccountStateCapabilities | CustomerReservationHistoryService
-> = Effect.suspend(() => loadAccount).pipe(
-  Effect.flatMap(({ state, history }) =>
-    (history === undefined
-      ? Effect.undefined
-      : loadReservationHistory(history.account).pipe(
-          Effect.map((loaded) =>
-            history.shown === "when-any" && !mayHaveReservations(loaded)
-              ? undefined
-              : loaded
-          )
+> = Effect.suspend(() => loadAccount).pipe(Effect.flatMap(attachHistory));
+
+/** Reads the history `loaded` shows and attaches it to its state. */
+function attachHistory(
+  loaded: LoadedAccount
+): Effect.Effect<
+  CustomerAccountStateWithHistory,
+  never,
+  CustomerReservationHistoryService
+> {
+  switch (loaded.shown) {
+    case undefined:
+      return Effect.succeed(loaded.state);
+    case "always":
+      return loadReservationHistory(loaded.history).pipe(
+        Effect.map((history) => ({ ...loaded.state, history }))
+      );
+    case "when-any":
+      return loadReservationHistory(loaded.history).pipe(
+        Effect.map((history) =>
+          mayHaveReservations(history)
+            ? { ...loaded.state, history }
+            : loaded.state
         )
-    ).pipe(
-      Effect.map(
-        (loaded) =>
-          // A linked or review account's state always comes with an
-          // `always` scope, so it always gets its history.
-          (loaded === undefined
-            ? state
-            : { ...state, history: loaded }) as CustomerAccountStateWithHistory
-      )
-    )
-  )
-);
+      );
+  }
+}
 
 const loadAccount: Effect.Effect<
   LoadedAccount,
@@ -251,9 +265,10 @@ const loadAccount: Effect.Effect<
   const user = session.success;
   if (!user) return { state: { kind: "unauthenticated" } };
   const reviewAccount = yield* readReviewAccount(user);
-  const { content, history } = user.deletionRequested
-    ? { content: { kind: "deletion-pending", email: user.email } as const }
+  const loaded: LoadedContent = user.deletionRequested
+    ? { state: { kind: "deletion-pending", email: user.email } }
     : yield* loadSignedInAccount(user, reviewAccount);
+  const content = loaded.state;
   if (content.kind === "unauthenticated") return { state: content };
   const { passkeys, assistants } = yield* Effect.all(
     {
@@ -269,16 +284,22 @@ const loadAccount: Effect.Effect<
     },
     { concurrency: "unbounded" }
   );
-  return {
-    state: {
-      ...content,
-      deletion: accountDeletion(content, reviewAccount),
-      ...(passkeys && { passkeys }),
-      ...(assistants !== undefined && { assistants }),
-    } satisfies CustomerAccountState,
-    ...(history && { history }),
-  };
+  return withSessionSettings(loaded, {
+    deletion: accountDeletion(content, reviewAccount),
+    ...(passkeys && { passkeys }),
+    ...(assistants !== undefined && { assistants }),
+  });
 });
+
+/**
+ * Adds the session's settings to a signed-in state. They never change its
+ * kind, so the history it shows stays the one its loader chose.
+ */
+const withSessionSettings = (
+  loaded: LoadedContent,
+  settings: SessionSettings
+): LoadedAccount =>
+  ({ ...loaded, state: { ...loaded.state, ...settings } }) as LoadedAccount;
 
 /**
  * A review account can't be deleted, and an unreadable marker lands one in a
@@ -381,7 +402,7 @@ const loadLinkedAccount = Effect.fn(function* (
   );
   if (profile === undefined) {
     return {
-      content: {
+      state: {
         kind: "authenticated-unavailable",
         email: user.email,
       },
@@ -440,7 +461,7 @@ const loadLinkedAccount = Effect.fn(function* (
     : undefined;
 
   return {
-    content: {
+    state: {
       kind: "linked",
       email: user.email,
       profile,
@@ -452,7 +473,8 @@ const loadLinkedAccount = Effect.fn(function* (
         rememberedReferralCodeUsed: true as const,
       }),
     },
-    history: { account, shown: "always" },
+    shown: "always",
+    history: account,
   } satisfies LoadedContent;
 });
 
@@ -483,10 +505,11 @@ const mayHaveReservations = (history: CustomerReservationHistory) =>
  * The reservations an account without a usable profile authored for others,
  * shown only when it has any or they can't be read.
  */
-const authoredHistory = (user: CustomerAccountSession): HistoryScope => ({
-  account: { accountId: user.accountId },
-  shown: "when-any",
-});
+const authoredHistory = (user: CustomerAccountSession) =>
+  ({
+    shown: "when-any",
+    history: { accountId: user.accountId },
+  }) as const;
 
 /**
  * Whether the session's account is an app-directory review account, or
@@ -555,8 +578,9 @@ const loadSignedInAccount = Effect.fn(function* (
   // A review account never resolves to a Dotypos profile.
   if (reviewAccount) {
     return {
-      content: { kind: "review-account", email: user.email },
-      history: { account: { accountId: user.accountId }, shown: "always" },
+      state: { kind: "review-account", email: user.email },
+      shown: "always",
+      history: { accountId: user.accountId },
     } satisfies LoadedContent;
   }
   const referralsEnabled = yield* referralsReleased;
@@ -625,7 +649,7 @@ const loadUnlinkedAccount = Effect.fn(function* (
   referralsEnabled: boolean
 ) {
   if (failure.reason === "unauthenticated") {
-    return { content: { kind: "unauthenticated" } } satisfies LoadedContent;
+    return { state: { kind: "unauthenticated" } } satisfies LoadedContent;
   }
   if (isCustomerProfileMissing(failure)) {
     const availableReferralCode =
@@ -635,20 +659,20 @@ const loadUnlinkedAccount = Effect.fn(function* (
     // An account may book for someone else before it completes its own
     // profile; the history then holds only what it authored.
     return {
-      content: {
+      state: {
         kind: "completion-required",
         email: user.email,
         referralsEnabled,
         ...(availableReferralCode && { referralCode: availableReferralCode }),
       },
-      history: authoredHistory(user),
+      ...authoredHistory(user),
     } satisfies LoadedContent;
   }
   // The account may still have booked for others meanwhile.
   if (isCustomerAccountSupportRequired(failure)) {
     return {
-      content: { kind: "support-required", email: user.email },
-      history: authoredHistory(user),
+      state: { kind: "support-required", email: user.email },
+      ...authoredHistory(user),
     } satisfies LoadedContent;
   }
   // An unverified email or a pending deletion shows no reservations.
@@ -657,11 +681,11 @@ const loadUnlinkedAccount = Effect.fn(function* (
     failure.reason === "unverified-email"
   ) {
     return {
-      content: { kind: "support-required", email: user.email },
+      state: { kind: "support-required", email: user.email },
     } satisfies LoadedContent;
   }
   return {
-    content: { kind: "authenticated-unavailable", email: user.email },
+    state: { kind: "authenticated-unavailable", email: user.email },
   } satisfies LoadedContent;
 });
 
