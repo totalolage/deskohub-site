@@ -1,0 +1,145 @@
+import { describe, expect, test } from "bun:test";
+import type { CustomerBookingQuote } from "@deskohub/workspace-customer-api";
+import { Cause, Option } from "effect";
+import { AsyncResult } from "effect/unstable/reactivity";
+import { BookingCatalogViewError } from "../data/booking-query-error";
+import { toOfficeSelection } from "../selection/office-selection";
+import {
+  bookingReadOf,
+  checkoutRequestOf,
+  isRetryableBookingQueryError,
+  quotableSelection,
+  restartReasonOf,
+} from "./booking-family-view";
+
+const selection = toOfficeSelection({
+  date: "2026-11-20",
+  dayCount: 2,
+  seats: 2,
+});
+const quote = {
+  family: "office",
+  advertisedPriceToken: "quote-token",
+} as unknown as CustomerBookingQuote;
+const pending = { _tag: "AvailabilityPending" };
+const taken = { _tag: "DateUnavailable" };
+
+describe("checkoutRequestOf", () => {
+  const complete = {
+    locale: "cs-CZ" as const,
+    selection: Option.some(selection),
+    blockers: [],
+    quote: Option.some(quote),
+  };
+
+  test("hands checkout the selection with its quote token", () => {
+    expect(checkoutRequestOf(complete)).toEqual(
+      Option.some({
+        locale: "cs-CZ",
+        selection,
+        advertisedPriceToken: "quote-token",
+      })
+    );
+  });
+
+  test("carries early setup only when the family has it", () => {
+    expect(
+      Option.map(
+        checkoutRequestOf({ ...complete, earlySetup: true }),
+        (request) => request.earlySetup
+      )
+    ).toEqual(Option.some(true));
+    expect(
+      Option.map(
+        checkoutRequestOf(complete),
+        (request) => "earlySetup" in request
+      )
+    ).toEqual(Option.some(false));
+  });
+
+  test.each([
+    ["a blocker", { blockers: [pending] }],
+    ["no quote", { quote: Option.none() }],
+    ["an incomplete selection", { selection: Option.none() }],
+    [
+      "a quote of another family",
+      { quote: Option.some({ ...quote, family: "cowork" }) },
+    ],
+  ])("continues nowhere with %s", (_, change) => {
+    expect(checkoutRequestOf({ ...complete, ...change })).toEqual(
+      Option.none()
+    );
+  });
+});
+
+describe("quotableSelection", () => {
+  test("quotes while only availability is loading", () => {
+    expect(quotableSelection(Option.some(selection), [pending])).toEqual(
+      Option.some(selection)
+    );
+  });
+
+  test("spends no quote on a selection known to be unavailable", () => {
+    expect(quotableSelection(Option.some(selection), [pending, taken])).toEqual(
+      Option.none()
+    );
+  });
+});
+
+describe("restartReasonOf", () => {
+  test("reads a restart reason checkout sent back", () => {
+    expect(restartReasonOf("hold_expired")).toEqual(
+      Option.some("hold_expired")
+    );
+  });
+
+  test.each([[undefined], ["toString"], ["unknown"], [["hold_expired"]]])(
+    "ignores %p",
+    (param) => {
+      expect(restartReasonOf(param)).toEqual(Option.none());
+    }
+  );
+});
+
+describe("bookingReadOf", () => {
+  test("loads, then shows the value", () => {
+    expect(bookingReadOf(AsyncResult.initial())).toEqual({ kind: "loading" });
+    expect(bookingReadOf(AsyncResult.success(1))).toEqual({
+      kind: "loaded",
+      value: 1,
+      refreshing: false,
+    });
+  });
+
+  test("words a catalog refusal as a failure retrying can't help", () => {
+    const read = bookingReadOf(
+      AsyncResult.failure(
+        Cause.fail({
+          _tag: "CustomerOfferingUnavailable",
+          family: "office",
+        } as never)
+      )
+    );
+
+    expect(read).toMatchObject({
+      kind: "failed",
+      error: BookingCatalogViewError.OfferingUnavailable({ family: "office" }),
+      value: Option.none(),
+    });
+    expect(
+      read.kind === "failed" && isRetryableBookingQueryError(read.error)
+    ).toBe(false);
+  });
+
+  test("treats a defect as unexpected, which retrying can help", () => {
+    const read = bookingReadOf(AsyncResult.failure(Cause.die("boom")));
+
+    expect(read).toMatchObject({
+      kind: "failed",
+      error: { _tag: "Unexpected" },
+    });
+    expect(
+      read.kind === "failed" && isRetryableBookingQueryError(read.error)
+    ).toBe(true);
+  });
+});

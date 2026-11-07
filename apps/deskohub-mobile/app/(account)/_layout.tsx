@@ -25,6 +25,7 @@ export default function AccountLayout() {
           name="account"
           options={{ title: m.account_tab_account({}, { locale }) }}
         />
+        <Tabs.Screen name="book" options={{ href: null }} />
       </Tabs>
     </CustomerDataProvider>
   );
