@@ -1,7 +1,6 @@
 import { Context, Data, Effect, Layer } from "effect";
 import * as WebBrowser from "expo-web-browser";
 import { Platform } from "react-native";
-import { type PreviewAccess, withPreviewAccessCookie } from "./preview-access";
 
 /**
  * How the in-app auth session ended: it returned to the app with a URL, or
@@ -36,18 +35,20 @@ interface IAuthSessionBrowser {
  * the sign-in page would open in the app itself. Only Android has Custom Tabs;
  * with no known browser, the system chooses.
  */
+export const customTabsBrowserPackage = (
+  browsers: WebBrowser.WebBrowserCustomTabsResults
+): string | undefined =>
+  browsers.preferredBrowserPackage ??
+  browsers.defaultBrowserPackage ??
+  browsers.browserPackages[0];
+
 const customTabsBrowser: Effect.Effect<string | undefined> = Effect.suspend(
   () =>
     Platform.OS === "android"
       ? Effect.tryPromise(() =>
           WebBrowser.getCustomTabsSupportingBrowsersAsync()
         ).pipe(
-          Effect.map(
-            (browsers) =>
-              browsers.preferredBrowserPackage ??
-              browsers.defaultBrowserPackage ??
-              browsers.browserPackages[0]
-          ),
+          Effect.map(customTabsBrowserPackage),
           Effect.orElseSucceed(() => undefined)
         )
       : Effect.succeed(undefined)
@@ -57,38 +58,31 @@ export class AuthSessionBrowser extends Context.Service<
   AuthSessionBrowser,
   IAuthSessionBrowser
 >()("deskohub-mobile/AuthSessionBrowser") {
-  /**
-   * The system auth session. A development build with preview access opens
-   * each session with the bypass that sets Vercel's preview cookie.
-   */
-  static layer = (previewAccess?: PreviewAccess) =>
-    Layer.succeed(this, {
-      open: (url, returnUri) =>
-        customTabsBrowser.pipe(
-          Effect.flatMap((browserPackage) =>
-            Effect.tryPromise({
-              try: () =>
-                WebBrowser.openAuthSessionAsync(
-                  withPreviewAccessCookie(url, previewAccess),
-                  returnUri,
-                  browserPackage === undefined ? undefined : { browserPackage }
-                ),
-              catch: (cause) => new AuthSessionUnavailable({ cause }),
-            })
-          ),
-          Effect.map((result) =>
-            result.type === "success"
-              ? AuthSessionResult.Returned({ url: result.url })
-              : AuthSessionResult.Closed()
-          )
+  static Live = Layer.succeed(this, {
+    open: (url, returnUri) =>
+      customTabsBrowser.pipe(
+        Effect.flatMap((browserPackage) =>
+          Effect.tryPromise({
+            try: () =>
+              WebBrowser.openAuthSessionAsync(
+                url,
+                returnUri,
+                browserPackage === undefined ? undefined : { browserPackage }
+              ),
+            catch: (cause) => new AuthSessionUnavailable({ cause }),
+          })
         ),
-      // Only iOS can close its auth sheet; Expo throws on Android. Closing is
-      // a courtesy, so a failure is ignored.
-      dismiss: Effect.when(
-        Effect.try(() => WebBrowser.dismissAuthSession()).pipe(Effect.ignore),
-        Effect.sync(() => Platform.OS === "ios")
-      ).pipe(Effect.asVoid),
-    });
-
-  static Live = this.layer();
+        Effect.map((result) =>
+          result.type === "success"
+            ? AuthSessionResult.Returned({ url: result.url })
+            : AuthSessionResult.Closed()
+        )
+      ),
+    // Only iOS can close its auth sheet; Expo throws on Android. Closing is
+    // a courtesy, so a failure is ignored.
+    dismiss: Effect.when(
+      Effect.try(() => WebBrowser.dismissAuthSession()).pipe(Effect.ignore),
+      Effect.sync(() => Platform.OS === "ios")
+    ).pipe(Effect.asVoid),
+  });
 }
