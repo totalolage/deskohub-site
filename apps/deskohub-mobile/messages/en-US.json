@@ -93,5 +93,9 @@
   "account_notice_support_required": "Your account needs our help before we can show your profile and reservations. Contact Deskohub support.",
   "account_notice_unavailable": "We can't show your profile and reservations right now. Try again later.",
   "account_notice_deletion_pending": "Your account deletion is in progress.",
-  "account_sample_data_banner": "Sample data: nothing here is real."
+  "account_sample_data_banner": "Sample data: nothing here is real.",
+  "reservations_value_unavailable": "Unavailable",
+  "reservations_refresh": "Refresh",
+  "reservations_time_range": "{start} – {end}",
+  "reservations_setup_from": "Setup from {time}"
 }

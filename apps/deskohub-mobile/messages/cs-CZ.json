@@ -93,5 +93,9 @@
   "account_notice_support_required": "Tvůj účet potřebuje naši pomoc, než ti budeme moct ukázat profil a rezervace. Kontaktuj podporu Deskohubu.",
   "account_notice_unavailable": "Profil a rezervace ti teď nemůžeme ukázat. Zkus to později.",
   "account_notice_deletion_pending": "Mazání tvého účtu probíhá.",
-  "account_sample_data_banner": "Ukázková data: nic z toho není skutečné."
+  "account_sample_data_banner": "Ukázková data: nic z toho není skutečné.",
+  "reservations_value_unavailable": "Nedostupné",
+  "reservations_refresh": "Obnovit",
+  "reservations_time_range": "{start} – {end}",
+  "reservations_setup_from": "Příprava od {time}"
 }
