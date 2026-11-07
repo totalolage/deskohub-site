@@ -86,6 +86,7 @@ const nextConfig = {
     "@deskohub/cloudinary",
     "@deskohub/cloudinary-image",
     "@deskohub/workspace-admin-api",
+    "@deskohub/workspace-customer-api",
   ],
   async redirects() {
     return [
