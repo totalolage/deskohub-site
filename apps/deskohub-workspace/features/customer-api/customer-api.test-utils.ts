@@ -13,6 +13,12 @@ import {
   PasskeyReleaseGate,
 } from "@/features/account/backend/account-release-gates";
 import type { AccountReleaseLayers } from "@/features/account/backend/account-state-capabilities";
+import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
+import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
+import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
+import { ReservationSupersessionService } from "@/features/checkout/backend/checkout/reservation-supersession.service";
+import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
+import { TestSealedStateKeys } from "@/shared/testing/sealed-state-keys.test-utils";
 import { CustomerAgentConnections } from "@/features/account/backend/auth/customer-agent-connections.service";
 import { CustomerPasskeys } from "@/features/account/backend/auth/customer-passkeys.service";
 import { CustomerRequestOrigins } from "@/features/account/backend/auth/customer-request-origins.service";
@@ -47,6 +53,10 @@ import {
   type CustomerAccountServiceLayers,
 } from "./customer-account-layers";
 import { makeWorkspaceCustomerApiLayer } from "./customer-api.server";
+import {
+  CustomerBookingCatalogLayers,
+  type CustomerBookingCatalogLayerSet,
+} from "./customer-booking-catalog-layers";
 
 /** The origin Better Auth trusts in a customer API test. */
 export const trustedOrigin = "https://workspace.deskohub.test";
@@ -79,6 +89,11 @@ export type CustomerApiTestOptions = {
   readonly services?: Partial<CustomerAccountServiceLayers>;
   /** Release gates; each left out is closed. */
   readonly releases?: Partial<AccountReleaseLayers>;
+  /**
+   * Booking catalog fakes, like `services`: each left out is a `Layer.mock`
+   * with nothing implemented, and its release gates are closed.
+   */
+  readonly bookingCatalog?: Partial<CustomerBookingCatalogLayerSet>;
 };
 
 /**
@@ -130,6 +145,10 @@ export const makeCustomerApiTestServer = (
     Layer.succeed(CustomerAccountLayers, {
       services: { ...unusedAccountServices, ...options.services },
       releases: { ...closedReleases, ...options.releases },
+    }),
+    Layer.succeed(CustomerBookingCatalogLayers, {
+      ...unusedBookingCatalog,
+      ...options.bookingCatalog,
     })
   );
 
@@ -199,6 +218,21 @@ export const linkedAccountServices: CustomerAccountServiceLayers = {
   signupIntents: Layer.mock(ReferralSignupIntentRepository, {
     find: () => Effect.succeed(undefined),
   }),
+};
+
+const unusedBookingCatalog: CustomerBookingCatalogLayerSet = {
+  pricing: Layer.mock(CheckoutPricingService, {}),
+  inventory: Layer.mock(AdvisoryAvailabilityInventory, {}),
+  availability: Layer.mergeAll(
+    Layer.mock(WorkspaceAvailabilityService, {}),
+    Layer.mock(ReservationSupersessionService, {}),
+    TestSealedStateKeys
+  ),
+  sealedStateKeys: TestSealedStateKeys,
+  releases: {
+    office: OfficeReleaseGate.fromDecision(false),
+    referral: ReferralReleaseGate.fromDecision(false),
+  },
 };
 
 const closedReleases: AccountReleaseLayers = {

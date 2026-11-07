@@ -36,6 +36,38 @@ export {
 } from "./customer-auth-api";
 export { CustomerBookingApi } from "./customer-booking-api";
 export {
+  CustomerAdvertisedPrice,
+  CustomerAvailability,
+  CustomerAvailabilityNotice,
+  CustomerAvailabilityQuery,
+  CustomerBookingOfferings,
+  CustomerBookingQuote,
+  CustomerLegalDocument,
+  CustomerLegalDocuments,
+  CustomerMeetingRoomStartTimes,
+  CustomerOffering,
+  CustomerOfferingAddOn,
+  customerAvailabilityReplacementHeader,
+} from "./customer-booking-catalog-api";
+export {
+  CustomerBookingDateOutOfRange,
+  CustomerBookingSelection,
+  CustomerBookingSelectionInvalid,
+  CustomerBookingSelectionQuery,
+  CustomerCoworkTier,
+  CustomerMeetingRoomDuration,
+  CustomerMonitorOption,
+  CustomerOfferingUnavailable,
+  CustomerPlainDate,
+  CustomerReservationFamily,
+  CustomerStartTime,
+} from "./customer-booking-selection";
+export {
+  CustomerCheckoutSummary,
+  CustomerCheckoutSummaryDiscount,
+  CustomerCheckoutSummaryItem,
+} from "./customer-checkout-summary";
+export {
   CustomerProfile,
   CustomerProfileBilling,
   CustomerProfileCompletionInput,
