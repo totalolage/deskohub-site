@@ -4,9 +4,7 @@ import { SignInScreen } from "../src/auth/sign-in-screen";
 export default function SignInRoute() {
   return (
     <SignInScreen
-      passkeyOption={(onSignedIn) => (
-        <PasskeySignInOption onSignedIn={onSignedIn} />
-      )}
+      passkeyOption={(option) => <PasskeySignInOption {...option} />}
     />
   );
 }

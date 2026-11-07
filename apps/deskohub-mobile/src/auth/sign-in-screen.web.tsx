@@ -126,6 +126,7 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
   const [sentTo, setSentTo] = useState<string>();
   const [invalidEmail, setInvalidEmail] = useState(false);
   const [useAnotherAccount, setUseAnotherAccount] = useState(false);
+  const [passkeyPending, setPasskeyPending] = useState(false);
 
   const send = useAuthTask(
     standaloneTaskRuntime,
@@ -226,9 +227,13 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
   const alert = invalidEmail
     ? m.signin_error_invalid_email({}, { locale })
     : failure && webSignInFailureMessage(failure.reason, locale);
-  const busy = [send.state, verify.state, handoff.state, passkey.state].some(
-    (state) => state.status === "running"
-  );
+  // One sign-in method at a time: a passkey ceremony holds the others from
+  // its prompt until its sign-in is checked, and they hold it.
+  const busy =
+    passkeyPending ||
+    [send.state, verify.state, handoff.state, passkey.state].some(
+      (state) => state.status === "running"
+    );
   const status = signInStatus({
     restoring: session.status === "restoring",
     returningToApp: finished?.kind === "app",
@@ -353,11 +358,16 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
           />
         </>
       )}
-      {/* Mounted across the steps, so finishing another method's step can't
-          interrupt a passkey ceremony before its sign-in is checked. It waits
-          for the page's first session read, which fixes the account a
+      {/* Mounted across the steps, so a step change can't interrupt a
+          passkey ceremony before its sign-in is checked. It waits for the
+          page's first session read, which fixes the account a
           reauthentication expects. */}
-      {pageSession !== undefined && passkeyOption?.(handlePasskeySignedIn)}
+      {pageSession !== undefined &&
+        passkeyOption?.({
+          onSignedIn: handlePasskeySignedIn,
+          disabled: busy,
+          onPendingChange: setPasskeyPending,
+        })}
       <LiveMessage role="status" message={status} />
       <LiveMessage role="alert" message={alert} />
     </Screen>

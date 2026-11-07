@@ -14,17 +14,24 @@ import { usePasskeyCeremony } from "./use-passkey-ceremony";
 /**
  * Signs in with a passkey saved for Deskohub. `onSignedIn` runs once the
  * session exists and the auth client has been told to refresh it; its
- * session data may still be loading.
+ * session data may still be loading. `onPendingChange` reports while the
+ * ceremony may change the session, and `disabled` holds the option while
+ * another sign-in method runs.
  */
 export function PasskeySignInOption({
   onSignedIn,
+  disabled = false,
+  onPendingChange,
 }: {
   readonly onSignedIn: () => void;
+  readonly disabled?: boolean;
+  readonly onPendingChange?: (pending: boolean) => void;
 }) {
   const locale = useAppLocale();
   const { state, start } = usePasskeyCeremony({
     ceremony: (ceremonies) => ceremonies.signIn,
     onSucceeded: onSignedIn,
+    onPendingChange,
   });
   const pending = state.status === "pending";
 
@@ -32,13 +39,13 @@ export function PasskeySignInOption({
     <View style={styles.option}>
       <Pressable
         accessibilityRole="button"
-        accessibilityState={{ busy: pending, disabled: pending }}
+        accessibilityState={{ busy: pending, disabled: pending || disabled }}
         accessibilityLabel={
           pending
             ? m.passkey_sign_in_pending({}, { locale })
             : m.passkey_sign_in({}, { locale })
         }
-        disabled={pending}
+        disabled={pending || disabled}
         onPress={start}
         style={({ pressed }) => [styles.button, pressed && styles.pressed]}
       >

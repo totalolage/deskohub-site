@@ -1,6 +1,6 @@
 import { Option } from "effect";
 import { Redirect } from "expo-router";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { trackSignInCompleted } from "../analytics/events";
 import type { AppLocale } from "../i18n/app-locale";
 import { useAppLocale } from "../i18n/locale-context";
@@ -24,13 +24,32 @@ const signInStatus = (
 };
 
 /**
+ * What the sign-in screen gives its passkey option. A screen runs one
+ * sign-in method at a time, so a ceremony can't change the session while
+ * another method finishes, or the other way round.
+ */
+export interface PasskeyOptionProps {
+  /**
+   * Runs once the passkey has signed in: it records the sign-in and, on the
+   * web page, checks the account and hands the session to the app that asked
+   * for it.
+   */
+  readonly onSignedIn: () => void;
+  /** Another sign-in method is running, so the option can't start. */
+  readonly disabled: boolean;
+  /**
+   * Called with `true` before the option's ceremony can change the session,
+   * and with `false` only once `onSignedIn` has run or the ceremony ended.
+   */
+  readonly onPendingChange: (pending: boolean) => void;
+}
+
+/**
  * The sign-in screen's props. `passkeyOption` renders the passkey sign-in
- * option (delivered separately) and gets the handler to call once it has
- * signed in: it records the sign-in and, on the web page, hands the session
- * to the app that asked for it.
+ * option, which is delivered separately.
  */
 export interface SignInScreenProps {
-  readonly passkeyOption?: (onSignedIn: () => void) => ReactNode;
+  readonly passkeyOption?: (option: PasskeyOptionProps) => ReactNode;
 }
 
 const recordPasskeySignIn = (): void => trackSignInCompleted("passkey");
@@ -52,6 +71,8 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
     unexpected
   );
 
+  const [passkeyPending, setPasskeyPending] = useState(false);
+
   if (session.status === "signed-in") return <Redirect href="/" />;
 
   const restoring = session.status === "restoring";
@@ -62,9 +83,13 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
       <Button
         label={m.signin_continue_with_email({}, { locale })}
         onPress={() => void start()}
-        disabled={restoring || running}
+        disabled={restoring || running || passkeyPending}
       />
-      {passkeyOption?.(recordPasskeySignIn)}
+      {passkeyOption?.({
+        onSignedIn: recordPasskeySignIn,
+        disabled: restoring || running,
+        onPendingChange: setPasskeyPending,
+      })}
       <LiveMessage
         role="status"
         message={signInStatus(restoring, running, locale)}
