@@ -1,6 +1,6 @@
 ---
 name: deskohub-mobile-release
-description: Mobile release, Android APK, mobile-v tag, mobile-release.yml, versionCode, expo.version bump, mobile CHANGELOG, release signing keystore, apksigner fingerprint, eas build --local, local APK build on a developer machine.
+description: Mobile release, Android APK, mobile-v tag, mobile-release.yml, versionCode, expo.version bump, mobile CHANGELOG, release signing keystore, apksigner fingerprint, eas build --local, local APK build on a developer machine, first public release, Sculpin brand font licence.
 ---
 
 # Deskohub mobile release
@@ -12,6 +12,10 @@ description: Mobile release, Android APK, mobile-v tag, mobile-release.yml, vers
 - `expo.version` in `apps/deskohub-mobile/app.json` is the one version source. `app.config.ts` derives `android.versionCode` from it as `major * 1_000_000 + minor * 1_000 + patch` (minor and patch below 1000, major below 2100), so a later version always installs over an earlier one. Keep `appVersionSource: local` in `eas.json`.
 - Versions are plain `X.Y.Z`; the tag is `mobile-vX.Y.Z`, mirroring dhw's `dhw-vX.Y.Z`.
 - `app.config.ts` imports no local modules: Expo transpiles only that file, so a TypeScript import from it fails on Node without type stripping. Release scripts import from it instead.
+
+## Brand font licence
+
+The app embeds the site's Sculpin face: `apps/deskohub-mobile/assets/fonts/Sculpin.ttf` is a copy of the site's `regular.ttf`, linked by the `expo-font` plugin entry in `app.json`. The user decided on 2026-11-07 to embed it now and to obtain the app-embedding licence manually before the first public release. Before cutting that release, ask the user to confirm the licence is in place.
 
 ## Cutting a release
 

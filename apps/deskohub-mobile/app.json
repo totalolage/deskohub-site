@@ -60,7 +60,23 @@
           "backgroundColor": "#00024f"
         }
       ],
-      "expo-font",
+      [
+        "expo-font",
+        {
+          "ios": {
+            "fonts": ["./assets/fonts/Sculpin.ttf"]
+          },
+          "android": {
+            "fonts": [
+              {
+                "fontFamily": "Sculpin Variable",
+                "path": "./assets/fonts/Sculpin.ttf",
+                "fontDefinitions": [{ "weight": 400 }]
+              }
+            ]
+          }
+        }
+      ],
       [
         "expo-build-properties",
         {

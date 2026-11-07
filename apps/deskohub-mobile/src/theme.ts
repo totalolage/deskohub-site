@@ -1,10 +1,29 @@
-import { brandColors, brandFonts, brandRadius } from "@deskohub/brand-tokens";
+import {
+  brandColors,
+  brandFontFamilies,
+  brandFonts,
+  brandFontVariation,
+  brandRadius,
+} from "@deskohub/brand-tokens";
+import { Platform } from "react-native";
+
+const brandFontFamily = Platform.select({
+  web: brandFontFamilies.web,
+  default: brandFontFamilies.native,
+});
+
+type BrandWeight = (typeof brandFonts.weights)[keyof typeof brandFonts.weights];
+
+const brandText = (weight: BrandWeight) => ({
+  fontFamily: brandFontFamily,
+  fontWeight: weight,
+  fontVariationSettings: brandFontVariation(weight),
+});
 
 /**
  * The app's colour, radius and type values, named for their role on screen
- * and taken from the shared brand tokens. Text uses the platform's system
- * font and the app ships no font files until the brand face's licence is
- * confirmed to cover app embedding.
+ * and taken from the shared brand tokens. Text uses the brand face, which
+ * native builds embed and the web loads before the first screen renders.
  */
 export const theme = {
   colors: {
@@ -16,7 +35,7 @@ export const theme = {
   radius: brandRadius.px,
   spacing: { sm: 8, md: 16, lg: 24 },
   type: {
-    title: { fontSize: 36, fontWeight: brandFonts.weights.heading },
-    body: { fontSize: 17, fontWeight: brandFonts.weights.body },
+    title: { fontSize: 36, ...brandText(brandFonts.weights.heading) },
+    body: { fontSize: 17, ...brandText(brandFonts.weights.body) },
   },
 } as const;
