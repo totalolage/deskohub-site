@@ -23,10 +23,14 @@ export const sampleCustomerDataLayer = (
   return Layer.mergeAll(
     fakeCustomerApiLayer(workspace),
     DotyposReadBudget.Default,
-    Layer.succeed(CustomerAccountScope, {
-      accountId: workspace.data.accountId,
-      apiOrigin: fakeWorkspaceOrigin,
-    }),
-    Layer.succeed(CustomerSessionCheck, { recheck: Effect.void })
-  ).pipe(Layer.provideMerge(accountDeviceLayer(deviceCapabilitiesLayer)));
+    Layer.succeed(CustomerSessionCheck, { recheck: Effect.void }),
+    accountDeviceLayer(deviceCapabilitiesLayer).pipe(
+      Layer.provideMerge(
+        Layer.succeed(CustomerAccountScope, {
+          accountId: workspace.data.accountId,
+          apiOrigin: fakeWorkspaceOrigin,
+        })
+      )
+    )
+  );
 };

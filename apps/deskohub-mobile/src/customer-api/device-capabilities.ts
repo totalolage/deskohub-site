@@ -37,14 +37,15 @@ export class DeviceStorage extends Context.Service<
 >()("DeviceStorage") {}
 
 interface ITemporaryFiles {
-  /** Writes `bytes` to a new temporary file and answers its URI. */
+  /** Writes `bytes` to a new temporary file of `owner` and answers its URI. */
   readonly write: (
+    owner: string,
     name: string,
     bytes: Uint8Array
   ) => Effect.Effect<string, DeviceCapabilityFailed>;
   readonly remove: (uri: string) => Effect.Effect<void>;
-  /** Removes every temporary file the app wrote, as on sign-out. */
-  readonly sweep: Effect.Effect<void>;
+  /** Removes the owner's temporary files, or every one the app wrote. */
+  readonly sweep: (owner: Option.Option<string>) => Effect.Effect<void>;
 }
 
 /** Files the app writes only to hand them to the share sheet, such as an invoice PDF. */

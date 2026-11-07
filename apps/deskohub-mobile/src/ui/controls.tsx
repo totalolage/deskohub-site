@@ -44,7 +44,7 @@ export function Button({
   readonly label: string;
   readonly onPress: () => void;
   readonly disabled?: boolean;
-  readonly variant?: "primary" | "secondary";
+  readonly variant?: "primary" | "secondary" | "destructive";
 }) {
   return (
     <Pressable
@@ -52,16 +52,25 @@ export function Button({
       aria-disabled={disabled}
       disabled={disabled}
       onPress={onPress}
-      style={[
+      style={({ pressed }) => [
         styles.button,
-        variant === "primary" ? styles.primary : styles.secondary,
+        {
+          primary: styles.primary,
+          secondary: styles.secondary,
+          destructive: styles.destructive,
+        }[variant],
+        pressed && !disabled && styles.pressed,
         disabled && styles.disabled,
       ]}
     >
       <Text
         style={[
           styles.buttonLabel,
-          variant === "primary" ? styles.primaryLabel : styles.secondaryLabel,
+          {
+            primary: styles.filledLabel,
+            secondary: styles.secondaryLabel,
+            destructive: styles.filledLabel,
+          }[variant],
         ]}
       >
         {label}
@@ -142,6 +151,8 @@ const styles = StyleSheet.create({
   body: { color: theme.colors.textMuted, ...theme.type.body },
   button: {
     alignItems: "center",
+    justifyContent: "center",
+    minHeight: theme.touchTarget,
     borderRadius: theme.radius.md,
     borderWidth: 1,
     paddingHorizontal: theme.spacing.md,
@@ -152,9 +163,14 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.accent,
   },
   secondary: { borderColor: theme.colors.textMuted },
+  destructive: {
+    backgroundColor: theme.colors.danger,
+    borderColor: theme.colors.danger,
+  },
+  pressed: { opacity: 0.8 },
   disabled: { opacity: 0.5 },
   buttonLabel: { ...theme.type.body, fontWeight: "600" },
-  primaryLabel: { color: theme.colors.background },
+  filledLabel: { color: theme.colors.background },
   secondaryLabel: { color: theme.colors.text },
   field: { gap: theme.spacing.sm },
   fieldLabel: { color: theme.colors.text, ...theme.type.body },

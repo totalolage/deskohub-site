@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { AnalyticsRoot } from "../src/analytics/analytics-root";
 import { initializeBotProtection } from "../src/auth/bot-protection";
 import { useAuthSession } from "../src/auth/use-auth-session";
+import { CustomerDataExitCleanup } from "../src/customer-api/customer-data-exit";
 import { readDeviceLocale } from "../src/i18n/device-locale";
 import { AppLocaleProvider } from "../src/i18n/locale-context";
 
@@ -16,6 +17,11 @@ export default function RootLayout() {
   const [locale] = useState(readDeviceLocale);
   const session = useAuthSession();
   const restoring = session.status === "restoring";
+  // The navigator mounts once the launch's session restore settles: while the
+  // guard is still false a cold-start link to a signed-in route would be
+  // replaced by the guard's redirect. Later session re-checks never unmount it.
+  const [restored, setRestored] = useState(false);
+  if (!restored && !restoring) setRestored(true);
 
   useEffect(() => {
     if (!restoring) SplashScreen.hide();
@@ -24,14 +30,19 @@ export default function RootLayout() {
   return (
     <AppLocaleProvider locale={locale}>
       <AnalyticsRoot>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="sign-in" />
-          <Stack.Protected guard={session.status === "signed-in"}>
-            <Stack.Screen name="index" />
-          </Stack.Protected>
-          <Stack.Screen name="auth/callback" />
-          <Stack.Screen name="dev/effect-smoke" />
-        </Stack>
+        <CustomerDataExitCleanup>
+          {restored && (
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="sign-in" />
+              <Stack.Protected guard={session.status === "signed-in"}>
+                <Stack.Screen name="index" />
+                <Stack.Screen name="(account)" />
+              </Stack.Protected>
+              <Stack.Screen name="auth/callback" />
+              <Stack.Screen name="dev/effect-smoke" />
+            </Stack>
+          )}
+        </CustomerDataExitCleanup>
       </AnalyticsRoot>
     </AppLocaleProvider>
   );

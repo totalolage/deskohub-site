@@ -25,8 +25,12 @@ export const liveCustomerDataLayer = (
       Layer.provide(customerApiTransportLayer)
     ),
     DotyposReadBudget.Default,
-    Layer.succeed(CustomerAccountScope, { accountId, apiOrigin }),
     Layer.succeed(CustomerSessionCheck, {
       recheck: Effect.sync(() => authClient.$store.notify("$sessionSignal")),
-    })
-  ).pipe(Layer.provideMerge(accountDeviceLayer(deviceCapabilitiesLayer)));
+    }),
+    accountDeviceLayer(deviceCapabilitiesLayer).pipe(
+      Layer.provideMerge(
+        Layer.succeed(CustomerAccountScope, { accountId, apiOrigin })
+      )
+    )
+  );
