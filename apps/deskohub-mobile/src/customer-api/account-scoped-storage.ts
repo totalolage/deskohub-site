@@ -172,58 +172,78 @@ export class AccountScopedStorage extends Context.Service<
 >()("AccountScopedStorage") {
   static Default = Layer.effect(
     this,
-    Effect.gen(function* () {
-      const storage = yield* DeviceStorage;
-      const temporaryFiles = yield* TemporaryFiles;
-      const fence = yield* AccountExitFence;
-      const scope = yield* CustomerAccountScope;
-      yield* fence.exclusive(fence.open(scope));
-      // Runs alone and uninterruptibly (a device write lands either way), and
-      // only while this session is current.
-      const whileCurrent = <A, E>(
-        operation: Effect.Effect<A, E>,
-        otherwise: A
-      ): Effect.Effect<A, E> =>
-        fence
-          .exclusive(
-            Effect.flatMap(fence.isCurrent(scope), (current) =>
-              current ? operation : Effect.succeed(otherwise)
-            )
-          )
-          .pipe(Effect.uninterruptible);
-      const keyOf = (name: string) =>
-        isExitClearedKey(`${name}.`)
-          ? Effect.succeed(accountStorageKey(name, scope))
-          : Effect.die(
-              new Error(
-                `"${name}" is not cleared on exit; start it with one of exitClearedStoragePrefixes`
-              )
-            );
-      return {
-        getItem: (name) =>
-          Effect.flatMap(keyOf(name), (key) =>
-            whileCurrent(storage.getItem(key), Option.none())
-          ),
-        setItem: (name, value) =>
-          Effect.flatMap(keyOf(name), (key) =>
-            whileCurrent(storage.setItem(key, value), undefined)
-          ),
-        removeItem: (name) =>
-          Effect.flatMap(keyOf(name), (key) =>
-            whileCurrent(storage.removeItems([key]), undefined)
-          ),
-        writeTemporaryFile: (name, bytes) =>
-          whileCurrent(
-            Effect.map(
-              temporaryFiles.write(scope.accountId, name, bytes),
-              Option.some
-            ),
-            Option.none()
-          ),
-      };
-    })
+    Effect.Do.pipe(
+      Effect.bind("storage", () => Effect.service(DeviceStorage)),
+      Effect.bind("temporaryFiles", () => Effect.service(TemporaryFiles)),
+      Effect.bind("fence", () => Effect.service(AccountExitFence)),
+      Effect.bind("scope", () => Effect.service(CustomerAccountScope)),
+      Effect.tap(({ fence, scope }) => fence.exclusive(fence.open(scope))),
+      Effect.map((capabilities) => fencedStorageOf(capabilities))
+    )
   );
 }
+
+interface FencedStorageInput {
+  readonly storage: DeviceStorage["Service"];
+  readonly temporaryFiles: TemporaryFiles["Service"];
+  readonly fence: AccountExitFence["Service"];
+  readonly scope: CustomerAccountScope["Service"];
+}
+
+const fencedStorageOf = ({
+  storage,
+  temporaryFiles,
+  fence,
+  scope,
+}: FencedStorageInput): IAccountScopedStorage => {
+  // Runs alone and uninterruptibly (a device write lands either way), and
+  // only while this session is current.
+  const whileCurrent = <A, E>(
+    operation: Effect.Effect<A, E>,
+    otherwise: A
+  ): Effect.Effect<A, E> =>
+    operation.pipe(
+      Effect.when(fence.isCurrent(scope)),
+      Effect.map(Option.getOrElse(() => otherwise)),
+      (current) => fence.exclusive(current),
+      Effect.uninterruptible
+    );
+  const keyOf = (name: string) =>
+    Effect.succeed(name).pipe(
+      Effect.filterOrElse(
+        (prefixed) => isExitClearedKey(`${prefixed}.`),
+        (unprefixed) =>
+          Effect.die(
+            new Error(
+              `"${unprefixed}" is not cleared on exit; start it with one of exitClearedStoragePrefixes`
+            )
+          )
+      ),
+      Effect.map((prefixed) => accountStorageKey(prefixed, scope))
+    );
+  return {
+    getItem: (name) =>
+      Effect.flatMap(keyOf(name), (key) =>
+        whileCurrent(storage.getItem(key), Option.none())
+      ),
+    setItem: (name, value) =>
+      Effect.flatMap(keyOf(name), (key) =>
+        whileCurrent(storage.setItem(key, value), undefined)
+      ),
+    removeItem: (name) =>
+      Effect.flatMap(keyOf(name), (key) =>
+        whileCurrent(storage.removeItems([key]), undefined)
+      ),
+    writeTemporaryFile: (name, bytes) =>
+      whileCurrent(
+        Effect.map(
+          temporaryFiles.write(scope.accountId, name, bytes),
+          Option.some
+        ),
+        Option.none()
+      ),
+  };
+};
 
 /**
  * The device capabilities with the session's fenced storage over them, for a

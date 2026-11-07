@@ -39,13 +39,12 @@ export class CustomerApi extends Context.Service<
 >()("CustomerApi") {
   static Default = Layer.effect(
     this,
-    Effect.gen(function* () {
-      const transport = yield* CustomerApiTransport;
-      return yield* makeWorkspaceCustomerApiClient({
+    Effect.flatMap(Effect.service(CustomerApiTransport), (transport) =>
+      makeWorkspaceCustomerApiClient({
         baseUrl: transport.apiOrigin,
         transformClient: transport.customerApi,
-      });
-    })
+      })
+    )
   );
 }
 
@@ -64,13 +63,12 @@ export class CustomerAuthApi extends Context.Service<
 >()("CustomerAuthApi") {
   static Default = Layer.effect(
     this,
-    Effect.gen(function* () {
-      const transport = yield* CustomerApiTransport;
-      return yield* makeCustomerAuthApiClient({
+    Effect.flatMap(Effect.service(CustomerApiTransport), (transport) =>
+      makeCustomerAuthApiClient({
         baseUrl: transport.apiOrigin,
         transformClient: transport.customerAuthApi,
-      });
-    })
+      })
+    )
   );
 }
 

@@ -47,13 +47,13 @@ const isSessionGone = (error: unknown) =>
  */
 const recheckSessionWhenRequired = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   Effect.tapError(effect, (error) =>
-    isSessionGone(error)
-      ? Effect.flatMap(
-          Effect.service(CustomerSessionCheck),
-          (session) => session.recheck
-        )
-      : Effect.void
+    recheckSession.pipe(Effect.when(Effect.succeed(isSessionGone(error))))
   );
+
+const recheckSession = Effect.flatMap(
+  Effect.service(CustomerSessionCheck),
+  (session) => session.recheck
+);
 
 export interface CustomerReadOptions {
   /**
@@ -73,18 +73,26 @@ export interface CustomerReadOptions {
 export const customerRead =
   ({ dotyposBacked }: CustomerReadOptions) =>
   <A, E, R>(request: Effect.Effect<A, E, R>) =>
-    Effect.gen(function* () {
-      const budget = yield* DotyposReadBudget;
-      return yield* request.pipe(
-        Effect.provideService(CustomerRequestDispatch, {
-          onSend: dotyposBacked ? budget.spend : Effect.void,
-        }),
-        Effect.timeoutOrElse({
-          duration: customerRequestTimeout,
-          orElse: () => Effect.fail(new CustomerRequestTimedOut()),
-        })
-      );
-    }).pipe(recheckSessionWhenRequired);
+    request.pipe(
+      Effect.timeoutOrElse({
+        duration: customerRequestTimeout,
+        orElse: () => Effect.fail(new CustomerRequestTimedOut()),
+      }),
+      Effect.provideServiceEffect(
+        CustomerRequestDispatch,
+        readDispatch({ dotyposBacked })
+      ),
+      recheckSessionWhenRequired
+    );
+
+// Every attempt of a Dotypos-backed read spends the budget; others spend none.
+const readDispatch = ({ dotyposBacked }: CustomerReadOptions) =>
+  Effect.map(Effect.service(DotyposReadBudget), (budget) => ({
+    onSend: budget.spend.pipe(
+      Effect.when(Effect.succeed(dotyposBacked)),
+      Effect.asVoid
+    ),
+  }));
 
 const unansweredReasons = new Set([
   "TransportError",
@@ -113,32 +121,53 @@ const isUnanswered = (error: unknown) =>
  * `CustomerRequestTimedOut`): nothing was applied.
  */
 export const customerWrite = <A, E, R>(request: Effect.Effect<A, E, R>) =>
-  Effect.gen(function* () {
-    const sent = yield* Ref.make(false);
-    const unconfirmedOnceSent = <F>(
-      failure: F,
-      cause?: unknown
-    ): Effect.Effect<never, F | CustomerWriteUnconfirmed> =>
-      Effect.flatMap(
-        Ref.get(sent),
-        (wasSent): Effect.Effect<never, F | CustomerWriteUnconfirmed> =>
-          wasSent
-            ? Effect.fail(new CustomerWriteUnconfirmed({ cause }))
-            : Effect.fail(failure)
-      );
-    return yield* request.pipe(
-      Effect.provideService(CustomerRequestDispatch, {
-        onSend: Ref.set(sent, true),
-      }),
-      Effect.timeoutOrElse({
-        duration: customerRequestTimeout,
-        orElse: () => unconfirmedOnceSent(new CustomerRequestTimedOut()),
-      }),
-      Effect.catchIf(isUnanswered, (failure) =>
-        unconfirmedOnceSent(failure, failure)
-      )
-    );
-  }).pipe(recheckSessionWhenRequired);
+  Effect.Do.pipe(
+    Effect.bind("sent", () => Ref.make(false)),
+    Effect.bind("answer", ({ sent }) => sendWrite({ request, sent })),
+    Effect.map(({ answer }) => answer),
+    recheckSessionWhenRequired
+  );
+
+// Sends the write once, recording when it leaves the device.
+const sendWrite = <A, E, R>({
+  request,
+  sent,
+}: {
+  readonly request: Effect.Effect<A, E, R>;
+  readonly sent: Ref.Ref<boolean>;
+}) =>
+  request.pipe(
+    Effect.provideService(CustomerRequestDispatch, {
+      onSend: Ref.set(sent, true),
+    }),
+    Effect.timeoutOrElse({
+      duration: customerRequestTimeout,
+      orElse: () =>
+        unconfirmedOnceSent({ sent, failure: new CustomerRequestTimedOut() }),
+    }),
+    Effect.catchIf(isUnanswered, (failure) =>
+      unconfirmedOnceSent({ sent, failure, cause: failure })
+    )
+  );
+
+// Keeps `failure` for a write that never left the device; once it was sent,
+// its outcome is unknown.
+const unconfirmedOnceSent = <F>({
+  sent,
+  failure,
+  cause,
+}: {
+  readonly sent: Ref.Ref<boolean>;
+  readonly failure: F;
+  readonly cause?: unknown;
+}): Effect.Effect<never, F | CustomerWriteUnconfirmed> =>
+  Ref.get(sent).pipe(
+    Effect.filterOrFail(
+      (wasSent) => !wasSent,
+      () => new CustomerWriteUnconfirmed({ cause })
+    ),
+    Effect.andThen(Effect.fail(failure))
+  );
 
 /**
  * Refreshes the atoms a write changes once the server may hold a new state:

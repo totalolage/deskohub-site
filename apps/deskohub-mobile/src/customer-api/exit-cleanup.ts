@@ -1,4 +1,4 @@
-import { Effect, Option } from "effect";
+import { Effect, Match, Option } from "effect";
 import type { AuthSessionState } from "../auth/auth-session-state";
 import {
   AccountExitFence,
@@ -26,29 +26,11 @@ export type AccountExit =
  * so no other account reads them.
  */
 export const customerDataExitCleanup = (exit: AccountExit) =>
-  Effect.gen(function* () {
-    const storage = yield* DeviceStorage;
-    const temporaryFiles = yield* TemporaryFiles;
-    const fence = yield* AccountExitFence;
-    const removeKeys = (remove: (key: string) => boolean) =>
-      storage.keys.pipe(
-        Effect.flatMap((keys) => storage.removeItems(keys.filter(remove))),
-        Effect.ignore
-      );
-    if (exit.scope === "account") {
-      if (!(yield* fence.close(exit))) return;
-      yield* removeKeys((key) => isAccountStorageKey(key, exit.accountId));
-      yield* temporaryFiles.sweep(Option.some(exit.accountId));
-      return;
-    }
-    const open = [...(yield* fence.openAccounts)];
-    yield* removeKeys(
-      (key) =>
-        isExitClearedKey(key) &&
-        !open.some((accountId) => isAccountStorageKey(key, accountId))
-    );
-    if (open.length === 0) yield* temporaryFiles.sweep(Option.none());
-  }).pipe(
+  Match.value(exit).pipe(
+    Match.discriminatorsExhaustive("scope")({
+      account: accountExitCleanup,
+      device: () => deviceExitCleanup,
+    }),
     (cleanup) =>
       Effect.flatMap(Effect.service(AccountExitFence), (fence) =>
         fence.exclusive(cleanup)
@@ -56,6 +38,60 @@ export const customerDataExitCleanup = (exit: AccountExit) =>
     Effect.uninterruptible,
     Effect.withSpan("CustomerData.exitCleanup")
   );
+
+// Removes the account's data unless a later session of it has opened.
+const accountExitCleanup = (session: AccountSession) =>
+  removeAccountData(session).pipe(
+    Effect.when(closeForExit(session)),
+    Effect.asVoid
+  );
+
+const closeForExit = (session: AccountSession) =>
+  Effect.flatMap(Effect.service(AccountExitFence), (fence) =>
+    fence.close(session)
+  );
+
+const removeAccountData = ({ accountId }: AccountSession) =>
+  removeStorageKeys((key) => isAccountStorageKey(key, accountId)).pipe(
+    Effect.andThen(sweepTemporaryFiles(Option.some(accountId)))
+  );
+
+// Removes what earlier accounts left, keeping what an open session owns.
+// Temporary files carry no session, so they go only when none is open.
+const deviceExitCleanup = Effect.Do.pipe(
+  Effect.bind("open", () => openAccounts),
+  Effect.tap(({ open }) => removeStorageKeys(isUnownedKey(open))),
+  Effect.tap(({ open }) =>
+    sweepTemporaryFiles(Option.none()).pipe(
+      Effect.when(Effect.succeed(open.size === 0))
+    )
+  ),
+  Effect.asVoid
+);
+
+const openAccounts = Effect.flatMap(
+  Effect.service(AccountExitFence),
+  (fence) => fence.openAccounts
+);
+
+const isUnownedKey = (open: ReadonlySet<string>) => {
+  const owners = [...open];
+  return (key: string) =>
+    isExitClearedKey(key) &&
+    !owners.some((accountId) => isAccountStorageKey(key, accountId));
+};
+
+// A storage failure leaves the keys for a later exit or launch.
+const removeStorageKeys = (remove: (key: string) => boolean) =>
+  Effect.Do.pipe(
+    Effect.bind("storage", () => Effect.service(DeviceStorage)),
+    Effect.bind("keys", ({ storage }) => storage.keys),
+    Effect.tap(({ storage, keys }) => storage.removeItems(keys.filter(remove))),
+    Effect.ignore
+  );
+
+const sweepTemporaryFiles = (owner: Option.Option<string>) =>
+  Effect.flatMap(Effect.service(TemporaryFiles), (files) => files.sweep(owner));
 
 /** Who the app is signed in as, as far as exit cleanup cares. */
 export type AccountPresence =
