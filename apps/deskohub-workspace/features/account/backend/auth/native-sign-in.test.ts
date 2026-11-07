@@ -782,7 +782,7 @@ describe.skipIf(!testDatabase)("native sign-in handoff", () => {
  * The app names its locale on the requests that can create its account,
  * since `/app/` callbacks carry no locale segment.
  */
-describe("app sign-in locale", () => {
+describe.skipIf(!testDatabase)("app sign-in locale", () => {
   const localeHeader = (locale: string | undefined) =>
     locale === undefined ? {} : { [customerSignInLocaleHeader]: locale };
 
