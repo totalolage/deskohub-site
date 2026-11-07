@@ -39,7 +39,10 @@ import {
 import { currentInstant, plainDateStringSchema } from "@/shared/utils/temporal";
 import { CustomerBookingCatalogLayers } from "./customer-booking-catalog-layers";
 import type { CustomerBookingEndpoint } from "./customer-booking-endpoint";
-import { answerSessionApiFailure } from "./customer-api-failure";
+import {
+  answerSessionApiFailure,
+  type CustomerSessionApiFailure,
+} from "./customer-api-failure";
 
 /** The booking catalog's endpoints, which a booking reads before checkout. */
 export type CustomerBookingCatalogEndpointName =
@@ -222,15 +225,19 @@ const toSelectionRejectionAnswer = (reason: BookingSelectionRejection) =>
  */
 const answerSelectionRejection =
   (operation: string) =>
-  <A, E, R>(effect: Effect.Effect<A, E | BookingSelectionRejected, R>) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     effect.pipe(
-      Effect.catchIf(
-        (failure): failure is Exclude<E, BookingSelectionRejected> =>
-          !(failure instanceof BookingSelectionRejected),
-        (failure) => Effect.fail(failure).pipe(answerSessionApiFailure(operation))
-      ),
-      Effect.catchTag("BookingSelectionRejected", ({ reason }) =>
-        Effect.fail(toSelectionRejectionAnswer(reason))
+      Effect.catch(
+        (
+          failure
+        ): Effect.Effect<
+          never,
+          | ReturnType<typeof toSelectionRejectionAnswer>
+          | CustomerSessionApiFailure<Exclude<E, BookingSelectionRejected>>
+        > =>
+          failure instanceof BookingSelectionRejected
+          ? Effect.fail(toSelectionRejectionAnswer(failure.reason))
+          : Effect.fail(failure).pipe(answerSessionApiFailure(operation))
       )
     );
 
