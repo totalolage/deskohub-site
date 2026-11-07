@@ -3,6 +3,7 @@ import {
   dismissUpdatePrompt,
   noUpdatePromptDismissals,
   selectUpdatePrompt,
+  updatePromptWaitsForConsent,
 } from "./update-prompt";
 
 const nativeUpdate = { versionName: "1.3.0", versionCode: 1_003_000 };
@@ -115,5 +116,17 @@ describe("selectUpdatePrompt", () => {
     ).toBeUndefined();
     expect(noUpdatePromptDismissals.updateIds.size).toBe(0);
     expect(noUpdatePromptDismissals.versionCodes.size).toBe(0);
+  });
+});
+
+describe("updatePromptWaitsForConsent", () => {
+  test("holds the banner while the consent prompt can still show", () => {
+    expect(updatePromptWaitsForConsent("loading")).toBe(true);
+    expect(updatePromptWaitsForConsent("undecided")).toBe(true);
+  });
+
+  test("shows the banner once consent has an answer", () => {
+    expect(updatePromptWaitsForConsent("granted")).toBe(false);
+    expect(updatePromptWaitsForConsent("denied")).toBe(false);
   });
 });

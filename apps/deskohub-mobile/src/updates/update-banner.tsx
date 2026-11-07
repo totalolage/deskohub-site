@@ -1,19 +1,26 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAnalyticsConsent } from "../consent/use-analytics-consent";
 import { useAppLocale } from "../i18n/locale-context";
 import { m } from "../i18n/messages";
 import { theme } from "../theme";
+import { updatePromptWaitsForConsent } from "./update-prompt";
 import { useUpdatePrompt } from "./use-update-prompt";
 
 /**
  * The update offer, laid over the bottom of every screen without blocking
  * it. The live region stays mounted so screen readers announce a prompt
- * when it appears.
+ * when it appears. It stays empty while the analytics consent prompt, which
+ * sits in the same place, waits for an answer.
  */
 export function UpdateBanner() {
   const locale = useAppLocale();
   const insets = useSafeAreaInsets();
-  const { prompt, accept, dismiss } = useUpdatePrompt();
+  const { prompt: offered, accept, dismiss } = useUpdatePrompt();
+  const consent = useAnalyticsConsent();
+  const prompt = updatePromptWaitsForConsent(consent.status)
+    ? undefined
+    : offered;
 
   return (
     <View

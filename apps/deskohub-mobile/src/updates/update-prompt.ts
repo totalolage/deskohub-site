@@ -1,3 +1,4 @@
+import type { AnalyticsConsentStatus } from "../consent/analytics-consent";
 import type { NativeUpdateOffer } from "./native-release";
 
 /**
@@ -54,3 +55,12 @@ export const dismissUpdatePrompt = (
         ...dismissals,
         updateIds: new Set(dismissals.updateIds).add(prompt.updateId),
       };
+
+/**
+ * Whether the update banner holds back for the analytics consent prompt,
+ * which takes the same spot at the bottom of the screen until it has an
+ * answer. The offer stays pending and shows once consent is settled.
+ */
+export const updatePromptWaitsForConsent = (
+  consentStatus: AnalyticsConsentStatus
+): boolean => consentStatus === "loading" || consentStatus === "undecided";
