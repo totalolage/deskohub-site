@@ -1,0 +1,9 @@
+{
+  "home_title": "Deskohub",
+  "home_tagline": "Samoobslužný coworking na Palmovce v Praze.",
+  "home_smoke_link": "Spustit kontroly běhového prostředí",
+  "smoke_title": "Kontroly běhového prostředí",
+  "smoke_running": "Probíhají kontroly…",
+  "smoke_finished": "Kontroly dokončeny.",
+  "smoke_totals": "{passed} z {total} prošlo, {failed} selhalo"
+}
