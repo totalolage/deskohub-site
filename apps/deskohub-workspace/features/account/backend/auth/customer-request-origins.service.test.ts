@@ -24,11 +24,9 @@ const { CustomerRequestOrigins, CustomerRequestOriginsUnavailableError } =
   await import("./customer-request-origins.service");
 
 const isTrusted = (origin: string, layer = CustomerRequestOrigins.Default) =>
-  CustomerRequestOrigins.use((origins) => origins.isTrusted(origin)).pipe(
-    Effect.provide(layer),
-    Effect.result,
-    Effect.runPromise
-  );
+  Effect.flatMap(CustomerRequestOrigins, (origins) =>
+    origins.isTrusted(origin)
+  ).pipe(Effect.provide(layer), Effect.result, Effect.runPromise);
 
 describe("CustomerRequestOrigins", () => {
   test("trusts the allowed hosts and trusted origins Better Auth trusts", async () => {
