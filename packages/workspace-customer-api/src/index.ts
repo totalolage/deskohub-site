@@ -60,6 +60,7 @@ export {
   CustomerCheckoutDiscountCodeResult,
   CustomerCheckoutNotFound,
   CustomerCheckoutPaymentDisabled,
+  CustomerCheckoutReturnTarget,
   CustomerCheckoutStart,
   CustomerCheckoutSubmission,
   CustomerCheckoutUnavailable,
