@@ -9,6 +9,13 @@ import type { ConfigContext, ExpoConfig } from "expo/config";
 // This file imports no local modules: Expo transpiles only app.config.ts
 // itself, and Node versions without type stripping can't load a TypeScript
 // import from it.
+//
+// The update manifest lives on the Workspace the app talks to, so
+// `EXPO_PUBLIC_API_ORIGIN` points a build's updates at a preview too.
+// `updatesManifestUrl` repeats the origin rules of `src/auth/api-origin.ts`
+// for that reason; app.config.test.ts keeps the two in step. The manifest URL
+// feeds the fingerprint runtime version, so publish an update with the same
+// `EXPO_PUBLIC_API_ORIGIN` the build used.
 
 export type AppVersion = {
   readonly major: number;
@@ -56,6 +63,24 @@ export const androidVersionCode = (version: string | undefined): number => {
   return code;
 };
 
+const productionApiOrigin = "https://workspace.deskohub.cz";
+const plainHttpHosts = new Set(["localhost", "127.0.0.1", "10.0.2.2"]);
+
+export const updatesManifestUrl = (configured: string | undefined): string => {
+  const candidate = configured?.trim() || productionApiOrigin;
+  const url = URL.parse(candidate);
+  const allowed =
+    url !== null &&
+    (url.protocol === "https:" ||
+      (url.protocol === "http:" && plainHttpHosts.has(url.hostname)));
+  if (!allowed) {
+    throw new Error(
+      `EXPO_PUBLIC_API_ORIGIN must be an absolute https URL (plain http only for a local host), got ${JSON.stringify(candidate)}.`
+    );
+  }
+  return `${url.origin}/api/mobile/updates/manifest`;
+};
+
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: config.name ?? "Deskohub",
@@ -63,5 +88,17 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   android: {
     ...config.android,
     versionCode: androidVersionCode(config.version),
+  },
+  // Updates apply only in release builds; debug and dev-client builds load
+  // JS from Metro. The app checks on launch and foreground itself
+  // (src/updates), so the native launch check runs only to recover from a
+  // crashing update, and launch never waits for the network.
+  updates: {
+    enabled: true,
+    url: updatesManifestUrl(process.env.EXPO_PUBLIC_API_ORIGIN),
+    checkAutomatically: "ON_ERROR_RECOVERY",
+    fallbackToCacheTimeout: 0,
+    codeSigningCertificate: "./code-signing/code-signing-certificate.pem",
+    codeSigningMetadata: { keyid: "main", alg: "rsa-v1_5-sha256" },
   },
 });
