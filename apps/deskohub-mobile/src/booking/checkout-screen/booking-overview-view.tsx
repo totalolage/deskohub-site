@@ -24,14 +24,24 @@ const dateRow = (date: string, locale: CustomerLocale): Row => ({
   value: formatPragueDate(date, locale),
 });
 
-const timeText = (time: MeetingRoomTime, locale: CustomerLocale) =>
-  time._tag === "WholeDay"
-    ? m.booking_checkout_overview_whole_day({}, { locale })
-    : range(
-        formatPragueTime(time.start, locale),
-        formatPragueTime(time.end, locale),
-        locale
-      );
+const timeText = (time: MeetingRoomTime, locale: CustomerLocale) => {
+  if (time._tag === "WholeDay") {
+    return m.booking_checkout_overview_whole_day({}, { locale });
+  }
+  const end = formatPragueTime(time.end, locale);
+  return range(
+    formatPragueTime(time.start, locale),
+    Option.match(time.endDate, {
+      onNone: () => end,
+      onSome: (date) =>
+        m.booking_checkout_overview_day_time(
+          { date: formatPragueDate(date, locale), time: end },
+          { locale }
+        ),
+    }),
+    locale
+  );
+};
 
 const overviewRows = (
   overview: Overview,
@@ -90,7 +100,12 @@ export function BookingOverviewView({
         {productLabel(selection, locale)}
       </Text>
       {overviewRows(overview, locale).map((row) => (
-        <View key={row.label} style={styles.row}>
+        <View
+          key={row.label}
+          accessible
+          aria-label={`${row.label}: ${row.value}`}
+          style={styles.row}
+        >
           <Text style={styles.label}>{row.label}</Text>
           <Text style={styles.value}>{row.value}</Text>
         </View>

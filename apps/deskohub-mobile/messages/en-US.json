@@ -57,6 +57,7 @@
   "booking_checkout_overview_seats": "Office seats",
   "booking_checkout_overview_range": "{start} – {end}",
   "booking_checkout_overview_whole_day": "Whole day",
+  "booking_checkout_overview_day_time": "{date}, {time}",
   "booking_checkout_overview_early_setup": "Early setup: the room opens for you 15 minutes before your start.",
   "booking_checkout_code_label": "Discount, voucher, or referral code",
   "booking_checkout_code_apply": "Apply code",

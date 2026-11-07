@@ -43,7 +43,11 @@ describe("bookingOverviewOf", () => {
       BookingOverview.MeetingRoom({
         date: "2026-11-20",
         time: Option.some(
-          MeetingRoomTime.Hours({ start: "09:00", end: "13:00" })
+          MeetingRoomTime.Hours({
+            start: "09:00",
+            end: "13:00",
+            endDate: Option.none(),
+          })
         ),
         earlySetup: false,
       })
@@ -52,8 +56,48 @@ describe("bookingOverviewOf", () => {
       bookingOverviewOf(meetingRoom("hour:1", Option.some("17:00")), false)
     ).toMatchObject({
       time: Option.some(
-        MeetingRoomTime.Hours({ start: "17:00", end: "18:00" })
+        MeetingRoomTime.Hours({
+          start: "17:00",
+          end: "18:00",
+          endDate: Option.none(),
+        })
       ),
+    });
+  });
+
+  test("an hourly meeting room ends after its elapsed hours across DST", () => {
+    const at = (
+      date: string,
+      startTime: string,
+      duration: "hour:1" | "hour:4"
+    ) =>
+      bookingOverviewOf(
+        { family: "meeting-room", date, duration, startTime },
+        false
+      );
+    // Spring: 01:00 plus one hour is 03:00, as 02:00 is skipped.
+    expect(at("2027-03-28", "01:00", "hour:1")).toMatchObject({
+      time: Option.some({ start: "01:00", end: "03:00" }),
+    });
+    // Autumn: 01:00 plus four hours is 04:00, as 02:00 to 03:00 repeats.
+    expect(at("2026-10-25", "01:00", "hour:4")).toMatchObject({
+      time: Option.some({ start: "01:00", end: "04:00" }),
+    });
+  });
+
+  test("a meeting room ending after midnight names the end's date", () => {
+    expect(
+      bookingOverviewOf(
+        {
+          family: "meeting-room",
+          date: "2026-11-20",
+          duration: "hour:4",
+          startTime: "22:00",
+        },
+        false
+      )
+    ).toMatchObject({
+      time: Option.some({ end: "02:00", endDate: Option.some("2026-11-21") }),
     });
   });
 

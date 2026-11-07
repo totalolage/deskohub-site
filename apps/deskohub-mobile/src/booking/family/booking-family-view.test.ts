@@ -214,6 +214,16 @@ describe("quoteFailureRepeats", () => {
     ).toBe(false);
   });
 
+  test("different failures worded alike repeat, as the screen shows words", () => {
+    expect(
+      quoteFailureRepeats(
+        Option.some(failed(CustomerViewError.Unavailable())),
+        [failed(CustomerViewError.Unexpected())],
+        () => "same sentence"
+      )
+    ).toBe(true);
+  });
+
   test("nothing repeats while the supporting reads or the quote succeed", () => {
     expect(
       quoteFailureRepeats(Option.some(rateLimited), [loaded], sentence)

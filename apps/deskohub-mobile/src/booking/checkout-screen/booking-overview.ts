@@ -1,11 +1,20 @@
 import type { CustomerBookingSelection } from "@deskohub/workspace-customer-api";
 import { Data, Option } from "effect";
-import type { PragueDate } from "../selection/prague-date";
+import {
+  type PragueDate,
+  pragueDateTimeAt,
+  pragueInstant,
+} from "../selection/prague-date";
 
 /** A meeting room's booked time: the whole day, or Prague HH:mm start to end. */
 export type MeetingRoomTime = Data.TaggedEnum<{
   WholeDay: Record<never, never>;
-  Hours: { readonly start: string; readonly end: string };
+  Hours: {
+    readonly start: string;
+    readonly end: string;
+    /** The end's date when it falls after the booked date. */
+    readonly endDate: Option.Option<PragueDate>;
+  };
 }>;
 export const MeetingRoomTime = Data.taggedEnum<MeetingRoomTime>();
 
@@ -31,26 +40,38 @@ export type BookingOverview = Data.TaggedEnum<{
 }>;
 export const BookingOverview = Data.taggedEnum<BookingOverview>();
 
-const minutesPerDay = 24 * 60;
+const millisecondsPerHour = 60 * 60 * 1000;
 const pad = (value: number) => String(value).padStart(2, "0");
 
-/** HH:mm `hours` after `time`, on a 24-hour clock. */
-const addHours = (time: string, hours: number) => {
-  const [hour = 0, minute = 0] = time.split(":").map(Number);
-  const minutes = (hour * 60 + minute + hours * 60) % minutesPerDay;
-  return `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
+/**
+ * An hourly booking's time: it ends its duration of elapsed hours after the
+ * Prague start, as the server books it, so across a daylight-saving change
+ * the wall clock moves by an hour more or less.
+ */
+const hoursOf = (
+  date: PragueDate,
+  startTime: string,
+  hours: number
+): MeetingRoomTime => {
+  const [hour = 0, minute = 0] = startTime.split(":").map(Number);
+  const start = pragueInstant({ date, hour, minute });
+  const end = pragueDateTimeAt(
+    new Date(start.getTime() + hours * millisecondsPerHour)
+  );
+  return MeetingRoomTime.Hours({
+    start: startTime,
+    end: `${pad(end.hour)}:${pad(end.minute)}`,
+    endDate: end.date === date ? Option.none() : Option.some(end.date),
+  });
 };
 
 const meetingRoomTime = (
   selection: CustomerBookingSelection
 ): Option.Option<MeetingRoomTime> => {
-  const { duration, startTime } = selection;
+  const { date, duration, startTime } = selection;
   if (duration === "day:1") return Option.some(MeetingRoomTime.WholeDay());
   if (startTime === undefined) return Option.none();
-  const hours = duration === "hour:4" ? 4 : 1;
-  return Option.some(
-    MeetingRoomTime.Hours({ start: startTime, end: addHours(startTime, hours) })
-  );
+  return Option.some(hoursOf(date, startTime, duration === "hour:4" ? 4 : 1));
 };
 
 /** The booked selection's dates, times and seats; early setup is checkout's. */

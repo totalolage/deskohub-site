@@ -99,9 +99,12 @@ export const addMonths = (date: PragueDate, months: number): PragueDate => {
 export const daysBetween = (from: PragueDate, to: PragueDate): number =>
   Math.round((utcDayOf(to).getTime() - utcDayOf(from).getTime()) / 86_400_000);
 
-/** The instant Prague's `date` begins. */
-export const pragueMidnight = (date: PragueDate): Date => {
-  const wallClock = utcDayOf(date).getTime();
+/**
+ * The instant Prague's wall clock shows `dateTime`. A time the spring change
+ * skips resolves to an instant an hour off.
+ */
+export const pragueInstant = ({ date, hour, minute }: PragueDateTime): Date => {
+  const wallClock = utcDayOf(date).getTime() + (hour * 60 + minute) * 60_000;
   const offsetAt = (instant: number) => {
     const local = pragueDateTimeAt(new Date(instant));
     const { year, month, day } = dateParts(local.date);
@@ -110,11 +113,15 @@ export const pragueMidnight = (date: PragueDate): Date => {
       Math.floor(instant / 60_000) * 60_000
     );
   };
-  // Prague changes its offset at 02:00 or 03:00, never at midnight, so two
-  // rounds settle on the offset in force when the day begins.
+  // Prague changes its offset at most once a day, so two rounds settle on the
+  // offset in force at that wall-clock time.
   const firstGuess = wallClock - offsetAt(wallClock);
   return new Date(wallClock - offsetAt(firstGuess));
 };
+
+/** The instant Prague's `date` begins. */
+export const pragueMidnight = (date: PragueDate): Date =>
+  pragueInstant({ date, hour: 0, minute: 0 });
 
 /**
  * Elapsed hours from the start of Prague's `from` to the start of Prague's
