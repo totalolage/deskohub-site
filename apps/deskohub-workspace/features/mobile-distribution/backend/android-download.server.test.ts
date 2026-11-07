@@ -1,6 +1,6 @@
 import "@/shared/testing/workspace-test-env";
 
-import { afterAll, expect, mock, test } from "bun:test";
+import { afterAll, expect, mock, spyOn, test } from "bun:test";
 import { Effect, Logger, Option } from "effect";
 import type {
   AndroidRelease,
@@ -68,14 +68,29 @@ test("has nothing to offer before the first release", async () => {
   });
 });
 
-test("turns a failed lookup into the fallback state", async () => {
+// The page runs this outside any cache scope, where a prerender fails on a
+// read of the current time, and Effect stamps every log line with
+// `Date.now()`. The shared lookup logs its failure inside its cache scope.
+test("turns a failed lookup into the fallback state without reading the current time", async () => {
   lookup = Effect.fail(
     new releaseModule.MobileReleaseLookupError({
       cause: new Error("GitHub unavailable"),
     })
   );
+  const logged: unknown[] = [];
+  const download = loadAndroidDownload.pipe(
+    Effect.provide(
+      Logger.layer([Logger.make(({ message }) => logged.push(message))])
+    )
+  );
+  const now = spyOn(Date, "now").mockImplementation(() => {
+    throw new Error("The current time was read during a prerender.");
+  });
 
-  const download = loadAndroidDownload.pipe(Effect.provide(Logger.layer([])));
-
-  expect(await Effect.runPromise(download)).toEqual({ kind: "unavailable" });
+  try {
+    expect(await Effect.runPromise(download)).toEqual({ kind: "unavailable" });
+  } finally {
+    now.mockRestore();
+  }
+  expect(logged).toEqual([]);
 });

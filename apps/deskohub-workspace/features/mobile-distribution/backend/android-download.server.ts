@@ -8,6 +8,11 @@ import type { AndroidDownload } from "../android-download";
 /**
  * What the `/android` page offers. A failed lookup becomes the `unavailable`
  * state, so the page and its Markdown still render without GitHub.
+ *
+ * The failure is not logged here: the page runs this outside any cache
+ * scope, where a prerender fails on a read of the current time, and every
+ * Effect log line reads it. The shared lookup logs the failure inside its
+ * cache scope instead.
  */
 export const loadAndroidDownload: Effect.Effect<AndroidDownload> =
   Effect.suspend(() => loadLatestAndroidRelease()).pipe(
@@ -17,10 +22,10 @@ export const loadAndroidDownload: Effect.Effect<AndroidDownload> =
         onSome: (release): AndroidDownload => ({ kind: "release", release }),
       })
     ),
-    Effect.catchTag("MobileReleaseLookupError", (error) =>
-      Effect.logWarning("Android release lookup failed", { error }).pipe(
-        Effect.as<AndroidDownload>({ kind: "unavailable" })
-      )
+    Effect.catchTag(
+      "MobileReleaseLookupError",
+      (): Effect.Effect<AndroidDownload> =>
+        Effect.succeed({ kind: "unavailable" })
     ),
     Effect.withSpan("MobileDistribution.loadAndroidDownload")
   );
