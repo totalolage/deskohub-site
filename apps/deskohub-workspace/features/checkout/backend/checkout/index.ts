@@ -16,6 +16,7 @@ export {
   type IssuedPayState,
   issueFreshPayState,
   issuePayStateContinuation,
+  PayStateIssueError,
 } from "./checkout-pay-url";
 export { CheckoutPricingService } from "./checkout-pricing.service";
 export { CheckoutReferralService } from "./checkout-referral.service";
