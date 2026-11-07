@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   Modal,
   Pressable,
@@ -27,6 +28,7 @@ export function ConfirmDialog({
   destructive = false,
   busy = false,
   busyMessage,
+  children,
 }: {
   readonly visible: boolean;
   readonly title: string;
@@ -38,6 +40,8 @@ export function ConfirmDialog({
   readonly destructive?: boolean;
   readonly busy?: boolean;
   readonly busyMessage?: string;
+  /** Content between the body and the actions, such as a field or the last attempt's failure. */
+  readonly children?: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
   const dismiss = () => {
@@ -80,6 +84,7 @@ export function ConfirmDialog({
               {title}
             </Text>
             <Text style={styles.body}>{body}</Text>
+            {children}
           </ScrollView>
           <LiveMessage role="status" message={busy ? busyMessage : undefined} />
           <View style={styles.actions}>
