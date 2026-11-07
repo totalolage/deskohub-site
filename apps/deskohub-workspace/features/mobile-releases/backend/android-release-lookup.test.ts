@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit, Option } from "effect";
+import { Effect, Exit, Fiber, Option } from "effect";
+import { TestClock } from "effect/testing";
 import { FetchHttpClient } from "effect/unstable/http";
 import {
   androidReleaseNotes,
@@ -100,7 +101,17 @@ describe("findLatestAndroidRelease", () => {
     expect(api.requests).toHaveLength(1);
   });
 
-  test("gives up after the three highest tags", async () => {
+  test("finds no release when no mobile tag has a usable one", async () => {
+    const api = fakeGitHubApi({
+      "/git/matching-refs/tags/mobile-v": () =>
+        refs("mobile-v1.0.0", "mobile-v1.1.0", "mobile-v1.2.0"),
+    });
+
+    expect(await lookUp(api)).toEqual(Exit.succeed(Option.none()));
+    expect(api.requests).toHaveLength(4);
+  });
+
+  test("fails, rather than finding nothing, when the three highest tags have no usable release", async () => {
     const api = fakeGitHubApi({
       "/git/matching-refs/tags/mobile-v": () =>
         refs(
@@ -109,15 +120,54 @@ describe("findLatestAndroidRelease", () => {
           "mobile-v1.2.0",
           "mobile-v1.3.0"
         ),
+      "/releases/tags/mobile-v1.0.0": () =>
+        Response.json(githubMobileRelease("1.0.0")),
     });
 
-    expect(await lookUp(api)).toEqual(Exit.succeed(Option.none()));
+    expectLookupFailure(await lookUp(api));
     expect(api.requests.map(({ path }) => path.split("/").at(-1))).toEqual([
       "mobile-v",
       "mobile-v1.3.0",
       "mobile-v1.2.0",
       "mobile-v1.1.0",
     ]);
+  });
+
+  test("skips a tag whose version semver can't read", async () => {
+    const api = fakeGitHubApi({
+      "/git/matching-refs/tags/mobile-v": () =>
+        refs("mobile-v9007199254740992.0.0", "mobile-v1.0.0"),
+      "/releases/tags/mobile-v1.0.0": () =>
+        Response.json(githubMobileRelease("1.0.0")),
+    });
+
+    expect(await lookUp(api)).toEqual(
+      Exit.succeed(
+        Option.some(expect.objectContaining({ versionName: "1.0.0" }))
+      )
+    );
+  });
+
+  test("times out a response whose body never arrives", async () => {
+    const api = fakeGitHubApi({
+      "/git/matching-refs/tags/mobile-v": () =>
+        new Response(new ReadableStream({ start: () => undefined }), {
+          headers: { "content-type": "application/json" },
+        }),
+    });
+
+    const exit = await Effect.gen(function* () {
+      const lookup = yield* findLatestAndroidRelease().pipe(
+        Effect.provide(FetchHttpClient.layer),
+        Effect.provideService(FetchHttpClient.Fetch, api.fetch),
+        Effect.forkChild
+      );
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("5 seconds");
+      return yield* Fiber.await(lookup);
+    }).pipe(Effect.provide(TestClock.layer()), Effect.runPromise);
+
+    expectLookupFailure(exit);
   });
 
   test("fails when GitHub can't list the tags", async () => {

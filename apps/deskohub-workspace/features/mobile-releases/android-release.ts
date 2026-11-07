@@ -1,5 +1,5 @@
 import { Array as Arr, Option, Order, Schema } from "effect";
-import { compare } from "semver";
+import { compare, valid } from "semver";
 import { RELEASE_CERTIFICATE_SHA256 } from "./android-app";
 
 /** The APK a published mobile release offers Android users. */
@@ -46,7 +46,10 @@ const mobileReleaseTagPattern =
 
 /** The version a mobile release tag names, if the tag is one. */
 export const mobileReleaseVersion = (tag: string): Option.Option<string> =>
-  Option.fromNullishOr(mobileReleaseTagPattern.exec(tag)?.[1]);
+  Option.fromNullishOr(mobileReleaseTagPattern.exec(tag)?.[1]).pipe(
+    // semver can't compare a part above Number.MAX_SAFE_INTEGER.
+    Option.filter((version) => valid(version) !== null)
+  );
 
 /** Orders version names by semantic version, so 1.10.0 follows 1.9.0. */
 export const mobileReleaseVersionOrder: Order.Order<string> = compare;

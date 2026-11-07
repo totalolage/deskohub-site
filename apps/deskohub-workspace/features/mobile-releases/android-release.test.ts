@@ -48,6 +48,7 @@ describe("selectLatestAndroidRelease", () => {
       "mobile-v1.2",
       "mobile-v1.2.3-beta.1",
       "mobile-v01.2.3",
+      "mobile-v9007199254740992.0.0",
       "mobile-1.2.3",
     ]) {
       expect(

@@ -33,13 +33,15 @@ const repositoryApiUrl =
   "https://api.github.com/repos/totalolage/deskohub-site";
 
 /**
- * How many of the highest mobile tags are looked up before concluding none
- * has a usable release. A tag can lack one while its release is still a
- * draft or after its workflow failed; more than a few such tags in a row
- * means something to fix, not to search past.
+ * How many of the highest mobile tags are looked up. A tag can lack a usable
+ * release while its release is still a draft or after its workflow failed;
+ * more than a few such tags in a row means something to fix. Past the limit
+ * the lookup fails rather than report no release, since an older tag might
+ * still have one.
  */
 const candidateTagLimit = 3;
 
+/** Bounds each request, its response body included. */
 const requestTimeout = "5 seconds";
 
 const TagRefs = Schema.Array(Schema.Struct({ ref: Schema.String }));
@@ -62,36 +64,45 @@ export const findLatestAndroidRelease = Effect.fn(
         "user-agent": "deskohub-workspace",
         "x-github-api-version": "2026-03-10",
       })
-    ),
-    HttpClient.transformResponse(Effect.timeout(requestTimeout))
+    )
   );
 
   const tagRefs = yield* github
     .get(`${repositoryApiUrl}/git/matching-refs/tags/mobile-v`)
     .pipe(
       Effect.flatMap(HttpClientResponse.filterStatusOk),
-      Effect.flatMap(HttpClientResponse.schemaBodyJson(TagRefs))
+      Effect.flatMap(HttpClientResponse.schemaBodyJson(TagRefs)),
+      Effect.timeout(requestTimeout)
     );
-  const candidateVersions = Arr.sort(
+  const versions = Arr.sort(
     tagRefs.flatMap(({ ref }) =>
       Option.toArray(mobileReleaseVersion(ref.replace(/^refs\/tags\//, "")))
     ),
     Order.flip(mobileReleaseVersionOrder)
-  ).slice(0, candidateTagLimit);
+  );
 
-  return yield* Effect.findFirstFilter(candidateVersions, (version) =>
-    github.get(`${repositoryApiUrl}/releases/tags/mobile-v${version}`).pipe(
-      Effect.flatMap(readPublishedRelease),
-      Effect.map((release) =>
-        Result.fromOption(
-          Option.flatMap(release, (found) =>
-            selectLatestAndroidRelease([found])
-          ),
-          () => version
+  const latest = yield* Effect.findFirstFilter(
+    versions.slice(0, candidateTagLimit),
+    (version) =>
+      github.get(`${repositoryApiUrl}/releases/tags/mobile-v${version}`).pipe(
+        Effect.flatMap(readPublishedRelease),
+        Effect.timeout(requestTimeout),
+        Effect.map((release) =>
+          Result.fromOption(
+            Option.flatMap(release, (found) =>
+              selectLatestAndroidRelease([found])
+            ),
+            () => version
+          )
         )
       )
-    )
   );
+  if (Option.isNone(latest) && versions.length > candidateTagLimit) {
+    return yield* Effect.fail(
+      `None of the ${candidateTagLimit} highest mobile tags has a usable release.`
+    );
+  }
+  return latest;
 }, Effect.mapError(MobileReleaseLookupError.fromCause));
 
 // GitHub answers 404 for a tag whose release is missing or still a draft.
