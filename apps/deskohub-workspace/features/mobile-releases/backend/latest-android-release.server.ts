@@ -66,8 +66,9 @@ type LatestAndroidReleaseSnapshot =
 /**
  * Unauthenticated GitHub API requests are limited to 60 an hour per IP
  * address, and one lookup takes two to four. Sharing a result for ten
- * minutes keeps refreshes far below that, and serving it stale for a day
- * covers a GitHub outage.
+ * minutes keeps refreshes far below that. After that, the result is served
+ * while a refresh runs; a refresh that fails replaces it with the failure,
+ * so a GitHub outage shows as failed lookups, not as an old release.
  */
 const releaseLifetime = { stale: 300, revalidate: 600, expire: 86_400 };
 
