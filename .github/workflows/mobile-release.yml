@@ -33,6 +33,11 @@ jobs:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    # The release keystore lives only in the mobile-release environment, which
+    # GitHub opens to mobile-v* tag refs alone. Pull request dry runs get no
+    # environment (an empty name) and read the repository's EXPO_TOKEN; tag
+    # runs read the environment's EXPO_TOKEN, which takes precedence.
+    environment: ${{ github.event_name == 'push' && 'mobile-release' || '' }}
     outputs:
       apk-name: ${{ steps.metadata.outputs.apk-name }}
       version: ${{ steps.metadata.outputs.version }}
@@ -57,7 +62,7 @@ jobs:
         working-directory: apps/deskohub-mobile
         run: bun test scripts/release
 
-      # Fails before any secret is exposed when the tag doesn't match
+      # Fails before any step reads a secret when the tag doesn't match
       # expo.version or CHANGELOG.md has no section for it.
       - name: Read release metadata
         id: metadata
