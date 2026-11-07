@@ -6,7 +6,6 @@ import {
 import type { Locale } from "@/features/i18n";
 import {
   type BookingSelectionInput,
-  BookingSelectionRejected,
   resolveBookingQuoteSelection,
 } from "@/features/reservation/backend/booking-selection";
 import { AgentToolError } from "./agent-tool-error";
@@ -56,10 +55,13 @@ export const resolveQuoteSelection = ({
     locale,
     now,
   }).pipe(
-    Effect.mapError((error) =>
-      error instanceof BookingSelectionRejected
-        ? AgentToolError.rejectedSelection(error)
-        : AgentToolError.unavailable("quote_unavailable")(error)
+    Effect.catchTag(
+      "BookingSelectionRejected",
+      (rejected) => Effect.fail(AgentToolError.rejectedSelection(rejected)),
+      (lookupFailure) =>
+        Effect.fail(
+          AgentToolError.unavailable("quote_unavailable")(lookupFailure)
+        )
     )
   );
 
