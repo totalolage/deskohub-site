@@ -51,7 +51,9 @@ if (allowedHosts.kind === "invalid") {
   );
 }
 
-const passkeyRelyingParty = resolvePasskeyRelyingParty(hostEnvironment);
+const passkeyRelyingParty = resolvePasskeyRelyingParty(hostEnvironment, {
+  androidDebugCertificate: env.ANDROID_DEBUG_SIGNING_CERT_SHA256,
+});
 if (passkeyRelyingParty.kind === "invalid") {
   throw new Error(
     `Workspace account bootstrap failed: ${passkeyRelyingParty.message}`
@@ -78,6 +80,7 @@ export const auth = makeWorkspaceAuth({
   database: makeWorkspaceAuthDatabase(),
   secrets: secrets.secrets,
   allowedHosts: allowedHosts.hosts,
+  nativeAppLinkOrigin: `https://${workspaceSiteConstants.brand.domain}`,
   passkeyRelyingParty: passkeyRelyingParty.relyingParty,
   customerMcpResource,
   httpsOnly: env.VERCEL_ENV !== "development",

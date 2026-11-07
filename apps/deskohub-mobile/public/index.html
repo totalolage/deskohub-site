@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="%LANG_ISO_CODE%">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#00024f" />
+    <title>%WEB_TITLE%</title>
+    <!-- A manifest request omits cookies unless asked, so on a protected
+         Vercel preview it never carries the bypass cookie. Next's own
+         manifest link does the same there. -->
+    <link rel="manifest" href="/app/manifest.webmanifest" crossorigin="use-credentials" />
+    <link rel="apple-touch-icon" href="/app/icons/apple-touch-icon.png" />
+    <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
+    <style id="expo-reset">
+      /* These styles make the body full-height */
+      html,
+      body {
+        height: 100%;
+      }
+      /* These styles disable body scrolling if you are using <ScrollView> */
+      body {
+        overflow: hidden;
+      }
+      /* These styles make the root element full-height */
+      #root {
+        display: flex;
+        height: 100%;
+        flex: 1;
+      }
+    </style>
+    <script>
+      // Only the exported app under /app/ has the worker; `expo start` serves
+      // this template from the root.
+      if ("serviceWorker" in navigator && location.pathname.startsWith("/app/")) {
+        addEventListener("load", () => {
+          navigator.serviceWorker.register("/app/sw.js", { scope: "/app/" });
+        });
+      }
+    </script>
+  </head>
+
+  <body>
+    <noscript>Deskohub needs JavaScript.</noscript>
+    <div id="root"></div>
+  </body>
+</html>

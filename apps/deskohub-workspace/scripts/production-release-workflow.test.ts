@@ -66,6 +66,23 @@ describe("deploy-workspace-production workflow", () => {
     expect(buildIndex).toBeLessThan(promoteIndex);
   });
 
+  test("typechecks the Workspace on the runner because the Vercel build only builds", () => {
+    const workspaceTurbo = JSON.parse(
+      readFileSync(resolve(import.meta.dir, "../turbo.json"), "utf8")
+    ) as { tasks: Record<string, { dependsOn?: readonly string[] }> };
+    const typecheckStep = stepByName("Typecheck Workspace");
+
+    expect(workspaceTurbo.tasks["build:compile"]?.dependsOn).not.toContain(
+      "typecheck"
+    );
+    expect(typecheckStep.run).toBe(
+      "bun turbo typecheck --filter=deskohub-workspace"
+    );
+    expect(stepIndexOfName("Typecheck Workspace")).toBeLessThan(
+      stepIndexOfName("Build staged production deployment")
+    );
+  });
+
   test("probes staged auth readiness between migration and promotion", () => {
     const migrationIndex = stepIndexOfName("Migrate production database");
     const probeIndex = stepIndexOfName(

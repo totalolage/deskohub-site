@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   type CapturedMagicLink,
   callHandler,
+  callNativeHandler,
   cookieJar,
   getSessionCookie,
   HOST,
@@ -14,6 +15,8 @@ import {
   userIdForEmail,
   verifyMagicLink,
 } from "./auth-handler.test-utils";
+import { resolvePasskeyRelyingParty } from "./auth-hosts";
+import { androidApkKeyHashOrigin, nativeApp } from "./native-app";
 import {
   anonymousAaguid,
   googlePasswordManagerAaguid,
@@ -22,6 +25,13 @@ import {
 } from "./passkey-authenticator.test-utils";
 
 const ORIGIN = `https://${HOST}`;
+
+/** Sends one auth request as a browser (the default) or as the native app. */
+type AuthClient = (
+  auth: TestAuth,
+  path: string,
+  init?: RequestInit
+) => Promise<Response>;
 
 const newPasskey = (aaguid?: string) =>
   makeSoftwarePasskey({ rpID: HOST, origin: ORIGIN, aaguid });
@@ -68,8 +78,12 @@ const sessionCountOf = async (userId: string) =>
     )
   ).rowCount;
 
-const requestRegistrationOptions = (auth: TestAuth, cookie: string) =>
-  callHandler(auth, "/passkey/generate-register-options", {
+const requestRegistrationOptions = (
+  auth: TestAuth,
+  cookie: string,
+  client: AuthClient = callHandler
+) =>
+  client(auth, "/passkey/generate-register-options", {
     headers: { cookie, "x-vercel-forwarded-for": uniqueIp() },
   });
 
@@ -77,11 +91,14 @@ const registerPasskey = async (
   auth: TestAuth,
   cookie: string,
   authenticator: SoftwarePasskey,
-  body: { readonly name?: string } = {}
+  {
+    name,
+    client = callHandler,
+  }: { readonly name?: string; readonly client?: AuthClient } = {}
 ) => {
-  const options = await requestRegistrationOptions(auth, cookie);
+  const options = await requestRegistrationOptions(auth, cookie, client);
   expect(options.status).toBe(200);
-  return callHandler(auth, "/passkey/verify-registration", {
+  return client(auth, "/passkey/verify-registration", {
     method: "POST",
     headers: {
       cookie: cookieHeader(cookie, ...setCookies(options)),
@@ -89,14 +106,19 @@ const registerPasskey = async (
       "x-vercel-forwarded-for": uniqueIp(),
     },
     body: JSON.stringify({
-      ...body,
+      // `JSON.stringify` leaves an unnamed passkey's `name` out.
+      name,
       response: authenticator.register(await options.json()),
     }),
   });
 };
 
-const requestAuthenticationOptions = (auth: TestAuth, cookie?: string) =>
-  callHandler(auth, "/passkey/generate-authenticate-options", {
+const requestAuthenticationOptions = (
+  auth: TestAuth,
+  cookie?: string,
+  client: AuthClient = callHandler
+) =>
+  client(auth, "/passkey/generate-authenticate-options", {
     headers: {
       cookie: cookieHeader(cookie),
       "x-vercel-forwarded-for": uniqueIp(),
@@ -109,11 +131,18 @@ const assertPasskey = async (
   {
     cookie,
     userVerified,
-  }: { readonly cookie?: string; readonly userVerified?: boolean } = {}
+    origin,
+    client = callHandler,
+  }: {
+    readonly cookie?: string;
+    readonly userVerified?: boolean;
+    readonly origin?: string;
+    readonly client?: AuthClient;
+  } = {}
 ) => {
-  const options = await requestAuthenticationOptions(auth, cookie);
+  const options = await requestAuthenticationOptions(auth, cookie, client);
   expect(options.status).toBe(200);
-  return callHandler(auth, "/passkey/verify-authentication", {
+  return client(auth, "/passkey/verify-authentication", {
     method: "POST",
     headers: {
       cookie: cookieHeader(cookie, ...setCookies(options)),
@@ -123,13 +152,18 @@ const assertPasskey = async (
     body: JSON.stringify({
       response: authenticator.authenticate(await options.json(), {
         userVerified,
+        origin,
       }),
     }),
   });
 };
 
-const sessionUserId = async (auth: TestAuth, cookie: string) => {
-  const response = await callHandler(auth, "/get-session", {
+const sessionUserId = async (
+  auth: TestAuth,
+  cookie: string,
+  client: AuthClient = callHandler
+) => {
+  const response = await client(auth, "/get-session", {
     headers: { cookie },
   });
   const body = (await response.json()) as { user?: { id: string } } | null;
@@ -385,6 +419,136 @@ describe.skipIf(!testDatabase)(
         expect((await attempt()).status).not.toBe(429);
       }
       expect((await attempt()).status).toBe(429);
+    });
+  }
+);
+
+describe.skipIf(!testDatabase)(
+  "native app passkeys on the production relying party",
+  () => {
+    // The production relying party built from fixed values, with the test
+    // host as the customer-facing host so requests reach the instance.
+    const productionRelyingParty = (() => {
+      const result = resolvePasskeyRelyingParty({
+        vercelEnv: "production",
+        customerFacingHost: HOST,
+        projectProductionUrl: undefined,
+        deploymentUrl: undefined,
+        branchUrl: undefined,
+      });
+      if (result.kind === "invalid") throw new Error(result.message);
+      return result.relyingParty;
+    })();
+    const releaseAppOrigin = androidApkKeyHashOrigin(
+      nativeApp.androidReleaseCertificate
+    );
+    const otherKeyOrigin = androidApkKeyHashOrigin(
+      Array.from({ length: 32 }, () => "5A").join(":")
+    );
+    const makeProductionAuth = () =>
+      makeTestAuth({ passkeyRelyingParty: productionRelyingParty });
+    const appPasskey = (origin = releaseAppOrigin) =>
+      makeSoftwarePasskey({ rpID: HOST, origin });
+    const app = { client: callNativeHandler } as const;
+
+    test("registers and signs in with a passkey from the release-signed app", async () => {
+      const auth = makeProductionAuth();
+      const customer = await signInByEmail(auth, "native-passkey");
+      const authenticator = appPasskey();
+
+      expect(
+        (await registerPasskey(auth, customer.cookie, authenticator, app))
+          .status
+      ).toBe(200);
+      const signedIn = await assertPasskey(auth, authenticator, app);
+
+      expect(signedIn.status).toBe(200);
+      expect(
+        await sessionUserId(
+          auth,
+          cookieJar(getSessionCookie(signedIn)!),
+          callNativeHandler
+        )
+      ).toBe(customer.userId);
+    });
+
+    test("refuses passkey ceremonies from an app signed with another key", async () => {
+      const auth = makeProductionAuth();
+      const customer = await signInByEmail(auth, "native-passkey-other-key");
+
+      const registration = await registerPasskey(
+        auth,
+        customer.cookie,
+        appPasskey(otherKeyOrigin),
+        app
+      );
+      expect(registration.status).toBe(500);
+      expect(await passkeysOf(customer.userId)).toEqual([]);
+
+      const sitePasskey = newPasskey();
+      await registerPasskey(auth, customer.cookie, sitePasskey);
+      const assertion = await assertPasskey(auth, sitePasskey, {
+        ...app,
+        origin: otherKeyOrigin,
+      });
+      expect(assertion.status).toBe(400);
+      expect(getSessionCookie(assertion)).toBeUndefined();
+    });
+
+    test("keeps browser passkeys working beside the app", async () => {
+      const auth = makeProductionAuth();
+      const customer = await signInByEmail(auth, "native-passkey-browser");
+      const authenticator = newPasskey();
+
+      expect(
+        (await registerPasskey(auth, customer.cookie, authenticator)).status
+      ).toBe(200);
+      const signedIn = await assertPasskey(auth, authenticator);
+
+      expect(signedIn.status).toBe(200);
+      expect(
+        await sessionUserId(auth, cookieJar(getSessionCookie(signedIn)!))
+      ).toBe(customer.userId);
+    });
+
+    test("signs the app in with a passkey the site created", async () => {
+      const auth = makeProductionAuth();
+      const customer = await signInByEmail(auth, "native-passkey-shared");
+      const authenticator = newPasskey();
+      await registerPasskey(auth, customer.cookie, authenticator);
+
+      const signedIn = await assertPasskey(auth, authenticator, {
+        ...app,
+        origin: releaseAppOrigin,
+      });
+
+      expect(signedIn.status).toBe(200);
+      expect(
+        await sessionUserId(
+          auth,
+          cookieJar(getSessionCookie(signedIn)!),
+          callNativeHandler
+        )
+      ).toBe(customer.userId);
+    });
+
+    test("refuses native requests without a trusted app scheme", async () => {
+      const auth = makeProductionAuth();
+      const customer = await signInByEmail(auth, "native-passkey-scheme");
+
+      for (const expoOrigin of [null, "evil://"]) {
+        const registration = await registerPasskey(
+          auth,
+          customer.cookie,
+          appPasskey(),
+          {
+            client: (requestAuth, path, init) =>
+              callNativeHandler(requestAuth, path, init, expoOrigin),
+          }
+        );
+        expect(registration.status).toBe(403);
+      }
+      expect(await passkeysOf(customer.userId)).toEqual([]);
     });
   }
 );

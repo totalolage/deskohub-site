@@ -95,6 +95,7 @@ export {
 } from "./legal-evidence-events";
 export { manualInvoiceActors } from "./manual-invoice-actors";
 export { manualInvoiceCreationRequests } from "./manual-invoice-creation-requests";
+export { mobileUpdatePublications } from "./mobile-update-publications";
 export {
   type PaymentAttemptRow,
   type PaymentAttemptState,

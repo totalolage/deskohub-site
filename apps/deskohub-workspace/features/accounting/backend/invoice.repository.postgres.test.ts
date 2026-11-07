@@ -17,6 +17,7 @@ import {
   invoices,
   manualInvoiceActors,
   paymentAttempts,
+  workspaceReservations,
 } from "@/db/schema";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import {
@@ -485,6 +486,50 @@ describe.skipIf(!testDatabase)(
       expect(error).toMatchObject({ _tag: "InvoiceEligibilityError" });
       expect(await readCounters()).toEqual(before);
     });
+
+    test("finds a reservation's issued invoice by the reservation", async () => {
+      const fixture = await createPaidFixture();
+      const issued = await issue(fixture.paymentAttemptId);
+      // The invoice stays the reservation's after another attempt becomes its
+      // active one.
+      const laterAttemptId = await createAdditionalFailedAttempt(fixture);
+      await Effect.runPromise(
+        Effect.flatMap(WorkspaceDatabase, ({ db }) =>
+          db
+            .update(workspaceReservations)
+            .set({ activePaymentAttemptId: laterAttemptId })
+            .where(eq(workspaceReservations.id, fixture.reservationId))
+        ).pipe(Effect.provide(testDatabase!.layer))
+      );
+
+      const found = await runRepository((repository) =>
+        repository.findByReservationId(fixture.reservationId)
+      );
+
+      expect(found).toMatchObject({
+        id: issued.invoice.id,
+        invoiceNumber: issued.invoice.invoiceNumber,
+        workspaceReservationId: fixture.reservationId,
+        paymentAttemptId: fixture.paymentAttemptId,
+      });
+    });
+
+    test.each([
+      ["fulfilled but not invoiced", { fulfilled: true }],
+      ["paid but not fulfilled", { fulfilled: false }],
+      ["unpaid", { paid: false }],
+    ] as const)(
+      "finds no invoice for a reservation %s",
+      async (_label, options) => {
+        const fixture = await createPaidFixture(options);
+
+        const found = await runRepository((repository) =>
+          repository.findByReservationId(fixture.reservationId)
+        );
+
+        expect(found).toBeNull();
+      }
+    );
 
     test("refuses to number a failed attempt of a paid reservation", async () => {
       const fixture = await createPaidFixture();

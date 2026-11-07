@@ -6,6 +6,7 @@ export const GET = defineWorkspaceHttpApiRoute(
     operation: "workspaceAdminApi",
     cancellation: "interrupt-on-disconnect",
     caller: "client",
+    failureMessage: "The administration API request could not be completed.",
   },
   (request) => handleWorkspaceAdminApiRequest(request)
 );
@@ -15,6 +16,7 @@ const workspaceAdminApiMutationRoute = defineWorkspaceHttpApiRoute(
     operation: "workspaceAdminApi",
     cancellation: "continue-after-disconnect",
     caller: "client",
+    failureMessage: "The administration API request could not be completed.",
   },
   (request) => handleWorkspaceAdminApiRequest(request)
 );
