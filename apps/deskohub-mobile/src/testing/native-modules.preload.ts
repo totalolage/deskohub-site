@@ -7,11 +7,35 @@ import { createHash, randomBytes } from "node:crypto";
  * scheme, and crypto backed by Node's.
  */
 mock.module("react-native", () => ({
-  Platform: { OS: "android" },
+  // Host components stand in as their names, so a test can read the element
+  // tree a component returns without a native renderer.
+  ActivityIndicator: "ActivityIndicator",
+  Modal: "Modal",
+  Pressable: "Pressable",
+  ScrollView: "ScrollView",
+  Text: "Text",
+  TextInput: "TextInput",
+  View: "View",
+  StyleSheet: {
+    absoluteFill: {},
+    create: <Styles>(styles: Styles) => styles,
+    hairlineWidth: 1,
+  },
+  AccessibilityInfo: { announceForAccessibility: () => undefined },
+  Platform: {
+    OS: "android",
+    select: (options: Record<string, unknown>) =>
+      options.android ?? options.native ?? options.default,
+  },
   AppState: {
     currentState: "active",
     addEventListener: () => ({ remove: () => undefined }),
   },
+}));
+
+mock.module("react-native-safe-area-context", () => ({
+  SafeAreaView: "SafeAreaView",
+  useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
 
 mock.module("expo-constants", () => ({
