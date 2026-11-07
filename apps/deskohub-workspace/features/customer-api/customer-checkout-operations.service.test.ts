@@ -1,7 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { Cause, Context, Effect, Exit, Layer, Option } from "effect";
 import {
   sealSyntheticPayStateToken,
   syntheticChangedKeys,
@@ -9,7 +9,10 @@ import {
 } from "@/features/checkout/backend/checkout/signed-pay-state.test-utils";
 import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
-import { CustomerCheckoutOperations } from "./customer-checkout-operations.service";
+import {
+  CheckoutServicesUnavailable,
+  CustomerCheckoutOperations,
+} from "./customer-checkout-operations.service";
 import { CustomerReferralUpdates } from "./customer-referral-updates";
 
 /**
@@ -72,5 +75,41 @@ describe("CustomerCheckoutOperations.Default", () => {
     );
 
     expect(state.orderId).toBe(syntheticPayStateOrderId);
+  });
+});
+
+class Probe extends Context.Service<Probe, { readonly ok: true }>()("Probe") {}
+
+const buildExit = <E>(layer: Layer.Layer<Probe, E>) =>
+  Effect.runPromiseExit(
+    Effect.flatMap(Probe, () => Effect.void).pipe(
+      Effect.provide(CheckoutServicesUnavailable.whenUnbuilt(layer))
+    )
+  );
+
+const failureOf = <A, E>(exit: Exit.Exit<A, E>) =>
+  Exit.isFailure(exit)
+    ? Option.getOrUndefined(Cause.findErrorOption(exit.cause))
+    : undefined;
+
+describe("CheckoutServicesUnavailable.whenUnbuilt", () => {
+  test("answers a Layer that fails to build as unavailable", async () => {
+    const exit = await buildExit(
+      Layer.effect(Probe, Effect.fail("missing config"))
+    );
+
+    expect(failureOf(exit)).toBeInstanceOf(CheckoutServicesUnavailable);
+  });
+
+  test("answers a Layer whose construction dies as unavailable", async () => {
+    const exit = await buildExit(Layer.effect(Probe, Effect.die("boom")));
+
+    expect(failureOf(exit)).toBeInstanceOf(CheckoutServicesUnavailable);
+  });
+
+  test("lets an interrupted construction stay interrupted", async () => {
+    const exit = await buildExit(Layer.effect(Probe, Effect.interrupt));
+
+    expect(Exit.hasInterrupts(exit)).toBe(true);
   });
 });

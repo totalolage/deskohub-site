@@ -1,4 +1,4 @@
-import { Cause, Context, Data, Effect, Layer } from "effect";
+import { Context, Data, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   CustomerAccountContactService,
@@ -21,6 +21,10 @@ import { prepareWorkspacePayState } from "@/features/reservation/actions/prepare
 import { payStatePreparationServicesWith } from "@/features/reservation/backend/pay-state-preparation-services";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { SealedStateKeys } from "@/shared/backend/sealed-state-keys.service";
+import {
+  failuresAsDefects,
+  isRecoverableCause,
+} from "@/shared/backend/workspace-effect";
 import { CustomerReferralUpdates } from "./customer-referral-updates";
 
 /** An operation's Effect without its requirements, which the service provides. */
@@ -43,17 +47,18 @@ export class CheckoutServicesUnavailable extends Data.TaggedError(
   "CheckoutServicesUnavailable"
 )<{ readonly cause: unknown }> {
   /** `layer`, failing to build as unavailable. */
+  /**
+   * `layer`, failing to build as unavailable, defects included; interruption
+   * and Next.js control flow propagate.
+   */
   static whenUnbuilt = <A, E, R>(
     layer: Layer.Layer<A, E, R>
   ): Layer.Layer<A, CheckoutServicesUnavailable, R> =>
     Layer.catchCause(layer, (cause) =>
       Layer.unwrap(
-        Effect.failCause(
-          Cause.map(
-            cause,
-            (error) => new CheckoutServicesUnavailable({ cause: error })
-          )
-        )
+        isRecoverableCause(cause)
+          ? Effect.fail(new CheckoutServicesUnavailable({ cause }))
+          : Effect.failCause(failuresAsDefects(cause))
       )
     );
 }

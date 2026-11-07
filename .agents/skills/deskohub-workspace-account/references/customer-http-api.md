@@ -151,7 +151,9 @@ cookie and the handler reports it: `rememberReferralCode` after an accepted
 referral code while the referral release is open, and
 `rememberedReferralCodeUsed` once a paid booking settles the referral. The
 client stores or drops the code accordingly. `referralApplied` means the
-signed price includes the invited customer's benefit.
+signed price includes the invited customer's benefit; only `createCheckout`
+reports it, from the hold's own check (later steps answer an accepted
+referral code as `discountCode: "referral_accepted"`).
 
 Bot protection: the site's booking actions call BotID, which needs the
 browser's JavaScript challenge; a native client can't run it, so these
@@ -170,7 +172,9 @@ layers) and its `CustomerReferralUpdates`, so the selection, the shared
 operation and the referral record share one decision per gate; preparation
 receives the gates through `payStatePreparationServicesWith`. Each operation
 builds its own services when it runs: acceptance builds only the sealing
-keys, and services that can't be built answer 503. Mutations keep their site
+keys, and services that can't be built answer 503. A checkout state the
+server fails to seal or sign also answers 503, never `expired`: only the
+client's own token can expire. Mutations keep their site
 actions' deadlines (`getPreparePayStateDeadline`,
 `getApplyDiscountCodeDeadline`, `getCheckoutSubmitDeadline`); one that runs
 out answers 503. Handler tests fake `CustomerCheckoutOperations` and

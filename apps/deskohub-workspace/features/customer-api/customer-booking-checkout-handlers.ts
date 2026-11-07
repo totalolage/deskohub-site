@@ -136,23 +136,23 @@ export const handleCustomerBookingCheckout = <R>(
     return handlers
       .handle("createCheckout", ({ payload, headers }) =>
         createCheckout(payload).pipe(
+          Effect.provide(
+            forRequest(headers[customerReferralCodeHeader], Layer.empty)
+          ),
           withDeadline(
             "customerApi.createCheckout",
             getPreparePayStateDeadline(env.VERCEL_ENV)
-          ),
-          Effect.provide(
-            forRequest(headers[customerReferralCodeHeader], Layer.empty)
           )
         )
       )
       .handle("applyCheckoutDiscountCode", ({ payload, headers }) =>
         applyDiscountCode(payload).pipe(
+          Effect.provide(
+            forRequest(headers[customerReferralCodeHeader], Layer.empty)
+          ),
           withDeadline(
             "customerApi.applyCheckoutDiscountCode",
             getApplyDiscountCodeDeadline(env.VERCEL_ENV)
-          ),
-          Effect.provide(
-            forRequest(headers[customerReferralCodeHeader], Layer.empty)
           )
         )
       )
@@ -163,10 +163,6 @@ export const handleCustomerBookingCheckout = <R>(
       )
       .handle("submitCheckout", ({ payload, headers }) =>
         submitCheckout(payload).pipe(
-          withDeadline(
-            "customerApi.submitCheckout",
-            getCheckoutSubmitDeadline(env.VERCEL_ENV)
-          ),
           Effect.provide(
             forRequest(
               headers[customerReferralCodeHeader],
@@ -176,6 +172,10 @@ export const handleCustomerBookingCheckout = <R>(
           Effect.catchTag(
             "CheckoutServicesUnavailable",
             retryable("customerApi.submitCheckout")
+          ),
+          withDeadline(
+            "customerApi.submitCheckout",
+            getCheckoutSubmitDeadline(env.VERCEL_ENV)
           )
         )
       );
@@ -292,10 +292,10 @@ const answerPreparationFailure =
           Effect.fail(accessFailure).pipe(answerCustomerApiFailure(operation)),
         AdvertisedPriceMismatchError: () =>
           Effect.fail(new CustomerQuoteExpired()),
+        // Preparation seals the checkout it starts; the client sent no
+        // checkout token, so this is the server's failure.
         PayStateTokenError: (tokenFailure) =>
-          isSealingConfigurationFailure(tokenFailure)
-            ? unavailable(operation, tokenFailure)
-            : Effect.fail(new CustomerQuoteExpired()),
+          unavailable(operation, tokenFailure),
         CheckoutAttemptUnavailableError: () =>
           Effect.fail(
             new CustomerSelectionUnavailable({ reason: "checkout_conflict" })

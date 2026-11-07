@@ -375,6 +375,15 @@ describe("createCheckout", () => {
       { _tag: "CustomerServiceUnavailable" },
     ],
     [
+      "a checkout state the server can't seal",
+      () =>
+        Effect.fail(
+          new PayStateTokenError({ code: "invalid-token", message: "invalid" })
+        ),
+      503,
+      { _tag: "CustomerServiceUnavailable" },
+    ],
+    [
       "a discount provider failure",
       () =>
         Effect.fail(new DiscountProviderError({ message: "provider down" })),
@@ -1140,6 +1149,22 @@ describe("submitCheckout", () => {
       expect(await response.json()).toEqual(body);
     }
   );
+
+  test("answers a checkout service that can't be built as unavailable", async () => {
+    const api = makeCustomerApiTestServer({
+      bookingCheckout: {
+        operations: operationsWith(),
+        checkout: Layer.effect(CheckoutService, Effect.die("no Nexi config")),
+      },
+    });
+
+    const response = await api.handle(customerApiRequest(submit()));
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      _tag: "CustomerServiceUnavailable",
+    });
+  });
 
   test("answers another account's checkout as not found, without submitting", async () => {
     const checkout = checkoutAnswering(() => Effect.die("not submitted"));
