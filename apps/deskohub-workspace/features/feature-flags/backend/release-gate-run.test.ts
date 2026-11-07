@@ -12,7 +12,8 @@ import {
 
 type LogRecord = {
   readonly level: string;
-  readonly message: unknown;
+  /** What the log carries beside its message, where a cause would leak. */
+  readonly details: readonly unknown[];
   readonly annotations: Context.Service.Shape<
     typeof References.CurrentLogAnnotations
   >;
@@ -27,7 +28,7 @@ const recordLogs = <A, E>(effect: Effect.Effect<A, E>) => {
           Logger.make((options) => {
             logs.push({
               level: options.logLevel,
-              message: options.message[0],
+              details: options.message.slice(1),
               annotations: options.fiber.getRef(
                 References.CurrentLogAnnotations
               ),
@@ -49,7 +50,7 @@ const unavailable = (cause?: unknown) =>
 
 const unavailableLog = {
   level: "Warn",
-  message: "Release gate unavailable; it stays closed",
+  details: [],
   annotations: {
     releaseGateFlags: ["webmcp_site_tools"],
     releaseGateReason: "evaluation_failed",
@@ -157,7 +158,7 @@ describe("releaseGateForRun", () => {
     expect(decision.logs).toEqual([
       {
         level: "Warn",
-        message: "Release gate run failed; it stays closed",
+        details: [],
         annotations: { failureCode: "test_feature_flag_unavailable" },
       },
     ]);
