@@ -20,7 +20,8 @@ import {
 } from "../checkout/checkout-state";
 import { Checkbox } from "../ui/checkbox";
 import { HoldCountdown } from "../ui/hold-countdown";
-import { formatMoney, PriceSummary } from "../ui/price-summary";
+import { formatMoney } from "../ui/money";
+import { PriceSummary } from "../ui/price-summary";
 import { retryMessage, summaryLineLabel } from "./checkout-copy";
 import {
   type CodeFieldView,

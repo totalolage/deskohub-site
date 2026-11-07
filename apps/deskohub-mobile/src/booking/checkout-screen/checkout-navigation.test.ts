@@ -6,7 +6,9 @@ import { startCheckout } from "../checkout/checkout-machine";
 import { CheckoutState } from "../checkout/checkout-state";
 import {
   type CheckoutDestination,
+  type CheckoutDestinationHref,
   checkoutDestination,
+  leaveCheckout,
   navigationDecision,
 } from "./checkout-navigation";
 
@@ -23,13 +25,16 @@ describe("checkoutDestination", () => {
         running(CheckoutState.Done({ orderId: "order/1" })),
         "office"
       )
-    ).toBe(paymentStatusHref("order/1"));
+    ).toEqual({ _tag: "Status", href: paymentStatusHref("order/1") });
     expect(
       checkoutDestination(
         running(CheckoutState.Restart({ reason: "hold_expired" })),
         "meeting-room"
       )
-    ).toBe(bookFamilyHref("meeting-room", "hold_expired"));
+    ).toEqual({
+      _tag: "FamilyScreen",
+      href: bookFamilyHref("meeting-room", "hold_expired"),
+    });
   });
 
   test("every other state stays on the checkout", () => {
@@ -58,19 +63,27 @@ const replay = (
     readonly focused: boolean;
   }>
 ) => {
-  let handled: CheckoutDestination | undefined;
+  let handled: CheckoutDestinationHref | undefined;
   const navigations: Array<CheckoutDestination> = [];
   for (const { destination, focused } of steps) {
-    const decision = navigationDecision(destination, focused, handled);
+    // Each render makes a new destination; the href identifies it.
+    const decision = navigationDecision(
+      destination && { ...destination },
+      focused,
+      handled
+    );
     if (decision._tag === "Stay") continue;
-    handled = decision.href;
-    if (decision._tag === "Navigate") navigations.push(decision.href);
+    handled = decision.destination.href;
+    if (decision._tag === "Navigate") navigations.push(decision.destination);
   }
   return navigations;
 };
 
 describe("navigationDecision", () => {
-  const status = paymentStatusHref("order-1");
+  const status: CheckoutDestination = {
+    _tag: "Status",
+    href: paymentStatusHref("order-1"),
+  };
 
   test("a destination reached while focused navigates once", () => {
     expect(
@@ -92,5 +105,32 @@ describe("navigationDecision", () => {
         { destination: status, focused: true },
       ])
     ).toEqual([]);
+  });
+});
+
+describe("leaveCheckout", () => {
+  const recordingRouter = () => {
+    const calls: Array<readonly [string, string]> = [];
+    return {
+      calls,
+      router: {
+        replace: (href: string) => void calls.push(["replace", href]),
+        dismissTo: (href: string) => void calls.push(["dismissTo", href]),
+      },
+    };
+  };
+
+  test("the status replaces the checkout", () => {
+    const { calls, router } = recordingRouter();
+    const href = paymentStatusHref("order-1");
+    leaveCheckout(router, { _tag: "Status", href });
+    expect(calls).toEqual([["replace", href]]);
+  });
+
+  test("a restart returns to the family screen below the checkout", () => {
+    const { calls, router } = recordingRouter();
+    const href = bookFamilyHref("cowork", "hold_expired");
+    leaveCheckout(router, { _tag: "FamilyScreen", href });
+    expect(calls).toEqual([["dismissTo", href]]);
   });
 });

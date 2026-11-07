@@ -3,8 +3,9 @@ import { useIsFocused, useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
 import type { CheckoutFlowView } from "../checkout/checkout-flow";
 import {
-  type CheckoutDestination,
+  type CheckoutDestinationHref,
   checkoutDestination,
+  leaveCheckout,
   navigationDecision,
 } from "./checkout-navigation";
 
@@ -15,12 +16,13 @@ export function useCheckoutNavigation(
 ) {
   const router = useRouter();
   const focused = useIsFocused();
-  const handled = useRef<CheckoutDestination | undefined>(undefined);
+  const handled = useRef<CheckoutDestinationHref | undefined>(undefined);
   const destination = checkoutDestination(view, family);
   useEffect(() => {
     const decision = navigationDecision(destination, focused, handled.current);
     if (decision._tag === "Stay") return;
-    handled.current = decision.href;
-    if (decision._tag === "Navigate") router.replace(decision.href);
+    handled.current = decision.destination.href;
+    if (decision._tag === "Navigate")
+      leaveCheckout(router, decision.destination);
   }, [destination, focused, router]);
 }

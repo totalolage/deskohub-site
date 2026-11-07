@@ -1,11 +1,25 @@
 import type { CustomerBookingSelection } from "@deskohub/workspace-customer-api";
+import type { Router } from "expo-router";
 import { bookFamilyHref, paymentStatusHref } from "../booking-routes";
 import type { CheckoutFlowView } from "../checkout/checkout-flow";
 
-/** Where a finished checkout leaves to: the order's status, or the family screen. */
+/**
+ * Where a finished checkout leaves to, and how:
+ * - `Status`: the order's status screen replaces the checkout.
+ * - `FamilyScreen`: back to the family screen the checkout was opened from,
+ *   which sits below it in the book stack and re-reads its `restart` reason
+ *   on refocus. Without it in the stack (such as after a web reload), the
+ *   family screen replaces the checkout instead.
+ */
 export type CheckoutDestination =
-  | ReturnType<typeof paymentStatusHref>
-  | ReturnType<typeof bookFamilyHref>;
+  | {
+      readonly _tag: "Status";
+      readonly href: ReturnType<typeof paymentStatusHref>;
+    }
+  | {
+      readonly _tag: "FamilyScreen";
+      readonly href: ReturnType<typeof bookFamilyHref>;
+    };
 
 /** The screen a checkout state leaves to, if it's finished here. */
 export const checkoutDestination = (
@@ -15,13 +29,19 @@ export const checkoutDestination = (
   if (view._tag === "Starting") return undefined;
   switch (view.state._tag) {
     case "Done":
-      return paymentStatusHref(view.state.orderId);
+      return { _tag: "Status", href: paymentStatusHref(view.state.orderId) };
     case "Restart":
-      return bookFamilyHref(family, view.state.reason);
+      return {
+        _tag: "FamilyScreen",
+        href: bookFamilyHref(family, view.state.reason),
+      };
     default:
       return undefined;
   }
 };
+
+/** A destination's href, which identifies it across renders. */
+export type CheckoutDestinationHref = CheckoutDestination["href"];
 
 /**
  * - `Navigate`: leave now.
@@ -29,8 +49,8 @@ export const checkoutDestination = (
  * - `Stay`: nothing new to act on.
  */
 export type NavigationDecision =
-  | { readonly _tag: "Navigate"; readonly href: CheckoutDestination }
-  | { readonly _tag: "Drop"; readonly href: CheckoutDestination }
+  | { readonly _tag: "Navigate"; readonly destination: CheckoutDestination }
+  | { readonly _tag: "Drop"; readonly destination: CheckoutDestination }
   | { readonly _tag: "Stay" };
 
 /**
@@ -42,12 +62,26 @@ export type NavigationDecision =
 export const navigationDecision = (
   destination: CheckoutDestination | undefined,
   focused: boolean,
-  handled: CheckoutDestination | undefined
+  handled: CheckoutDestinationHref | undefined
 ): NavigationDecision => {
-  if (destination === undefined || destination === handled) {
+  if (destination === undefined || destination.href === handled) {
     return { _tag: "Stay" };
   }
   return focused
-    ? { _tag: "Navigate", href: destination }
-    : { _tag: "Drop", href: destination };
+    ? { _tag: "Navigate", destination }
+    : { _tag: "Drop", destination };
+};
+
+/** Leaves the checkout for `destination` (see `CheckoutDestination`). */
+export const leaveCheckout = (
+  router: Pick<Router, "replace" | "dismissTo">,
+  destination: CheckoutDestination
+) => {
+  switch (destination._tag) {
+    case "Status":
+      return router.replace(destination.href);
+    case "FamilyScreen":
+      // Replaces the checkout when the family screen isn't below it.
+      return router.dismissTo(destination.href);
+  }
 };

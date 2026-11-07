@@ -1,7 +1,7 @@
 import type { CustomerLocale } from "@deskohub/workspace-customer-api";
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { Option } from "effect";
-import { Redirect, useRouter } from "expo-router";
+import { Redirect, useIsFocused, useRouter } from "expo-router";
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { AsyncView } from "../../customer-api/async-view";
@@ -26,7 +26,7 @@ import {
   type DetailsState,
 } from "../checkout/checkout-state";
 import { retryMessage } from "./checkout-copy";
-import { checkoutDestination } from "./checkout-navigation";
+import { checkoutDestination, leaveCheckout } from "./checkout-navigation";
 import {
   type DetailsDraft,
   detailsAccess,
@@ -54,7 +54,9 @@ function CheckoutFlowScreen({
   readonly request: CheckoutRequest;
 }) {
   const locale = useAppLocale();
-  const flow = useCheckoutFlow(request);
+  // Blurred, the flow holds the payment page until the screen is back (R8).
+  const focused = useIsFocused();
+  const flow = useCheckoutFlow(request, { focused });
   const family = request.selection.family;
   useCheckoutNavigation(flow.view, family);
   // Lifted so the form survives Details -> Creating -> Details.
@@ -134,6 +136,8 @@ function CheckoutStateView({
         />
       );
     case "Paying":
+      // A payment page held while the screen was out of view opens as soon
+      // as it's back, so this notice is all the held state needs.
       return (
         <StatusNotice
           tone="info"
@@ -256,7 +260,7 @@ function FinishedNotice({
   readonly locale: CustomerLocale;
 }) {
   const router = useRouter();
-  const href = checkoutDestination(
+  const destination = checkoutDestination(
     { _tag: "Running", state, now: 0 },
     request.selection.family
   );
@@ -270,13 +274,13 @@ function FinishedNotice({
           : m.booking_checkout_restart({}, { locale })
       }
       action={
-        href === undefined
+        destination === undefined
           ? undefined
           : {
               label: done
                 ? m.booking_checkout_show_status({}, { locale })
                 : m.booking_checkout_back_to_booking({}, { locale }),
-              onPress: () => router.replace(href),
+              onPress: () => leaveCheckout(router, destination),
               disabled: false,
             }
       }

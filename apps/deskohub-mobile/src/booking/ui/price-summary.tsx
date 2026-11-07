@@ -1,9 +1,9 @@
-import { formatCurrencyAmount } from "@deskohub/i18n/currency";
 import type { CustomerLocale, Money } from "@deskohub/workspace-customer-api";
 import { Option } from "effect";
 import { StyleSheet, Text, View } from "react-native";
 import { m } from "../../i18n/messages";
 import { theme } from "../../theme";
+import { formatMoney } from "./money";
 
 /** What a summary line is, from its key (`CustomerCheckoutSummaryItem.key`). */
 export type SummaryLineKind =
@@ -39,25 +39,6 @@ export interface SummaryView {
   readonly lines: ReadonlyArray<SummaryLineView>;
   readonly total: Money;
   readonly totalChanged: boolean;
-}
-
-/** Formats a minor-unit amount for the locale, e.g. "350 Kč". */
-export function formatMoney(money: Money, locale: CustomerLocale): string {
-  const sign = money.value < 0 ? "-" : "";
-  const digits = String(Math.abs(money.value)).padStart(
-    money.exponent + 1,
-    "0"
-  );
-  const whole = digits.slice(0, digits.length - money.exponent);
-  const fraction = digits.slice(digits.length - money.exponent);
-  const amount =
-    money.exponent === 0 ? `${sign}${whole}` : `${sign}${whole}.${fraction}`;
-  return formatCurrencyAmount({
-    amount,
-    currency: money.currency,
-    locale,
-    fractionDigits: money.exponent,
-  });
 }
 
 /**
