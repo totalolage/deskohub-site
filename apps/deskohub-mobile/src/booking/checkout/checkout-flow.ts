@@ -278,7 +278,10 @@ const checkoutFlow = (
               )
             : run(command);
         // Back in view, the held page opens once, if the flow still waits
-        // on that same page; a page the flow moved past is dropped.
+        // on that same page; a page the flow moved past is dropped. A
+        // refocus releases it at once; every other input tries too, so a
+        // blur the navigation took back before React rendered it opens the
+        // page by the clock's next tick.
         const release = (view: FlowView) =>
           Effect.suspend(() =>
             focus.current()
@@ -311,6 +314,7 @@ const checkoutFlow = (
                         discard: true,
                       })
                     ),
+                    Effect.tap(({ view: next }) => release(next)),
                     Effect.map(({ view: next }) => [next, [next]] as const)
                   )
           ),

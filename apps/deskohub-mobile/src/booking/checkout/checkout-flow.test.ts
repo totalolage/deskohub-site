@@ -438,6 +438,26 @@ describe("useCheckoutFlow's flow", () => {
     expect(flow.checkout.browser.opened).toHaveLength(1);
   });
 
+  test("a blur the navigation took back before rendering opens the page on the next tick", async () => {
+    const flow = await startFlow();
+    const capture = spyOn(analytics, "capture").mockImplementation(() =>
+      flow.setInViewNow(false)
+    );
+    cleanups.push(() => capture.mockRestore());
+
+    await toReview(flow);
+    await pay(flow);
+    await flow.untilState("Paying");
+    await settle();
+    expect(flow.checkout.browser.opened).toEqual([]);
+
+    // Back in view before React rendered the blur: no refocus arrives.
+    flow.setInViewNow(true);
+    await flow.checkout.adjust(holdClockInterval);
+    await flow.untilState("Done");
+    expect(flow.checkout.browser.opened).toHaveLength(1);
+  });
+
   test("a page held out of view never opens once the screen unmounts", async () => {
     const flow = await startFlow();
     await flow.untilState("Details");
