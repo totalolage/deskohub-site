@@ -3,14 +3,11 @@ import sharp from "sharp";
 
 /**
  * Avatar input policy (see docs/customer-account-avatars.md): the raw upload
- * is at most 2 MiB of JPEG, PNG or WebP, as the customer API contract states,
- * and the normalized output is WebP bounded to 512x512.
+ * is at most 2 MiB of JPEG, PNG or WebP, as the customer API contract states
+ * (`customerAvatarMaxUploadBytes` and `customerAvatarMediaTypes` in
+ * `@deskohub/workspace-customer-api`), and the normalized output is WebP
+ * bounded to 512x512.
  */
-export {
-  customerAvatarMaxUploadBytes,
-  customerAvatarMediaTypes as customerAvatarAllowedMediaTypes,
-} from "@deskohub/workspace-customer-api";
-
 const customerAvatarOutputMaxDimension = 512;
 
 /**
