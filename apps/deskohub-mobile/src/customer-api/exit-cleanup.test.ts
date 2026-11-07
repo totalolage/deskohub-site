@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
+import {
+  AccountExitFence,
+  makeAccountExitFence,
+} from "./account-scoped-storage";
 import {
   type AccountPresence,
   accountExited,
@@ -50,7 +54,12 @@ describe("customerDataExitCleanup", () => {
 
     await Effect.runPromise(
       customerDataExitCleanup.pipe(
-        Effect.provide(fakeDeviceCapabilities(device))
+        Effect.provide(
+          Layer.merge(
+            fakeDeviceCapabilities(device),
+            Layer.sync(AccountExitFence, makeAccountExitFence)
+          )
+        )
       )
     );
 

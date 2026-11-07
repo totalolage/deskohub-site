@@ -1,5 +1,6 @@
 import { Effect, Layer } from "effect";
 import { apiOrigin, authClient } from "../auth/auth-client";
+import { accountDeviceLayer } from "./account-scoped-storage";
 import {
   CustomerAccountScope,
   CustomerApi,
@@ -27,6 +28,5 @@ export const liveCustomerDataLayer = (
     Layer.succeed(CustomerAccountScope, { accountId, apiOrigin }),
     Layer.succeed(CustomerSessionCheck, {
       recheck: Effect.sync(() => authClient.$store.notify("$sessionSignal")),
-    }),
-    deviceCapabilitiesLayer
-  );
+    })
+  ).pipe(Layer.provideMerge(accountDeviceLayer(deviceCapabilitiesLayer)));

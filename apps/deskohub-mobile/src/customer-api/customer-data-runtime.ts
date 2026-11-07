@@ -1,5 +1,9 @@
 import { Effect, Layer } from "effect";
 import { Atom } from "effect/unstable/reactivity";
+import type {
+  AccountExitFence,
+  AccountScopedStorage,
+} from "./account-scoped-storage";
 import {
   type CustomerAccountScope,
   CustomerApi,
@@ -12,6 +16,8 @@ import type { DotyposReadBudget } from "./dotypos-read-budget";
 
 /** Everything account screens' Effects may require. */
 export type CustomerDataServices =
+  | AccountScopedStorage
+  | AccountExitFence
   | CustomerApi
   | CustomerAuthApi
   | CustomerAccountScope
