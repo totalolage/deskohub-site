@@ -114,11 +114,7 @@ const run = async (
 const withSigningCredentials = async (use: () => Promise<void>) => {
   const password = requiredEnvironment("ANDROID_KEYSTORE_PASSWORD");
   const credentialsPath = join(projectDirectory, "credentials.json");
-  if (existsSync(credentialsPath)) {
-    throw new Error(
-      `${credentialsPath} already exists; remove it so the build signs with the release keystore.`
-    );
-  }
+  let createdCredentials = false;
   const signingDirectory = mkdtempSync(
     join(tmpdir(), "deskohub-mobile-signing-")
   );
@@ -144,12 +140,24 @@ const withSigningCredentials = async (use: () => Promise<void>) => {
           },
         },
       }),
-      { mode: 0o600 }
+      // Exclusive create: an existing credentials.json belongs to someone
+      // else and must neither sign this build nor be deleted by it.
+      { flag: "wx", mode: 0o600 }
     );
+    createdCredentials = true;
     chmodSync(credentialsPath, 0o600);
     await use();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+      throw new Error(
+        `${credentialsPath} already exists; remove it so the build signs with the release keystore.`
+      );
+    }
+    throw error;
   } finally {
-    rmSync(credentialsPath, { force: true });
+    if (createdCredentials) {
+      rmSync(credentialsPath, { force: true });
+    }
     rmSync(signingDirectory, { force: true, recursive: true });
   }
 };

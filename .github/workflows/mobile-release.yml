@@ -16,6 +16,12 @@ on:
 permissions:
   contents: read
 
+# An explicit bash shell runs with pipefail, so a failing command piped into
+# tee fails its step.
+defaults:
+  run:
+    shell: bash
+
 concurrency:
   group: mobile-release-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
