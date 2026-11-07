@@ -55,7 +55,24 @@ export const intlSmokeCases: ReadonlyArray<SmokeCase> = [
       });
       // ICU separates Czech thousands and the currency sign with no-break spaces.
       assertSmoke(
-        amount === "1 234,50 Kč",
+        amount === "1\u00a0234,50\u00a0Kč",
+        `got ${JSON.stringify(amount)}`
+      );
+      return amount;
+    },
+  },
+  {
+    group: "intl",
+    name: "currency-amount-exact-decimal",
+    run: () => {
+      // Past Number.MAX_SAFE_INTEGER: a double would round this to ...568,00.
+      const amount = formatCurrencyAmount({
+        amount: "12345678901234567.89",
+        currency: "CZK",
+        locale: "cs-CZ",
+      });
+      assertSmoke(
+        amount === "12\u00a0345\u00a0678\u00a0901\u00a0234\u00a0567,89\u00a0Kč",
         `got ${JSON.stringify(amount)}`
       );
       return amount;

@@ -43,6 +43,29 @@ describe("runSmokeCases", () => {
     });
   });
 
+  test("describes thrown values that are not errors", async () => {
+    const report = await runSmokeCases([
+      {
+        group: "effect",
+        name: "throws-prototypeless-object",
+        run: () => {
+          throw Object.create(null);
+        },
+      },
+      {
+        group: "effect",
+        name: "rejects-text",
+        run: () => Promise.reject("engine said no"),
+      },
+    ]);
+
+    expect(report.results.map((result) => result.actual)).toEqual([
+      "[object Object]",
+      "engine said no",
+    ]);
+    expect(report.failed).toBe(2);
+  });
+
   test("fails a case that outlives its timeout and runs the next one", async () => {
     const report = await runSmokeCases(
       [

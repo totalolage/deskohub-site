@@ -105,7 +105,8 @@ export const effectSmokeCases: ReadonlyArray<SmokeCase> = [
       secret: "s3cr3t",
     });
     assertSmoke(
-      decoded.at.getTime() === Date.UTC(2026, 0, 5, 9, 30),
+      decoded.at instanceof Date &&
+        decoded.at.getTime() === Date.UTC(2026, 0, 5, 9, 30),
       `date ${decoded.at.toISOString()}`
     );
     assertSmoke(
@@ -276,10 +277,9 @@ export const effectSmokeCases: ReadonlyArray<SmokeCase> = [
       })
     );
     assertSmoke(timing.drift < 1000, `clock drift ${timing.drift}ms`);
-    assertSmoke(
-      timing.slept >= 45 && timing.slept < 2000,
-      `slept ${timing.slept}ms`
-    );
+    // No upper bound: debugger pauses and device scheduling stretch sleeps,
+    // and the case timeout already catches a sleep that never wakes.
+    assertSmoke(timing.slept >= 45, `slept ${timing.slept}ms`);
     return `slept=${timing.slept}ms drift=${timing.drift}ms`;
   }),
   effectCase("test-clock", async () => {

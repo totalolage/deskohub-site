@@ -1,6 +1,12 @@
 import { Redirect } from "expo-router";
-import { useEffect, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import {
+  AccessibilityInfo,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { SmokeReport } from "../../src/smoke/smoke-case";
 import { runSmokeCases } from "../../src/smoke/smoke-case";
@@ -22,11 +28,17 @@ export default function EffectSmokeRoute() {
 
 function EffectSmokeScreen() {
   const [report, setReport] = useState<SmokeReport>();
+  // StrictMode replays the effect on the same instance; the ref keeps that
+  // replay on the first run instead of starting the cases twice.
+  const run = useRef<Promise<SmokeReport>>(undefined);
 
   useEffect(() => {
     let mounted = true;
-    void runSmokeCases(smokeCases).then((finished) => {
-      if (mounted) setReport(finished);
+    run.current ??= runSmokeCases(smokeCases);
+    void run.current.then((finished) => {
+      if (!mounted) return;
+      setReport(finished);
+      AccessibilityInfo.announceForAccessibility(labels.totals(finished));
     });
     return () => {
       mounted = false;
@@ -43,7 +55,6 @@ function EffectSmokeScreen() {
         </Text>
         <Text
           accessibilityLabel={state}
-          accessibilityLiveRegion="polite"
           style={styles.text}
           testID={report ? "smoke-finished" : "smoke-running"}
         >

@@ -42,9 +42,15 @@ export function assertSmoke(
   if (!condition) throw new Error(`assertion failed: ${mismatch}`);
 }
 
+// Total for anything a case can throw: String() itself throws for an object
+// without a prototype, so other objects use Object.prototype.toString.
 const describeThrown = (thrown: unknown): string =>
   toOneLine(
-    thrown instanceof Error ? `${thrown.name}: ${thrown.message}` : String(thrown)
+    thrown instanceof Error
+      ? `${thrown.name}: ${thrown.message}`
+      : thrown !== null && typeof thrown === "object"
+        ? Object.prototype.toString.call(thrown)
+        : String(thrown)
   );
 
 const runSmokeCase = (
@@ -94,6 +100,10 @@ const toSmokeReport = (results: ReadonlyArray<SmokeResult>): SmokeReport => {
 /**
  * Runs the cases one after another, so timing cases don't compete. A case
  * that throws, rejects, or outlives `caseTimeout` fails alone; the rest run.
+ *
+ * A timeout stops waiting for the case but cannot cancel it: Effect runtimes
+ * the case started itself keep going and may overlap later cases. A case that
+ * blocks synchronously blocks the timeout too.
  */
 export const runSmokeCases = (
   cases: ReadonlyArray<SmokeCase>,
