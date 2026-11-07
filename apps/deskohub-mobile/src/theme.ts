@@ -37,5 +37,6 @@ export const theme = {
   type: {
     title: { fontSize: 36, ...brandText(brandFonts.weights.heading) },
     body: { fontSize: 17, ...brandText(brandFonts.weights.body) },
+    bodyStrong: { fontSize: 17, ...brandText(brandFonts.weights.emphasis) },
   },
 } as const;

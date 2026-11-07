@@ -46,7 +46,7 @@ export const brandFonts = {
     "Arial",
     "sans-serif",
   ],
-  weights: { heading: 400, subheading: 400, body: 400 },
+  weights: { heading: 400, subheading: 400, body: 400, emphasis: 600 },
 } as const;
 
 const brandColorVariables = {
