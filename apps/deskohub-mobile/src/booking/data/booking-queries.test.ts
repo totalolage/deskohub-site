@@ -235,6 +235,31 @@ describe("bookingQuoteAtom refresh", () => {
     expect(quoteCalls(harness)).toBe(2);
   });
 
+  test("restarts the wait when the quote is read again by hand", async () => {
+    const harness = withTestClock();
+    const atom = bookingQuoteAtom(
+      coworkSelection(harness.booking.dateIn(22)),
+      "en-US"
+    );
+    const unmount = harness.registry.mount(atom);
+    await settle(harness.registry, atom);
+
+    await harness.adjust("2 minutes");
+    harness.registry.refresh(atom);
+    await flush();
+    await settle(harness.registry, atom);
+    await harness.adjust("3 minutes");
+    await flush();
+    const beforeNewInterval = quoteCalls(harness);
+    await harness.adjust("1 minute");
+    await flush();
+    await settle(harness.registry, atom);
+    unmount();
+
+    expect(beforeNewInterval).toBe(2);
+    expect(quoteCalls(harness)).toBe(3);
+  });
+
   test("skips the automatic read once the budget is down to its reserve", async () => {
     const harness = withTestClock();
     const atom = bookingQuoteAtom(

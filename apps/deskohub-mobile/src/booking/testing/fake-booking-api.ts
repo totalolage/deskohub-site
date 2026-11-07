@@ -150,8 +150,12 @@ export class FakeBookingApi {
     BookingEndpointName,
     Array<ScriptedAnswer<BookingEndpointName>>
   >();
+  /** Each order's latest state, for assertions. */
   private readonly checkouts = new Map<string, FakeBookingCheckout>();
-  private readonly tokens = new Map<string, string>();
+  /** Each pay state token's own snapshot, as a signed token carries it. */
+  private readonly tokens = new Map<string, FakeBookingCheckout>();
+  /** The order each checkout attempt created, so a retry gets it back. */
+  private readonly attempts = new Map<string, string>();
   private readonly quotes = new Map<string, string>();
   private sequence = 0;
 
@@ -278,18 +282,42 @@ export class FakeBookingApi {
     return this.quotes.get(token) === selectionKey(selection);
   }
 
-  /** @internal Stores the order and returns a new pay state token for it. */
+  /**
+   * @internal Stores the order's new state and returns a pay state token
+   * for that snapshot. Earlier tokens keep their own snapshots until the
+   * hold ends, as signed tokens do.
+   */
   hold(checkout: FakeBookingCheckout) {
     this.checkouts.set(checkout.orderId, checkout);
     const token = `ps1.${fnv1a(checkout.orderId)}.${fnv1a(this.nextId("pay-state"))}`;
-    this.tokens.set(token, checkout.orderId);
+    this.tokens.set(token, checkout);
     return token;
   }
 
-  /** @internal The order a pay state token names. */
+  /** @internal The snapshot a pay state token carries. */
   held(token: string) {
-    const orderId = this.tokens.get(token);
+    return this.tokens.get(token);
+  }
+
+  /** @internal Marks the order submitted; no token of it is payable again. */
+  submit(checkout: FakeBookingCheckout) {
+    this.checkouts.set(checkout.orderId, { ...checkout, status: "submitted" });
+  }
+
+  /** @internal Whether a payment for the order started. */
+  submitted(orderId: string) {
+    return this.checkouts.get(orderId)?.status === "submitted";
+  }
+
+  /** @internal The order an earlier identical create made. */
+  attempted(sessionId: string, attemptId: string) {
+    const orderId = this.attempts.get(`${sessionId}\u0000${attemptId}`);
     return orderId === undefined ? undefined : this.checkouts.get(orderId);
+  }
+
+  /** @internal Remembers the order a create attempt made. */
+  attempt(sessionId: string, attemptId: string, orderId: string) {
+    this.attempts.set(`${sessionId}\u0000${attemptId}`, orderId);
   }
 
   private script<N extends BookingEndpointName>(
@@ -438,6 +466,14 @@ export const fakeBookingGroup = (workspace: FakeWorkspace) => {
             answer("createCheckout", (scripted) =>
               Effect.gen(function* () {
                 yield* linkRequired;
+                // A retry of the same attempt gets the order it already made.
+                const earlier = booking.attempted(
+                  payload.checkoutSessionId,
+                  payload.checkoutAttemptId
+                );
+                if (earlier !== undefined) {
+                  return checkoutAnswer(booking, earlier);
+                }
                 yield* checkedSelection(booking, payload.selection);
                 if (
                   !booking.quoteMatches(
@@ -475,6 +511,11 @@ export const fakeBookingGroup = (workspace: FakeWorkspace) => {
                     withdrawalPeriodDays,
                 };
                 const held = priceChanged(checkout, scripted);
+                booking.attempt(
+                  payload.checkoutSessionId,
+                  payload.checkoutAttemptId,
+                  orderId
+                );
                 return {
                   ...checkoutAnswer(booking, held),
                   ...(remembered !== undefined &&
@@ -494,6 +535,9 @@ export const fakeBookingGroup = (workspace: FakeWorkspace) => {
               Effect.gen(function* () {
                 const current = yield* held(booking, payload.payStateToken);
                 const code = payload.code.trim().toUpperCase();
+                if (current.status === "price_review") {
+                  return yield* unavailable("price_review_pending");
+                }
                 if (current.code !== undefined) {
                   return yield* new CustomerDiscountCodeRejected({
                     reason: "code_already_applied",
@@ -601,7 +645,7 @@ export const fakeBookingGroup = (workspace: FakeWorkspace) => {
                     consent: "early_performance",
                   });
                 }
-                booking.hold({ ...current, status: "submitted" });
+                booking.submit(current);
                 const statusUrl = `${fakeWorkspaceOrigin}/reservation/status?orderId=${current.orderId}`;
                 const remembered = request.headers[customerReferralCodeHeader];
                 return summaryOf(current).total.value === 0
@@ -637,7 +681,7 @@ const held = Effect.fn("FakeBooking.held")(function* (
 ) {
   const found = booking.held(token);
   if (found === undefined) return yield* new CustomerCheckoutNotFound();
-  if (found.status === "submitted") {
+  if (booking.submitted(found.orderId)) {
     return yield* unavailable("payment_in_progress");
   }
   if (booking.now().getTime() >= found.expiresAt.getTime()) {
@@ -664,17 +708,17 @@ const priceChanged = (
       }
     : checkout;
 
-/** The share of the price a code takes off. */
-const codeShare = (code: string | undefined) => {
-  if (code === undefined) return 0;
-  return code === fakeBookingCodes.free ? 1 : 0.1;
+/** The share of the price the code or the referral benefit takes off. */
+const discountShare = ({ code, referralApplied }: FakeBookingCheckout) => {
+  if (code === fakeBookingCodes.free) return 1;
+  return code !== undefined || referralApplied ? 0.1 : 0;
 };
 
 const summaryOf = (checkout: FakeBookingCheckout) =>
   sampleSummary({
     lines: pricedLines(checkout.selection),
-    discountShare: codeShare(checkout.code),
-    discountLabel: checkout.code ?? "",
+    discountShare: discountShare(checkout),
+    discountLabel: checkout.code ?? fakeBookingCodes.referral,
     surcharge: checkout.surcharge,
   });
 

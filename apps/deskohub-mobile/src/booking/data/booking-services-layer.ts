@@ -29,7 +29,11 @@ export type BookingServices = never;
  * instances the account's runtime built, never a second `customerDataLayer`.
  * `CustomerDataProvider` (or a test registry) seeds the live or fake Layer
  * with `Atom.initialValue(bookingServicesLayer, layer)`. Kept alive so it never
- * falls back to the default.
+ * falls back to the default; that keeps the Layer value, not built services,
+ * which each command builds afresh. Booking services must therefore be
+ * stateless in memory. One that needs in-memory state across commands (such
+ * as a counter) instead needs a runtime that builds the booking Layer once
+ * per registry over the account runtime's built context.
  */
 export const bookingServicesLayer = Atom.keepAlive(
   Atom.make<Layer.Layer<BookingServices, never, CustomerDataServices>>(

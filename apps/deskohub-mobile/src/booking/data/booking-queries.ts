@@ -152,7 +152,9 @@ const quoteQuery = (
 /**
  * Schedules the quote's next read in the atom's lifetime: unmounting or a
  * refetch interrupts the wait. A quote spends the Dotypos read budget, so
- * the automatic read is skipped once the budget is down to its reserve.
+ * the automatic read is skipped once the budget is down to its reserve, and
+ * automatic reads then stay off until the quote is read again (a selection
+ * change or the screen's retry). A failed read schedules nothing either.
  */
 const refreshQuoteLater = (get: Atom.AtomContext) =>
   Effect.sleep(quoteRefreshInterval).pipe(

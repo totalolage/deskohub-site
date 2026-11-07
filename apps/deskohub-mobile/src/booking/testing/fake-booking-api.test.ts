@@ -58,13 +58,20 @@ const quoteOf = (
     },
   });
 
+let attempts = 0;
+/** Each booking submission is a new checkout attempt. */
+const nextAttempt = () => {
+  attempts += 1;
+  return attempts;
+};
+
 const createPayload = (
   selection: CustomerBookingSelection,
   advertisedPriceToken: string
 ): CreateCustomerCheckout => ({
   locale: "en-US",
   checkoutSessionId: "session-1",
-  checkoutAttemptId: "attempt-1",
+  checkoutAttemptId: `attempt-${nextAttempt()}`,
   advertisedPriceToken,
   selection,
   bookingFor: "self",
@@ -342,7 +349,119 @@ describe("fake booking checkout", () => {
     const create = booking.calls[1];
     expect(
       create?.endpoint === "createCheckout" && create.input.checkoutAttemptId
-    ).toBe("attempt-1");
+    ).toStartWith("attempt-");
+  });
+});
+
+describe("fake booking pay state", () => {
+  const submitWith = (
+    api: CustomerApi["Service"]["booking"],
+    payStateToken: string
+  ) =>
+    api.submitCheckout({
+      payload: {
+        locale: "en-US",
+        payStateToken,
+        legalConsent: true,
+        acceptedLegalDocuments: legalAcceptance(),
+      },
+      headers: {},
+    });
+
+  test("keeps each token's own snapshot after a later step", async () => {
+    const { run, booking } = harness();
+    booking.forcePriceReview("createCheckout");
+    const result = await run((api) =>
+      Effect.gen(function* () {
+        const review = yield* held(api, coworkSelection(booking));
+        if (review.status === "payment_disabled") throw new Error("disabled");
+        yield* api.acceptCheckoutPriceChange({
+          payload: { locale: "en-US", payStateToken: review.payStateToken },
+        });
+        return yield* Effect.result(submitWith(api, review.payStateToken));
+      })
+    );
+    expect(result).toMatchObject({
+      _tag: "Success",
+      success: {
+        failure: {
+          _tag: "CustomerCheckoutUnavailable",
+          reason: "price_review_pending",
+        },
+      },
+    });
+  });
+
+  test("answers an identical create retry with the order it made", async () => {
+    const { run, booking } = harness();
+    const start = Date.parse("2026-11-09T09:00:00Z");
+    let now = start;
+    booking.now = () => new Date(now);
+    booking.fail("createCheckout", "transport-failure");
+    const result = await run((api) =>
+      Effect.gen(function* () {
+        const selection = coworkSelection(booking);
+        const quote = yield* quoteOf(api, selection);
+        const payload = createPayload(selection, quote.advertisedPriceToken);
+        const lost = yield* Effect.result(
+          api.createCheckout({ payload, headers: {} })
+        );
+        now = start + 60_000;
+        const retried = yield* api.createCheckout({ payload, headers: {} });
+        const next = yield* api.createCheckout({
+          payload: { ...payload, checkoutAttemptId: "another-attempt" },
+          headers: {},
+        });
+        return { lost, retried, next };
+      })
+    );
+    if (result._tag !== "Success") throw new Error("expected the creates");
+    const { lost, retried, next } = result.success;
+    expect(lost).toMatchObject({ failure: { _tag: "HttpClientError" } });
+    expect(retried).toMatchObject({
+      status: "ready",
+      expiresAt: new Date(start + fakeHoldDuration).toISOString(),
+    });
+    expect(next).toMatchObject({
+      expiresAt: new Date(now + fakeHoldDuration).toISOString(),
+    });
+    expect(next.orderId).not.toBe(retried.orderId);
+  });
+
+  test("refuses a code while a price review is pending", async () => {
+    const { run, booking } = harness();
+    booking.forcePriceReview("createCheckout");
+    const result = await run((api) =>
+      Effect.flatMap(held(api, coworkSelection(booking)), (checkout) => {
+        if (checkout.status === "payment_disabled") throw new Error("disabled");
+        return api.applyCheckoutDiscountCode({
+          payload: {
+            locale: "en-US",
+            payStateToken: checkout.payStateToken,
+            code: fakeBookingCodes.discount,
+          },
+          headers: {},
+        });
+      })
+    );
+    expect(result).toMatchObject({
+      failure: {
+        _tag: "CustomerCheckoutUnavailable",
+        reason: "price_review_pending",
+      },
+    });
+  });
+
+  test("prices a remembered referral code with its benefit", async () => {
+    const { run, booking } = harness();
+    const result = await run((api) =>
+      held(api, coworkSelection(booking), {
+        [customerReferralCodeHeader]: fakeBookingCodes.referral,
+      })
+    );
+    expect(result).toMatchObject({
+      success: { referralApplied: true, summary: { total: { value: 36_000 } } },
+    });
   });
 });
 
