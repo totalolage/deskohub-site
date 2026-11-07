@@ -48,7 +48,7 @@ export type AnalyticsConsentMirrorRecord = AnalyticsConsentDecisionInput & {
 };
 
 /** A stored analytics consent decision. */
-export type StoredAnalyticsConsentDecision = {
+type StoredAnalyticsConsentDecision = {
   readonly decision: AnalyticsConsentDecision;
   /** The privacy notice version the decision was given under. */
   readonly documentHash: string;
