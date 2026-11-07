@@ -49,7 +49,8 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      # No other workflow runs the app's tests. These include
+      # Mobile CI doesn't run for a change to this workflow alone, so the
+      # release scripts' tests run here too. They include
       # mobile-release-workflow.test.ts, which keeps the release key out of
       # pull request runs.
       - name: Test the release scripts

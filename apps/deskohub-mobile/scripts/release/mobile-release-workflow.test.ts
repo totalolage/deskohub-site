@@ -26,6 +26,7 @@ type Job = {
 type Workflow = {
   readonly env?: Readonly<Record<string, string>>;
   readonly jobs: Readonly<Record<string, Job>>;
+  readonly on: Readonly<Record<string, unknown>>;
 };
 
 const workflow = Bun.YAML.parse(
@@ -62,6 +63,10 @@ const releaseBuild = stepNamed("Build and verify the release-signed APK");
 const dryRunBuild = stepNamed("Build and verify the debug-signed dry-run APK");
 
 describe("mobile-release.yml release key", () => {
+  test("only release tags trigger push runs", () => {
+    expect(workflow.on.push).toEqual({ tags: ["mobile-v*"] });
+  });
+
   test("no workflow or job env exposes the release key", () => {
     expect(mentionsReleaseKey(workflow.env)).toBe(false);
     for (const job of Object.values(workflow.jobs)) {
