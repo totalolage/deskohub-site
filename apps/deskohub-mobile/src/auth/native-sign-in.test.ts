@@ -424,15 +424,16 @@ describe("reauthentication", () => {
   test("an expired reauthentication still guards its email's links", async () => {
     const server = makeFakeAuthServer(origin);
     const store = makeMemorySecureStore();
-    // Ada's reauthentication started 15 minutes ago and its attempt expired;
-    // the app is signed out after an earlier refusal.
+    // Ada's reauthentication started two hours ago and its attempt expired;
+    // the app is signed out after an earlier refusal, and the page sent a
+    // late email.
     store.values.set(
       pendingSignInKey,
       JSON.stringify({
         verifier: "v".repeat(43),
         state: "s".repeat(43),
         returnUri: nativeReturnUri,
-        startedAt: Date.now() - 15 * 60 * 1000,
+        startedAt: Date.now() - 2 * 60 * 60 * 1000,
         expectedUserId: ada.id,
       })
     );
@@ -441,8 +442,27 @@ describe("reauthentication", () => {
     const exit = await app.runtime.runPromiseExit(
       completeAuthCallback({ kind: "token", token: server.issueMagicLink(bob) })
     );
-
     expect(failureTag(exit)).toBe("AccountSwitchRefused");
+    // An expired handoff for that attempt doesn't drop the guard either.
+    const expiredHandoff = await app.runtime.runPromiseExit(
+      completeAuthCallback({
+        kind: "handoff",
+        code: "c",
+        state: "s".repeat(43),
+      })
+    );
+    expect(failureTag(expiredHandoff)).toBe("SignInLinkRefused");
+    const again = await app.runtime.runPromiseExit(
+      completeAuthCallback({ kind: "token", token: server.issueMagicLink(bob) })
+    );
+    expect(failureTag(again)).toBe("AccountSwitchRefused");
+
+    // Starting a new sign-in from the app replaces the guard.
+    await app.runtime.runPromise(startPendingSignIn(Option.none()));
+    const fresh = await app.runtime.runPromise(
+      completeAuthCallback({ kind: "token", token: server.issueMagicLink(bob) })
+    );
+    expect(fresh).toEqual(bob);
   });
 
   test("doesn't spend a magic link when the current session can't be read", async () => {

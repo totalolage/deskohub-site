@@ -195,6 +195,29 @@ export const prepareReauthenticationEmail = (
     })
   );
 
+/**
+ * A page the app opened sends sign-in emails only while the app's request is
+ * live (ten minutes from when the page took it). Its links then expire well
+ * inside the app's guard on a reauthentication's account.
+ */
+export const prepareNativeHandoffEmail = ({
+  openedByApp,
+  currentRequest,
+}: {
+  readonly openedByApp: boolean;
+  readonly currentRequest: Option.Option<NativeHandoffRequest>;
+}) =>
+  Effect.void.pipe(
+    Effect.filterOrFail(
+      () => !openedByApp || Option.isSome(currentRequest),
+      () =>
+        new WebSignInFailure({
+          operation: "send-email",
+          reason: "native-request-expired",
+        })
+    )
+  );
+
 const reauthenticationUnavailable = () =>
   new WebSignInFailure({
     operation: "send-email",

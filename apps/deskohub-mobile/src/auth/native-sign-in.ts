@@ -161,7 +161,7 @@ const isExpired = (pending: PendingSignIn, now: number) =>
 /**
  * The stored attempt a handoff callback belongs to. A stray link must not
  * cancel the attempt in progress, so a mismatch leaves it stored and never
- * reaches the server; an expired attempt is dropped.
+ * reaches the server; an expired attempt is refused.
  */
 const pendingSignInFor = (state: string) =>
   loadPendingSignIn.pipe(
@@ -178,14 +178,11 @@ const pendingSignInFor = (state: string) =>
     ),
     Effect.flatMap((pending) =>
       Clock.currentTimeMillis.pipe(
-        Effect.filterOrElse(
+        // The expired attempt stays stored: a reauthentication's account
+        // keeps guarding links until a new sign-in replaces it.
+        Effect.filterOrFail(
           (now) => !isExpired(pending, now),
-          () =>
-            clearPendingSignIn.pipe(
-              Effect.andThen(
-                Effect.fail(new SignInLinkRefused({ reason: "expired" }))
-              )
-            )
+          () => new SignInLinkRefused({ reason: "expired" })
         ),
         Effect.as(pending)
       )
@@ -216,30 +213,16 @@ const completeHandoff = (code: string, state: string) =>
   );
 
 /**
- * How long a reauthentication's expected account guards magic links, past
- * the attempt's own expiry: longer than the email's ten-minute link, which
- * the page may send late, so every link that can still sign in is checked.
- */
-const reauthenticationGuardMs = 30 * 60 * 1000;
-
-/**
- * The account a magic link must sign in to: the reauthentication's while it
- * guards links, else the app's current one. A signed-in app only gets a sign-in
- * link through a reauthentication; a signed-out app has no account to switch
+ * The account a magic link must sign in to. A stored reauthentication guards
+ * its email's links for as long as any can be used: until a sign-in is
+ * confirmed, or the customer starts a new sign-in, which replaces it. Without
+ * one, a signed-in app expects its current account (it only gets a sign-in
+ * link through a reauthentication), and a signed-out app has none to switch
  * from. A session that can't be read stops before the token is spent.
  */
-const magicLinkExpectedUserId = (
-  stored: Option.Option<PendingSignIn>,
-  now: number
-) =>
+const magicLinkExpectedUserId = (stored: Option.Option<PendingSignIn>) =>
   Option.match(
-    Option.flatMapNullishOr(
-      Option.filter(
-        stored,
-        (found) => now - found.startedAt < reauthenticationGuardMs
-      ),
-      (found) => found.expectedUserId
-    ),
+    Option.flatMapNullishOr(stored, (found) => found.expectedUserId),
     {
       onSome: (userId) => Effect.succeed<string | undefined>(userId),
       onNone: () =>
@@ -267,7 +250,7 @@ const completeToken = Effect.fn("NativeSignIn.completeToken")(function* (
     onNone: () => Effect.void,
     onSome: ({ state }) => completions.claim(attemptKey(state)),
   });
-  return yield* magicLinkExpectedUserId(stored, now).pipe(
+  return yield* magicLinkExpectedUserId(stored).pipe(
     Effect.flatMap((expectedUserId) =>
       auth
         .verifyMagicLink(token)

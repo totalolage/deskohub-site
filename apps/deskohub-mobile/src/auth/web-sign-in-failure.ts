@@ -27,6 +27,8 @@ export type WebSignInFailureReason =
   | "reauthentication-unconfirmed"
   /** This browser can't keep the account a reauthentication must confirm. */
   | "reauthentication-unavailable"
+  /** The app's sign-in request expired; start again from the app. */
+  | "native-request-expired"
   | "unavailable"
   | "failed";
 

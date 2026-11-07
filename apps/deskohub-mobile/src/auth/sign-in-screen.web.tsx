@@ -32,6 +32,7 @@ import { loadReauthenticatingUser } from "./web-reauthentication-store";
 import {
   completeWebCodeSignIn,
   mintNativeHandoff,
+  prepareNativeHandoffEmail,
   prepareReauthenticationEmail,
   reauthenticationExpectation,
   sendSignInEmail,
@@ -128,7 +129,11 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
   const send = useAuthTask(
     standaloneTaskRuntime,
     (address: string, expectation: WebAccountExpectation) =>
-      prepareReauthenticationEmail(expectation).pipe(
+      prepareNativeHandoffEmail({
+        openedByApp: Option.isSome(nativeRequest),
+        currentRequest: loadNativeHandoffRequest(Date.now()),
+      }).pipe(
+        Effect.andThen(prepareReauthenticationEmail(expectation)),
         Effect.andThen(sendSignInEmail(address, locale))
       ),
     unexpected

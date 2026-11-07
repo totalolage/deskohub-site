@@ -50,6 +50,7 @@ const {
   completeWebCodeSignIn,
   completeWebMagicLink,
   confirmWebAccount,
+  prepareNativeHandoffEmail,
   prepareReauthenticationEmail,
   reauthenticationExpectation,
 } = await import("./web-sign-in");
@@ -354,5 +355,46 @@ describe("the stored reauthentication outlives failed attempts", () => {
     );
     expect(reasonOfExit(await openLink("valid"))).toBeUndefined();
     expect(loadReauthenticatingUser(Date.now())).toEqual(Option.none());
+  });
+});
+
+describe("prepareNativeHandoffEmail", () => {
+  const request = {
+    codeChallenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+    state: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+    returnUri: "deskohub://auth/callback",
+    reauthenticate: true,
+  };
+  const reasonOfPrepare = async (
+    input: Parameters<typeof prepareNativeHandoffEmail>[0]
+  ) => {
+    const exit = await Effect.runPromiseExit(prepareNativeHandoffEmail(input));
+    return Exit.isSuccess(exit)
+      ? undefined
+      : Option.getOrUndefined(Exit.findErrorOption(exit))?.reason;
+  };
+
+  test("sends while the app's request is live, or without one", async () => {
+    expect(
+      await reasonOfPrepare({
+        openedByApp: true,
+        currentRequest: Option.some(request),
+      })
+    ).toBeUndefined();
+    expect(
+      await reasonOfPrepare({
+        openedByApp: false,
+        currentRequest: Option.none(),
+      })
+    ).toBeUndefined();
+  });
+
+  test("stops a late email once the app's request expired", async () => {
+    expect(
+      await reasonOfPrepare({
+        openedByApp: true,
+        currentRequest: Option.none(),
+      })
+    ).toBe("native-request-expired");
   });
 });

@@ -59,6 +59,9 @@ export const webSignInFailureMessage = (
     Match.when("reauthentication-unavailable", () =>
       m.signin_error_reauth_storage({}, { locale })
     ),
+    Match.when("native-request-expired", () =>
+      m.signin_error_expired({}, { locale })
+    ),
     Match.when("unavailable", () => m.signin_error_unavailable({}, { locale })),
     Match.when("failed", () => m.signin_error_failed({}, { locale })),
     Match.exhaustive
