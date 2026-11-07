@@ -16,6 +16,7 @@ import { WorkspaceRouterRequestContext } from "@/shared/backend/workspace-router
 import { CustomerAccountApiHandlers } from "./customer-account-handlers";
 import { CustomerAccountLayers } from "./customer-account-layers";
 import { CustomerBookingCatalogLayers } from "./customer-booking-catalog-layers";
+import { CustomerBookingCheckoutLayers } from "./customer-booking-checkout-layers";
 import { CustomerBookingApiHandlers } from "./customer-booking-handlers";
 import {
   CustomerRequestOriginCheckLive,
@@ -73,6 +74,7 @@ const provideWorkspaceCustomerApiServices = <A, E, R>(
       Layer.mergeAll(
         CustomerAccountLayers.Live,
         CustomerBookingCatalogLayers.Live,
+        CustomerBookingCheckoutLayers.Live,
         CustomerAuthentication.Default,
         CustomerRequestOrigins.Default,
         RequestBudget.Live

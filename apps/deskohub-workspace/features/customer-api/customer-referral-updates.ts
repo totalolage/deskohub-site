@@ -16,7 +16,9 @@ export type CustomerReferralUpdate = {
   readonly rememberedReferralCodeUsed?: true;
 };
 
-type ClientRememberedReferral = ReturnType<typeof RememberedReferral.fromClient>;
+type ClientRememberedReferral = ReturnType<
+  typeof RememberedReferral.fromClient
+>;
 
 interface ICustomerReferralUpdates {
   /**
@@ -62,20 +64,22 @@ export class CustomerReferralUpdates extends Context.Service<
 
             return RememberedReferral.of({
               ...client,
-              remember: (accepted) =>
-                Effect.gen(function* () {
+              remember: Effect.fn("CustomerReferralUpdates.remember")(
+                function* (accepted) {
                   if (!(yield* release.isOpen)) return;
                   const referralCode = parseReferralCode(accepted);
                   if (referralCode !== undefined) {
                     yield* record({ rememberReferralCode: referralCode });
                   }
-                }),
-              forgetIfSettled: (booker) =>
-                Effect.gen(function* () {
-                  if (yield* client.isSettled(booker)) {
-                    yield* record({ rememberedReferralCodeUsed: true });
-                  }
-                }),
+                }
+              ),
+              forgetIfSettled: Effect.fn(
+                "CustomerReferralUpdates.forgetIfSettled"
+              )(function* (booker) {
+                if (yield* client.isSettled(booker)) {
+                  yield* record({ rememberedReferralCodeUsed: true });
+                }
+              }),
             });
           })
         ).pipe(Layer.provide(RememberedReferral.fromClient(code)));

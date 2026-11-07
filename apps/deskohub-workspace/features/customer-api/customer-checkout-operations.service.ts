@@ -24,7 +24,11 @@ import { SealedStateKeys } from "@/shared/backend/sealed-state-keys.service";
 import { CustomerReferralUpdates } from "./customer-referral-updates";
 
 /** An operation's Effect without its requirements, which the service provides. */
-type Provided<Operation extends (...args: never[]) => Effect.Effect<unknown, unknown, unknown>> = (
+type Provided<
+  Operation extends (
+    ...args: never[]
+  ) => Effect.Effect<unknown, unknown, unknown>,
+> = (
   ...args: Parameters<Operation>
 ) => Effect.Effect<
   Effect.Success<ReturnType<Operation>>,
@@ -40,7 +44,10 @@ export class CheckoutServicesUnavailable extends Data.TaggedError(
 )<{ readonly cause: unknown }> {
   /** `layer`, failing to build as unavailable. */
   static whenUnbuilt = <A, E, R>(layer: Layer.Layer<A, E, R>) =>
-    Layer.mapError(layer, (cause) => new CheckoutServicesUnavailable({ cause }));
+    Layer.mapError(
+      layer,
+      (cause) => new CheckoutServicesUnavailable({ cause })
+    );
 }
 
 interface ICustomerCheckoutOperations {
@@ -85,7 +92,10 @@ export class CustomerCheckoutOperations extends Context.Service<
     this,
     Effect.gen(function* () {
       const releases = {
-        referral: Layer.succeed(ReferralReleaseGate, yield* ReferralReleaseGate),
+        referral: Layer.succeed(
+          ReferralReleaseGate,
+          yield* ReferralReleaseGate
+        ),
         office: Layer.succeed(OfficeReleaseGate, yield* OfficeReleaseGate),
       };
       const { remembered } = yield* CustomerReferralUpdates;
@@ -140,11 +150,15 @@ export class CustomerCheckoutOperations extends Context.Service<
           ),
         applyDiscountCode: (input) =>
           applyDiscountCodeToPayState(input).pipe(
-            Effect.provide(CheckoutServicesUnavailable.whenUnbuilt(discountCode))
+            Effect.provide(
+              CheckoutServicesUnavailable.whenUnbuilt(discountCode)
+            )
           ),
         acceptPriceChange: (input) =>
           acceptPayStatePriceChange(input).pipe(
-            Effect.provide(CheckoutServicesUnavailable.whenUnbuilt(SealedStateKeys.Default))
+            Effect.provide(
+              CheckoutServicesUnavailable.whenUnbuilt(SealedStateKeys.Default)
+            )
           ),
         requireAuthor: (input) =>
           requirePayStateAuthor(input).pipe(
@@ -152,7 +166,9 @@ export class CustomerCheckoutOperations extends Context.Service<
           ),
         readPayState: (token) =>
           openPayState(token).pipe(
-            Effect.provide(CheckoutServicesUnavailable.whenUnbuilt(SealedStateKeys.Default))
+            Effect.provide(
+              CheckoutServicesUnavailable.whenUnbuilt(SealedStateKeys.Default)
+            )
           ),
         forgetReferralIfSettled: (booker) =>
           RememberedReferral.pipe(
@@ -165,4 +181,3 @@ export class CustomerCheckoutOperations extends Context.Service<
     })
   );
 }
-

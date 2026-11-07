@@ -233,8 +233,7 @@ export const CustomerCheckoutSubmission = Schema.Union([
   }),
   CustomerCheckout,
 ]).annotate({ identifier: "CustomerCheckoutSubmission" });
-export type CustomerCheckoutSubmission =
-  typeof CustomerCheckoutSubmission.Type;
+export type CustomerCheckoutSubmission = typeof CustomerCheckoutSubmission.Type;
 
 // Requests
 

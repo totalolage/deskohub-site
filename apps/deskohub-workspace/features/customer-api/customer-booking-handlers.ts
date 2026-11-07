@@ -1,8 +1,10 @@
 import "server-only";
 
 import { WorkspaceCustomerApi } from "@deskohub/workspace-customer-api";
+import { Effect } from "effect";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { handleCustomerBookingCatalog } from "./customer-booking-catalog-handlers";
+import { handleCustomerBookingCheckout } from "./customer-booking-checkout-handlers";
 
 /**
  * The booking group's handlers: the catalog a booking reads first, then
@@ -11,5 +13,8 @@ import { handleCustomerBookingCatalog } from "./customer-booking-catalog-handler
 export const CustomerBookingApiHandlers = HttpApiBuilder.group(
   WorkspaceCustomerApi,
   "booking",
-  (handlers) => handleCustomerBookingCatalog(handlers)
+  (handlers) =>
+    handleCustomerBookingCatalog(handlers).pipe(
+      Effect.flatMap(handleCustomerBookingCheckout)
+    )
 );

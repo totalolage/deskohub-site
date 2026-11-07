@@ -85,6 +85,13 @@ export const customerRequestBudgetClasses = {
     getQuote: "dotypos-read",
     // The published documents' versions.
     listLegalDocuments: "workspace-only",
+    // A booking spends two to four Dotypos mutations: the hold, an
+    // optional code, the submission, and one retry after a price change.
+    createCheckout: "dotypos-mutation",
+    applyCheckoutDiscountCode: "dotypos-mutation",
+    submitCheckout: "dotypos-mutation",
+    // Reseals the signed checkout state only.
+    acceptCheckoutPriceChange: "workspace-only",
   },
 } as const satisfies CustomerApiEndpointClassification;
 
