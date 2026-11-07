@@ -15,7 +15,6 @@ import { testEmailAddress } from "@deskohub/test-email";
 import { eq } from "drizzle-orm";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Duration, Effect, Fiber, Layer, Option, Schema } from "effect";
-import type { AnalyticsConsentMirrorRecord } from "@/features/legal/backend/analytics-consent-ledger";
 import { TestClock } from "effect/testing";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -47,6 +46,7 @@ import {
 } from "@/features/discounts/contracts";
 import { PromotionCodeUnavailableError } from "@/features/discounts/errors";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
+import type { AnalyticsConsentMirrorRecord } from "@/features/legal/backend/analytics-consent-ledger";
 import type {
   IMarketingConsentLedger,
   MarketingConsentLedger as MarketingConsentLedgerService,
@@ -1496,7 +1496,9 @@ describe("prepareWorkspacePayState", () => {
 
     test("mirrors the booking device's saved choice into the account's ledger", async () => {
       const result = await runReusableReservationScenario({
-        findByAttemptKeys: mock(() => Effect.succeed(makeReusableReservation())),
+        findByAttemptKeys: mock(() =>
+          Effect.succeed(makeReusableReservation())
+        ),
         requestCookie: savedChoice,
       });
 
@@ -1515,24 +1517,31 @@ describe("prepareWorkspacePayState", () => {
       );
     });
 
-    test("books when the mirror fails", async () => {
+    test("books when the mirror fails or dies", async () => {
       const { AnalyticsConsentUnavailable } = await import(
         "@/features/legal/backend/analytics-consent-ledger"
       );
-      const result = await runReusableReservationScenario({
-        findByAttemptKeys: mock(() => Effect.succeed(makeReusableReservation())),
-        requestCookie: savedChoice,
-        mirrorAnalyticsConsent: mock(() =>
-          Effect.fail(new AnalyticsConsentUnavailable({ cause: "down" }))
-        ),
-      });
+      for (const failure of [
+        Effect.fail(new AnalyticsConsentUnavailable({ cause: "down" })),
+        Effect.die(new Error("Synthetic mirror defect")),
+      ]) {
+        const result = await runReusableReservationScenario({
+          findByAttemptKeys: mock(() =>
+            Effect.succeed(makeReusableReservation())
+          ),
+          requestCookie: savedChoice,
+          mirrorAnalyticsConsent: mock(() => failure),
+        });
 
-      expect(result.result?.status).toBe("ready");
+        expect(result.result?.status).toBe("ready");
+      }
     });
 
     test("mirrors nothing for a request without a saved choice", async () => {
       const result = await runReusableReservationScenario({
-        findByAttemptKeys: mock(() => Effect.succeed(makeReusableReservation())),
+        findByAttemptKeys: mock(() =>
+          Effect.succeed(makeReusableReservation())
+        ),
       });
 
       expect(result.result?.status).toBe("ready");
@@ -1541,7 +1550,9 @@ describe("prepareWorkspacePayState", () => {
 
     test("mirrors nothing for a customer agent's booking", async () => {
       const result = await runReusableReservationScenario({
-        findByAttemptKeys: mock(() => Effect.succeed(makeReusableReservation())),
+        findByAttemptKeys: mock(() =>
+          Effect.succeed(makeReusableReservation())
+        ),
         requestCookie: savedChoice,
         bookingAgent: {
           clientId: "https://assistant.example/oauth-client.json",

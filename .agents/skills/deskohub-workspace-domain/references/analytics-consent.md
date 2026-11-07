@@ -26,12 +26,26 @@ stays the place where the choice is made; the account copies it.
 - The ledger is append-only. Nothing updates or deletes a decision except
   account deletion: rows reference `auth.user` with `ON DELETE CASCADE`.
 - A decision records `getLegalDocumentVersion(locale, "privacy-policy")` at
-  the moment it is written. A mirror uses the banner language the cookie
-  holds (`languageCode`) when it is a site locale, else the request's locale.
+  the moment it is written: the notice current when the decision was
+  recorded. For a mirror of an older cookie that need not be the notice the
+  visitor saw when choosing; the cookie carries no notice version until the
+  banner revision is bound to the notice. A mirror uses the banner language
+  the cookie holds (`languageCode`) when it is a site locale, else the
+  request's locale.
 - A mirror is appended only when the account has no decision at that
   instant or later, so a stale cookie never overrides a newer decision. A
-  cookie date in the future counts as now. A cookie without a valid
-  timestamp seeds only an empty ledger, dated now.
+  cookie without a valid timestamp, or dated in the future (a device clock
+  ahead), seeds only an empty ledger, dated now: dating a future cookie now
+  would let each replay of it outrank later decisions.
+- The check and the insert are one statement without a lock. Concurrent
+  writers can both land; the latest `decided_at` still decides, so only an
+  undated seed racing another device's decision in the same instant can
+  order the two by arrival.
+- `visitorConsent`'s cross-tab overwrite (`CookieConsent.setCookieData`)
+  rewrites the categories without a new `lastConsentTimestamp`. While signed
+  in, the tab records that change as a banner save; a signed-out change made
+  that way keeps the earlier save's timestamp, so a later mirror takes it only
+  while that timestamp is newer than the account's latest decision.
 - A banner save while signed in is a decision made now, not a mirror; it
   never waits on the ordering rule.
 - A device without a well-formed consent cookie records nothing; an

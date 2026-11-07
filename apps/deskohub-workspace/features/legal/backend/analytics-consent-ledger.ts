@@ -68,9 +68,10 @@ export interface IAnalyticsConsentLedger {
   /**
    * Appends the decision, against the current privacy notice of the locale,
    * only when it is newer than every decision the account made, so a stale
-   * copy never overrides a later decision. A date in the future counts as
-   * now. An undated decision is recorded at the current instant, and only
-   * into an empty ledger. Reports whether it appended the decision.
+   * copy never overrides a later decision. An undated decision, and one
+   * dated in the future, which no later decision could outrank, is recorded
+   * at the current instant and only into an empty ledger. Reports whether it
+   * appended the decision.
    */
   readonly mirror: (
     input: AnalyticsConsentMirrorRecord
@@ -170,20 +171,23 @@ export class AnalyticsConsentLedger extends Context.Service<
         }, Effect.mapError(unavailable)),
         mirror: Effect.fn("AnalyticsConsentLedger.mirror")(function* (input) {
           const now = yield* currentPreciseInstant;
-          const appended = yield* Option.match(input.decidedAt, {
+          // A future date would outrank every later decision, and dating it
+          // now would let each replay of the same copy outrank them again.
+          const decidedAt = Option.filter(
+            input.decidedAt,
+            (instant) => Temporal.Instant.compare(instant, now) <= 0
+          );
+          const appended = yield* Option.match(decidedAt, {
             // An undated decision seeds only an empty ledger.
             onNone: () => appendUnless(storedDecision(input, now), undefined),
-            onSome: (decidedAt) => {
-              const dated =
-                Temporal.Instant.compare(decidedAt, now) > 0 ? now : decidedAt;
-              return appendUnless(
+            onSome: (dated) =>
+              appendUnless(
                 storedDecision(input, dated),
                 gte(
                   decisions.decidedAt,
                   sql`${sql.param(dated, decisions.decidedAt)}::timestamptz`
                 )
-              );
-            },
+              ),
           });
           return appended.length > 0;
         }, Effect.mapError(unavailable)),

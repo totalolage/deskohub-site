@@ -99,6 +99,7 @@ import { getReservationCustomerProfile } from "@/features/reservation/reservatio
 import { ReviewAccounts, ReviewSandbox } from "@/features/review-accounts";
 import { MissingDotyposId } from "@/shared/backend/missing-dotypos-id";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
+import { catchRecoverableCause } from "@/shared/backend/workspace-effect";
 import { currentRequestHeaders } from "@/shared/backend/workspace-request-context";
 import {
   currentInstant,
@@ -1410,7 +1411,8 @@ const recordCheckoutMarketingConsent = Effect.fnUntraced(function* ({
 /**
  * Mirrors the booking device's analytics consent choice into the account's
  * ledger. An agent's request carries no device choice, so it mirrors
- * nothing. A failure is logged and never blocks the booking.
+ * nothing. Any failure, a defect included, is logged and never blocks the
+ * booking.
  */
 const mirrorBookingDeviceAnalyticsConsent = Effect.fnUntraced(
   function* ({
@@ -1431,12 +1433,10 @@ const mirrorBookingDeviceAnalyticsConsent = Effect.fnUntraced(
       source: "hydration_mirror",
     });
   },
-  Effect.catch((cause) =>
+  catchRecoverableCause((cause) =>
     Effect.logWarning(
       "Analytics consent mirror failed; continuing the booking.",
-      {
-        cause,
-      }
+      { cause }
     )
   )
 );

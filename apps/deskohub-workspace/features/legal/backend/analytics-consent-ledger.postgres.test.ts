@@ -307,20 +307,21 @@ describe.skipIf(!testDatabase)("AnalyticsConsentLedger", () => {
       ]);
     });
 
-    test("dates a choice from the future at the current instant", async () => {
+    test("treats a choice dated in the future as undated, so replaying it never outranks a later decision", async () => {
       const accountId = await newAccount();
+      const mirrorSkewedCookie = (at: string) =>
+        mirrorAt(at, {
+          accountId,
+          decision: "grant",
+          source: "hydration_mirror",
+          decidedAt: "2027-01-01T00:00:00Z",
+        });
 
-      await mirrorAt("2026-11-07T10:00:00Z", {
-        accountId,
-        decision: "grant",
-        source: "hydration_mirror",
-        decidedAt: "2027-01-01T00:00:00Z",
-      });
-
+      expect(await mirrorSkewedCookie("2026-11-07T10:00:00Z")).toBe(true);
       expect((await currentDecisionOf(accountId))?.decidedAt).toBe(
         "2026-11-07T10:00:00Z"
       );
-      // A real decision made after the skewed save still wins.
+
       await runLedgerAt("2026-11-08T10:00:00Z", (ledger) =>
         ledger.record({
           accountId,
@@ -329,6 +330,7 @@ describe.skipIf(!testDatabase)("AnalyticsConsentLedger", () => {
           source: "banner",
         })
       );
+      expect(await mirrorSkewedCookie("2026-11-09T10:00:00Z")).toBe(false);
       expect((await currentDecisionOf(accountId))?.decision).toBe("withdraw");
     });
 
