@@ -69,7 +69,13 @@
           }
         }
       ],
-      "expo-status-bar"
+      "expo-status-bar",
+      [
+        "./plugins/android-asset-statements.cjs",
+        {
+          "sites": ["https://workspace.deskohub.cz"]
+        }
+      ]
     ],
     "extra": {
       "eas": {
