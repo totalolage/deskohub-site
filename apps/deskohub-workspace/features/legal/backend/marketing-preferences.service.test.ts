@@ -564,3 +564,99 @@ describe("MarketingPreferences confirmation and dismissal", () => {
     expect(s.state.accountReads).toBe(0);
   });
 });
+
+describe("MarketingPreferences without management credentials", () => {
+  /** The scenario's dependencies over a client holding no credentials. */
+  const withoutCredentials = (s: ReturnType<typeof scenario>) => {
+    const layer = MarketingPreferences.Default.pipe(
+      Layer.provideMerge(
+        Layer.mergeAll(s.dependencies, MarketingManagementCookies.none)
+      )
+    );
+    return <A, E>(
+      use: (preferences: MarketingPreferences["Service"]) => Effect.Effect<A, E>
+    ) =>
+      Effect.runPromise(
+        Effect.flatMap(MarketingPreferences, use).pipe(Effect.provide(layer))
+      );
+  };
+
+  test("reads and saves the signed-in account's preference", async () => {
+    const s = scenario();
+    const run = withoutCredentials(s);
+    const read = await run((p) => p.read);
+    expect(read).toEqual({
+      status: "absent",
+      source: "account",
+      context: saveAccount.context,
+    });
+    expect(await run((p) => p.save(saveAccount))).toEqual({
+      status: "saved",
+    });
+    expect(s.records).toEqual([
+      {
+        customerId: customerA,
+        locale: "en-US",
+        choice: "grant",
+        mode: "explicit",
+        channel: "account",
+      },
+    ]);
+    expect(await run((p) => p.read)).toEqual({
+      status: "active",
+      source: "account",
+      context: saveAccount.context,
+    });
+  });
+
+  test("can't be trapped on a stale context by a browser's management link", async () => {
+    const s = scenario();
+    // A browser holding an e-mail-link session resolves the link instead,
+    // so the account's context goes stale there.
+    s.memory.state.session = session;
+    expect(await s.run((p) => p.save(saveAccount))).toEqual({
+      status: "rejected",
+      reason: "stale-context",
+    });
+    // Without credentials the same account's context stays current.
+    expect(await withoutCredentials(s)((p) => p.save(saveAccount))).toEqual({
+      status: "saved",
+    });
+    expect(s.records).toHaveLength(1);
+    expect(await withoutCredentials(s)((p) => p.save(saveLink))).toEqual({
+      status: "rejected",
+      reason: "stale-context",
+    });
+    expect(s.records).toHaveLength(1);
+  });
+
+  test("keeps a signed-out request unavailable instead of falling back", async () => {
+    const s = scenario();
+    s.state.account = null;
+    expect(await withoutCredentials(s)((p) => p.read)).toEqual({
+      status: "unavailable",
+    });
+    await expectUnavailable(
+      withoutCredentials(s)((p) => p.save(saveAccount).pipe(Effect.result))
+    );
+    expect(s.records).toHaveLength(0);
+  });
+
+  test("never confirms or revokes an e-mail link", async () => {
+    const s = scenario();
+    const run = withoutCredentials(s);
+    await expectUnavailable(run((p) => p.confirm(confirm).pipe(Effect.result)));
+    expect(s.state.exchanges).toBe(0);
+    expect(
+      await run((p) =>
+        p.clear({
+          context: getMarketingManagementDismissalContext({
+            pending: undefined,
+            session: undefined,
+          }),
+        })
+      )
+    ).toEqual({ status: "cleared" });
+    expect(s.state.revokes).toBe(0);
+  });
+});

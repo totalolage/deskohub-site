@@ -52,6 +52,8 @@ export class MarketingPreferencesAuthorityError extends Data.TaggedError(
   "MarketingPreferencesAuthorityError"
 )<{
   readonly reason: MarketingPreferencesAuthorityFailureReason;
+  /** Why the signed-in account, when it is the authority, can't be resolved. */
+  readonly account?: CustomerAccountAccessError;
 }> {
   /**
    * A rejected link or session credential is an invalid link; any other
@@ -119,7 +121,13 @@ export const resolveMarketingPreferencesAuthority = (
         ),
       })
     ),
-    Effect.mapError(() => unavailable())
+    Effect.mapError(
+      (account) =>
+        new MarketingPreferencesAuthorityError({
+          reason: "unavailable",
+          account,
+        })
+    )
   );
 };
 
