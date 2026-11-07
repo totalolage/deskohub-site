@@ -54,7 +54,6 @@ import { getFirstInvalidFieldPath } from "@/shared/utils/schema-issue";
 import { currentInstant } from "@/shared/utils/temporal";
 import {
   answerCustomerApiFailure,
-  answerSessionApiFailure,
   answerUnavailable,
 } from "./customer-api-failure";
 import { CustomerBookingCheckoutLayers } from "./customer-booking-checkout-layers";
