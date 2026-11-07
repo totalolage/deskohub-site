@@ -45,6 +45,10 @@ import { RememberedReferral } from "@/features/referrals/remembered-referral.ser
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { getSlowestSuccessfulCalendarLoad } from "@/shared/backend/config/google-calendar.config.test-utils";
 import {
+  SealedStateKeys,
+  sealedStateKeyIdSchema,
+} from "@/shared/backend/sealed-state-keys.service";
+import {
   withActionDeadline,
   workspaceActionDeadline,
 } from "@/shared/backend/workspace-action";
@@ -129,6 +133,8 @@ type SubmissionInput = {
   readonly referralAcceptance?: {
     readonly evaluateCheckoutReferral: ReturnType<typeof mock>;
     readonly affirmForPayment: ReturnType<typeof mock>;
+    /** The keys acceptance opens and seals with; the test ring by default. */
+    readonly sealedStateKeys?: Layer.Layer<SealedStateKeys>;
   };
 };
 
@@ -229,7 +235,8 @@ const prepareSubmission = async (input?: SubmissionInput) => {
                     affirmForPayment: input.referralAcceptance.affirmForPayment,
                   }),
                   Layer.succeed(PayableReservationService, { requireCurrent }),
-                  TestSealedStateKeys
+                  input.referralAcceptance.sealedStateKeys ??
+                    TestSealedStateKeys
                 )
               )
             ),
@@ -1090,6 +1097,47 @@ describe("applyDiscountCodeToPayState", () => {
       await expectReplacementFromOneSeal(scenario.result);
     }
   );
+
+  test("reports a referral whose replacement checkout can't be sealed as a provider failure, never a price change", async () => {
+    const testKeys = Effect.runSync(
+      SealedStateKeys.pipe(Effect.provide(TestSealedStateKeys))
+    );
+    // The client's token still opens under its own key; the replacement is
+    // sealed under the first key, which is too short for AES-256.
+    const unsealableKeys = Layer.succeed(SealedStateKeys, {
+      ...testKeys,
+      ring: [
+        { kid: sealedStateKeyIdSchema.make("broken"), key: Buffer.alloc(5) },
+        ...testKeys.ring,
+      ],
+    });
+    const acceptReferral = (sealedStateKeys: Layer.Layer<SealedStateKeys>) =>
+      runSubmission({
+        submittedCode: "RFL12345",
+        codeKind: "referral",
+        referralAcceptance: {
+          evaluateCheckoutReferral: mock(() =>
+            Effect.succeed({
+              kind: "eligible" as const,
+              code: canonicalPromotionCodeSchema.make("RFL12345"),
+            })
+          ),
+          affirmForPayment: mock(() =>
+            Effect.succeed({ kind: "cowork" as const, reservation, quote })
+          ),
+          sealedStateKeys,
+        },
+      });
+
+    const sealed = await acceptReferral(TestSealedStateKeys);
+    const unsealed = await acceptReferral(unsealableKeys);
+
+    expect(sealed.result.status).toBe("accepted");
+    expect(unsealed.result).toMatchObject({
+      status: "unavailable",
+      reason: "provider",
+    });
+  });
 
   test("reports an ordinary code whose provider is down as a provider failure", async () => {
     const scenario = await runSubmission({
