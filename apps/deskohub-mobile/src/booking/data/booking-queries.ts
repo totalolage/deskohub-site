@@ -5,7 +5,7 @@ import type {
   CustomerMeetingRoomDuration,
 } from "@deskohub/workspace-customer-api";
 import { customerAvailabilityReplacementHeader } from "@deskohub/workspace-customer-api";
-import { Duration, Effect, Equal, Hash, Order } from "effect";
+import { Duration, Effect, Equal, Hash } from "effect";
 import { Atom } from "effect/unstable/reactivity";
 import { CustomerApi } from "../../customer-api/customer-api.service";
 import { customerDataRuntime } from "../../customer-api/customer-data-runtime";
@@ -14,6 +14,7 @@ import {
   allowsAutomaticRefresh,
   DotyposReadBudget,
 } from "../../customer-api/dotypos-read-budget";
+import { selectionKey } from "../selection/booking-selection";
 
 /**
  * What the booking selection and review screens read before checkout, on the
@@ -94,19 +95,6 @@ export const meetingRoomStartTimesAtom = Atom.family(
     )
 );
 
-/**
- * A stable key for a selection: canonical JSON with sorted keys and without
- * absent fields. Temporary; the selection model's own key replaces it.
- */
-export const bookingSelectionKey = (selection: CustomerBookingSelection) =>
-  JSON.stringify(
-    Object.fromEntries(
-      Object.entries(selection)
-        .filter(([, value]) => value !== undefined)
-        .sort(([left], [right]) => Order.String(left, right))
-    )
-  );
-
 /** One selection priced in one language; equal when their keys are. */
 export class BookingQuoteRequest implements Equal.Equal {
   readonly key: string;
@@ -115,7 +103,7 @@ export class BookingQuoteRequest implements Equal.Equal {
     readonly selection: CustomerBookingSelection,
     readonly locale: CustomerLocale
   ) {
-    this.key = bookingSelectionKey(selection);
+    this.key = selectionKey(selection);
   }
 
   [Equal.symbol](that: unknown) {

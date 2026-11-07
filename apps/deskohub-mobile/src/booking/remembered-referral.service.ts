@@ -1,5 +1,7 @@
 import { ReferralCode } from "@deskohub/workspace-customer-api/referral-code";
 import { Clock, Context, Data, Effect, Layer, Option, Schema } from "effect";
+import { AccountScopedStorage } from "../customer-api/account-scoped-storage";
+import type { DeviceCapabilityFailed } from "../customer-api/device-capabilities";
 import {
   RememberedReferralUpdate,
   type RememberedReferralUpdate as Update,
@@ -16,70 +18,31 @@ export const rememberedReferralLifetimeDays = 30;
 const lifetimeMillis = rememberedReferralLifetimeDays * 24 * 60 * 60 * 1000;
 
 /**
- * Every remembered code's storage key starts with this. The app's sign-out
- * cleanup removes keys under `deskohub.booking.`.
+ * The remembered code's entry in the account's storage, which keys it by
+ * Workspace origin and account and removes it when the account exits.
  */
-export const rememberedReferralKeyPrefix = "deskohub.booking.referral.v1.";
-
-/** Whose code it is: one account against one Workspace origin. */
-export interface RememberedReferralScope {
-  readonly apiOrigin: string;
-  readonly accountId: string;
-}
-
-export const rememberedReferralKey = ({
-  apiOrigin,
-  accountId,
-}: RememberedReferralScope): string =>
-  `${rememberedReferralKeyPrefix}${apiOrigin}.${accountId}`;
+export const rememberedReferralStorageName = "deskohub.booking.referral.v1";
 
 /** The device storage failed to read or write. */
 export class RememberedReferralStorageUnavailable extends Data.TaggedError(
   "RememberedReferralStorageUnavailable"
-)<{ readonly cause: unknown }> {}
-
-interface IRememberedReferralStorage {
-  readonly getItem: (
-    key: string
-  ) => Effect.Effect<
-    Option.Option<string>,
-    RememberedReferralStorageUnavailable
-  >;
-  readonly setItem: (
-    key: string,
-    value: string
-  ) => Effect.Effect<void, RememberedReferralStorageUnavailable>;
-  readonly removeItem: (
-    key: string
-  ) => Effect.Effect<void, RememberedReferralStorageUnavailable>;
+)<{ readonly cause: DeviceCapabilityFailed }> {
+  static fromDevice = (cause: DeviceCapabilityFailed) =>
+    new RememberedReferralStorageUnavailable({ cause });
 }
-
-/** The key-value device storage the remembered code is kept in. */
-export class RememberedReferralStorage extends Context.Service<
-  RememberedReferralStorage,
-  IRememberedReferralStorage
->()("deskohub-mobile/RememberedReferralStorage") {}
 
 interface IRememberedReferralCode {
   /** The code to send with bookings, while it hasn't expired. */
-  readonly get: (
-    scope: RememberedReferralScope
-  ) => Effect.Effect<Option.Option<ReferralCode>>;
+  readonly get: Effect.Effect<Option.Option<ReferralCode>>;
   /** Remembers `code` for the cookie's lifetime, replacing any other. */
-  readonly remember: (
-    scope: RememberedReferralScope,
-    code: ReferralCode
-  ) => Effect.Effect<void>;
-  readonly forget: (scope: RememberedReferralScope) => Effect.Effect<void>;
+  readonly remember: (code: ReferralCode) => Effect.Effect<void>;
+  readonly forget: Effect.Effect<void>;
   /** Applies what a booking response asked for. */
-  readonly apply: (
-    scope: RememberedReferralScope,
-    update: Update
-  ) => Effect.Effect<void>;
+  readonly apply: (update: Update) => Effect.Effect<void>;
 }
 
 /**
- * The referral code the app remembers for a signed-in account, as the site's
+ * The referral code the app remembers for the signed-in account, as the site's
  * referral cookie does for a browser. Storage failures never fail a booking:
  * a read that fails remembers nothing, a write that fails keeps what was
  * there.
@@ -91,58 +54,60 @@ export class RememberedReferralCode extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const storage = yield* RememberedReferralStorage;
+      const storage = yield* AccountScopedStorage;
 
-      const forget = Effect.fn("RememberedReferralCode.forget")(
-        (scope: RememberedReferralScope) =>
-          storage.removeItem(rememberedReferralKey(scope)).pipe(Effect.ignore)
-      );
+      const forget = storage
+        .removeItem(rememberedReferralStorageName)
+        .pipe(
+          Effect.mapError(RememberedReferralStorageUnavailable.fromDevice),
+          Effect.ignore,
+          Effect.withSpan("RememberedReferralCode.forget")
+        );
 
       const remember = Effect.fn("RememberedReferralCode.remember")(
-        (scope: RememberedReferralScope, code: ReferralCode) =>
+        (code: ReferralCode) =>
           Clock.currentTimeMillis.pipe(
             Effect.flatMap((now) =>
               storage.setItem(
-                rememberedReferralKey(scope),
+                rememberedReferralStorageName,
                 encodeEntry({ code, expiresAt: now + lifetimeMillis })
               )
             ),
+            Effect.mapError(RememberedReferralStorageUnavailable.fromDevice),
             Effect.ignore
           )
       );
 
-      const get = Effect.fn("RememberedReferralCode.get")(
-        (scope: RememberedReferralScope) =>
-          Effect.Do.pipe(
-            Effect.bind("now", () => Clock.currentTimeMillis),
-            Effect.bind("stored", () => readStored(scope)),
-            Effect.let("live", liveEntry),
-            // An expired or unreadable entry is dropped, as a browser drops
-            // an expired cookie.
-            Effect.tap(({ stored, live }) =>
-              Effect.when(
-                forget(scope),
-                Effect.succeed(Option.isSome(stored) && Option.isNone(live))
-              )
-            ),
-            Effect.map(({ live }) => Option.map(live, ({ code }) => code))
-          )
+      /** A failed read remembers nothing. */
+      const readStored = storage.getItem(rememberedReferralStorageName).pipe(
+        Effect.mapError(RememberedReferralStorageUnavailable.fromDevice),
+        Effect.orElseSucceed(() => Option.none<string>())
       );
 
-      /** A failed read remembers nothing. */
-      const readStored = (scope: RememberedReferralScope) =>
-        storage
-          .getItem(rememberedReferralKey(scope))
-          .pipe(Effect.orElseSucceed(() => Option.none<string>()));
+      const get = Effect.Do.pipe(
+        Effect.bind("now", () => Clock.currentTimeMillis),
+        Effect.bind("stored", () => readStored),
+        Effect.let("live", liveEntry),
+        // An expired or unreadable entry is dropped, as a browser drops an
+        // expired cookie.
+        Effect.tap(({ stored, live }) =>
+          Effect.when(
+            forget,
+            Effect.succeed(Option.isSome(stored) && Option.isNone(live))
+          )
+        ),
+        Effect.map(({ live }) => Option.map(live, ({ code }) => code)),
+        Effect.withSpan("RememberedReferralCode.get")
+      );
 
       return RememberedReferralCode.of({
         get,
         remember,
         forget,
-        apply: (scope, update) =>
+        apply: (update) =>
           RememberedReferralUpdate.$match(update, {
-            Remember: ({ code }) => remember(scope, code),
-            Forget: () => forget(scope),
+            Remember: ({ code }) => remember(code),
+            Forget: () => forget,
           }),
       });
     })

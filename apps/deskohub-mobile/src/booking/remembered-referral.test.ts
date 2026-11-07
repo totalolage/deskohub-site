@@ -9,18 +9,15 @@ import {
 } from "./remembered-referral";
 import {
   RememberedReferralCode,
-  RememberedReferralStorage,
-  RememberedReferralStorageUnavailable,
-  rememberedReferralKey,
+  rememberedReferralStorageName,
 } from "./remembered-referral.service";
-import { inMemoryRememberedReferralStorage } from "./remembered-referral.service.mock";
+import {
+  failingAccountScopedStorage,
+  inMemoryAccountScopedStorage,
+} from "./remembered-referral.service.mock";
 
 const code = "FRIEND-42" as ReferralCode;
 const otherCode = "FRIEND-77" as ReferralCode;
-const scope = {
-  apiOrigin: "https://workspace.example.test",
-  accountId: "account-1",
-};
 const day = 24 * 60 * 60 * 1000;
 
 const run = <A>(
@@ -32,7 +29,7 @@ const run = <A>(
       Effect.provide(
         Layer.mergeAll(
           RememberedReferralCode.Default.pipe(
-            Layer.provide(inMemoryRememberedReferralStorage(entries))
+            Layer.provide(inMemoryAccountScopedStorage(entries))
           ),
           TestClock.layer()
         )
@@ -79,10 +76,13 @@ describe("rememberedReferralUpdate", () => {
 });
 
 describe("RememberedReferralCode", () => {
-  test("keys the code by Workspace origin and account", () => {
-    expect(rememberedReferralKey(scope)).toBe(
-      "deskohub.booking.referral.v1.https://workspace.example.test.account-1"
+  test("keeps the code under one entry of the account's storage", async () => {
+    const entries = new Map<string, string>();
+    await run(
+      entries,
+      Effect.flatMap(referrals, (remembered) => remembered.remember(code))
     );
+    expect([...entries.keys()]).toEqual([rememberedReferralStorageName]);
   });
 
   test("remembers a code for the referral cookie's 30 days", async () => {
@@ -91,12 +91,12 @@ describe("RememberedReferralCode", () => {
       entries,
       Effect.gen(function* () {
         const remembered = yield* referrals;
-        yield* remembered.remember(scope, code);
-        const fresh = yield* remembered.get(scope);
+        yield* remembered.remember(code);
+        const fresh = yield* remembered.get;
         yield* TestClock.adjust(30 * day - 1);
-        const lastMoment = yield* remembered.get(scope);
+        const lastMoment = yield* remembered.get;
         yield* TestClock.adjust(1);
-        const expired = yield* remembered.get(scope);
+        const expired = yield* remembered.get;
         return { fresh, lastMoment, expired };
       })
     );
@@ -108,47 +108,19 @@ describe("RememberedReferralCode", () => {
     expect(entries.size).toBe(0);
   });
 
-  test("keeps one code per account and origin", async () => {
-    const entries = new Map<string, string>();
-    const otherAccount = { ...scope, accountId: "account-2" };
-    const otherOrigin = { ...scope, apiOrigin: "https://preview.example.test" };
-    const found = await run(
-      entries,
-      Effect.gen(function* () {
-        const remembered = yield* referrals;
-        yield* remembered.remember(scope, code);
-        yield* remembered.remember(otherAccount, otherCode);
-        return [
-          yield* remembered.get(scope),
-          yield* remembered.get(otherAccount),
-          yield* remembered.get(otherOrigin),
-        ];
-      })
-    );
-    expect(found).toEqual([
-      Option.some(code),
-      Option.some(otherCode),
-      Option.none(),
-    ]);
-  });
-
   test("applies a response's updates: replace, then forget", async () => {
     const entries = new Map<string, string>();
     const found = await run(
       entries,
       Effect.gen(function* () {
         const remembered = yield* referrals;
+        yield* remembered.apply(RememberedReferralUpdate.Remember({ code }));
         yield* remembered.apply(
-          scope,
-          RememberedReferralUpdate.Remember({ code })
-        );
-        yield* remembered.apply(
-          scope,
           RememberedReferralUpdate.Remember({ code: otherCode })
         );
-        const replaced = yield* remembered.get(scope);
-        yield* remembered.apply(scope, RememberedReferralUpdate.Forget());
-        return { replaced, forgotten: yield* remembered.get(scope) };
+        const replaced = yield* remembered.get;
+        yield* remembered.apply(RememberedReferralUpdate.Forget());
+        return { replaced, forgotten: yield* remembered.get };
       })
     );
     expect(found).toEqual({
@@ -158,33 +130,27 @@ describe("RememberedReferralCode", () => {
   });
 
   test("drops an unreadable entry", async () => {
-    const entries = new Map([[rememberedReferralKey(scope), "{not json"]]);
+    const entries = new Map([[rememberedReferralStorageName, "{not json"]]);
     const found = await run(
       entries,
-      Effect.flatMap(referrals, (remembered) => remembered.get(scope))
+      Effect.flatMap(referrals, (remembered) => remembered.get)
     );
     expect(found).toEqual(Option.none());
-    expect(entries.has(rememberedReferralKey(scope))).toBe(false);
+    expect(entries.has(rememberedReferralStorageName)).toBe(false);
   });
 
   test("storage failures never fail the booking", async () => {
-    const unavailable = Effect.fail(
-      new RememberedReferralStorageUnavailable({ cause: "disk" })
-    );
-    const failingStorage = Layer.succeed(RememberedReferralStorage, {
-      getItem: () => unavailable,
-      setItem: () => unavailable,
-      removeItem: () => unavailable,
-    });
     const found = await Effect.runPromise(
       Effect.gen(function* () {
         const remembered = yield* referrals;
-        yield* remembered.remember(scope, code);
-        yield* remembered.forget(scope);
-        return yield* remembered.get(scope);
+        yield* remembered.remember(code);
+        yield* remembered.forget;
+        return yield* remembered.get;
       }).pipe(
         Effect.provide(
-          RememberedReferralCode.Default.pipe(Layer.provide(failingStorage))
+          RememberedReferralCode.Default.pipe(
+            Layer.provide(failingAccountScopedStorage)
+          )
         )
       )
     );

@@ -27,7 +27,6 @@ import {
   bookingAvailabilityAtom,
   bookingOfferingsAtom,
   bookingQuoteAtom,
-  bookingSelectionKey,
   legalDocumentsAtom,
   meetingRoomStartTimesAtom,
   quoteRefreshInterval,
@@ -196,7 +195,6 @@ describe("booking catalog queries", () => {
       monitorOption: undefined,
     };
 
-    expect(bookingSelectionKey(reordered)).toBe(bookingSelectionKey(selection));
     expect(bookingQuoteAtom(reordered, "en-US")).toBe(
       bookingQuoteAtom(selection, "en-US")
     );

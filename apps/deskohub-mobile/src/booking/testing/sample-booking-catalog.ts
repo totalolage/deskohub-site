@@ -7,6 +7,7 @@ import type {
   CustomerOffering,
   Money,
 } from "@deskohub/workspace-customer-api";
+import { daysBetween, type PragueDate } from "../selection/prague-date";
 
 /**
  * Synthetic booking catalog for the fake Workspace: offerings, prices and
@@ -160,11 +161,8 @@ interface PricedLine {
 }
 
 /** Inclusive Prague days between two plain dates. */
-export const inclusiveDays = (from: string, to: string) =>
-  Math.round(
-    (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) /
-      86_400_000
-  ) + 1;
+export const inclusiveDays = (from: PragueDate, to: PragueDate) =>
+  daysBetween(from, to) + 1;
 
 /** The summary lines a complete selection is priced with, in crowns. */
 export const pricedLines = (

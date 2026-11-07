@@ -43,6 +43,14 @@ import {
   type FakeWorkspace,
   fakeWorkspaceOrigin,
 } from "../../customer-api/testing/fake-workspace";
+import { selectionKey } from "../selection/booking-selection";
+import {
+  addDays,
+  type PragueDate,
+  pragueDateTimeAt,
+  pragueMidnight,
+  pragueToday,
+} from "../selection/prague-date";
 import {
   inclusiveDays,
   pricedLines,
@@ -175,7 +183,7 @@ export class FakeBookingApi {
 
   /** Today in Prague by `now`. */
   today() {
-    return pragueDate(this.now());
+    return pragueToday(this.now());
   }
 
   /** The Prague date `days` after today. */
@@ -663,7 +671,7 @@ const startCheckout = ({
       // A remembered referral code gives the referral benefit.
       referralApplied: remembered === fakeBookingCodes.referral,
       earlyPerformanceRequired:
-        inclusiveDays(pragueDate(now), payload.selection.date) <=
+        inclusiveDays(pragueToday(now), payload.selection.date) <=
         withdrawalPeriodDays,
     },
     scripted
@@ -828,7 +836,9 @@ const submitHeld = ({
       () => new CustomerConsentRequired({ consent: "early_performance" })
     ),
     Effect.tap((checkout) => Effect.sync(() => booking.submit(checkout))),
-    Effect.map((checkout) => submission(checkout, remembered))
+    Effect.map((checkout) =>
+      submission(checkout, remembered, payload.returnTarget)
+    )
   );
 
 const acceptsCurrentDocuments = (
@@ -841,12 +851,16 @@ const acceptsCurrentDocuments = (
     )
   );
 
-/** What a submitted checkout answers: pay, or nothing left to pay. */
+/**
+ * What a submitted checkout answers: pay, or nothing left to pay. The status
+ * page is the one the submission's return target names, as #1021 serves it.
+ */
 const submission = (
   checkout: FakeBookingCheckout,
-  remembered: string | undefined
+  remembered: string | undefined,
+  returnTarget: (typeof SubmitCustomerCheckout.Type)["returnTarget"]
 ): CustomerCheckoutSubmission => {
-  const statusUrl = `${fakeWorkspaceOrigin}/reservation/status?orderId=${checkout.orderId}`;
+  const statusUrl = statusUrlFor(checkout.orderId, returnTarget);
   if (summaryOf(checkout).total.value === 0) {
     return {
       status: "paid",
@@ -864,6 +878,26 @@ const submission = (
     statusUrl,
   };
 };
+
+const statusUrlFor = (
+  orderId: string,
+  returnTarget: (typeof SubmitCustomerCheckout.Type)["returnTarget"]
+) =>
+  Match.value(returnTarget).pipe(
+    Match.when(
+      "native-app",
+      () => `deskohub://reservations/${orderId}?after=payment`
+    ),
+    Match.when(
+      "web-app",
+      () => `${fakeWorkspaceOrigin}/app/reservations/${orderId}?after=payment`
+    ),
+    Match.when(
+      undefined,
+      () => `${fakeWorkspaceOrigin}/reservation/status?orderId=${orderId}`
+    ),
+    Match.exhaustive
+  );
 
 /** The share of the price the code or the referral benefit takes off. */
 const discountShare = ({ code, referralApplied }: FakeBookingCheckout) => {
@@ -1033,13 +1067,6 @@ const selectionOfQuery = ({
   ...(coffee === undefined ? {} : { coffee: coffee === "true" }),
 });
 
-const selectionKey = (selection: CustomerBookingSelection) =>
-  JSON.stringify(
-    Object.entries(selection)
-      .filter(([, value]) => value !== undefined)
-      .sort(([left], [right]) => (left < right ? -1 : 1))
-  );
-
 /** A short FNV-1a hash in hex, for tokens that look signed. */
 const fnv1a = (text: string) => {
   let hash = 0x811c9dc5;
@@ -1050,38 +1077,13 @@ const fnv1a = (text: string) => {
   return (hash >>> 0).toString(16).padStart(8, "0");
 };
 
-const pragueParts = (instant: Date) =>
-  Object.fromEntries(
-    new Intl.DateTimeFormat("en-GB", {
-      timeZone: "Europe/Prague",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hourCycle: "h23",
-    })
-      .formatToParts(instant)
-      .map((part) => [part.type, part.value])
-  );
-
-/** The Prague calendar date of an instant. */
-const pragueDate = (instant: Date) => {
-  const parts = pragueParts(instant);
-  return `${parts.year}-${parts.month}-${parts.day}`;
-};
-
-const addDays = (date: string, days: number) =>
-  new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000)
-    .toISOString()
-    .slice(0, 10);
-
-/** The instant of a Prague local date and time. */
-const pragueInstant = (date: string, time: string) => {
-  const asUtc = Date.parse(`${date}T${time}:00Z`);
-  const parts = pragueParts(new Date(asUtc));
-  const shown = Date.parse(
-    `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:00Z`
-  );
-  return new Date(asUtc - (shown - asUtc)).toISOString();
+/** The instant Prague's wall clock shows `time` (HH:MM) on `date`. */
+const pragueInstant = (date: PragueDate, time: string) => {
+  const [hour = 0, minute = 0] = time.split(":").map(Number);
+  const wanted = hour * 60 + minute;
+  const guess = pragueMidnight(date).getTime() + wanted * 60_000;
+  // Across a daylight-saving change the day's hours shift by the change.
+  const shown = pragueDateTimeAt(new Date(guess));
+  const drift = shown.hour * 60 + shown.minute - wanted;
+  return new Date(guess - drift * 60_000).toISOString();
 };
