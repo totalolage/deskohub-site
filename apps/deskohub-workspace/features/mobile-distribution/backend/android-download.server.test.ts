@@ -1,11 +1,13 @@
 import "@/shared/testing/workspace-test-env";
 
 import { afterAll, expect, mock, spyOn, test } from "bun:test";
-import { Effect, Logger, Option } from "effect";
+import { Effect, Exit, Logger, Option } from "effect";
+import { redirect } from "next/navigation";
 import type {
   AndroidRelease,
   MobileReleaseLookupError,
 } from "@/features/mobile-releases/backend/latest-android-release.server";
+import { findNextControlFlow } from "@/shared/backend/workspace-effect";
 
 // A copy taken before the mock below replaces the module's exports.
 const releaseModule = {
@@ -93,4 +95,27 @@ test("turns a failed lookup into the fallback state without reading the current 
     now.mockRestore();
   }
   expect(logged).toEqual([]);
+});
+
+// The shared lookup wraps whatever its cached loader rejects with, Next.js
+// control flow such as a prerender bailout included, and that must reach
+// Next.js instead of becoming the fallback state.
+test("lets Next.js control flow from the lookup through", async () => {
+  const controlFlow = (() => {
+    try {
+      redirect("/target");
+    } catch (thrown) {
+      return thrown;
+    }
+  })();
+  lookup = Effect.fail(
+    new releaseModule.MobileReleaseLookupError({ cause: controlFlow })
+  );
+
+  const exit = await Effect.runPromiseExit(loadAndroidDownload);
+
+  expect(Exit.isFailure(exit)).toBe(true);
+  if (Exit.isFailure(exit)) {
+    expect(findNextControlFlow(exit.cause)).toBeDefined();
+  }
 });

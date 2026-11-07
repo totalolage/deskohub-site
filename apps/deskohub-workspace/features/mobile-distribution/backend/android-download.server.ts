@@ -3,11 +3,13 @@ import "server-only";
 import { Effect, Option } from "effect";
 import "@/shared/polyfills/temporal";
 import { loadLatestAndroidRelease } from "@/features/mobile-releases/backend/latest-android-release.server";
+import { catchRecoverableCause } from "@/shared/backend/workspace-effect";
 import type { AndroidDownload } from "../android-download";
 
 /**
  * What the `/android` page offers. A failed lookup becomes the `unavailable`
- * state, so the page and its Markdown still render without GitHub.
+ * state, so the page and its Markdown still render without GitHub. Next.js
+ * control flow the lookup carries, such as a prerender bailout, propagates.
  *
  * The failure is not logged here: the page runs this outside any cache
  * scope, where a prerender fails on a read of the current time, and every
@@ -22,8 +24,7 @@ export const loadAndroidDownload: Effect.Effect<AndroidDownload> =
         onSome: (release): AndroidDownload => ({ kind: "release", release }),
       })
     ),
-    Effect.catchTag(
-      "MobileReleaseLookupError",
+    catchRecoverableCause(
       (): Effect.Effect<AndroidDownload> =>
         Effect.succeed({ kind: "unavailable" })
     ),
