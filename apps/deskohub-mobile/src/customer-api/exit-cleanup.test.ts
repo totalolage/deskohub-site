@@ -12,27 +12,33 @@ import {
   customerDataExitCleanup,
 } from "./exit-cleanup";
 import {
+  type FakeDevice,
   fakeDeviceCapabilities,
   makeFakeDevice,
 } from "./testing/fake-customer-data";
 
 const restoring: AccountPresence = { status: "restoring" };
 const signedOut: AccountPresence = { status: "signed-out" };
-const accountA: AccountPresence = { status: "signed-in", accountId: "a" };
-const accountB: AccountPresence = { status: "signed-in", accountId: "b" };
-const exitOfA: AccountExit = { scope: "account", accountId: "a" };
+const sessionA1 = { accountId: "a", sessionStartedAt: 1 };
+const sessionA2 = { accountId: "a", sessionStartedAt: 2 };
+const sessionB = { accountId: "b", sessionStartedAt: 3 };
+const signedInA1: AccountPresence = { status: "signed-in", ...sessionA1 };
+const signedInA2: AccountPresence = { status: "signed-in", ...sessionA2 };
+const signedInB: AccountPresence = { status: "signed-in", ...sessionB };
+const exitOfA1: AccountExit = { scope: "account", ...sessionA1 };
 
 describe("accountExitOf", () => {
   // biome-ignore format: the case table stays one row per line on purpose.
   const cases: ReadonlyArray<readonly [string, AccountPresence, AccountPresence, AccountExit | undefined]> = [
-    ["sign-out", accountA, signedOut, exitOfA],
-    ["account switch", accountA, accountB, exitOfA],
+    ["sign-out", signedInA1, signedOut, exitOfA1],
+    ["account switch", signedInA1, signedInB, exitOfA1],
+    ["reauthentication of the same account", signedInA1, signedInA2, undefined],
     ["a launch that finds no session", restoring, signedOut, { scope: "device" }],
-    ["a launch that restores a session", restoring, accountA, undefined],
-    ["a session refetch for the same account", accountA, accountA, undefined],
-    ["signing in after being signed out", signedOut, accountA, undefined],
+    ["a launch that restores a session", restoring, signedInA1, undefined],
+    ["a session refetch", signedInA1, signedInA1, undefined],
+    ["signing in after being signed out", signedOut, signedInA1, undefined],
     ["staying signed out", signedOut, signedOut, undefined],
-    ["a restore in progress", accountA, restoring, undefined],
+    ["a restore in progress", signedInA1, restoring, undefined],
   ];
 
   test.each(cases)("%s", (_title, previous, next, exit) => {
@@ -43,6 +49,8 @@ describe("accountExitOf", () => {
 const origin = "https://x.example";
 const keyOf = (name: string, accountId: string) =>
   accountStorageKey(name, { apiOrigin: origin, accountId });
+const shareFile = (accountId: string) =>
+  `file:///cache/deskohub-share/${accountId}/invoice.pdf`;
 
 const seededDevice = () => {
   const device = makeFakeDevice();
@@ -51,48 +59,63 @@ const seededDevice = () => {
   device.storage.set(keyOf("deskohub.reservations.v1", "b"), "{}");
   device.storage.set("posthog.distinct_id", "keep");
   device.storage.set("deskohub.analytics-consent", "keep");
-  device.files.set(
-    "file:///cache/deskohub-share/a/invoice.pdf",
-    new Uint8Array()
-  );
-  device.files.set(
-    "file:///cache/deskohub-share/b/invoice.pdf",
-    new Uint8Array()
-  );
+  device.files.set(shareFile("a"), new Uint8Array());
+  device.files.set(shareFile("b"), new Uint8Array());
   return device;
 };
 
 const cleanUp = (
-  device: ReturnType<typeof makeFakeDevice>,
-  exit: AccountExit
+  device: FakeDevice,
+  exit: AccountExit,
+  fence = makeAccountExitFence()
 ) =>
   Effect.runPromise(
     customerDataExitCleanup(exit).pipe(
       Effect.provide(
         Layer.merge(
           fakeDeviceCapabilities(device),
-          Layer.sync(AccountExitFence, makeAccountExitFence)
+          Layer.succeed(AccountExitFence, fence)
         )
       )
     )
   );
 
+const appKeys = ["deskohub.analytics-consent", "posthog.distinct_id"];
+
 describe("customerDataExitCleanup", () => {
   test("removes the exiting account's entries and files, keeping another account's and the app's", async () => {
     const device = seededDevice();
 
-    await cleanUp(device, exitOfA);
+    await cleanUp(device, exitOfA1);
 
     expect([...device.storage.keys()].sort()).toEqual(
-      [
-        "deskohub.analytics-consent",
-        keyOf("deskohub.reservations.v1", "b"),
-        "posthog.distinct_id",
-      ].sort()
+      [...appKeys, keyOf("deskohub.reservations.v1", "b")].sort()
     );
-    expect([...device.files.keys()]).toEqual([
-      "file:///cache/deskohub-share/b/invoice.pdf",
-    ]);
+    expect([...device.files.keys()]).toEqual([shareFile("b")]);
+  });
+
+  test("a late cleanup keeps the data of the account's newer sign-in", async () => {
+    const device = seededDevice();
+    const fence = makeAccountExitFence();
+    // A signed out and in again before the first exit's cleanup ran.
+    await Effect.runPromise(fence.open(sessionA2));
+
+    await cleanUp(device, exitOfA1, fence);
+
+    expect(device.storage.has(keyOf("deskohub.reservations.v1", "a"))).toBe(
+      true
+    );
+    expect(device.files.has(shareFile("a"))).toBe(true);
+    expect(Effect.runSync(fence.isCurrent(sessionA2))).toBe(true);
+  });
+
+  test("closes the exiting session, so it can't write afterwards", async () => {
+    const fence = makeAccountExitFence();
+    await Effect.runPromise(fence.open(sessionA1));
+
+    await cleanUp(makeFakeDevice(), exitOfA1, fence);
+
+    expect(Effect.runSync(fence.isCurrent(sessionA1))).toBe(false);
   });
 
   test("a launch without a session clears every account's entries and files", async () => {
@@ -100,10 +123,20 @@ describe("customerDataExitCleanup", () => {
 
     await cleanUp(device, { scope: "device" });
 
-    expect([...device.storage.keys()].sort()).toEqual([
-      "deskohub.analytics-consent",
-      "posthog.distinct_id",
-    ]);
+    expect([...device.storage.keys()].sort()).toEqual(appKeys);
     expect(device.files.size).toBe(0);
+  });
+
+  test("a device cleanup spares an account that has signed in meanwhile", async () => {
+    const device = seededDevice();
+    const fence = makeAccountExitFence();
+    await Effect.runPromise(fence.open(sessionB));
+
+    await cleanUp(device, { scope: "device" }, fence);
+
+    expect([...device.storage.keys()].sort()).toEqual(
+      [...appKeys, keyOf("deskohub.reservations.v1", "b")].sort()
+    );
+    expect(device.files.has(shareFile("b"))).toBe(true);
   });
 });

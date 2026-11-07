@@ -33,26 +33,44 @@ export const accountStorageKey = (
 export const isAccountStorageKey = (key: string, accountId: string) =>
   isExitClearedKey(key) && key.endsWith(`.${encodeURIComponent(accountId)}`);
 
+/** One sign-in of an account, told apart by when it started. */
+export interface AccountSession {
+  readonly accountId: string;
+  readonly sessionStartedAt: number;
+}
+
 interface IAccountExitFence {
-  /** Advances each time the account exits, before its cleanup runs. */
-  readonly generation: (accountId: string) => Effect.Effect<number>;
-  readonly advance: (accountId: string) => Effect.Effect<void>;
   /**
-   * Runs device writes to one key (or temporary file) one at a time, across
-   * sessions: a write from a session that has since exited lands and undoes
-   * itself before the next session's write to the same key starts.
+   * Runs `effect` alone: no other account-storage operation, session opening
+   * or exit cleanup interleaves with it.
    */
-  readonly withKeyLock: (
-    key: string
-  ) => <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
+  readonly exclusive: <A, E, R>(
+    effect: Effect.Effect<A, E, R>
+  ) => Effect.Effect<A, E, R>;
+  /** Records that the session's storage opened (the account's latest). */
+  readonly open: (session: AccountSession) => Effect.Effect<void>;
+  /**
+   * Whether the session may still use its storage: no exit closed it and no
+   * later session of the account opened.
+   */
+  readonly isCurrent: (session: AccountSession) => Effect.Effect<boolean>;
+  /**
+   * Closes the account's storage for an exit of `session`; answers whether
+   * the exit may remove the account's data, which it may not once a later
+   * session of the account has opened.
+   */
+  readonly close: (session: AccountSession) => Effect.Effect<boolean>;
+  /** Accounts with a session whose storage is open. */
+  readonly openAccounts: Effect.Effect<ReadonlySet<string>>;
 }
 
 /**
- * Orders an account's device writes against its exit. Device writes can't be
- * cancelled, so one in flight when the account exits could land after the
- * cleanup; a write that sees its account's fence moved undoes itself. Each
- * account has its own fence, so another account signing in meanwhile is
- * unaffected.
+ * Orders account storage against account exits. Every storage operation and
+ * every exit cleanup runs alone (`exclusive`) and checks which session it
+ * belongs to, so a session that has exited (or been succeeded) can't write,
+ * and an exit's cleanup never removes data of a session that opened after
+ * it. Device writes can't be cancelled; holding the lock until one lands
+ * keeps a cleanup from running in the middle of it.
  */
 export class AccountExitFence extends Context.Service<
   AccountExitFence,
@@ -63,23 +81,46 @@ export class AccountExitFence extends Context.Service<
 }
 
 export const makeAccountExitFence = (): IAccountExitFence => {
-  const generations = new Map<string, number>();
-  const keyLocks = new Map<string, Semaphore.Semaphore>();
-  const keyLock = (key: string) => {
-    const existing = keyLocks.get(key);
-    if (existing !== undefined) return existing;
-    const created = Semaphore.makeUnsafe(1);
-    keyLocks.set(key, created);
-    return created;
-  };
+  const latest = new Map<
+    string,
+    { readonly sessionStartedAt: number; closed: boolean }
+  >();
+  const lock = Semaphore.makeUnsafe(1);
   return {
-    withKeyLock: (key) => (effect) => keyLock(key).withPermit(effect),
-    generation: (accountId) =>
-      Effect.sync(() => generations.get(accountId) ?? 0),
-    advance: (accountId) =>
+    exclusive: (effect) => lock.withPermit(effect),
+    open: ({ accountId, sessionStartedAt }) =>
       Effect.sync(() => {
-        generations.set(accountId, (generations.get(accountId) ?? 0) + 1);
+        const known = latest.get(accountId);
+        if (known === undefined || known.sessionStartedAt <= sessionStartedAt) {
+          latest.set(accountId, { sessionStartedAt, closed: false });
+        }
       }),
+    isCurrent: ({ accountId, sessionStartedAt }) =>
+      Effect.sync(() => {
+        const known = latest.get(accountId);
+        return (
+          known !== undefined &&
+          !known.closed &&
+          known.sessionStartedAt === sessionStartedAt
+        );
+      }),
+    close: ({ accountId, sessionStartedAt }) =>
+      Effect.sync(() => {
+        const known = latest.get(accountId);
+        if (known === undefined) return true;
+        // A later sign-in of the same account owns the entries now.
+        if (known.sessionStartedAt > sessionStartedAt) return false;
+        known.closed = true;
+        return true;
+      }),
+    openAccounts: Effect.sync(
+      () =>
+        new Set(
+          [...latest]
+            .filter(([, session]) => !session.closed)
+            .map(([accountId]) => accountId)
+        )
+    ),
   };
 };
 
@@ -90,6 +131,7 @@ interface IAccountScopedStorage {
   readonly getItem: (
     name: string
   ) => Effect.Effect<Option.Option<string>, DeviceCapabilityFailed>;
+  /** Does nothing once the session has exited. */
   readonly setItem: (
     name: string,
     value: string
@@ -99,7 +141,7 @@ interface IAccountScopedStorage {
   ) => Effect.Effect<void, DeviceCapabilityFailed>;
   /**
    * A temporary file for the share sheet, in the account's own folder; none
-   * when the account exited before it landed.
+   * once the session has exited.
    */
   readonly writeTemporaryFile: (
     name: string,
@@ -108,10 +150,10 @@ interface IAccountScopedStorage {
 }
 
 /**
- * The signed-in account's device storage and temporary files. Use it, not
+ * The signed-in session's device storage and temporary files. Use it, not
  * `DeviceStorage`, for anything kept per account: it keys entries by origin
- * and account, refuses names the exit cleanup wouldn't remove, and fences
- * writes against the account's exit.
+ * and account, refuses names the exit cleanup wouldn't remove, and orders
+ * every operation against the account's exit through `AccountExitFence`.
  */
 export class AccountScopedStorage extends Context.Service<
   AccountScopedStorage,
@@ -124,11 +166,20 @@ export class AccountScopedStorage extends Context.Service<
       const temporaryFiles = yield* TemporaryFiles;
       const fence = yield* AccountExitFence;
       const scope = yield* CustomerAccountScope;
-      const opened = yield* fence.generation(scope.accountId);
-      const stillSignedIn = Effect.map(
-        fence.generation(scope.accountId),
-        (generation) => generation === opened
-      );
+      yield* fence.exclusive(fence.open(scope));
+      // Runs alone and uninterruptibly (a device write lands either way), and
+      // only while this session is current.
+      const whileCurrent = <A, E>(
+        operation: Effect.Effect<A, E>,
+        otherwise: A
+      ): Effect.Effect<A, E> =>
+        fence
+          .exclusive(
+            Effect.flatMap(fence.isCurrent(scope), (current) =>
+              current ? operation : Effect.succeed(otherwise)
+            )
+          )
+          .pipe(Effect.uninterruptible);
       const keyOf = (name: string) =>
         isExitClearedKey(`${name}.`)
           ? Effect.succeed(accountStorageKey(name, scope))
@@ -139,42 +190,24 @@ export class AccountScopedStorage extends Context.Service<
             );
       return {
         getItem: (name) =>
-          Effect.gen(function* () {
-            const key = yield* keyOf(name);
-            if (!(yield* stillSignedIn)) return Option.none();
-            return yield* storage.getItem(key);
-          }),
-        // A write and its fence check hold the key's lock and run
-        // uninterruptibly: an interrupted fiber would otherwise skip the check
-        // while the write still lands.
+          Effect.flatMap(keyOf(name), (key) =>
+            whileCurrent(storage.getItem(key), Option.none())
+          ),
         setItem: (name, value) =>
           Effect.flatMap(keyOf(name), (key) =>
-            Effect.gen(function* () {
-              if (!(yield* stillSignedIn)) return;
-              yield* storage.setItem(key, value);
-              // The account exited while the write was in flight; its cleanup
-              // may have run before the write landed.
-              if (!(yield* stillSignedIn)) yield* storage.removeItems([key]);
-            }).pipe(Effect.uninterruptible, fence.withKeyLock(key))
+            whileCurrent(storage.setItem(key, value), undefined)
           ),
         removeItem: (name) =>
           Effect.flatMap(keyOf(name), (key) =>
-            storage.removeItems([key]).pipe(fence.withKeyLock(key))
+            whileCurrent(storage.removeItems([key]), undefined)
           ),
         writeTemporaryFile: (name, bytes) =>
-          Effect.gen(function* () {
-            if (!(yield* stillSignedIn)) return Option.none();
-            const uri = yield* temporaryFiles.write(
-              scope.accountId,
-              name,
-              bytes
-            );
-            if (yield* stillSignedIn) return Option.some(uri);
-            yield* temporaryFiles.remove(uri);
-            return Option.none();
-          }).pipe(
-            Effect.uninterruptible,
-            fence.withKeyLock(`file:${scope.accountId}/${name}`)
+          whileCurrent(
+            Effect.map(
+              temporaryFiles.write(scope.accountId, name, bytes),
+              Option.some
+            ),
+            Option.none()
           ),
       };
     })
@@ -182,7 +215,7 @@ export class AccountScopedStorage extends Context.Service<
 }
 
 /**
- * The device capabilities with the account's fenced storage over them, for a
+ * The device capabilities with the session's fenced storage over them, for a
  * data runtime. Tests pass their own fence.
  */
 export const accountDeviceLayer = (

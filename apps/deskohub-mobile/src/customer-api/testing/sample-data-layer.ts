@@ -29,6 +29,7 @@ export const sampleCustomerDataLayer = (
         Layer.succeed(CustomerAccountScope, {
           accountId: workspace.data.accountId,
           apiOrigin: fakeWorkspaceOrigin,
+          sessionStartedAt: 0,
         })
       )
     )

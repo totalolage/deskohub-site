@@ -1,7 +1,8 @@
 import { RegistryProvider } from "@effect/atom-react";
 import type { Layer } from "effect";
 import { Atom } from "effect/unstable/reactivity";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useState } from "react";
+import type { AccountSession } from "./account-scoped-storage";
 import { liveCustomerDataLayer } from "./customer-data-live";
 import {
   type CustomerDataServices,
@@ -35,34 +36,22 @@ const sampleLayerFor:
 /**
  * Gives the signed-in screens one data registry per account: switching
  * accounts (or sample states) mounts a fresh registry, so no cached data,
- * read budget or in-flight request crosses over.
+ * read budget or in-flight request crosses over. Signing in again as the same
+ * account (reauthentication) keeps the registry.
  */
 export function CustomerDataProvider({
   accountId,
+  sessionStartedAt,
   children,
-}: {
-  readonly accountId: string;
-  readonly children: ReactNode;
-}) {
+}: AccountSession & { readonly children: ReactNode }) {
   const [sampleKind, setSampleKind] = useState<SampleAccountKind | undefined>(
     sampleDataMode.enabled ? sampleDataMode.kind : undefined
   );
-  // The registry reads its initial values once, when it is created.
-  const initialValues = useMemo(
-    () => [
-      Atom.initialValue(
-        customerDataLayer,
-        sampleKind !== undefined && sampleLayerFor !== undefined
-          ? sampleLayerFor(sampleKind)
-          : liveCustomerDataLayer(accountId)
-      ),
-    ],
-    [accountId, sampleKind]
-  );
   return (
-    <RegistryProvider
+    <AccountRegistry
       key={`${accountId}/${sampleKind ?? "live"}`}
-      initialValues={initialValues}
+      session={{ accountId, sessionStartedAt }}
+      sampleKind={sampleKind}
     >
       {children}
       {sampleKind !== undefined && (
@@ -71,6 +60,31 @@ export function CustomerDataProvider({
           onNextKind={() => setSampleKind(nextSampleAccountKind(sampleKind))}
         />
       )}
+    </AccountRegistry>
+  );
+}
+
+/** One account's registry, seeded once with the session it opened under. */
+function AccountRegistry({
+  session,
+  sampleKind,
+  children,
+}: {
+  readonly session: AccountSession;
+  readonly sampleKind: SampleAccountKind | undefined;
+  readonly children: ReactNode;
+}) {
+  const [initialValues] = useState(() => [
+    Atom.initialValue(
+      customerDataLayer,
+      sampleKind !== undefined && sampleLayerFor !== undefined
+        ? sampleLayerFor(sampleKind)
+        : liveCustomerDataLayer(session)
+    ),
+  ]);
+  return (
+    <RegistryProvider initialValues={initialValues}>
+      {children}
     </RegistryProvider>
   );
 }

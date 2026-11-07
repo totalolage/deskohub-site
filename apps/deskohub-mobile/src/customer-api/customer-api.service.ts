@@ -77,6 +77,8 @@ export class CustomerAuthApi extends Context.Service<
 interface ICustomerAccountScope {
   /** The signed-in account the runtime serves; it never changes inside one. */
   readonly accountId: string;
+  /** When the session the runtime opened under started (epoch ms). */
+  readonly sessionStartedAt: number;
   /** The Workspace origin, for keys that must not mix deployments. */
   readonly apiOrigin: string;
 }
