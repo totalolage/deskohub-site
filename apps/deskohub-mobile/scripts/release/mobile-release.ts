@@ -14,6 +14,8 @@
 // APK. `--signing debug` is for pull request dry runs: it signs with a
 // throwaway key that keytool generates for the build, never reads the release
 // keystore, and checks that the release certificate did not sign the APK.
+
+import { randomBytes } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -23,7 +25,6 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";

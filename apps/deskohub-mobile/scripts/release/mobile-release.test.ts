@@ -30,7 +30,12 @@ const runBuild = async (...args: readonly string[]) => {
 
 describe("mobile-release.ts build --signing", () => {
   test("refuses debug signing for a release tag", async () => {
-    const result = await runBuild("--signing", "debug", "--tag", "mobile-v0.0.0");
+    const result = await runBuild(
+      "--signing",
+      "debug",
+      "--tag",
+      "mobile-v0.0.0"
+    );
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("--signing debug");
     expect(result.createdOutput).toBe(false);

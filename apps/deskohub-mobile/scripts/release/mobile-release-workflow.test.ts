@@ -89,6 +89,20 @@ describe("mobile-release.yml release key", () => {
   });
 });
 
+describe("mobile-release.yml self-check", () => {
+  test("runs these tests on every event before either build", () => {
+    const selfCheck = stepNamed("Test the release scripts");
+    expect(selfCheck.if).toBeUndefined();
+    expect(selfCheck["working-directory"]).toBe("apps/deskohub-mobile");
+    expect(selfCheck.run).toBe("bun test scripts/release");
+    for (const buildStep of [releaseBuild, dryRunBuild]) {
+      expect(build.steps.indexOf(selfCheck)).toBeLessThan(
+        build.steps.indexOf(buildStep)
+      );
+    }
+  });
+});
+
 describe("mobile-release.yml pull request dry run", () => {
   test("signs with a generated debug key and never sees the release key", () => {
     expect(dryRunBuild.if).toBe(pullRequestOnly);
