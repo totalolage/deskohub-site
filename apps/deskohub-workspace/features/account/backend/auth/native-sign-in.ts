@@ -119,17 +119,15 @@ type AppVerifyGuard = {
 };
 
 /**
- * A verification the app makes signs in the link's account, so the app never
- * swaps one account for another behind the customer's back. With a session
- * of another account, or any session when the link would create an account,
- * it fails before the link's claim is taken and before Better Auth consumes
- * the link: the current session stays, and the customer can sign out and use
- * the same link. As with a passkey assertion from a signed-in browser, a
- * session only ever continues as its own account. Links that name a callback
- * keep Better Auth's sign-in, and a link Better Auth won't accept gets its
- * usual error.
+ * A verification the app makes never swaps the signed-in account: with a
+ * session of another account, or any session when the link would create an
+ * account, it is refused, as a passkey assertion from a signed-in browser is.
+ * The auth guard runs this before it takes the link's sign-in claim and
+ * before Better Auth consumes the link, so the session stays and the same
+ * link still works once the customer signs out. A link Better Auth won't
+ * accept gets its usual error.
  */
-export const refuseAccountSwitch = ({
+export const refuseMagicLinkAccountSwitch = ({
   request,
   sessionUserId,
 }: AppVerifyGuard) =>
@@ -164,7 +162,7 @@ export const refuseAccountSwitch = ({
             reason: "account-switch",
           });
           return yield* Effect.fail(accountSwitchRefused());
-        }).pipe(Effect.withSpan("NativeSignIn.refuseAccountSwitch")),
+        }).pipe(Effect.withSpan("NativeSignIn.refuseMagicLinkAccountSwitch")),
     }
   );
 

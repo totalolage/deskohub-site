@@ -208,9 +208,12 @@ describe("magic-link App Link", () => {
   });
 
   describe("with a session already in the app", () => {
-    const appSignIns = () => {
+    const appSignIns = ({ signInCodes = false } = {}) => {
       const sentLinks: CapturedMagicLink[] = [];
-      const { auth } = makeMemoryTestAuth({ sentLinks });
+      const { auth } = makeMemoryTestAuth({
+        sentLinks,
+        isSignInCodeEnabled: async () => signInCodes,
+      });
       const sendLink = async (email: string) => {
         const sent = await callHandler(auth, "/sign-in/magic-link", {
           method: "POST",
@@ -244,33 +247,35 @@ describe("magic-link App Link", () => {
       return { auth, sendLink, verify, signedIn, signedInEmail };
     };
 
-    test("refuses another account's link and keeps the session and the link", async () => {
-      const app = appSignIns();
-      const current = uniqueEmail("app-current");
-      const other = uniqueEmail("app-other");
-      const cookie = await app.signedIn(current);
-      await app.signedIn(other);
-      const token = await app.sendLink(other);
+    for (const signInCodes of [false, true]) {
+      test(`refuses another account's link and keeps the session and the link (sign-in codes ${signInCodes ? "on" : "off"})`, async () => {
+        const app = appSignIns({ signInCodes });
+        const current = uniqueEmail("app-current");
+        const other = uniqueEmail("app-other");
+        const cookie = await app.signedIn(current);
+        await app.signedIn(other);
+        const token = await app.sendLink(other);
 
-      workspaceLogs.reset();
-      const refused = await app.verify(token, cookie);
-      expect(refused.status).toBe(403);
-      expect(await errorCode(refused)).toBe("ACCOUNT_SWITCH_REFUSED");
-      expect(getSessionCookie(refused)).toBeUndefined();
-      expect(await app.signedInEmail(cookie)).toBe(current.toLowerCase());
-      const logged = JSON.stringify(workspaceLogs.records());
-      expect(logged).toContain("account.native-sign-in.rejected");
-      expect(logged).toContain("account-switch");
-      expect(logged).not.toContain(token);
-      expect(logged).not.toContain(other.toLowerCase());
+        workspaceLogs.reset();
+        const refused = await app.verify(token, cookie);
+        expect(refused.status).toBe(403);
+        expect(await errorCode(refused)).toBe("ACCOUNT_SWITCH_REFUSED");
+        expect(refused.headers.getSetCookie()).toEqual([]);
+        expect(await app.signedInEmail(cookie)).toBe(current.toLowerCase());
+        const logged = JSON.stringify(workspaceLogs.records());
+        expect(logged).toContain("account.native-sign-in.rejected");
+        expect(logged).toContain("account-switch");
+        expect(logged).not.toContain(token);
+        expect(logged).not.toContain(other.toLowerCase());
 
-      // Nothing was consumed: signed out, the same link still signs in.
-      const later = await app.verify(token);
-      expect(later.status).toBe(200);
-      expect(await app.signedInEmail(cookieJar(getSessionCookie(later)!))).toBe(
-        other.toLowerCase()
-      );
-    });
+        // Nothing was consumed: signed out, the same link still signs in.
+        const later = await app.verify(token);
+        expect(later.status).toBe(200);
+        expect(
+          await app.signedInEmail(cookieJar(getSessionCookie(later)!))
+        ).toBe(other.toLowerCase());
+      });
+    }
 
     test("refuses a link that would create a new account", async () => {
       const app = appSignIns();
@@ -281,7 +286,7 @@ describe("magic-link App Link", () => {
       const refused = await app.verify(token, cookie);
       expect(refused.status).toBe(403);
       expect(await errorCode(refused)).toBe("ACCOUNT_SWITCH_REFUSED");
-      expect(getSessionCookie(refused)).toBeUndefined();
+      expect(refused.headers.getSetCookie()).toEqual([]);
       expect(await app.signedInEmail(cookie)).toBe(current.toLowerCase());
     });
 

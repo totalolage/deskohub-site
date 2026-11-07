@@ -77,7 +77,7 @@ import { nativeAppOrigin } from "./native-app";
 import {
   nativeAppLinkFor,
   nativeSignIn,
-  refuseAccountSwitch,
+  refuseMagicLinkAccountSwitch,
 } from "./native-sign-in";
 import {
   findReviewAccountCredential,
@@ -641,7 +641,9 @@ const guardSignInPath = (guard: AuthRequestGuard) =>
   Match.value(guard.request.path).pipe(
     Match.when("/sign-in/magic-link", () => guardSignInEmail(guard)),
     Match.when("/magic-link/verify", () =>
-      refuseAccountSwitch(guard).pipe(Effect.andThen(claimMagicLink(guard)))
+      refuseMagicLinkAccountSwitch(guard).pipe(
+        Effect.andThen(claimMagicLink(guard))
+      )
     ),
     Match.when("/sign-in/email-otp", () => screenSignInCode(guard)),
     Match.when("/sign-in/email", () => screenPasswordSignIn(guard)),
