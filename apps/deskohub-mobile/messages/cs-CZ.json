@@ -10,5 +10,8 @@
   "update_ready_restart": "Restartovat",
   "native_update_available": "Je k dispozici nová verze aplikace {versionName}.",
   "native_update_download": "Stáhnout",
-  "update_prompt_dismiss": "Teď ne"
+  "update_prompt_dismiss": "Teď ne",
+  "consent_prompt_message": "Můžeme měřit, jak aplikaci používáte, abychom ji mohli zlepšovat?",
+  "consent_prompt_accept": "Povolit analytiku",
+  "consent_prompt_decline": "Odmítnout"
 }

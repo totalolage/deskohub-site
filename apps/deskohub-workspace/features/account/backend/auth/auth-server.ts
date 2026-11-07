@@ -75,6 +75,11 @@ import {
 import { renderMagicLinkEmail } from "./magic-link-email";
 import { nativeAppOrigin } from "./native-app";
 import {
+  nativeAppLinkFor,
+  nativeSignIn,
+  refuseMagicLinkAccountSwitch,
+} from "./native-sign-in";
+import {
   findReviewAccountCredential,
   type ReviewAccountCredential,
 } from "./review-account-credentials";
@@ -113,6 +118,8 @@ export type WorkspaceAuthConfig = ReviewLoginConfig & {
   readonly database: NonNullable<BetterAuthOptions["database"]>;
   readonly secrets: NonNullable<BetterAuthOptions["secrets"]>;
   readonly allowedHosts: readonly string[];
+  /** The customer-facing HTTPS origin whose `/app/` App Links open the app. */
+  readonly nativeAppLinkOrigin: string;
   /** This deployment's passkey RP ID and origins, never the plugin default. */
   readonly passkeyRelyingParty: PasskeyRelyingParty;
   /** The canonical URL of this deployment's customer MCP server. */
@@ -362,6 +369,8 @@ const decodeAuthContext = Schema.decodeUnknownOption(authContextSchema);
 
 type GuardedAuthRequest = {
   readonly path: string;
+  /** The HTTP request; a server-side `auth.api` call has none. */
+  readonly request?: Request;
   readonly body?: unknown;
   readonly query?: unknown;
   readonly json: (body: PasswordSignInStep) => unknown;
@@ -631,7 +640,11 @@ const screenPasswordSignIn = (guard: AuthRequestGuard) =>
 const guardSignInPath = (guard: AuthRequestGuard) =>
   Match.value(guard.request.path).pipe(
     Match.when("/sign-in/magic-link", () => guardSignInEmail(guard)),
-    Match.when("/magic-link/verify", () => claimMagicLink(guard)),
+    Match.when("/magic-link/verify", () =>
+      refuseMagicLinkAccountSwitch(guard).pipe(
+        Effect.andThen(claimMagicLink(guard))
+      )
+    ),
     Match.when("/sign-in/email-otp", () => screenSignInCode(guard)),
     Match.when("/sign-in/email", () => screenPasswordSignIn(guard)),
     Match.orElse(() => Effect.void)
@@ -1103,7 +1116,7 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
           })(
             sendSignInEmail({
               config,
-              email: data,
+              email: { ...data, url: nativeAppLinkFor(data.url) },
               context: ctx?.context,
               createSignInCode: (email) =>
                 createSignInCode(email, ctx?.request),
@@ -1139,6 +1152,7 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
         resource: config.customerMcpResource,
         clientMetadataTransport: config.clientMetadataTransport,
       }),
+      nativeSignIn({ appLinkOrigin: config.nativeAppLinkOrigin }),
       // The native app's requests carry no browser `Origin`: the plugin takes
       // it from `expo-origin`, and a magic link the app started returns to
       // the app scheme with the session cookie.
