@@ -14,8 +14,24 @@ let linkAccount = "bob";
 mock.module("./auth-client.web", () => ({
   authClient: {
     getSession: () => readSession(),
+    signIn: {
+      emailOtp: async () => {
+        readSession = async () => ({
+          data: { user: { id: linkAccount } },
+          error: null,
+        });
+        return { data: { token: "t" }, error: null };
+      },
+    },
     magicLink: {
-      verify: async () => {
+      verify: async ({
+        query,
+      }: {
+        readonly query: { readonly token: string };
+      }) => {
+        if (query.token === "used") {
+          return { data: null, error: { status: 400, code: "INVALID_TOKEN" } };
+        }
         readSession = async () => ({
           data: { user: { id: linkAccount } },
           error: null,
@@ -31,6 +47,7 @@ mock.module("./auth-client.web", () => ({
 }));
 
 const {
+  completeWebCodeSignIn,
   completeWebMagicLink,
   confirmWebAccount,
   prepareReauthenticationEmail,
@@ -279,5 +296,63 @@ describe("prepareReauthenticationEmail", () => {
     );
     expect(signOuts).toBe(1);
     clearReauthenticatingUser();
+  });
+});
+
+describe("the stored reauthentication outlives failed attempts", () => {
+  const reasonOfExit = (
+    exit: Exit.Exit<unknown, { readonly reason: string }>
+  ) =>
+    Exit.isSuccess(exit)
+      ? undefined
+      : Option.getOrUndefined(Exit.findErrorOption(exit))?.reason;
+
+  const openLink = (token: string) =>
+    Effect.runPromiseExit(
+      completeWebMagicLink(token, {
+        nativePending: false,
+        storedUserId: loadReauthenticatingUser(Date.now()),
+      })
+    );
+
+  test("a used link, then the other account's valid link", async () => {
+    useStorage(true);
+    await Effect.runPromise(
+      prepareReauthenticationEmail({ kind: "account", userId: "ada" })
+    );
+    readSession = async () => ({ data: null, error: null });
+
+    expect(reasonOfExit(await openLink("used"))).toBe("link-rejected");
+    expect(reasonOfExit(await openLink("valid"))).toBe("account-switch");
+    // A refusal keeps it too, for the email's remaining links.
+    readSession = async () => ({ data: null, error: null });
+    expect(reasonOfExit(await openLink("valid"))).toBe("account-switch");
+    expect(loadReauthenticatingUser(Date.now())).toEqual(Option.some("ada"));
+  });
+
+  test("a refused code, then the email's link", async () => {
+    useStorage(true);
+    await Effect.runPromise(
+      prepareReauthenticationEmail({ kind: "account", userId: "ada" })
+    );
+    const codeExit = await Effect.runPromiseExit(
+      completeWebCodeSignIn("bob@example.test", "123456", {
+        kind: "account",
+        userId: "ada",
+      })
+    );
+    expect(reasonOfExit(codeExit)).toBe("account-switch");
+    readSession = async () => ({ data: null, error: null });
+    expect(reasonOfExit(await openLink("valid"))).toBe("account-switch");
+  });
+
+  test("a confirmed sign-in ends the reauthentication", async () => {
+    useStorage(true);
+    linkAccount = "ada";
+    await Effect.runPromise(
+      prepareReauthenticationEmail({ kind: "account", userId: "ada" })
+    );
+    expect(reasonOfExit(await openLink("valid"))).toBeUndefined();
+    expect(loadReauthenticatingUser(Date.now())).toEqual(Option.none());
   });
 });

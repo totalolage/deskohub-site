@@ -3,7 +3,10 @@ import type { AppLocale } from "../i18n/app-locale";
 import { webCallbackPath } from "./auth-callback";
 import { authClient } from "./auth-client.web";
 import type { NativeHandoffRequest } from "./native-handoff-request";
-import { saveReauthenticatingUser } from "./web-reauthentication-store";
+import {
+  clearReauthenticatingUser,
+  saveReauthenticatingUser,
+} from "./web-reauthentication-store";
 import {
   WebSignInFailure,
   type WebSignInOperation,
@@ -235,6 +238,13 @@ export const magicLinkExpectation = ({
   });
 };
 
+/**
+ * The stored reauthentication is cleared only once a sign-in is confirmed as
+ * its account. A refused or failed attempt keeps it, so the email's other
+ * still-valid links are checked against it too.
+ */
+const clearOnceConfirmed = Effect.sync(clearReauthenticatingUser);
+
 /** Signs the browser in with a magic link, refusing an account switch. */
 export const completeWebMagicLink = (
   token: string,
@@ -246,5 +256,18 @@ export const completeWebMagicLink = (
         Effect.andThen(confirmWebAccount(expectation))
       )
     ),
+    Effect.tap(() => clearOnceConfirmed),
     Effect.withSpan("WebSignIn.completeWebMagicLink")
+  );
+
+/** Signs the browser in with the email's code, refusing an account switch. */
+export const completeWebCodeSignIn = (
+  email: string,
+  code: string,
+  expectation: WebAccountExpectation
+) =>
+  verifySignInCode(email, code).pipe(
+    Effect.andThen(confirmWebAccount(expectation)),
+    Effect.tap(() => clearOnceConfirmed),
+    Effect.withSpan("WebSignIn.completeWebCodeSignIn")
   );

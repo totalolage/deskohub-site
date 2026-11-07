@@ -379,6 +379,34 @@ describe("reauthentication", () => {
     expect(storedCookie(store)).not.toContain("session_token");
   });
 
+  test("keeps refusing the other account's links after a refusal", async () => {
+    const server = makeFakeAuthServer(origin);
+    const store = makeMemorySecureStore();
+    await signedInAs(server, store, ada);
+    // The reauthentication email's link for Bob opens in the mail app while
+    // the auth session waits, twice.
+    const links: Array<string> = [];
+    const app = launchApp(server, store, async () => {
+      links.push(server.issueMagicLink(bob), server.issueMagicLink(bob));
+      return AuthSessionResult.Closed();
+    });
+    const flow = app.runtime.runPromiseExit(reauthenticate);
+    while (links.length === 0) await Bun.sleep(1);
+
+    const [first, second] = links;
+    const firstExit = await app.runtime.runPromiseExit(
+      completeAuthCallback({ kind: "token", token: first ?? "" })
+    );
+    const secondExit = await app.runtime.runPromiseExit(
+      completeAuthCallback({ kind: "token", token: second ?? "" })
+    );
+
+    expect(failureTag(firstExit)).toBe("AccountSwitchRefused");
+    expect(failureTag(secondExit)).toBe("AccountSwitchRefused");
+    expect(failureTag(await flow)).toBe("AccountSwitchRefused");
+    expect(server.openSessions()).not.toContainEqual(bob);
+  });
+
   test("needs a signed-in session", async () => {
     const server = makeFakeAuthServer(origin);
     const app = launchApp(server, makeMemorySecureStore());

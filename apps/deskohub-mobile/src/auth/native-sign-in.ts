@@ -204,14 +204,14 @@ const completeHandoff = (code: string, state: string) =>
           codeVerifier: pending.verifier,
           returnUri: pending.returnUri,
         })
-        .pipe(
-          Effect.mapError(fromAuthFailure),
-          Effect.ensuring(clearPendingSignIn)
-        )
+        .pipe(Effect.mapError(fromAuthFailure))
     ),
     Effect.flatMap(({ pending }) =>
       confirmSignedInUser(pending.expectedUserId)
     ),
+    // Only a confirmed sign-in ends the attempt: a refused one keeps its
+    // expected account for the email's other links until it expires.
+    Effect.tap(() => clearPendingSignIn),
     Effect.withSpan("NativeSignIn.completeHandoff")
   );
 
@@ -235,15 +235,15 @@ const completeToken = Effect.fn("NativeSignIn.completeToken")(function* (
   });
   return yield* auth.verifyMagicLink(token).pipe(
     Effect.mapError(fromAuthFailure),
-    Effect.tap(() =>
-      Effect.when(clearPendingSignIn, Effect.succeed(Option.isSome(pending)))
-    ),
     Effect.andThen(
       confirmSignedInUser(
         Option.getOrUndefined(
           Option.flatMapNullishOr(pending, (found) => found.expectedUserId)
         )
       )
+    ),
+    Effect.tap(() =>
+      Effect.when(clearPendingSignIn, Effect.succeed(Option.isSome(pending)))
     ),
     Effect.onExit((exit) =>
       Option.match(pending, {

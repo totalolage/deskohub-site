@@ -19,10 +19,7 @@ import {
   clearNativeHandoffRequest,
   loadNativeHandoffRequest,
 } from "./web-native-request-store";
-import {
-  clearReauthenticatingUser,
-  loadReauthenticatingUser,
-} from "./web-reauthentication-store";
+import { loadReauthenticatingUser } from "./web-reauthentication-store";
 import { completeWebMagicLink, mintNativeHandoff } from "./web-sign-in";
 import { WebSignInFailure } from "./web-sign-in-failure";
 
@@ -37,7 +34,7 @@ const completeWebCallback = (callback: AuthCallback, nativePending: boolean) =>
         completeWebMagicLink(token, {
           nativePending,
           storedUserId: loadReauthenticatingUser(Date.now()),
-        }).pipe(Effect.ensuring(Effect.sync(clearReauthenticatingUser))),
+        }),
       handoff: () => Effect.fail(linkRejected()),
       error: () => Effect.fail(linkRejected()),
       invalid: () => Effect.fail(linkRejected()),

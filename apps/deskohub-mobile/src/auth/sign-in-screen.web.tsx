@@ -28,17 +28,13 @@ import {
   clearNativeHandoffRequest,
   loadNativeHandoffRequest,
 } from "./web-native-request-store";
+import { loadReauthenticatingUser } from "./web-reauthentication-store";
 import {
-  clearReauthenticatingUser,
-  loadReauthenticatingUser,
-} from "./web-reauthentication-store";
-import {
-  confirmWebAccount,
+  completeWebCodeSignIn,
   mintNativeHandoff,
   prepareReauthenticationEmail,
   reauthenticationExpectation,
   sendSignInEmail,
-  verifySignInCode,
   type WebAccountExpectation,
 } from "./web-sign-in";
 import { WebSignInFailure } from "./web-sign-in-failure";
@@ -147,12 +143,7 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
   const verify = useAuthTask(
     standaloneTaskRuntime,
     (address: string, entered: string, expectation: WebAccountExpectation) =>
-      verifySignInCode(address, entered).pipe(
-        Effect.andThen(
-          confirmWebAccount(expectation).pipe(
-            Effect.ensuring(Effect.sync(clearReauthenticatingUser))
-          )
-        ),
+      completeWebCodeSignIn(address, entered, expectation).pipe(
         Effect.andThen(finishSignIn(nativeRequest, "code"))
       ),
     unexpected
