@@ -1,6 +1,7 @@
 import { usePathname } from "expo-router";
 import { type ReactNode, useEffect } from "react";
 import { Platform } from "react-native";
+import { useAuthSession } from "../auth/use-auth-session";
 import { ConsentPrompt } from "../consent/consent-prompt";
 import {
   appAnalyticsConsent,
@@ -14,6 +15,7 @@ import {
 import { trackScreenView } from "./events";
 import { detectOtherPostHogSdk } from "./other-posthog-sdk";
 import { createPostHogClient } from "./posthog-client";
+import { analyticsIdentityOf } from "./session-identity";
 
 const webHostname = () =>
   Platform.OS === "web" ? window.location.hostname : undefined;
@@ -37,11 +39,25 @@ const connectAnalytics = () =>
   });
 
 /**
- * There is no sign-in yet, so every session is anonymous. The account
- * sign-in flow replaces this with `setAnalyticsIdentity` calls.
+ * Attributes analytics to the signed-in account
+ * (`workspace-account:<accountId>`), and to no one once signed out. Holds
+ * while the stored session is restored.
  */
-const settleIdentityUntilSignInExists = () =>
-  setAnalyticsIdentity({ kind: "anonymous" });
+const useSessionAnalyticsIdentity = () => {
+  const identity = analyticsIdentityOf(useAuthSession());
+  // Effects key on the identity's parts: each session refetch is a new object.
+  const { kind } = identity;
+  const accountId =
+    identity.kind === "authenticated" ? identity.accountId : undefined;
+  const testAccount = identity.kind === "authenticated" && identity.testAccount;
+  useEffect(() => {
+    if (accountId !== undefined) {
+      setAnalyticsIdentity({ kind: "authenticated", accountId, testAccount });
+    } else if (kind !== "authenticated") {
+      setAnalyticsIdentity({ kind });
+    }
+  }, [kind, accountId, testAccount]);
+};
 
 /**
  * Connects analytics for the app's lifetime, records screen views and asks
@@ -56,7 +72,7 @@ export function AnalyticsRoot({ children }: { readonly children: ReactNode }) {
     consent.status === "granted" || consent.status === "loading";
 
   useEffect(connectAnalytics, []);
-  useEffect(settleIdentityUntilSignInExists, []);
+  useSessionAnalyticsIdentity();
   useEffect(() => {
     if (recording) trackScreenView(pathname);
   }, [pathname, recording]);
