@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { Effect, Fiber, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import type { OtaUpdateSource } from "./ota-update";
 import {
@@ -65,29 +65,30 @@ describe("planUpdateCheck", () => {
 });
 
 describe("runUpdateCheck", () => {
-  const recordingSources = () => {
+  const checkResult = {
+    isAvailable: true,
+    isRollBackToEmbedded: false,
+    manifest: { id: "update-a" },
+    reason: undefined,
+  } as unknown as Awaited<ReturnType<OtaUpdateSource["checkForUpdateAsync"]>>;
+  const fetchResult = {
+    isNew: true,
+    isRollBackToEmbedded: false,
+    manifest: { id: "update-a" },
+  } as unknown as Awaited<ReturnType<OtaUpdateSource["fetchUpdateAsync"]>>;
+
+  const recordingSources = (
+    download: () => Promise<typeof fetchResult> = async () => fetchResult
+  ) => {
     const calls: Array<string> = [];
     const updates: OtaUpdateSource = {
       checkForUpdateAsync: async () => {
         calls.push("ota-check");
-        return {
-          isAvailable: true,
-          isRollBackToEmbedded: false,
-          manifest: { id: "update-a" },
-          reason: undefined,
-        } as unknown as Awaited<
-          ReturnType<OtaUpdateSource["checkForUpdateAsync"]>
-        >;
+        return checkResult;
       },
-      fetchUpdateAsync: async () => {
+      fetchUpdateAsync: () => {
         calls.push("ota-fetch");
-        return {
-          isNew: true,
-          isRollBackToEmbedded: false,
-          manifest: { id: "update-a" },
-        } as unknown as Awaited<
-          ReturnType<OtaUpdateSource["fetchUpdateAsync"]>
-        >;
+        return download();
       },
     };
     const fetch = Object.assign(
@@ -103,37 +104,64 @@ describe("runUpdateCheck", () => {
     return { calls, layer, updates };
   };
 
-  const run = (platform: string) => {
-    const { calls, layer, updates } = recordingSources();
-    return Effect.runPromise(
-      runUpdateCheck({
-        plan: planUpdateCheck({ platform, otaUpdatesEnabled: true }),
-        updates,
-        installedBuildVersion: "1002000",
-        latestReleaseUrl: "https://workspace.test/api/mobile/releases/latest",
-      }).pipe(Effect.provide(layer))
-    ).then((outcome) => ({ calls, outcome }));
-  };
+  const check = (
+    platform: string,
+    sources: ReturnType<typeof recordingSources>,
+    reports: Array<unknown>
+  ) =>
+    runUpdateCheck({
+      plan: planUpdateCheck({ platform, otaUpdatesEnabled: true }),
+      updates: sources.updates,
+      installedBuildVersion: "1002000",
+      latestReleaseUrl: "https://workspace.test/api/mobile/releases/latest",
+      onReadyUpdate: (updateId) => reports.push({ readyUpdate: updateId }),
+      onNativeRelease: (release) => reports.push({ nativeRelease: release }),
+    }).pipe(Effect.provide(sources.layer));
 
   test("reports both updates on Android", async () => {
-    const { calls, outcome } = await run("android");
-    expect(outcome).toEqual({
-      readyUpdateId: "update-a",
-      nativeUpdate: { versionName: "1.3.0", versionCode: 1_003_000 },
+    const sources = recordingSources();
+    const reports: Array<unknown> = [];
+    await Effect.runPromise(check("android", sources, reports));
+    expect(reports).toContainEqual({ readyUpdate: "update-a" });
+    expect(reports).toContainEqual({
+      nativeRelease: {
+        kind: "newer",
+        offer: { versionName: "1.3.0", versionCode: 1_003_000 },
+      },
     });
-    expect(calls.toSorted()).toEqual([
+    expect(sources.calls.toSorted()).toEqual([
       "ota-check",
       "ota-fetch",
       "release-lookup",
     ]);
   });
 
+  test("reports the native release while an update is still downloading", async () => {
+    const sources = recordingSources(() => new Promise(() => undefined));
+    const reports: Array<unknown> = [];
+    const fiber = Effect.runFork(check("android", sources, reports));
+    await Effect.runPromise(
+      Effect.sleep("1 millis").pipe(
+        Effect.repeat({ until: () => reports.length > 0 }),
+        Effect.timeout("2 seconds")
+      )
+    );
+    expect(reports).toEqual([
+      {
+        nativeRelease: {
+          kind: "newer",
+          offer: { versionName: "1.3.0", versionCode: 1_003_000 },
+        },
+      },
+    ]);
+    await Effect.runPromise(Fiber.interrupt(fiber));
+  });
+
   test("asks nothing of either source on web", async () => {
-    const { calls, outcome } = await run("web");
-    expect(outcome).toEqual({
-      readyUpdateId: undefined,
-      nativeUpdate: undefined,
-    });
-    expect(calls).toEqual([]);
+    const sources = recordingSources();
+    const reports: Array<unknown> = [];
+    await Effect.runPromise(check("web", sources, reports));
+    expect(reports).toEqual([]);
+    expect(sources.calls).toEqual([]);
   });
 });

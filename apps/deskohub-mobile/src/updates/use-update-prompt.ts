@@ -5,12 +5,11 @@ import * as Linking from "expo-linking";
 import * as Updates from "expo-updates";
 import { useEffect, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
-import type { NativeUpdateOffer } from "./native-release";
+import { type NativeUpdateOffer, nextNativeUpdate } from "./native-release";
 import {
   isUpdateCheckDue,
   planUpdateCheck,
   runUpdateCheck,
-  type UpdateCheckOutcome,
 } from "./update-check";
 import {
   dismissUpdatePrompt,
@@ -67,17 +66,6 @@ export function useUpdatePrompt(): {
     if (!(plan.otaUpdate || plan.nativeRelease)) {
       return;
     }
-    // A failed or empty check keeps what an earlier check found: the
-    // installed build can't change while the app runs, and a downloaded
-    // update stays ready until the restart.
-    const apply = (outcome: UpdateCheckOutcome) => {
-      if (outcome.readyUpdateId !== undefined) {
-        setReadyUpdateId(outcome.readyUpdateId);
-      }
-      if (outcome.nativeUpdate !== undefined) {
-        setNativeUpdate(outcome.nativeUpdate);
-      }
-    };
     const checkIfDue = () => {
       const now = Date.now();
       if (!isUpdateCheckDue(lastCheckStartedAt.current, now)) {
@@ -90,7 +78,16 @@ export function useUpdatePrompt(): {
           updates: Updates,
           installedBuildVersion: nativeBuildVersion,
           latestReleaseUrl: configuredWorkspaceUpdateUrls.latestReleaseUrl,
-        }).pipe(Effect.tap((outcome) => Effect.sync(() => apply(outcome))))
+          // A downloaded update stays ready until the restart, so a later
+          // empty or failed check keeps it.
+          onReadyUpdate: (updateId) => {
+            if (updateId !== undefined) {
+              setReadyUpdateId(updateId);
+            }
+          },
+          onNativeRelease: (check) =>
+            setNativeUpdate((previous) => nextNativeUpdate(previous, check)),
+        })
       );
     };
     checkIfDue();

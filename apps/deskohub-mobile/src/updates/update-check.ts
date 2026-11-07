@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import type { HttpClient } from "effect/unstable/http";
-import { findNativeUpdate, type NativeUpdateOffer } from "./native-release";
+import { checkNativeRelease, type NativeReleaseCheck } from "./native-release";
 import { findReadyUpdate, type OtaUpdateSource } from "./ota-update";
 
 /**
@@ -39,31 +39,38 @@ export const planUpdateCheck = ({
   nativeRelease: platform === "android",
 });
 
-export type UpdateCheckOutcome = {
-  readonly readyUpdateId: string | undefined;
-  readonly nativeUpdate: NativeUpdateOffer | undefined;
-};
-
-/** Runs the planned checks side by side; neither can fail the other. */
+/**
+ * Runs the planned checks side by side and reports each result as soon as it
+ * arrives, so a slow update download doesn't hold back a native offer.
+ * Neither check can fail the other.
+ */
 export const runUpdateCheck = ({
   plan,
   updates,
   installedBuildVersion,
   latestReleaseUrl,
+  onReadyUpdate,
+  onNativeRelease,
 }: {
   readonly plan: UpdateCheckPlan;
   readonly updates: OtaUpdateSource;
   readonly installedBuildVersion: string | null;
   readonly latestReleaseUrl: string;
-}): Effect.Effect<UpdateCheckOutcome, never, HttpClient.HttpClient> =>
+  readonly onReadyUpdate: (updateId: string | undefined) => void;
+  readonly onNativeRelease: (check: NativeReleaseCheck) => void;
+}): Effect.Effect<void, never, HttpClient.HttpClient> =>
   Effect.all(
-    {
-      readyUpdateId: plan.otaUpdate
-        ? findReadyUpdate(updates)
-        : Effect.undefined,
-      nativeUpdate: plan.nativeRelease
-        ? findNativeUpdate({ installedBuildVersion, latestReleaseUrl })
-        : Effect.undefined,
-    },
-    { concurrency: "unbounded" }
+    [
+      plan.otaUpdate
+        ? findReadyUpdate(updates).pipe(
+            Effect.tap((updateId) => Effect.sync(() => onReadyUpdate(updateId)))
+          )
+        : Effect.void,
+      plan.nativeRelease
+        ? checkNativeRelease({ installedBuildVersion, latestReleaseUrl }).pipe(
+            Effect.tap((check) => Effect.sync(() => onNativeRelease(check)))
+          )
+        : Effect.void,
+    ],
+    { concurrency: "unbounded", discard: true }
   );

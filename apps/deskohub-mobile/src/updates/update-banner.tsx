@@ -105,6 +105,7 @@ const styles = StyleSheet.create({
   message: { color: theme.colors.background, ...theme.type.body },
   actions: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: theme.spacing.sm,
     justifyContent: "flex-end",
   },

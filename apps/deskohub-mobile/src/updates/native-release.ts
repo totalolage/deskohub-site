@@ -40,33 +40,69 @@ export const nativeUpdateOffer = (
 };
 
 /**
- * Looks up the latest published APK and offers it when it is newer than the
- * installed build. No release yet (404), a failed lookup, an unreachable
- * server or an unexpected body all mean no offer.
+ * What the latest published APK means for this install: a newer version to
+ * offer, nothing newer (including no release yet), or `unknown` when the
+ * lookup failed or the installed build number can't be read.
  */
-export const findNativeUpdate = ({
+export type NativeReleaseCheck =
+  | { readonly kind: "newer"; readonly offer: NativeUpdateOffer }
+  | { readonly kind: "current" }
+  | { readonly kind: "unknown" };
+
+const current: NativeReleaseCheck = { kind: "current" };
+const unknown: NativeReleaseCheck = { kind: "unknown" };
+const newer = (offer: NativeUpdateOffer): NativeReleaseCheck => ({
+  kind: "newer",
+  offer,
+});
+
+/**
+ * Looks up the latest published APK and compares it with the installed
+ * build. A 404 means no release yet. A failed lookup, an unreachable server
+ * or an unexpected body only make the answer unknown.
+ */
+export const checkNativeRelease = ({
   installedBuildVersion,
   latestReleaseUrl,
 }: {
   readonly installedBuildVersion: string | null;
   readonly latestReleaseUrl: string;
-}): Effect.Effect<
-  NativeUpdateOffer | undefined,
-  never,
-  HttpClient.HttpClient
-> =>
+}): Effect.Effect<NativeReleaseCheck, never, HttpClient.HttpClient> =>
   readVersionCode(installedBuildVersion) === undefined
-    ? Effect.undefined
-    : HttpClient.get(latestReleaseUrl).pipe(
-        Effect.flatMap(HttpClientResponse.filterStatusOk),
-        Effect.flatMap(HttpClientResponse.schemaBodyJson(LatestNativeRelease)),
+    ? Effect.succeed(unknown)
+    : Effect.gen(function* () {
+        const response = yield* HttpClient.get(latestReleaseUrl);
+        if (response.status === 404) {
+          return current;
+        }
+        const release = yield* HttpClientResponse.filterStatusOk(response).pipe(
+          Effect.flatMap(HttpClientResponse.schemaBodyJson(LatestNativeRelease))
+        );
+        const offer = nativeUpdateOffer(installedBuildVersion, release);
+        return offer === undefined ? current : newer(offer);
+      }).pipe(
         Effect.timeout("15 seconds"),
-        Effect.map((release) =>
-          nativeUpdateOffer(installedBuildVersion, release)
-        ),
         Effect.catch((error) =>
-          Effect.logDebug("Native release lookup found no update", error).pipe(
-            Effect.as(undefined)
+          Effect.logDebug("Native release lookup failed", error).pipe(
+            Effect.as(unknown)
           )
         )
       );
+
+/**
+ * The native offer after a check: a newer release replaces it, a check that
+ * found nothing newer withdraws it, and an unknown answer keeps it.
+ */
+export const nextNativeUpdate = (
+  previous: NativeUpdateOffer | undefined,
+  check: NativeReleaseCheck
+): NativeUpdateOffer | undefined => {
+  switch (check.kind) {
+    case "newer":
+      return check.offer;
+    case "current":
+      return undefined;
+    case "unknown":
+      return previous;
+  }
+};

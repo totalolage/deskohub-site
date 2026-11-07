@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
-import { findNativeUpdate, nativeUpdateOffer } from "./native-release";
+import {
+  checkNativeRelease,
+  nativeUpdateOffer,
+  nextNativeUpdate,
+} from "./native-release";
 
 const latestReleaseUrl = "https://workspace.test/api/mobile/releases/latest";
 
@@ -61,48 +65,51 @@ const lookup = (
 ) => {
   const { layer, requested } = respondWith(handler);
   return Effect.runPromise(
-    findNativeUpdate({ installedBuildVersion, latestReleaseUrl }).pipe(
+    checkNativeRelease({ installedBuildVersion, latestReleaseUrl }).pipe(
       Effect.provide(layer)
     )
-  ).then((offer) => ({ offer, requested }));
+  ).then((check) => ({ check, requested }));
 };
 
-describe("findNativeUpdate", () => {
+const offer = { versionName: "1.3.0", versionCode: 1_003_000 };
+
+describe("checkNativeRelease", () => {
   test("offers the latest release when it is newer than the installed build", async () => {
-    const { offer, requested } = await lookup("1002000", async () =>
+    const { check, requested } = await lookup("1002000", async () =>
       Response.json(release)
     );
-    expect(offer).toEqual({ versionName: "1.3.0", versionCode: 1_003_000 });
+    expect(check).toEqual({ kind: "newer", offer });
     expect(requested).toEqual([latestReleaseUrl]);
   });
 
-  test("offers nothing when the installed build is current", async () => {
-    const { offer } = await lookup("1003000", async () =>
+  test("reports the installed build current when it is the latest", async () => {
+    const { check } = await lookup("1003000", async () =>
       Response.json(release)
     );
-    expect(offer).toBeUndefined();
+    expect(check).toEqual({ kind: "current" });
+  });
+
+  test("reports the installed build current when nothing is released yet", async () => {
+    const { check } = await lookup("1002000", async () =>
+      Response.json({ error: "no-release" }, { status: 404 })
+    );
+    expect(check).toEqual({ kind: "current" });
   });
 
   test("needs only the version fields of the release", async () => {
-    const { offer } = await lookup("1002000", async () =>
-      Response.json({ versionName: "1.3.0", versionCode: 1_003_000 })
-    );
-    expect(offer?.versionCode).toBe(1_003_000);
+    const { check } = await lookup("1002000", async () => Response.json(offer));
+    expect(check).toEqual({ kind: "newer", offer });
   });
 
   test("skips the request when the installed version code is unreadable", async () => {
-    const { offer, requested } = await lookup(null, async () =>
+    const { check, requested } = await lookup(null, async () =>
       Response.json(release)
     );
-    expect(offer).toBeUndefined();
+    expect(check).toEqual({ kind: "unknown" });
     expect(requested).toEqual([]);
   });
 
   test.each([
-    [
-      "no release yet",
-      () => Response.json({ error: "no-release" }, { status: 404 }),
-    ],
     [
       "a failed lookup",
       () => Response.json({ error: "lookup-failed" }, { status: 502 }),
@@ -116,15 +123,35 @@ describe("findNativeUpdate", () => {
       "a fractional version code",
       () => Response.json({ ...release, versionCode: 1_003_000.5 }),
     ],
-  ])("offers nothing for %s", async (_case, respond) => {
-    const { offer } = await lookup("1002000", async () => respond());
-    expect(offer).toBeUndefined();
+  ])("knows nothing after %s", async (_case, respond) => {
+    const { check } = await lookup("1002000", async () => respond());
+    expect(check).toEqual({ kind: "unknown" });
   });
 
-  test("offers nothing when the network fails", async () => {
-    const { offer } = await lookup("1002000", () =>
+  test("knows nothing when the network fails", async () => {
+    const { check } = await lookup("1002000", () =>
       Promise.reject(new TypeError("Network request failed"))
     );
-    expect(offer).toBeUndefined();
+    expect(check).toEqual({ kind: "unknown" });
+  });
+});
+
+describe("nextNativeUpdate", () => {
+  const earlier = { versionName: "1.2.5", versionCode: 1_002_005 };
+
+  test("replaces the offer with a newer release", () => {
+    expect(nextNativeUpdate(earlier, { kind: "newer", offer })).toEqual(offer);
+    expect(nextNativeUpdate(undefined, { kind: "newer", offer })).toEqual(
+      offer
+    );
+  });
+
+  test("withdraws the offer when nothing newer is published", () => {
+    expect(nextNativeUpdate(offer, { kind: "current" })).toBeUndefined();
+  });
+
+  test("keeps the offer when the lookup failed", () => {
+    expect(nextNativeUpdate(offer, { kind: "unknown" })).toEqual(offer);
+    expect(nextNativeUpdate(undefined, { kind: "unknown" })).toBeUndefined();
   });
 });
