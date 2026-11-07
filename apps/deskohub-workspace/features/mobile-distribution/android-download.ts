@@ -1,8 +1,8 @@
 import type { Locale } from "@/features/i18n";
+import type { AndroidRelease } from "@/features/mobile-releases/backend/latest-android-release.server";
 import { formatInstantDate } from "@/shared/utils/date-time-format";
 import { formatFileSize } from "@/shared/utils/number";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
-import type { AndroidRelease } from "./android-download-release";
 
 /** What the `/android` page can offer, from the latest release lookup. */
 export type AndroidDownload =

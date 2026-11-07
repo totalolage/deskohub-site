@@ -1,15 +1,13 @@
 import { afterAll, afterEach, expect, mock, test } from "bun:test";
 import { cleanup, render, within } from "@testing-library/react";
+import { RELEASE_CERTIFICATE_SHA256 } from "@/features/mobile-releases/android-app";
+import type { AndroidRelease } from "@/features/mobile-releases/backend/latest-android-release.server";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 import { formatFileSize } from "@/shared/utils/number";
 import type { AndroidDownload } from "../android-download";
-import {
-  type AndroidRelease,
-  RELEASE_CERTIFICATE_SHA256,
-} from "../android-download-release";
 import { obtainiumImportUrl } from "../obtainium-link";
 
 registerWorkspaceComponentTestEnv();

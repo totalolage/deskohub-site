@@ -1,5 +1,5 @@
 import { getWorkspacePageUrl } from "@/features/i18n";
-import { ANDROID_PACKAGE_ID } from "./android-download-release";
+import { ANDROID_PACKAGE_ID } from "./android-app";
 
 /**
  * Obtainium's web page source settings: it picks the APK link on the download

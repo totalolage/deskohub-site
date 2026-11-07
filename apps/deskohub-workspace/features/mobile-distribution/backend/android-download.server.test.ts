@@ -5,10 +5,14 @@ import { Effect, Logger, Option } from "effect";
 import type {
   AndroidRelease,
   MobileReleaseLookupError,
-} from "../android-download-release";
+} from "@/features/mobile-releases/backend/latest-android-release.server";
 
 // A copy taken before the mock below replaces the module's exports.
-const releaseModule = { ...(await import("../android-download-release")) };
+const releaseModule = {
+  ...(await import(
+    "@/features/mobile-releases/backend/latest-android-release.server"
+  )),
+};
 
 const release = {
   versionName: "1.2.3",
@@ -28,17 +32,23 @@ let lookup: Effect.Effect<
   MobileReleaseLookupError
 > = Effect.succeed(Option.none());
 
-mock.module("../android-download-release", () => ({
-  ...releaseModule,
-  loadLatestAndroidRelease: () => lookup,
-}));
+mock.module(
+  "@/features/mobile-releases/backend/latest-android-release.server",
+  () => ({
+    ...releaseModule,
+    loadLatestAndroidRelease: () => lookup,
+  })
+);
 
 const { loadAndroidDownload } = await import("./android-download.server");
 
 // Bun keeps module mocks for the rest of the run, so later files get the real
 // module back.
 afterAll(() => {
-  mock.module("../android-download-release", () => releaseModule);
+  mock.module(
+    "@/features/mobile-releases/backend/latest-android-release.server",
+    () => releaseModule
+  );
 });
 
 test("offers the latest release", async () => {

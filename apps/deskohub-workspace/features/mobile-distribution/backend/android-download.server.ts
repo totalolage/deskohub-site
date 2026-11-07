@@ -2,8 +2,8 @@ import "server-only";
 
 import { Effect, Option } from "effect";
 import "@/shared/polyfills/temporal";
+import { loadLatestAndroidRelease } from "@/features/mobile-releases/backend/latest-android-release.server";
 import type { AndroidDownload } from "../android-download";
-import { loadLatestAndroidRelease } from "../android-download-release";
 
 /**
  * What the `/android` page offers. A failed lookup becomes the `unavailable`

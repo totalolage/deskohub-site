@@ -1,6 +1,8 @@
 import { Effect } from "effect";
 import type { PhrasingContent } from "mdast";
 import { type Locale, m } from "@/features/i18n";
+import { RELEASE_CERTIFICATE_SHA256 } from "@/features/mobile-releases/android-app";
+import type { AndroidRelease } from "@/features/mobile-releases/backend/latest-android-release.server";
 import {
   type MarkdownBlocks,
   markdownHeading,
@@ -17,10 +19,6 @@ import {
   androidReleasesListUrl,
   getAndroidReleaseFacts,
 } from "./android-download";
-import {
-  type AndroidRelease,
-  RELEASE_CERTIFICATE_SHA256,
-} from "./android-download-release";
 import { loadAndroidDownload } from "./backend/android-download.server";
 import { obtainiumImportUrl } from "./obtainium-link";
 

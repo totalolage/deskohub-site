@@ -3,6 +3,8 @@ import { Download } from "lucide-react";
 import Image from "next/image";
 import type { ReactNode } from "react";
 import { type Locale, m } from "@/features/i18n";
+import { RELEASE_CERTIFICATE_SHA256 } from "@/features/mobile-releases/android-app";
+import type { AndroidRelease } from "@/features/mobile-releases/backend/latest-android-release.server";
 import { Container } from "@/shared/components/container";
 import { Button } from "@/shared/components/ui/button";
 import { textLink } from "@/shared/components/ui/text-link";
@@ -11,10 +13,6 @@ import {
   androidReleasesListUrl,
   getAndroidReleaseFacts,
 } from "../android-download";
-import {
-  type AndroidRelease,
-  RELEASE_CERTIFICATE_SHA256,
-} from "../android-download-release";
 import obtainiumBadge from "../images/badge-obtainium.png";
 import { obtainiumImportUrl } from "../obtainium-link";
 

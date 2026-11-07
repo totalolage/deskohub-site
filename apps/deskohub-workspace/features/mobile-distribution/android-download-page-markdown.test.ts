@@ -2,6 +2,8 @@ import "@/shared/testing/workspace-test-env";
 import "@/shared/polyfills/temporal";
 
 import { expect, test } from "bun:test";
+import { RELEASE_CERTIFICATE_SHA256 } from "@/features/mobile-releases/android-app";
+import type { AndroidRelease } from "@/features/mobile-releases/backend/latest-android-release.server";
 import { serializeMarkdown } from "@/shared/markdown/markdown";
 import { markdownLinkUrls } from "@/shared/markdown/markdown.test-utils";
 import {
@@ -9,10 +11,6 @@ import {
   getAndroidReleaseFacts,
 } from "./android-download";
 import { renderAndroidDownloadMarkdown } from "./android-download-page-markdown";
-import {
-  type AndroidRelease,
-  RELEASE_CERTIFICATE_SHA256,
-} from "./android-download-release";
 import { obtainiumImportUrl } from "./obtainium-link";
 
 const release: AndroidRelease = {

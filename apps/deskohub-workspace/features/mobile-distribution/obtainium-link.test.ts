@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { getWorkspacePageUrl } from "@/features/i18n";
-import { ANDROID_PACKAGE_ID } from "./android-download-release";
+import { ANDROID_PACKAGE_ID } from "./android-app";
 import { obtainiumImportUrl } from "./obtainium-link";
 
 interface ObtainiumApp {
