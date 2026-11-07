@@ -11,10 +11,12 @@ import {
   withPostgresAdvisoryLock,
 } from "@/db/postgres-advisory-lock";
 import { ReviewAccounts } from "@/features/review-accounts";
+import { BotDetectedError } from "@/shared/backend/bot-protection/bot-protection.service";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import type { CustomerAccountId } from "../../customer-account";
 import {
   encodeAuthCallbackReturn,
+  getAuthCallbackPath,
   readAuthCallbackReturnTo,
   signInCallbackReturnParam,
 } from "../../routes";
@@ -311,6 +313,79 @@ test("returns a web app sign-in to its /app/ path without handing out the cookie
   expect(
     readAuthCallbackReturnTo(
       location.searchParams.get(signInCallbackReturnParam)
+    )
+  ).toBe(returnTo);
+});
+
+test("lets the app verify an /app/ magic link itself, with no BotID check", async () => {
+  // The /app/ web bundle sends the BotID-screened email on the site; the app
+  // then verifies the link from its App Link with its own headers.
+  const store = makeMemoryAuthStore();
+  const sentLinks: CapturedMagicLink[] = [];
+  const sender = makeTestAuth({ database: memoryAdapter(store), sentLinks });
+  const appAuth = makeTestAuth({
+    database: memoryAdapter(store),
+    verifyHuman: () =>
+      Effect.fail(
+        new BotDetectedError({
+          message: "Automated request detected",
+          reason: "unverified_bot",
+        })
+      ),
+  });
+  const returnTo = "/app/sign-in/complete";
+  const email = uniqueEmail("app-link-native");
+
+  expect((await requestNativeMagicLink(appAuth, returnTo)).status).toBe(403);
+  expect((await signInForMagicLink(sender, email, returnTo)).status).toBe(200);
+  const verified = await callNativeHandler(
+    appAuth,
+    sentLinks[0]!.url.slice(`https://${HOST}/api/auth`.length)
+  );
+
+  expect(verified.status).toBe(302);
+  expect(verified.headers.get("location")).toBe(`https://${HOST}${returnTo}`);
+  const session = await callNativeHandler(appAuth, "/get-session", {
+    headers: { cookie: cookieJar(getSessionCookie(verified)!) },
+  });
+  expect(
+    ((await session.json()) as { user?: { email: string } } | null)?.user?.email
+  ).toBe(email.toLowerCase());
+});
+
+test("accepts an /app/ callback, direct or through the site callback, from the app", async () => {
+  const sentLinks: CapturedMagicLink[] = [];
+  const { auth } = makeMemoryTestAuth({ sentLinks });
+  const returnTo = "/app/account";
+
+  for (const callbackURL of [
+    returnTo,
+    getAuthCallbackPath("cs-CZ", { returnTo }),
+  ]) {
+    expect((await requestNativeMagicLink(auth, callbackURL)).status).toBe(200);
+  }
+  const [direct, throughSite] = sentLinks;
+  expect(
+    (
+      await callNativeHandler(
+        auth,
+        direct!.url.slice(`https://${HOST}/api/auth`.length)
+      )
+    ).headers.get("location")
+  ).toBe(`https://${HOST}${returnTo}`);
+  const siteLocation = new URL(
+    (
+      await callNativeHandler(
+        auth,
+        throughSite!.url.slice(`https://${HOST}/api/auth`.length)
+      )
+    ).headers.get("location") ?? "",
+    `https://${HOST}`
+  );
+  expect(siteLocation.searchParams.has("cookie")).toBe(false);
+  expect(
+    readAuthCallbackReturnTo(
+      siteLocation.searchParams.get(signInCallbackReturnParam)
     )
   ).toBe(returnTo);
 });

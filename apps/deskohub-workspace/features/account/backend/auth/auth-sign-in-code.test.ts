@@ -439,8 +439,13 @@ describe.skipIf(!testDatabase)(
       // The app reads the session from the response; nothing redirects.
       expect(response.status).toBe(200);
       expect(response.headers.get("location")).toBeNull();
-      expect(getSessionCookie(response)).toBeDefined();
       expect(await sessionCount(email)).toBe(1);
+      const session = await callNativeHandler(auth, "/get-session", {
+        headers: { cookie: cookieJar(getSessionCookie(response)!) },
+      });
+      expect(
+        ((await session.json()) as { user?: { id: string } } | null)?.user?.id
+      ).toBe(await userIdForEmail(email));
     });
 
     test("signs in with the code read from the rendered email, as the browser sends it", async () => {
