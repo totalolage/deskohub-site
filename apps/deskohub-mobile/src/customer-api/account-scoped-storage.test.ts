@@ -198,3 +198,46 @@ describe("AccountScopedStorage", () => {
     ).toBe(true);
   });
 });
+
+describe("AccountExitFence", () => {
+  const current = (
+    fence: ReturnType<typeof makeAccountExitFence>,
+    session: AccountSession
+  ) => Effect.runSync(fence.isCurrent(session));
+
+  test("a closed session never becomes current again", () => {
+    const fence = makeAccountExitFence();
+    Effect.runSync(fence.open(sessionA1));
+    Effect.runSync(fence.close(sessionA1));
+    Effect.runSync(fence.open(sessionA1));
+
+    expect(current(fence, sessionA1)).toBe(false);
+  });
+
+  test("an exit that arrives before its session opened still closes it", () => {
+    const fence = makeAccountExitFence();
+    Effect.runSync(fence.close(sessionA1));
+    Effect.runSync(fence.open(sessionA1));
+
+    expect(current(fence, sessionA1)).toBe(false);
+  });
+
+  test("a later sign-in of the account opens after an exit", () => {
+    const fence = makeAccountExitFence();
+    Effect.runSync(fence.open(sessionA1));
+    Effect.runSync(fence.close(sessionA1));
+    Effect.runSync(fence.open(sessionA2));
+
+    expect(current(fence, sessionA2)).toBe(true);
+    expect(current(fence, sessionA1)).toBe(false);
+  });
+
+  test("an older session can't take over from a newer one", () => {
+    const fence = makeAccountExitFence();
+    Effect.runSync(fence.open(sessionA2));
+    Effect.runSync(fence.open(sessionA1));
+
+    expect(current(fence, sessionA2)).toBe(true);
+    expect(current(fence, sessionA1)).toBe(false);
+  });
+});

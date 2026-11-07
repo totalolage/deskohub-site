@@ -81,43 +81,54 @@ export class AccountExitFence extends Context.Service<
 }
 
 export const makeAccountExitFence = (): IAccountExitFence => {
-  const latest = new Map<
+  // Per account: the latest session that opened its storage, and the latest
+  // sign-in time an exit has closed. A session that started at or before the
+  // closed time never opens again, whatever order the calls arrive in.
+  const accounts = new Map<
     string,
-    { readonly sessionStartedAt: number; closed: boolean }
+    { open: number | undefined; closedUpTo: number }
   >();
+  const stateOf = (accountId: string) => {
+    const known = accounts.get(accountId);
+    if (known !== undefined) return known;
+    const created = { open: undefined, closedUpTo: Number.NEGATIVE_INFINITY };
+    accounts.set(accountId, created);
+    return created;
+  };
   const lock = Semaphore.makeUnsafe(1);
   return {
     exclusive: (effect) => lock.withPermit(effect),
     open: ({ accountId, sessionStartedAt }) =>
       Effect.sync(() => {
-        const known = latest.get(accountId);
-        if (known === undefined || known.sessionStartedAt <= sessionStartedAt) {
-          latest.set(accountId, { sessionStartedAt, closed: false });
+        const state = stateOf(accountId);
+        if (sessionStartedAt <= state.closedUpTo) return;
+        if (state.open === undefined || state.open <= sessionStartedAt) {
+          state.open = sessionStartedAt;
         }
       }),
     isCurrent: ({ accountId, sessionStartedAt }) =>
       Effect.sync(() => {
-        const known = latest.get(accountId);
+        const state = stateOf(accountId);
         return (
-          known !== undefined &&
-          !known.closed &&
-          known.sessionStartedAt === sessionStartedAt
+          state.open === sessionStartedAt && sessionStartedAt > state.closedUpTo
         );
       }),
     close: ({ accountId, sessionStartedAt }) =>
       Effect.sync(() => {
-        const known = latest.get(accountId);
-        if (known === undefined) return true;
+        const state = stateOf(accountId);
+        state.closedUpTo = Math.max(state.closedUpTo, sessionStartedAt);
         // A later sign-in of the same account owns the entries now.
-        if (known.sessionStartedAt > sessionStartedAt) return false;
-        known.closed = true;
+        if (state.open !== undefined && state.open > sessionStartedAt) {
+          return false;
+        }
+        state.open = undefined;
         return true;
       }),
     openAccounts: Effect.sync(
       () =>
         new Set(
-          [...latest]
-            .filter(([, session]) => !session.closed)
+          [...accounts]
+            .filter(([, state]) => state.open !== undefined)
             .map(([accountId]) => accountId)
         )
     ),
