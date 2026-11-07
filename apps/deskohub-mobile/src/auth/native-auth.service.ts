@@ -154,15 +154,16 @@ const makeNativeAuth = (
       return call(operation, (signal) => request(signIn, signal)).pipe(
         Effect.as({
           user: userOf(signIn),
-          accept: acceptance
-            .withPermits(1)(
-              Effect.promise(() => moveSession(storage, options.storage))
-            )
-            .pipe(
+          // The writes can't be called off once they start, so the move and
+          // its signal finish before the permit is released.
+          accept: acceptance.withPermits(1)(
+            Effect.promise(() => moveSession(storage, options.storage)).pipe(
               Effect.andThen(
                 Effect.sync(() => client.$store.notify("$sessionSignal"))
-              )
-            ),
+              ),
+              Effect.uninterruptible
+            )
+          ),
           revoke: signOutOf(signIn),
         })
       );

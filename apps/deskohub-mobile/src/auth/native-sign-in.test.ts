@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Effect, Exit, Layer, ManagedRuntime, Option } from "effect";
+import { Effect, Exit, Fiber, Layer, ManagedRuntime, Option } from "effect";
 import { nativeReturnUri, parseAuthCallbackUrl } from "./auth-callback";
 import { AuthCallbackCompletions } from "./auth-callback-completions.service";
 import { AuthCrypto } from "./auth-crypto.service";
@@ -153,6 +153,37 @@ describe("native session store", () => {
     expect(server.openSessions()).toEqual([]);
     const restarted = launchApp(server, store);
     expect((await restarted.client.getSession()).data).toBeNull();
+  });
+
+  test("an interrupted sign-in finishes storing the session it accepted", async () => {
+    const server = makeFakeAuthServer(origin);
+    const store = makeMemorySecureStore();
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let writing = false;
+    const write = store.setItemAsync;
+    store.setItemAsync = async (key, value) => {
+      if (key === "deskohub_cookie") {
+        writing = true;
+        await gate;
+      }
+      await write(key, value);
+    };
+    const app = launchApp(server, store);
+    const signals = sessionSignals(app.client);
+
+    const signIn = app.runtime.runFork(
+      completeAuthCallback({ kind: "token", token: server.issueMagicLink(ada) })
+    );
+    while (!writing) await Bun.sleep(1);
+    const interrupted = app.runtime.runPromise(Fiber.interrupt(signIn));
+    release();
+    await interrupted;
+
+    expect(storedCookie(store)).toContain("session_token");
+    expect(signals()).toBeGreaterThan(0);
   });
 
   test("a used magic link is refused", async () => {

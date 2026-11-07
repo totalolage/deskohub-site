@@ -49,8 +49,10 @@ export type NativeAuthClient = ReturnType<typeof createNativeAuthClient>;
 /**
  * Makes the session stored in `from` the one in `into`. The cached session
  * is cleared before the cookie is written and filled after it, so a move cut
- * short never pairs one account's cookie with another's cached session. The
- * plugin's own adapter reads and writes the values, chunks included.
+ * short by the app closing doesn't pair one account's cookie with another's
+ * cached session. The plugin's own adapter reads and writes the values,
+ * chunks included, and like the plugin logs a failed write instead of
+ * failing.
  */
 export const moveSession = async (
   from: SessionCookieStore,
