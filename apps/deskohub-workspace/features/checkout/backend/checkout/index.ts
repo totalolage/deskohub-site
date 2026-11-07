@@ -43,7 +43,19 @@ export {
   sealPayStateForUrl,
 } from "./pay-state.server";
 export {
+  PayStateAuthorNotFoundError,
+  requirePayStateAuthor,
+} from "./pay-state-author";
+export {
+  getPayStateCheckoutView,
+  type PayStateCheckoutView,
+} from "./pay-state-checkout-view";
+export {
   getSubmittedCodeMetadata,
   type PayStateSubmittedCodeMetadata,
 } from "./pay-state-contract";
+export {
+  acceptPayStatePriceChange,
+  type PayStatePriceAcceptance,
+} from "./pay-state-price-acceptance";
 export { PayableReservationService } from "./payable-reservation.service";
