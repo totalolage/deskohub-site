@@ -56,6 +56,8 @@ export async function generateMetadata({
     }),
     // Pages that set their own card name the image through the page builder.
     openGraph: { images: [publicSiteShareImage] },
+    // Installing from any page installs the app served under /app/.
+    manifest: "/app/manifest.webmanifest",
     icons: {
       icon: [
         {

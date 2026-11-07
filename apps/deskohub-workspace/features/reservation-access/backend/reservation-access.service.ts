@@ -27,12 +27,21 @@ import {
 
 export type ReservationAccessIssuanceOutcome = "rejected" | "uncertain";
 
+/**
+ * Why the reservation itself can't get a new code: it has ended, or its span
+ * doesn't fit an AlgoPIN. Every other issuance failure has none.
+ */
+export type ReservationAccessIssuanceRefusal =
+  | "reservation-ended"
+  | "unrepresentable-interval";
+
 export class ReservationAccessIssuanceError extends Data.TaggedError(
   "ReservationAccessIssuanceError"
 )<{
   readonly reservationId: WorkspaceReservationId;
   readonly outcome: ReservationAccessIssuanceOutcome;
   readonly message: string;
+  readonly refusal?: ReservationAccessIssuanceRefusal;
   readonly cause?: unknown;
 }> {}
 
@@ -63,6 +72,7 @@ export const getReservationAccessInterval = (input: {
         reservationId: input.reservationId,
         outcome: "rejected",
         message: "AlgoPIN access cannot be issued after the reservation ends.",
+        refusal: "reservation-ended",
       });
     }
 
@@ -76,6 +86,7 @@ export const getReservationAccessInterval = (input: {
         reservationId: input.reservationId,
         outcome: "rejected",
         message: "Reservation cannot be represented by a 1–672 hour AlgoPIN.",
+        refusal: "unrepresentable-interval",
       });
     }
 
