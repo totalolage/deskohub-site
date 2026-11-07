@@ -301,4 +301,48 @@ describe("submitWorkspaceReservation", () => {
       }),
     });
   });
+
+  test.each([
+    { code: "legal_consent_required", locale: "en-US" },
+    { code: "early_performance_consent_required", locale: "en-US" },
+    { code: "legal_consent_required", locale: "cs-CZ" },
+    { code: "early_performance_consent_required", locale: "cs-CZ" },
+  ] as const)(
+    "shows the generic checkout failure for $code in $locale",
+    async ({ code, locale }) => {
+      const { CheckoutError } = await import(
+        "@/features/checkout/backend/checkout"
+      );
+      const { m } = await import("@/features/i18n");
+      const failSubmission = async (
+        error: InstanceType<typeof CheckoutError>
+      ) =>
+        Effect.runPromise(
+          Effect.flip(
+            (
+              await runSubmitReservation({
+                locale,
+                createHostedPaymentCheckout: mock(() => Effect.fail(error)),
+              })
+            ).effect
+          )
+        );
+
+      const consentFailure = await failSubmission(
+        new CheckoutError({ code, message: "Consent is required." })
+      );
+      const genericFailure = await failSubmission(
+        new CheckoutError({
+          code: "checkout_failed",
+          message: "Checkout failed.",
+        })
+      );
+
+      expect(consentFailure).toMatchObject({
+        _tag: "PublicSafeActionError",
+        message: m.reservationErrorMessage({}, { locale }),
+      });
+      expect(consentFailure.message).toBe(genericFailure.message);
+    }
+  );
 });
