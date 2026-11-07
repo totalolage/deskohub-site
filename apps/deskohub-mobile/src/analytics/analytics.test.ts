@@ -19,8 +19,10 @@ const createFakeClient = (
   let flags: Record<string, boolean | string> | undefined;
   let finishShutdown: () => void = () => {};
   let finishLoading: () => void = () => {};
-  const loading = new Promise<void>((resolve) => {
+  let failLoading: () => void = () => {};
+  const loading = new Promise<void>((resolve, reject) => {
     finishLoading = resolve;
+    failLoading = () => reject(new Error("storage"));
   });
   if (!holdLoading) finishLoading();
   const client: AnalyticsClient = {
@@ -55,6 +57,7 @@ const createFakeClient = (
     },
     finishShutdown: () => finishShutdown(),
     finishLoading: () => finishLoading(),
+    failLoading: () => failLoading(),
     flagListenerCount: () => flagListeners.size,
   };
 };
@@ -219,6 +222,25 @@ describe("client construction", () => {
     app.analytics.setIdentity({ kind: "anonymous" });
     disconnect();
     expect(app.clients[0]?.calls).toEqual([["shutDown"]]);
+  });
+
+  test("stops after a client fails to start, until reconnected", async () => {
+    const app = setup({ holdLoading: true });
+    app.connect();
+    app.analytics.setIdentity({ kind: "anonymous" });
+    app.clients[0]?.failLoading();
+    await settle();
+    expect(app.clients[0]?.calls).toEqual([["shutDown"]]);
+    app.clients[0]?.finishShutdown();
+    await settle();
+    app.analytics.capture({ name: "booking started" });
+    app.analytics.setIdentity({ kind: "anonymous" });
+    await settle();
+    expect(app.clients).toHaveLength(1);
+    expect(app.warnings).toHaveLength(1);
+
+    app.connect();
+    expect(app.clients).toHaveLength(2);
   });
 
   test("never reuses a client withdrawn while loading when consent returns", async () => {

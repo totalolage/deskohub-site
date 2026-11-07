@@ -80,6 +80,8 @@ export const createAnalytics = (): AnalyticsController => {
   let detachClientFlags: (() => void) | undefined;
   let applied: AppliedDistinctId = null;
   let blockedByOtherSdk = false;
+  /** The SDK failed to start; no retry until the runtime reconnects. */
+  let startFailed = false;
   /** A client built but still loading its stored state. */
   let starting: AnalyticsClient | undefined;
   /** The client was just adopted and has not had an identity applied yet. */
@@ -105,7 +107,8 @@ export const createAnalytics = (): AnalyticsController => {
     const status = consentStatus();
     if (status !== "granted" && status !== "loading") return false;
     return (
-      runtime === undefined || (runtime.settings !== null && !blockedByOtherSdk)
+      runtime === undefined ||
+      (runtime.settings !== null && !blockedByOtherSdk && !startFailed)
     );
   };
 
@@ -210,7 +213,7 @@ export const createAnalytics = (): AnalyticsController => {
       return;
     }
     const settings = runtime.settings;
-    if (settings === null || blockedByOtherSdk) return;
+    if (settings === null || blockedByOtherSdk || startFailed) return;
     if (
       identity.kind === "pending" ||
       shutdownInProgress !== undefined ||
@@ -259,6 +262,8 @@ export const createAnalytics = (): AnalyticsController => {
       (error: unknown) => {
         if (starting !== created) return;
         starting = undefined;
+        startFailed = true;
+        discardPending();
         owner.warn(`Analytics failed to start: ${String(error)}`);
         retire(created);
       }
@@ -270,6 +275,7 @@ export const createAnalytics = (): AnalyticsController => {
       detachConsent?.();
       runtime = next;
       blockedByOtherSdk = false;
+      startFailed = false;
       detachConsent = next.consent.subscribe(reconcile);
       reconcile();
       return () => {
