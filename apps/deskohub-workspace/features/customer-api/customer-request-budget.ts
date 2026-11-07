@@ -72,7 +72,15 @@ export const customerRequestBudgetClasses = {
     // Deletion expires the Dotypos customer.
     requestDeletion: "dotypos-mutation",
   },
-  reservations: {},
+  reservations: {
+    // Reservation details are read live from Dotypos; the status refresh
+    // and the door code also call the payment and lock providers.
+    listReservations: "dotypos-read",
+    getReservationStatus: "dotypos-read",
+    getReservationAccess: "dotypos-read",
+    // Authorizing the invoice can resolve the account's Dotypos customer.
+    getReservationInvoice: "dotypos-read",
+  },
   booking: {},
 } as const satisfies CustomerApiEndpointClassification;
 
