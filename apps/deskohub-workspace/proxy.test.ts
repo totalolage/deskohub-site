@@ -625,6 +625,42 @@ describe("locale negotiation", () => {
   });
 });
 
+describe("mobile web app under /app/", () => {
+  test("hands app paths on without locale, sign-in or administration handling", async () => {
+    for (const path of [
+      "/app/",
+      "/app/account",
+      "/app/account/security?tab=passkeys",
+      "/app/admin",
+    ]) {
+      const response = await proxy(
+        new NextRequest(`https://workspace.example${path}`, {
+          headers: {
+            "accept-language": "en-US",
+            cookie: `${localeCookieName}=en-US`,
+          },
+        })
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("location")).toBeNull();
+      expect(response.headers.get("x-middleware-rewrite")).toBeNull();
+    }
+    expect(administrationRequestHeaders).toHaveLength(0);
+  });
+
+  test("moves the bare path permanently into the installed app's scope", async () => {
+    const response = await proxy(
+      new NextRequest("https://workspace.example/app?source=pwa")
+    );
+
+    expect(response.status).toBe(308);
+    expect(response.headers.get("location")).toBe(
+      "https://workspace.example/app/?source=pwa"
+    );
+  });
+});
+
 describe("dotted paths under a locale prefix", () => {
   const matchesProxy = (pathname: string) =>
     unstable_doesMiddlewareMatch({
