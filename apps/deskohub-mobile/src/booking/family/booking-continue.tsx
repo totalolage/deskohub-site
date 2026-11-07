@@ -29,17 +29,21 @@ export function BookingContinue({
   quote,
   checkout,
   onRetryQuote,
+  quoteFailureShown,
 }: {
   /** None while there is nothing to quote. */
   readonly quote: Option.Option<BookingRead<CustomerBookingQuote>>;
   readonly checkout: Option.Option<CheckoutRequest>;
   readonly onRetryQuote: () => void;
+  /** False while the screen already shows the same failure above. */
+  readonly quoteFailureShown: boolean;
 }) {
   const locale = useAppLocale();
   const router = useRouter();
   const setCheckoutRequest = useAtomSet(checkoutRequestAtom);
   const read = Option.getOrUndefined(quote);
-  const failed = read?.kind === "failed" ? read : undefined;
+  const failed =
+    quoteFailureShown && read?.kind === "failed" ? read : undefined;
   return (
     <View style={styles.container}>
       {/* Kept mounted so assistive tech announces each change. */}

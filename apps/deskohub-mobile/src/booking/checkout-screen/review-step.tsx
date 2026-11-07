@@ -22,6 +22,7 @@ import { Checkbox } from "../ui/checkbox";
 import { HoldCountdown } from "../ui/hold-countdown";
 import { formatMoney } from "../ui/money";
 import { PriceSummary } from "../ui/price-summary";
+import { BookingOverviewView } from "./booking-overview-view";
 import { retryMessage, summaryLineLabel } from "./checkout-copy";
 import {
   type CodeFieldView,
@@ -34,8 +35,8 @@ type Send = (intent: CheckoutIntent) => void;
 type Locale = { readonly locale: CustomerLocale };
 
 /**
- * The held order before payment: the hold countdown, a changed price to
- * accept, the itemized summary, the code field, the one legal checkbox, and
+ * The held order before payment: what is booked and when, the hold
+ * countdown, a changed price to accept, the itemized summary, the code field, the one legal checkbox, and
  * Pay, which only `canPay` enables.
  */
 export function ReviewStep({
@@ -53,6 +54,11 @@ export function ReviewStep({
   const view = reviewView(review, now);
   return (
     <View style={styles.step}>
+      <BookingOverviewView
+        selection={selection}
+        earlySetup={review.flow.earlySetup === true}
+        locale={locale}
+      />
       <HoldCountdown secondsLeft={view.holdSecondsLeft} locale={locale} />
       <PriceReviewBanner view={view} send={send} locale={locale} />
       <PriceSummary

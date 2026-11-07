@@ -2,14 +2,20 @@ import { describe, expect, test } from "bun:test";
 import type { CustomerBookingQuote } from "@deskohub/workspace-customer-api";
 import { Cause, Option } from "effect";
 import { AsyncResult } from "effect/unstable/reactivity";
-import { BookingCatalogViewError } from "../data/booking-query-error";
+import { CustomerViewError } from "../../customer-api/customer-view-error";
+import {
+  BookingCatalogViewError,
+  type BookingQueryViewError,
+} from "../data/booking-query-error";
 import { toOfficeSelection } from "../selection/office-selection";
 import {
+  type BookingRead,
   bookingReadOf,
   checkoutRequestOf,
   freshValue,
   isRetryableBookingQueryError,
   quotableSelection,
+  quoteFailureRepeats,
   restartReasonOf,
 } from "./booking-family-view";
 
@@ -160,5 +166,73 @@ describe("bookingReadOf", () => {
     expect(
       read.kind === "failed" && isRetryableBookingQueryError(read.error)
     ).toBe(true);
+  });
+});
+
+describe("quoteFailureRepeats", () => {
+  const failed = (error: BookingQueryViewError): BookingRead<unknown> => ({
+    kind: "failed",
+    error,
+    value: Option.none(),
+    retrying: false,
+  });
+  const loaded: BookingRead<unknown> = {
+    kind: "loaded",
+    value: {},
+    refreshing: false,
+  };
+  const rateLimited = failed(CustomerViewError.RateLimited());
+  const sentence = (error: BookingQueryViewError) => error._tag;
+
+  test("one rate limit failing both reads repeats the shown failure", () => {
+    expect(
+      quoteFailureRepeats(
+        Option.some(rateLimited),
+        [loaded, rateLimited],
+        sentence
+      )
+    ).toBe(true);
+  });
+
+  test("a quote failing differently from the shown failure is its own", () => {
+    expect(
+      quoteFailureRepeats(
+        Option.some(failed(CustomerViewError.Unavailable())),
+        [rateLimited],
+        sentence
+      )
+    ).toBe(false);
+  });
+
+  test("compares with the first failed read, the one the screen shows", () => {
+    expect(
+      quoteFailureRepeats(
+        Option.some(rateLimited),
+        [failed(CustomerViewError.Unavailable()), rateLimited],
+        sentence
+      )
+    ).toBe(false);
+  });
+
+  test("different failures worded alike repeat, as the screen shows words", () => {
+    expect(
+      quoteFailureRepeats(
+        Option.some(failed(CustomerViewError.Unavailable())),
+        [failed(CustomerViewError.Unexpected())],
+        () => "same sentence"
+      )
+    ).toBe(true);
+  });
+
+  test("nothing repeats while the supporting reads or the quote succeed", () => {
+    expect(
+      quoteFailureRepeats(Option.some(rateLimited), [loaded], sentence)
+    ).toBe(false);
+    expect(
+      quoteFailureRepeats(Option.some(loaded), [rateLimited], sentence)
+    ).toBe(false);
+    expect(quoteFailureRepeats(Option.none(), [rateLimited], sentence)).toBe(
+      false
+    );
   });
 });

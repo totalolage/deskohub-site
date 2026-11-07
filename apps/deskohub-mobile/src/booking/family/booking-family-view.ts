@@ -53,6 +53,38 @@ export const bookingReadOf = <A>(
   return { kind: "loaded", value: result.value, refreshing: result.waiting };
 };
 
+/** The first failed read among a screen's supporting reads, which it shows. */
+export const firstFailedRead = (
+  reads: ReadonlyArray<BookingRead<unknown>>
+): Extract<BookingRead<unknown>, { readonly kind: "failed" }> | undefined =>
+  reads.find(
+    (
+      read
+    ): read is Extract<BookingRead<unknown>, { readonly kind: "failed" }> =>
+      read.kind === "failed"
+  );
+
+/**
+ * Whether the quote failed with the sentence the screen already shows for a
+ * supporting read, as when one rate limit fails both. The screen then says
+ * it once, and that notice's retry reads the quote again too.
+ */
+export const quoteFailureRepeats = (
+  quote: Option.Option<BookingRead<unknown>>,
+  reads: ReadonlyArray<BookingRead<unknown>>,
+  sentence: (error: BookingQueryViewError) => string
+): boolean => {
+  const shown = firstFailedRead(reads);
+  return (
+    shown !== undefined &&
+    Option.exists(
+      quote,
+      (read) =>
+        read.kind === "failed" && sentence(read.error) === sentence(shown.error)
+    )
+  );
+};
+
 /** Whether trying the read again can help; a catalog refusal can't. */
 export const isRetryableBookingQueryError = (error: BookingQueryViewError) =>
   !(

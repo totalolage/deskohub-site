@@ -8,6 +8,7 @@ import {
   hoursBetweenMidnights,
   monthWeeks,
   pragueDateTimeAt,
+  pragueInstant,
   pragueMidnight,
   pragueToday,
 } from "./prague-date";
@@ -64,6 +65,24 @@ describe("calendar arithmetic", () => {
     expect(daysBetween("2026-03-28", "2026-03-30")).toBe(2);
     expect(daysBetween("2026-10-24", "2026-10-26")).toBe(2);
     expect(daysBetween("2026-11-07", "2026-11-01")).toBe(-6);
+  });
+});
+
+describe("pragueInstant", () => {
+  test("reads the wall clock on the offset in force at that time", () => {
+    const at = (date: string, hour: number, minute = 0) =>
+      pragueInstant({ date, hour, minute }).toISOString();
+    expect(at("2026-11-20", 9, 30)).toBe("2026-11-20T08:30:00.000Z");
+    expect(at("2026-07-06", 9)).toBe("2026-07-06T07:00:00.000Z");
+    expect(at("2026-03-29", 1)).toBe("2026-03-29T00:00:00.000Z");
+    expect(at("2026-03-29", 3)).toBe("2026-03-29T01:00:00.000Z");
+    expect(at("2026-10-25", 1)).toBe("2026-10-24T23:00:00.000Z");
+    expect(at("2026-10-25", 4)).toBe("2026-10-25T03:00:00.000Z");
+  });
+
+  test("round-trips through the Prague wall clock", () => {
+    const dateTime = { date: "2026-12-31", hour: 23, minute: 45 };
+    expect(pragueDateTimeAt(pragueInstant(dateTime))).toEqual(dateTime);
   });
 });
 
