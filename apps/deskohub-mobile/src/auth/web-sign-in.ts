@@ -2,6 +2,7 @@ import { Effect, Match, Option } from "effect";
 import type { AppLocale } from "../i18n/app-locale";
 import { webCallbackPath } from "./auth-callback";
 import { authClient } from "./auth-client.web";
+import type { AuthUser } from "./auth-session-state";
 import type { NativeHandoffRequest } from "./native-handoff-request";
 import {
   clearReauthenticatingUser,
@@ -129,6 +130,33 @@ export const reauthenticationExpectation = ({
     : { kind: "account", userId };
 };
 
+/**
+ * The sign-in page's email field. A web reauthentication's email goes only to
+ * the account this page's browser session had when the page first read it:
+ * a code or link for any other address would sign in to that account and
+ * replace the browser's session cookie, which the page can't restore. Until
+ * that first read nothing is sent, so an address entered early can't slip
+ * past the lock. Without a session there is nothing to keep, and the account
+ * check still refuses a switch.
+ */
+export type SignInEmailField =
+  | { readonly kind: "waiting" }
+  | { readonly kind: "locked"; readonly email: string }
+  | { readonly kind: "free" };
+
+export const signInEmailField = ({
+  reauthenticating,
+  pageSession,
+}: {
+  readonly reauthenticating: boolean;
+  readonly pageSession: { readonly user: AuthUser | undefined } | undefined;
+}): SignInEmailField => {
+  if (pageSession === undefined) return { kind: "waiting" };
+  return reauthenticating && pageSession.user !== undefined
+    ? { kind: "locked", email: pageSession.user.email }
+    : { kind: "free" };
+};
+
 const refuseAccount = (
   reason: "account-switch" | "reauthentication-unconfirmed"
 ) =>
@@ -174,18 +202,22 @@ export const confirmWebAccount = (expectation: WebAccountExpectation) =>
 
 /**
  * Before a reauthentication's email goes out, stores the account it must
- * come back as, so the email's link can be checked in any tab. An account
- * that can't be recovered or stored stops the email.
+ * come back as and the screen it returns to, so the email's link can be
+ * checked, and finish, in any tab. An account that can't be recovered or
+ * stored stops the email.
  */
 export const prepareReauthenticationEmail = (
-  expectation: WebAccountExpectation
+  expectation: WebAccountExpectation,
+  returnPath: string
 ) =>
   Match.value(expectation).pipe(
     Match.discriminatorsExhaustive("kind")({
       none: () => Effect.void,
       unrecoverable: () => Effect.fail(reauthenticationUnavailable()),
       account: ({ userId }) =>
-        Effect.sync(() => saveReauthenticatingUser(userId, Date.now())).pipe(
+        Effect.sync(() =>
+          saveReauthenticatingUser({ userId, returnPath }, Date.now())
+        ).pipe(
           Effect.filterOrFail(
             (saved) => saved,
             () => reauthenticationUnavailable()
@@ -268,7 +300,13 @@ export const magicLinkExpectation = ({
  */
 const clearOnceConfirmed = Effect.sync(clearReauthenticatingUser);
 
-/** Signs the browser in with a magic link, refusing an account switch. */
+/**
+ * Signs the browser in with a magic link, refusing an account switch. The
+ * server refuses another account's link while the browser is signed in
+ * (`403 ACCOUNT_SWITCH_REFUSED`) and keeps its session, so that refusal
+ * signs nothing out; a link that still signs in as another account is
+ * signed out again by the account check.
+ */
 export const completeWebMagicLink = (
   token: string,
   context: Parameters<typeof magicLinkExpectation>[0]
