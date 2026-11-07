@@ -48,7 +48,12 @@ const startFlow = async (
   const focus = Atom.make(true);
   const setFocused = (focused: boolean) =>
     checkout.registry.set(focus, focused);
-  const atom = checkoutFlowAtom(checkout.request(), focus);
+  // What the navigation says right now, ahead of the render.
+  let inViewNow = true;
+  const setInViewNow = (focused: boolean) => {
+    inViewNow = focused;
+  };
+  const atom = checkoutFlowAtom(checkout.request(), focus, () => inViewNow);
   const unmount = checkout.registry.mount(atom);
   cleanups.push(unmount);
   const controller = () => checkoutController(checkout.registry.get(atom));
@@ -66,6 +71,7 @@ const startFlow = async (
     until,
     untilState,
     setFocused,
+    setInViewNow,
   };
 };
 
@@ -409,6 +415,29 @@ describe("useCheckoutFlow's flow", () => {
     expect(flow.checkout.browser.opened).toHaveLength(1);
   });
 
+  test("a blur not yet rendered still holds the page", async () => {
+    const flow = await startFlow();
+    // The navigation leaves the screen as the submission is reported, before
+    // React renders the blur.
+    const capture = spyOn(analytics, "capture").mockImplementation(() =>
+      flow.setInViewNow(false)
+    );
+    cleanups.push(() => capture.mockRestore());
+
+    await toReview(flow);
+    await pay(flow);
+    await flow.untilState("Paying");
+    await settle();
+    expect(flow.checkout.browser.opened).toEqual([]);
+
+    // The render catches up, then the customer comes back.
+    flow.setFocused(false);
+    flow.setInViewNow(true);
+    flow.setFocused(true);
+    await flow.untilState("Done");
+    expect(flow.checkout.browser.opened).toHaveLength(1);
+  });
+
   test("a page held out of view never opens once the screen unmounts", async () => {
     const flow = await startFlow();
     await flow.untilState("Details");
@@ -421,6 +450,22 @@ describe("useCheckoutFlow's flow", () => {
     flow.unmount();
     await settle();
     flow.setFocused(true);
+    await settle();
+
+    expect(flow.checkout.browser.opened).toEqual([]);
+  });
+
+  test("a refocus the screen unmounts right after never opens the page", async () => {
+    const flow = await startFlow();
+    await flow.untilState("Details");
+    flow.setFocused(false);
+
+    await toReview(flow);
+    await pay(flow);
+    await flow.untilState("Paying");
+    await settle();
+    flow.setFocused(true);
+    flow.unmount();
     await settle();
 
     expect(flow.checkout.browser.opened).toEqual([]);

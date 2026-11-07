@@ -98,11 +98,17 @@ export interface CheckoutController {
 /** What the checkout screen tells its flow besides the request. */
 export interface CheckoutFlowOptions {
   /**
-   * Whether the checkout screen is in view. While it isn't, the flow holds
-   * the payment page and opens it once the screen is back (R8). Defaults to
-   * in view.
+   * Whether the checkout screen is in view, as last rendered. While it
+   * isn't, the flow holds the payment page and opens it once the screen is
+   * back (R8). Defaults to in view.
    */
   readonly focused?: boolean;
+  /**
+   * Whether the screen is in view right now, such as the navigation's
+   * `isFocused`. The flow asks as the payment page would open, so a blur
+   * not yet rendered still holds the page.
+   */
+  readonly isFocused?: () => boolean;
 }
 
 /**
@@ -114,17 +120,25 @@ export interface CheckoutFlowOptions {
  */
 export const useCheckoutFlow = (
   request: CheckoutRequest,
-  { focused = true }: CheckoutFlowOptions = {}
+  { focused = true, isFocused }: CheckoutFlowOptions = {}
 ): CheckoutController => {
-  // A later focus reaches the atom through the effect below.
+  // Later values reach the flow through the effects below.
   const initialFocus = useRef(focused);
+  const liveFocus = useRef(isFocused);
+  useEffect(() => {
+    liveFocus.current = isFocused;
+  }, [isFocused]);
   // One flow per request the screen holds: a new atom starts a new checkout.
   const atoms = useMemo(() => {
     const focus = Atom.make(initialFocus.current);
-    return { focus, flow: checkoutFlowAtom(request, focus) };
+    const inViewNow = () => liveFocus.current?.() ?? true;
+    return { focus, flow: checkoutFlowAtom(request, focus, inViewNow) };
   }, [request]);
   const setFocus = useAtomSet(atoms.focus);
   useEffect(() => setFocus(focused), [setFocus, focused]);
+  // Gone, the screen is out of view, even before the flow's teardown: a
+  // refocus still queued can't open the page.
+  useEffect(() => () => setFocus(false), [setFocus]);
   return checkoutController(useAtomValue(atoms.flow));
 };
 
@@ -151,18 +165,20 @@ export const holdClockInterval = Duration.seconds(1);
  * One checkout flow on the account's data runtime, alive while mounted. Each
  * call makes a new flow. Its value is waiting until the remembered referral
  * code and the session id are read, then each state the flow reaches.
- * `focused` is whether the checkout screen is in view (see `leavesScreen`);
- * without it the screen is always in view.
+ * `focused` is whether the checkout screen is in view as last rendered, and
+ * `isFocused` whether it is right now (see `leavesScreen`); the page opens
+ * only when both say so. Without them the screen is always in view.
  */
 export const checkoutFlowAtom = (
   request: CheckoutRequest,
-  focused: Atom.Atom<boolean> = Atom.make(true)
+  focused: Atom.Atom<boolean> = Atom.make(true),
+  isFocused: () => boolean = () => true
 ) =>
   customerDataRuntime.atom((get) => {
     // Mounted for the flow's lifetime, so its current value is the screen's.
     get.mount(focused);
     return checkoutFlow(request, get(bookingServicesLayer), {
-      current: () => get.registry.get(focused),
+      current: () => get.registry.get(focused) && isFocused(),
       regained: get
         .stream(focused, { withoutInitialValue: true })
         .pipe(Stream.filter((inView) => inView)),

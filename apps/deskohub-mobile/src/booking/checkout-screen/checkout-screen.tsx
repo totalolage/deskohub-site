@@ -1,7 +1,7 @@
 import type { CustomerLocale } from "@deskohub/workspace-customer-api";
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { Option } from "effect";
-import { Redirect, useIsFocused, useRouter } from "expo-router";
+import { Redirect, useIsFocused, useNavigation, useRouter } from "expo-router";
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { AsyncView } from "../../customer-api/async-view";
@@ -56,7 +56,11 @@ function CheckoutFlowScreen({
   const locale = useAppLocale();
   // Blurred, the flow holds the payment page until the screen is back (R8).
   const focused = useIsFocused();
-  const flow = useCheckoutFlow(request, { focused });
+  const navigation = useNavigation();
+  const flow = useCheckoutFlow(request, {
+    focused,
+    isFocused: () => navigation.isFocused(),
+  });
   const family = request.selection.family;
   useCheckoutNavigation(flow.view, family);
   // Lifted so the form survives Details -> Creating -> Details.
