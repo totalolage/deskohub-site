@@ -16,6 +16,7 @@ import { CheckoutPricingService } from "@/features/checkout/backend/checkout/che
 import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
 import { ReferralService } from "@/features/referrals";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
+import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import { prepareWorkspacePayState } from "@/features/reservation/actions/prepare-pay-state";
 import { payStatePreparationServicesWith } from "@/features/reservation/backend/pay-state-preparation-services";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
@@ -36,7 +37,11 @@ type Provided<Operation extends (...args: never[]) => Effect.Effect<unknown, unk
  */
 export class CheckoutServicesUnavailable extends Data.TaggedError(
   "CheckoutServicesUnavailable"
-)<{ readonly cause: unknown }> {}
+)<{ readonly cause: unknown }> {
+  /** `layer`, failing to build as unavailable. */
+  static whenUnbuilt = <A, E, R>(layer: Layer.Layer<A, E, R>) =>
+    Layer.mapError(layer, (cause) => new CheckoutServicesUnavailable({ cause }));
+}
 
 interface ICustomerCheckoutOperations {
   /** `prepareWorkspacePayState`, booked under the request's session. */
@@ -49,6 +54,13 @@ interface ICustomerCheckoutOperations {
   readonly requireAuthor: Provided<typeof requirePayStateAuthor>;
   /** Opens a checkout state token the server issued. */
   readonly readPayState: Provided<typeof openPayState>;
+  /**
+   * `RememberedReferral.forgetIfSettled`: records that the client's code is
+   * used once the booker's referral settles.
+   */
+  readonly forgetReferralIfSettled: Provided<
+    RememberedReferral["Service"]["forgetIfSettled"]
+  >;
 }
 
 /**
@@ -105,6 +117,17 @@ export class CustomerCheckoutOperations extends Context.Service<
         Layer.provideMerge(releases.referral)
       );
 
+      /** What settling the client's referral code reads. */
+      const referralSettlement = remembered.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            ReferralService.Live,
+            CustomerAccountContactService.Live,
+            releases.referral
+          )
+        )
+      );
+
       const authorship = Layer.mergeAll(
         SealedStateKeys.Default,
         WorkspaceReservationRepository.Live
@@ -113,28 +136,33 @@ export class CustomerCheckoutOperations extends Context.Service<
       return CustomerCheckoutOperations.of({
         preparePayState: (input) =>
           prepareWorkspacePayState(input).pipe(
-            Effect.provide(unavailableWhenUnbuilt(preparation))
+            Effect.provide(CheckoutServicesUnavailable.whenUnbuilt(preparation))
           ),
         applyDiscountCode: (input) =>
           applyDiscountCodeToPayState(input).pipe(
-            Effect.provide(unavailableWhenUnbuilt(discountCode))
+            Effect.provide(CheckoutServicesUnavailable.whenUnbuilt(discountCode))
           ),
         acceptPriceChange: (input) =>
           acceptPayStatePriceChange(input).pipe(
-            Effect.provide(unavailableWhenUnbuilt(SealedStateKeys.Default))
+            Effect.provide(CheckoutServicesUnavailable.whenUnbuilt(SealedStateKeys.Default))
           ),
         requireAuthor: (input) =>
           requirePayStateAuthor(input).pipe(
-            Effect.provide(unavailableWhenUnbuilt(authorship))
+            Effect.provide(CheckoutServicesUnavailable.whenUnbuilt(authorship))
           ),
         readPayState: (token) =>
           openPayState(token).pipe(
-            Effect.provide(unavailableWhenUnbuilt(SealedStateKeys.Default))
+            Effect.provide(CheckoutServicesUnavailable.whenUnbuilt(SealedStateKeys.Default))
+          ),
+        forgetReferralIfSettled: (booker) =>
+          RememberedReferral.pipe(
+            Effect.flatMap((referral) => referral.forgetIfSettled(booker)),
+            Effect.provide(
+              CheckoutServicesUnavailable.whenUnbuilt(referralSettlement)
+            )
           ),
       });
     })
   );
 }
 
-const unavailableWhenUnbuilt = <A, E, R>(layer: Layer.Layer<A, E, R>) =>
-  Layer.mapError(layer, (cause) => new CheckoutServicesUnavailable({ cause }));
