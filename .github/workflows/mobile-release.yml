@@ -167,6 +167,9 @@ jobs:
   ota-update:
     if: github.event_name == 'push'
     needs: [build, release]
+    # The publish and Blob tokens live in this environment, which only tag
+    # pushes may use.
+    environment: mobile-release
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
