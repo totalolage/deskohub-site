@@ -5,16 +5,15 @@ import {
   CheckoutReferralService,
   getSignedPayStateBookedAt,
   issueFreshPayState,
-  openPayState,
+  openPayStateForLocale,
   PayableReservationService,
-  PayStateTokenError,
 } from "@/features/checkout/backend/checkout";
 import {
-  type CheckoutReferralResult,
   type FreshPayState,
   type NoFreshPayState,
   toFreshPayState,
-} from "@/features/checkout/backend/checkout/checkout-referral.service";
+} from "@/features/checkout/backend/checkout/checkout-pay-url";
+import type { CheckoutReferralResult } from "@/features/checkout/backend/checkout/checkout-referral.service";
 import type { SignedPayState } from "@/features/checkout/backend/checkout/pay-state";
 import type { PayableReservationUnavailableError } from "@/features/checkout/backend/checkout/payable-reservation.service";
 import type { DiscountCodeRejection } from "@/features/checkout/discount-code-rejection";
@@ -323,13 +322,7 @@ export const applyDiscountCodeToPayState = Effect.fn(
   function* (input: ApplyDiscountCodeInput) {
     const referrals = yield* ReferralService;
 
-    const state = yield* openPayState(input.payStateToken);
-    if (state.locale !== input.locale) {
-      return yield* new PayStateTokenError({
-        code: "invalid-token",
-        message: "Pay state locale does not match the request locale.",
-      });
-    }
+    const state = yield* openPayStateForLocale(input);
 
     if (state.changedKeys) {
       return unavailableBecause({

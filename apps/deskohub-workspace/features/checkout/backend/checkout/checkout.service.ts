@@ -72,7 +72,11 @@ import {
 } from "../repositories/payment-attempt.repository";
 import { PaymentLifecycleRepository } from "../repositories/payment-lifecycle.repository";
 import { formatWorkspaceReservationNote } from "../reservation/dotypos-reservation.adapter";
-import { issueFreshPayState } from "./checkout-pay-url";
+import {
+  type FreshPayState,
+  issueFreshPayState,
+  toFreshPayState,
+} from "./checkout-pay-url";
 import {
   CheckoutPricingService,
   type PaymentPriceAffirmation,
@@ -116,16 +120,6 @@ type CheckoutRedirectResult = {
   readonly statusUrl?: string;
   /** The order is paid: completed internally or already paid before. */
   readonly paid?: true;
-};
-
-/**
- * The fresh Pay state a customer reviews after a price change. Its token and
- * expiry come from the same seal as its URL.
- */
-type CheckoutPriceReviewPayState = {
-  readonly freshPayUrl: string;
-  readonly freshPayStateToken: string;
-  readonly expiresAt: string;
 };
 
 /**
@@ -224,7 +218,7 @@ export interface ICheckoutService {
         readonly status: "pricing_changed";
         readonly changedKeys: ReturnType<typeof getCheckoutSummaryChangedKeys>;
         readonly freshSummary: CheckoutSummary;
-      } & CheckoutPriceReviewPayState)
+      } & FreshPayState)
     | { readonly status: "in_progress" },
     CheckoutError
   >;
@@ -384,19 +378,11 @@ const openFinalPayState: (
 
 const issuePriceReviewPayState: (
   input: BuildSignedPayStateInput
-) => Effect.Effect<
-  CheckoutPriceReviewPayState,
-  CheckoutError,
-  SealedStateKeys
-> = Effect.fn("issuePriceReviewPayState")((input) =>
+) => Effect.Effect<FreshPayState, CheckoutError, SealedStateKeys> = Effect.fn(
+  "issuePriceReviewPayState"
+)((input) =>
   issueFreshPayState(input).pipe(
-    Effect.map(
-      ({ payUrl, payStateToken, expiresAt }): CheckoutPriceReviewPayState => ({
-        freshPayUrl: payUrl,
-        freshPayStateToken: payStateToken,
-        expiresAt,
-      })
-    ),
+    Effect.map(toFreshPayState),
     Effect.mapError(
       (cause) =>
         new CheckoutError({

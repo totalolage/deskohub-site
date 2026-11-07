@@ -24,7 +24,12 @@ import {
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { SealedStateKeys } from "@/shared/backend/sealed-state-keys.service";
 import { moneyEquals } from "@/shared/money/money";
-import { type IssuedPayState, issueFreshPayState } from "./checkout-pay-url";
+import {
+  type FreshPayState,
+  issueFreshPayState,
+  type NoFreshPayState,
+  toFreshPayState,
+} from "./checkout-pay-url";
 import {
   CheckoutPricingService,
   type ICheckoutPricingService,
@@ -42,29 +47,6 @@ import {
   PayableReservationService,
   type PayableReservationUnavailableError,
 } from "./payable-reservation.service";
-
-/**
- * A replacement Pay state as a checkout result carries it: the Pay URL with
- * the sealed token and expiry behind it, all from one seal.
- */
-export type FreshPayState = {
-  readonly freshPayUrl: string;
-  readonly freshPayStateToken: string;
-  readonly expiresAt: string;
-};
-
-/** A checkout result without a replacement Pay state. */
-export type NoFreshPayState = {
-  readonly freshPayUrl?: undefined;
-  readonly freshPayStateToken?: undefined;
-  readonly expiresAt?: undefined;
-};
-
-export const toFreshPayState = (issued: IssuedPayState): FreshPayState => ({
-  freshPayUrl: issued.payUrl,
-  freshPayStateToken: issued.payStateToken,
-  expiresAt: issued.expiresAt,
-});
 
 /**
  * Why a referral code could not be accepted. The customer sees one generic

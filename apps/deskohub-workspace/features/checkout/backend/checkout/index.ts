@@ -28,6 +28,7 @@ export {
 } from "./checkout-status.service";
 export { loadCheckoutStatusPage } from "./checkout-status-page.server";
 export { checkoutSubmitDeadline } from "./checkout-submit-deadline";
+export { openPayStateForLocale } from "./open-pay-state-for-locale";
 export {
   buildSignedPayState,
   getPayStateRestartKind,
