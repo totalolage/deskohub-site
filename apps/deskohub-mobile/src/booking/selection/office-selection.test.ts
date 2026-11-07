@@ -166,16 +166,27 @@ describe("officeEnablement", () => {
       unavailable: new Set(["2026-11-20"]),
     });
     expect(enablement.maximumDayCount).toBe(13);
-    expect(enablement.maximumSeats).toBe(6);
+    expect(enablement.maximumSeats).toEqual(Option.some(6));
     expect(enablement.blockers).toEqual([]);
   });
 
-  test("offers one seat while the capacity can't be read", () => {
+  test("keeps the drafted seats while the capacity can't be read", () => {
     const { maximumSeats: _, ...withoutCapacity } = offering;
+    const group = { date: today, dayCount: 1, seats: 4 };
+    const enablement = enablementOf(group, {}, withoutCapacity);
 
-    expect(
-      enablementOf(defaultOfficeDraft(today), {}, withoutCapacity).maximumSeats
-    ).toBe(1);
+    expect(enablement.maximumSeats).toEqual(Option.none());
+    expect(enablement.blockers).toEqual([]);
+    expect(clampOfficeDraft(group, enablement)).toBe(group);
+  });
+
+  test("blocks counts that aren't whole numbers", () => {
+    expect(blockerTags({ date: today, dayCount: 1.5, seats: 1 })).toEqual([
+      "DayCountUnavailable",
+    ]);
+    expect(blockerTags({ date: today, dayCount: 1, seats: 2.5 })).toEqual([
+      "SeatsUnavailable",
+    ]);
   });
 
   test("blocks an unavailable or out-of-horizon first day", () => {
@@ -238,16 +249,28 @@ describe("clampOfficeDraft", () => {
     expect(
       clampOfficeDraft(
         { date: today, dayCount: 10, seats: 9 },
-        { maximumDayCount: 4, maximumSeats: 6 }
+        { maximumDayCount: 4, maximumSeats: Option.some(6) }
       )
     ).toEqual({ date: today, dayCount: 4, seats: 6 });
+  });
+
+  test("rounds fractional counts down to whole ones", () => {
+    expect(
+      clampOfficeDraft(
+        { date: today, dayCount: 2.7, seats: 0.4 },
+        { maximumDayCount: 4, maximumSeats: Option.some(6) }
+      )
+    ).toEqual({ date: today, dayCount: 2, seats: 1 });
   });
 
   test("keeps a draft already within bounds", () => {
     const draft = { date: today, dayCount: 3, seats: 2 };
 
     expect(
-      clampOfficeDraft(draft, { maximumDayCount: 4, maximumSeats: 6 })
+      clampOfficeDraft(draft, {
+        maximumDayCount: 4,
+        maximumSeats: Option.some(6),
+      })
     ).toBe(draft);
   });
 
@@ -255,7 +278,10 @@ describe("clampOfficeDraft", () => {
     const draft = { date: today, dayCount: 3, seats: 2 };
 
     expect(
-      clampOfficeDraft(draft, { maximumDayCount: 0, maximumSeats: 6 }).dayCount
+      clampOfficeDraft(draft, {
+        maximumDayCount: 0,
+        maximumSeats: Option.some(6),
+      }).dayCount
     ).toBe(3);
   });
 });

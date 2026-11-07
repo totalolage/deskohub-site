@@ -81,6 +81,12 @@ const availability = (
 
 const fresh = defaultMeetingRoomDraft(today, offerings);
 
+const reconcile = (
+  draft: MeetingRoomDraft,
+  startTimes: Option.Option<CustomerMeetingRoomStartTimes>,
+  at: Date = now
+) => reconcileMeetingRoomDraft(draft, startTimes, at);
+
 const blockerTags = (
   draft: MeetingRoomDraft,
   startTimes: Option.Option<CustomerMeetingRoomStartTimes>,
@@ -111,27 +117,42 @@ describe("defaultMeetingRoomDraft", () => {
 
 describe("reconcileMeetingRoomDraft", () => {
   test("fills in the earliest free start", () => {
+    expect(reconcile(fresh, Option.some(hourlyStarts)).startTime).toEqual(
+      Option.some("10:00")
+    );
+  });
+
+  test("skips starts that have already ended", () => {
+    // 10:30 in Prague: the 10:00 hour has not ended, so it still counts.
     expect(
-      reconcileMeetingRoomDraft(fresh, Option.some(hourlyStarts)).startTime
+      reconcile(
+        fresh,
+        Option.some(hourlyStarts),
+        new Date("2026-11-07T09:30:00Z")
+      ).startTime
     ).toEqual(Option.some("10:00"));
+    // 11:00 in Prague: the 10:00 hour has ended.
+    expect(
+      reconcile(
+        fresh,
+        Option.some(hourlyStarts),
+        new Date("2026-11-07T10:00:00Z")
+      ).startTime
+    ).toEqual(Option.some("11:00"));
   });
 
   test("stays without a start when none is free", () => {
     const none = { ...hourlyStarts, startTimes: [] };
 
-    expect(reconcileMeetingRoomDraft(fresh, Option.some(none))).toEqual(fresh);
+    expect(reconcile(fresh, Option.some(none))).toEqual(fresh);
   });
 
   test("ignores starts loaded for another date or duration", () => {
     const otherDate = { ...hourlyStarts, date: "2026-11-08" };
     const otherDuration = { ...hourlyStarts, duration: "hour:4" as const };
 
-    expect(reconcileMeetingRoomDraft(fresh, Option.some(otherDate))).toBe(
-      fresh
-    );
-    expect(reconcileMeetingRoomDraft(fresh, Option.some(otherDuration))).toBe(
-      fresh
-    );
+    expect(reconcile(fresh, Option.some(otherDate))).toBe(fresh);
+    expect(reconcile(fresh, Option.some(otherDuration))).toBe(fresh);
   });
 
   test("keeps early setup only when the chosen start offers it", () => {
@@ -139,14 +160,10 @@ describe("reconcileMeetingRoomDraft", () => {
       ...selectMeetingRoomStartTime(fresh, "11:00"),
       earlySetup: true,
     };
-    expect(
-      reconcileMeetingRoomDraft(at11, Option.some(hourlyStarts)).earlySetup
-    ).toBe(true);
+    expect(reconcile(at11, Option.some(hourlyStarts)).earlySetup).toBe(true);
 
     const at10 = { ...at11, startTime: Option.some("10:00") };
-    expect(
-      reconcileMeetingRoomDraft(at10, Option.some(hourlyStarts)).earlySetup
-    ).toBe(false);
+    expect(reconcile(at10, Option.some(hourlyStarts)).earlySetup).toBe(false);
   });
 
   test("clears early setup when the chosen start is no longer free", () => {
@@ -154,10 +171,7 @@ describe("reconcileMeetingRoomDraft", () => {
       ...selectMeetingRoomStartTime(fresh, "12:00"),
       earlySetup: true,
     };
-    const reconciled = reconcileMeetingRoomDraft(
-      at12,
-      Option.some(hourlyStarts)
-    );
+    const reconciled = reconcile(at12, Option.some(hourlyStarts));
 
     expect(reconciled.startTime).toEqual(Option.some("12:00"));
     expect(reconciled.earlySetup).toBe(false);
@@ -166,21 +180,35 @@ describe("reconcileMeetingRoomDraft", () => {
   test("keeps early setup while the starts load", () => {
     const pending = { ...fresh, earlySetup: true };
 
-    expect(reconcileMeetingRoomDraft(pending, Option.none())).toBe(pending);
+    expect(reconcile(pending, Option.none())).toBe(pending);
   });
 });
 
 describe("selectMeetingRoomDate", () => {
-  test("clears the start and early setup for the new date", () => {
+  test("carries the chosen start and early setup to the new date", () => {
     const chosen = {
       ...selectMeetingRoomStartTime(fresh, "11:00"),
       earlySetup: true,
     };
 
     expect(selectMeetingRoomDate(chosen, "2026-11-09")).toEqual({
-      ...fresh,
+      ...chosen,
       date: "2026-11-09",
     });
+  });
+
+  test("shows a carried start taken when the new date doesn't offer it", () => {
+    const moved = selectMeetingRoomDate(
+      { ...selectMeetingRoomStartTime(fresh, "15:00"), earlySetup: true },
+      "2026-11-09"
+    );
+    const nextDay = { ...hourlyStarts, date: "2026-11-09" };
+    const reconciled = reconcile(moved, Option.some(nextDay));
+
+    expect(reconciled).toEqual({ ...moved, earlySetup: false });
+    expect(
+      blockerTags(reconciled, Option.some(nextDay), Option.some(availability()))
+    ).toEqual(["StartUnavailable"]);
   });
 });
 
@@ -339,6 +367,24 @@ describe("meetingRoomEnablement", () => {
         Option.some(availability({ meetingRoomUnavailable: true }))
       )
     ).toEqual(["StartUnavailable"]);
+  });
+
+  test("blocks a chosen start once its hour ends, from the same response", () => {
+    const at10 = selectMeetingRoomStartTime(fresh, "10:00");
+    const later = (iso: string) =>
+      meetingRoomEnablement(at10, {
+        now: new Date(iso),
+        startTimes: Option.some(hourlyStarts),
+        availability: Option.some(availability()),
+      });
+
+    expect(later("2026-11-07T09:59:00Z").blockers).toEqual([]);
+    expect(
+      later("2026-11-07T10:00:00Z").blockers.map(({ _tag }) => _tag)
+    ).toEqual(["StartUnavailable"]);
+    expect(
+      later("2026-11-07T10:00:00Z").startTimes.map(({ startTime }) => startTime)
+    ).toEqual(["11:00", "23:00"]);
   });
 
   test("blocks a date outside today through six months", () => {

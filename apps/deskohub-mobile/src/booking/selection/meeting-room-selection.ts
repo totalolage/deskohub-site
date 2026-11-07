@@ -64,18 +64,14 @@ export const defaultMeetingRoomDraft = (
 };
 
 /**
- * The draft on another date. Its start and early setup clear, so the new
- * date's earliest free start fills in.
+ * The draft on another date. The chosen start time and early setup carry
+ * over; the screen shows them taken, or drops early setup, once the new
+ * date's free starts load.
  */
 export const selectMeetingRoomDate = (
   draft: MeetingRoomDraft,
   date: PragueDate
-): MeetingRoomDraft => ({
-  ...draft,
-  date,
-  startTime: Option.none(),
-  earlySetup: false,
-});
+): MeetingRoomDraft => ({ ...draft, date });
 
 /** The draft with the customer's start time. */
 export const selectMeetingRoomStartTime = (
@@ -126,6 +122,17 @@ const startTimesFor = (
     (loaded) => loaded.date === draft.date && loaded.duration === draft.duration
   );
 
+/** The loaded starts whose interval hasn't ended at `now`. */
+const withoutEnded = (
+  loaded: CustomerMeetingRoomStartTimes,
+  now: Date
+): CustomerMeetingRoomStartTimes => ({
+  ...loaded,
+  startTimes: loaded.startTimes.filter(
+    (start) => new Date(start.endsAt).getTime() > now.getTime()
+  ),
+});
+
 /** The free start the draft books, among starts loaded for it. */
 const chosenStart = (
   draft: MeetingRoomDraft,
@@ -163,35 +170,42 @@ export const meetingRoomAvailabilityQuery = (
 
 /**
  * The draft fitted to the free starts loaded for it: an hourly draft without
- * a start takes the earliest, and early setup clears unless the chosen start
- * offers it. A chosen start no longer free is kept, and the screen shows it
- * taken. Starts loaded for another date or duration change nothing.
+ * a start takes the earliest one not yet ended at `now`, and early setup
+ * clears unless the chosen start offers it. A chosen start no longer free is
+ * kept, and the screen shows it taken. Starts loaded for another date or
+ * duration change nothing.
  */
 export const reconcileMeetingRoomDraft = (
   draft: MeetingRoomDraft,
-  startTimes: Option.Option<CustomerMeetingRoomStartTimes>
+  startTimes: Option.Option<CustomerMeetingRoomStartTimes>,
+  now: Date
 ): MeetingRoomDraft =>
-  Option.match(startTimesFor(draft, startTimes), {
-    onNone: () => draft,
-    onSome: (loaded) => {
-      const withStart =
-        isWholeDay(draft.duration) || Option.isSome(draft.startTime)
-          ? draft
-          : {
-              ...draft,
-              startTime: Arr.head(loaded.startTimes).pipe(
-                Option.map(startTimeOf)
-              ),
-            };
-      const keepsEarlySetup = Option.exists(
-        chosenStart(withStart, loaded),
-        (start) => start.earlySetupAvailable
-      );
-      return withStart.earlySetup && !keepsEarlySetup
-        ? { ...withStart, earlySetup: false }
-        : withStart;
-    },
-  });
+  Option.match(
+    Option.map(startTimesFor(draft, startTimes), (loaded) =>
+      withoutEnded(loaded, now)
+    ),
+    {
+      onNone: () => draft,
+      onSome: (loaded) => {
+        const withStart =
+          isWholeDay(draft.duration) || Option.isSome(draft.startTime)
+            ? draft
+            : {
+                ...draft,
+                startTime: Arr.head(loaded.startTimes).pipe(
+                  Option.map(startTimeOf)
+                ),
+              };
+        const keepsEarlySetup = Option.exists(
+          chosenStart(withStart, loaded),
+          (start) => start.earlySetupAvailable
+        );
+        return withStart.earlySetup && !keepsEarlySetup
+          ? { ...withStart, earlySetup: false }
+          : withStart;
+      },
+    }
+  );
 
 /** Why a meeting-room draft can't continue to checkout. */
 export type MeetingRoomBlocker = Data.TaggedEnum<{
@@ -200,7 +214,7 @@ export type MeetingRoomBlocker = Data.TaggedEnum<{
   DateOutOfRange: Record<never, never>;
   /** An hourly draft has no start: the date has no free start left. */
   NoFreeStart: Record<never, never>;
-  /** The chosen start, or the whole day, isn't free. */
+  /** The chosen start, or the whole day, isn't free or has ended. */
   StartUnavailable: Record<never, never>;
 }>;
 export const MeetingRoomBlocker = Data.taggedEnum<MeetingRoomBlocker>();
@@ -208,7 +222,10 @@ export const MeetingRoomBlocker = Data.taggedEnum<MeetingRoomBlocker>();
 /** What a meeting-room screen offers and disables for its draft. */
 export type MeetingRoomEnablement = {
   readonly dates: DateChoice;
-  /** Free starts of the draft's date and duration, in time order. */
+  /**
+   * Free starts of the draft's date and duration not yet ended, in time
+   * order.
+   */
   readonly startTimes: ReadonlyArray<{
     readonly startTime: string;
     readonly earlySetupAvailable: boolean;
@@ -231,7 +248,10 @@ export const meetingRoomEnablement = (
 ): MeetingRoomEnablement => {
   const today = pragueToday(context.now);
   const latest = addMonths(today, horizonMonths);
-  const loaded = startTimesFor(draft, context.startTimes);
+  const loaded = Option.map(
+    startTimesFor(draft, context.startTimes),
+    (starts) => withoutEnded(starts, context.now)
+  );
   const start = Option.flatMap(loaded, (starts) => chosenStart(draft, starts));
   const hasStart = isWholeDay(draft.duration) || Option.isSome(draft.startTime);
 

@@ -102,9 +102,13 @@ export type OfficeBlocker = Data.TaggedEnum<{
   AvailabilityPending: Record<never, never>;
   /** The first day is outside the horizon or taken. */
   DateUnavailable: Record<never, never>;
-  /** The office is taken, or the stay too long, within the days drafted. */
+  /**
+   * The office is taken, or the stay too long, within the days drafted, or
+   * the count isn't a whole number of days.
+   */
   DayCountUnavailable: { readonly maximumDayCount: number };
-  SeatsUnavailable: { readonly maximumSeats: number };
+  /** More seats than the office has, or not a whole positive number. */
+  SeatsUnavailable: { readonly maximumSeats: Option.Option<number> };
 }>;
 export const OfficeBlocker = Data.taggedEnum<OfficeBlocker>();
 
@@ -114,13 +118,23 @@ export type OfficeEnablement = {
   /** The most days the drafted first day allows; zero when it allows none. */
   readonly maximumDayCount: number;
   /**
-   * The most seats the office takes. One while the office capacity can't be
-   * read; checkout checks the capacity again.
+   * The most seats the office takes; none while the office capacity can't
+   * be read, when the screen keeps the drafted seats and checkout checks
+   * them against the capacity.
    */
-  readonly maximumSeats: number;
+  readonly maximumSeats: Option.Option<number>;
   readonly notices: CustomerAvailability["notices"];
   readonly blockers: ReadonlyArray<OfficeBlocker>;
 };
+
+/** Whether `count` is a whole number from 1 up to `maximum`, when known. */
+const isCountWithin = (count: number, maximum: Option.Option<number>) =>
+  Number.isInteger(count) &&
+  count >= 1 &&
+  Option.match(maximum, {
+    onNone: () => true,
+    onSome: (most) => count <= most,
+  });
 
 export const officeEnablement = (
   draft: OfficeDraft,
@@ -145,7 +159,7 @@ export const officeEnablement = (
         maximumDurationHours: context.offering.maximumDurationHours,
       })
     : 0;
-  const maximumSeats = context.offering.maximumSeats ?? 1;
+  const maximumSeats = Option.fromNullishOr(context.offering.maximumSeats);
 
   const blockers: Array<OfficeBlocker> = [];
   if (Option.isNone(context.availability)) {
@@ -153,10 +167,10 @@ export const officeEnablement = (
   }
   if (maximumDayCount === 0) {
     blockers.push(OfficeBlocker.DateUnavailable());
-  } else if (draft.dayCount < 1 || draft.dayCount > maximumDayCount) {
+  } else if (!isCountWithin(draft.dayCount, Option.some(maximumDayCount))) {
     blockers.push(OfficeBlocker.DayCountUnavailable({ maximumDayCount }));
   }
-  if (draft.seats < 1 || draft.seats > maximumSeats) {
+  if (!isCountWithin(draft.seats, maximumSeats)) {
     blockers.push(OfficeBlocker.SeatsUnavailable({ maximumSeats }));
   }
 
@@ -177,10 +191,19 @@ export const officeEnablement = (
 };
 
 /**
- * The draft with its day count and seats brought within what the
- * enablement allows. A first day that allows no days keeps the draft's
- * count, and the screen shows the day unavailable.
+ * The draft with its day count and seats brought to whole numbers within
+ * what the enablement allows. A first day that allows no days keeps the
+ * draft's count, and the screen shows the day unavailable; unknown capacity
+ * keeps the drafted seats.
  */
+const clampCount = (count: number, maximum: Option.Option<number>) => {
+  const atLeastOne = Math.max(Math.trunc(count), 1);
+  return Option.match(maximum, {
+    onNone: () => atLeastOne,
+    onSome: (most) => Math.min(atLeastOne, most),
+  });
+};
+
 export const clampOfficeDraft = (
   draft: OfficeDraft,
   enablement: Pick<OfficeEnablement, "maximumDayCount" | "maximumSeats">
@@ -188,8 +211,8 @@ export const clampOfficeDraft = (
   const dayCount =
     enablement.maximumDayCount === 0
       ? draft.dayCount
-      : Math.min(Math.max(draft.dayCount, 1), enablement.maximumDayCount);
-  const seats = Math.min(Math.max(draft.seats, 1), enablement.maximumSeats);
+      : clampCount(draft.dayCount, Option.some(enablement.maximumDayCount));
+  const seats = clampCount(draft.seats, enablement.maximumSeats);
   return dayCount === draft.dayCount && seats === draft.seats
     ? draft
     : { ...draft, dayCount, seats };
