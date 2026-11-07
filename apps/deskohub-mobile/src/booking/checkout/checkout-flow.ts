@@ -2,7 +2,7 @@ import type {
   CustomerBookingSelection,
   CustomerLocale,
 } from "@deskohub/workspace-customer-api";
-import { useAtomValue } from "@effect/atom-react";
+import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import {
   Clock,
   Data,
@@ -16,7 +16,7 @@ import {
   Stream,
 } from "effect";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import {
   type CustomerDataServices,
   customerDataRuntime,
@@ -30,10 +30,11 @@ import { RememberedReferralCode } from "../remembered-referral.service";
 import { isSideEffect, runCheckoutCommand } from "./checkout-commands";
 import { startCheckout, step } from "./checkout-machine";
 import {
-  type CheckoutCommand,
+  CheckoutCommand,
   type CheckoutDetails,
   CheckoutEvent,
   type CheckoutState,
+  type OpenPaymentCommand,
 } from "./checkout-state";
 
 /**
@@ -93,18 +94,35 @@ export interface CheckoutController {
   readonly continueWith: (details: CheckoutDetails) => void;
 }
 
+/** What the checkout screen tells its flow besides the request. */
+export interface CheckoutFlowOptions {
+  /**
+   * Whether the checkout screen is in view. While it isn't, the flow holds
+   * the payment page and opens it once the screen is back (R8). Defaults to
+   * in view.
+   */
+  readonly focused?: boolean;
+}
+
 /**
  * Runs one checkout for `request`: steps the machine, runs its commands on
  * the account's data runtime, feeds their answers back, and ticks the hold
  * clock. Unmounting interrupts every command and the clock. Navigation stays
- * with the checkout screen.
+ * with the checkout screen, and so does the payment page: it opens only
+ * while `focused`.
  */
 export const useCheckoutFlow = (
-  request: CheckoutRequest
+  request: CheckoutRequest,
+  { focused = true }: CheckoutFlowOptions = {}
 ): CheckoutController => {
   // One flow per request the screen holds: a new atom starts a new checkout.
-  const flowAtom = useMemo(() => checkoutFlowAtom(request), [request]);
-  return checkoutController(useAtomValue(flowAtom));
+  const atoms = useMemo(() => {
+    const focus = Atom.make(true);
+    return { focus, flow: checkoutFlowAtom(request, focus) };
+  }, [request]);
+  const setFocus = useAtomSet(atoms.focus);
+  useEffect(() => setFocus(focused), [setFocus, focused]);
+  return checkoutController(useAtomValue(atoms.flow));
 };
 
 /** What a running flow takes: an event for the machine, or the details form. */
@@ -130,11 +148,23 @@ export const holdClockInterval = Duration.seconds(1);
  * One checkout flow on the account's data runtime, alive while mounted. Each
  * call makes a new flow. Its value is waiting until the remembered referral
  * code and the session id are read, then each state the flow reaches.
+ * `focused` is whether the checkout screen is in view (see `leavesScreen`);
+ * without it the screen is always in view.
  */
-export const checkoutFlowAtom = (request: CheckoutRequest) =>
-  customerDataRuntime.atom((get) =>
-    checkoutFlow(request, get(bookingServicesLayer))
-  );
+export const checkoutFlowAtom = (
+  request: CheckoutRequest,
+  focused: Atom.Atom<boolean> = Atom.make(true)
+) =>
+  customerDataRuntime.atom((get) => {
+    // Kept for the flow's lifetime, so a focus change made before the flow
+    // reads it isn't lost.
+    get.mount(focused);
+    return checkoutFlow(
+      request,
+      get(bookingServicesLayer),
+      get.stream(focused)
+    );
+  });
 
 /** The screen's controller over a flow atom's value. */
 export const checkoutController = (
@@ -159,22 +189,41 @@ const startingController: CheckoutController = {
 
 type BookingLayer = Layer.Layer<BookingServices, never, CustomerDataServices>;
 
+/** The screen came into or went out of view. */
+interface FocusChanged {
+  readonly _tag: "FocusChanged";
+  readonly focused: boolean;
+}
+const focusChanged = (focused: boolean): FocusChanged => ({
+  _tag: "FocusChanged",
+  focused,
+});
+
+/** Everything the flow steps on: the screen's input and its focus. */
+type FlowInput = CheckoutFlowInput | FocusChanged;
+
 /**
- * The flow as a stream of states. Its inputs (the screen's, the clock's and
- * the commands' answers) queue up and step the machine one at a time; each
- * step's commands start in order, side effects first, and run concurrently
- * in the flow's own fiber set, so ending the stream (unmounting) interrupts
- * them and the clock with it.
+ * The flow as a stream of states. Its inputs (the screen's, its focus, the
+ * clock's and the commands' answers) queue up and step the machine one at a
+ * time; each step's commands start in order, side effects first, and run
+ * concurrently in the flow's own fiber set, so ending the stream
+ * (unmounting) interrupts them and the clock with it. A payment page asked
+ * for while the screen is out of view waits for it (see `holdOffScreen`).
  */
-const checkoutFlow = (request: CheckoutRequest, bookingLayer: BookingLayer) =>
+const checkoutFlow = (
+  request: CheckoutRequest,
+  bookingLayer: BookingLayer,
+  focus: Stream.Stream<boolean>
+) =>
   Stream.unwrap(
     Effect.Do.pipe(
       Effect.bind("started", () =>
         startFlow(request).pipe(Effect.provide(bookingLayer))
       ),
-      Effect.bind("inputs", () => Queue.unbounded<CheckoutFlowInput>()),
+      Effect.bind("inputs", () => Queue.unbounded<FlowInput>()),
       Effect.bind("commands", () => FiberSet.make<void>()),
       Effect.tap(({ inputs }) => tickHoldClock(inputs)),
+      Effect.tap(({ inputs }) => followFocus(inputs, focus)),
       Effect.map(({ started, inputs, commands }) => {
         const send = (input: CheckoutFlowInput) =>
           void Queue.offerUnsafe(inputs, input);
@@ -193,15 +242,21 @@ const checkoutFlow = (request: CheckoutRequest, bookingLayer: BookingLayer) =>
           );
         return Stream.fromQueue(inputs).pipe(
           Stream.mapAccumEffect(
-            () => started,
-            (view, input) =>
-              eventOf(input).pipe(
+            (): FlowRun => ({
+              view: started,
+              focused: true,
+              held: Option.none(),
+            }),
+            (flow, input) =>
+              stepFlow(flow, input).pipe(
                 Effect.provide(bookingLayer),
-                Effect.map((event) => advance(view, event)),
-                Effect.tap(({ commands: next }) =>
-                  Effect.forEach(inLaunchOrder(next), run, { discard: true })
+                Effect.tap(({ launch }) =>
+                  Effect.forEach(launch, run, { discard: true })
                 ),
-                Effect.map(({ view: next }) => [next, [next]] as const)
+                Effect.map(
+                  ({ flow: next, changed }) =>
+                    [next, changed ? [next.view] : []] as const
+                )
               )
           ),
           Stream.prepend([started]),
@@ -215,6 +270,80 @@ interface FlowView {
   readonly state: CheckoutState;
   readonly now: number;
 }
+
+/** A running flow's view and what it keeps about the screen's focus. */
+interface FlowRun {
+  readonly view: FlowView;
+  /** Whether the checkout screen is in view. */
+  readonly focused: boolean;
+  /** The payment page waiting for the screen to come back into view. */
+  readonly held: Option.Option<OpenPaymentCommand>;
+}
+
+/** One input's effect on the flow: its next run, and the commands to start. */
+interface FlowStep {
+  readonly flow: FlowRun;
+  readonly launch: ReadonlyArray<CheckoutCommand>;
+  /** Whether the view changed, so the screen gets a new state. */
+  readonly changed: boolean;
+}
+
+/** Steps the flow on one input. */
+const stepFlow = (flow: FlowRun, input: FlowInput) =>
+  input._tag === "FocusChanged"
+    ? Effect.succeed(refocus(flow, input.focused))
+    : eventOf(input).pipe(
+        Effect.map((event): FlowStep => {
+          const { view, commands } = advance(flow.view, event);
+          const { launch, held } = holdOffScreen(flow, inLaunchOrder(commands));
+          return { flow: { ...flow, view, held }, launch, changed: true };
+        })
+      );
+
+/**
+ * The commands that leave the checkout screen: the payment page opens over
+ * whatever the customer is looking at (on web it leaves the app for good).
+ */
+const leavesScreen = CheckoutCommand.$is("OpenPayment");
+
+/**
+ * Out of view, a step's payment page is held instead of opened (R8), so it
+ * can't open over another tab; every other command starts as usual.
+ */
+const holdOffScreen = (
+  flow: FlowRun,
+  commands: ReadonlyArray<CheckoutCommand>
+): Pick<FlowStep, "launch"> & Pick<FlowRun, "held"> => {
+  if (flow.focused) return { launch: commands, held: flow.held };
+  const opening = commands.filter(leavesScreen).at(-1);
+  return {
+    launch: commands.filter((command) => !leavesScreen(command)),
+    held: opening === undefined ? flow.held : Option.some(opening),
+  };
+};
+
+/**
+ * Back in view, the held payment page opens once, if the flow still waits
+ * on that same page; a page the flow moved past is dropped.
+ */
+const refocus = (flow: FlowRun, focused: boolean): FlowStep => {
+  const opening = focused
+    ? Option.filter(flow.held, (held) => stillOpening(flow.view.state, held))
+    : Option.none();
+  return {
+    flow: { ...flow, focused, held: focused ? Option.none() : flow.held },
+    launch: Option.toArray(opening),
+    changed: false,
+  };
+};
+
+/** Whether `state` is still waiting for `opening`'s payment page. */
+const stillOpening = (state: CheckoutState, opening: OpenPaymentCommand) =>
+  state._tag === "Paying" &&
+  Option.exists(
+    state.opening,
+    (current) => current.operationId === opening.operationId
+  );
 
 /** Reads the remembered referral code and makes the flow's session id. */
 const startFlow = (request: CheckoutRequest) =>
@@ -272,8 +401,18 @@ const inLaunchOrder = (commands: ReadonlyArray<CheckoutCommand>) => [
   ...commands.filter((command) => !isSideEffect(command)),
 ];
 
+/** Feeds the screen's focus into the flow's inputs for the flow's lifetime. */
+const followFocus = (
+  inputs: Queue.Queue<FlowInput>,
+  focus: Stream.Stream<boolean>
+) =>
+  focus.pipe(
+    Stream.runForEach((focused) => Queue.offer(inputs, focusChanged(focused))),
+    Effect.forkScoped
+  );
+
 /** Ticks the hold clock into the flow's inputs for the flow's lifetime. */
-const tickHoldClock = (inputs: Queue.Queue<CheckoutFlowInput>) =>
+const tickHoldClock = (inputs: Queue.Queue<FlowInput>) =>
   Stream.tick(holdClockInterval).pipe(
     Stream.mapEffect(() => Clock.currentTimeMillis),
     Stream.runForEach((now) =>

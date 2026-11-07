@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { CustomerCheckoutDetailsInvalid } from "@deskohub/workspace-customer-api";
 import { Clock, Deferred, Effect, Option } from "effect";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { analytics } from "../../analytics/analytics";
 import { accountStorageKey } from "../../customer-api/account-scoped-storage";
 import { fakeWorkspaceOrigin } from "../../customer-api/testing/fake-workspace";
@@ -36,7 +36,8 @@ afterEach(() => {
 });
 
 /**
- * Mounts a flow after `arrange` and returns the screen's handle on it.
+ * Mounts a flow after `arrange` and returns the screen's handle on it,
+ * with the screen in view until the test moves it with `setFocused`.
  */
 const startFlow = async (
   arrange: (checkout: FakeCheckout) => Promise<void> = async () => undefined
@@ -44,7 +45,10 @@ const startFlow = async (
   const checkout = await makeFakeCheckout();
   harnesses.push(checkout);
   await arrange(checkout);
-  const atom = checkoutFlowAtom(checkout.request());
+  const focus = Atom.make(true);
+  const setFocused = (focused: boolean) =>
+    checkout.registry.set(focus, focused);
+  const atom = checkoutFlowAtom(checkout.request(), focus);
   const unmount = checkout.registry.mount(atom);
   cleanups.push(unmount);
   const controller = () => checkoutController(checkout.registry.get(atom));
@@ -54,7 +58,15 @@ const startFlow = async (
     until(({ state }) => state._tag === tag).then(
       ({ state }) => state as Extract<CheckoutState, { readonly _tag: Tag }>
     );
-  return { checkout, atom, unmount, controller, until, untilState };
+  return {
+    checkout,
+    atom,
+    unmount,
+    controller,
+    until,
+    untilState,
+    setFocused,
+  };
 };
 
 type Flow = Awaited<ReturnType<typeof startFlow>>;
@@ -344,5 +356,52 @@ describe("useCheckoutFlow's flow", () => {
 
     expect(interrupted).toBe(true);
     expect(answered).toBe(false);
+  });
+
+  test("out of view, the payment page waits and opens once the screen is back", async () => {
+    const flow = await startFlow();
+    await flow.untilState("Details");
+    flow.setFocused(false);
+
+    // Everything else keeps running out of view: the hold, the documents,
+    // the submit.
+    await toReview(flow);
+    await pay(flow);
+    const paying = await flow.untilState("Paying");
+    await settle();
+    expect(flow.checkout.booking.endpoints).toEqual([
+      "createCheckout",
+      "listLegalDocuments",
+      "submitCheckout",
+    ]);
+    expect(flow.checkout.browser.opened).toEqual([]);
+
+    flow.setFocused(true);
+    const done = await flow.untilState("Done");
+    flow.setFocused(false);
+    flow.setFocused(true);
+    await settle();
+
+    expect(done.orderId).toBe(paying.orderId);
+    expect(flow.checkout.browser.opened).toEqual([
+      { paymentUrl: paying.paymentUrl, returnUrl: paying.returnUrl },
+    ]);
+  });
+
+  test("a page held out of view never opens once the screen unmounts", async () => {
+    const flow = await startFlow();
+    await flow.untilState("Details");
+    flow.setFocused(false);
+
+    await toReview(flow);
+    await pay(flow);
+    await flow.untilState("Paying");
+    await settle();
+    flow.unmount();
+    await settle();
+    flow.setFocused(true);
+    await settle();
+
+    expect(flow.checkout.browser.opened).toEqual([]);
   });
 });
