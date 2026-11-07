@@ -67,7 +67,7 @@ test("links the manifest and registers the worker for /app/ from the app shell",
   const shell = await Bun.file(exported("index.html")).text();
 
   expect(shell).toContain(
-    '<link rel="manifest" href="/app/manifest.webmanifest" />'
+    '<link rel="manifest" href="/app/manifest.webmanifest" crossorigin="use-credentials" />'
   );
   expect(shell).toContain(
     'navigator.serviceWorker.register("/app/sw.js", { scope: "/app/" })'

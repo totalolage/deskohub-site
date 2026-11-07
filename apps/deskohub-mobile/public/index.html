@@ -6,7 +6,10 @@
     <meta name="robots" content="noindex" />
     <meta name="theme-color" content="#00024f" />
     <title>%WEB_TITLE%</title>
-    <link rel="manifest" href="/app/manifest.webmanifest" />
+    <!-- A manifest request omits cookies unless asked, so on a protected
+         Vercel preview it never carries the bypass cookie. Next's own
+         manifest link does the same there. -->
+    <link rel="manifest" href="/app/manifest.webmanifest" crossorigin="use-credentials" />
     <link rel="apple-touch-icon" href="/app/icons/apple-touch-icon.png" />
     <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
     <style id="expo-reset">

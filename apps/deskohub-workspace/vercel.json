@@ -7,7 +7,7 @@
   },
   "routes": [
     {
-      "src": "^/app/_expo/static/",
+      "src": "^/app/_expo/static/.*$",
       "headers": {
         "Cache-Control": "public, max-age=31536000, immutable"
       },
