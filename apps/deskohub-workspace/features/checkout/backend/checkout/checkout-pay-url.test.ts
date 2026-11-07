@@ -104,3 +104,21 @@ describe("issuePayStateContinuation", () => {
     );
   });
 });
+
+describe("Pay state issuance failures", () => {
+  test("report a server failure, never a rejected caller token", async () => {
+    const error = await run(
+      withKeys(
+        issueFreshPayState({
+          ...input,
+          quote: { ...input.quote, fingerprint: 42 },
+        } as never).pipe(Effect.flip)
+      )
+    );
+
+    expect(error).toMatchObject({
+      _tag: "PayStateIssueError",
+      cause: { _tag: "PayStateTokenError" },
+    });
+  });
+});

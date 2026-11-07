@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Data, Effect } from "effect";
 import type { DiscountCodeRejection } from "@/features/checkout/discount-code-rejection";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
@@ -7,6 +7,7 @@ import {
   type BuildSignedPayStateInput,
   buildSignedPayState,
   type PayStateLinkOptions,
+  type PayStateTokenError,
   payStateTokenQueryParam,
   type SealPayStateForUrlResult,
   type SignedPayState,
@@ -64,6 +65,18 @@ export type IssuedPayState = {
   readonly expiresAt: string;
 };
 
+/**
+ * The server could not sign or seal a fresh Pay state. Unlike a
+ * `PayStateTokenError` from opening a caller's token, it never says the
+ * caller's token is unusable; a retry may succeed.
+ */
+export class PayStateIssueError extends Data.TaggedError("PayStateIssueError")<{
+  readonly cause: PayStateTokenError;
+}> {
+  static fromTokenError = (cause: PayStateTokenError) =>
+    new PayStateIssueError({ cause });
+}
+
 export const issueFreshPayState = Effect.fn("issueFreshPayState")(function* (
   input: BuildSignedPayStateInput,
   options: PayStateLinkOptions = {},
@@ -77,7 +90,7 @@ export const issueFreshPayState = Effect.fn("issueFreshPayState")(function* (
     expiresAt: getPayStateExpiresAt(freshState),
   };
   return issued;
-});
+}, Effect.mapError(PayStateIssueError.fromTokenError));
 
 /**
  * A replacement Pay state as a checkout result carries it: the Pay URL with
