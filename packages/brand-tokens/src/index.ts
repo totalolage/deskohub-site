@@ -34,6 +34,11 @@ export const brandRadius = {
  */
 export const brandFonts = {
   family: "Sculpin",
+  /**
+   * The family name the brand font file declares. iOS registers an embedded
+   * font under that name, so the app names the face this on every platform.
+   */
+  appFamily: "Sculpin Variable",
   fallback: [
     "Avenir Next",
     "Segoe UI",
@@ -41,7 +46,7 @@ export const brandFonts = {
     "Arial",
     "sans-serif",
   ],
-  weights: { heading: 400, subheading: 400, body: 400 },
+  weights: { heading: 400, subheading: 400, body: 400, emphasis: 600 },
 } as const;
 
 const brandColorVariables = {
@@ -56,13 +61,29 @@ const brandColorVariables = {
   aquamarineInk: "--brand-aquamarine-ink",
 } as const satisfies Record<BrandColor, `--brand-${string}`>;
 
+/** A CSS `font-family` list, quoting the names that hold a space. */
+const cssFontFamilyList = (families: readonly string[]): string =>
+  families.map((name) => (name.includes(" ") ? `"${name}"` : name)).join(", ");
+
 // The site's font loader sets `--font-sculpin` to the loaded brand face.
-const webFontStack = [
-  "var(--font-sculpin)",
-  ...brandFonts.fallback.map((name) =>
-    name.includes(" ") ? `"${name}"` : name
-  ),
-].join(", ");
+const webFontStack = `var(--font-sculpin), ${cssFontFamilyList(brandFonts.fallback)}`;
+
+/**
+ * The app's `fontFamily` style values. Native text takes one family and the
+ * platform's system font draws it when the app has no face of that name; the
+ * web takes a CSS list that ends in the system fonts.
+ */
+export const brandFontFamilies = {
+  native: brandFonts.appFamily,
+  web: cssFontFamilyList([brandFonts.appFamily, ...brandFonts.fallback]),
+} as const;
+
+/**
+ * The `fontVariationSettings` style value that draws the variable brand face
+ * at `weight`. Without it, native text gets the file's default weight, 300.
+ */
+export const brandFontVariation = (weight: number): string =>
+  `'wght' ${weight}`;
 
 /**
  * The `:root` custom properties `brand-theme.css` declares, by name. The
