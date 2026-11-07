@@ -7,7 +7,7 @@ import {
   expect,
   test,
 } from "bun:test";
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { StrictMode } from "react";
 import type { CheckoutStatusKind } from "@/features/checkout/checkout-status-kind";
 import {
@@ -15,6 +15,7 @@ import {
   deliverAnalyticsEvents,
   discardAnalyticsEvents,
 } from "@/features/cookie-consent/analytics-events";
+import { announceVisitorConsentChange } from "@/features/cookie-consent/visitor-consent";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -92,6 +93,20 @@ describe("CheckoutStatusAnalytics", () => {
     expect(events.map(({ properties }) => properties)).toEqual([
       { status: "fulfilled" },
       { status: "fulfilled" },
+    ]);
+  });
+
+  test("captures the shown status once the visitor consents", () => {
+    setConsentCookie(["necessary"]);
+    const view = render(page("fulfilled"));
+    expect(events).toEqual([]);
+
+    setConsentCookie(["necessary", "analytics"]);
+    act(() => announceVisitorConsentChange());
+    view.rerender(page("fulfilled"));
+
+    expect(events).toEqual([
+      { event: "checkout status viewed", properties: { status: "fulfilled" } },
     ]);
   });
 
