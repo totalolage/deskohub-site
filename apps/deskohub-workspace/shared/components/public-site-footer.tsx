@@ -1,4 +1,5 @@
 import { cacheLife } from "next/cache";
+import { Suspense } from "react";
 import { type Locale, m } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { AppInstallCallToAction } from "@/features/mobile-distribution/app-install-call-to-action";
@@ -173,7 +174,11 @@ export async function PublicSiteFooter() {
           </div>
         </div>
 
-        <AppInstallCallToAction locale={locale} />
+        {/* The call to action reads the pathname, which a prerendered page
+            only knows at request time, so it streams in after the shell. */}
+        <Suspense fallback={null}>
+          <AppInstallCallToAction locale={locale} />
+        </Suspense>
 
         <div className="mt-10 border-t border-white/10 pt-5 text-sm text-white/56">
           {m.footerCopyright(
