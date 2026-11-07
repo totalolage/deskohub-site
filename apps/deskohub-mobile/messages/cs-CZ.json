@@ -5,5 +5,10 @@
   "smoke_title": "Kontroly běhového prostředí",
   "smoke_running": "Probíhají kontroly…",
   "smoke_finished": "Kontroly dokončeny.",
-  "smoke_totals": "{passed} z {total} prošlo, {failed} selhalo"
+  "smoke_totals": "{passed} z {total} prošlo, {failed} selhalo",
+  "update_ready": "Aktualizace aplikace je připravená. Po restartu se projeví.",
+  "update_ready_restart": "Restartovat",
+  "native_update_available": "Je k dispozici nová verze aplikace {versionName}.",
+  "native_update_download": "Stáhnout",
+  "update_prompt_dismiss": "Teď ne"
 }
