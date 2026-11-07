@@ -2,6 +2,8 @@ import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer } from "effect";
 import type { Locale } from "@/features/i18n";
 import { ReservationAuthorizationService } from "@/features/reservation/backend/reservation-authorization.service";
+import type { WorkspaceReservationDetailsMalformedError } from "@/features/reservation/backend/stored-reservation-details.server";
+import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import type { ReservationAccessToken } from "@/features/reservation/reservation-access-token";
 import { InvoiceRepository } from "./invoice.repository";
@@ -49,7 +51,8 @@ type ReservationInvoicePdfError =
   | ReservationInvoiceNotIssuedError
   | EffectDrizzleQueryError
   | InvoiceStorageError
-  | InvoicePdfRenderingError;
+  | InvoicePdfRenderingError
+  | WorkspaceReservationDetailsMalformedError;
 
 export interface IReservationInvoicePdfService {
   /**
@@ -71,6 +74,7 @@ export class ReservationInvoicePdfService extends Context.Service<
     Effect.gen(function* () {
       const authorization = yield* ReservationAuthorizationService;
       const invoices = yield* InvoiceRepository;
+      const reservations = yield* WorkspaceReservationRepository;
 
       const getPdf = Effect.fn("ReservationInvoicePdfService.getPdf")(
         function* (request: ReservationInvoicePdfRequest) {
@@ -86,9 +90,16 @@ export class ReservationInvoicePdfService extends Context.Service<
 
           const invoice = yield* invoices.findByReservationId(request.orderId);
           if (!invoice) {
-            return yield* new ReservationInvoiceNotIssuedError({
-              orderId: request.orderId,
-            });
+            // A valid capability doesn't read the reservation, so it may still
+            // name one that no longer exists.
+            const reservation = yield* reservations.findById(request.orderId);
+            return yield* reservation
+              ? new ReservationInvoiceNotIssuedError({
+                  orderId: request.orderId,
+                })
+              : new ReservationInvoiceNotFoundError({
+                  orderId: request.orderId,
+                });
           }
 
           return yield* renderInvoicePdfFile(invoice.document);
@@ -103,7 +114,8 @@ export class ReservationInvoicePdfService extends Context.Service<
     Layer.provide(
       Layer.mergeAll(
         ReservationAuthorizationService.Live,
-        InvoiceRepository.Live
+        InvoiceRepository.Live,
+        WorkspaceReservationRepository.Live
       )
     )
   );

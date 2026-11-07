@@ -168,6 +168,24 @@ describe("ReservationInvoicePdfService", () => {
     }
   );
 
+  test("reports not found to a valid emailed link for an order that no longer exists", async () => {
+    const accessToken = await Effect.runPromise(
+      createReservationAccessToken({ orderId, locale: "en-US" })
+    );
+
+    const { result } = await runGetPdf({
+      visitor: "anonymous",
+      accessToken,
+      reservationExists: false,
+      invoice: null,
+    });
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "ReservationInvoiceNotFoundError", orderId },
+    });
+  });
+
   // The repository finds no invoice for a reservation that is unpaid,
   // unfulfilled, or fulfilled without one (invoice.repository.postgres.test.ts).
   test("reports not issued while no invoice exists for the reservation", async () => {

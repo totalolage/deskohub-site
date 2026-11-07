@@ -17,6 +17,7 @@ import {
   invoices,
   manualInvoiceActors,
   paymentAttempts,
+  workspaceReservations,
 } from "@/db/schema";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import {
@@ -489,8 +490,17 @@ describe.skipIf(!testDatabase)(
     test("finds a reservation's issued invoice by the reservation", async () => {
       const fixture = await createPaidFixture();
       const issued = await issue(fixture.paymentAttemptId);
-      // A later attempt on the reservation leaves its issued invoice in place.
-      await createAdditionalFailedAttempt(fixture);
+      // The invoice stays the reservation's after another attempt becomes its
+      // active one.
+      const laterAttemptId = await createAdditionalFailedAttempt(fixture);
+      await Effect.runPromise(
+        Effect.flatMap(WorkspaceDatabase, ({ db }) =>
+          db
+            .update(workspaceReservations)
+            .set({ activePaymentAttemptId: laterAttemptId })
+            .where(eq(workspaceReservations.id, fixture.reservationId))
+        ).pipe(Effect.provide(testDatabase!.layer))
+      );
 
       const found = await runRepository((repository) =>
         repository.findByReservationId(fixture.reservationId)
