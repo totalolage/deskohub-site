@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer } from "effect";
 import {
   HttpRouter,
@@ -43,6 +44,8 @@ const api = HttpApi.make("customerRequestPipeline")
 
 const ran: string[] = [];
 const received: CustomerProfileInput[] = [];
+const customerEmail = testEmailAddress("customer");
+const otherEmail = testEmailAddress("other");
 
 const server = HttpRouter.toWebHandler(
   HttpApiBuilder.layer(api).pipe(
@@ -75,7 +78,7 @@ const server = HttpRouter.toWebHandler(
             ran.push("session authentication");
             return Effect.provideService(httpEffect, CurrentCustomerSession, {
               accountId: CustomerAccountId.make("account-1"),
-              email: "customer@deskohub.test",
+              email: customerEmail,
             });
           })
         )
@@ -125,7 +128,7 @@ describe("customer request pipeline", () => {
 
   test("refuses a profile payload with a field the contract doesn't know", async () => {
     const unknownField = await updateProfile(
-      { firstName: "Ada", email: "other@deskohub.test" },
+      { firstName: "Ada", email: otherEmail },
       fromClient
     );
     const unknownBillingField = await updateProfile(

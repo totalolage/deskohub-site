@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Result } from "effect";
 import {
   HttpClient,
@@ -18,6 +19,7 @@ import { CustomerAuthRejected } from "./customer-auth-api";
 import { CustomerSessionRequired } from "./customer-session";
 
 const baseUrl = "https://workspace.deskohub.test";
+const customerEmail = testEmailAddress("customer");
 
 /**
  * An HttpClient that records each request as a web Request and answers it
@@ -56,7 +58,7 @@ const run = <A, E>(
 
 const deletionPending: CustomerAccountState = {
   kind: "deletion-pending",
-  email: "customer@deskohub.test",
+  email: customerEmail,
   deletion: "pending",
 };
 
