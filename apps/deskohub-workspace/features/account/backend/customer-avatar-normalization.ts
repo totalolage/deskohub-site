@@ -3,9 +3,14 @@ import sharp from "sharp";
 
 /**
  * Avatar input policy (see docs/customer-account-avatars.md): the raw upload
- * is at most 2 MiB, and the normalized output is WebP bounded to 512x512.
+ * is at most 2 MiB of JPEG, PNG or WebP, as the customer API contract states,
+ * and the normalized output is WebP bounded to 512x512.
  */
-export const customerAvatarMaxUploadBytes = 2 * 1024 * 1024;
+export {
+  customerAvatarMaxUploadBytes,
+  customerAvatarMediaTypes as customerAvatarAllowedMediaTypes,
+} from "@deskohub/workspace-customer-api";
+
 const customerAvatarOutputMaxDimension = 512;
 
 /**
@@ -13,12 +18,6 @@ const customerAvatarOutputMaxDimension = 512;
  * rejected before any pixel data is decoded into memory.
  */
 const customerAvatarMaxInputDimension = 10_000;
-
-export const customerAvatarAllowedMediaTypes = [
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-] as const;
 
 const allowedSharpFormats = new Set(["jpeg", "png", "webp"]);
 
