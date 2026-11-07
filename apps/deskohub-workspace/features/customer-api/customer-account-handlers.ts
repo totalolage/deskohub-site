@@ -29,7 +29,10 @@ import {
 import { acknowledgeCurrentSignupReferral } from "@/features/account/backend/signup-referral";
 import type { CustomerAgentConnection as AgentConnectionRecord } from "@/features/account/customer-agent-connections";
 import type { AccountPasskey as AccountPasskeyRecord } from "@/features/account/passkeys";
-import { MarketingPreferences } from "@/features/legal/backend/marketing-preferences.service";
+import {
+  MarketingPreferences,
+  MarketingPreferencesMutationError,
+} from "@/features/legal/backend/marketing-preferences.service";
 import type { MarketingPreferencesState } from "@/features/legal/marketing-preferences";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import { CustomerAccountLayers } from "./customer-account-layers";
@@ -174,6 +177,7 @@ export const CustomerAccountApiHandlers = HttpApiBuilder.group(
             (preferences) => preferences.read
           ).pipe(
             Effect.provide(marketingPreferences),
+            failWithMarketingAccountFailure,
             answerCustomerApiFailure("customerApi.getMarketingPreferences"),
             Effect.flatMap(answerMarketingPreferences)
           )
@@ -185,6 +189,7 @@ export const CustomerAccountApiHandlers = HttpApiBuilder.group(
               preferences.save({ source: "account", context, granted, locale })
             ).pipe(
               Effect.provide(marketingPreferences),
+              failWithMarketingAccountFailure,
               answerCustomerApiFailure("customerApi.saveMarketingPreferences"),
               Effect.flatMap(answerMarketingPreferencesSave)
             )
@@ -251,9 +256,23 @@ const answerAgentConnection = ({
 });
 
 /**
+ * A marketing preferences failure as the account failure behind it, when the
+ * signed-in account couldn't be resolved, so an account without a usable
+ * Dotypos profile is told so instead of unavailable.
+ */
+const failWithMarketingAccountFailure = <A, E, R>(
+  effect: Effect.Effect<A, E, R>
+) =>
+  Effect.mapError(effect, (failure) =>
+    failure instanceof MarketingPreferencesMutationError
+      ? (failure.account ?? failure)
+      : failure
+  );
+
+/**
  * The signed-in account's marketing consent. The API presents no e-mail-link
- * credentials, so a link state can't arise; it and an unreadable consent are
- * unavailable.
+ * credentials, so a link state can't arise, and the account-scoped read fails
+ * rather than answer the unavailable state; each would answer unavailable.
  */
 const answerMarketingPreferences = (state: MarketingPreferencesState) =>
   Match.value(state).pipe(

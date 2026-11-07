@@ -27,9 +27,16 @@ import type { CustomerProfileInput } from "@/features/account/contracts";
 import {
   CustomerAccountAccessError,
   customerAccountUnavailable,
+  type LinkedCustomerAccount,
 } from "@/features/account/customer-account";
+import {
+  MarketingConsentLedger,
+  type MarketingConsentRecord,
+  MarketingConsentUnavailable,
+} from "@/features/legal/backend/marketing-consent-ledger";
 import { MarketingPreferences } from "@/features/legal/backend/marketing-preferences.service";
-import type { MarketingPreferencesState } from "@/features/legal/marketing-preferences";
+import { getAccountMarketingManagementContext } from "@/features/legal/backend/marketing-preferences-authority";
+import type { MarketingConsentStatus } from "@/features/legal/marketing-consent-status";
 import { ReferralServiceMock } from "@/features/referrals/referral.service.mock";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { ReferralSignupIntentRepository } from "@/features/referrals/signup-intent.repository";
@@ -41,6 +48,12 @@ import {
   testCustomerEndpointGuards,
   testCustomerProfile,
 } from "./customer-api.test-utils";
+
+/** An account without a Dotypos customer yet. */
+const profileMissing = new CustomerAccountAccessError({
+  reason: "link-required",
+  linkReason: "not-found",
+});
 
 describe("getAccount", () => {
   const getAccount: CustomerApiCall = { method: "GET", path: "/account" };
@@ -286,10 +299,6 @@ describe("completeProfile", () => {
     path: "/account/profile",
     body: { firstName: "Grace", lastName: "Hopper" },
   };
-  const profileMissing = new CustomerAccountAccessError({
-    reason: "link-required",
-    linkReason: "not-found",
-  });
 
   /** An account without a Dotypos customer yet, recording every creation. */
   const unlinkedServices = () => {
@@ -570,29 +579,62 @@ describe("listAssistantConnections", () => {
   });
 });
 
+/**
+ * The account-scoped marketing preferences the API serves, over a consent
+ * ledger that starts with `status` and records each choice, for the
+ * session's linked account unless `resolve` answers otherwise.
+ */
+const marketingServices = ({
+  status = "absent",
+  ledgerUnavailable = false,
+  resolve = Effect.succeed(testLinkedAccount),
+}: {
+  readonly status?: MarketingConsentStatus;
+  readonly ledgerUnavailable?: boolean;
+  readonly resolve?: Effect.Effect<
+    LinkedCustomerAccount,
+    CustomerAccountAccessError
+  >;
+} = {}) => {
+  const records: MarketingConsentRecord[] = [];
+  const unavailable = Effect.fail(
+    new MarketingConsentUnavailable({ cause: new Error("ledger down") })
+  );
+  const services = {
+    ...linkedAccountServices,
+    resolver: Layer.mock(CustomerAccountResolver, { resolve }),
+    marketingPreferences: MarketingPreferences.AccountScoped,
+    consentLedger: Layer.mock(MarketingConsentLedger, {
+      status: () => (ledgerUnavailable ? unavailable : Effect.succeed(status)),
+      record: (input) =>
+        ledgerUnavailable
+          ? unavailable
+          : Effect.sync(() => {
+              records.push(input);
+            }),
+    }),
+  };
+  return { records, services };
+};
+
+/** The marketing context of the session's linked account. */
+const accountMarketingContext = getAccountMarketingManagementContext(
+  testLinkedAccount.accountId,
+  testLinkedAccount.dotyposCustomerId
+);
+
 describe("getMarketingPreferences", () => {
   const getMarketingPreferences: CustomerApiCall = {
     method: "GET",
     path: "/account/marketing-preferences",
   };
 
-  const reading = (state: MarketingPreferencesState) => ({
-    ...linkedAccountServices,
-    marketingPreferences: Layer.mock(MarketingPreferences, {
-      read: Effect.succeed(state),
-    }),
-  });
-
   testCustomerEndpointGuards(getMarketingPreferences);
 
   test("answers the account's marketing consent", async () => {
-    const api = makeCustomerApiTestServer({
-      services: reading({
-        status: "active",
-        source: "account",
-        context: "account-context",
-      }),
-    });
+    const api = makeCustomerApiTestServer(
+      marketingServices({ status: "active" })
+    );
 
     const response = await api.handle(
       customerApiRequest(getMarketingPreferences)
@@ -601,14 +643,30 @@ describe("getMarketingPreferences", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       status: "active",
-      context: "account-context",
+      context: accountMarketingContext,
+    });
+  });
+
+  test("asks an account without a Dotypos profile to complete it", async () => {
+    const api = makeCustomerApiTestServer(
+      marketingServices({ resolve: Effect.fail(profileMissing) })
+    );
+
+    const response = await api.handle(
+      customerApiRequest(getMarketingPreferences)
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      _tag: "CustomerAccountLinkRequired",
+      reason: "profile-missing",
     });
   });
 
   test("answers unavailable when the consent can't be read", async () => {
-    const api = makeCustomerApiTestServer({
-      services: reading({ status: "unavailable" }),
-    });
+    const api = makeCustomerApiTestServer(
+      marketingServices({ ledgerUnavailable: true })
+    );
 
     const response = await api.handle(
       customerApiRequest(getMarketingPreferences)
@@ -622,65 +680,42 @@ describe("getMarketingPreferences", () => {
 });
 
 describe("saveMarketingPreferences", () => {
-  const saveMarketingPreferences: CustomerApiCall = {
+  const saveMarketingPreferences = (
+    context = accountMarketingContext
+  ): CustomerApiCall => ({
     method: "PUT",
     path: "/account/marketing-preferences",
-    body: {
-      context: "account-context",
-      granted: true,
-      confirmed: true,
-      locale: "cs-CZ",
-    },
-  };
+    body: { context, granted: true, confirmed: true, locale: "cs-CZ" },
+  });
 
-  /** Marketing preferences that answer each save with `result`. */
-  const saving = (
-    result: Effect.Success<ReturnType<MarketingPreferences["Service"]["save"]>>
-  ) => {
-    const saves: unknown[] = [];
-    const services = {
-      ...linkedAccountServices,
-      marketingPreferences: Layer.mock(MarketingPreferences, {
-        save: (input) =>
-          Effect.sync(() => {
-            saves.push(input);
-            return result;
-          }),
-      }),
-    };
-    return { saves, services };
-  };
-
-  testCustomerEndpointGuards(saveMarketingPreferences);
+  testCustomerEndpointGuards(saveMarketingPreferences());
 
   test("records the choice under the signed-in account's authority", async () => {
-    const { saves, services } = saving({ status: "saved" });
+    const { records, services } = marketingServices();
     const api = makeCustomerApiTestServer({ services });
 
     const response = await api.handle(
-      customerApiRequest(saveMarketingPreferences)
+      customerApiRequest(saveMarketingPreferences())
     );
 
     expect(response.status).toBe(204);
-    expect(saves).toEqual([
+    expect(records).toEqual([
       {
-        source: "account",
-        context: "account-context",
-        granted: true,
+        customerId: testLinkedAccount.dotyposCustomerId,
         locale: "cs-CZ",
+        choice: "grant",
+        mode: "explicit",
+        channel: "account",
       },
     ]);
   });
 
   test("asks the client to read again when the consent changed since", async () => {
-    const { services } = saving({
-      status: "rejected",
-      reason: "stale-context",
-    });
+    const { records, services } = marketingServices();
     const api = makeCustomerApiTestServer({ services });
 
     const response = await api.handle(
-      customerApiRequest(saveMarketingPreferences)
+      customerApiRequest(saveMarketingPreferences("an-older-context"))
     );
 
     expect(response.status).toBe(409);
@@ -688,6 +723,36 @@ describe("saveMarketingPreferences", () => {
       _tag: "CustomerMarketingPreferencesRejected",
       reason: "stale-context",
     });
+    expect(records).toEqual([]);
+  });
+
+  test("asks an account without a Dotypos profile to complete it", async () => {
+    const { records, services } = marketingServices({
+      resolve: Effect.fail(profileMissing),
+    });
+    const api = makeCustomerApiTestServer({ services });
+
+    const response = await api.handle(
+      customerApiRequest(saveMarketingPreferences())
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      _tag: "CustomerAccountLinkRequired",
+      reason: "profile-missing",
+    });
+    expect(records).toEqual([]);
+  });
+
+  test("answers unavailable when the consent can't be recorded", async () => {
+    const { services } = marketingServices({ ledgerUnavailable: true });
+    const api = makeCustomerApiTestServer({ services });
+
+    const response = await api.handle(
+      customerApiRequest(saveMarketingPreferences())
+    );
+
+    expect(response.status).toBe(503);
   });
 });
 

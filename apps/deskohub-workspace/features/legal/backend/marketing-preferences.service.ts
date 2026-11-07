@@ -43,6 +43,8 @@ export class MarketingPreferencesMutationError extends Data.TaggedError(
   "MarketingPreferencesMutationError"
 )<{
   readonly reason: MarketingPreferencesMutationFailureReason;
+  /** Why the signed-in account, when it is the authority, can't be resolved. */
+  readonly account?: CustomerAccountAccessError;
 }> {
   static unavailable = () =>
     new MarketingPreferencesMutationError({ reason: "unavailable" });
@@ -79,205 +81,7 @@ export class MarketingPreferences extends Context.Service<
   MarketingPreferences,
   IMarketingPreferences
 >()("@deskohub-workspace/legal/MarketingPreferences") {
-  static Default = Layer.effect(
-    this,
-    Effect.gen(function* () {
-      const cookies = yield* MarketingManagementCookies;
-      const management = yield* MarketingManagementService;
-      // Only read/save need account and ledger capabilities. Keep them on those
-      // operations so confirmation/dismissal can run without account configuration.
-      const resolveAuthority = (values: MarketingManagementCookieValues) =>
-        Effect.flatMap(CustomerAccountResolver, (account) =>
-          resolveMarketingPreferencesAuthority(values, {
-            resolveAccount: () => account.resolve,
-            resolveManagementSession: management.resolve,
-          })
-        ).pipe(Effect.mapError((failure) => mutationError(failure.reason)));
-      const loadAuthority = cookies.read.pipe(
-        Effect.mapError(MarketingPreferencesMutationError.unavailable),
-        Effect.flatMap(resolveAuthority)
-      );
-      const pendingAuthority = cookies.read.pipe(
-        Effect.mapError(MarketingPreferencesMutationError.unavailable),
-        Effect.flatMap((values) =>
-          resolveMarketingPreferencesAuthority(values, {
-            // Missing pending authority must never fall through to the account.
-            resolveAccount: () =>
-              Effect.fail(
-                new CustomerAccountAccessError({ reason: "unavailable" })
-              ),
-            resolveManagementSession: management.resolve,
-          })
-        ),
-        Effect.mapError((failure) => mutationError(failure.reason))
-      );
-      const checkPending = (input: ManagementContext) =>
-        pendingAuthority.pipe(
-          Effect.filterOrFail(
-            (
-              authority
-            ): authority is Extract<
-              MarketingPreferencesAuthority,
-              { readonly kind: "pending" }
-            > =>
-              authority.kind === "pending" &&
-              authority.context === input.context,
-            () => mutationError("stale-context")
-          )
-        );
-      const checkPendingContext = (input: ManagementContext) =>
-        cookies.read.pipe(
-          Effect.mapError(MarketingPreferencesMutationError.unavailable),
-          Effect.filterOrFail(
-            (values) =>
-              values.pending !== undefined &&
-              getPendingMarketingManagementContext(values.pending) ===
-                input.context,
-            () => mutationError("stale-context")
-          )
-        );
-      const checkDismissal = (input: ManagementContext) =>
-        cookies.read.pipe(
-          Effect.mapError(MarketingPreferencesMutationError.unavailable),
-          Effect.filterOrFail(
-            (values) =>
-              getMarketingManagementDismissalContext(values) === input.context,
-            () => mutationError("stale-context")
-          )
-        );
-
-      return {
-        read: readPreferences(cookies, resolveAuthority).pipe(
-          Effect.withSpan("MarketingPreferences.read")
-        ),
-        save: Effect.fn("MarketingPreferences.save")((input) =>
-          Effect.Do.pipe(
-            Effect.bind("authority", () => loadAuthority),
-            Effect.tap(({ authority }) =>
-              Effect.fail(
-                mutationError(
-                  authority.kind === "pending"
-                    ? "pending-confirmation-required"
-                    : "stale-context"
-                )
-              ).pipe(
-                Effect.when(
-                  Effect.succeed(
-                    !matchesMarketingManagementContext(
-                      authority,
-                      input.source,
-                      input.context
-                    )
-                  )
-                )
-              )
-            ),
-            Effect.bind("current", () =>
-              loadAuthority.pipe(
-                Effect.filterOrFail(
-                  (authority) =>
-                    matchesMarketingManagementContext(
-                      authority,
-                      input.source,
-                      input.context
-                    ),
-                  () => mutationError("stale-context")
-                )
-              )
-            ),
-            Effect.bind("ledger", () => MarketingConsentLedger),
-            Effect.tap(({ current, ledger }) =>
-              ledger
-                .record(
-                  input.granted
-                    ? {
-                        customerId: current.customerId,
-                        locale: input.locale,
-                        choice: "grant",
-                        mode: "explicit",
-                        channel: input.source,
-                      }
-                    : {
-                        customerId: current.customerId,
-                        locale: input.locale,
-                        choice: "withdraw",
-                      }
-                )
-                .pipe(
-                  Effect.mapError(MarketingPreferencesMutationError.unavailable)
-                )
-            ),
-            Effect.as({ status: "saved" as const }),
-            settleMutationRejection
-          )
-        ),
-        confirm: Effect.fn("MarketingPreferences.confirm")((input) =>
-          Effect.Do.pipe(
-            Effect.bind("pending", () => checkPending(input)),
-            // Revalidate before consuming the single-use credential.
-            Effect.tap(() => checkPendingContext(input)),
-            Effect.bind("exchanged", ({ pending }) =>
-              management
-                .exchange(pending.rawPending)
-                .pipe(
-                  Effect.mapError((failure) =>
-                    mutationError(
-                      isInvalidMarketingManagementCredential(failure)
-                        ? "invalid-link"
-                        : "unavailable"
-                    )
-                  )
-                )
-            ),
-            // Check only cookie context after exchange, never resolve the consumed token.
-            Effect.tap(() => checkPendingContext(input)),
-            Effect.tap(({ exchanged }) =>
-              cookies
-                .setSession(exchanged)
-                .pipe(
-                  Effect.mapError(MarketingPreferencesMutationError.unavailable)
-                )
-            ),
-            Effect.as({ status: "confirmed" as const }),
-            settleMutationRejection
-          )
-        ),
-        clear: Effect.fn("MarketingPreferences.clear")((input) =>
-          Effect.Do.pipe(
-            Effect.tap(() => checkDismissal(input)),
-            Effect.bind("current", () => checkDismissal(input)),
-            Effect.tap(({ current }) =>
-              Effect.forEach(
-                current.session === undefined ? [] : [current.session],
-                (session) =>
-                  management
-                    .revoke(session)
-                    .pipe(
-                      Effect.catch((failure) =>
-                        isInvalidMarketingManagementCredential(failure)
-                          ? Effect.void
-                          : Effect.fail(
-                              MarketingPreferencesMutationError.unavailable()
-                            )
-                      )
-                    )
-              )
-            ),
-            // Revocation may have succeeded on an earlier attempt. Do not resolve
-            // the revoked session, so a failed cookie write remains retryable.
-            Effect.tap(() => checkDismissal(input)),
-            Effect.tap(() =>
-              cookies.clear.pipe(
-                Effect.mapError(MarketingPreferencesMutationError.unavailable)
-              )
-            ),
-            Effect.as({ status: "cleared" as const }),
-            settleMutationRejection
-          )
-        ),
-      } satisfies IMarketingPreferences;
-    })
-  );
+  static Default = Layer.effect(this, makeMarketingPreferences("state"));
 
   static ManagementLive = this.Default.pipe(
     Layer.provide(
@@ -293,9 +97,13 @@ export class MarketingPreferences extends Context.Service<
   /**
    * Marketing preferences for a client that holds no e-mail-link management
    * credentials, such as the native app through the customer HTTP API: read
-   * and save always resolve the signed-in account's authority.
+   * and save always resolve the signed-in account's authority, and fail with
+   * why it can't be resolved.
    */
-  static AccountScoped = this.Default.pipe(
+  static AccountScoped = Layer.effect(
+    this,
+    makeMarketingPreferences("failure")
+  ).pipe(
     Layer.provide(
       Layer.mergeAll(
         MarketingManagementCookies.none,
@@ -313,6 +121,223 @@ export class MarketingPreferences extends Context.Service<
   );
 }
 
+/**
+ * How a read answers when no authority resolves: as the `unavailable` state
+ * the site's page shows, or as the failure, which says why the signed-in
+ * account couldn't be resolved.
+ */
+type UnresolvedAuthorityRead = "state" | "failure";
+
+function makeMarketingPreferences(
+  unresolvedAuthority: UnresolvedAuthorityRead
+) {
+  return Effect.gen(function* () {
+    const cookies = yield* MarketingManagementCookies;
+    const management = yield* MarketingManagementService;
+    // Only read/save need account and ledger capabilities. Keep them on those
+    // operations so confirmation/dismissal can run without account configuration.
+    const resolveAuthority = (values: MarketingManagementCookieValues) =>
+      Effect.flatMap(CustomerAccountResolver, (account) =>
+        resolveMarketingPreferencesAuthority(values, {
+          resolveAccount: () => account.resolve,
+          resolveManagementSession: management.resolve,
+        })
+      ).pipe(
+        Effect.mapError(
+          ({ reason, account }) =>
+            new MarketingPreferencesMutationError({
+              reason,
+              ...(account && { account }),
+            })
+        )
+      );
+    const loadAuthority = cookies.read.pipe(
+      Effect.mapError(MarketingPreferencesMutationError.unavailable),
+      Effect.flatMap(resolveAuthority)
+    );
+    const pendingAuthority = cookies.read.pipe(
+      Effect.mapError(MarketingPreferencesMutationError.unavailable),
+      Effect.flatMap((values) =>
+        resolveMarketingPreferencesAuthority(values, {
+          // Missing pending authority must never fall through to the account.
+          resolveAccount: () =>
+            Effect.fail(
+              new CustomerAccountAccessError({ reason: "unavailable" })
+            ),
+          resolveManagementSession: management.resolve,
+        })
+      ),
+      Effect.mapError((failure) => mutationError(failure.reason))
+    );
+    const checkPending = (input: ManagementContext) =>
+      pendingAuthority.pipe(
+        Effect.filterOrFail(
+          (
+            authority
+          ): authority is Extract<
+            MarketingPreferencesAuthority,
+            { readonly kind: "pending" }
+          > =>
+            authority.kind === "pending" && authority.context === input.context,
+          () => mutationError("stale-context")
+        )
+      );
+    const checkPendingContext = (input: ManagementContext) =>
+      cookies.read.pipe(
+        Effect.mapError(MarketingPreferencesMutationError.unavailable),
+        Effect.filterOrFail(
+          (values) =>
+            values.pending !== undefined &&
+            getPendingMarketingManagementContext(values.pending) ===
+              input.context,
+          () => mutationError("stale-context")
+        )
+      );
+    const checkDismissal = (input: ManagementContext) =>
+      cookies.read.pipe(
+        Effect.mapError(MarketingPreferencesMutationError.unavailable),
+        Effect.filterOrFail(
+          (values) =>
+            getMarketingManagementDismissalContext(values) === input.context,
+          () => mutationError("stale-context")
+        )
+      );
+
+    return {
+      read: readPreferences(
+        cookies,
+        resolveAuthority,
+        unresolvedAuthority
+      ).pipe(Effect.withSpan("MarketingPreferences.read")),
+      save: Effect.fn("MarketingPreferences.save")((input) =>
+        Effect.Do.pipe(
+          Effect.bind("authority", () => loadAuthority),
+          Effect.tap(({ authority }) =>
+            Effect.fail(
+              mutationError(
+                authority.kind === "pending"
+                  ? "pending-confirmation-required"
+                  : "stale-context"
+              )
+            ).pipe(
+              Effect.when(
+                Effect.succeed(
+                  !matchesMarketingManagementContext(
+                    authority,
+                    input.source,
+                    input.context
+                  )
+                )
+              )
+            )
+          ),
+          Effect.bind("current", () =>
+            loadAuthority.pipe(
+              Effect.filterOrFail(
+                (authority) =>
+                  matchesMarketingManagementContext(
+                    authority,
+                    input.source,
+                    input.context
+                  ),
+                () => mutationError("stale-context")
+              )
+            )
+          ),
+          Effect.bind("ledger", () => MarketingConsentLedger),
+          Effect.tap(({ current, ledger }) =>
+            ledger
+              .record(
+                input.granted
+                  ? {
+                      customerId: current.customerId,
+                      locale: input.locale,
+                      choice: "grant",
+                      mode: "explicit",
+                      channel: input.source,
+                    }
+                  : {
+                      customerId: current.customerId,
+                      locale: input.locale,
+                      choice: "withdraw",
+                    }
+              )
+              .pipe(
+                Effect.mapError(MarketingPreferencesMutationError.unavailable)
+              )
+          ),
+          Effect.as({ status: "saved" as const }),
+          settleMutationRejection
+        )
+      ),
+      confirm: Effect.fn("MarketingPreferences.confirm")((input) =>
+        Effect.Do.pipe(
+          Effect.bind("pending", () => checkPending(input)),
+          // Revalidate before consuming the single-use credential.
+          Effect.tap(() => checkPendingContext(input)),
+          Effect.bind("exchanged", ({ pending }) =>
+            management
+              .exchange(pending.rawPending)
+              .pipe(
+                Effect.mapError((failure) =>
+                  mutationError(
+                    isInvalidMarketingManagementCredential(failure)
+                      ? "invalid-link"
+                      : "unavailable"
+                  )
+                )
+              )
+          ),
+          // Check only cookie context after exchange, never resolve the consumed token.
+          Effect.tap(() => checkPendingContext(input)),
+          Effect.tap(({ exchanged }) =>
+            cookies
+              .setSession(exchanged)
+              .pipe(
+                Effect.mapError(MarketingPreferencesMutationError.unavailable)
+              )
+          ),
+          Effect.as({ status: "confirmed" as const }),
+          settleMutationRejection
+        )
+      ),
+      clear: Effect.fn("MarketingPreferences.clear")((input) =>
+        Effect.Do.pipe(
+          Effect.tap(() => checkDismissal(input)),
+          Effect.bind("current", () => checkDismissal(input)),
+          Effect.tap(({ current }) =>
+            Effect.forEach(
+              current.session === undefined ? [] : [current.session],
+              (session) =>
+                management
+                  .revoke(session)
+                  .pipe(
+                    Effect.catch((failure) =>
+                      isInvalidMarketingManagementCredential(failure)
+                        ? Effect.void
+                        : Effect.fail(
+                            MarketingPreferencesMutationError.unavailable()
+                          )
+                    )
+                  )
+            )
+          ),
+          // Revocation may have succeeded on an earlier attempt. Do not resolve
+          // the revoked session, so a failed cookie write remains retryable.
+          Effect.tap(() => checkDismissal(input)),
+          Effect.tap(() =>
+            cookies.clear.pipe(
+              Effect.mapError(MarketingPreferencesMutationError.unavailable)
+            )
+          ),
+          Effect.as({ status: "cleared" as const }),
+          settleMutationRejection
+        )
+      ),
+    } satisfies IMarketingPreferences;
+  });
+}
+
 function readPreferences(
   cookies: MarketingManagementCookies["Service"],
   resolveAuthority: (
@@ -321,7 +346,8 @@ function readPreferences(
     MarketingPreferencesAuthority,
     MarketingPreferencesMutationError,
     CustomerAccountResolver
-  >
+  >,
+  unresolvedAuthority: UnresolvedAuthorityRead
 ) {
   return Effect.Do.pipe(
     Effect.bind("values", () =>
@@ -345,6 +371,9 @@ function readPreferences(
         MarketingConsentLedger
       > => {
         if (Result.isFailure(authority)) {
+          if (unresolvedAuthority === "failure") {
+            return Effect.fail(authority.failure);
+          }
           return Effect.succeed(
             authority.failure.reason === "invalid-link"
               ? { status: "invalid-link", dismissalContext }
