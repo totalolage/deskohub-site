@@ -1,0 +1,44 @@
+{
+  "$schema": "https://v2-9-14.turborepo.dev/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build:web": {
+      "dependsOn": ["^build", "i18n:compile"],
+      "env": ["EXPO_PUBLIC_POSTHOG_KEY", "EXPO_PUBLIC_POSTHOG_HOST"],
+      "outputs": ["dist/**"]
+    },
+    "dev": {
+      "dependsOn": ["i18n:compile"]
+    },
+    "i18n:compile": {
+      "inputs": [
+        "messages/*.json",
+        "project.inlang/settings.json",
+        "package.json"
+      ],
+      "outputs": ["src/i18n/paraglide/**"]
+    },
+    "lint": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/biome.json",
+        "$TURBO_ROOT$/lint/**"
+      ]
+    },
+    "start": {
+      "dependsOn": ["i18n:compile"]
+    },
+    "test": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/biome.json",
+        "$TURBO_ROOT$/lint/**"
+      ],
+      "dependsOn": ["$TURBO_EXTENDS$", "i18n:compile"]
+    },
+    "typecheck": {
+      "dependsOn": ["$TURBO_EXTENDS$", "i18n:compile"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/tsconfig.json"]
+    }
+  }
+}

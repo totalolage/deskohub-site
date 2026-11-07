@@ -1,0 +1,59 @@
+{
+  "name": "deskohub-mobile",
+  "private": true,
+  "type": "module",
+  "main": "expo-router/entry",
+  "scripts": {
+    "dev": "bun --parallel start dev:i18n",
+    "dev:i18n": "chokidar \"messages/*.json\" -c \"bun i18n:compile\"",
+    "start": "expo start",
+    "build:web": "expo export --platform web",
+    "lint": "cd ../.. && biome check apps/deskohub-mobile --config-path biome.json --vcs-root .",
+    "test": "bun test",
+    "typecheck": "tsc --project tsconfig.json",
+    "i18n:compile": "bun x @inlang/paraglide-js compile --project ./project.inlang --outdir ./src/i18n/paraglide --strategy baseLocale --is-server false --disable-async-local-storage --output-structure locale-modules",
+    "release:apk": "bun scripts/release/mobile-release.ts build",
+    "eas-build-post-install": "turbo run i18n:compile --filter=deskohub-mobile"
+  },
+  "dependencies": {
+    "@deskohub/brand-tokens": "workspace:*",
+    "@deskohub/i18n": "workspace:*",
+    "@deskohub/reservation": "workspace:*",
+    "@deskohub/standard-schema": "workspace:*",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "effect": "4.0.0-beta.85",
+    "expo": "~58.0.23",
+    "expo-application": "~58.1.2",
+    "expo-build-properties": "~58.0.12",
+    "expo-constants": "~58.0.15",
+    "expo-dev-client": "~58.0.18",
+    "expo-device": "~58.0.5",
+    "expo-font": "~58.0.11",
+    "expo-linking": "~58.0.16",
+    "expo-localization": "~58.0.5",
+    "expo-router": "~58.0.30",
+    "expo-splash-screen": "~58.0.13",
+    "expo-status-bar": "~58.0.4",
+    "expo-updates": "~58.0.21",
+    "posthog-react-native": "4.83.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-native": "0.88.1",
+    "react-native-safe-area-context": "~5.11.1",
+    "react-native-screens": "~4.30.1",
+    "react-native-web": "^0.21.4"
+  },
+  "devDependencies": {
+    "@inlang/paraglide-js": "^2.26.0",
+    "@types/react": "^19.3.0",
+    "chokidar-cli": "^3.0.0",
+    "typescript": "npm:@typescript/typescript6@6.0.2"
+  },
+  "expo": {
+    "install": {
+      "exclude": [
+        "typescript"
+      ]
+    }
+  }
+}
