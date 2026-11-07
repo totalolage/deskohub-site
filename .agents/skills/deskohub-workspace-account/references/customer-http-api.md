@@ -155,10 +155,12 @@ Flow:
    open the status screen.
 
    Optional `returnTarget` (`native-app` or `web-app`, never a URL) sends the
-   payment's return to the app instead: `deskohub://reservations/{orderId}`
-   (`nativeApp.scheme`; it ends the app's auth-session browser) or
-   `{callback origin}/app/reservations/{orderId}` (with the Preview protection
-   bypass on Preview). `statusUrl`, `paid` included, is that same URL, built
+   payment's return to the app instead:
+   `deskohub://reservations/{orderId}?after=payment` (`nativeApp.scheme`; it
+   ends the app's auth-session browser) or
+   `{callback origin}/app/reservations/{orderId}?after=payment` (with the
+   Preview protection bypass on Preview). `after=payment` switches the app's
+   reservation screen to its post-payment polling, also on a cold start. `statusUrl`, `paid` included, is that same URL, built
    by `getPaymentReturnDestination`. Nexi's result and cancel URLs stay the
    https return route; the target travels in
    `workspace_reservations.payment_return_target`, which every submission that

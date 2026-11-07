@@ -85,12 +85,12 @@ describe("checkout pay return route", () => {
   });
 
   test.each([
-    ["native-app", () => "deskohub://reservations/order-id"],
+    ["native-app", () => "deskohub://reservations/order-id?after=payment"],
     [
       "web-app",
       () =>
         expect.stringMatching(
-          /^https?:\/\/[^/?]+\/app\/reservations\/order-id$/
+          /^https?:\/\/[^/?]+\/app\/reservations\/order-id\?after=payment$/
         ),
     ],
   ] as const)(

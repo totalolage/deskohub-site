@@ -937,12 +937,15 @@ describe("submitCheckout", () => {
   });
 
   test.each([
-    ["native-app", `deskohub://reservations/${syntheticPayStateOrderId}`],
+    [
+      "native-app",
+      `deskohub://reservations/${syntheticPayStateOrderId}?after=payment`,
+    ],
     [
       "web-app",
       expect.stringMatching(
         new RegExp(
-          `^https?://[^/?]+/app/reservations/${syntheticPayStateOrderId}$`
+          `^https?://[^/?]+/app/reservations/${syntheticPayStateOrderId}\\?after=payment$`
         )
       ),
     ],
@@ -1000,7 +1003,7 @@ describe("submitCheckout", () => {
     expect(await response.json()).toEqual({
       status: "paid",
       orderId: syntheticPayStateOrderId,
-      statusUrl: `deskohub://reservations/${syntheticPayStateOrderId}`,
+      statusUrl: `deskohub://reservations/${syntheticPayStateOrderId}?after=payment`,
     });
   });
 

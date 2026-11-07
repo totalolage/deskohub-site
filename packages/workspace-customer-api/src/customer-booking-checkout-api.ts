@@ -334,8 +334,9 @@ export const AcceptCustomerCheckoutPriceChange = Schema.Struct(
 
 /**
  * The app a payment returns the customer to. `native-app`:
- * `deskohub://reservations/{orderId}`, which ends the app's payment browser
- * session. `web-app`: `/app/reservations/{orderId}` on the Workspace origin.
+ * `deskohub://reservations/{orderId}?after=payment`, which ends the app's
+ * payment browser session. `web-app`:
+ * `/app/reservations/{orderId}?after=payment` on the Workspace origin.
  */
 export const CustomerCheckoutReturnTarget = Schema.Literals([
   "native-app",
