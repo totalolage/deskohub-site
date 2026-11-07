@@ -23,6 +23,21 @@ describe("screenPathPattern", () => {
     expect(screenPathPattern(["(account)"])).toBe("/");
   });
 
+  test("drops nested groups such as the tabs", () => {
+    expect(
+      screenPathPattern([
+        "(account)",
+        "(tabs)",
+        "reservations",
+        "[orderId]",
+        "index",
+      ])
+    ).toBe("/reservations/[orderId]");
+    expect(screenPathPattern(["(account)", "(tabs)", "account", "legal"])).toBe(
+      "/account/legal"
+    );
+  });
+
   test("leaves ungrouped routes as they are", () => {
     expect(screenPathPattern(["auth", "callback"])).toBe("/auth/callback");
     expect(screenPathPattern(["sign-in"])).toBe("/sign-in");

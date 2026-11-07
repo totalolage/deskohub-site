@@ -1,7 +1,7 @@
 import { Stack } from "expo-router";
-import { useAppLocale } from "../../../src/i18n/locale-context";
-import { m } from "../../../src/i18n/messages";
-import { stackScreenOptions } from "../../../src/ui/navigation";
+import { useAppLocale } from "../../../../src/i18n/locale-context";
+import { m } from "../../../../src/i18n/messages";
+import { stackScreenOptions } from "../../../../src/ui/navigation";
 
 export default function ReservationsLayout() {
   const locale = useAppLocale();

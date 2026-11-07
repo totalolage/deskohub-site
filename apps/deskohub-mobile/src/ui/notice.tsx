@@ -1,14 +1,19 @@
 import { StyleSheet, Text, View } from "react-native";
 import { theme } from "../theme";
 import { useLiveRegionAnnouncement } from "./live-announcement";
+import {
+  idleLiveRegionLayout,
+  type NoticeTone,
+  noticePresentation,
+} from "./notice-presentation";
 
-export type NoticeTone = "info" | "warning" | "error";
+export type { NoticeTone } from "./notice-presentation";
 
 /**
  * A message about the screen's state, such as an account gate or a failed
- * save. It stays mounted as a live region and draws its box only while there
- * is a message, so assistive tech announces each change: `error` interrupts
- * (`alert`), `info` and `warning` wait their turn (`status`).
+ * save. It stays mounted as a live region, so assistive tech announces each
+ * change, and draws its box only while there is a message; while idle it
+ * sits out of the layout flow and takes no space.
  */
 export function Notice({
   tone,
@@ -18,25 +23,22 @@ export function Notice({
   readonly message: string | undefined;
 }) {
   useLiveRegionAnnouncement(message);
-  const shown = message !== undefined && message !== "";
-  const alert = tone === "error";
+  const { shown, role, live, glyph } = noticePresentation(tone, message);
   return (
-    <View style={shown && [styles.box, toneStyles[tone].box]}>
+    <View
+      style={shown ? [styles.box, toneStyles[tone].box] : idleLiveRegionLayout}
+    >
       {shown && (
         <View
           aria-hidden
           style={[styles.glyph, { borderColor: toneStyles[tone].color }]}
         >
           <Text style={[styles.glyphText, { color: toneStyles[tone].color }]}>
-            {tone === "info" ? "i" : "!"}
+            {glyph}
           </Text>
         </View>
       )}
-      <Text
-        role={alert ? "alert" : "status"}
-        aria-live={alert ? "assertive" : "polite"}
-        style={styles.message}
-      >
+      <Text role={role} aria-live={live} style={styles.message}>
         {message ?? ""}
       </Text>
     </View>
