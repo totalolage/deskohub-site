@@ -3,6 +3,7 @@ import {
   nativeReturnUri,
   parseAuthCallbackParams,
   parseAuthCallbackUrl,
+  withSignInMethod,
 } from "./auth-callback";
 
 const token = "tok_abcdefghijklmnopqrstuvwxyz";
@@ -122,6 +123,28 @@ describe("parseAuthCallbackUrl", () => {
     ]) {
       expect(parseAuthCallbackUrl(url)).toEqual({ kind: "invalid" });
     }
+  });
+});
+
+describe("sign-in method on a handoff", () => {
+  test("round-trips the method the web page adds", () => {
+    const minted = `${nativeReturnUri}?code=${code}&state=${state}`;
+    for (const method of ["link", "code", "passkey"] as const) {
+      expect(parseAuthCallbackUrl(withSignInMethod(minted, method))).toEqual({
+        kind: "handoff",
+        code,
+        state,
+        method,
+      });
+    }
+  });
+
+  test("leaves out a missing or unknown method", () => {
+    expect(
+      parseAuthCallbackUrl(
+        `${nativeReturnUri}?code=${code}&state=${state}&method=other`
+      )
+    ).toEqual({ kind: "handoff", code, state });
   });
 });
 

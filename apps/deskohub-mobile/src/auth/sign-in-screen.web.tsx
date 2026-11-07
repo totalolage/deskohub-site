@@ -1,6 +1,7 @@
 import { Effect, Exit, Option } from "effect";
 import { Redirect, router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
+import { trackSignInCompleted, trackSignInStarted } from "../analytics/events";
 import type { AppLocale } from "../i18n/app-locale";
 import { useAppLocale } from "../i18n/locale-context";
 import { m } from "../i18n/messages";
@@ -11,9 +12,11 @@ import {
   Screen,
   TextField,
 } from "../ui/controls";
+import { type SignInCallbackMethod, withSignInMethod } from "./auth-callback";
 import { isFreshSignIn, safeReturnPath } from "./auth-session-state";
 import type { NativeHandoffRequest } from "./native-handoff-request";
 import { webSignInFailureMessage } from "./sign-in-failure-message";
+import type { SignInScreenProps } from "./sign-in-screen.native";
 import { useAuthSession } from "./use-auth-session";
 import {
   firstFailure,
@@ -42,12 +45,29 @@ type SignInDestination =
   | { readonly kind: "app"; readonly url: string }
   | { readonly kind: "web" };
 
-const finishSignIn = (request: Option.Option<NativeHandoffRequest>) =>
+/**
+ * Mints the handoff for a native request; `method` tells the app how this
+ * page signed in, and is absent when it continued an existing session.
+ * Without a native request the browser itself completed the sign-in.
+ */
+const finishSignIn = (
+  request: Option.Option<NativeHandoffRequest>,
+  method: SignInCallbackMethod | undefined
+) =>
   Option.match(request, {
-    onNone: () => Effect.succeed<SignInDestination>({ kind: "web" }),
+    onNone: () =>
+      Effect.sync((): SignInDestination => {
+        if (method !== undefined) trackSignInCompleted(method);
+        return { kind: "web" };
+      }),
     onSome: (found) =>
       mintNativeHandoff(found).pipe(
-        Effect.map((url): SignInDestination => ({ kind: "app", url }))
+        Effect.map(
+          (url): SignInDestination => ({
+            kind: "app",
+            url: method === undefined ? url : withSignInMethod(url, method),
+          })
+        )
       ),
   });
 
@@ -92,7 +112,7 @@ const unexpected = () =>
  * sign-in back to the app; a fresh browser session can continue without
  * signing in again, unless the app asked to reauthenticate.
  */
-export function SignInScreen() {
+export function SignInScreen({ passkeyOption }: SignInScreenProps) {
   const locale = useAppLocale();
   const session = useAuthSession();
   const params = useLocalSearchParams<{
@@ -122,11 +142,14 @@ export function SignInScreen() {
             Effect.ensuring(Effect.sync(clearReauthenticatingUser))
           )
         ),
-        Effect.andThen(finishSignIn(nativeRequest))
+        Effect.andThen(finishSignIn(nativeRequest, "code"))
       ),
     unexpected
   );
   const handoff = useAuthTask(standaloneTaskRuntime, finishSignIn, unexpected);
+  // For the passkey option: it signed in on this page, so finish the same way.
+  const handlePasskeySignedIn = () =>
+    void handoff.start(nativeRequest, "passkey");
 
   const reauthenticate =
     params.prompt === "login" ||
@@ -185,7 +208,9 @@ export function SignInScreen() {
     setInvalidEmail(!valid);
     if (!valid) return;
     void send.start(address, locale).then((exit) => {
-      if (Option.exists(exit, Exit.isSuccess)) setSentTo(address);
+      if (!Option.exists(exit, Exit.isSuccess)) return;
+      trackSignInStarted("link");
+      setSentTo(address);
     });
   };
 
@@ -221,7 +246,7 @@ export function SignInScreen() {
               { email: continueAs ?? "" },
               { locale }
             )}
-            onPress={() => void handoff.start(nativeRequest)}
+            onPress={() => void handoff.start(nativeRequest, undefined)}
             disabled={busy}
           />
           <Button
@@ -250,10 +275,7 @@ export function SignInScreen() {
             onPress={submitEmail}
             disabled={busy}
           />
-          {/*
-            Passkey slot: the signin-passkeys stream's web passkey sign-in
-            option renders here, wired in when the streams are integrated.
-          */}
+          {passkeyOption?.(handlePasskeySignedIn)}
         </>
       )}
       {step === "code" && (

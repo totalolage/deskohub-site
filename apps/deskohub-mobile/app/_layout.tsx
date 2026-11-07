@@ -1,5 +1,6 @@
 import { SplashScreen, Stack } from "expo-router";
 import { useEffect, useState } from "react";
+import { AnalyticsRoot } from "../src/analytics/analytics-root";
 import { initializeBotProtection } from "../src/auth/bot-protection";
 import { useAuthSession } from "../src/auth/use-auth-session";
 import { readDeviceLocale } from "../src/i18n/device-locale";
@@ -22,14 +23,16 @@ export default function RootLayout() {
 
   return (
     <AppLocaleProvider locale={locale}>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="sign-in" />
-        <Stack.Protected guard={session.status === "signed-in"}>
-          <Stack.Screen name="index" />
-        </Stack.Protected>
-        <Stack.Screen name="auth/callback" />
-        <Stack.Screen name="dev/effect-smoke" />
-      </Stack>
+      <AnalyticsRoot>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="sign-in" />
+          <Stack.Protected guard={session.status === "signed-in"}>
+            <Stack.Screen name="index" />
+          </Stack.Protected>
+          <Stack.Screen name="auth/callback" />
+          <Stack.Screen name="dev/effect-smoke" />
+        </Stack>
+      </AnalyticsRoot>
     </AppLocaleProvider>
   );
 }

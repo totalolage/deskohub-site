@@ -1,8 +1,10 @@
 import { Clock, Effect, Exit, Match, Option } from "effect";
+import { trackSignInCompleted } from "../analytics/events";
 import {
   type AuthCallback,
   nativeReturnUri,
   parseAuthCallbackUrl,
+  type SignInCallbackMethod,
 } from "./auth-callback";
 import { AuthCallbackCompletions } from "./auth-callback-completions.service";
 import { AuthCrypto } from "./auth-crypto.service";
@@ -33,7 +35,6 @@ import {
   pkceRandomByteCount,
   pkceVerifierFromBytes,
 } from "./pkce";
-import { signInCompleted, signInStarted } from "./sign-in-analytics";
 
 /**
  * Native email sign-in. Production screens the email send and the sign-in
@@ -270,12 +271,14 @@ export const completeAuthCallback = Effect.fn(
       token: ({ token }) =>
         completions.once(
           tokenKey(token),
-          completeToken(token).pipe(Effect.tap(recordCompletion))
+          completeToken(token).pipe(Effect.tap(recordCompletion("link")))
         ),
-      handoff: ({ code, state }) =>
+      handoff: ({ code, state, method }) =>
         completions.once(
           attemptKey(state),
-          completeHandoff(code, state).pipe(Effect.tap(recordCompletion))
+          completeHandoff(code, state).pipe(
+            Effect.tap(recordCompletion(method))
+          )
         ),
     })
   );
@@ -283,7 +286,14 @@ export const completeAuthCallback = Effect.fn(
   return user;
 });
 
-const recordCompletion = () => Effect.sync(() => signInCompleted("email"));
+/**
+ * Records the completed sign-in once per completion. A handoff carries the
+ * method the web page signed in with; without one nothing is recorded.
+ */
+const recordCompletion = (method: SignInCallbackMethod | undefined) => () =>
+  Effect.sync(() => {
+    if (method !== undefined) trackSignInCompleted(method);
+  });
 
 /**
  * Runs the email sign-in in the in-app auth session and returns the signed-in
@@ -297,7 +307,6 @@ export const signInWithEmail = Effect.fn("NativeSignIn.signInWithEmail")(
     const browser = yield* AuthSessionBrowser;
     const completions = yield* AuthCallbackCompletions;
     const request = yield* startPendingSignIn(expectedUserId);
-    signInStarted("email");
     const result = yield* browser
       .open(nativeSignInUrl(auth.origin, request), nativeReturnUri)
       .pipe(Effect.mapError(unavailable));

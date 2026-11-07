@@ -48,5 +48,8 @@
   "signin_error_too_many_attempts": "Příliš mnoho chybných kódů. Vyžádejte si nový e-mail pro přihlášení.",
   "signin_error_session_not_fresh": "Pro pokračování do aplikace se přihlaste znovu.",
   "signin_error_invalid_email": "Zadejte platnou e-mailovou adresu.",
-  "signin_error_failed": "Něco se pokazilo. Zkuste to znovu."
+  "signin_error_failed": "Něco se pokazilo. Zkuste to znovu.",
+  "consent_prompt_message": "Můžeme měřit, jak aplikaci používáte, abychom ji mohli zlepšovat?",
+  "consent_prompt_accept": "Povolit analytiku",
+  "consent_prompt_decline": "Odmítnout"
 }

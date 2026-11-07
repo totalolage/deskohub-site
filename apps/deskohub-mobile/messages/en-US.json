@@ -48,5 +48,8 @@
   "signin_error_too_many_attempts": "Too many wrong codes. Request a new sign-in email.",
   "signin_error_session_not_fresh": "Sign in again to continue to the app.",
   "signin_error_invalid_email": "Enter a valid email address.",
-  "signin_error_failed": "Something went wrong. Try again."
+  "signin_error_failed": "Something went wrong. Try again.",
+  "consent_prompt_message": "May we measure how you use the app so we can improve it?",
+  "consent_prompt_accept": "Allow analytics",
+  "consent_prompt_decline": "Decline"
 }

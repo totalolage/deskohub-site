@@ -25,12 +25,25 @@ const leave = () => {
  */
 export function AuthCallbackScreen() {
   const locale = useAppLocale();
-  const { token, code, state: handoffState, error } = useLocalSearchParams();
+  const {
+    token,
+    code,
+    state: handoffState,
+    error,
+    method,
+  } = useLocalSearchParams();
   // A second link may reuse this screen with new params; each distinct
   // callback is finished (the registry dedupes repeats of the same one).
   const callback = useMemo(
-    () => parseAuthCallbackParams({ token, code, state: handoffState, error }),
-    [token, code, handoffState, error]
+    () =>
+      parseAuthCallbackParams({
+        token,
+        code,
+        state: handoffState,
+        error,
+        method,
+      }),
+    [token, code, handoffState, error, method]
   );
   const session = useAuthSession();
   const { state, start } = useAuthTask(

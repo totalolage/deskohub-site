@@ -1,12 +1,14 @@
 import { Effect, Match, Option } from "effect";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
+import { trackSignInCompleted } from "../analytics/events";
 import type { AppLocale } from "../i18n/app-locale";
 import { useAppLocale } from "../i18n/locale-context";
 import { m } from "../i18n/messages";
 import { BodyText, Button, LiveMessage, Screen } from "../ui/controls";
-import type { AuthCallback } from "./auth-callback";
+import { type AuthCallback, withSignInMethod } from "./auth-callback";
 import { capturedAuthCallback } from "./auth-location.web";
+import type { NativeHandoffRequest } from "./native-handoff-request";
 import { webSignInFailureMessage } from "./sign-in-failure-message";
 import {
   firstFailure,
@@ -59,6 +61,12 @@ const callbackStatus = (
   return undefined;
 };
 
+/** The app records this sign-in, so the URL says it came from the link. */
+const mintLinkHandoff = (request: NativeHandoffRequest) =>
+  mintNativeHandoff(request).pipe(
+    Effect.map((url) => withSignInMethod(url, "link"))
+  );
+
 const unexpected = () =>
   new WebSignInFailure({ operation: "verify-link", reason: "failed" });
 
@@ -78,7 +86,7 @@ export function AuthCallbackScreen() {
   );
   const handoff = useAuthTask(
     standaloneTaskRuntime,
-    mintNativeHandoff,
+    mintLinkHandoff,
     unexpected
   );
 
@@ -89,7 +97,9 @@ export function AuthCallbackScreen() {
   const verified = verify.state.status === "succeeded";
   const offerApp = verified && Option.isSome(nativeRequest);
   useEffect(() => {
-    if (verified && !offerApp) router.replace("/");
+    if (!verified || offerApp) return;
+    trackSignInCompleted("link");
+    router.replace("/");
   }, [verified, offerApp]);
 
   const appUrl =
@@ -125,6 +135,7 @@ export function AuthCallbackScreen() {
             label={m.callback_continue_here({}, { locale })}
             onPress={() => {
               clearNativeHandoffRequest();
+              trackSignInCompleted("link");
               router.replace("/");
             }}
           />

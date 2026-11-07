@@ -1,5 +1,7 @@
 import { Option } from "effect";
 import { Redirect } from "expo-router";
+import type { ReactNode } from "react";
+import { trackSignInCompleted } from "../analytics/events";
 import type { AppLocale } from "../i18n/app-locale";
 import { useAppLocale } from "../i18n/locale-context";
 import { m } from "../i18n/messages";
@@ -21,6 +23,18 @@ const signInStatus = (
   return undefined;
 };
 
+/**
+ * The sign-in screen's props. `passkeyOption` renders the passkey sign-in
+ * option (delivered separately) and gets the handler to call once it has
+ * signed in: it records the sign-in and, on the web page, hands the session
+ * to the app that asked for it.
+ */
+export interface SignInScreenProps {
+  readonly passkeyOption?: (onSignedIn: () => void) => ReactNode;
+}
+
+const recordPasskeySignIn = (): void => trackSignInCompleted("passkey");
+
 const signInWithEmailNow = () => signInWithEmail(Option.none());
 const unexpected = () => new SignInUnavailable({});
 
@@ -29,7 +43,7 @@ const unexpected = () => new SignInUnavailable({});
  * page in an in-app auth session; the session lands back here through the
  * callback, and the signed-in state redirects home.
  */
-export function SignInScreen() {
+export function SignInScreen({ passkeyOption }: SignInScreenProps) {
   const locale = useAppLocale();
   const session = useAuthSession();
   const { state, start } = useAuthTask(
@@ -50,10 +64,7 @@ export function SignInScreen() {
         onPress={() => void start()}
         disabled={restoring || running}
       />
-      {/*
-        Passkey slot: the signin-passkeys stream's native passkey sign-in
-        option renders here, wired in when the streams are integrated.
-      */}
+      {passkeyOption?.(recordPasskeySignIn)}
       <LiveMessage
         role="status"
         message={signInStatus(restoring, running, locale)}
