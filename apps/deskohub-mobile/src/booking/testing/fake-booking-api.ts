@@ -1,9 +1,12 @@
 import {
   CustomerAccountLinkRequired,
   type CustomerAvailability,
+  type CustomerBookableCoworkTier,
+  type CustomerBookingApi,
   CustomerBookingDateOutOfRange,
   type CustomerBookingSelection,
   CustomerBookingSelectionInvalid,
+  type CustomerBookingSelectionQuery,
   type CustomerCheckout,
   type CustomerCheckoutChangedKeys,
   CustomerCheckoutNotFound,
@@ -18,12 +21,9 @@ import {
   CustomerOfferingUnavailable,
   CustomerQuoteExpired,
   CustomerSelectionUnavailable,
-  type CustomerBookableCoworkTier,
-  type CustomerBookingApi,
-  type CustomerBookingSelectionQuery,
+  customerReferralCodeHeader,
   ReferralCode,
   WorkspaceCustomerApi,
-  customerReferralCodeHeader,
 } from "@deskohub/workspace-customer-api";
 import { Effect } from "effect";
 import {
@@ -457,8 +457,9 @@ export const fakeBookingGroup = (workspace: FakeWorkspace) => {
                   return { status: "payment_disabled" as const, orderId };
                 }
                 const now = booking.now();
-                const remembered =
-                  request.headers[customerReferralCodeHeader];
+                // A remembered referral code gives the referral benefit; any
+                // other remembered code counts as used up, so the app forgets it.
+                const remembered = request.headers[customerReferralCodeHeader];
                 const checkout: FakeBookingCheckout = {
                   orderId,
                   selection: payload.selection,
@@ -602,8 +603,7 @@ export const fakeBookingGroup = (workspace: FakeWorkspace) => {
                 }
                 booking.hold({ ...current, status: "submitted" });
                 const statusUrl = `${fakeWorkspaceOrigin}/reservation/status?orderId=${current.orderId}`;
-                const remembered =
-                  request.headers[customerReferralCodeHeader];
+                const remembered = request.headers[customerReferralCodeHeader];
                 return summaryOf(current).total.value === 0
                   ? {
                       status: "paid" as const,
@@ -664,8 +664,11 @@ const priceChanged = (
       }
     : checkout;
 
-const codeShare = (code: string | undefined) =>
-  code === fakeBookingCodes.free ? 1 : code === undefined ? 0 : 0.1;
+/** The share of the price a code takes off. */
+const codeShare = (code: string | undefined) => {
+  if (code === undefined) return 0;
+  return code === fakeBookingCodes.free ? 1 : 0.1;
+};
 
 const summaryOf = (checkout: FakeBookingCheckout) =>
   sampleSummary({
@@ -725,7 +728,10 @@ const checkedSelection = Effect.fn("FakeBooking.checkedSelection")(function* (
   }
   const last = selection.endDate ?? selection.date;
   if (selection.date < today || last > latest || last < selection.date) {
-    return yield* new CustomerBookingDateOutOfRange({ earliest: today, latest });
+    return yield* new CustomerBookingDateOutOfRange({
+      earliest: today,
+      latest,
+    });
   }
 });
 
@@ -779,9 +785,7 @@ const meetingRoomStartTimes = (
   date: string,
   duration: CustomerMeetingRoomDuration
 ) => {
-  const hours =
-    duration === "day:1" ? [0] : duration === "hour:4" ? range(8, 14) : range(8, 17);
-  const length = duration === "day:1" ? 24 : duration === "hour:4" ? 4 : 1;
+  const { hours, length } = meetingRoomSlots[duration];
   return {
     date,
     duration,
@@ -803,13 +807,21 @@ const meetingRoomStartTimes = (
   };
 };
 
-const range = (from: number, to: number) =>
-  Array.from({ length: to - from + 1 }, (_, index) => from + index);
+/** The start hours each duration is offered at, and its length in hours. */
+const meetingRoomSlots: Record<
+  CustomerMeetingRoomDuration,
+  { readonly hours: ReadonlyArray<number>; readonly length: number }
+> = {
+  "hour:1": { hours: range(8, 17), length: 1 },
+  "hour:4": { hours: range(8, 14), length: 4 },
+  "day:1": { hours: [0], length: 24 },
+};
 
-type SelectionQuery = Omit<
-  typeof CustomerBookingSelectionQuery.Type,
-  "locale"
->;
+function range(from: number, to: number) {
+  return Array.from({ length: to - from + 1 }, (_, index) => from + index);
+}
+
+type SelectionQuery = Omit<typeof CustomerBookingSelectionQuery.Type, "locale">;
 
 /** The selection a quote's query string names. */
 const selectionOfQuery = ({

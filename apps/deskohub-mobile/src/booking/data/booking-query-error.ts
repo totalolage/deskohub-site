@@ -24,10 +24,13 @@ export type BookingCatalogViewError = Data.TaggedEnum<{
   /** The date can't be booked now; it must lie from `earliest` to `latest`. */
   DateOutOfRange: { readonly earliest: string; readonly latest: string };
   /** The family can't be booked now, such as while offices are closed. */
-  OfferingUnavailable: { readonly family: CustomerOfferingUnavailable["family"] };
+  OfferingUnavailable: {
+    readonly family: CustomerOfferingUnavailable["family"];
+  };
 }>;
 
-export const BookingCatalogViewError = Data.taggedEnum<BookingCatalogViewError>();
+export const BookingCatalogViewError =
+  Data.taggedEnum<BookingCatalogViewError>();
 
 /** A booking catalog failure as a screen shows it. */
 export type BookingQueryViewError = BookingCatalogViewError | CustomerViewError;

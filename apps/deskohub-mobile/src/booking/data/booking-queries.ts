@@ -5,7 +5,7 @@ import type {
   CustomerMeetingRoomDuration,
 } from "@deskohub/workspace-customer-api";
 import { customerAvailabilityReplacementHeader } from "@deskohub/workspace-customer-api";
-import { Duration, Effect, Equal, Hash } from "effect";
+import { Duration, Effect, Equal, Hash, Order } from "effect";
 import { Atom } from "effect/unstable/reactivity";
 import { CustomerApi } from "../../customer-api/customer-api.service";
 import { customerDataRuntime } from "../../customer-api/customer-data-runtime";
@@ -32,7 +32,10 @@ const catalogRead = customerRead({ dotyposBacked: true });
 /** The legal documents' versions are Workspace data. */
 const workspaceRead = customerRead({ dotyposBacked: false });
 
-const bookingApi = Effect.map(Effect.service(CustomerApi), (api) => api.booking);
+const bookingApi = Effect.map(
+  Effect.service(CustomerApi),
+  (api) => api.booking
+);
 
 /** Every offering with its advertised price, in the customer's language. */
 export const bookingOfferingsAtom = Atom.family((locale: CustomerLocale) =>
@@ -54,9 +57,7 @@ export interface BookingAvailabilityRequest {
 }
 
 const replacementHeaders = (token: string | undefined) =>
-  token === undefined
-    ? {}
-    : { [customerAvailabilityReplacementHeader]: token };
+  token === undefined ? {} : { [customerAvailabilityReplacementHeader]: token };
 
 /**
  * Advisory availability for a query; checkout checks again. Keyed by the
@@ -102,7 +103,7 @@ export const bookingSelectionKey = (selection: CustomerBookingSelection) =>
     Object.fromEntries(
       Object.entries(selection)
         .filter(([, value]) => value !== undefined)
-        .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+        .sort(([left], [right]) => Order.String(left, right))
     )
   );
 
@@ -174,7 +175,10 @@ const quoteFamily = Atom.family(({ selection, locale }: BookingQuoteRequest) =>
   customerDataRuntime.atom((get) =>
     Effect.flatMap(bookingApi, (booking) =>
       booking.getQuote({ query: quoteQuery(selection, locale) })
-    ).pipe(catalogRead, Effect.tap(() => refreshQuoteLater(get)))
+    ).pipe(
+      catalogRead,
+      Effect.tap(() => refreshQuoteLater(get))
+    )
   )
 );
 

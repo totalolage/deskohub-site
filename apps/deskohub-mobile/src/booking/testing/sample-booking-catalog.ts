@@ -161,8 +161,10 @@ interface PricedLine {
 
 /** Inclusive Prague days between two plain dates. */
 export const inclusiveDays = (from: string, to: string) =>
-  Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) /
-    86_400_000) + 1;
+  Math.round(
+    (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) /
+      86_400_000
+  ) + 1;
 
 /** The summary lines a complete selection is priced with, in crowns. */
 export const pricedLines = (
@@ -284,8 +286,7 @@ export const sampleLegalDocuments = (
   },
   {
     key: "operating-rules",
-    path:
-      locale === "cs-CZ" ? "/provozni-rad" : "/en-US/operating-rules",
+    path: locale === "cs-CZ" ? "/provozni-rad" : "/en-US/operating-rules",
     hash: sampleHash(
       "9b2e7d4a1c8f6e3b0d5a2c9f7e4b1d8a6c3f0e7b4d1a9c6f3e0b7d4a",
       version

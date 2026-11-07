@@ -11,9 +11,10 @@ export type BookingServices = never;
 
 /**
  * The booking services' Layer for the account's registry. It may require
- * the data runtime's services (`DeviceStorage`, `CustomerAccountScope`), and
- * holds no per-account state of its own: anything that must persist lives in
- * device storage.
+ * the data runtime's services and holds no per-account state of its own:
+ * `RememberedReferralCode` is built over `AccountScopedStorage` (a
+ * `deskohub.booking.` key per `CustomerAccountScope`, cleared and fenced on
+ * account exit), never `DeviceStorage` directly.
  *
  * The checkout interpreter runs each command on `customerDataRuntime` and
  * provides this Layer to that command only:
