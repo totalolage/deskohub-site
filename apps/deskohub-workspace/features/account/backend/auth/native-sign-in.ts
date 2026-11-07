@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { isMatchingSecret } from "@deskohub/secret-comparison";
-import { APIError, type BetterAuthPlugin } from "better-auth";
+import { APIError, type AuthContext, type BetterAuthPlugin } from "better-auth";
 import {
   createAuthEndpoint,
   createAuthMiddleware,
@@ -11,6 +11,7 @@ import { setSessionCookie } from "better-auth/cookies";
 import { generateRandomString } from "better-auth/crypto";
 import { Data, Effect, Option, Schema } from "effect";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
+import { digestVerificationKey } from "./auth-options";
 import { nativeAppOrigin } from "./native-app";
 
 /**
@@ -68,6 +69,104 @@ const verifyCallbackParameters = [
   "newUserCallbackURL",
   "errorCallbackURL",
 ] as const;
+
+const namesNoCallback = (
+  query:
+    | Partial<Record<(typeof verifyCallbackParameters)[number], unknown>>
+    | undefined
+) => verifyCallbackParameters.every((name) => !query?.[name]);
+
+const verifyQuery = Schema.Struct({
+  token: Schema.String,
+  callbackURL: Schema.optional(Schema.String),
+  newUserCallbackURL: Schema.optional(Schema.String),
+  errorCallbackURL: Schema.optional(Schema.String),
+});
+
+/** The token of a verification the app makes: one that names no callback. */
+const appVerifyToken = (query: unknown) =>
+  Schema.decodeUnknownOption(verifyQuery)(query).pipe(
+    Option.filter(namesNoCallback),
+    Option.map(({ token }) => token)
+  );
+
+/** The email a magic-link verification row signs in. */
+const decodeLinkEmail = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Struct({ email: Schema.String }))
+);
+
+const accountSwitchRefused = () =>
+  new APIError("FORBIDDEN", {
+    code: "ACCOUNT_SWITCH_REFUSED",
+    message:
+      "This sign-in link is for a different account. Sign out to use it.",
+  });
+
+type AppVerifyGuard = {
+  readonly request: {
+    /** The HTTP request; a server-side `auth.api` call has none. */
+    readonly request?: Request;
+    readonly query?: unknown;
+    readonly context: {
+      readonly internalAdapter: Pick<
+        AuthContext["internalAdapter"],
+        "findVerificationValue" | "findUserByEmail"
+      >;
+    };
+  };
+  /** The id of the login the request's session belongs to, if any. */
+  readonly sessionUserId: () => Promise<string | undefined>;
+};
+
+/**
+ * A verification the app makes signs in the link's account, so the app never
+ * swaps one account for another behind the customer's back. With a session
+ * of another account, or any session when the link would create an account,
+ * it fails before the link's claim is taken and before Better Auth consumes
+ * the link: the current session stays, and the customer can sign out and use
+ * the same link. As with a passkey assertion from a signed-in browser, a
+ * session only ever continues as its own account. Links that name a callback
+ * keep Better Auth's sign-in, and a link Better Auth won't accept gets its
+ * usual error.
+ */
+export const refuseAccountSwitch = ({
+  request,
+  sessionUserId,
+}: AppVerifyGuard) =>
+  Option.match(
+    Option.filter(
+      appVerifyToken(request.query),
+      () => request.request !== undefined
+    ),
+    {
+      onNone: () => Effect.void,
+      onSome: (token) =>
+        Effect.gen(function* () {
+          const currentUserId = yield* Effect.promise(sessionUserId);
+          if (currentUserId === undefined) return;
+          const { internalAdapter } = request.context;
+          const link = yield* Effect.promise(async () =>
+            internalAdapter.findVerificationValue(
+              await digestVerificationKey(token)
+            )
+          );
+          const email = Option.fromNullishOr(link).pipe(
+            Option.filter(({ expiresAt }) => expiresAt > new Date()),
+            Option.flatMap(({ value }) => decodeLinkEmail(value))
+          );
+          if (Option.isNone(email)) return;
+          const owner = yield* Effect.promise(() =>
+            internalAdapter.findUserByEmail(email.value.email)
+          );
+          if (owner?.user.id === currentUserId) return;
+          yield* Effect.logWarning("Native sign-in refused.", {
+            code: "account.native-sign-in.rejected",
+            reason: "account-switch",
+          });
+          return yield* Effect.fail(accountSwitchRefused());
+        }).pipe(Effect.withSpan("NativeSignIn.refuseAccountSwitch")),
+    }
+  );
 
 /**
  * Better Auth answers a failed verification with a redirect to its callback,
@@ -304,7 +403,7 @@ export const nativeSignIn = ({ appLinkOrigin }: NativeSignInOptions) => {
           matcher: (ctx) =>
             ctx.request !== undefined &&
             ctx.path === "/magic-link/verify" &&
-            verifyCallbackParameters.every((name) => !ctx.query?.[name]),
+            namesNoCallback(ctx.query),
           handler: answerCallbacklessVerifyFailure,
         },
       ],

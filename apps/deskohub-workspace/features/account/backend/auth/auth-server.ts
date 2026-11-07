@@ -74,7 +74,11 @@ import {
 } from "./customer-agent-authorization-server";
 import { renderMagicLinkEmail } from "./magic-link-email";
 import { nativeAppOrigin } from "./native-app";
-import { nativeAppLinkFor, nativeSignIn } from "./native-sign-in";
+import {
+  nativeAppLinkFor,
+  nativeSignIn,
+  refuseAccountSwitch,
+} from "./native-sign-in";
 import {
   findReviewAccountCredential,
   type ReviewAccountCredential,
@@ -365,6 +369,8 @@ const decodeAuthContext = Schema.decodeUnknownOption(authContextSchema);
 
 type GuardedAuthRequest = {
   readonly path: string;
+  /** The HTTP request; a server-side `auth.api` call has none. */
+  readonly request?: Request;
   readonly body?: unknown;
   readonly query?: unknown;
   readonly json: (body: PasswordSignInStep) => unknown;
@@ -634,7 +640,9 @@ const screenPasswordSignIn = (guard: AuthRequestGuard) =>
 const guardSignInPath = (guard: AuthRequestGuard) =>
   Match.value(guard.request.path).pipe(
     Match.when("/sign-in/magic-link", () => guardSignInEmail(guard)),
-    Match.when("/magic-link/verify", () => claimMagicLink(guard)),
+    Match.when("/magic-link/verify", () =>
+      refuseAccountSwitch(guard).pipe(Effect.andThen(claimMagicLink(guard)))
+    ),
     Match.when("/sign-in/email-otp", () => screenSignInCode(guard)),
     Match.when("/sign-in/email", () => screenPasswordSignIn(guard)),
     Match.orElse(() => Effect.void)

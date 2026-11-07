@@ -207,6 +207,123 @@ describe("magic-link App Link", () => {
     expect(getSessionCookie(expired)).toBeUndefined();
   });
 
+  describe("with a session already in the app", () => {
+    const appSignIns = () => {
+      const sentLinks: CapturedMagicLink[] = [];
+      const { auth } = makeMemoryTestAuth({ sentLinks });
+      const sendLink = async (email: string) => {
+        const sent = await callHandler(auth, "/sign-in/magic-link", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-vercel-forwarded-for": uniqueIp(),
+          },
+          body: JSON.stringify({ email, callbackURL: "/app/auth/callback" }),
+        });
+        expect(sent.status).toBe(200);
+        return new URL(sentLinks.at(-1)!.url).searchParams.get("token")!;
+      };
+      const verify = (token: string, cookie?: string) =>
+        callNativeHandler(
+          auth,
+          `/magic-link/verify?token=${encodeURIComponent(token)}`,
+          cookie ? { headers: { cookie } } : {}
+        );
+      const signedIn = async (email: string) => {
+        const verified = await verify(await sendLink(email));
+        expect(verified.status).toBe(200);
+        return cookieJar(getSessionCookie(verified)!);
+      };
+      const signedInEmail = async (cookie: string) => {
+        const session = await callNativeHandler(auth, "/get-session", {
+          headers: { cookie },
+        });
+        return ((await session.json()) as { user?: { email: string } } | null)
+          ?.user?.email;
+      };
+      return { auth, sendLink, verify, signedIn, signedInEmail };
+    };
+
+    test("refuses another account's link and keeps the session and the link", async () => {
+      const app = appSignIns();
+      const current = uniqueEmail("app-current");
+      const other = uniqueEmail("app-other");
+      const cookie = await app.signedIn(current);
+      await app.signedIn(other);
+      const token = await app.sendLink(other);
+
+      workspaceLogs.reset();
+      const refused = await app.verify(token, cookie);
+      expect(refused.status).toBe(403);
+      expect(await errorCode(refused)).toBe("ACCOUNT_SWITCH_REFUSED");
+      expect(getSessionCookie(refused)).toBeUndefined();
+      expect(await app.signedInEmail(cookie)).toBe(current.toLowerCase());
+      const logged = JSON.stringify(workspaceLogs.records());
+      expect(logged).toContain("account.native-sign-in.rejected");
+      expect(logged).toContain("account-switch");
+      expect(logged).not.toContain(token);
+      expect(logged).not.toContain(other.toLowerCase());
+
+      // Nothing was consumed: signed out, the same link still signs in.
+      const later = await app.verify(token);
+      expect(later.status).toBe(200);
+      expect(await app.signedInEmail(cookieJar(getSessionCookie(later)!))).toBe(
+        other.toLowerCase()
+      );
+    });
+
+    test("refuses a link that would create a new account", async () => {
+      const app = appSignIns();
+      const current = uniqueEmail("app-current");
+      const cookie = await app.signedIn(current);
+      const token = await app.sendLink(uniqueEmail("app-new"));
+
+      const refused = await app.verify(token, cookie);
+      expect(refused.status).toBe(403);
+      expect(await errorCode(refused)).toBe("ACCOUNT_SWITCH_REFUSED");
+      expect(getSessionCookie(refused)).toBeUndefined();
+      expect(await app.signedInEmail(cookie)).toBe(current.toLowerCase());
+    });
+
+    test("signs in again with the session account's own link", async () => {
+      const app = appSignIns();
+      const current = uniqueEmail("app-current");
+      const cookie = await app.signedIn(current);
+
+      const verified = await app.verify(await app.sendLink(current), cookie);
+      expect(verified.status).toBe(200);
+      expect(
+        await app.signedInEmail(cookieJar(getSessionCookie(verified)!))
+      ).toBe(current.toLowerCase());
+    });
+
+    test("answers an unusable link as invalid, not as a switch", async () => {
+      const app = appSignIns();
+      const cookie = await app.signedIn(uniqueEmail("app-current"));
+
+      const unknown = await app.verify("unknown", cookie);
+      expect(unknown.status).toBe(400);
+      expect(await errorCode(unknown)).toBe("INVALID_TOKEN");
+    });
+
+    test("keeps the redirect for a link that names a callback", async () => {
+      const app = appSignIns();
+      const cookie = await app.signedIn(uniqueEmail("app-current"));
+      const other = uniqueEmail("app-other");
+      const token = await app.sendLink(other);
+
+      const redirected = await callHandler(
+        app.auth,
+        `/magic-link/verify?token=${encodeURIComponent(token)}&callbackURL=${encodeURIComponent("/cs-CZ/auth/callback")}`,
+        { headers: { cookie } }
+      );
+      expect(redirected.status).toBe(302);
+      expect(
+        await app.signedInEmail(cookieJar(getSessionCookie(redirected)!))
+      ).toBe(other.toLowerCase());
+    });
+  });
+
   test("keeps the redirect for a failed verification that names any callback", async () => {
     const { auth } = makeMemoryTestAuth();
     for (const [name, callback] of [
