@@ -27,7 +27,7 @@ import {
   bookingServicesLayer,
 } from "../data/booking-services-layer";
 import { RememberedReferralCode } from "../remembered-referral.service";
-import { runCheckoutCommand } from "./checkout-commands";
+import { isSideEffect, runCheckoutCommand } from "./checkout-commands";
 import { startCheckout, step } from "./checkout-machine";
 import {
   type CheckoutCommand,
@@ -162,8 +162,9 @@ type BookingLayer = Layer.Layer<BookingServices, never, CustomerDataServices>;
 /**
  * The flow as a stream of states. Its inputs (the screen's, the clock's and
  * the commands' answers) queue up and step the machine one at a time; each
- * step's commands run concurrently in the flow's own fiber set, so ending
- * the stream (unmounting) interrupts them and the clock with it.
+ * step's commands start in order, side effects first, and run concurrently
+ * in the flow's own fiber set, so ending the stream (unmounting) interrupts
+ * them and the clock with it.
  */
 const checkoutFlow = (request: CheckoutRequest, bookingLayer: BookingLayer) =>
   Stream.unwrap(
@@ -198,7 +199,7 @@ const checkoutFlow = (request: CheckoutRequest, bookingLayer: BookingLayer) =>
                 Effect.provide(bookingLayer),
                 Effect.map((event) => advance(view, event)),
                 Effect.tap(({ commands: next }) =>
-                  Effect.forEach(next, run, { discard: true })
+                  Effect.forEach(inLaunchOrder(next), run, { discard: true })
                 ),
                 Effect.map(({ view: next }) => [next, [next]] as const)
               )
@@ -264,6 +265,12 @@ const advance = (view: FlowView, event: CheckoutEvent) => {
   );
   return { view: { state, now }, commands };
 };
+
+/** A step's commands with its side effects first (see `isSideEffect`). */
+const inLaunchOrder = (commands: ReadonlyArray<CheckoutCommand>) => [
+  ...commands.filter(isSideEffect),
+  ...commands.filter((command) => !isSideEffect(command)),
+];
 
 /** Ticks the hold clock into the flow's inputs for the flow's lifetime. */
 const tickHoldClock = (inputs: Queue.Queue<CheckoutFlowInput>) =>

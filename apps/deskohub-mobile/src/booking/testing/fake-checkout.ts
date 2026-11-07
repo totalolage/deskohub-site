@@ -71,7 +71,7 @@ export const sampleCheckoutDetails: CheckoutDetails = {
  * One account's data registry for checkout tests: the fake Workspace with
  * its booking group behind the real client, fake device storage under the
  * real account-scoped storage, a scripted payment page, numbered ids, and a
- * test clock set to the fake's clock.
+ * test clock that starts at the fake's (frozen) clock.
  */
 export const makeFakeCheckout = async (kind: SampleAccountKind = "linked") => {
   const workspace = FakeWorkspace.forKind(kind);
@@ -112,7 +112,12 @@ export const makeFakeCheckout = async (kind: SampleAccountKind = "linked") => {
       )
     );
 
-  await inRuntime(TestClock.setTime(booking.now().getTime()));
+  // The fake's clock stays where the test clock starts, so holds expire
+  // exactly when the test moves the clock past them; a test moves
+  // `booking.now` itself to end a hold on the server.
+  const startedAt = booking.now();
+  booking.now = () => startedAt;
+  await inRuntime(TestClock.setTime(startedAt.getTime()));
 
   /** A cowork selection the fake can hold, with a fresh quote token. */
   const request = (

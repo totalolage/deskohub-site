@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { CustomerCheckoutDetailsInvalid } from "@deskohub/workspace-customer-api";
-import { Clock, Effect, Option } from "effect";
+import { Clock, Deferred, Effect, Option } from "effect";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { analytics } from "../../analytics/analytics";
 import { accountStorageKey } from "../../customer-api/account-scoped-storage";
@@ -120,6 +120,15 @@ describe("useCheckoutFlow's flow", () => {
     );
     cleanups.push(() => capture.mockRestore());
     const flow = await startFlow();
+    // On web the payment page leaves the app, so the submission is reported
+    // before it opens.
+    let reportedBeforeOpening = false;
+    flow.checkout.browser.answerWith(
+      Effect.sync(() => {
+        reportedBeforeOpening = capture.mock.calls.length === 1;
+        return "returned" as const;
+      })
+    );
 
     const review = await toReview(flow);
     await pay(flow);
@@ -149,6 +158,7 @@ describe("useCheckoutFlow's flow", () => {
       name: "booking submitted",
       properties: { reservation_kind: "cowork" },
     });
+    expect(reportedBeforeOpening).toBe(true);
   });
 
   test("each details submission is a new checkout attempt", async () => {
@@ -182,15 +192,55 @@ describe("useCheckoutFlow's flow", () => {
     await flow.until(
       ({ state }) => state._tag === "Uncertain" && !state.retrying
     );
+    const committed = flow.checkout.booking.attempted("session-1", "attempt-1");
     flow.controller().send(CheckoutEvent.Retry());
     const review = await flow.untilState("Review");
 
     const [first, second] = flow.checkout.booking.calls;
     expect(first?.endpoint).toBe("createCheckout");
     expect(second).toEqual(first);
+    expect(committed).toBeDefined();
+    expect(review.checkout.orderId).toBe(committed?.orderId ?? "");
+  });
+
+  test("committed, response lost: Retry resends the identical submit, which shows the status", async () => {
+    const flow = await startFlow();
+    flow.checkout.booking.fail("submitCheckout", "transport-failure");
+
+    const review = await toReview(flow);
+    await pay(flow);
+    await flow.until(
+      ({ state }) => state._tag === "Uncertain" && !state.retrying
+    );
+    flow.controller().send(CheckoutEvent.Retry());
+    const done = await flow.untilState("Done");
+
+    const submits = flow.checkout.booking.calls.filter(
+      ({ endpoint }) => endpoint === "submitCheckout"
+    );
+    expect(submits).toHaveLength(2);
+    expect(submits[1]).toEqual(submits[0]);
     expect(
-      flow.checkout.booking.checkout(review.checkout.orderId)
-    ).toBeDefined();
+      review.state._tag === "Review" && review.state.checkout.orderId
+    ).toBe(done.orderId);
+    expect(flow.checkout.browser.opened).toEqual([]);
+  });
+
+  test("a submit left unsettled at the hold's expiry shows the status", async () => {
+    const flow = await startFlow();
+    flow.checkout.booking.fail("submitCheckout", "transport-failure");
+
+    const review = await toReview(flow);
+    await pay(flow);
+    await flow.until(
+      ({ state }) => state._tag === "Uncertain" && !state.retrying
+    );
+    await flow.checkout.adjust(fakeHoldDuration);
+    const done = await flow.untilState("Done");
+
+    expect(
+      review.state._tag === "Review" && review.state.checkout.orderId
+    ).toBe(done.orderId);
   });
 
   test("sends the remembered code and forgets it once it is used up", async () => {
@@ -262,20 +312,22 @@ describe("useCheckoutFlow's flow", () => {
     expect(ended.reason).toBe("hold_expired");
   });
 
-  test("unmounting interrupts the running command", async () => {
+  test("unmounting interrupts the running command; its answer never arrives", async () => {
     const flow = await startFlow();
+    const gate = Effect.runSync(Deferred.make<void>());
     let interrupted = false;
     let answered = false;
     flow.checkout.browser.answerWith(
-      Effect.never.pipe(
-        Effect.onInterrupt(() =>
-          Effect.sync(() => {
-            interrupted = true;
-          })
-        ),
+      Deferred.await(gate).pipe(
         Effect.tap(() =>
           Effect.sync(() => {
             answered = true;
+          })
+        ),
+        Effect.as("returned" as const),
+        Effect.onInterrupt(() =>
+          Effect.sync(() => {
+            interrupted = true;
           })
         )
       )
@@ -287,7 +339,8 @@ describe("useCheckoutFlow's flow", () => {
     expect(flow.checkout.browser.opened).toHaveLength(1);
     flow.unmount();
     await settle();
-    await flow.checkout.adjust(holdClockInterval);
+    Effect.runSync(Deferred.succeed(gate, undefined));
+    await settle();
 
     expect(interrupted).toBe(true);
     expect(answered).toBe(false);

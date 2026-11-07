@@ -245,22 +245,20 @@ describe("CreateCheckout", () => {
     checkout.booking.fail("createCheckout", "transport-failure");
 
     const lost = await run(checkout, command);
+    // The fake held the order before the connection broke.
+    const committed = checkout.booking.attempted("session-1", "attempt-1");
     const resent = await run(checkout, command);
 
     expect(lost).toEqual(failed(1, BookingProblem.Unconfirmed()));
+    expect(committed).toBeDefined();
     const [first, second] = checkout.booking.calls;
     expect(second).toEqual(first);
     expect(resent).toMatchObject(
-      Option.some({ _tag: "CheckoutCreated", start: { status: "ready" } })
+      Option.some({
+        _tag: "CheckoutCreated",
+        start: { status: "ready", orderId: committed?.orderId },
+      })
     );
-    const held = Option.getOrThrow(resent);
-    const orderId =
-      held._tag === "CheckoutCreated" ? held.start.orderId : undefined;
-    expect(checkout.booking.checkout(orderId ?? "")).toBeDefined();
-    expect(checkout.booking.endpoints).toEqual([
-      "createCheckout",
-      "createCheckout",
-    ]);
   });
 });
 
@@ -584,6 +582,23 @@ describe("TrackBookingSubmitted", () => {
         name: "booking submitted",
         properties: { reservation_kind: "meeting_room" },
       });
+    } finally {
+      capture.mockRestore();
+    }
+  });
+
+  test("a fault while reporting never fails the checkout", async () => {
+    const checkout = await harness();
+    const capture = spyOn(analytics, "capture").mockImplementation(() => {
+      throw new Error("analytics broke");
+    });
+    try {
+      expect(
+        await run(
+          checkout,
+          CheckoutCommand.TrackBookingSubmitted({ family: "office" })
+        )
+      ).toEqual(Option.none());
     } finally {
       capture.mockRestore();
     }

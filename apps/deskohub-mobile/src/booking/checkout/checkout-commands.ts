@@ -44,8 +44,9 @@ import {
  * for and answers with the event `step` takes next. Every request goes
  * through the account's customer API conventions (`customerRead` /
  * `customerWrite`); every failure becomes `CommandFailed` with its
- * `BookingProblem`, so this never fails. Commands nobody waits on (the
- * remembered referral code, analytics) answer with no event.
+ * `BookingProblem`, so this never fails. Side effects nobody waits on (the
+ * remembered referral code, analytics) answer with no event; a fault in one
+ * is logged and dropped.
  */
 export const runCheckoutCommand = (
   command: CheckoutCommand
@@ -74,12 +75,21 @@ export const runCheckoutCommand = (
     UpdateRememberedReferral: ({ update }) =>
       Effect.flatMap(Effect.service(RememberedReferralCode), (remembered) =>
         remembered.apply(update)
-      ).pipe(Effect.as(Option.none())),
+      ).pipe(answerless("UpdateRememberedReferral")),
     TrackBookingSubmitted: ({ family }) =>
       Effect.sync(() => trackBookingSubmitted(reservationKindOf(family))).pipe(
-        Effect.as(Option.none())
+        answerless("TrackBookingSubmitted")
       ),
   });
+
+/**
+ * Whether the machine waits for the command's answer. A step's side
+ * effects start before its requests: on web, opening the payment page
+ * leaves the app, so the submission is reported first.
+ */
+export const isSideEffect = (command: CheckoutCommand): boolean =>
+  CheckoutCommand.$is("UpdateRememberedReferral")(command) ||
+  CheckoutCommand.$is("TrackBookingSubmitted")(command);
 
 /**
  * Where the payment returns the customer: the app's own status screen, as
@@ -193,6 +203,19 @@ const referralHeaders = (code: Option.Option<ReferralCode>) =>
     onNone: () => ({}),
     onSome: (sent) => ({ [customerReferralCodeHeader]: sent }),
   });
+
+/** A side effect answers nothing; its fault can't fail the checkout. */
+const answerless =
+  (command: CheckoutCommand["_tag"]) =>
+  <R>(
+    effect: Effect.Effect<void, never, R>
+  ): Effect.Effect<Option.Option<CheckoutEvent>, never, R> =>
+    effect.pipe(
+      Effect.catchDefect((defect) =>
+        Effect.logWarning(`Checkout side effect ${command} failed`, defect)
+      ),
+      Effect.as(Option.none())
+    );
 
 /**
  * The failures the customer API layer hands over besides the checkout's own:
