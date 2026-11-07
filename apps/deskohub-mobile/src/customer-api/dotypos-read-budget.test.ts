@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { TestClock } from "effect/testing";
 import {
   allowsAutomaticRefresh,
@@ -74,8 +74,9 @@ describe("DotyposReadBudget", () => {
       const afterAging = yield* budget.remaining;
       return [afterTwo, afterAging];
     }).pipe(
-      Effect.provide(DotyposReadBudget.Default),
-      Effect.provide(TestClock.layer()),
+      Effect.provide(
+        Layer.mergeAll(DotyposReadBudget.Default, TestClock.layer())
+      ),
       Effect.runPromise
     );
 
