@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import PostHog, { PostHogPersistedProperty } from "posthog-react-native";
 import type { CreateAnalyticsClient } from "./analytics-client";
+import { failedFlagReload, type StoredFlagResponse } from "./flag-reload";
 
 /**
  * A PostHog client that can be retired: once retired it sends nothing, and
@@ -73,11 +74,17 @@ export const createPostHogClient: CreateAnalyticsClient = ({
       void posthog.register(superProperties);
     },
     // The SDK queues a reload behind one already in flight, so the promise
-    // settles with flags requested after the call. A failed request resolves
-    // with no flags.
+    // settles with flags requested after the call. It stores the response's
+    // outcome before resolving.
     reloadFeatureFlags: async () => {
       const flags = await posthog.reloadFeatureFlagsAsync();
-      if (flags === undefined) throw new Error("No feature flags returned.");
+      const failure = failedFlagReload(
+        flags,
+        posthog.getPersistedProperty<StoredFlagResponse>(
+          PostHogPersistedProperty.FeatureFlagDetails
+        )
+      );
+      if (failure !== undefined) throw new Error(failure);
     },
     getFeatureFlag: (flag) => posthog.getFeatureFlag(flag),
     onFeatureFlags: (listener) => posthog.onFeatureFlags(() => listener()),

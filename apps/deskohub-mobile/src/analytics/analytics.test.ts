@@ -557,13 +557,33 @@ describe("feature flags", () => {
     await settle();
     const before = notifications;
 
-    app.clients[0]?.loadFlags({ seating_map: true });
-    expect(notifications).toBe(before + 1);
+    app.clients[0]?.finishFlagReload(0, { seating_map: true });
+    await settle();
+    expect(notifications).toBe(before + 2);
     expect(app.analytics.featureFlag("seating_map")).toBe(true);
 
     app.setConsent("denied");
-    expect(notifications).toBe(before + 2);
+    expect(notifications).toBe(before + 3);
     expect(app.analytics.featureFlag("seating_map")).toBeUndefined();
+  });
+
+  test("reads the fallback for a restored identity until its own flags load", async () => {
+    // identify() persists the new ID before its flags arrive, so a restarted
+    // client can restore the account's ID with the anonymous flags.
+    const app = setup({
+      restoredDistinctId: "workspace-account:acc_1",
+      holdLoading: true,
+    });
+    app.connect();
+    app.analytics.setIdentity(account("acc_1"));
+    app.clients[0]?.loadFlags({ seating_map: true });
+    app.clients[0]?.finishLoading();
+    await settle();
+    expect(app.analytics.featureFlag("seating_map")).toBeUndefined();
+
+    app.clients[0]?.finishFlagReload(0, { seating_map: "variant" });
+    await settle();
+    expect(app.analytics.featureFlag("seating_map")).toBe("variant");
   });
 
   test("reads the fallback after sign-in until the account's flags load", async () => {

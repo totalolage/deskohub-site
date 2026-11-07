@@ -93,8 +93,9 @@ export const createAnalytics = (): AnalyticsController => {
   /**
    * Whether the client's flag values belong to the applied identity. The SDK
    * keeps the previous identity's flags readable after identify() or
-   * reset(), and a response it requested earlier still notifies, so only a
-   * reload the controller started after the change makes them current.
+   * reset(), a response it requested earlier still notifies, and a restarted
+   * client may restore them, so only a reload the controller started for the
+   * applied identity makes them current.
    */
   let flagsCurrent = false;
   /** Bumped on each identity change, so an older reload cannot vouch for flags. */
@@ -215,14 +216,11 @@ export const createAnalytics = (): AnalyticsController => {
         identity.testAccount || runtime?.settings?.environment !== "production";
       if (markInternal) target.setPersonProperties(internalOrTestUser);
     }
-    // Flags stored for the restored identity stay readable while a new
-    // client refreshes them; after an identity change only the new
-    // identity's flags may be read.
-    if (steps.length > 0) {
+    // A new client's stored flags may not match its stored identity, since
+    // identify() persists the new ID before the new flags arrive, so it waits
+    // for its own load too.
+    if (steps.length > 0 || adopting) {
       flagsCurrent = false;
-      loadFlagsForAppliedIdentity(target);
-    } else if (adopting) {
-      flagsCurrent = true;
       loadFlagsForAppliedIdentity(target);
     }
     adopting = false;
