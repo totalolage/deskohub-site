@@ -74,6 +74,7 @@ import {
 } from "./customer-agent-authorization-server";
 import { renderMagicLinkEmail } from "./magic-link-email";
 import { nativeAppOrigin } from "./native-app";
+import { nativeAppLinkFor, nativeSignIn } from "./native-sign-in";
 import {
   findReviewAccountCredential,
   type ReviewAccountCredential,
@@ -113,6 +114,8 @@ export type WorkspaceAuthConfig = ReviewLoginConfig & {
   readonly database: NonNullable<BetterAuthOptions["database"]>;
   readonly secrets: NonNullable<BetterAuthOptions["secrets"]>;
   readonly allowedHosts: readonly string[];
+  /** The customer-facing HTTPS origin whose `/app/` App Links open the app. */
+  readonly nativeAppLinkOrigin: string;
   /** This deployment's passkey RP ID and origins, never the plugin default. */
   readonly passkeyRelyingParty: PasskeyRelyingParty;
   /** The canonical URL of this deployment's customer MCP server. */
@@ -1103,7 +1106,7 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
           })(
             sendSignInEmail({
               config,
-              email: data,
+              email: { ...data, url: nativeAppLinkFor(data.url) },
               context: ctx?.context,
               createSignInCode: (email) =>
                 createSignInCode(email, ctx?.request),
@@ -1139,6 +1142,7 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
         resource: config.customerMcpResource,
         clientMetadataTransport: config.clientMetadataTransport,
       }),
+      nativeSignIn({ appLinkOrigin: config.nativeAppLinkOrigin }),
       // The native app's requests carry no browser `Origin`: the plugin takes
       // it from `expo-origin`, and a magic link the app started returns to
       // the app scheme with the session cookie.
