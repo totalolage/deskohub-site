@@ -6,8 +6,9 @@ import { useAuthSession } from "../auth/use-auth-session";
 import { AccountExitFence } from "./account-scoped-storage";
 import { deviceCapabilitiesLayer } from "./device-capabilities-layer";
 import {
+  type AccountExit,
   type AccountPresence,
-  accountExited,
+  accountExitOf,
   customerDataExitCleanup,
 } from "./exit-cleanup";
 
@@ -16,7 +17,12 @@ import {
 const exitCleanupRuntime = Atom.runtime(
   Layer.merge(deviceCapabilitiesLayer, AccountExitFence.Default)
 );
-const exitCleanupAtom = exitCleanupRuntime.fn(() => customerDataExitCleanup);
+// Concurrent: a second exit (a quick switch, then sign-out) must not
+// interrupt the first one's cleanup.
+const exitCleanupAtom = exitCleanupRuntime.fn(
+  (exit: AccountExit) => customerDataExitCleanup(exit),
+  { concurrent: true }
+);
 
 /**
  * Mounted above the signed-in screens: when an account exits (sign-out,
@@ -37,7 +43,8 @@ export function CustomerDataExitCleanup({
   useEffect(() => {
     const next: AccountPresence =
       status === "signed-in" ? { status, accountId } : { status };
-    if (accountExited(previous.current, next)) cleanUp();
+    const exit = accountExitOf(previous.current, next);
+    if (exit !== undefined) cleanUp(exit);
     previous.current = next;
   }, [status, accountId, cleanUp]);
 

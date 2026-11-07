@@ -36,14 +36,16 @@ const storage = Layer.succeed(DeviceStorage, {
   keys: attempt("storage", () => AsyncStorage.getAllKeys()),
 });
 
-// One cache subdirectory holds every file the app shares, so sign-out can
-// remove them all at once.
+// One cache subdirectory holds the files the app shares, one folder per
+// owner (account), so an exit removes exactly that account's files.
 const shareDirectory = () => new Directory(Paths.cache, "deskohub-share");
+const ownerDirectory = (owner: string) =>
+  new Directory(shareDirectory(), encodeURIComponent(owner));
 
 const temporaryFiles = Layer.succeed(TemporaryFiles, {
-  write: (name, bytes) =>
+  write: (owner, name, bytes) =>
     attempt("temporary-files", async () => {
-      const directory = shareDirectory();
+      const directory = ownerDirectory(owner);
       if (!directory.exists) directory.create({ intermediates: true });
       const file = new File(directory, name);
       if (file.exists) file.delete();
@@ -55,10 +57,14 @@ const temporaryFiles = Layer.succeed(TemporaryFiles, {
       const file = new File(uri);
       if (file.exists) file.delete();
     }).pipe(Effect.ignore),
-  sweep: attempt("temporary-files", () => {
-    const directory = shareDirectory();
-    if (directory.exists) directory.delete();
-  }).pipe(Effect.ignore),
+  sweep: (owner) =>
+    attempt("temporary-files", () => {
+      const directory = Option.match(owner, {
+        onNone: shareDirectory,
+        onSome: ownerDirectory,
+      });
+      if (directory.exists) directory.delete();
+    }).pipe(Effect.ignore),
 });
 
 const shareSheet = Layer.succeed(ShareSheet, {

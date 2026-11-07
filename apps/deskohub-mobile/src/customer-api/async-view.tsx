@@ -45,46 +45,42 @@ export function AsyncView<A, E extends CustomerRequestFailure>({
   readonly children: (value: A) => ReactNode;
 }) {
   const locale = useAppLocale();
-  if (AsyncResult.isInitial(result)) {
-    return <LoadingState label={m.account_loading({}, { locale })} />;
-  }
-  const refreshing = (
-    <RefreshingIndicator
-      refreshing={result.waiting}
-      label={m.account_refreshing({}, { locale })}
-    />
-  );
-  if (AsyncResult.isSuccess(result)) {
-    return (
-      <>
-        {refreshing}
-        {children(result.value)}
-      </>
-    );
-  }
-  const error = viewErrorOf(result.cause);
+  const failure = AsyncResult.isFailure(result)
+    ? viewErrorOf(result.cause)
+    : undefined;
   const message =
-    errorMessage?.(error) ??
-    sharedViewErrorMessage(error, locale) ??
-    m.account_error_unexpected({}, { locale });
-  const previous = AsyncResult.value(result);
-  if (Option.isSome(previous)) {
-    return (
-      <>
-        {refreshing}
-        <Notice tone="error" message={message} />
-        {children(previous.value)}
-      </>
-    );
-  }
-  return isRetryableViewError(error) ? (
-    <ErrorState
-      message={message}
-      retryLabel={m.account_retry({}, { locale })}
-      onRetry={onRetry}
-      retrying={result.waiting}
-    />
-  ) : (
-    <Notice tone="error" message={message} />
+    failure === undefined
+      ? undefined
+      : (errorMessage?.(failure) ??
+        sharedViewErrorMessage(failure, locale) ??
+        m.account_error_unexpected({}, { locale }));
+  const shown = AsyncResult.value(result);
+  // A first load that failed in a way retrying can help gets the full retry
+  // state; any other failure is a notice above whatever is on screen.
+  const retryState =
+    failure !== undefined &&
+    Option.isNone(shown) &&
+    isRetryableViewError(failure);
+  return (
+    <>
+      <RefreshingIndicator
+        refreshing={!AsyncResult.isInitial(result) && result.waiting}
+        label={m.account_refreshing({}, { locale })}
+      />
+      {/* Kept mounted so assistive tech announces each change. */}
+      <Notice tone="error" message={retryState ? undefined : message} />
+      {AsyncResult.isInitial(result) && (
+        <LoadingState label={m.account_loading({}, { locale })} />
+      )}
+      {retryState && (
+        <ErrorState
+          message={message ?? ""}
+          retryLabel={m.account_retry({}, { locale })}
+          onRetry={onRetry}
+          retrying={result.waiting}
+        />
+      )}
+      {Option.isSome(shown) && children(shown.value)}
+    </>
   );
 }

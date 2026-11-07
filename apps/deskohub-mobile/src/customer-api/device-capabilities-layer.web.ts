@@ -34,8 +34,8 @@ const storage = Layer.succeed(DeviceStorage, {
 });
 
 // The browser has no app file system: a "temporary file" is an object URL,
-// revoked when it is removed or on sign-out.
-const objectUrls = new Set<string>();
+// revoked when it is removed or when its owner exits.
+const objectUrls = new Map<string, string>();
 
 const revoke = (url: string) => {
   URL.revokeObjectURL(url);
@@ -43,16 +43,19 @@ const revoke = (url: string) => {
 };
 
 const temporaryFiles = Layer.succeed(TemporaryFiles, {
-  write: (_name, bytes) =>
+  write: (owner, _name, bytes) =>
     attempt("temporary-files", () => {
       const url = URL.createObjectURL(new Blob([new Uint8Array(bytes)]));
-      objectUrls.add(url);
+      objectUrls.set(url, owner);
       return url;
     }),
   remove: (url) => Effect.sync(() => revoke(url)),
-  sweep: Effect.sync(() => {
-    for (const url of [...objectUrls]) revoke(url);
-  }),
+  sweep: (owner) =>
+    Effect.sync(() => {
+      for (const [url, urlOwner] of [...objectUrls]) {
+        if (Option.getOrElse(owner, () => urlOwner) === urlOwner) revoke(url);
+      }
+    }),
 });
 
 const shareSheet = Layer.succeed(ShareSheet, {

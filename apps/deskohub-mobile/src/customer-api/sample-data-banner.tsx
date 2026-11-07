@@ -40,14 +40,14 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     backgroundColor: theme.colors.accent,
     borderRadius: theme.radius.md,
-    minHeight: 44,
+    minHeight: theme.touchTarget,
     justifyContent: "center",
     paddingHorizontal: theme.spacing.md,
     position: "absolute",
   },
   text: {
     color: theme.colors.background,
-    fontSize: 15,
+    ...theme.type.caption,
     fontWeight: "600",
   },
 });

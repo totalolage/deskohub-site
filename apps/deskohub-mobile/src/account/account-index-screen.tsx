@@ -1,4 +1,6 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
+import { Option } from "effect";
+import { AsyncResult } from "effect/unstable/reactivity";
 import { type Href, useRouter } from "expo-router";
 import { SignOutFailure, signOut } from "../auth/sign-out";
 import { standaloneTaskRuntime, useAuthTask } from "../auth/use-auth-task";
@@ -83,48 +85,57 @@ export function AccountIndexScreen() {
     unexpectedSignOutFailure
   );
 
+  const notice = Option.getOrUndefined(
+    Option.flatMapNullishOr(
+      AsyncResult.value(account),
+      (current) => accountIndexModel(current).notice
+    )
+  );
+
   return (
     <ScrollScreen refreshing={account.waiting} onRefresh={refresh}>
+      {/* Kept mounted so assistive tech announces each change. */}
+      <Notice
+        tone={notice === undefined ? "info" : noticeContent[notice].tone}
+        message={
+          notice === undefined
+            ? undefined
+            : noticeContent[notice].message(locale)
+        }
+      />
       <AsyncView result={account} onRetry={refresh}>
-        {(current) => {
-          const model = accountIndexModel(current);
-          const notice =
-            model.notice === undefined
-              ? undefined
-              : noticeContent[model.notice];
-          return (
-            <>
-              {notice !== undefined && (
-                <Notice tone={notice.tone} message={notice.message(locale)} />
-              )}
-              <ListGroup>
-                {model.sections.map((section) => (
-                  <ListRow
-                    key={section}
-                    label={sectionLabel(section, locale)}
-                    destructive={section === "danger"}
-                    onPress={() => router.push(sectionHref[section])}
-                  />
-                ))}
-              </ListGroup>
-              <ListGroup>
+        {(current) => (
+          <>
+            <ListGroup>
+              {accountIndexModel(current).sections.map((section) => (
                 <ListRow
-                  label={m.account_signed_in_as(
-                    { email: current.email },
-                    { locale }
-                  )}
+                  key={section}
+                  label={sectionLabel(section, locale)}
+                  destructive={section === "danger"}
+                  onPress={() => router.push(sectionHref[section])}
                 />
-                <ListRow
-                  kind="action"
-                  label={m.account_sign_out({}, { locale })}
-                  disabled={signingOut.state.status === "running"}
-                  onPress={() => void signingOut.start()}
-                />
-              </ListGroup>
-            </>
-          );
-        }}
+              ))}
+            </ListGroup>
+            <ListGroup>
+              <ListRow
+                label={m.account_signed_in_as(
+                  { email: current.email },
+                  { locale }
+                )}
+              />
+            </ListGroup>
+          </>
+        )}
       </AsyncView>
+      {/* Sign-out works even when the account couldn't be read. */}
+      <ListGroup>
+        <ListRow
+          kind="action"
+          label={m.account_sign_out({}, { locale })}
+          disabled={signingOut.state.status === "running"}
+          onPress={() => void signingOut.start()}
+        />
+      </ListGroup>
       <LiveMessage
         role="status"
         message={

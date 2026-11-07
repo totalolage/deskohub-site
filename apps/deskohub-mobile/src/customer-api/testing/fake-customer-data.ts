@@ -61,6 +61,8 @@ export const makeFakeDevice = (): FakeDevice => ({
   sessionChecks: 0,
 });
 
+const fakeShareDirectory = "file:///cache/deskohub-share";
+
 /** In-memory device capabilities that record what the app did. */
 export const fakeDeviceCapabilities = (
   device: FakeDevice
@@ -80,9 +82,9 @@ export const fakeDeviceCapabilities = (
       keys: Effect.sync(() => [...device.storage.keys()]),
     }),
     Layer.succeed(TemporaryFiles, {
-      write: (name, bytes) =>
+      write: (owner, name, bytes) =>
         Effect.sync(() => {
-          const uri = `file:///cache/deskohub-share/${name}`;
+          const uri = `${fakeShareDirectory}/${encodeURIComponent(owner)}/${name}`;
           device.files.set(uri, bytes);
           return uri;
         }),
@@ -90,7 +92,16 @@ export const fakeDeviceCapabilities = (
         Effect.sync(() => {
           device.files.delete(uri);
         }),
-      sweep: Effect.sync(() => device.files.clear()),
+      sweep: (owner) =>
+        Effect.sync(() => {
+          const prefix = Option.match(owner, {
+            onNone: () => `${fakeShareDirectory}/`,
+            onSome: (id) => `${fakeShareDirectory}/${encodeURIComponent(id)}/`,
+          });
+          for (const uri of [...device.files.keys()]) {
+            if (uri.startsWith(prefix)) device.files.delete(uri);
+          }
+        }),
     }),
     Layer.succeed(ShareSheet, {
       shareFile: (file) =>
@@ -149,17 +160,17 @@ export const fakeCustomerDataLayer = ({
   Layer.mergeAll(
     fakeCustomerApiLayer(workspace),
     DotyposReadBudget.Default,
-    Layer.succeed(CustomerAccountScope, {
-      accountId: workspace.data.accountId,
-      apiOrigin: fakeWorkspaceOrigin,
-    }),
     Layer.succeed(CustomerSessionCheck, {
       recheck: Effect.sync(() => {
         device.sessionChecks += 1;
       }),
-    })
-  ).pipe(
-    Layer.provideMerge(
-      accountDeviceLayer(fakeDeviceCapabilities(device), fence)
+    }),
+    accountDeviceLayer(fakeDeviceCapabilities(device), fence).pipe(
+      Layer.provideMerge(
+        Layer.succeed(CustomerAccountScope, {
+          accountId: workspace.data.accountId,
+          apiOrigin: fakeWorkspaceOrigin,
+        })
+      )
     )
   );
