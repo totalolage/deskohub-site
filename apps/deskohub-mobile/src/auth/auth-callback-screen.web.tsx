@@ -34,15 +34,20 @@ const linkRejected = () =>
 const completeWebCallback = (
   callback: AuthCallback,
   nativePending: boolean,
-  reauthentication: Option.Option<StoredReauthentication>
+  reauthentication: Option.Option<StoredReauthentication>,
+  locale: AppLocale
 ) =>
   Match.value(callback).pipe(
     Match.discriminatorsExhaustive("kind")({
       token: ({ token }) =>
-        completeWebMagicLink(token, {
-          nativePending,
-          storedUserId: Option.map(reauthentication, ({ userId }) => userId),
-        }),
+        completeWebMagicLink(
+          token,
+          {
+            nativePending,
+            storedUserId: Option.map(reauthentication, ({ userId }) => userId),
+          },
+          locale
+        ),
       handoff: () => Effect.fail(linkRejected()),
       error: () => Effect.fail(linkRejected()),
       invalid: () => Effect.fail(linkRejected()),
@@ -103,8 +108,13 @@ export function AuthCallbackScreen() {
   );
 
   useEffect(() => {
-    void verify.start(callback, Option.isSome(nativeRequest), reauthentication);
-  }, [verify.start, callback, nativeRequest, reauthentication]);
+    void verify.start(
+      callback,
+      Option.isSome(nativeRequest),
+      reauthentication,
+      locale
+    );
+  }, [verify.start, callback, nativeRequest, reauthentication, locale]);
 
   const verified = verify.state.status === "succeeded";
   const offerApp = verified && Option.isSome(nativeRequest);

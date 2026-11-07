@@ -5,6 +5,7 @@ import {
   HttpApiGroup,
   HttpApiSchema,
 } from "effect/unstable/httpapi";
+import { CustomerLocale } from "./customer-locale";
 import {
   CustomerProfile,
   CustomerProfileCompletionInput,
@@ -336,12 +337,6 @@ export const CustomerMarketingPreferences = Schema.Struct({
 }).annotate({ identifier: "CustomerMarketingPreferences" });
 export type CustomerMarketingPreferences =
   typeof CustomerMarketingPreferences.Type;
-
-/** The locales the Workspace records consent wording in. */
-export const CustomerLocale = Schema.Literals(["en-US", "cs-CZ"]).annotate({
-  identifier: "CustomerLocale",
-});
-export type CustomerLocale = typeof CustomerLocale.Type;
 
 export const SaveCustomerMarketingPreferences = Schema.Struct({
   context: Schema.NonEmptyString,
