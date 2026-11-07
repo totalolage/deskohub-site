@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit, Layer, ManagedRuntime, Option } from "effect";
+import { Effect, type Exit, Layer, ManagedRuntime, Option } from "effect";
 import { nativeReturnUri, parseAuthCallbackUrl } from "./auth-callback";
 import { AuthCallbackCompletions } from "./auth-callback-completions.service";
 import { AuthCrypto } from "./auth-crypto.service";
@@ -7,9 +7,9 @@ import {
   AuthSessionBrowser,
   AuthSessionResult,
 } from "./auth-session-browser.service";
-import { readNativeHandoffRequest } from "./native-handoff-request";
-import { createNativeAuthClient } from "./native-auth-client";
 import { NativeAuth } from "./native-auth.service";
+import { createNativeAuthClient } from "./native-auth-client";
+import { readNativeHandoffRequest } from "./native-handoff-request";
 import {
   completeAuthCallback,
   reauthenticate,
@@ -21,9 +21,9 @@ import { PendingSignIns, pendingSignInKey } from "./pending-sign-in.service";
 import {
   type FakeAuthServer,
   type FakeUser,
+  type MemorySecureStore,
   makeFakeAuthServer,
   makeMemorySecureStore,
-  type MemorySecureStore,
 } from "./testing/fake-auth-server";
 
 const origin = "https://workspace.deskohub.cz";
@@ -100,9 +100,9 @@ describe("native session store", () => {
     expect(user).toEqual(ada);
     expect(storedCookie(store)).toContain("better-auth.session_token");
     // Amendment A: the app verifies with the token alone.
-    expect(server.callsTo("/magic-link/verify").map((call) => call.query)).toEqual(
-      [["token"]]
-    );
+    expect(
+      server.callsTo("/magic-link/verify").map((call) => call.query)
+    ).toEqual([["token"]]);
   });
 
   test("a new client on the same storage restores the session", async () => {
@@ -118,7 +118,9 @@ describe("native session store", () => {
     const session = await restarted.client.getSession();
     expect(session.data?.user.id).toBe(ada.id);
     const user = await restarted.runtime.runPromise(
-      Effect.service(NativeAuth).pipe(Effect.flatMap((auth) => auth.currentUser))
+      Effect.service(NativeAuth).pipe(
+        Effect.flatMap((auth) => auth.currentUser)
+      )
     );
     expect(user).toEqual(Option.some(ada));
   });
@@ -145,7 +147,9 @@ describe("native session store", () => {
     const server = makeFakeAuthServer(origin);
     const app = launchApp(server, makeMemorySecureStore());
     const token = server.issueMagicLink(ada);
-    await app.runtime.runPromise(completeAuthCallback({ kind: "token", token }));
+    await app.runtime.runPromise(
+      completeAuthCallback({ kind: "token", token })
+    );
 
     const again = launchApp(server, makeMemorySecureStore());
     const exit = await again.runtime.runPromiseExit(
@@ -200,7 +204,9 @@ describe("native email sign-in through the auth session", () => {
     const app = launchApp(server, makeMemorySecureStore());
     const exit = await app.runtime.runPromiseExit(
       completeAuthCallback(
-        parseAuthCallbackUrl(`${nativeReturnUri}?code=c&state=${"s".repeat(43)}`)
+        parseAuthCallbackUrl(
+          `${nativeReturnUri}?code=c&state=${"s".repeat(43)}`
+        )
       )
     );
     expect(failureTag(exit)).toBe("SignInLinkRefused");
@@ -239,8 +245,12 @@ describe("native email sign-in through the auth session", () => {
     const flow = app.runtime.runPromise(signInWithEmail(Option.none()));
     while (routeUrl === "") await Bun.sleep(1);
     const [fromRoute, again] = await Promise.all([
-      app.runtime.runPromise(completeAuthCallback(parseAuthCallbackUrl(routeUrl))),
-      app.runtime.runPromise(completeAuthCallback(parseAuthCallbackUrl(routeUrl))),
+      app.runtime.runPromise(
+        completeAuthCallback(parseAuthCallbackUrl(routeUrl))
+      ),
+      app.runtime.runPromise(
+        completeAuthCallback(parseAuthCallbackUrl(routeUrl))
+      ),
     ]);
 
     expect(await flow).toEqual(ada);
@@ -260,7 +270,9 @@ describe("native email sign-in through the auth session", () => {
 
     const flow = app.runtime.runPromise(signInWithEmail(Option.none()));
     while (token === "") await Bun.sleep(1);
-    await app.runtime.runPromise(completeAuthCallback({ kind: "token", token }));
+    await app.runtime.runPromise(
+      completeAuthCallback({ kind: "token", token })
+    );
 
     expect(await flow).toEqual(ada);
     expect(store.values.has(pendingSignInKey)).toBe(false);
@@ -275,7 +287,10 @@ describe("reauthentication", () => {
   ) => {
     const app = launchApp(server, store);
     await app.runtime.runPromise(
-      completeAuthCallback({ kind: "token", token: server.issueMagicLink(user) })
+      completeAuthCallback({
+        kind: "token",
+        token: server.issueMagicLink(user),
+      })
     );
     await app.runtime.dispose();
   };

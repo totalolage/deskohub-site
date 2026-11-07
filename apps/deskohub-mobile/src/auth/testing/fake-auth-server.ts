@@ -74,7 +74,12 @@ export const makeFakeAuthServer = (origin: string) => {
     user: { ...user, name: "", emailVerified: true },
   });
 
-  const handle = async (url: URL, method: string, headers: Headers, body: string) => {
+  const handle = async (
+    url: URL,
+    method: string,
+    headers: Headers,
+    body: string
+  ) => {
     const path = url.pathname.replace(/^\/api\/auth/, "");
     calls.push({ method, path, query: [...url.searchParams.keys()] });
 

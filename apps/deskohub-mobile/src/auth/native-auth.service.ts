@@ -1,11 +1,8 @@
 import { Context, Data, Effect, Layer, Option } from "effect";
+import type { AuthUser } from "./auth-session-state";
 import type { NativeAuthClient } from "./native-auth-client";
 
-/** The signed-in customer as the app needs it. */
-export interface AuthUser {
-  readonly id: string;
-  readonly email: string;
-}
+export type { AuthUser } from "./auth-session-state";
 
 export type NativeAuthOperation =
   | "verify-magic-link"
@@ -64,7 +61,7 @@ export class NativeAuth extends Context.Service<NativeAuth, INativeAuth>()(
   "deskohub-mobile/NativeAuth"
 ) {
   static fromClient(origin: string, client: NativeAuthClient) {
-    return Layer.succeed(this, makeNativeAuth(origin, client));
+    return Layer.succeed(NativeAuth, makeNativeAuth(origin, client));
   }
 }
 

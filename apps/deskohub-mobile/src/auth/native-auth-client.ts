@@ -30,7 +30,9 @@ export const createNativeAuthClient = ({
 }: NativeAuthClientOptions) =>
   createAuthClient({
     baseURL: `${origin}/api/auth`,
-    ...(fetch === undefined ? {} : { fetchOptions: { customFetchImpl: fetch } }),
+    ...(fetch === undefined
+      ? {}
+      : { fetchOptions: { customFetchImpl: fetch } }),
     plugins: [
       expoClient({ scheme: "deskohub", storagePrefix: "deskohub", storage }),
       magicLinkClient(),

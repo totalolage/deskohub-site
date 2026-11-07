@@ -9,7 +9,7 @@ import * as WebBrowser from "expo-web-browser";
  */
 export type AuthSessionResult = Data.TaggedEnum<{
   Returned: { readonly url: string };
-  Closed: {};
+  Closed: Record<never, never>;
 }>;
 export const AuthSessionResult = Data.taggedEnum<AuthSessionResult>();
 

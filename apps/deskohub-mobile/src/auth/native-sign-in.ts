@@ -8,15 +8,15 @@ import { AuthCallbackCompletions } from "./auth-callback-completions.service";
 import { AuthCrypto } from "./auth-crypto.service";
 import { AuthSessionBrowser } from "./auth-session-browser.service";
 import {
-  type NativeHandoffRequest,
-  nativeHandoffRequestTtlMs,
-  nativeSignInUrl,
-} from "./native-handoff-request";
-import {
   type AuthUser,
   NativeAuth,
   type NativeAuthFailure,
 } from "./native-auth.service";
+import {
+  type NativeHandoffRequest,
+  nativeHandoffRequestTtlMs,
+  nativeSignInUrl,
+} from "./native-handoff-request";
 import {
   AccountSwitchRefused,
   type NativeSignInFailure,
@@ -178,7 +178,10 @@ const completeHandoff = Effect.fn("NativeSignIn.completeHandoff")(function* (
       codeVerifier: pending.verifier,
       returnUri: pending.returnUri,
     })
-    .pipe(Effect.mapError(fromAuthFailure), Effect.ensuring(clearPendingSignIn));
+    .pipe(
+      Effect.mapError(fromAuthFailure),
+      Effect.ensuring(clearPendingSignIn)
+    );
   return yield* confirmSignedInUser(pending.expectedUserId);
 });
 

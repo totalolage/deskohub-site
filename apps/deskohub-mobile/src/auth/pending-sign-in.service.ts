@@ -43,7 +43,7 @@ export class PendingSignIns extends Context.Service<
   IPendingSignIns
 >()("deskohub-mobile/PendingSignIns") {
   static fromStore(store: PendingSignInStore) {
-    return Layer.succeed(this, makePendingSignIns(store));
+    return Layer.succeed(PendingSignIns, makePendingSignIns(store));
   }
 }
 

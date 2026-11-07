@@ -1,0 +1,62 @@
+import { Data } from "effect";
+
+export type WebSignInOperation =
+  | "send-email"
+  | "verify-code"
+  | "verify-link"
+  | "mint-handoff";
+
+export type WebSignInFailureReason =
+  /** BotID judged the request automated. */
+  | "automated"
+  | "rate-limited"
+  /** The per-address cap on sign-in emails is reached. */
+  | "address-limit"
+  | "wrong-code"
+  | "expired-code"
+  | "too-many-attempts"
+  /** The magic link was used, expired or never valid. */
+  | "link-rejected"
+  /** The browser session is too old to hand off; sign in again. */
+  | "session-not-fresh"
+  | "signed-out"
+  | "unavailable"
+  | "failed";
+
+/** A web sign-in step failed; `reason` decides what the page shows. */
+export class WebSignInFailure extends Data.TaggedError("WebSignInFailure")<{
+  readonly operation: WebSignInOperation;
+  readonly reason: WebSignInFailureReason;
+}> {}
+
+const signInCodeRejections: Readonly<Record<string, WebSignInFailureReason>> = {
+  INVALID_OTP: "wrong-code",
+  OTP_EXPIRED: "expired-code",
+  TOO_MANY_ATTEMPTS: "too-many-attempts",
+};
+
+/** The reason for a Better Auth error answer, mirroring the site's mapping. */
+export const webSignInFailureReason = (
+  operation: WebSignInOperation,
+  { status, code }: { readonly status?: number; readonly code?: string }
+): WebSignInFailureReason => {
+  if (code === "BOT_DETECTED") return "automated";
+  switch (operation) {
+    case "send-email":
+      if (status !== 429) return "failed";
+      return code === "SIGN_IN_EMAIL_LIMIT_REACHED"
+        ? "address-limit"
+        : "rate-limited";
+    case "verify-code":
+      if (code !== undefined && Object.hasOwn(signInCodeRejections, code)) {
+        return signInCodeRejections[code] ?? "failed";
+      }
+      return status === 429 ? "rate-limited" : "failed";
+    case "verify-link":
+      return status === 400 ? "link-rejected" : "failed";
+    case "mint-handoff":
+      if (code === "SESSION_NOT_FRESH") return "session-not-fresh";
+      if (status === 401) return "signed-out";
+      return status === 429 ? "rate-limited" : "failed";
+  }
+};
