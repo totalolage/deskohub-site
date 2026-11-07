@@ -105,6 +105,23 @@ export const liveAccountServiceLayers: AccountServiceLayers = {
   contacts: CustomerAccountContactService.Live,
 };
 
+/** The account release gates, which each edge decides its own way. */
+export type AccountReleaseLayers = Pick<
+  AccountStateLayers,
+  "referralRelease" | "passkeyRelease" | "avatarRelease"
+>;
+
+/**
+ * The account release gates for a request served outside Next.js, such as
+ * the customer HTTP API: each decided once per build, without React `cache`
+ * or a nested runner. Build them once per request.
+ */
+export const runAccountReleaseLayers: AccountReleaseLayers = {
+  referralRelease: ReferralReleaseGateForRun,
+  passkeyRelease: PasskeyReleaseGateForRun,
+  avatarRelease: AccountAvatarReleaseGateForRun,
+};
+
 /**
  * The account state's capabilities for one request served outside Next.js,
  * such as the customer HTTP API: release gates decided once per build,
@@ -117,16 +134,15 @@ export const accountStateCapabilitiesForRun = (
     /** The referral code the client remembers, as it sent it. */
     readonly referralCode: string | undefined;
   },
-  services: AccountServiceLayers = liveAccountServiceLayers
+  services: AccountServiceLayers = liveAccountServiceLayers,
+  releases: AccountReleaseLayers = runAccountReleaseLayers
 ): Layer.Layer<AccountStateCapabilities> =>
   accountStateCapabilities({
     ...services,
-    referralRelease: ReferralReleaseGateForRun,
+    ...releases,
     rememberedReferral: RememberedReferral.fromClient(
       request.referralCode
     ).pipe(Layer.provide(services.contacts)),
-    passkeyRelease: PasskeyReleaseGateForRun,
-    avatarRelease: AccountAvatarReleaseGateForRun,
   });
 
 /**

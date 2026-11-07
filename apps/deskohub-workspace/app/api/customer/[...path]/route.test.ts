@@ -1,0 +1,30 @@
+import "@/shared/testing/workspace-test-env";
+
+import { describe, expect, test } from "bun:test";
+import { WorkspaceCustomerApi } from "@deskohub/workspace-customer-api";
+import { HttpApi } from "effect/unstable/httpapi";
+
+const contractMethods = () => {
+  const methods = new Set<string>();
+  HttpApi.reflect(WorkspaceCustomerApi, {
+    onGroup: () => undefined,
+    onEndpoint: ({ endpoint }) => {
+      methods.add(endpoint.method);
+    },
+  });
+  return [...methods];
+};
+
+describe("customer API route", () => {
+  // Next.js answers a method the route module doesn't export with 405 before
+  // the API handler runs, so every method the contract uses needs an export.
+  test("exports a handler for every method the customer API contract uses", async () => {
+    const exported = new Set(Object.keys(await import("./route")));
+    const methods = contractMethods();
+
+    expect(methods).not.toHaveLength(0);
+    const missing = methods.filter((method) => !exported.has(method));
+
+    expect(missing).toEqual([]);
+  });
+});
