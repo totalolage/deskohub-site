@@ -55,7 +55,10 @@
         "@react-email/ui",
         // Not imported: declared so Vercel deploys Workspace previews for
         // agent-skill changes (apps/deskohub-portal/deployment-graph.test.ts).
-        "@deskohub/agent-skills"
+        "@deskohub/agent-skills",
+        // Not imported: `mobile-web-app:build` copies its web export to
+        // public/app, so its changes must deploy the Workspace too.
+        "deskohub-mobile"
       ]
     }
   }
