@@ -1,4 +1,5 @@
 import { Effect, Layer } from "effect";
+import { accountDeviceLayer } from "../account-scoped-storage";
 import {
   CustomerAccountScope,
   CustomerSessionCheck,
@@ -26,7 +27,6 @@ export const sampleCustomerDataLayer = (
       accountId: workspace.data.accountId,
       apiOrigin: fakeWorkspaceOrigin,
     }),
-    Layer.succeed(CustomerSessionCheck, { recheck: Effect.void }),
-    deviceCapabilitiesLayer
-  );
+    Layer.succeed(CustomerSessionCheck, { recheck: Effect.void })
+  ).pipe(Layer.provideMerge(accountDeviceLayer(deviceCapabilitiesLayer)));
 };

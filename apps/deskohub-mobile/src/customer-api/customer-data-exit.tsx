@@ -1,7 +1,9 @@
 import { useAtomSet } from "@effect/atom-react";
+import { Layer } from "effect";
 import { Atom } from "effect/unstable/reactivity";
 import { type ReactNode, useEffect, useRef } from "react";
 import { useAuthSession } from "../auth/use-auth-session";
+import { AccountExitFence } from "./account-scoped-storage";
 import { deviceCapabilitiesLayer } from "./device-capabilities-layer";
 import {
   type AccountPresence,
@@ -11,7 +13,9 @@ import {
 
 // Exit cleanup outlives the account's own registry, which unmounts with the
 // signed-in screens, so it runs on the device capabilities alone.
-const exitCleanupRuntime = Atom.runtime(deviceCapabilitiesLayer);
+const exitCleanupRuntime = Atom.runtime(
+  Layer.merge(deviceCapabilitiesLayer, AccountExitFence.Default)
+);
 const exitCleanupAtom = exitCleanupRuntime.fn(() => customerDataExitCleanup);
 
 /**

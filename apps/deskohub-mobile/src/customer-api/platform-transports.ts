@@ -1,6 +1,7 @@
 import { Effect, Layer } from "effect";
 import { FetchHttpClient, HttpClient } from "effect/unstable/http";
 import { CustomerApiTransport } from "./customer-api.service";
+import { reportEachSend } from "./customer-request-dispatch";
 import { retryTransientReads } from "./read-retry";
 import { withNativeAuthOrigin, withSessionCookie } from "./session-cookie";
 
@@ -26,7 +27,8 @@ export interface NativeTransportOptions {
  * Native requests carry the stored cookie themselves, only to the API origin,
  * so the platform cookie jar is kept out (`credentials: "omit"`). Customer
  * API requests send no origin; Better Auth mutations send the trusted app
- * origin. Needs an `HttpClient`, such as `FetchHttpClient.layer`.
+ * origin. Each send is reported to the running request (read budget, write
+ * sent). Needs an `HttpClient`, such as `FetchHttpClient.layer`.
  */
 export const nativeCustomerApiTransport = ({
   apiOrigin,
@@ -44,12 +46,15 @@ export const nativeCustomerApiTransport = ({
     );
   return Layer.succeed(CustomerApiTransport, {
     apiOrigin,
-    customerApi: (client) => retryTransientReads(sendWithSessionCookie(client)),
+    customerApi: (client) =>
+      retryTransientReads(reportEachSend(sendWithSessionCookie(client))),
     customerAuthApi: (client) =>
       retryTransientReads(
-        HttpClient.mapRequest(
-          sendWithSessionCookie(client),
-          withNativeAuthOrigin(apiOrigin)
+        reportEachSend(
+          HttpClient.mapRequest(
+            sendWithSessionCookie(client),
+            withNativeAuthOrigin(apiOrigin)
+          )
         )
       ),
   });
@@ -65,7 +70,7 @@ export const webCustomerApiTransport = ({
   readonly apiOrigin: string;
 }) => {
   const send = (client: HttpClient.HttpClient) =>
-    retryTransientReads(withCredentials("same-origin")(client));
+    retryTransientReads(reportEachSend(withCredentials("same-origin")(client)));
   return Layer.succeed(CustomerApiTransport, {
     apiOrigin,
     customerApi: send,

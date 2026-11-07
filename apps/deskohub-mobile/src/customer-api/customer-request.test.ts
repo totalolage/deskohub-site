@@ -6,13 +6,14 @@ import {
 import { Effect, Fiber, Layer } from "effect";
 import { TestClock } from "effect/testing";
 import { HttpClientError, HttpClientRequest } from "effect/unstable/http";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 import { CustomerSessionCheck } from "./customer-api.service";
 import {
   customerRead,
   customerWrite,
   refreshAfterWrite,
 } from "./customer-request";
+import { CustomerRequestDispatch } from "./customer-request-dispatch";
 import { DotyposReadBudget, dotyposReadAllowance } from "./dotypos-read-budget";
 
 const harness = () => {
@@ -39,6 +40,14 @@ const harness = () => {
   return { run, sessionChecks };
 };
 
+/** What the client does when it sends the request: report the send. */
+const sent = <A, E>(
+  answer: Effect.Effect<A, E>
+): Effect.Effect<A, E, CustomerRequestDispatch> =>
+  Effect.flatMap(Effect.service(CustomerRequestDispatch), (dispatch) =>
+    Effect.andThen(dispatch.onSend, answer)
+  );
+
 const transportFailure = new HttpClientError.HttpClientError({
   reason: new HttpClientError.TransportError({
     request: HttpClientRequest.post("https://workspace.deskohub.test/x"),
@@ -50,7 +59,7 @@ describe("customerRead", () => {
     const { run } = harness();
 
     const { result, remaining } = await run(
-      customerRead({ dotyposBacked: true })(Effect.succeed("history"))
+      customerRead({ dotyposBacked: true })(sent(Effect.succeed("history")))
     );
 
     expect(result).toMatchObject({ _tag: "Success", success: "history" });
@@ -61,7 +70,7 @@ describe("customerRead", () => {
     const { run } = harness();
 
     const { remaining } = await run(
-      customerRead({ dotyposBacked: false })(Effect.succeed("passkeys"))
+      customerRead({ dotyposBacked: false })(sent(Effect.succeed("passkeys")))
     );
 
     expect(remaining).toBe(dotyposReadAllowance.reads);
@@ -97,11 +106,45 @@ describe("customerRead", () => {
   });
 });
 
+describe("customerRead attempts", () => {
+  test("spends the budget once per send, so a retried read spends twice", async () => {
+    const { run } = harness();
+
+    const { remaining } = await run(
+      customerRead({ dotyposBacked: true })(
+        Effect.andThen(sent(Effect.void), sent(Effect.succeed("history")))
+      )
+    );
+
+    expect(remaining).toBe(dotyposReadAllowance.reads - 2);
+  });
+});
+
 describe("customerWrite", () => {
-  test("reports a write with no answer in time as unconfirmed", async () => {
+  test("a write that never left the device times out as nothing applied", async () => {
     const { run } = harness();
 
     const { result } = await run(customerWrite(Effect.never));
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "CustomerRequestTimedOut" },
+    });
+  });
+
+  test("keeps a failure from before sending, such as an invalid payload", async () => {
+    const { run } = harness();
+    const invalid = { _tag: "SchemaError" as const };
+
+    const { result } = await run(customerWrite(Effect.fail(invalid)));
+
+    expect(result).toMatchObject({ _tag: "Failure", failure: invalid });
+  });
+
+  test("reports a write with no answer in time as unconfirmed", async () => {
+    const { run } = harness();
+
+    const { result } = await run(customerWrite(sent(Effect.never)));
 
     expect(result).toMatchObject({
       _tag: "Failure",
@@ -112,7 +155,9 @@ describe("customerWrite", () => {
   test("reports a broken connection as unconfirmed, keeping the cause", async () => {
     const { run } = harness();
 
-    const { result } = await run(customerWrite(Effect.fail(transportFailure)));
+    const { result } = await run(
+      customerWrite(sent(Effect.fail(transportFailure)))
+    );
 
     expect(result).toMatchObject({
       _tag: "Failure",
@@ -140,54 +185,56 @@ describe("customerWrite", () => {
 });
 
 describe("refreshAfterWrite", () => {
-  const account = Atom.make(0);
-  const recording = () => {
-    const refreshed: unknown[] = [];
-    return {
-      refreshed,
-      get: { refresh: (atom: Atom.Atom<unknown>) => refreshed.push(atom) },
+  /** A registry whose `probe` counts its reads, and a write atom over it. */
+  const setup = () => {
+    let reads = 0;
+    const probe = Atom.make(() => {
+      reads += 1;
+      return reads;
+    });
+    const write = Atom.fn(
+      (outcome: Effect.Effect<string, unknown, CustomerRequestDispatch>, get) =>
+        refreshAfterWrite(get, [probe])(customerWrite(outcome)).pipe(
+          Effect.provideService(CustomerSessionCheck, { recheck: Effect.void })
+        )
+    );
+    const registry = AtomRegistry.make();
+    registry.mount(probe);
+    registry.mount(write);
+    const settleWrite = async (
+      outcome: Effect.Effect<string, unknown, CustomerRequestDispatch>
+    ) => {
+      registry.set(write, outcome);
+      await Effect.runPromise(
+        Effect.result(
+          AtomRegistry.getResult(write, { suspendOnWaiting: true })(registry)
+        )
+      );
+      registry.get(probe);
+      return reads - 1;
     };
+    return { settleWrite };
   };
 
   test("refreshes after a write succeeds", async () => {
-    const { refreshed, get } = recording();
-
-    await Effect.runPromise(
-      Effect.result(refreshAfterWrite(get, [account])(Effect.succeed("saved")))
-    );
-
-    expect(refreshed).toEqual([account]);
+    expect(await setup().settleWrite(sent(Effect.succeed("saved")))).toBe(1);
   });
 
   test("refreshes after an unconfirmed write, to show what was saved", async () => {
-    const { refreshed, get } = recording();
-
-    await Effect.runPromise(
-      Effect.result(
-        refreshAfterWrite(get, [account])(
-          customerWrite(Effect.fail(transportFailure))
-        )
-      ).pipe(
-        Effect.provideService(CustomerSessionCheck, { recheck: Effect.void })
-      )
+    expect(await setup().settleWrite(sent(Effect.fail(transportFailure)))).toBe(
+      1
     );
-
-    expect(refreshed).toEqual([account]);
   });
 
   test("refreshes nothing after a refusal", async () => {
-    const { refreshed, get } = recording();
-
-    await Effect.runPromise(
-      Effect.result(
-        refreshAfterWrite(get, [account])(
+    expect(
+      await setup().settleWrite(
+        sent(
           Effect.fail(
             new CustomerAccountLinkRequired({ reason: "support-required" })
           )
         )
       )
-    );
-
-    expect(refreshed).toEqual([]);
+    ).toBe(0);
   });
 });

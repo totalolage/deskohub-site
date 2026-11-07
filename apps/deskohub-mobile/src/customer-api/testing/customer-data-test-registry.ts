@@ -1,6 +1,10 @@
-import { Effect, type Layer } from "effect";
+import { Effect, Layer } from "effect";
 import type { AsyncResult } from "effect/unstable/reactivity";
 import { Atom, AtomRegistry } from "effect/unstable/reactivity";
+import {
+  AccountExitFence,
+  makeAccountExitFence,
+} from "../account-scoped-storage";
 import {
   type CustomerDataServices,
   customerDataLayer,
@@ -12,6 +16,8 @@ import {
 } from "./fake-customer-data";
 import { FakeWorkspace } from "./fake-workspace";
 import type { SampleAccountKind } from "./sample-fixtures";
+
+type AccountExitFenceApi = ReturnType<typeof makeAccountExitFence>;
 
 /** A registry whose data runtime runs on `layer`, as one account's would. */
 export const makeCustomerDataRegistry = (
@@ -27,13 +33,18 @@ export const makeCustomerDataRegistry = (
  */
 export const makeFakeCustomerData = (
   kind: SampleAccountKind = "linked",
-  workspace: FakeWorkspace = FakeWorkspace.forKind(kind)
+  workspace: FakeWorkspace = FakeWorkspace.forKind(kind),
+  fence: AccountExitFenceApi = makeAccountExitFence()
 ) => {
   const device: FakeDevice = makeFakeDevice();
   const registry = makeCustomerDataRegistry(
-    fakeCustomerDataLayer({ workspace, device })
+    fakeCustomerDataLayer({
+      workspace,
+      device,
+      fence: Layer.succeed(AccountExitFence, fence),
+    })
   );
-  return { registry, workspace, device };
+  return { registry, workspace, device, fence };
 };
 
 /**

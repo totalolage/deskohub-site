@@ -335,6 +335,27 @@ const sampleAccount = (
   }
 };
 
+// A review account's history and holds are review-sandbox samples.
+const asReviewSandbox = (
+  history: CustomerReservationHistory,
+  orders: ReadonlyMap<string, SampleOrder>
+) => ({
+  history: {
+    current: history.current.map((row) => ({
+      ...row,
+      reviewSandbox: true as const,
+    })),
+    past: history.past.map((row) => ({ ...row, reviewSandbox: true as const })),
+    unavailable: history.unavailable,
+  },
+  orders: new Map(
+    [...orders].map(([orderId, order]) => [
+      orderId,
+      { ...order, state: { ...order.state, reviewSandbox: true as const } },
+    ])
+  ),
+});
+
 /** A complete synthetic Workspace for one account in the given state. */
 export const sampleWorkspaceData = (
   kind: SampleAccountKind,
@@ -342,8 +363,9 @@ export const sampleWorkspaceData = (
 ): FakeWorkspaceData => ({
   accountId: sampleAccountId,
   account: sampleAccount(kind, now),
-  history: sampleHistory(now),
-  orders: sampleOrders(now),
+  ...(kind === "review-account"
+    ? asReviewSandbox(sampleHistory(now), sampleOrders(now))
+    : { history: sampleHistory(now), orders: sampleOrders(now) }),
   passkeys: samplePasskeys(now),
   assistants: sampleAssistants(now),
   marketing: { status: "active", context: "sample-marketing-context-1" },
