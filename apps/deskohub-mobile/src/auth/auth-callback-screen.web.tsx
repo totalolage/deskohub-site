@@ -10,6 +10,7 @@ import { type AuthCallback, withSignInMethod } from "./auth-callback";
 import { capturedAuthCallback } from "./auth-location.web";
 import type { NativeHandoffRequest } from "./native-handoff-request";
 import { webSignInFailureMessage } from "./sign-in-failure-message";
+import { useAuthSession } from "./use-auth-session";
 import {
   firstFailure,
   standaloneTaskRuntime,
@@ -74,6 +75,7 @@ const unexpected = () =>
  */
 export function AuthCallbackScreen() {
   const locale = useAppLocale();
+  const session = useAuthSession();
   const [callback] = useState(capturedAuthCallback);
   const [nativeRequest] = useState(() => loadNativeHandoffRequest(Date.now()));
   // Read before verifying: a confirmed sign-in clears it. A reauthentication
@@ -100,11 +102,15 @@ export function AuthCallbackScreen() {
 
   const verified = verify.state.status === "succeeded";
   const offerApp = verified && Option.isSome(nativeRequest);
+  // The verify refreshes the app's session after it returns. Routing on
+  // before that read lands would send the signed-in screen back to sign-in.
+  const routingOn = verified && !offerApp;
+  const sessionRead = session.status === "signed-in";
   useEffect(() => {
-    if (!verified || offerApp) return;
+    if (!routingOn || !sessionRead) return;
     trackSignInCompleted("link");
     router.replace(returnPath);
-  }, [verified, offerApp, returnPath]);
+  }, [routingOn, sessionRead, returnPath]);
 
   const appUrl =
     handoff.state.status === "succeeded" ? handoff.state.value : undefined;
@@ -116,7 +122,9 @@ export function AuthCallbackScreen() {
 
   const failure = firstFailure(handoff.state, verify.state);
   const verifying =
-    verify.state.status === "idle" || verify.state.status === "running";
+    verify.state.status === "idle" ||
+    verify.state.status === "running" ||
+    (routingOn && !sessionRead);
   const status = callbackStatus(verifying, appUrl !== undefined, locale);
 
   return (
