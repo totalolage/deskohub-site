@@ -48,6 +48,31 @@ const remainingReadsAtom = customerDataRuntime.atom(
   )
 );
 
+/** Runs `effect` on the registry's data runtime. */
+const inRuntime = <A>(
+  registry: AtomRegistry.AtomRegistry,
+  effect: Effect.Effect<A, never, DotyposReadBudget>
+) =>
+  Effect.runPromise(
+    Effect.provideContext(
+      effect,
+      AsyncResult.getOrThrow(registry.get(customerDataRuntime))
+    )
+  );
+
+/** Spends `count` reads of the registry's Dotypos read budget. */
+const spendReads = (registry: AtomRegistry.AtomRegistry, count: number) =>
+  inRuntime(
+    registry,
+    Effect.flatMap(Effect.service(DotyposReadBudget), (budget) =>
+      Effect.repeat(budget.spend, { times: count - 1 })
+    )
+  );
+
+/** Reads that leave the budget one below its automatic-refresh reserve after a first read. */
+const readsToReserve =
+  dotyposReadAllowance.reads - 1 - (automaticRefreshReserve - 1);
+
 /** A registry whose runtime runs on a test clock, with a way to move it. */
 const withTestClock = () => {
   const workspace = FakeWorkspace.forKind("linked");
@@ -57,25 +82,12 @@ const withTestClock = () => {
       TestClock.layer()
     )
   );
-  const inRuntime = <A>(effect: Effect.Effect<A, never, DotyposReadBudget>) =>
-    Effect.runPromise(
-      Effect.provideContext(
-        effect,
-        AsyncResult.getOrThrow(registry.get(customerDataRuntime))
-      )
-    );
   return {
     registry,
     workspace,
     booking: fakeBooking(workspace),
     adjust: (duration: Parameters<typeof TestClock.adjust>[0]) =>
-      inRuntime(TestClock.adjust(duration)),
-    spendReads: (count: number) =>
-      inRuntime(
-        Effect.flatMap(Effect.service(DotyposReadBudget), (budget) =>
-          Effect.repeat(budget.spend, { times: count - 1 })
-        )
-      ),
+      inRuntime(registry, TestClock.adjust(duration)),
   };
 };
 
@@ -275,9 +287,7 @@ describe("bookingQuoteAtom refresh", () => {
     const unmount = harness.registry.mount(atom);
     await settle(harness.registry, atom);
 
-    await harness.spendReads(
-      dotyposReadAllowance.reads - 1 - (automaticRefreshReserve - 1)
-    );
+    await spendReads(harness.registry, readsToReserve);
     await harness.adjust(quoteRefreshInterval);
     await flush();
     unmount();
@@ -435,6 +445,31 @@ describe("catalog idle TTL", () => {
     const returned = await settle(registry, atom);
 
     expect(readsWhileIdle).toBe(1);
+    expect(readsOf(booking, "getQuote")).toBe(2);
+    expect(
+      first._tag === "Success" &&
+        returned._tag === "Success" &&
+        first.success.advertisedPriceToken !==
+          returned.success.advertisedPriceToken
+    ).toBe(true);
+  });
+
+  test("keeps a quote held at the reserve only while a screen shows it", async () => {
+    const { registry, booking } = fakeCustomerData();
+    const atom = bookingQuoteAtom(coworkSelection(booking.dateIn(25)), "en-US");
+    const unmount = registry.mount(atom);
+    const first = await settle(registry, atom);
+    await spendReads(registry, readsToReserve);
+
+    await elapse(quoteRefreshInterval);
+    // Past the ten minutes the quote's token lasts, still on screen.
+    await elapse("7 minutes");
+    const readsWhileShown = readsOf(booking, "getQuote");
+    unmount();
+    await elapse("2 seconds");
+    const returned = await settle(registry, atom);
+
+    expect(readsWhileShown).toBe(1);
     expect(readsOf(booking, "getQuote")).toBe(2);
     expect(
       first._tag === "Success" &&
