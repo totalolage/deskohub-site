@@ -298,8 +298,16 @@ export const customerAvatarMediaTypes = [
 export const customerAvatarFileField = "file";
 
 /**
- * The avatar upload, one file part. The Workspace reads the part stream
- * itself, so these limits bound what it buffers.
+ * The largest avatar upload body: the file plus room for its part headers and
+ * the body's delimiters.
+ */
+export const customerAvatarMaxBodyBytes =
+  customerAvatarMaxUploadBytes + 64 * 1024;
+
+/**
+ * The avatar upload, one file part of at most `customerAvatarMaxUploadBytes`
+ * in a body of at most `customerAvatarMaxBodyBytes`. The Workspace parses the
+ * body itself and enforces both limits.
  */
 export const CustomerAvatarUpload = Schema.Struct({
   [customerAvatarFileField]: Multipart.SingleFileSchema,
@@ -308,7 +316,7 @@ export const CustomerAvatarUpload = Schema.Struct({
     maxParts: 1,
     maxFileSize: customerAvatarMaxUploadBytes,
     maxFieldSize: 1024,
-    maxTotalSize: customerAvatarMaxUploadBytes + 64 * 1024,
+    maxTotalSize: customerAvatarMaxBodyBytes,
   })
 );
 

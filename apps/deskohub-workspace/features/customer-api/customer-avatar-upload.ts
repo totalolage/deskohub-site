@@ -5,6 +5,7 @@ import {
   CustomerAvatarRejected,
   type CustomerAvatarRejectionReason,
   customerAvatarFileField,
+  customerAvatarMaxBodyBytes,
   customerAvatarMaxUploadBytes,
 } from "@deskohub/workspace-customer-api";
 import { Effect, Layer, Match, Stream } from "effect";
@@ -70,13 +71,6 @@ export const customerAvatarUploadHandler = Effect.gen(function* () {
   );
 });
 
-/**
- * Room beyond the file for its part's headers, which the parser counts
- * toward the part's size, and for the body's delimiters, as much as the
- * contract's total size allows.
- */
-const multipartOverheadBytes = 64 * 1024;
-
 /** A part of the upload's body, with a file part's bytes. */
 type AvatarBodyPart =
   | {
@@ -99,9 +93,11 @@ const parseAvatarBody = (headers: Readonly<Record<string, string>>) => {
   const parser = Multipasta.make({
     headers,
     maxParts: 1,
-    maxPartSize: customerAvatarMaxUploadBytes + multipartOverheadBytes,
+    // The parser counts the part's headers toward its size; the explicit
+    // file-size check below enforces the file limit.
+    maxPartSize: customerAvatarMaxBodyBytes,
     maxFieldSize: 1024,
-    maxTotalSize: customerAvatarMaxUploadBytes + multipartOverheadBytes,
+    maxTotalSize: customerAvatarMaxBodyBytes,
     onField: () => {
       parts.push({ kind: "field" });
     },

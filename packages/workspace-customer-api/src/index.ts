@@ -19,6 +19,7 @@ export {
   CustomerProfileCompletion,
   CustomerProfileUpdated,
   customerAvatarFileField,
+  customerAvatarMaxBodyBytes,
   customerAvatarMaxUploadBytes,
   customerAvatarMediaTypes,
   Money,
