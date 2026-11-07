@@ -1,5 +1,5 @@
 import { Effect, type Fiber } from "effect";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { PasskeyFailure } from "./passkey-failure";
 
 /** What a passkey control shows. */
@@ -15,6 +15,28 @@ export type PasskeyCeremonyState<A> =
  */
 const isQuiet = (failure: PasskeyFailure) =>
   failure._tag === "PasskeyCancelled" || failure._tag === "PasskeyCeremonyBusy";
+
+/**
+ * The ceremony a control runs, at most one at a time: `start` does nothing
+ * while one runs, and `interrupt` stops it without reporting an outcome.
+ * This is the hook's one run edge.
+ */
+export const makeCeremonyRun = () => {
+  let running: Fiber.Fiber<void> | undefined;
+  return {
+    start: (ceremony: Effect.Effect<void>) => {
+      if (running) return;
+      const fiber = Effect.runFork(ceremony);
+      running = fiber;
+      // A ceremony can settle before `runFork` returns, such as on a device
+      // without passkeys; the observer still runs for it.
+      fiber.addObserver(() => {
+        if (running === fiber) running = undefined;
+      });
+    },
+    interrupt: () => running?.interruptUnsafe(),
+  };
+};
 
 /**
  * Runs one passkey ceremony per control at a time. `start` runs `ceremony`
@@ -34,15 +56,16 @@ export const usePasskeyCeremony = <A>({
   const [state, setState] = useState<PasskeyCeremonyState<A>>({
     status: "idle",
   });
-  const running = useRef<Fiber.Fiber<void>>(undefined);
+  const [run] = useState(makeCeremonyRun);
 
-  useEffect(() => () => running.current?.interruptUnsafe(), []);
+  useEffect(() => run.interrupt, [run]);
 
-  const start = () => {
-    if (running.current) return;
-    setState({ status: "pending" });
-    running.current = Effect.runFork(
-      ceremony().pipe(
+  const start = () =>
+    run.start(
+      Effect.suspend(() => {
+        setState({ status: "pending" });
+        return ceremony();
+      }).pipe(
         Effect.match({
           onSuccess: (value) => {
             setState({ status: "succeeded", value });
@@ -54,15 +77,9 @@ export const usePasskeyCeremony = <A>({
               quiet ? { status: "idle" } : { status: "failed", failure }
             );
           },
-        }),
-        Effect.ensuring(
-          Effect.sync(() => {
-            running.current = undefined;
-          })
-        )
+        })
       )
     );
-  };
 
   return { state, start };
 };

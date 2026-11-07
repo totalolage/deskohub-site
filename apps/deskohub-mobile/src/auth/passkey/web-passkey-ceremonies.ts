@@ -16,7 +16,9 @@ import {
  * replace the button's challenge cookie, and the plugin call takes no abort
  * signal to stop it. The app offers no passkey autofill, and
  * `oneCeremonyAtATime` keeps a second ceremony from starting while a plugin
- * call is still running, so the plugin calls serve as they are.
+ * call is still running, so the plugin calls serve as they are. One cost:
+ * the plugin reports a sign-in verification that never reached the server
+ * as `AUTH_CANCELLED`, so it settles quietly like a closed prompt.
  */
 
 /** A plugin call's `{ data, error }` result. */

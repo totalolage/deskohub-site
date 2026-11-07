@@ -17,7 +17,7 @@ export type PasskeyCeremonies = {
   readonly isSupported: () => boolean;
   /**
    * Signs in with a passkey saved for the app's sign-in. On success the
-   * session exists and the auth client's session refreshes.
+   * session exists and the auth client has started refreshing it.
    */
   readonly signIn: Effect.Effect<void, PasskeyFailure>;
   /**

@@ -85,10 +85,32 @@ const decode = <A>(
   );
 
 /**
- * One request. A refusal carries the Better Auth code; interrupting the
- * ceremony aborts the request, so a stale options response can't replace
- * the challenge cookie of the ceremony after it.
+ * Sends a request that an interruption aborts and then waits out. The Expo
+ * client may already be writing a response's cookies to SecureStore when
+ * the abort comes, and `$fetch` settles only once that write is done, so
+ * the next ceremony can't start before a stale challenge cookie lands.
  */
+const abortable = (send: (signal: AbortSignal) => Promise<AuthFetchResult>) =>
+  Effect.suspend(() => {
+    const controller = new AbortController();
+    const response = send(controller.signal);
+    return Effect.tryPromise({
+      try: () => response,
+      catch: (cause) => new PasskeyCeremonyFailed({ step: "request", cause }),
+    }).pipe(
+      Effect.onInterrupt(() =>
+        Effect.promise(() => {
+          controller.abort();
+          return response.then(
+            () => undefined,
+            () => undefined
+          );
+        })
+      )
+    );
+  });
+
+/** One request. A refusal carries the Better Auth code. */
 const request =
   (fetch: AuthFetch) =>
   <A>(
@@ -98,10 +120,9 @@ const request =
     body?: unknown
   ): Effect.Effect<A, PasskeyRejected | PasskeyCeremonyFailed> =>
     Effect.gen(function* () {
-      const { data, error } = yield* Effect.tryPromise({
-        try: (signal) => fetch(path, { method, body, signal }),
-        catch: (cause) => new PasskeyCeremonyFailed({ step: "request", cause }),
-      });
+      const { data, error } = yield* abortable((signal) =>
+        fetch(path, { method, body, signal })
+      );
       if (error !== null) {
         return yield* new PasskeyRejected({
           status: error.status,

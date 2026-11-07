@@ -267,26 +267,47 @@ describe("passkey sign-in", () => {
     expect(emptyResult.calls).toHaveLength(1);
   });
 
-  test("aborts the pending request and sends nothing more when interrupted", async () => {
-    const pending = Deferred.makeUnsafe<void>();
+  test("aborts an interrupted request and waits for its cookie write before the next ceremony", async () => {
+    const cookieWritten = Deferred.makeUnsafe<void>();
     const signals: AbortSignal[] = [];
+    const verifiedWith: (string | undefined)[] = [];
+    let challenge: string | undefined;
+    let optionRequests = 0;
     const ceremonies = makeNativePasskeyCeremonies({
-      fetch: async (_path, options) => {
-        signals.push(options.signal);
-        await Effect.runPromise(Deferred.await(pending));
+      fetch: async (path, { signal }) => {
+        signals.push(signal);
+        if (path === "/passkey/verify-authentication") {
+          verifiedWith.push(challenge);
+          return { data: {}, error: null };
+        }
+        optionRequests += 1;
+        const issued = `challenge-${optionRequests}`;
+        // The first response already arrived: the Expo client finishes
+        // writing its cookie to SecureStore even after the abort.
+        if (optionRequests === 1) {
+          await Effect.runPromise(Deferred.await(cookieWritten));
+        }
+        challenge = issued;
         return { data: authenticationOptions, error: null };
       },
       authenticator: authenticator(),
       refreshSession: () => {},
     });
 
-    const fiber = Effect.runFork(ceremonies.signIn);
+    const first = Effect.runFork(ceremonies.signIn);
     while (signals.length === 0) await Effect.runPromise(Effect.yieldNow);
-    await Effect.runPromise(Fiber.interrupt(fiber));
+    const interrupted = Effect.runFork(Fiber.interrupt(first));
+    while (!signals[0]?.aborted) await Effect.runPromise(Effect.yieldNow);
 
-    expect(signals[0]?.aborted).toBe(true);
-    Deferred.doneUnsafe(pending, Exit.void);
-    await Effect.runPromise(ceremonies.signIn.pipe(Effect.exit));
+    expect((await failureOf(ceremonies.signIn))._tag).toBe(
+      "PasskeyCeremonyBusy"
+    );
+
+    Deferred.doneUnsafe(cookieWritten, Exit.void);
+    await Effect.runPromise(Fiber.join(interrupted));
+    await Effect.runPromise(ceremonies.signIn);
+
+    expect(verifiedWith).toEqual(["challenge-2"]);
     expect(signals).toHaveLength(3);
   });
 });

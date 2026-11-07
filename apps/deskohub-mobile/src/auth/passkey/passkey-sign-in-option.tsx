@@ -14,7 +14,8 @@ import { usePasskeyCeremony } from "./use-passkey-ceremony";
 
 /**
  * Signs in with a passkey saved for Deskohub. `onSignedIn` runs once the
- * session exists; the auth client's session has already refreshed.
+ * session exists and the auth client has been told to refresh it; its
+ * session data may still be loading.
  */
 export function PasskeySignInOption({
   onSignedIn,
