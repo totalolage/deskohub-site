@@ -152,8 +152,9 @@ non-production traffic apart:
   `status`, the status page's `CheckoutStatusKind`. `CheckoutStatusAnalytics`
   captures it from the browser through `captureAnalyticsEvent`, once per status
   per page visit, so polling refreshes don't repeat it. The Vercel Analytics
-  `workspace_checkout_started` event's custom properties are only the five `utm_*` keys allowlisted in `features/reservation/reservation-analytics.ts`, each
-  trimmed to 128 characters.
+  `workspace_checkout_started` event's custom properties are only the five
+  `utm_*` keys allowlisted in `features/reservation/reservation-analytics.ts`,
+  each trimmed to 128 characters.
 - Don't describe network IP handling as disabled.
 - Person properties never include email, name, phone, billing, reservation
   IDs, or raw auth data. The signed-in account's `dotypos_customer_id` is the
