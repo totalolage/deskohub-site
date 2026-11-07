@@ -9,9 +9,6 @@
     "runtimeVersion": {
       "policy": "fingerprint"
     },
-    "updates": {
-      "url": "https://workspace.deskohub.cz/api/mobile/updates/manifest"
-    },
     "ios": {
       "bundleIdentifier": "cz.deskohub.workspace",
       "associatedDomains": [

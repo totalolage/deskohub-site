@@ -4,6 +4,11 @@
   "tasks": {
     "build:web": {
       "dependsOn": ["^build", "i18n:compile"],
+      "env": [
+        "EXPO_PUBLIC_API_ORIGIN",
+        "EXPO_PUBLIC_POSTHOG_KEY",
+        "EXPO_PUBLIC_POSTHOG_HOST"
+      ],
       "outputs": ["dist/**"]
     },
     "dev": {
@@ -31,7 +36,8 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/biome.json",
-        "$TURBO_ROOT$/lint/**"
+        "$TURBO_ROOT$/lint/**",
+        "$TURBO_ROOT$/apps/deskohub-workspace/features/mobile-updates/code-signing-certificate.pem"
       ],
       "dependsOn": ["$TURBO_EXTENDS$", "i18n:compile"]
     },

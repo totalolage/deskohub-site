@@ -32,19 +32,40 @@ export const signerCertificateSha256s = (apksignerOutput: string): string[] =>
     .filter((digest) => digest !== undefined)
     .map(normalizeCertificateSha256);
 
+const requireSigners = (apksignerOutput: string): string[] => {
+  const signers = signerCertificateSha256s(apksignerOutput);
+  if (signers.length === 0) {
+    throw new Error("apksigner reported no signer certificates.");
+  }
+  return signers;
+};
+
 export const verifyReleaseSigners = (
   apksignerOutput: string,
   expectedSha256: string = releaseCertificateSha256
 ): string[] => {
   const expected = normalizeCertificateSha256(expectedSha256);
-  const signers = signerCertificateSha256s(apksignerOutput);
-  if (signers.length === 0) {
-    throw new Error("apksigner reported no signer certificates.");
-  }
+  const signers = requireSigners(apksignerOutput);
   const unexpected = signers.filter((digest) => digest !== expected);
   if (unexpected.length > 0) {
     throw new Error(
       `The APK is signed with ${unexpected.map(formatCertificateSha256).join(", ")}, not the release certificate ${formatCertificateSha256(expected)}.`
+    );
+  }
+  return signers;
+};
+
+// For pull request dry runs, which sign with a throwaway debug key: an APK that
+// carries the release certificate means the release key reached the build.
+export const verifyNonReleaseSigners = (
+  apksignerOutput: string,
+  releaseSha256: string = releaseCertificateSha256
+): string[] => {
+  const release = normalizeCertificateSha256(releaseSha256);
+  const signers = requireSigners(apksignerOutput);
+  if (signers.includes(release)) {
+    throw new Error(
+      `The dry-run APK is signed with the release certificate ${formatCertificateSha256(release)}.`
     );
   }
   return signers;
