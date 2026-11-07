@@ -1,6 +1,6 @@
 ---
 name: deskohub-mobile-release
-description: Mobile release, Android APK, mobile-v tag, mobile-release.yml, versionCode, expo.version bump, mobile CHANGELOG, release signing keystore, apksigner fingerprint, eas build --local, local APK build on a developer machine.
+description: Mobile release, Android APK, mobile-v tag, mobile-release.yml, versionCode, expo.version bump, mobile CHANGELOG, release signing keystore, apksigner fingerprint, eas build --local, local APK build on a developer machine, latest Android release lookup, /api/mobile/releases/latest, native version endpoint, loadLatestAndroidRelease, GitHub API rate limit.
 ---
 
 # Deskohub mobile release
@@ -37,3 +37,11 @@ EXPO_TOKEN=... ANDROID_KEYSTORE_PATH=<release.keystore> ANDROID_KEYSTORE_PASSWOR
 `ANDROID_KEYSTORE_BASE64` replaces `ANDROID_KEYSTORE_PATH` in CI. The script writes `credentials.json` (git-ignored) for the build and removes it afterwards; it refuses to run when one already exists. It sets `GRADLE_OPTS=-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=4` unless `GRADLE_OPTS` is set, because a Gradle daemon killed mid-build on a shared machine fails the build with "Gradle build daemon disappeared". EAS works in the system temporary directory, so point `TMPDIR` at a disk with room for a full Android build.
 
 The release certificate SHA-256 is `releaseCertificateSha256` in `scripts/release/apk-signature.ts`; `/.well-known/assetlinks.json` and the passkey `android:apk-key-hash` origin use the same key.
+
+## Latest-release endpoint
+
+`GET /api/mobile/releases/latest` tells the app, and the `/android` page through `loadLatestAndroidRelease`, which APK is the newest. The code is in `apps/deskohub-workspace/features/mobile-releases`: the package ID and release certificate in `android-app.ts` (client-safe), the release-note rules in `android-release.ts`, and the cached lookup in `backend/latest-android-release.server.ts`. It answers the release as JSON, 404 `{ "error": "no-release" }`, or an uncached 502 `{ "error": "lookup-failed" }`.
+
+- It reads GitHub's REST API without a token: `git/matching-refs/tags/mobile-v`, then `releases/tags/<tag>` for the three highest versions until one is usable. A 404 there means the tag has no published release yet. Paging the release list could miss mobile releases behind dhw releases; the tag list can't.
+- A release counts only if `renderReleaseNotes` wrote it: tag `mobile-vX.Y.Z`, title `mobile: vX.Y.Z`, asset `deskohub-X.Y.Z.apk`, and an `### Android APK` section whose `File` line names that asset with its version code, with a `File SHA-256` line and a `Signing certificate SHA-256` line equal to `RELEASE_CERTIFICATE_SHA256`. Change `android-release.ts` with any change to those lines. Keep `RELEASE_CERTIFICATE_SHA256` equal to `releaseCertificateSha256` in `scripts/release/apk-signature.ts`.
+- Unauthenticated requests are limited to 60 an hour per IP address, and Vercel functions share egress addresses. The lookup is shared with `"use cache: remote"` for ten minutes and served stale for a day, and a lookup takes two requests in the usual case. A failed lookup is shared for two minutes as a failure, never as "no release", and never thrown, because a throwing cached function fails the `/android` prerender. The route sends `s-maxage=600, stale-while-revalidate=3600` on 200 and 404 and `no-store` on 502. A spell of 502s with `mobile_releases.latest_android.lookup_failed` logged usually means the rate limit is spent; it clears within the hour.
