@@ -454,7 +454,7 @@ describe("catalog idle TTL", () => {
     ).toBe(true);
   });
 
-  test("keeps a quote held at the reserve only while a screen shows it", async () => {
+  test("reads a quote held at the reserve again when a screen comes back", async () => {
     const { registry, booking } = fakeCustomerData();
     const atom = bookingQuoteAtom(coworkSelection(booking.dateIn(25)), "en-US");
     const unmount = registry.mount(atom);
@@ -466,10 +466,20 @@ describe("catalog idle TTL", () => {
     await elapse("7 minutes");
     const readsWhileShown = readsOf(booking, "getQuote");
     unmount();
-    await elapse("2 seconds");
+    await elapse("100 millis");
+    const unmountReturn = registry.mount(atom);
+    const onReturn = registry.get(atom);
     const returned = await settle(registry, atom);
+    unmountReturn();
 
     expect(readsWhileShown).toBe(1);
+    expect(
+      onReturn._tag === "Success" &&
+        !onReturn.waiting &&
+        first._tag === "Success" &&
+        onReturn.value.advertisedPriceToken ===
+          first.success.advertisedPriceToken
+    ).toBe(false);
     expect(readsOf(booking, "getQuote")).toBe(2);
     expect(
       first._tag === "Success" &&

@@ -5,8 +5,8 @@ import type {
   CustomerMeetingRoomDuration,
 } from "@deskohub/workspace-customer-api";
 import { customerAvailabilityReplacementHeader } from "@deskohub/workspace-customer-api";
-import { Duration, Effect, Equal, Hash, Schedule } from "effect";
-import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
+import { Duration, Effect, Equal, Hash } from "effect";
+import { Atom } from "effect/unstable/reactivity";
 import { CustomerApi } from "../../customer-api/customer-api.service";
 import { customerDataRuntime } from "../../customer-api/customer-data-runtime";
 import { customerRead } from "../../customer-api/customer-request";
@@ -55,11 +55,11 @@ export const catalogIdleTTL = {
    * A quote carries the `advertisedPriceToken` checkout redeems, so the TTL
    * never serves one older than a mounted quote would be: an idle quote's
    * refresh still falls due at `quoteRefreshInterval` and marks it stale,
-   * and a quote whose refresh was skipped at the budget's reserve is marked
-   * stale once no screen shows it (`refreshQuoteLater`). A stale quote is
-   * read again when shown, so stepping back never redeems a lapsed token
-   * into CustomerQuoteExpired. A minute covers stepping back to a selection
-   * just priced.
+   * and a screen coming back to a quote that old reads it again
+   * (`quoteFamily`), even one whose refresh was skipped at the budget's
+   * reserve, so stepping back never redeems a lapsed token into
+   * CustomerQuoteExpired. A minute covers stepping back to a selection just
+   * priced.
    */
   quote: Duration.minutes(1),
 } as const;
@@ -179,43 +179,6 @@ const quoteQuery = (
   locale,
 });
 
-/** Whether anything still reads `atom` in `registry`: a subscriber, or an atom built on it. */
-const isShown = (
-  registry: AtomRegistry.AtomRegistry,
-  atom: Atom.Atom<unknown>
-) => {
-  const node = registry.getNodes().get(atom);
-  return (
-    node !== undefined && (node.listeners.size > 0 || node.children.length > 0)
-  );
-};
-
-/**
- * How often a quote held at the reserve checks whether a screen still shows
- * it. A return quicker than this is a screen that never really left.
- */
-const shownCheckInterval = Duration.seconds(1);
-
-/**
- * Marks the quote stale once no screen shows it, checking and marking in
- * one step so a screen arriving in between still gets the quote it shows.
- * A stale quote that no screen shows reads nothing.
- */
-const markStaleOnceHidden = (
-  get: Atom.AtomContext,
-  quote: Atom.Atom<unknown>
-) =>
-  Effect.repeat(
-    Effect.sync(() => {
-      const shown = isShown(get.registry, quote);
-      if (!shown) {
-        get.refreshSelf();
-      }
-      return shown;
-    }),
-    { while: (shown) => shown, schedule: Schedule.spaced(shownCheckInterval) }
-  );
-
 /**
  * Schedules the quote's next read in the atom's lifetime: dropping the quote
  * or a refetch interrupts the wait. A quote spends the Dotypos read budget,
@@ -223,43 +186,47 @@ const markStaleOnceHidden = (
  * and automatic reads then stay off until the quote is read again (a
  * selection change or the screen's retry). A failed read schedules nothing
  * either. A read that falls due while no screen shows the quote reads
- * nothing and only marks it stale. A skipped quote is marked stale once no
- * screen shows it, so it lives on screen, not in the idle cache.
+ * nothing and only marks it stale.
  */
-const refreshQuoteLater = (get: Atom.AtomContext, quote: Atom.Atom<unknown>) =>
+const refreshQuoteLater = (get: Atom.AtomContext) =>
   Effect.sleep(quoteRefreshInterval).pipe(
     Effect.andThen(
-      Effect.flatMap(
-        Effect.service(DotyposReadBudget),
-        (budget) => budget.remaining
+      Effect.when(
+        Effect.sync(() => get.refreshSelf()),
+        Effect.map(
+          Effect.flatMap(
+            Effect.service(DotyposReadBudget),
+            (budget) => budget.remaining
+          ),
+          allowsAutomaticRefresh
+        )
       )
-    ),
-    Effect.flatMap((remaining) =>
-      allowsAutomaticRefresh(remaining)
-        ? Effect.sync(() => get.refreshSelf())
-        : markStaleOnceHidden(get, quote)
     ),
     Effect.forkScoped
   );
 
-const quoteFamily = Atom.family(
-  ({ selection, locale }: BookingQuoteRequest) => {
-    // The atom the registry holds, which the refresh looks up; set before
-    // anything reads the quote.
-    let self!: Atom.Atom<unknown>;
-    const quote = customerDataRuntime
+const quoteReadFamily = Atom.family(
+  ({ selection, locale }: BookingQuoteRequest) =>
+    customerDataRuntime
       .atom((get) =>
         Effect.flatMap(bookingApi, (booking) =>
           booking.getQuote({ query: quoteQuery(selection, locale) })
         ).pipe(
           catalogRead,
-          Effect.tap(() => refreshQuoteLater(get, self))
+          Effect.tap(() => refreshQuoteLater(get))
         )
       )
-      .pipe(Atom.setIdleTTL(catalogIdleTTL.quote));
-    self = quote;
-    return quote;
-  }
+      .pipe(Atom.setIdleTTL(catalogIdleTTL.quote))
+);
+
+/**
+ * The quote a screen shows: a screen that comes back to a quote read
+ * `quoteRefreshInterval` or longer ago reads it again. That covers a quote
+ * whose refresh was skipped at the budget's reserve, which a mounted screen
+ * keeps, so stepping back never redeems a lapsed token.
+ */
+const quoteFamily = Atom.family((request: BookingQuoteRequest) =>
+  Atom.swr(quoteReadFamily(request), { staleTime: quoteRefreshInterval })
 );
 
 /**
