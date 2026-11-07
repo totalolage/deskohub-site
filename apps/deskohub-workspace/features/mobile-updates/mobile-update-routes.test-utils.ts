@@ -1,5 +1,5 @@
 import { mock } from "bun:test";
-import { generateKeyPairSync, randomUUID } from "node:crypto";
+import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
 import * as workspaceEnv from "@/env";
 import type {
   MobileUpdatePlatform,
@@ -53,6 +53,10 @@ mock.module("@/env", () => ({
 /** A runtime version no other test publishes to. */
 export const uniqueRuntimeVersion = () => `test-runtime-${randomUUID()}`;
 
+/** The protocol's asset hash: base64url SHA-256 of the file's bytes. */
+const assetHash = (bytes: string) =>
+  createHash("sha256").update(bytes).digest("base64url");
+
 const assetUrl = (name: string) =>
   `https://blob.example/mobile-updates/assets/${name}`;
 
@@ -67,14 +71,14 @@ export const syntheticUpdate = (
   id,
   ...target,
   launchAsset: {
-    hash: "bundle-hash",
+    hash: assetHash("synthetic bundle"),
     key: "bundle-key",
     contentType: "application/javascript",
     url: assetUrl("bundle.hbc"),
   },
   assets: [
     {
-      hash: "image-hash",
+      hash: assetHash("synthetic image"),
       key: "image-key",
       contentType: "image/png",
       fileExtension: ".png",

@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "628f1900-a342-4317-bbca-08399ddb7d89",
+  "id": "aa3839ea-8d52-4659-ae4c-3922919ec128",
   "prevIds": [
     "ab44f777-a631-406d-8faa-e67dfa0f6eef"
   ],
@@ -11798,12 +11798,12 @@
           "opclass": null
         }
       ],
-      "isUnique": false,
+      "isUnique": true,
       "where": null,
       "with": "",
       "method": "btree",
       "concurrently": false,
-      "name": "mobile_update_publications_latest_idx",
+      "name": "mobile_update_publications_published_at_key",
       "entityType": "indexes",
       "schema": "public",
       "table": "mobile_update_publications"

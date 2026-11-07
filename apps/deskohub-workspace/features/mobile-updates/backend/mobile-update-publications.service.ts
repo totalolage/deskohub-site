@@ -1,8 +1,11 @@
-import { and, desc, eq } from "drizzle-orm";
-import { Context, Data, Effect, Layer, Option, Schema } from "effect";
+import { and, desc, eq, max, sql } from "drizzle-orm";
+import { Context, Data, Effect, Layer, Option, Schedule, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import { toStoredInstant } from "@/db/instant";
-import { mobileUpdatePublications } from "@/db/schema";
+import { mobileUpdatePublications as publications } from "@/db/schema";
+import {
+  findViolatedConstraint,
+  isDatabaseQueryError,
+} from "@/db/sql-constraint";
 import { currentInstant } from "@/shared/utils/temporal";
 import {
   type MobileUpdatePlatform,
@@ -17,6 +20,11 @@ export interface PublishedMobileUpdate {
 
 type MobileUpdatePublishOutcome = "published" | "already-published";
 
+interface PublicationTarget {
+  readonly platform: MobileUpdatePlatform;
+  readonly runtimeVersion: string;
+}
+
 /** Another publication already holds the id. */
 class MobileUpdatePublicationConflict extends Data.TaggedError(
   "MobileUpdatePublicationConflict"
@@ -28,8 +36,10 @@ class MobileUpdatePublicationsUnavailable extends Data.TaggedError(
 
 interface IMobileUpdatePublications {
   /**
-   * Records a publication at the current time. Publishing the same
-   * publication again is a no-op, so the release pipeline can retry.
+   * Records a publication strictly after every earlier one for its platform
+   * and runtime version, at millisecond precision: apps take an update only
+   * when it is newer than the one they run. Publishing the same publication
+   * again is a no-op, so the release pipeline can retry.
    */
   readonly publish: (
     publication: MobileUpdatePublication
@@ -38,10 +48,9 @@ interface IMobileUpdatePublications {
     MobileUpdatePublicationConflict | MobileUpdatePublicationsUnavailable
   >;
   /** The newest publication for the platform and runtime version. */
-  readonly latest: (target: {
-    readonly platform: MobileUpdatePlatform;
-    readonly runtimeVersion: string;
-  }) => Effect.Effect<
+  readonly latest: (
+    target: PublicationTarget
+  ) => Effect.Effect<
     Option.Option<PublishedMobileUpdate>,
     MobileUpdatePublicationsUnavailable
   >;
@@ -49,6 +58,29 @@ interface IMobileUpdatePublications {
 
 const decodePublication = Schema.decodeUnknownEffect(MobileUpdatePublication);
 const isSamePublication = Schema.toEquivalence(MobileUpdatePublication);
+
+/** Concurrent publications that picked the same instant; one retries. */
+const isPublicationTimeTaken = <E>(error: E) =>
+  isDatabaseQueryError(error) &&
+  Option.contains(
+    findViolatedConstraint(error),
+    "mobile_update_publications_published_at_key"
+  );
+
+const unavailable = (cause: unknown) =>
+  new MobileUpdatePublicationsUnavailable({ cause });
+
+const targetIs = ({ platform, runtimeVersion }: PublicationTarget) =>
+  and(
+    eq(publications.platform, platform),
+    eq(publications.runtimeVersion, runtimeVersion)
+  );
+
+const currentMillisecond = currentInstant.pipe(
+  Effect.map((now) =>
+    now.round({ smallestUnit: "millisecond", roundingMode: "trunc" })
+  )
+);
 
 export class MobileUpdatePublications extends Context.Service<
   MobileUpdatePublications,
@@ -59,88 +91,98 @@ export class MobileUpdatePublications extends Context.Service<
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
 
-      const findPublication = (id: string) =>
-        db
-          .select({ publication: mobileUpdatePublications.publication })
-          .from(mobileUpdatePublications)
-          .where(eq(mobileUpdatePublications.id, id))
-          .limit(1)
-          .pipe(
-            Effect.flatMap(([row]) =>
-              row ? decodePublication(row.publication) : Effect.die(row)
-            )
-          );
-
-      const publish = Effect.fn("MobileUpdatePublications.publish")(function* (
-        publication: MobileUpdatePublication
-      ) {
-        const publishedAt = toStoredInstant(yield* currentInstant);
-        const inserted = yield* db
-          .insert(mobileUpdatePublications)
-          .values({
-            id: publication.id,
-            platform: publication.platform,
-            runtimeVersion: publication.runtimeVersion,
-            publication,
-            publishedAt,
-          })
-          .onConflictDoNothing()
-          .returning({ id: mobileUpdatePublications.id })
-          .pipe(
-            Effect.mapError(
-              (cause) => new MobileUpdatePublicationsUnavailable({ cause })
-            )
-          );
-        if (inserted.length > 0) return "published" as const;
-
-        const existing = yield* findPublication(publication.id).pipe(
-          Effect.mapError(
-            (cause) => new MobileUpdatePublicationsUnavailable({ cause })
-          )
+      /**
+       * Inserts at the current millisecond, or one millisecond after the
+       * target's newest publication when that is not earlier. `false` when
+       * the id is already taken.
+       */
+      const insert = (publication: MobileUpdatePublication) =>
+        Effect.succeed(publication).pipe(
+          Effect.bindTo("publication"),
+          Effect.bind("now", () => currentMillisecond),
+          Effect.flatMap(({ now }) =>
+            db
+              .insert(publications)
+              .values({
+                id: publication.id,
+                platform: publication.platform,
+                runtimeVersion: publication.runtimeVersion,
+                publication,
+                publishedAt: sql`greatest(${now.toString()}::timestamptz, (${db
+                  .select({
+                    next: sql`${max(publications.publishedAt)} + interval '1 millisecond'`,
+                  })
+                  .from(publications)
+                  .where(targetIs(publication))}))`,
+              })
+              .onConflictDoNothing({ target: publications.id })
+              .returning({ id: publications.id })
+          ),
+          Effect.retry({
+            while: isPublicationTimeTaken,
+            schedule: Schedule.recurs(10),
+          }),
+          Effect.map((inserted) => inserted.length > 0)
         );
-        return isSamePublication(existing, publication)
-          ? ("already-published" as const)
-          : yield* new MobileUpdatePublicationConflict({ id: publication.id });
-      });
+
+      const stored = (id: string) =>
+        db
+          .select({ publication: publications.publication })
+          .from(publications)
+          .where(eq(publications.id, id))
+          .limit(1)
+          .pipe(Effect.flatMap(([row]) => decodePublication(row?.publication)));
+
+      /** The outcome of a publication whose id was already taken. */
+      const republished = (publication: MobileUpdatePublication) =>
+        stored(publication.id).pipe(
+          Effect.mapError(unavailable),
+          Effect.filterOrFail(
+            (existing) => isSamePublication(existing, publication),
+            () => new MobileUpdatePublicationConflict({ id: publication.id })
+          ),
+          Effect.as<MobileUpdatePublishOutcome>("already-published")
+        );
+
+      const publish = Effect.fn("MobileUpdatePublications.publish")(
+        (publication: MobileUpdatePublication) =>
+          insert(publication).pipe(
+            Effect.mapError(unavailable),
+            Effect.flatMap((inserted) =>
+              inserted
+                ? Effect.succeed<MobileUpdatePublishOutcome>("published")
+                : republished(publication)
+            )
+          )
+      );
 
       const latest = Effect.fn("MobileUpdatePublications.latest")(
-        ({
-          platform,
-          runtimeVersion,
-        }: {
-          readonly platform: MobileUpdatePlatform;
-          readonly runtimeVersion: string;
-        }) =>
+        (target: PublicationTarget) =>
           db
             .select({
-              publication: mobileUpdatePublications.publication,
-              publishedAt: mobileUpdatePublications.publishedAt,
+              publication: publications.publication,
+              publishedAt: publications.publishedAt,
             })
-            .from(mobileUpdatePublications)
-            .where(
-              and(
-                eq(mobileUpdatePublications.platform, platform),
-                eq(mobileUpdatePublications.runtimeVersion, runtimeVersion)
-              )
-            )
-            .orderBy(desc(mobileUpdatePublications.publishedAt))
+            .from(publications)
+            .where(targetIs(target))
+            .orderBy(desc(publications.publishedAt))
             .limit(1)
             .pipe(
               Effect.flatMap(([row]) =>
-                row
-                  ? decodePublication(row.publication).pipe(
+                Option.match(Option.fromNullishOr(row), {
+                  onNone: () => Effect.succeedNone,
+                  onSome: (found) =>
+                    decodePublication(found.publication).pipe(
                       Effect.map((publication) =>
-                        Option.some({
+                        Option.some<PublishedMobileUpdate>({
                           publication,
-                          publishedAt: row.publishedAt,
+                          publishedAt: found.publishedAt,
                         })
                       )
-                    )
-                  : Effect.succeedNone
+                    ),
+                })
               ),
-              Effect.mapError(
-                (cause) => new MobileUpdatePublicationsUnavailable({ cause })
-              )
+              Effect.mapError(unavailable)
             )
       );
 

@@ -1,4 +1,4 @@
-import { index, jsonb, pgTable, text } from "drizzle-orm/pg-core";
+import { jsonb, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
 import { instant } from "../instant";
 
 /**
@@ -17,7 +17,8 @@ export const mobileUpdatePublications = pgTable(
     publishedAt: instant("published_at").notNull(),
   },
   (t) => [
-    index("mobile_update_publications_latest_idx").on(
+    // Strictly ordered per platform and runtime version, newest last.
+    uniqueIndex("mobile_update_publications_published_at_key").on(
       t.platform,
       t.runtimeVersion,
       t.publishedAt

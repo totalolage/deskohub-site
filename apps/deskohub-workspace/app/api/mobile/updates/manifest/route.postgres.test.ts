@@ -217,7 +217,7 @@ describe.skipIf(!testDatabase)("mobile update manifest route", () => {
   test.each([
     ["an unknown platform", { "expo-platform": "web" }, 400],
     ["no runtime version", { "expo-runtime-version": "" }, 400],
-    ["another protocol version", { "expo-protocol-version": "0" }, 400],
+    ["another protocol version", { "expo-protocol-version": "0" }, 406],
     ["no multipart in Accept", { accept: "application/json" }, 406],
   ])("rejects a request with %s", async (_, headers, status) => {
     const response = await GET(manifestRequest(target(), headers));

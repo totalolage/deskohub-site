@@ -6,4 +6,4 @@ CREATE TABLE "mobile_update_publications" (
 	"published_at" timestamp with time zone NOT NULL
 );
 --> statement-breakpoint
-CREATE INDEX "mobile_update_publications_latest_idx" ON "mobile_update_publications" ("platform","runtime_version","published_at");
+CREATE UNIQUE INDEX "mobile_update_publications_published_at_key" ON "mobile_update_publications" ("platform","runtime_version","published_at");

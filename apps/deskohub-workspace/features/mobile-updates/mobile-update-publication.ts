@@ -10,11 +10,13 @@ export type MobileUpdatePlatform = typeof MobileUpdatePlatform.Type;
  * download, and `url` is where the app downloads it.
  */
 export const MobileUpdateAsset = Schema.Struct({
-  hash: Schema.String,
-  key: Schema.String,
-  contentType: Schema.String,
-  fileExtension: Schema.optionalKey(Schema.String),
-  url: Schema.String,
+  hash: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{43}$/)),
+  key: Schema.NonEmptyString,
+  contentType: Schema.String.check(Schema.isPattern(/^[\w.+-]+\/[\w.+-]+$/)),
+  fileExtension: Schema.optionalKey(
+    Schema.String.check(Schema.isPattern(/^\.[A-Za-z0-9]+$/))
+  ),
+  url: Schema.String.check(Schema.isPattern(/^https:\/\/[^\s]+$/)),
 });
 export type MobileUpdateAsset = typeof MobileUpdateAsset.Type;
 

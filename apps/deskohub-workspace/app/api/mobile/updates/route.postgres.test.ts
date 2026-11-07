@@ -63,9 +63,27 @@ describe.skipIf(!testDatabase)("mobile update publish route", () => {
     expect(conflicting.status).toBe(409);
   });
 
-  test("rejects a malformed publication with 400", async () => {
+  test("rejects a publication for an unknown platform with 400", async () => {
     const response = await POST(
       publishRequest({ ...syntheticUpdate(android()), platform: "web" })
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  test.each([
+    ["a hash that is no SHA-256", { hash: "not-a-digest" }],
+    ["a plain-HTTP URL", { url: "http://blob.example/bundle.hbc" }],
+    ["an extension without its dot", { fileExtension: "png" }],
+  ])("rejects a launch asset with %s with 400", async (_, defect) => {
+    const update = syntheticUpdate(android());
+    if (update.type !== "update") throw new Error("Expected an update");
+
+    const response = await POST(
+      publishRequest({
+        ...update,
+        launchAsset: { ...update.launchAsset, ...defect },
+      })
     );
 
     expect(response.status).toBe(400);
