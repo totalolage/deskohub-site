@@ -34,8 +34,7 @@
         "i18n:compile",
         "booking-widget:build",
         "temporal-polyfill:build",
-        "mobile-web-app:build",
-        "typecheck"
+        "mobile-web-app:build"
       ],
       "passThroughEnv": ["BETTER_AUTH_SECRETS", "REVIEW_ACCOUNT_CREDENTIALS"]
     },

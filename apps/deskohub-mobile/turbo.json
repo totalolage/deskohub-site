@@ -12,7 +12,8 @@
       "outputs": ["dist/**"]
     },
     "dev": {
-      "dependsOn": ["i18n:compile"]
+      "dependsOn": ["i18n:compile"],
+      "passThroughEnv": ["EXPO_PUBLIC_API_ORIGIN"]
     },
     "i18n:compile": {
       "inputs": [
@@ -30,7 +31,8 @@
       ]
     },
     "start": {
-      "dependsOn": ["i18n:compile"]
+      "dependsOn": ["i18n:compile"],
+      "passThroughEnv": ["EXPO_PUBLIC_API_ORIGIN"]
     },
     "test": {
       "inputs": [

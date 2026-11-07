@@ -88,7 +88,8 @@ const nextConfig = {
   // redirect would strip to `/app`. `redirects()` repeats that redirect for
   // every other path.
   skipTrailingSlashRedirect: true,
-  // The `typecheck` task runs the native compiler before `build:compile`.
+  // Pull request CI and the production release workflow run the native compiler
+  // (`typecheck`); the Vercel build itself doesn't type-check.
   // Next's own check runs the TS6 compiler in a worker that needs 3–3.5 GB beside
   // the `next build` process, so it hung or got OOM-killed on Vercel.
   typescript: {

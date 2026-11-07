@@ -81,13 +81,54 @@ export const updatesManifestUrl = (configured: string | undefined): string => {
   return `${url.origin}/api/mobile/updates/manifest`;
 };
 
-export default ({ config }: ConfigContext): ExpoConfig => ({
+// app.json links only the production host's /app/ paths to the app. A
+// development build pointed at a preview (`EXPO_PUBLIC_API_ORIGIN`) also
+// claims that host's /app/ paths, so a sign-in email from the preview opens
+// the app. The filter isn't verified: a tester approves the host on the
+// device. A production build never gets it.
+const productionHost = new URL(productionApiOrigin).hostname;
+
+type AndroidIntentFilter = NonNullable<
+  NonNullable<ExpoConfig["android"]>["intentFilters"]
+>[number];
+
+const developmentAppLinkFilters = (
+  env: Readonly<Record<string, string | undefined>>
+): AndroidIntentFilter[] => {
+  const configured = env.EXPO_PUBLIC_API_ORIGIN?.trim();
+  if (!configured || env.EAS_BUILD_PROFILE === "production") return [];
+  const url = URL.parse(configured);
+  if (
+    url === null ||
+    url.protocol !== "https:" ||
+    url.hostname === productionHost
+  ) {
+    return [];
+  }
+  return [
+    {
+      action: "VIEW",
+      autoVerify: false,
+      data: [{ scheme: "https", host: url.hostname, pathPrefix: "/app/" }],
+      category: ["BROWSABLE", "DEFAULT"],
+    },
+  ];
+};
+
+export default (
+  { config }: ConfigContext,
+  env: Readonly<Record<string, string | undefined>> = process.env
+): ExpoConfig => ({
   ...config,
   name: config.name ?? "Deskohub",
   slug: config.slug ?? "deskohub-mobile",
   android: {
     ...config.android,
     versionCode: androidVersionCode(config.version),
+    intentFilters: [
+      ...(config.android?.intentFilters ?? []),
+      ...developmentAppLinkFilters(env),
+    ],
   },
   // Updates apply only in release builds; debug and dev-client builds load
   // JS from Metro. The app checks on launch and foreground itself
@@ -95,7 +136,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // crashing update, and launch never waits for the network.
   updates: {
     enabled: true,
-    url: updatesManifestUrl(process.env.EXPO_PUBLIC_API_ORIGIN),
+    url: updatesManifestUrl(env.EXPO_PUBLIC_API_ORIGIN),
     checkAutomatically: "ON_ERROR_RECOVERY",
     fallbackToCacheTimeout: 0,
     codeSigningCertificate: "./code-signing/code-signing-certificate.pem",

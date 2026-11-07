@@ -319,15 +319,22 @@ export const effectSmokeCases: ReadonlyArray<SmokeCase> = [
   }),
   effectCase("try-promise-abort-signal", async () => {
     let signal: AbortSignal | undefined;
+    // The forked fiber starts on a later scheduler tick, so a fixed sleep
+    // can interrupt it before tryPromise runs; wait until it has.
+    let markStarted = () => {};
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
     const aborted = await Effect.runPromise(
       Effect.gen(function* () {
         const fiber = yield* Effect.forkChild(
           Effect.tryPromise((abortSignal) => {
             signal = abortSignal;
+            markStarted();
             return new Promise<string>(() => {});
           })
         );
-        yield* Effect.sleep("5 millis");
+        yield* Effect.promise(() => started);
         yield* Fiber.interrupt(fiber);
         return signal?.aborted;
       })

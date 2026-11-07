@@ -94,9 +94,11 @@ authenticates every request.
 - A file download declares its success as bytes with
   `HttpApiSchema.asUint8Array({ contentType })`, so the OpenAPI document and
   the typed client treat the body as binary. Return an
-  `HttpServerResponse.uint8Array` when the file needs a header the contract
-  can't declare, such as `Content-Disposition`, as `getReservationInvoice`
-  does; the router still marks it private and uncached.
+  `HttpServerResponse.uint8Array` when the file needs a header the success
+  schema can't carry, such as `Content-Disposition`, as `getReservationInvoice`
+  does; the router still marks it private and uncached. Describe that header
+  in the OpenAPI document with `.annotateMerge(responseHeaders(200, { ... }))`
+  (`src/openapi-response-headers.ts`) and regenerate the golden.
 - A reservation service that decides who may see an order takes the
   authorization the handler built from the session's authentication
   (`ReservationAuthorizationService.withAuthentication`), through the
