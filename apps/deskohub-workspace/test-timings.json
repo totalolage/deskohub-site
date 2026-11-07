@@ -595,7 +595,7 @@
     "features/cookie-consent/components/consent-banner.vendor.test.tsx": 203,
     "features/cookie-consent/components/cookie-settings-page.test.tsx": 277,
     "features/cookie-consent/components/posthog-analytics.test.tsx": 296,
-    "features/cookie-consent/components/posthog-sdk-load.test.ts": 112,
+    "features/cookie-consent/utils/posthog-sdk-load.test.ts": 112,
     "features/cookie-consent/utils/posthog-config.test.ts": 97,
     "features/cookie-consent/utils/posthog-event.test.ts": 68,
     "features/cookie-consent/utils/posthog-identity.test.ts": 86,
