@@ -401,20 +401,20 @@ describe("getQuote", () => {
 
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body).toMatchObject({
-      family: "cowork",
-      total: { currency: "CZK" },
-      quotedAt: expect.any(String),
-      advertisedPriceToken: expect.any(String),
-    });
+    expect(body.family).toBe("cowork");
+    expect(body.total.currency).toBe("CZK");
     expect(body.total).toEqual(body.regularPrice);
     expect(body.discount.value).toBe(0);
+    expect(Temporal.Instant.from(body.quotedAt)).toBeInstanceOf(
+      Temporal.Instant
+    );
     expect(body.summary.total).toEqual(body.total);
     expect(
       body.summary.sections.flatMap(({ items }: { items: { key: string }[] }) =>
         items.map(({ key }) => key)
       )
-    ).toContain("addon:coffee");
+    ).toEqual(["product:cowork:open-space", "addon:coffee", "total:final"]);
+    expect(body.advertisedPriceToken).toEqual(expect.any(String));
     expect(body.advertisedPriceToken.length).toBeGreaterThan(0);
   });
 
