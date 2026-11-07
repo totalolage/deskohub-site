@@ -1,5 +1,6 @@
 import { Context, Data, Effect, Layer } from "effect";
 import * as WebBrowser from "expo-web-browser";
+import { Platform } from "react-native";
 
 /**
  * How the in-app auth session ended: it returned to the app with a URL, or
@@ -43,6 +44,11 @@ export class AuthSessionBrowser extends Context.Service<
             : AuthSessionResult.Closed()
         )
       ),
-    dismiss: Effect.sync(() => WebBrowser.dismissAuthSession()),
+    // Only iOS can close its auth sheet; Expo throws on Android. Closing is a
+    // courtesy, so a failure is ignored.
+    dismiss: Effect.when(
+      Effect.try(() => WebBrowser.dismissAuthSession()).pipe(Effect.ignore),
+      Effect.sync(() => Platform.OS === "ios")
+    ).pipe(Effect.asVoid),
   });
 }

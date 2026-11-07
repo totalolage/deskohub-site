@@ -54,6 +54,15 @@ export const makeFakeAuthServer = (origin: string) => {
   const handoffCodes = new Map<string, HandoffCode>();
   const sessions = new Map<string, FakeUser>();
   const calls: Array<FakeAuthCall> = [];
+  const faults: {
+    exchangeGate: Promise<void> | undefined;
+    getSessionFailuresAfterExchange: number;
+    exchanged: boolean;
+  } = {
+    exchangeGate: undefined,
+    getSessionFailuresAfterExchange: 0,
+    exchanged: false,
+  };
 
   const openSession = (user: FakeUser) => {
     const token = `session-${randomUUID()}`;
@@ -97,6 +106,7 @@ export const makeFakeAuthServer = (origin: string) => {
     }
 
     if (method === "POST" && path === "/native-handoff/exchange") {
+      if (faults.exchangeGate !== undefined) await faults.exchangeGate;
       const refused = json(
         400,
         { code: "INVALID_HANDOFF_CODE", message: "Invalid handoff code" },
@@ -115,6 +125,7 @@ export const makeFakeAuthServer = (origin: string) => {
         return refused;
       }
       handoff.used = true;
+      faults.exchanged = true;
       const session = openSession(handoff.user);
       return json(
         200,
@@ -124,6 +135,10 @@ export const makeFakeAuthServer = (origin: string) => {
     }
 
     if (method === "GET" && path === "/get-session") {
+      if (faults.exchanged && faults.getSessionFailuresAfterExchange > 0) {
+        faults.getSessionFailuresAfterExchange -= 1;
+        return json(500, { code: "INTERNAL_SERVER_ERROR" });
+      }
       const token = sessionTokenFrom(headers.get("cookie"));
       const user = token === undefined ? undefined : sessions.get(token);
       return json(
@@ -186,6 +201,14 @@ export const makeFakeAuthServer = (origin: string) => {
       return `${request.returnUri}?${search.toString()}`;
     },
     openSessions: () => [...sessions.values()],
+    /** Holds every exchange until `gate` resolves. */
+    holdExchanges: (gate: Promise<void>) => {
+      faults.exchangeGate = gate;
+    },
+    /** Fails the next `count` session reads after a code was exchanged. */
+    failSessionReadsAfterExchange: (count: number) => {
+      faults.getSessionFailuresAfterExchange = count;
+    },
     callsTo: (path: string) => calls.filter((call) => call.path === path),
   };
 };

@@ -4,6 +4,7 @@ export type WebSignInOperation =
   | "send-email"
   | "verify-code"
   | "verify-link"
+  | "confirm-account"
   | "mint-handoff";
 
 export type WebSignInFailureReason =
@@ -20,6 +21,8 @@ export type WebSignInFailureReason =
   /** The browser session is too old to hand off; sign in again. */
   | "session-not-fresh"
   | "signed-out"
+  /** A reauthentication signed in to another account; it was signed out. */
+  | "account-switch"
   | "unavailable"
   | "failed";
 
@@ -54,6 +57,8 @@ export const webSignInFailureReason = (
       return status === 429 ? "rate-limited" : "failed";
     case "verify-link":
       return status === 400 ? "link-rejected" : "failed";
+    case "confirm-account":
+      return "failed";
     case "mint-handoff":
       if (code === "SESSION_NOT_FRESH") return "session-not-fresh";
       if (status === 401) return "signed-out";

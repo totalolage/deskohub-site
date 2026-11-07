@@ -17,7 +17,15 @@ import {
   clearNativeHandoffRequest,
   loadNativeHandoffRequest,
 } from "./web-native-request-store";
-import { mintNativeHandoff, verifyMagicLinkToken } from "./web-sign-in";
+import {
+  clearReauthenticatingUser,
+  loadReauthenticatingUser,
+} from "./web-reauthentication-store";
+import {
+  confirmWebAccount,
+  mintNativeHandoff,
+  verifyMagicLinkToken,
+} from "./web-sign-in";
 import { WebSignInFailure } from "./web-sign-in-failure";
 
 const linkRejected = () =>
@@ -27,7 +35,14 @@ const linkRejected = () =>
 const completeWebCallback = (callback: AuthCallback) =>
   Match.value(callback).pipe(
     Match.discriminatorsExhaustive("kind")({
-      token: ({ token }) => verifyMagicLinkToken(token),
+      token: ({ token }) =>
+        verifyMagicLinkToken(token).pipe(
+          Effect.andThen(
+            confirmWebAccount(loadReauthenticatingUser(Date.now())).pipe(
+              Effect.ensuring(Effect.sync(clearReauthenticatingUser))
+            )
+          )
+        ),
       handoff: () => Effect.fail(linkRejected()),
       error: () => Effect.fail(linkRejected()),
       invalid: () => Effect.fail(linkRejected()),
@@ -68,14 +83,6 @@ export function AuthCallbackScreen() {
   );
 
   useEffect(() => {
-    // The address bar was cleaned before the router started; drop the
-    // router's copy too, so a later URL sync can't write the token back.
-    router.setParams({
-      token: undefined,
-      code: undefined,
-      state: undefined,
-      error: undefined,
-    });
     void verify.start(callback);
   }, [verify.start, callback]);
 

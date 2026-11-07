@@ -26,6 +26,11 @@ import {
   loadNativeHandoffRequest,
 } from "./web-native-request-store";
 import {
+  clearReauthenticatingUser,
+  loadReauthenticatingUser,
+} from "./web-reauthentication-store";
+import {
+  confirmWebAccount,
   mintNativeHandoff,
   sendSignInEmail,
   verifySignInCode,
@@ -102,10 +107,21 @@ export function SignInScreen() {
   const [useAnotherAccount, setUseAnotherAccount] = useState(false);
 
   const send = useAuthTask(standaloneTaskRuntime, sendSignInEmail, unexpected);
+  // A web reauthentication must come back as the account it started from.
+  const [expectedUser] = useState(() =>
+    params.prompt === "login" && Option.isNone(nativeRequest)
+      ? loadReauthenticatingUser(Date.now())
+      : Option.none<string>()
+  );
   const verify = useAuthTask(
     standaloneTaskRuntime,
     (address: string, entered: string) =>
       verifySignInCode(address, entered).pipe(
+        Effect.andThen(
+          confirmWebAccount(expectedUser).pipe(
+            Effect.ensuring(Effect.sync(clearReauthenticatingUser))
+          )
+        ),
         Effect.andThen(finishSignIn(nativeRequest))
       ),
     unexpected
@@ -117,18 +133,6 @@ export function SignInScreen() {
     Option.exists(nativeRequest, (request) => request.reauthenticate);
   const returnPath = safeReturnPath(params.return_to);
   const finished = firstSuccess(verify.state, handoff.state);
-
-  useEffect(() => {
-    // The native request moved to localStorage before the router started;
-    // drop the router's copy of its params as well.
-    router.setParams({
-      native: undefined,
-      code_challenge: undefined,
-      code_challenge_method: undefined,
-      state: undefined,
-      return_uri: undefined,
-    });
-  }, []);
 
   useEffect(() => {
     if (finished === undefined) return;

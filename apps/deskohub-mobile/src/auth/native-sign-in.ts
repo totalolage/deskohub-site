@@ -54,7 +54,7 @@ export type NativeSignInServices =
   | AuthCallbackCompletions;
 
 /**
- * How long a `Closed` auth session waits for the callback route. Android
+ * How long a `Closed` auth session waits for a callback to arrive. Android
  * resolves the session as soon as the app is in front again, which can be
  * just before the callback link reaches the router.
  */
@@ -115,29 +115,34 @@ export const startPendingSignIn = Effect.fn("NativeSignIn.startPendingSignIn")(
 
 /**
  * The signed-in user after a completion. A reauthentication must land on the
- * account it started from; another account's session is signed out again.
+ * account it started from: another account's session, or one whose account
+ * can't be confirmed, is signed out again. The Expo client drops the stored
+ * cookie before the sign-out request goes out, so this holds offline too.
  */
-const confirmSignedInUser = Effect.fn("NativeSignIn.confirmSignedInUser")(
-  function* (expectedUserId: string | undefined) {
-    const auth = yield* NativeAuth;
-    const user = yield* auth.currentUser.pipe(
-      Effect.mapError(fromAuthFailure),
-      Effect.flatMap(
-        Option.match({
-          onNone: () => Effect.fail(new SignInRejected({})),
-          onSome: Effect.succeed,
-        })
-      )
-    );
-    if (expectedUserId !== undefined && user.id !== expectedUserId) {
-      // The Expo client drops the stored cookie before the request goes
-      // out, so the switch is undone even if the server can't be reached.
-      yield* auth.signOut.pipe(Effect.ignore);
-      return yield* new AccountSwitchRefused();
-    }
-    return user;
-  }
-);
+const confirmSignedInUser = (expectedUserId: string | undefined) =>
+  Effect.service(NativeAuth).pipe(
+    Effect.flatMap((auth) => {
+      const refuse = <E>(failure: E) =>
+        auth.signOut.pipe(Effect.ignore, Effect.andThen(Effect.fail(failure)));
+      return auth.currentUser.pipe(
+        Effect.mapError(fromAuthFailure),
+        Effect.flatMap(
+          Option.match({
+            onNone: () => Effect.fail(new SignInRejected({})),
+            onSome: Effect.succeed,
+          })
+        ),
+        Effect.catch((failure) =>
+          expectedUserId === undefined ? Effect.fail(failure) : refuse(failure)
+        ),
+        Effect.filterOrElse(
+          (user) => expectedUserId === undefined || user.id === expectedUserId,
+          () => refuse(new AccountSwitchRefused())
+        )
+      );
+    }),
+    Effect.withSpan("NativeSignIn.confirmSignedInUser")
+  );
 
 const loadPendingSignIn = Effect.service(PendingSignIns).pipe(
   Effect.flatMap((pendingSignIns) => pendingSignIns.load),
@@ -152,38 +157,62 @@ const clearPendingSignIn = Effect.service(PendingSignIns).pipe(
 const isExpired = (pending: PendingSignIn, now: number) =>
   now - pending.startedAt >= nativeHandoffRequestTtlMs;
 
+/**
+ * The stored attempt a handoff callback belongs to. A stray link must not
+ * cancel the attempt in progress, so a mismatch leaves it stored and never
+ * reaches the server; an expired attempt is dropped.
+ */
+const pendingSignInFor = (state: string) =>
+  loadPendingSignIn.pipe(
+    Effect.flatMap(
+      Option.match({
+        onNone: () =>
+          Effect.fail(new SignInLinkRefused({ reason: "no-pending-sign-in" })),
+        onSome: Effect.succeed,
+      })
+    ),
+    Effect.filterOrFail(
+      (pending) => pending.state === state,
+      () => new SignInLinkRefused({ reason: "state-mismatch" })
+    ),
+    Effect.flatMap((pending) =>
+      Clock.currentTimeMillis.pipe(
+        Effect.filterOrElse(
+          (now) => !isExpired(pending, now),
+          () =>
+            clearPendingSignIn.pipe(
+              Effect.andThen(
+                Effect.fail(new SignInLinkRefused({ reason: "expired" }))
+              )
+            )
+        ),
+        Effect.as(pending)
+      )
+    )
+  );
+
 /** Redeems a handoff code for the attempt whose state it echoes. */
-const completeHandoff = Effect.fn("NativeSignIn.completeHandoff")(function* (
-  code: string,
-  state: string
-) {
-  const auth = yield* NativeAuth;
-  const found = yield* loadPendingSignIn;
-  if (Option.isNone(found)) {
-    return yield* new SignInLinkRefused({ reason: "no-pending-sign-in" });
-  }
-  const pending = found.value;
-  // A stray link must not cancel the attempt in progress, so a mismatch
-  // leaves it stored and never reaches the server.
-  if (pending.state !== state) {
-    return yield* new SignInLinkRefused({ reason: "state-mismatch" });
-  }
-  if (isExpired(pending, yield* Clock.currentTimeMillis)) {
-    yield* clearPendingSignIn;
-    return yield* new SignInLinkRefused({ reason: "expired" });
-  }
-  yield* auth
-    .exchangeHandoff({
-      code,
-      codeVerifier: pending.verifier,
-      returnUri: pending.returnUri,
-    })
-    .pipe(
-      Effect.mapError(fromAuthFailure),
-      Effect.ensuring(clearPendingSignIn)
-    );
-  return yield* confirmSignedInUser(pending.expectedUserId);
-});
+const completeHandoff = (code: string, state: string) =>
+  Effect.Do.pipe(
+    Effect.bind("pending", () => pendingSignInFor(state)),
+    Effect.bind("auth", () => Effect.service(NativeAuth)),
+    Effect.tap(({ auth, pending }) =>
+      auth
+        .exchangeHandoff({
+          code,
+          codeVerifier: pending.verifier,
+          returnUri: pending.returnUri,
+        })
+        .pipe(
+          Effect.mapError(fromAuthFailure),
+          Effect.ensuring(clearPendingSignIn)
+        )
+    ),
+    Effect.flatMap(({ pending }) =>
+      confirmSignedInUser(pending.expectedUserId)
+    ),
+    Effect.withSpan("NativeSignIn.completeHandoff")
+  );
 
 /**
  * Claims a magic-link token. A link opened from the mail app finishes the
@@ -199,6 +228,10 @@ const completeToken = Effect.fn("NativeSignIn.completeToken")(function* (
     yield* loadPendingSignIn,
     (candidate) => !isExpired(candidate, now)
   );
+  yield* Option.match(pending, {
+    onNone: () => Effect.void,
+    onSome: ({ state }) => completions.claim(attemptKey(state)),
+  });
   return yield* auth.verifyMagicLink(token).pipe(
     Effect.mapError(fromAuthFailure),
     Effect.tap(() =>
@@ -271,12 +304,15 @@ export const signInWithEmail = Effect.fn("NativeSignIn.signInWithEmail")(
     return yield* Match.value(result).pipe(
       Match.tagsExhaustive({
         Returned: ({ url }) => completeAuthCallback(parseAuthCallbackUrl(url)),
+        // Only the callback's arrival is bounded; once it is being
+        // finished, its outcome is awaited however long the server takes.
         Closed: () =>
-          completions.outcome(attemptKey(request.state)).pipe(
+          completions.claimed(attemptKey(request.state)).pipe(
             Effect.timeoutOrElse({
               duration: closedSessionGrace,
               orElse: () => Effect.fail(new SignInCancelled()),
-            })
+            }),
+            Effect.andThen(completions.outcome(attemptKey(request.state)))
           ),
       })
     );

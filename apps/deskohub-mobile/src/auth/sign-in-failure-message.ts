@@ -50,6 +50,9 @@ export const webSignInFailureMessage = (
     Match.when("signed-out", () =>
       m.signin_error_not_signed_in({}, { locale })
     ),
+    Match.when("account-switch", () =>
+      m.signin_error_account_switch({}, { locale })
+    ),
     Match.when("unavailable", () => m.signin_error_unavailable({}, { locale })),
     Match.when("failed", () => m.signin_error_failed({}, { locale })),
     Match.exhaustive

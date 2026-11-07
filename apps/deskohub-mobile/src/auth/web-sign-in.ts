@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import type { AppLocale } from "../i18n/app-locale";
 import { webCallbackPath } from "./auth-callback";
 import { authClient } from "./auth-client.web";
@@ -97,3 +97,34 @@ export const mintNativeHandoff = (request: NativeHandoffRequest) =>
     ),
     Effect.withSpan("WebSignIn.mintNativeHandoff")
   );
+
+/**
+ * After a reauthentication's sign-in, the browser must still be signed in to
+ * the account it started from; another account's new session is signed out
+ * and refused, so the page never carries on as someone else.
+ */
+export const confirmWebAccount = (expectedUserId: Option.Option<string>) =>
+  Option.match(expectedUserId, {
+    onNone: () => Effect.void,
+    onSome: (expected) =>
+      call("confirm-account", (signal) =>
+        authClient.getSession({ fetchOptions: { signal } })
+      ).pipe(
+        Effect.filterOrElse(
+          (data) => data?.user.id === expected,
+          () =>
+            Effect.tryPromise(() => authClient.signOut()).pipe(
+              Effect.ignore,
+              Effect.andThen(
+                Effect.fail(
+                  new WebSignInFailure({
+                    operation: "confirm-account",
+                    reason: "account-switch",
+                  })
+                )
+              )
+            )
+        ),
+        Effect.asVoid
+      ),
+  }).pipe(Effect.withSpan("WebSignIn.confirmWebAccount"));

@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { useAppLocale } from "../i18n/locale-context";
 import { m } from "../i18n/messages";
 import { Button, LiveMessage, Screen } from "../ui/controls";
@@ -25,8 +25,13 @@ const leave = () => {
  */
 export function AuthCallbackScreen() {
   const locale = useAppLocale();
-  const params = useLocalSearchParams();
-  const [callback] = useState(() => parseAuthCallbackParams(params));
+  const { token, code, state: handoffState, error } = useLocalSearchParams();
+  // A second link may reuse this screen with new params; each distinct
+  // callback is finished (the registry dedupes repeats of the same one).
+  const callback = useMemo(
+    () => parseAuthCallbackParams({ token, code, state: handoffState, error }),
+    [token, code, handoffState, error]
+  );
   const session = useAuthSession();
   const { state, start } = useAuthTask(
     nativeAuthRuntime,

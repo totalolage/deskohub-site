@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, type Exit, Layer, ManagedRuntime, Option } from "effect";
+import { Effect, Exit, Layer, ManagedRuntime, Option } from "effect";
 import { nativeReturnUri, parseAuthCallbackUrl } from "./auth-callback";
 import { AuthCallbackCompletions } from "./auth-callback-completions.service";
 import { AuthCrypto } from "./auth-crypto.service";
@@ -259,6 +259,36 @@ describe("native email sign-in through the auth session", () => {
     expect(server.callsTo("/native-handoff/exchange")).toHaveLength(1);
   });
 
+  test("waits for a slow exchange once the callback has arrived", async () => {
+    const server = makeFakeAuthServer(origin);
+    const store = makeMemorySecureStore();
+    let release: () => void = () => undefined;
+    server.holdExchanges(
+      new Promise<void>((resolve) => {
+        release = resolve;
+      })
+    );
+    let routeUrl = "";
+    const app = launchApp(server, store, async (url) => {
+      const result = await webSignInAs(server, ada)(url);
+      if (result._tag === "Returned") routeUrl = result.url;
+      return AuthSessionResult.Closed();
+    });
+
+    const flow = app.runtime.runPromiseExit(signInWithEmail(Option.none()));
+    while (routeUrl === "") await Bun.sleep(1);
+    const route = app.runtime.runPromise(
+      completeAuthCallback(parseAuthCallbackUrl(routeUrl))
+    );
+    // Past the grace period for the callback's arrival.
+    await Bun.sleep(3300);
+    release();
+
+    expect(await route).toEqual(ada);
+    const exit = await flow;
+    expect(Exit.isSuccess(exit) ? exit.value : failureTag(exit)).toEqual(ada);
+  }, 10_000);
+
   test("a magic link opened from the mail app finishes the waiting attempt", async () => {
     const server = makeFakeAuthServer(origin);
     const store = makeMemorySecureStore();
@@ -276,6 +306,19 @@ describe("native email sign-in through the auth session", () => {
 
     expect(await flow).toEqual(ada);
     expect(store.values.has(pendingSignInKey)).toBe(false);
+  });
+});
+
+describe("auth session browser", () => {
+  test("closing is a no-op where the platform can't close the session", async () => {
+    await expect(
+      Effect.runPromise(
+        Effect.service(AuthSessionBrowser).pipe(
+          Effect.flatMap((browser) => browser.dismiss),
+          Effect.provide(AuthSessionBrowser.Live)
+        )
+      )
+    ).resolves.toBeUndefined();
   });
 });
 
@@ -318,6 +361,20 @@ describe("reauthentication", () => {
     const exit = await app.runtime.runPromiseExit(reauthenticate);
 
     expect(failureTag(exit)).toBe("AccountSwitchRefused");
+    expect(server.openSessions()).not.toContainEqual(bob);
+    expect(storedCookie(store)).not.toContain("session_token");
+  });
+
+  test("signs the new session out when its account can't be confirmed", async () => {
+    const server = makeFakeAuthServer(origin);
+    const store = makeMemorySecureStore();
+    await signedInAs(server, store, ada);
+    server.failSessionReadsAfterExchange(100);
+    const app = launchApp(server, store, webSignInAs(server, bob));
+
+    const exit = await app.runtime.runPromiseExit(reauthenticate);
+
+    expect(Exit.isFailure(exit)).toBe(true);
     expect(server.openSessions()).not.toContainEqual(bob);
     expect(storedCookie(store)).not.toContain("session_token");
   });

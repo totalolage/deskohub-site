@@ -2,7 +2,7 @@
   "name": "deskohub-mobile",
   "private": true,
   "type": "module",
-  "main": "expo-router/entry",
+  "main": "./index.ts",
   "scripts": {
     "dev": "bun --parallel start dev:i18n",
     "dev:i18n": "chokidar \"messages/*.json\" -c \"bun i18n:compile\"",

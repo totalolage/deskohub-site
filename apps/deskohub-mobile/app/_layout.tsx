@@ -1,14 +1,12 @@
 import { SplashScreen, Stack } from "expo-router";
 import { useEffect, useState } from "react";
-import { prepareAuthLocation } from "../src/auth/auth-location";
 import { initializeBotProtection } from "../src/auth/bot-protection";
 import { useAuthSession } from "../src/auth/use-auth-session";
 import { readDeviceLocale } from "../src/i18n/device-locale";
 import { AppLocaleProvider } from "../src/i18n/locale-context";
 
-// Before the router or BotID read the address bar: take sign-in tokens out of
-// it (web), then load BotID for the sign-in requests (web production only).
-prepareAuthLocation();
+// The entry (index.ts) has already taken sign-in secrets out of the address
+// bar; now load BotID for the sign-in requests (web production only).
 initializeBotProtection();
 // The splash stays up while the stored session is restored.
 void SplashScreen.preventAutoHideAsync();
