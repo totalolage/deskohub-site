@@ -321,7 +321,7 @@ interface CatalogRead {
   ) => Atom.Atom<AsyncResult.AsyncResult<unknown, unknown>>;
 }
 
-const catalogReads: ReadonlyArray<CatalogRead> = [
+const catalogReads: CatalogRead[] = [
   {
     name: "offerings",
     endpoint: "listOfferings",
@@ -357,10 +357,23 @@ const catalogReads: ReadonlyArray<CatalogRead> = [
 ];
 
 describe("catalog idle TTL", () => {
+  const registries: AtomRegistry.AtomRegistry[] = [];
+  /** A fake-data registry, disposed after the test while time is still fake. */
+  const fakeCustomerData = () => {
+    const data = makeFakeCustomerData("linked");
+    registries.push(data.registry);
+    return { registry: data.registry, booking: fakeBooking(data.workspace) };
+  };
+
   beforeEach(() => {
-    jest.useFakeTimers();
+    // Mid-morning in Prague, so moving the clock never crosses into another
+    // booking day.
+    jest.useFakeTimers({ now: new Date("2026-11-10T09:00:00Z") });
   });
   afterEach(() => {
+    for (const registry of registries.splice(0)) {
+      registry.dispose();
+    }
     jest.useRealTimers();
   });
 
@@ -372,12 +385,12 @@ describe("catalog idle TTL", () => {
   test.each(catalogReads)(
     "reuses the $name read when the screen comes back within its idle TTL",
     async ({ endpoint, idleTTL, atom }) => {
-      const { registry, workspace } = makeFakeCustomerData("linked");
-      const booking = fakeBooking(workspace);
+      const { registry, booking } = fakeCustomerData();
+      const read = atom(booking);
 
-      await settle(registry, atom(booking));
+      await settle(registry, read);
       await elapse(Duration.subtract(idleTTL, Duration.seconds(1)));
-      const again = await settle(registry, atom(booking));
+      const again = await settle(registry, read);
 
       expect(again._tag).toBe("Success");
       expect(readsOf(booking, endpoint)).toBe(1);
@@ -387,20 +400,19 @@ describe("catalog idle TTL", () => {
   test.each(catalogReads)(
     "reads the $name again when the screen comes back after its idle TTL",
     async ({ endpoint, idleTTL, atom }) => {
-      const { registry, workspace } = makeFakeCustomerData("linked");
-      const booking = fakeBooking(workspace);
+      const { registry, booking } = fakeCustomerData();
+      const read = atom(booking);
 
-      await settle(registry, atom(booking));
+      await settle(registry, read);
       await elapse(pastIdleTTL(idleTTL));
-      await settle(registry, atom(booking));
+      await settle(registry, read);
 
       expect(readsOf(booking, endpoint)).toBe(2);
     }
   );
 
   test("doesn't refresh a quote no screen shows", async () => {
-    const { registry, workspace } = makeFakeCustomerData("linked");
-    const booking = fakeBooking(workspace);
+    const { registry, booking } = fakeCustomerData();
     const atom = bookingQuoteAtom(coworkSelection(booking.dateIn(23)), "en-US");
 
     await settle(registry, atom);
@@ -411,8 +423,7 @@ describe("catalog idle TTL", () => {
   });
 
   test("drops an idle quote whose refresh fell due, and reads it on return", async () => {
-    const { registry, workspace } = makeFakeCustomerData("linked");
-    const booking = fakeBooking(workspace);
+    const { registry, booking } = fakeCustomerData();
     const atom = bookingQuoteAtom(coworkSelection(booking.dateIn(24)), "en-US");
     const unmount = registry.mount(atom);
     const first = await settle(registry, atom);

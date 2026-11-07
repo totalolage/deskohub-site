@@ -34,7 +34,8 @@ import { selectionKey } from "../selection/booking-selection";
  * customer stepping back to a family, date or duration they just viewed
  * reuses the read instead of spending the account's read budget again. The
  * registry drops the read after this idle time; showing it again within the
- * time keeps it.
+ * time keeps it and restarts the time, so this bounds how long a read waits
+ * unseen, not how old it gets.
  */
 export const catalogIdleTTL = {
   /**
@@ -46,18 +47,19 @@ export const catalogIdleTTL = {
   /**
    * Availability and meeting-room start times are advisory and may be a few
    * minutes old: checkout checks the selection again. Two minutes covers a
-   * customer comparing a few dates or durations without showing a slot taken
-   * meanwhile as free for long.
+   * customer comparing a few dates or durations, and a date left for longer
+   * is read again rather than showing a slot taken meanwhile as free.
    */
   availability: Duration.minutes(2),
   /**
    * A quote carries the `advertisedPriceToken` checkout redeems. An idle
    * quote's refresh still falls due at `quoteRefreshInterval`: it reads
    * nothing while no screen shows the quote but marks it stale, so the TTL
-   * never serves a quote older than a mounted one would be. The short TTL
-   * also bounds a quote whose refresh was skipped at the budget's reserve,
-   * so a stale token doesn't send checkout to CustomerQuoteExpired. A minute
-   * covers stepping back to a selection just priced.
+   * never serves a quote older than a mounted one would be. That includes a
+   * quote whose refresh was skipped at the budget's reserve: like a mounted
+   * one, it keeps its token until read again, and checkout answers
+   * CustomerQuoteExpired once the token lapses. A minute covers stepping back
+   * to a selection just priced while keeping that case rare.
    */
   quote: Duration.minutes(1),
 } as const;
