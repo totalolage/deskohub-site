@@ -996,6 +996,18 @@ describe("account auth return lifecycle", () => {
       });
     });
 
+    test("keeps a return path into the /app/ web bundle", async () => {
+      const appReturnTo = "/app/sign-in/complete?next=%2Fapp%2Faccount";
+      const result = await authReturn.startEmailSignIn({
+        locale: "en-US",
+        email: customerEmail,
+        returnTo: appReturnTo,
+      });
+
+      expect(result).toMatchObject({ status: "sent" });
+      expect(callbackReturnTo(sentCallbackURL())).toBe(appReturnTo);
+    });
+
     test("stores a review login's password step for the verify page", async () => {
       magicLink.mockImplementationOnce(() => Promise.resolve(passwordStep));
 

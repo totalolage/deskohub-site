@@ -4,18 +4,20 @@ import type { CloudinaryConfigError } from "@deskohub/cloudinary";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { Effect, Layer, type Schema } from "effect";
 import { revalidatePath } from "next/cache";
-import {
-  accountActionError,
-  requireAccountAvatarsEnabled,
-  requireVerifiedSession,
-} from "@/features/account/account-action-guards";
+import { accountActionError } from "@/features/account/account-action-guards";
+import { AccountFeatureWithheldError } from "@/features/account/backend/account-feature-withheld";
 import { AccountAvatarReleaseGate } from "@/features/account/backend/account-release-gates";
 import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import {
-  type CustomerAvatarRejectionReason,
   CustomerAvatarService,
+  type CustomerAvatarUnavailableError,
 } from "@/features/account/backend/customer-avatar.service";
+import {
+  admitCurrentAvatarMutation,
+  removeAccountAvatar,
+  uploadAccountAvatar,
+} from "@/features/account/backend/customer-avatar-mutations";
 import { CustomerAccountAccessError } from "@/features/account/customer-account";
 import { getAccountPath } from "@/features/account/routes";
 import type { Locale } from "@/features/i18n";
@@ -23,24 +25,10 @@ import { m } from "@/features/i18n";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 
-export type CustomerAvatarView = {
-  readonly url: string;
-  readonly version?: number;
-};
-
-/**
- * Closed avatar mutation contract. Validation failures are typed rejection
- * reasons the client renders copy for; transient media-provider failures are
- * honestly reported as retryable instead of being claimed as done.
- */
-export type CustomerAvatarMutationResult =
-  | { readonly status: "uploaded"; readonly avatar: CustomerAvatarView }
-  | { readonly status: "removed" }
-  | {
-      readonly status: "rejected";
-      readonly reason: CustomerAvatarRejectionReason;
-    }
-  | { readonly status: "retryable" };
+export type {
+  CustomerAvatarMutationResult,
+  CustomerAvatarView,
+} from "@/features/account/backend/customer-avatar-mutations";
 
 type AvatarUploadInput = { readonly file: File };
 
@@ -82,8 +70,10 @@ const unavailableError = (locale: Locale) =>
   });
 
 type AvatarActionError =
+  | AccountFeatureWithheldError
   | CloudinaryConfigError
   | CustomerAccountAccessError
+  | CustomerAvatarUnavailableError
   | PublicSafeActionError
   | Schema.SchemaError;
 
@@ -91,26 +81,34 @@ const mapAvatarActionError =
   (locale: Locale) =>
   (error: AvatarActionError): PublicSafeActionError => {
     if (error instanceof PublicSafeActionError) return error;
-    if (error instanceof CustomerAccountAccessError) {
+    if (
+      error instanceof CustomerAccountAccessError ||
+      error instanceof AccountFeatureWithheldError
+    ) {
       return accountActionError(locale)(error);
     }
     return unavailableError(locale);
   };
 
 /**
- * Uploads the customer avatar from the verified session only: the account
- * comes from the authoritative resolver, never from client-supplied state,
- * and the mutation is fully independent of the profile form's input.
+ * The capabilities that admit an avatar mutation. The media service is
+ * provided only once a mutation is admitted, so a media configuration failure
+ * never hides a session, release or account refusal.
+ */
+const avatarAdmissionLayer = Layer.mergeAll(
+  CustomerAuthentication.Default,
+  AccountAvatarReleaseGate.Live,
+  CustomerAccountResolver.Live
+);
+
+/**
+ * Uploads the submitted file as the signed-in customer's avatar and
+ * revalidates the account pages once it is stored. The file is read only
+ * once the mutation is admitted.
  */
 const uploadAvatarMutation = Effect.fn(
   function* (file: File, locale: Locale) {
-    yield* requireVerifiedSession;
-    yield* requireAccountAvatarsEnabled(locale);
-
-    const resolution = yield* CustomerAccountResolver.pipe(
-      Effect.flatMap((resolver) => resolver.resolve),
-      Effect.provide(CustomerAccountResolver.Live)
-    );
+    const account = yield* admitCurrentAvatarMutation;
 
     const buffer = yield* Effect.tryPromise({
       try: () => file.arrayBuffer(),
@@ -121,28 +119,11 @@ const uploadAvatarMutation = Effect.fn(
         }),
     });
 
-    const outcome = yield* Effect.flatMap(CustomerAvatarService, (avatars) =>
-      avatars.upload(resolution.accountId, {
-        bytes: new Uint8Array(buffer),
-        declaredSize: file.size,
-        declaredMediaType: file.type,
-      })
-    ).pipe(
-      Effect.map((avatar) => ({ status: "uploaded", avatar }) as const),
-      Effect.catchTag("CustomerAvatarRejectedError", (error) =>
-        Effect.succeed({
-          status: "rejected",
-          reason: error.reason,
-        } as const)
-      ),
-      Effect.catchTag("CustomerAvatarProviderError", () =>
-        Effect.succeed({ status: "retryable" } as const)
-      ),
-      Effect.catchTag("CustomerAvatarUnavailableError", () =>
-        Effect.fail(unavailableError(locale))
-      ),
-      Effect.provide(CustomerAvatarService.Live)
-    );
+    const outcome = yield* uploadAccountAvatar(account, {
+      bytes: new Uint8Array(buffer),
+      declaredSize: file.size,
+      declaredMediaType: file.type,
+    }).pipe(Effect.provide(CustomerAvatarService.Live));
 
     if (outcome.status === "uploaded") {
       yield* revalidateAccount(locale);
@@ -151,53 +132,30 @@ const uploadAvatarMutation = Effect.fn(
   },
   (effect, _file, locale) =>
     effect.pipe(
-      Effect.mapError(mapAvatarActionError(locale)),
-      Effect.provide(
-        Layer.mergeAll(
-          CustomerAuthentication.Default,
-          AccountAvatarReleaseGate.Live
-        )
-      )
+      Effect.provide(avatarAdmissionLayer),
+      Effect.mapError(mapAvatarActionError(locale))
     )
 );
 
+/**
+ * Removes the signed-in customer's avatar and revalidates the account pages
+ * once it is gone.
+ */
 const removeAvatarMutation = Effect.fn(
-  function* (_input: undefined, locale: Locale) {
-    yield* requireVerifiedSession;
-    yield* requireAccountAvatarsEnabled(locale);
-
-    const resolution = yield* CustomerAccountResolver.pipe(
-      Effect.flatMap((resolver) => resolver.resolve),
-      Effect.provide(CustomerAccountResolver.Live)
-    );
-
-    const outcome = yield* Effect.flatMap(CustomerAvatarService, (avatars) =>
-      avatars.remove(resolution.accountId)
-    ).pipe(
-      Effect.map(() => ({ status: "removed" }) as const),
-      Effect.catchTag("CustomerAvatarProviderError", () =>
-        Effect.succeed({ status: "retryable" } as const)
-      ),
-      Effect.catchTag("CustomerAvatarUnavailableError", () =>
-        Effect.fail(unavailableError(locale))
-      ),
+  function* (locale: Locale) {
+    const account = yield* admitCurrentAvatarMutation;
+    const outcome = yield* removeAccountAvatar(account).pipe(
       Effect.provide(CustomerAvatarService.Live)
     );
-
     if (outcome.status === "removed") {
       yield* revalidateAccount(locale);
     }
     return outcome;
   },
-  (effect, _input, locale) =>
+  (effect, locale) =>
     effect.pipe(
-      Effect.mapError(mapAvatarActionError(locale)),
-      Effect.provide(
-        Layer.mergeAll(
-          CustomerAuthentication.Default,
-          AccountAvatarReleaseGate.Live
-        )
-      )
+      Effect.provide(avatarAdmissionLayer),
+      Effect.mapError(mapAvatarActionError(locale))
     )
 );
 
@@ -216,7 +174,7 @@ const removeCustomerAvatarAction = defineWorkspaceAction(
     schema: avatarRemoveInputSchema,
     logInput: false,
   },
-  (input, { locale }) => removeAvatarMutation(input, locale)
+  (_input, { locale }) => removeAvatarMutation(locale)
 );
 
 export const uploadCustomerAvatar: typeof uploadCustomerAvatarAction = async (

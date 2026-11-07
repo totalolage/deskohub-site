@@ -1,0 +1,186 @@
+name: Mobile release
+
+# A `mobile-vX.Y.Z` tag on main builds the release-signed Android APK and
+# publishes it as the GitHub Release "mobile: vX.Y.Z". Pull requests that
+# touch the app or this workflow run the same build as a dry run, signed with
+# a throwaway key generated in the job instead of the release keystore: the
+# APK is checked and kept as a workflow artifact, and nothing is released.
+on:
+  push:
+    tags:
+      - "mobile-v*"
+  pull_request:
+    paths:
+      - ".github/workflows/mobile-release.yml"
+      - "apps/deskohub-mobile/**"
+
+permissions:
+  contents: read
+
+# An explicit bash shell runs with pipefail, so a failing command piped into
+# tee fails its step.
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: mobile-release-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    # Pull requests from forks get no secrets, so they have no EXPO_TOKEN.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    outputs:
+      apk-name: ${{ steps.metadata.outputs.apk-name }}
+      version: ${{ steps.metadata.outputs.version }}
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+
+      - run: bun install --frozen-lockfile
+
+      # Mobile CI doesn't run for a change to this workflow alone, so the
+      # release scripts' tests run here too. They include
+      # mobile-release-workflow.test.ts, which keeps the release key out of
+      # pull request runs.
+      - name: Test the release scripts
+        working-directory: apps/deskohub-mobile
+        run: bun test scripts/release
+
+      # Fails before any secret is exposed when the tag doesn't match
+      # expo.version or CHANGELOG.md has no section for it.
+      - name: Read release metadata
+        id: metadata
+        working-directory: apps/deskohub-mobile
+        run: bun scripts/release/mobile-release.ts metadata --tag "$RELEASE_TAG" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Require the tagged commit on main
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          status="$(gh api "repos/${GITHUB_REPOSITORY}/compare/main...${GITHUB_SHA}" --jq .status)"
+          case "$status" in
+            identical | behind) ;;
+            *)
+              echo "Tag $RELEASE_TAG points at $GITHUB_SHA, which is not on main (compare status: $status)." >&2
+              exit 1
+              ;;
+          esac
+
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.23.2
+
+      # Expo SDK 58's build image uses this NDK; the runner image ships a newer default.
+      - name: Install the Android NDK
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;27.1.12297006" > /dev/null
+          ls -d "$ANDROID_HOME/ndk/27.1.12297006"
+
+      # Only tag pushes read the release keystore. A dry run fails if the
+      # release certificate signed its APK. Keep the two steps' env the same
+      # apart from the keystore, so the dry run builds the app that ships.
+      - name: Build and verify the release-signed APK
+        if: github.event_name == 'push'
+        working-directory: apps/deskohub-mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          # Public PostHog values the bundle embeds; without them the app
+          # only runs without analytics.
+          EXPO_PUBLIC_POSTHOG_KEY: ${{ vars.POSTHOG_PROJECT_TOKEN }}
+          EXPO_PUBLIC_POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
+        run: bun scripts/release/mobile-release.ts build --tag "$RELEASE_TAG" --out-dir "$RUNNER_TEMP/mobile-release"
+
+      - name: Build and verify the debug-signed dry-run APK
+        if: github.event_name == 'pull_request'
+        working-directory: apps/deskohub-mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_PUBLIC_POSTHOG_KEY: ${{ vars.POSTHOG_PROJECT_TOKEN }}
+          EXPO_PUBLIC_POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
+        run: bun scripts/release/mobile-release.ts build --signing debug --out-dir "$RUNNER_TEMP/mobile-release"
+
+      - name: Summarize the build
+        run: cat "$RUNNER_TEMP/mobile-release/release-notes.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: deskohub-mobile-apk
+          path: |
+            ${{ runner.temp }}/mobile-release/${{ steps.metadata.outputs.apk-name }}
+            ${{ runner.temp }}/mobile-release/release-notes.md
+          if-no-files-found: error
+          retention-days: ${{ github.event_name == 'push' && 90 || 14 }}
+
+  # The over-the-air update publish for a release (#994) belongs in its own job
+  # after build.
+
+  release:
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      APK: ${{ needs.build.outputs.apk-name }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.ref_name }}
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: deskohub-mobile-apk
+          path: release
+
+      - uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
+        with:
+          subject-path: release/${{ needs.build.outputs.apk-name }}
+
+      # Releases are immutable once published, so assets go up while the
+      # release is a draft. A rerun resumes a draft and leaves a published
+      # release alone. dhw stays the repository's latest release.
+      - name: Publish the GitHub Release
+        working-directory: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if draft="$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null)"; then
+            if [ "$draft" = "false" ]; then
+              if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qxF "$APK"; then
+                echo "$TAG is already published with $APK."
+                exit 0
+              fi
+              echo "$TAG is published without $APK. Published releases are immutable; release a new version." >&2
+              exit 1
+            fi
+          else
+            gh release create "$TAG" --verify-tag --draft --latest=false \
+              --title "mobile: v$VERSION" --notes-file release-notes.md
+          fi
+          gh release upload "$TAG" "$APK" --clobber
+          gh release edit "$TAG" --draft=false --latest=false \
+            --title "mobile: v$VERSION" --notes-file release-notes.md

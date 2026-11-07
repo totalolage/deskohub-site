@@ -62,4 +62,21 @@ describe("ReservationAccessPage", () => {
       code.closest("[data-reservation-access]")
     );
   });
+
+  test("shows a code unavailable for any reason the same way", () => {
+    const markupFor = (reason: "reservation-state" | "lookup-failed") => {
+      const view = render(
+        <ReservationAccessPage
+          access={{ state: "unavailable", reason }}
+          locale="en-US"
+          orderId="reservation-access-page"
+        />
+      );
+      const markup = view.container.innerHTML;
+      cleanup();
+      return markup;
+    };
+
+    expect(markupFor("lookup-failed")).toBe(markupFor("reservation-state"));
+  });
 });

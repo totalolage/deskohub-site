@@ -23,6 +23,7 @@ import {
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import type { ReservationAccessToken } from "@/features/reservation/reservation-access-token";
+import { ReservationAccessIssuanceError } from "@/features/reservation-access";
 
 mock.module("server-only", () => ({}));
 
@@ -206,13 +207,13 @@ describe("ReservationAccessService", () => {
   test("fails closed when the local reservation is missing or cannot be read", async () => {
     const accessToken = await createAccessToken();
 
-    for (const options of [
-      { accessToken, reservation: null },
-      { accessToken, reservationFails: true },
-    ]) {
+    for (const [options, reason] of [
+      [{ accessToken, reservation: null }, "reservation-state"],
+      [{ accessToken, reservationFails: true }, "lookup-failed"],
+    ] as const) {
       const result = await runAccess(options);
 
-      expect(result.access).toEqual({ state: "unavailable" });
+      expect(result.access).toEqual({ state: "unavailable", reason });
       expect(result.getReservation).not.toHaveBeenCalled();
       expect(result.resolveCustomerAccessCode).not.toHaveBeenCalled();
     }
@@ -231,7 +232,10 @@ describe("ReservationAccessService", () => {
         reservation: makeReservation(overrides),
       });
 
-      expect(result.access).toEqual({ state: "unavailable" });
+      expect(result.access).toEqual({
+        state: "unavailable",
+        reason: "reservation-state",
+      });
       expect(result.getReservation).not.toHaveBeenCalled();
       expect(result.resolveCustomerAccessCode).not.toHaveBeenCalled();
     }
@@ -239,23 +243,29 @@ describe("ReservationAccessService", () => {
 
   test("fails closed when the provider is unavailable, cancelled, or returns invalid timing", async () => {
     const accessToken = await createAccessToken();
-    const cases: readonly HarnessOptions[] = [
-      { accessToken, providerFails: true },
-      {
-        accessToken,
-        providerReservation: makeProviderReservation({ status: "CANCELLED" }),
-      },
-      {
-        accessToken,
-        providerReservation: makeProviderReservation({
-          startDate: "invalid-start",
-        }),
-      },
+    const cases: readonly (readonly [HarnessOptions, string])[] = [
+      [{ accessToken, providerFails: true }, "lookup-failed"],
+      [
+        {
+          accessToken,
+          providerReservation: makeProviderReservation({ status: "CANCELLED" }),
+        },
+        "reservation-state",
+      ],
+      [
+        {
+          accessToken,
+          providerReservation: makeProviderReservation({
+            startDate: "invalid-start",
+          }),
+        },
+        "lookup-failed",
+      ],
     ];
 
-    for (const options of cases) {
+    for (const [options, reason] of cases) {
       const result = await runAccess(options);
-      expect(result.access).toEqual({ state: "unavailable" });
+      expect(result.access).toEqual({ state: "unavailable", reason });
       expect(result.resolveCustomerAccessCode).not.toHaveBeenCalled();
     }
   });
@@ -310,7 +320,60 @@ describe("ReservationAccessService", () => {
           resolver as WorkspaceCheckoutAccessCodeServiceType["resolveCustomerAccessCode"],
       });
 
-      expect(result.access).toEqual({ state: "unavailable" });
+      expect(result.access).toEqual({
+        state: "unavailable",
+        reason: "lookup-failed",
+      });
     }
+  });
+
+  test("blames the reservation when issuance refuses it", async () => {
+    const accessToken = await createAccessToken();
+
+    for (const refusal of [
+      "reservation-ended",
+      "unrepresentable-interval",
+    ] as const) {
+      const result = await runAccess({
+        accessToken,
+        resolver: () =>
+          Effect.fail(
+            new ReservationAccessIssuanceError({
+              reservationId: orderId,
+              outcome: "rejected",
+              message: "refused",
+              refusal,
+            })
+          ),
+      });
+
+      expect(result.access).toEqual({
+        state: "unavailable",
+        reason: "reservation-state",
+      });
+    }
+  });
+
+  test("treats a failed issuance as a failed lookup, even after the reservation ended", async () => {
+    const accessToken = await createAccessToken();
+
+    // The fixture reservation ended in June 2026; a stored code could still
+    // be shown, so a storage failure reading it is no refusal.
+    const result = await runAccess({
+      accessToken,
+      resolver: () =>
+        Effect.fail(
+          new ReservationAccessIssuanceError({
+            reservationId: orderId,
+            outcome: "uncertain",
+            message: "Reservation access grant could not be loaded.",
+          })
+        ),
+    });
+
+    expect(result.access).toEqual({
+      state: "unavailable",
+      reason: "lookup-failed",
+    });
   });
 });
