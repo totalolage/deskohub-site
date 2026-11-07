@@ -43,17 +43,25 @@ export const continueMutationsAfterDisconnect =
     );
 
 /**
+ * A request's init with its body streamed. The runtimes require `duplex` for
+ * a stream body, though the DOM types don't declare it.
+ */
+type StreamedRequestInit = RequestInit & { readonly duplex: "half" };
+
+/**
  * The request without its abort signal, rebuilt from its parts: Next.js
  * hands an app route its request behind a Proxy, which `new Request(request)`
  * can't copy.
  */
-const withoutAbortSignal = (request: Request) =>
-  new Request(request.url, {
+const withoutAbortSignal = (request: Request) => {
+  const init: StreamedRequestInit = {
     method: request.method,
     headers: request.headers,
     body: request.body,
     duplex: "half",
-  });
+  };
+  return new Request(request.url, init);
+};
 
 /**
  * Marks every routed response `Cache-Control: private, no-store`, for an
