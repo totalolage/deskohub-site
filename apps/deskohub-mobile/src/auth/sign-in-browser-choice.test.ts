@@ -34,7 +34,10 @@ describe("chooseSignInBrowser", () => {
     expect(
       chooseSignInBrowser({
         platform: "android",
-        findProvider: () => ({ packageName: "org.example.browser", launchMode }),
+        findProvider: () => ({
+          packageName: "org.example.browser",
+          launchMode,
+        }),
       })
     ).toEqual(SignInBrowser.AuthSession());
   });

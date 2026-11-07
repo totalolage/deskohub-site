@@ -1,16 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit, Fiber } from "effect";
+import { Effect, Exit, Fiber, Layer, ManagedRuntime } from "effect";
+import { TestClock } from "effect/testing";
 import type { AppStateStatus } from "react-native";
 import type {
   TrustedWebActivityColors,
   TrustedWebActivityProvider,
 } from "../../modules/trusted-web-activity";
 import {
-  type AuthSessionDevice,
+  AuthSessionBrowser,
   AuthSessionResult,
   AuthSessionUnavailable,
-  makeOpenAuthSession,
 } from "./auth-session-browser.service";
+import { AuthSessionDevice } from "./auth-session-device.service";
 
 const signInUrl =
   "https://workspace.deskohub.cz/app/sign-in?native=1&state=state-1";
@@ -43,7 +44,7 @@ const makeDevice = ({
   }> = [];
   const authSessions: Array<string> = [];
   let releases = 0;
-  const device: AuthSessionDevice = {
+  const device = Layer.succeed(AuthSessionDevice, {
     platform,
     trustedWebActivity: {
       findProvider: () => provider,
@@ -57,7 +58,7 @@ const makeDevice = ({
     },
     openAuthSession: async (url) => {
       authSessions.push(url);
-      return { type: "dismiss" };
+      return { type: "success", url: callbackUrl };
     },
     onUrl: (listener) => {
       urlListeners.add(listener);
@@ -67,9 +68,19 @@ const makeDevice = ({
       appStateListeners.add(listener);
       return { remove: () => appStateListeners.delete(listener) };
     },
-  };
+  });
+  const runtime = ManagedRuntime.make(
+    Layer.mergeAll(
+      AuthSessionBrowser.Default.pipe(Layer.provide(device)),
+      TestClock.layer()
+    )
+  );
+  const open = () =>
+    Effect.gen(function* () {
+      const browser = yield* AuthSessionBrowser;
+      return yield* browser.open(signInUrl, returnUri);
+    });
   return {
-    device,
     launches,
     authSessions,
     releases: () => releases,
@@ -80,122 +91,133 @@ const makeDevice = ({
     moveApp: (state: AppStateStatus) => {
       for (const listener of [...appStateListeners]) listener(state);
     },
+    open: () => runtime.runPromiseExit(open()),
+    /** Starts opening the sign-in page and waits until the browser shows it. */
+    startOpen: async () => {
+      const fiber = runtime.runFork(open());
+      await settle();
+      return fiber;
+    },
+    adjustClock: (duration: `${number} seconds`) =>
+      runtime.runPromise(TestClock.adjust(duration)),
   };
 };
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-/** Starts opening the sign-in page and waits until the browser shows it. */
-const startOpen = async (fake: ReturnType<typeof makeDevice>) => {
-  const fiber = Effect.runFork(
-    makeOpenAuthSession(fake.device)(signInUrl, returnUri)
-  );
-  await settle();
-  return fiber;
-};
-
 describe("Trusted Web Activity sign-in", () => {
   test("opens the sign-in page with the brand colours", async () => {
-    const fake = makeDevice();
-    const fiber = await startOpen(fake);
+    const device = makeDevice();
+    const fiber = await device.startOpen();
 
-    expect(fake.launches).toEqual([
+    expect(device.launches).toEqual([
       {
         url: signInUrl,
         provider: chrome,
         colors: { toolbar: "#00024f", navigationBar: "#00024f" },
       },
     ]);
-    expect(fake.authSessions).toEqual([]);
+    expect(device.authSessions).toEqual([]);
     await Effect.runPromise(Fiber.interrupt(fiber));
   });
 
   test("returns with the callback link the page sends to the app", async () => {
-    const fake = makeDevice();
-    const fiber = await startOpen(fake);
-    fake.moveApp("background");
-    fake.sendLink("https://workspace.deskohub.cz/app/");
-    fake.sendLink(callbackUrl);
-    fake.moveApp("active");
+    const device = makeDevice();
+    const fiber = await device.startOpen();
+    device.moveApp("background");
+    device.sendLink("https://workspace.deskohub.cz/app/");
+    device.sendLink(callbackUrl);
+    device.moveApp("active");
 
     expect(await Effect.runPromise(Fiber.join(fiber))).toEqual(
       AuthSessionResult.Returned({ url: callbackUrl })
     );
-    expect(fake.listeners()).toBe(0);
-    expect(fake.releases()).toBe(1);
+    expect(device.listeners()).toBe(0);
+    expect(device.releases()).toBe(1);
   });
 
   test("closes once the customer comes back to the app without a link", async () => {
-    const fake = makeDevice();
-    const fiber = await startOpen(fake);
+    const device = makeDevice();
+    const fiber = await device.startOpen();
     // The app is still in front until the browser covers it.
-    fake.moveApp("active");
+    device.moveApp("active");
     await settle();
     expect(fiber.pollUnsafe()).toBeUndefined();
 
-    fake.moveApp("background");
-    fake.moveApp("active");
+    device.moveApp("background");
+    device.moveApp("active");
 
     expect(await Effect.runPromise(Fiber.join(fiber))).toEqual(
       AuthSessionResult.Closed()
     );
-    expect(fake.listeners()).toBe(0);
-    expect(fake.releases()).toBe(1);
+    expect(device.listeners()).toBe(0);
+    expect(device.releases()).toBe(1);
   });
 
   test("stops listening when the sign-in is abandoned", async () => {
-    const fake = makeDevice();
-    const fiber = await startOpen(fake);
-    expect(fake.listeners()).toBe(2);
+    const device = makeDevice();
+    const fiber = await device.startOpen();
+    expect(device.listeners()).toBe(2);
 
     await Effect.runPromise(Fiber.interrupt(fiber));
 
-    expect(fake.listeners()).toBe(0);
-    expect(fake.releases()).toBe(1);
+    expect(device.listeners()).toBe(0);
+    expect(device.releases()).toBe(1);
   });
 
   test("refuses a second page while one is open, then opens again", async () => {
-    const fake = makeDevice();
-    const open = makeOpenAuthSession(fake.device);
-    const first = Effect.runFork(open(signInUrl, returnUri));
-    await settle();
+    const device = makeDevice();
+    const first = await device.startOpen();
 
-    const second = await Effect.runPromiseExit(open(signInUrl, returnUri));
-    expect(second).toEqual(
+    expect(await device.open()).toEqual(
       Exit.fail(
         new AuthSessionUnavailable({
           cause: new Error("A sign-in page is already open"),
         })
       )
     );
-    expect(fake.launches).toHaveLength(1);
+    expect(device.launches).toHaveLength(1);
 
-    fake.moveApp("background");
-    fake.sendLink(callbackUrl);
+    device.moveApp("background");
+    device.sendLink(callbackUrl);
     await Effect.runPromise(Fiber.join(first));
 
-    const third = Effect.runFork(open(signInUrl, returnUri));
-    await settle();
-    expect(fake.launches).toHaveLength(2);
+    const third = await device.startOpen();
+    expect(device.launches).toHaveLength(2);
     await Effect.runPromise(Fiber.interrupt(third));
   });
 
   test("reports the session unavailable when the browser can't launch", async () => {
     const launchFailure = new Error("No activity to launch from");
-    const fake = makeDevice({ launch: () => Promise.reject(launchFailure) });
-    const open = makeOpenAuthSession(fake.device);
+    const device = makeDevice({ launch: () => Promise.reject(launchFailure) });
 
-    expect(await Effect.runPromiseExit(open(signInUrl, returnUri))).toEqual(
+    expect(await device.open()).toEqual(
       Exit.fail(new AuthSessionUnavailable({ cause: launchFailure }))
     );
-    expect(fake.listeners()).toBe(0);
-    expect(fake.releases()).toBe(1);
+    expect(device.listeners()).toBe(0);
+    expect(device.releases()).toBe(1);
 
     // The failed launch doesn't block the next one.
-    const retry = Effect.runFork(open(signInUrl, returnUri));
-    await settle();
-    expect(fake.launches).toHaveLength(2);
+    const retry = await device.startOpen();
+    expect(device.launches).toHaveLength(2);
     await Effect.runPromise(Fiber.interrupt(retry));
+  });
+
+  test("gives up on a browser that never shows the page", async () => {
+    const device = makeDevice({ launch: () => new Promise(() => undefined) });
+    const fiber = await device.startOpen();
+
+    await device.adjustClock("10 seconds");
+
+    expect(await Effect.runPromiseExit(Fiber.join(fiber))).toEqual(
+      Exit.fail(
+        new AuthSessionUnavailable({
+          cause: new Error("The browser didn't open the sign-in page"),
+        })
+      )
+    );
+    expect(device.listeners()).toBe(0);
+    expect(device.releases()).toBe(1);
   });
 });
 
@@ -213,14 +235,12 @@ describe("auth session sign-in", () => {
     ],
     ["Android without a browser", { provider: null }],
   ] as const)("%s opens Expo's auth session", async (_, options) => {
-    const fake = makeDevice(options);
+    const device = makeDevice(options);
 
-    expect(
-      await Effect.runPromise(
-        makeOpenAuthSession(fake.device)(signInUrl, returnUri)
-      )
-    ).toEqual(AuthSessionResult.Closed());
-    expect(fake.authSessions).toEqual([signInUrl]);
-    expect(fake.launches).toEqual([]);
+    expect(await device.open()).toEqual(
+      Exit.succeed(AuthSessionResult.Returned({ url: callbackUrl }))
+    );
+    expect(device.authSessions).toEqual([signInUrl]);
+    expect(device.launches).toEqual([]);
   });
 });

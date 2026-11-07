@@ -29,6 +29,10 @@ class TrustedWebActivityModule : Module() {
   // it bound until destroyed.
   private var launcher: TwaLauncher? = null
 
+  // The launch waiting for the browser. Browser Helper never reports a
+  // launch that its dropped connection cancelled, so releasing rejects it.
+  private var pendingLaunch: Promise? = null
+
   override fun definition() = ModuleDefinition {
     Name("TrustedWebActivity")
 
@@ -62,7 +66,19 @@ class TrustedWebActivityModule : Module() {
         .setDefaultColorSchemeParams(colorScheme)
       val twaLauncher = TwaLauncher(activity, packageName)
       launcher = twaLauncher
-      twaLauncher.launch(builder, null, null, { promise.resolve(null) })
+      pendingLaunch = promise
+      try {
+        twaLauncher.launch(builder, null, null, {
+          if (pendingLaunch === promise) {
+            pendingLaunch = null
+            promise.resolve(null)
+          }
+        })
+      } catch (error: Throwable) {
+        // Expo rejects the promise with what the launch threw.
+        if (pendingLaunch === promise) pendingLaunch = null
+        throw error
+      }
     }.runOnQueue(Queues.MAIN)
 
     AsyncFunction("release") {
@@ -75,6 +91,12 @@ class TrustedWebActivityModule : Module() {
   }
 
   private fun release() {
+    pendingLaunch?.reject(
+      "ERR_TRUSTED_WEB_ACTIVITY_RELEASED",
+      "The browser connection closed before the page opened",
+      null
+    )
+    pendingLaunch = null
     launcher?.destroy()
     launcher = null
   }
