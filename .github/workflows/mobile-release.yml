@@ -86,6 +86,10 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          # Public PostHog values the bundle embeds; without them the app
+          # only runs without analytics.
+          EXPO_PUBLIC_POSTHOG_KEY: ${{ vars.POSTHOG_PROJECT_TOKEN }}
+          EXPO_PUBLIC_POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
         run: bun scripts/release/mobile-release.ts build --tag "$RELEASE_TAG" --out-dir "$RUNNER_TEMP/mobile-release"
 
       - name: Summarize the build
