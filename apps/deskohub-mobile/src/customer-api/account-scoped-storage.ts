@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Option } from "effect";
+import { Context, Effect, Layer, Option, Semaphore } from "effect";
 import { CustomerAccountScope } from "./customer-api.service";
 import {
   type DeviceCapabilities,
@@ -37,6 +37,14 @@ interface IAccountExitFence {
   /** Advances each time the account exits, before its cleanup runs. */
   readonly generation: (accountId: string) => Effect.Effect<number>;
   readonly advance: (accountId: string) => Effect.Effect<void>;
+  /**
+   * Runs device writes to one key (or temporary file) one at a time, across
+   * sessions: a write from a session that has since exited lands and undoes
+   * itself before the next session's write to the same key starts.
+   */
+  readonly withKeyLock: (
+    key: string
+  ) => <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
 }
 
 /**
@@ -56,7 +64,16 @@ export class AccountExitFence extends Context.Service<
 
 export const makeAccountExitFence = (): IAccountExitFence => {
   const generations = new Map<string, number>();
+  const keyLocks = new Map<string, Semaphore.Semaphore>();
+  const keyLock = (key: string) => {
+    const existing = keyLocks.get(key);
+    if (existing !== undefined) return existing;
+    const created = Semaphore.makeUnsafe(1);
+    keyLocks.set(key, created);
+    return created;
+  };
   return {
+    withKeyLock: (key) => (effect) => keyLock(key).withPermit(effect),
     generation: (accountId) =>
       Effect.sync(() => generations.get(accountId) ?? 0),
     advance: (accountId) =>
@@ -127,19 +144,23 @@ export class AccountScopedStorage extends Context.Service<
             if (!(yield* stillSignedIn)) return Option.none();
             return yield* storage.getItem(key);
           }),
-        // The write and its fence check run uninterruptibly: an interrupted
-        // fiber would otherwise skip the check while the write still lands.
+        // A write and its fence check hold the key's lock and run
+        // uninterruptibly: an interrupted fiber would otherwise skip the check
+        // while the write still lands.
         setItem: (name, value) =>
-          Effect.gen(function* () {
-            const key = yield* keyOf(name);
-            if (!(yield* stillSignedIn)) return;
-            yield* storage.setItem(key, value);
-            // The account exited while the write was in flight; its cleanup
-            // may have run before the write landed.
-            if (!(yield* stillSignedIn)) yield* storage.removeItems([key]);
-          }).pipe(Effect.uninterruptible),
+          Effect.flatMap(keyOf(name), (key) =>
+            Effect.gen(function* () {
+              if (!(yield* stillSignedIn)) return;
+              yield* storage.setItem(key, value);
+              // The account exited while the write was in flight; its cleanup
+              // may have run before the write landed.
+              if (!(yield* stillSignedIn)) yield* storage.removeItems([key]);
+            }).pipe(Effect.uninterruptible, fence.withKeyLock(key))
+          ),
         removeItem: (name) =>
-          Effect.flatMap(keyOf(name), (key) => storage.removeItems([key])),
+          Effect.flatMap(keyOf(name), (key) =>
+            storage.removeItems([key]).pipe(fence.withKeyLock(key))
+          ),
         writeTemporaryFile: (name, bytes) =>
           Effect.gen(function* () {
             if (!(yield* stillSignedIn)) return Option.none();
@@ -151,7 +172,10 @@ export class AccountScopedStorage extends Context.Service<
             if (yield* stillSignedIn) return Option.some(uri);
             yield* temporaryFiles.remove(uri);
             return Option.none();
-          }).pipe(Effect.uninterruptible),
+          }).pipe(
+            Effect.uninterruptible,
+            fence.withKeyLock(`file:${scope.accountId}/${name}`)
+          ),
       };
     })
   );

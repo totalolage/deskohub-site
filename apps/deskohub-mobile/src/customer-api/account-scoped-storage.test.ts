@@ -110,7 +110,7 @@ describe("AccountScopedStorage", () => {
         yield* Fiber.join(write);
       }).pipe(
         Effect.provide(
-          storageLayer(setup, Layer.merge(slowStorage, setup.capabilities), "a")
+          storageLayer(setup, Layer.merge(setup.capabilities, slowStorage), "a")
         )
       )
     );
@@ -154,5 +154,53 @@ describe("AccountScopedStorage", () => {
     await run(again.setItem(cache, "fresh"));
 
     expect(await run(again.getItem(cache))).toEqual(Option.some("fresh"));
+  });
+
+  test("a write from an exited session can't clobber the next session's write", async () => {
+    const setup = deviceWithFence();
+    const landed = await run(Deferred.make<void>());
+    const inFlight = await run(Deferred.make<void>());
+    const device: FakeDevice = setup.device;
+    let slowWrites = 1;
+    // The first device write only completes once `landed` resolves.
+    const slowOnce = Layer.succeed(DeviceStorage, {
+      getItem: (key) =>
+        Effect.sync(() => Option.fromNullishOr(device.storage.get(key))),
+      setItem: (key, value) => {
+        const write = Effect.sync(() => {
+          device.storage.set(key, value);
+        });
+        if (slowWrites === 0) return write;
+        slowWrites -= 1;
+        return Deferred.succeed(inFlight, undefined).pipe(
+          Effect.andThen(Deferred.await(landed)),
+          Effect.andThen(write)
+        );
+      },
+      removeItems: (keys) =>
+        Effect.sync(() => {
+          for (const key of keys) device.storage.delete(key);
+        }),
+      keys: Effect.sync(() => [...device.storage.keys()]),
+    });
+    const capabilities = Layer.merge(setup.capabilities, slowOnce);
+    const open = () =>
+      run(
+        Effect.service(AccountScopedStorage).pipe(
+          Effect.provide(storageLayer(setup, capabilities, "a"))
+        )
+      );
+
+    const exited = await open();
+    const staleWrite = Effect.runFork(exited.setItem(cache, "stale"));
+    await run(Deferred.await(inFlight));
+    await setup.exit("a");
+    const fresh = await open();
+    const freshWrite = Effect.runFork(fresh.setItem(cache, "fresh"));
+    await run(Deferred.succeed(landed, undefined));
+    await run(Fiber.join(staleWrite));
+    await run(Fiber.join(freshWrite));
+
+    expect(await run(fresh.getItem(cache))).toEqual(Option.some("fresh"));
   });
 });
