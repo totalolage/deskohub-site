@@ -99,12 +99,13 @@ type CheckoutSubmissionFailure = Effect.Error<
 
 /**
  * Attaches the booking checkout's handlers to the booking group's, leaving
- * the catalog's endpoints for `handleCustomerBookingCatalog`: the same holds, discount codes,
- * price reviews and payment submissions the site's Pay page runs, under
- * the signed-in customer's session and only on the customer's own orders.
- * Each request builds its operations from `CustomerBookingCheckoutLayers`,
- * with its release gates decided once and its referral code recorded for
- * the response, and answers every failure with a fixed public error.
+ * the catalog's endpoints for `handleCustomerBookingCatalog`. They run the
+ * same holds, discount codes, price reviews and payment submissions as the
+ * site's Pay page, under the signed-in customer's session and only on the
+ * customer's own orders. Each request builds its operations from
+ * `CustomerBookingCheckoutLayers`, with its release gates decided once and
+ * its referral code recorded for the response, and answers every failure
+ * with a fixed public error.
  */
 export const handleCustomerBookingCheckout = <R>(
   handlers: HttpApiBuilder.Handlers<R, CustomerBookingEndpoint>
@@ -793,8 +794,7 @@ const retryable = (operation: string) => (failure: { readonly _tag: string }) =>
 
 /**
  * Bounds a mutation by the deadline its site action has; one that runs out
- * is unavailable. Any other failure an endpoint didn't make public, such as
- * a session read that can't answer, is unavailable too.
+ * is unavailable.
  */
 const withDeadline =
   (operation: string, deadline: Duration.Duration) =>
