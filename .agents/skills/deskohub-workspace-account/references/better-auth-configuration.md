@@ -126,7 +126,12 @@ Keep these settings unless a reviewed decision changes them:
   Link `<origin>/app/auth/callback?token=…`; every other callback keeps the
   verification URL. A `/magic-link/verify` without any callback answers a
   failure as 400 JSON (`{ code }`, no Location) instead of Better Auth's
-  redirect; success is JSON plus the session cookie. The handoff moves a
+  redirect; success is JSON plus the session cookie. Over HTTP, that
+  token-only verify refuses an account switch: a session of another account
+  (any session when the link would create one) gets 403
+  `ACCOUNT_SWITCH_REFUSED` from the auth guard's `refuseAccountSwitch`,
+  before the sign-in claim and Better Auth's consume, so the link survives.
+  Links with a callback keep the redirect sign-in. The handoff moves a
   browser sign-in into the app: `POST /native-handoff/mint` (fresh session
   via `freshSessionMiddleware`, body `code_challenge`, `code_challenge_method`
   `S256`, `state`, `return_uri`) stores a three-minute verification row bound
