@@ -12,7 +12,6 @@ import {
 } from "effect/unstable/reactivity";
 import { customerDataRuntime } from "../../customer-api/customer-data-runtime";
 import {
-  automaticRefreshReserve,
   DotyposReadBudget,
   dotyposReadAllowance,
 } from "../../customer-api/dotypos-read-budget";
@@ -69,10 +68,6 @@ const spendReads = (registry: AtomRegistry.AtomRegistry, count: number) =>
     )
   );
 
-/** Reads that leave the budget one below its automatic-refresh reserve after a first read. */
-const readsToReserve =
-  dotyposReadAllowance.reads - 1 - (automaticRefreshReserve - 1);
-
 /** A registry whose runtime runs on a test clock, with a way to move it. */
 const withTestClock = () => {
   const workspace = FakeWorkspace.forKind("linked");
@@ -110,8 +105,52 @@ const remainingReads = async (registry: AtomRegistry.AtomRegistry) => {
   return result._tag === "Success" ? result.success : Number.NaN;
 };
 
+interface CatalogRead {
+  readonly name: string;
+  readonly endpoint: BookingEndpointName;
+  readonly idleTTL: Duration.Duration;
+  readonly atom: (
+    booking: ReturnType<typeof fakeBooking>
+  ) => Atom.Atom<AsyncResult.AsyncResult<unknown, unknown>>;
+}
+
+const catalogReads: CatalogRead[] = [
+  {
+    name: "offerings",
+    endpoint: "listOfferings",
+    idleTTL: catalogIdleTTL.offerings,
+    atom: () => bookingOfferingsAtom("en-US"),
+  },
+  {
+    name: "availability",
+    endpoint: "getAvailability",
+    idleTTL: catalogIdleTTL.availability,
+    atom: (booking) =>
+      bookingAvailabilityAtom({
+        query: { kind: "cowork", date: booking.dateIn(7) },
+      }),
+  },
+  {
+    name: "meeting-room start times",
+    endpoint: "getMeetingRoomStartTimes",
+    idleTTL: catalogIdleTTL.availability,
+    atom: (booking) =>
+      meetingRoomStartTimesAtom({
+        date: booking.dateIn(1),
+        duration: "hour:1",
+      }),
+  },
+  {
+    name: "quote",
+    endpoint: "getQuote",
+    idleTTL: catalogIdleTTL.quote,
+    atom: (booking) =>
+      bookingQuoteAtom(coworkSelection(booking.dateIn(20)), "en-US"),
+  },
+];
+
 describe("booking catalog queries", () => {
-  test("reads the offerings through the real client as a Dotypos read", async () => {
+  test("reads the offerings through the real client", async () => {
     const { registry, workspace } = makeFakeCustomerData("linked");
 
     const result = await settle(registry, bookingOfferingsAtom("en-US"));
@@ -120,8 +159,21 @@ describe("booking catalog queries", () => {
       6
     );
     expect(fakeBooking(workspace).endpoints).toEqual(["listOfferings"]);
-    expect(await remainingReads(registry)).toBe(dotyposReadAllowance.reads - 1);
   });
+
+  test.each(catalogReads)(
+    "reads the $name as a catalog read, without spending the Dotypos read budget",
+    async ({ endpoint, atom }) => {
+      const { registry, workspace } = makeFakeCustomerData("linked");
+      const booking = fakeBooking(workspace);
+
+      const result = await settle(registry, atom(booking));
+
+      expect(result._tag).toBe("Success");
+      expect(booking.endpoints).toEqual([endpoint]);
+      expect(await remainingReads(registry)).toBe(dotyposReadAllowance.reads);
+    }
+  );
 
   test("reads the legal documents without spending the read budget", async () => {
     const { registry } = makeFakeCustomerData("linked");
@@ -278,7 +330,7 @@ describe("bookingQuoteAtom refresh", () => {
     expect(quoteCalls(harness)).toBe(3);
   });
 
-  test("skips the automatic read once the budget is down to its reserve", async () => {
+  test("keeps reading the quote automatically with the Dotypos read budget spent", async () => {
     const harness = withTestClock();
     const atom = bookingQuoteAtom(
       coworkSelection(harness.booking.dateIn(21)),
@@ -287,11 +339,40 @@ describe("bookingQuoteAtom refresh", () => {
     const unmount = harness.registry.mount(atom);
     await settle(harness.registry, atom);
 
-    await spendReads(harness.registry, readsToReserve);
+    await spendReads(harness.registry, dotyposReadAllowance.reads);
+    await harness.adjust(quoteRefreshInterval);
+    await flush();
+    const refreshed = await settle(harness.registry, atom);
+    unmount();
+
+    expect(refreshed._tag).toBe("Success");
+    expect(quoteCalls(harness)).toBe(2);
+  });
+
+  test("stops the automatic reads once a refresh is rate limited", async () => {
+    const harness = withTestClock();
+    const atom = bookingQuoteAtom(
+      coworkSelection(harness.booking.dateIn(26)),
+      "en-US"
+    );
+    const unmount = harness.registry.mount(atom);
+    await settle(harness.registry, atom);
+
+    harness.booking.fail("getQuote", "rate-limited");
+    await harness.adjust(quoteRefreshInterval);
+    await flush();
+    const limited = await settle(harness.registry, atom);
+    await harness.adjust(quoteRefreshInterval);
+    await flush();
     await harness.adjust(quoteRefreshInterval);
     await flush();
     unmount();
 
+    expect(
+      limited._tag === "Failure" && toBookingQueryError(limited.failure)
+    ).toMatchObject({ _tag: "RateLimited" });
+    // The rate-limited answer never reaches the fake's handler, and any later
+    // automatic read would.
     expect(quoteCalls(harness)).toBe(1);
   });
 });
@@ -321,50 +402,6 @@ const elapse = async (duration: Duration.Input) => {
 /** The registry sweeps idle atoms in one-second buckets. */
 const pastIdleTTL = (ttl: Duration.Duration) =>
   Duration.sum(ttl, Duration.seconds(1));
-
-interface CatalogRead {
-  readonly name: string;
-  readonly endpoint: BookingEndpointName;
-  readonly idleTTL: Duration.Duration;
-  readonly atom: (
-    booking: ReturnType<typeof fakeBooking>
-  ) => Atom.Atom<AsyncResult.AsyncResult<unknown, unknown>>;
-}
-
-const catalogReads: CatalogRead[] = [
-  {
-    name: "offerings",
-    endpoint: "listOfferings",
-    idleTTL: catalogIdleTTL.offerings,
-    atom: () => bookingOfferingsAtom("en-US"),
-  },
-  {
-    name: "availability",
-    endpoint: "getAvailability",
-    idleTTL: catalogIdleTTL.availability,
-    atom: (booking) =>
-      bookingAvailabilityAtom({
-        query: { kind: "cowork", date: booking.dateIn(7) },
-      }),
-  },
-  {
-    name: "meeting-room start times",
-    endpoint: "getMeetingRoomStartTimes",
-    idleTTL: catalogIdleTTL.availability,
-    atom: (booking) =>
-      meetingRoomStartTimesAtom({
-        date: booking.dateIn(1),
-        duration: "hour:1",
-      }),
-  },
-  {
-    name: "quote",
-    endpoint: "getQuote",
-    idleTTL: catalogIdleTTL.quote,
-    atom: (booking) =>
-      bookingQuoteAtom(coworkSelection(booking.dateIn(20)), "en-US"),
-  },
-];
 
 describe("catalog idle TTL", () => {
   const registries: AtomRegistry.AtomRegistry[] = [];
@@ -454,16 +491,18 @@ describe("catalog idle TTL", () => {
     ).toBe(true);
   });
 
-  test("reads a quote held at the reserve again when a screen comes back", async () => {
+  test("reads a quote whose refresh was rate limited again when a screen comes back", async () => {
     const { registry, booking } = fakeCustomerData();
     const atom = bookingQuoteAtom(coworkSelection(booking.dateIn(25)), "en-US");
     const unmount = registry.mount(atom);
     const first = await settle(registry, atom);
-    await spendReads(registry, readsToReserve);
+    booking.fail("getQuote", "rate-limited");
 
     await elapse(quoteRefreshInterval);
     // Past the ten minutes the quote's token lasts, still on screen.
     await elapse("7 minutes");
+    const shown = await settle(registry, atom);
+    // The rate-limited answer never reaches the fake's handler.
     const readsWhileShown = readsOf(booking, "getQuote");
     unmount();
     await elapse("100 millis");
@@ -472,6 +511,9 @@ describe("catalog idle TTL", () => {
     const returned = await settle(registry, atom);
     unmountReturn();
 
+    expect(
+      shown._tag === "Failure" && toBookingQueryError(shown.failure)
+    ).toMatchObject({ _tag: "RateLimited" });
     expect(readsWhileShown).toBe(1);
     expect(
       onReturn._tag === "Success" &&
