@@ -30,6 +30,7 @@ const chrome: TrustedWebActivityProvider = {
 const makeDevice = ({
   platform = "android",
   provider = chrome,
+  findProvider = () => provider,
   launch = async () => undefined,
   customTabsBrowsers = async () => ({
     browserPackages: ["com.android.chrome"],
@@ -39,6 +40,7 @@ const makeDevice = ({
 }: {
   readonly platform?: string;
   readonly provider?: TrustedWebActivityProvider | null;
+  readonly findProvider?: () => TrustedWebActivityProvider | null;
   readonly launch?: () => Promise<void>;
   readonly customTabsBrowsers?: () => Promise<WebBrowserCustomTabsResults>;
 } = {}) => {
@@ -58,7 +60,7 @@ const makeDevice = ({
   const device = Layer.succeed(AuthSessionDevice, {
     platform,
     trustedWebActivity: {
-      findProvider: () => provider,
+      findProvider,
       launch: (url, launchedProvider, colors) => {
         launches.push({ url, provider: launchedProvider, colors });
         return launch();
@@ -261,7 +263,24 @@ describe("auth session sign-in", () => {
         },
       },
     ],
+    [
+      "only a plain browser",
+      {
+        provider: {
+          packageName: "org.example.browser",
+          launchMode: "browser",
+        },
+      },
+    ],
     ["no Trusted Web Activity browser", { provider: null }],
+    [
+      "a failing browser picker",
+      {
+        findProvider: () => {
+          throw new Error("TwaProviderPicker failed");
+        },
+      },
+    ],
   ] as const)(
     "Android with %s opens a Custom Tabs auth session",
     async (_, options) => {
