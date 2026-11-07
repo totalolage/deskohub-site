@@ -34,14 +34,11 @@ const originsOver = (
   ) {
     return yield* Effect.tryPromise({
       try: () => authority.isTrustedOrigin(origin),
-      catch: (cause) => cause,
+      catch: () => new CustomerRequestOriginsUnavailableError(),
     }).pipe(
-      Effect.tapError((cause) =>
-        Effect.logWarning("Customer request origin check failed closed.", {
-          category: cause instanceof Error ? cause.name : typeof cause,
-        })
-      ),
-      Effect.mapError(() => new CustomerRequestOriginsUnavailableError())
+      Effect.tapError(() =>
+        Effect.logWarning("Customer request origin check failed closed.")
+      )
     );
   }),
 });

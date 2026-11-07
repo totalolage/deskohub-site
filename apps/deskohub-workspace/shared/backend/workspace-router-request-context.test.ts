@@ -27,7 +27,9 @@ const request = (caller: string) =>
   });
 
 /** Answers with the request context the route's handler sees. */
-const reportContext = (beforeAnswering: (caller: string) => Effect.Effect<void>) =>
+const reportContext = (
+  beforeAnswering: (caller: string) => Effect.Effect<void>
+) =>
   HttpRouter.add(
     "GET",
     "/caller",
