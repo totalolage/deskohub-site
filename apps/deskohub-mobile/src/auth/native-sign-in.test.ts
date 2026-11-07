@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { Effect, Exit, Layer, ManagedRuntime, Option } from "effect";
+import * as WebBrowser from "expo-web-browser";
 import { nativeReturnUri, parseAuthCallbackUrl } from "./auth-callback";
 import { AuthCallbackCompletions } from "./auth-callback-completions.service";
 import { AuthCrypto } from "./auth-crypto.service";
@@ -18,6 +19,7 @@ import {
   startPendingSignIn,
 } from "./native-sign-in";
 import { PendingSignIns, pendingSignInKey } from "./pending-sign-in.service";
+import { developmentPreviewAccess } from "./preview-access";
 import {
   type FakeAuthServer,
   type FakeUser,
@@ -310,6 +312,49 @@ describe("native email sign-in through the auth session", () => {
 });
 
 describe("auth session browser", () => {
+  const openedUrl = async (
+    layer: Layer.Layer<AuthSessionBrowser>
+  ): Promise<string | undefined> => {
+    const open = spyOn(WebBrowser, "openAuthSessionAsync");
+    try {
+      await Effect.runPromise(
+        Effect.service(AuthSessionBrowser).pipe(
+          Effect.flatMap((browser) =>
+            browser.open(
+              "https://preview.example.test/app/sign-in?native=1",
+              "deskohub://auth/callback"
+            )
+          ),
+          Effect.provide(layer)
+        )
+      );
+      return open.mock.calls[0]?.[0];
+    } finally {
+      open.mockRestore();
+    }
+  };
+
+  test("opens the sign-in page as given without preview access", async () => {
+    expect(await openedUrl(AuthSessionBrowser.Live)).toBe(
+      "https://preview.example.test/app/sign-in?native=1"
+    );
+  });
+
+  test("opens the sign-in page with the preview cookie bypass in a development build with preview access", async () => {
+    const url = new URL(
+      (await openedUrl(
+        AuthSessionBrowser.layer(
+          developmentPreviewAccess(true, "synthetic-bypass")
+        )
+      )) ?? ""
+    );
+    expect(url.searchParams.get("native")).toBe("1");
+    expect(url.searchParams.get("x-vercel-protection-bypass")).toBe(
+      "synthetic-bypass"
+    );
+    expect(url.searchParams.get("x-vercel-set-bypass-cookie")).toBe("true");
+  });
+
   test("closing is a no-op where the platform can't close the session", async () => {
     await expect(
       Effect.runPromise(

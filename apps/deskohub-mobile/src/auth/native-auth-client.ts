@@ -3,6 +3,7 @@ import type { BetterFetchOption } from "better-auth/client";
 import { magicLinkClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 import type * as SecureStore from "expo-secure-store";
+import { type PreviewAccess, previewAccessHeaders } from "./preview-access";
 
 /** The SecureStore calls the Expo plugin uses to keep the session cookie. */
 export type SessionCookieStore = Pick<
@@ -15,6 +16,8 @@ export interface NativeAuthClientOptions {
   readonly storage: SessionCookieStore;
   /** Replaces the network for tests; production uses the platform fetch. */
   readonly fetch?: BetterFetchOption["customFetchImpl"];
+  /** A development build's access to a deployment-protected preview. */
+  readonly previewAccess?: PreviewAccess;
 }
 
 /**
@@ -27,12 +30,14 @@ export const createNativeAuthClient = ({
   origin,
   storage,
   fetch,
+  previewAccess,
 }: NativeAuthClientOptions) =>
   createAuthClient({
     baseURL: `${origin}/api/auth`,
-    ...(fetch === undefined
-      ? {}
-      : { fetchOptions: { customFetchImpl: fetch } }),
+    fetchOptions: {
+      headers: previewAccessHeaders(previewAccess),
+      ...(fetch === undefined ? {} : { customFetchImpl: fetch }),
+    },
     plugins: [
       expoClient({ scheme: "deskohub", storagePrefix: "deskohub", storage }),
       magicLinkClient(),

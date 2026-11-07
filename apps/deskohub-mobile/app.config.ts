@@ -56,12 +56,52 @@ export const androidVersionCode = (version: string | undefined): number => {
   return code;
 };
 
-export default ({ config }: ConfigContext): ExpoConfig => ({
+// app.json links only the production host's /app/ paths to the app. A
+// development build pointed at a preview (`EXPO_PUBLIC_API_ORIGIN`) also
+// claims that host's /app/ paths, so a sign-in email from the preview opens
+// the app. The filter isn't verified: a tester approves the host on the
+// device. A production build never gets it.
+const productionHost = "workspace.deskohub.cz";
+
+type AndroidIntentFilter = NonNullable<
+  NonNullable<ExpoConfig["android"]>["intentFilters"]
+>[number];
+
+const developmentAppLinkFilters = (
+  env: Readonly<Record<string, string | undefined>>
+): AndroidIntentFilter[] => {
+  const configured = env.EXPO_PUBLIC_API_ORIGIN?.trim();
+  if (!configured || env.EAS_BUILD_PROFILE === "production") return [];
+  let url: URL;
+  try {
+    url = new URL(configured);
+  } catch {
+    return [];
+  }
+  if (url.protocol !== "https:" || url.hostname === productionHost) return [];
+  return [
+    {
+      action: "VIEW",
+      autoVerify: false,
+      data: [{ scheme: "https", host: url.hostname, pathPrefix: "/app/" }],
+      category: ["BROWSABLE", "DEFAULT"],
+    },
+  ];
+};
+
+export default (
+  { config }: ConfigContext,
+  env: Readonly<Record<string, string | undefined>> = process.env
+): ExpoConfig => ({
   ...config,
   name: config.name ?? "Deskohub",
   slug: config.slug ?? "deskohub-mobile",
   android: {
     ...config.android,
     versionCode: androidVersionCode(config.version),
+    intentFilters: [
+      ...(config.android?.intentFilters ?? []),
+      ...developmentAppLinkFilters(env),
+    ],
   },
 });
