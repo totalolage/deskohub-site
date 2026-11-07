@@ -128,6 +128,7 @@
         "@better-auth/oauth-provider": "1.7.2",
         "@better-auth/passkey": "1.7.2",
         "@deskohub/ares": "workspace:*",
+        "@deskohub/brand-tokens": "workspace:*",
         "@deskohub/cloudinary": "workspace:*",
         "@deskohub/cloudinary-image": "workspace:*",
         "@deskohub/dotypos": "workspace:*",
@@ -290,7 +291,7 @@
     },
     "apps/dhw": {
       "name": "dhw",
-      "version": "1.31.0",
+      "version": "1.33.0",
       "dependencies": {
         "@deskohub/workspace-admin-api": "workspace:*",
         "@effect/platform-bun": "4.0.0-beta.85",
@@ -309,6 +310,13 @@
       "dependencies": {
         "effect": "4.0.0-beta.85",
       },
+      "devDependencies": {
+        "typescript": "npm:@typescript/typescript6@6.0.2",
+      },
+    },
+    "packages/brand-tokens": {
+      "name": "@deskohub/brand-tokens",
+      "version": "0.1.0",
       "devDependencies": {
         "typescript": "npm:@typescript/typescript6@6.0.2",
       },
@@ -797,6 +805,8 @@
     "@deskohub/agent-skills": ["@deskohub/agent-skills@workspace:.agents"],
 
     "@deskohub/ares": ["@deskohub/ares@workspace:packages/ares"],
+
+    "@deskohub/brand-tokens": ["@deskohub/brand-tokens@workspace:packages/brand-tokens"],
 
     "@deskohub/cloudinary": ["@deskohub/cloudinary@workspace:packages/cloudinary"],
 
