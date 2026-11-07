@@ -147,9 +147,12 @@ non-production traffic apart:
   and remove saved UTM and click metadata.
 - Browser checkout events carry no reservation form values (name, email,
   phone, message, date, tier, or coffee and monitor preferences). The
-  PostHog `pre-payment outcome` event's only custom property is its outcome;
-  the Vercel Analytics `workspace_checkout_started` event's custom properties
-  are only the five `utm_*` keys allowlisted in `features/reservation/reservation-analytics.ts`, each
+  PostHog `pre-payment outcome` event's only custom property is its outcome.
+  The PostHog `checkout status viewed` event's only custom property is
+  `status`, the status page's `CheckoutStatusKind`. `CheckoutStatusAnalytics`
+  captures it from the browser through `captureAnalyticsEvent`, once per status
+  per page visit, so polling refreshes don't repeat it. The Vercel Analytics
+  `workspace_checkout_started` event's custom properties are only the five `utm_*` keys allowlisted in `features/reservation/reservation-analytics.ts`, each
   trimmed to 128 characters.
 - Don't describe network IP handling as disabled.
 - Person properties never include email, name, phone, billing, reservation
@@ -244,6 +247,23 @@ traffic category and the name of a recognized assistant.
   `distinct_id` once the deletion has run (PostHog deletes event data
   asynchronously, on weekends on Cloud). Recheck after the reservation
   settles, since an open reservation can still emit events.
+
+## Funnel insights
+
+Filter every step to `deployment.environment.name = production`.
+
+- Consented person funnel: `$pageview` → `$pageview` where `$pathname`
+  contains `/reservation/` → `pre-payment outcome` where `outcome = prepared`
+  → `checkout status viewed` where `status` is a paid kind
+  (`checkoutStatusTraits[kind].paid`: `paid_waiting_fulfillment`,
+  `paid_fulfillment_delayed`, `paid_awaiting_delivery`,
+  `paid_delivery_delayed`, `fulfilled`, `fulfillment_failed`). It counts
+  consented browsers only.
+- Reservation funnel: `reservation started` → `payment started` → `payment
+  completed`, aggregated by the HogQL expression `properties.reservation_id`.
+  It counts every reservation, consented or not.
+- The two can't be joined: lifecycle events carry no browser or account ID by
+  policy, so don't stitch them to persons to merge the funnels.
 
 ## Server capture
 
