@@ -1,8 +1,6 @@
-import { expoClient } from "@better-auth/expo/client";
-import { magicLinkClient } from "better-auth/client/plugins";
-import { createAuthClient } from "better-auth/react";
 import * as SecureStore from "expo-secure-store";
 import { resolveApiOrigin } from "./api-origin";
+import { createNativeAuthClient } from "./native-auth-client";
 
 export const apiOrigin = resolveApiOrigin(
   process.env.EXPO_PUBLIC_API_ORIGIN,
@@ -14,16 +12,10 @@ export const apiOrigin = resolveApiOrigin(
  * SecureStore, sends it on every request with the `expo-origin` header the
  * server trusts, and restores the session on the next launch. Email sign-in
  * starts on the web bundle (BotID), so the native client only verifies tokens,
- * runs the passkey ceremonies, reads the session and signs out.
+ * exchanges handoff codes, runs the passkey ceremonies, reads the session and
+ * signs out.
  */
-export const authClient = createAuthClient({
-  baseURL: `${apiOrigin}/api/auth`,
-  plugins: [
-    expoClient({
-      scheme: "deskohub",
-      storagePrefix: "deskohub",
-      storage: SecureStore,
-    }),
-    magicLinkClient(),
-  ],
+export const authClient = createNativeAuthClient({
+  origin: apiOrigin,
+  storage: SecureStore,
 });
