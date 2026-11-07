@@ -633,6 +633,48 @@ describe("reauthentication", () => {
     await expectStillSignedIn(server, store, ada, adaCookie);
   });
 
+  test("shows the server's account-switch refusal as one and stays signed in", async () => {
+    const server = makeFakeAuthServer(origin);
+    const store = makeMemorySecureStore();
+    const adaCookie = await signedInAs(server, store, ada);
+    server.refuseAccountSwitches();
+    const app = launchApp(server, store);
+
+    const exit = await app.runtime.runPromiseExit(
+      completeAuthCallback({ kind: "token", token: server.issueMagicLink(bob) })
+    );
+
+    expect(failureTag(exit)).toBe("AccountSwitchRefused");
+    expect(server.callsTo("/sign-out")).toEqual([]);
+    expect((await app.client.getSession()).data?.user.id).toBe(ada.id);
+    await expectStillSignedIn(server, store, ada, adaCookie);
+  });
+
+  test("a reauthentication ends with the server's account-switch refusal", async () => {
+    const server = makeFakeAuthServer(origin);
+    const store = makeMemorySecureStore();
+    const adaCookie = await signedInAs(server, store, ada);
+    server.refuseAccountSwitches();
+    // The reauthentication email's link for Bob opens in the mail app while
+    // the auth session waits.
+    let link: string | undefined;
+    const app = launchApp(server, store, async () => {
+      link = server.issueMagicLink(bob);
+      return AuthSessionResult.Closed();
+    });
+    const flow = app.runtime.runPromiseExit(reauthenticate);
+    while (link === undefined) await Bun.sleep(1);
+
+    const linkExit = await app.runtime.runPromiseExit(
+      completeAuthCallback({ kind: "token", token: link })
+    );
+
+    expect(failureTag(linkExit)).toBe("AccountSwitchRefused");
+    expect(failureTag(await flow)).toBe("AccountSwitchRefused");
+    expect(server.callsTo("/sign-out")).toEqual([]);
+    await expectStillSignedIn(server, store, ada, adaCookie);
+  });
+
   test("an expired reauthentication still guards its email's links", async () => {
     const server = makeFakeAuthServer(origin);
     const store = makeMemorySecureStore();

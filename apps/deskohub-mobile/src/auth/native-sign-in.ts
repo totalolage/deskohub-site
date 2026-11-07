@@ -66,11 +66,19 @@ const closedSessionGrace = "3 seconds";
 const attemptKey = (state: string) => `attempt:${state}`;
 const tokenKey = (token: string) => `token:${token}`;
 
+/**
+ * The Workspace refuses a link verified with another account's session
+ * (403 `ACCOUNT_SWITCH_REFUSED`) and keeps the link, so the refusal is an
+ * account switch, not a used link.
+ */
 const fromAuthFailure = (failure: NativeAuthFailure): NativeSignInFailure =>
   Match.value(failure).pipe(
     Match.tagsExhaustive({
       NativeAuthUnavailable: ({ cause }) => new SignInUnavailable({ cause }),
-      NativeAuthRejected: ({ code }) => new SignInRejected({ code }),
+      NativeAuthRejected: ({ code }) =>
+        code === "ACCOUNT_SWITCH_REFUSED"
+          ? new AccountSwitchRefused()
+          : new SignInRejected({ code }),
     })
   );
 

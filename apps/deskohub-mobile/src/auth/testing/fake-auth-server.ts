@@ -59,11 +59,13 @@ export const makeFakeAuthServer = (origin: string) => {
     getSessionFailuresAfterExchange: number;
     getSessionFailures: number;
     exchanged: boolean;
+    refuseAccountSwitch: boolean;
   } = {
     exchangeGate: undefined,
     getSessionFailuresAfterExchange: 0,
     getSessionFailures: 0,
     exchanged: false,
+    refuseAccountSwitch: false,
   };
 
   const openSession = (user: FakeUser) => {
@@ -99,6 +101,12 @@ export const makeFakeAuthServer = (origin: string) => {
       const user = magicLinks.get(token);
       if (user === undefined || [...url.searchParams.keys()].length !== 1) {
         return json(400, { code: "INVALID_TOKEN", message: "Invalid token" });
+      }
+      if (faults.refuseAccountSwitch) {
+        return json(403, {
+          code: "ACCOUNT_SWITCH_REFUSED",
+          message: "This sign-in link is for a different account.",
+        });
       }
       magicLinks.delete(token);
       const session = openSession(user);
@@ -210,6 +218,14 @@ export const makeFakeAuthServer = (origin: string) => {
     /** Holds every exchange until `gate` resolves. */
     holdExchanges: (gate: Promise<void>) => {
       faults.exchangeGate = gate;
+    },
+    /**
+     * Refuses every valid link the way the Workspace refuses one verified
+     * with another account's session: 403 `ACCOUNT_SWITCH_REFUSED`, and the
+     * link stays usable.
+     */
+    refuseAccountSwitches: () => {
+      faults.refuseAccountSwitch = true;
     },
     /** Fails the next `count` session reads. */
     failSessionReads: (count: number) => {
