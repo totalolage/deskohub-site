@@ -32,6 +32,23 @@ describe("signerCertificateSha256s", () => {
     ).toEqual([releaseDigest, otherDigest]);
   });
 
+  test("reads per-scheme signer lines that --verbose prints", () => {
+    const verbose = [
+      "Verifies",
+      "Verified using v2 scheme (APK Signature Scheme v2): true",
+      "Number of signers: 1",
+      "V2 Signer: certificate DN: CN=Deskohub",
+      `V2 Signer: certificate SHA-256 digest: ${releaseDigest}`,
+      `V2 Signer: certificate SHA-1 digest: ${"c".repeat(40)}`,
+      `V2 Signer: public key SHA-256 digest: ${otherDigest}`,
+      `V3.1 Signer #2: certificate SHA-256 digest: ${otherDigest}`,
+    ].join("\n");
+    expect(signerCertificateSha256s(verbose)).toEqual([
+      releaseDigest,
+      otherDigest,
+    ]);
+  });
+
   test("ignores SHA-1 and MD5 digests", () => {
     expect(signerCertificateSha256s(apksignerOutput())).toEqual([]);
   });

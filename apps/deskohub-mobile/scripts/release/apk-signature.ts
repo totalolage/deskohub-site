@@ -5,8 +5,11 @@ export const releaseCertificateSha256 =
   "69428e71150175fc0e8452035442a8a119864c21d0abe9c8e233a0542ec94aa0";
 
 const sha256Hex = /^[0-9a-f]{64}$/;
+// `--print-certs` alone prints `Signer #1 certificate SHA-256 digest: <hex>`;
+// with `--verbose` it prints one line per scheme, such as
+// `V2 Signer: certificate SHA-256 digest: <hex>` or `V3.1 Signer #2: ...`.
 const signerDigestLine =
-  /^Signer #\d+ certificate SHA-256 digest: ([0-9a-fA-F]+)$/;
+  /^(?:Signer #\d+|V\d+(?:\.\d+)? Signer(?: #\d+)?:) certificate SHA-256 digest: ([0-9a-fA-F]+)$/;
 
 export const normalizeCertificateSha256 = (digest: string): string => {
   const hex = digest.replaceAll(":", "").toLowerCase();
