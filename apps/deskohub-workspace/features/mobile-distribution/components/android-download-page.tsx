@@ -2,8 +2,8 @@ import Interpolate from "@doist/react-interpolate";
 import { Download } from "lucide-react";
 import Image from "next/image";
 import type { ReactNode } from "react";
+import { nativeApp } from "@/features/account/backend/auth/native-app";
 import { type Locale, m } from "@/features/i18n";
-import { RELEASE_CERTIFICATE_SHA256 } from "@/features/mobile-releases/android-app";
 import type { AndroidRelease } from "@/features/mobile-releases/backend/latest-android-release.server";
 import { Container } from "@/shared/components/container";
 import { Button } from "@/shared/components/ui/button";
@@ -86,7 +86,7 @@ export function AndroidDownloadPage({
             {m.androidPageCertificateBody({}, { locale })}
           </p>
           <code className="mt-4 block break-all rounded-xl bg-black/30 p-4 font-mono text-sm leading-6 text-white">
-            {RELEASE_CERTIFICATE_SHA256}
+            {nativeApp.androidReleaseCertificate}
           </code>
         </section>
       </Container>

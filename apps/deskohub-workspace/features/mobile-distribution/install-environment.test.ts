@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { ANDROID_PACKAGE_ID } from "./android-app";
+import { nativeApp } from "@/features/account/backend/auth/native-app";
 import {
   createInstallEnvironment,
   type InstallBrowser,
@@ -82,7 +82,9 @@ describe("createInstallEnvironment", () => {
           userAgent: androidChrome,
           maxTouchPoints: 5,
           getInstalledRelatedApps: () =>
-            Promise.resolve([{ platform: "play", id: ANDROID_PACKAGE_ID }]),
+            Promise.resolve([
+              { platform: "play", id: nativeApp.applicationId },
+            ]),
         },
       })
     );
@@ -137,7 +139,7 @@ describe("createInstallEnvironment", () => {
     await settle();
     expect(environment.getSnapshot().androidAppInstalled).toBe(false);
 
-    relatedApps = [{ platform: "play", id: ANDROID_PACKAGE_ID }];
+    relatedApps = [{ platform: "play", id: nativeApp.applicationId }];
     browser.document.visibilityState = "hidden";
     browser.document.dispatchEvent(new Event("visibilitychange"));
     await settle();

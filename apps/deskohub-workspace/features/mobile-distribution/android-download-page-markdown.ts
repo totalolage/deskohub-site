@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import type { PhrasingContent } from "mdast";
+import { nativeApp } from "@/features/account/backend/auth/native-app";
 import { type Locale, m } from "@/features/i18n";
-import { RELEASE_CERTIFICATE_SHA256 } from "@/features/mobile-releases/android-app";
 import type { AndroidRelease } from "@/features/mobile-releases/backend/latest-android-release.server";
 import {
   type MarkdownBlocks,
@@ -94,7 +94,7 @@ export const renderAndroidDownloadMarkdown = (
   ]),
   markdownHeading(2, m.androidPageCertificateHeading({}, { locale })),
   markdownParagraph(m.androidPageCertificateBody({}, { locale })),
-  markdownParagraph(markdownInlineCode(RELEASE_CERTIFICATE_SHA256)),
+  markdownParagraph(markdownInlineCode(nativeApp.androidReleaseCertificate)),
 ];
 
 export const androidDownloadPageMarkdown = (

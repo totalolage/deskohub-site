@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
+import { nativeApp } from "@/features/account/backend/auth/native-app";
 import { getWorkspacePageUrl } from "@/features/i18n";
-import { ANDROID_PACKAGE_ID } from "./android-app";
 import { obtainiumImportUrl } from "./obtainium-link";
 
 interface ObtainiumApp {
@@ -40,7 +40,7 @@ test("imports the app from the locale-agnostic download page", () => {
   const { additionalSettings, ...app } = decodePayload(obtainiumImportUrl);
 
   expect(app).toEqual({
-    id: ANDROID_PACKAGE_ID,
+    id: nativeApp.applicationId,
     url: getWorkspacePageUrl("/android"),
     author: "Deskohub",
     name: "Deskohub",

@@ -1,6 +1,6 @@
 import { afterAll, afterEach, expect, mock, test } from "bun:test";
 import { cleanup, render, within } from "@testing-library/react";
-import { RELEASE_CERTIFICATE_SHA256 } from "@/features/mobile-releases/android-app";
+import { nativeApp } from "@/features/account/backend/auth/native-app";
 import type { AndroidRelease } from "@/features/mobile-releases/backend/latest-android-release.server";
 import {
   registerWorkspaceComponentTestEnv,
@@ -31,7 +31,7 @@ const release: AndroidRelease = {
     "https://github.com/totalolage/deskohub-site/releases/download/mobile-v1.2.3/deskohub-1.2.3.apk",
   apkSizeBytes: 42_123_456,
   apkSha256: "ab".repeat(32),
-  certificateSha256: RELEASE_CERTIFICATE_SHA256,
+  certificateSha256: nativeApp.androidReleaseCertificate,
   // Already the next day in Prague, where the page dates releases.
   publishedAt: "2026-11-05T23:30:00Z",
   releaseUrl:
@@ -57,7 +57,9 @@ afterAll(() => unregisterWorkspaceComponentTestEnv());
 /** Every state shows the pinned certificate and the three install steps. */
 const expectCertificateAndSteps = (page: RenderedPage) => {
   expect(page.getByRole("heading", { level: 1 })).toBeDefined();
-  expect(page.getByText(RELEASE_CERTIFICATE_SHA256).tagName).toBe("CODE");
+  expect(page.getByText(nativeApp.androidReleaseCertificate).tagName).toBe(
+    "CODE"
+  );
   const steps = page.container.querySelector("ol");
   expect(steps).not.toBeNull();
   expect(within(steps as HTMLElement).getAllByRole("listitem")).toHaveLength(3);

@@ -1,5 +1,5 @@
+import { nativeApp } from "@/features/account/backend/auth/native-app";
 import { getWorkspacePageUrl } from "@/features/i18n";
-import { ANDROID_PACKAGE_ID } from "./android-app";
 
 /**
  * Obtainium's web page source settings: it picks the APK link on the download
@@ -15,7 +15,7 @@ const obtainiumSourceSettings = {
 
 const obtainiumAppLink = `obtainium://app/${encodeURIComponent(
   JSON.stringify({
-    id: ANDROID_PACKAGE_ID,
+    id: nativeApp.applicationId,
     url: getWorkspacePageUrl("/android"),
     author: "Deskohub",
     name: "Deskohub",

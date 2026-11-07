@@ -2,7 +2,7 @@ import "@/shared/testing/workspace-test-env";
 import "@/shared/polyfills/temporal";
 
 import { expect, test } from "bun:test";
-import { RELEASE_CERTIFICATE_SHA256 } from "@/features/mobile-releases/android-app";
+import { nativeApp } from "@/features/account/backend/auth/native-app";
 import type { AndroidRelease } from "@/features/mobile-releases/backend/latest-android-release.server";
 import { serializeMarkdown } from "@/shared/markdown/markdown";
 import { markdownLinkUrls } from "@/shared/markdown/markdown.test-utils";
@@ -20,7 +20,7 @@ const release: AndroidRelease = {
     "https://github.com/totalolage/deskohub-site/releases/download/mobile-v1.2.3/deskohub-1.2.3.apk",
   apkSizeBytes: 42_123_456,
   apkSha256: "ab".repeat(32),
-  certificateSha256: RELEASE_CERTIFICATE_SHA256,
+  certificateSha256: nativeApp.androidReleaseCertificate,
   publishedAt: "2026-11-05T09:30:00Z",
   releaseUrl:
     "https://github.com/totalolage/deskohub-site/releases/tag/mobile-v1.2.3",
@@ -39,7 +39,7 @@ test("lists the release's facts and links", () => {
   for (const value of [facts.version, facts.size, facts.date]) {
     expect(markdown).toContain(value);
   }
-  expect(markdown).toContain(RELEASE_CERTIFICATE_SHA256);
+  expect(markdown).toContain(nativeApp.androidReleaseCertificate);
 });
 
 test("has no download links before the first release", () => {
@@ -48,7 +48,7 @@ test("has no download links before the first release", () => {
   );
 
   expect(markdownLinkUrls(markdown)).toEqual([]);
-  expect(markdown).toContain(RELEASE_CERTIFICATE_SHA256);
+  expect(markdown).toContain(nativeApp.androidReleaseCertificate);
 });
 
 test("links the releases list when the lookup fails", () => {
