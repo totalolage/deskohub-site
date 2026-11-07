@@ -1,6 +1,11 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
-import { Context, Effect, Layer, Result } from "effect";
-import { CustomerAccountReservationOwnership } from "@/features/account";
+import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
+import { Context, Data, Effect, Layer, Option, Result } from "effect";
+import type { SqlError } from "effect/unstable/sql";
+import {
+  type CustomerAccountAccessError,
+  CustomerAccountReservationOwnership,
+} from "@/features/account";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
@@ -11,6 +16,7 @@ import {
   type ReservationAccessCookieOptions,
 } from "./reservation-access-cookie";
 import { openReservationAccessToken } from "./reservation-access-token";
+import type { WorkspaceReservationDetailsMalformedError } from "./stored-reservation-details.server";
 import {
   type WorkspaceReservation,
   WorkspaceReservationRepository,
@@ -50,10 +56,35 @@ export type ReservationAuthorizationInput = {
   readonly permission: ReservationPermission;
 };
 
+/**
+ * The signed-in account, its customer link, the reservation, or the review
+ * sandbox couldn't be read, so whether the visitor may see the reservation
+ * is unknown.
+ */
+export class ReservationAuthorizationUnavailableError extends Data.TaggedError(
+  "ReservationAuthorizationUnavailableError"
+)<{
+  readonly orderId: WorkspaceReservationId;
+  readonly cause:
+    | CustomerAccountAccessError
+    | EffectDrizzleQueryError
+    | SqlError.SqlError
+    | WorkspaceReservationDetailsMalformedError;
+}> {}
+
 export interface IReservationAuthorizationService {
+  /** Denies the visitor whenever a read fails. */
   readonly isAuthorized: (
     input: ReservationAuthorizationInput
   ) => Effect.Effect<boolean>;
+  /**
+   * Decides like `isAuthorized`, but reports a failed account, customer link,
+   * reservation, or review sandbox read instead of denying. A signed-out or
+   * unlinked visitor is still denied.
+   */
+  readonly authorize: (
+    input: ReservationAuthorizationInput
+  ) => Effect.Effect<boolean, ReservationAuthorizationUnavailableError>;
 }
 
 const capabilityIsValid = Effect.fn(
@@ -85,6 +116,21 @@ const capabilityIsValid = Effect.fn(
   return false;
 });
 
+/**
+ * The visitor's account, or `None` for a signed-out, unverified, or unlinked
+ * visitor. A failed read stays a failure.
+ */
+const unlessDenied = <A>(
+  account: Effect.Effect<A, CustomerAccountAccessError>
+) =>
+  account.pipe(
+    Effect.asSome,
+    Effect.catchIf(
+      (error) => error.reason !== "unavailable",
+      () => Effect.succeedNone
+    )
+  );
+
 export class ReservationAuthorizationService extends Context.Service<
   ReservationAuthorizationService,
   IReservationAuthorizationService
@@ -95,14 +141,6 @@ export class ReservationAuthorizationService extends Context.Service<
       const ownership = yield* CustomerAccountReservationOwnership;
       const reservations = yield* WorkspaceReservationRepository;
       const reviewSandbox = yield* ReviewSandbox;
-
-      const isReviewSandboxOrderOf = (
-        accountId: CustomerAccountId,
-        orderId: WorkspaceReservationId
-      ) =>
-        reviewSandbox
-          .isOrderOf({ accountId, orderId })
-          .pipe(Effect.orElseSucceed(() => false));
 
       /**
        * The active account sees the reservation as its author, or as the
@@ -121,17 +159,17 @@ export class ReservationAuthorizationService extends Context.Service<
         }
         if (!grants("customer", permission)) return false;
 
-        const account = yield* ownership.resolve.pipe(Effect.result);
+        const account = yield* unlessDenied(ownership.resolve);
         return (
-          Result.isSuccess(account) &&
-          account.success.dotyposCustomerId ===
+          Option.isSome(account) &&
+          account.value.dotyposCustomerId ===
             (reservation.dotyposCustomerId as DotyposCustomerId)
         );
       });
 
-      const isAuthorized = Effect.fn(
-        "ReservationAuthorizationService.isAuthorized"
-      )(function* (input: ReservationAuthorizationInput) {
+      const decide = Effect.fnUntraced(function* (
+        input: ReservationAuthorizationInput
+      ) {
         if (
           grants("capability", input.permission) &&
           (yield* capabilityIsValid(input))
@@ -141,30 +179,52 @@ export class ReservationAuthorizationService extends Context.Service<
 
         // Both account grants need an active signed-in account; only the
         // customer grant also needs the account's linked Dotypos customer.
-        const accountId = yield* ownership.activeAccountId.pipe(Effect.result);
-        if (Result.isFailure(accountId)) return false;
+        const accountId = yield* unlessDenied(ownership.activeAccountId);
+        if (Option.isNone(accountId)) return false;
 
-        const reservation = yield* reservations
-          .findById(input.orderId)
-          .pipe(Effect.result);
-        if (Result.isFailure(reservation)) return false;
+        const reservation = yield* reservations.findById(input.orderId);
         // A review account's sandbox order is the account's own booking, so
         // it sees what an author sees: the status, never an access code.
-        if (!reservation.success) {
+        if (!reservation) {
           return (
             grants("author", input.permission) &&
-            (yield* isReviewSandboxOrderOf(accountId.success, input.orderId))
+            (yield* reviewSandbox.isOrderOf({
+              accountId: accountId.value,
+              orderId: input.orderId,
+            }))
           );
         }
 
         return yield* isAuthorOrCustomerOf(
-          accountId.success,
-          reservation.success,
+          accountId.value,
+          reservation,
           input.permission
         );
       });
 
-      return { isAuthorized } satisfies IReservationAuthorizationService;
+      const authorize = Effect.fn("ReservationAuthorizationService.authorize")(
+        (input: ReservationAuthorizationInput) =>
+          decide(input).pipe(
+            Effect.mapError(
+              (cause) =>
+                new ReservationAuthorizationUnavailableError({
+                  orderId: input.orderId,
+                  cause,
+                })
+            )
+          )
+      );
+
+      const isAuthorized = Effect.fn(
+        "ReservationAuthorizationService.isAuthorized"
+      )((input: ReservationAuthorizationInput) =>
+        decide(input).pipe(Effect.orElseSucceed(() => false))
+      );
+
+      return {
+        isAuthorized,
+        authorize,
+      } satisfies IReservationAuthorizationService;
     })
   );
 

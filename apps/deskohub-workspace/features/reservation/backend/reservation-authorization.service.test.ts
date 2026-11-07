@@ -46,13 +46,50 @@ const makeReservation = (
 ): AuthorizedReservation =>
   ({ dotyposCustomerId, authorAccountId }) as AuthorizedReservation;
 
-const runAuthorization = async (options: {
+type AuthorizationOptions = {
   readonly input?: Partial<ReservationAuthorizationInput>;
-  readonly owner?: "matches" | "different" | "unlinked" | "unavailable";
+  /**
+   * The signed-in account: linked to the reservation's customer, linked to
+   * another one, unlinked, signed out, unreadable altogether, or readable
+   * with an unreadable customer link.
+   */
+  readonly owner?:
+    | "matches"
+    | "different"
+    | "unlinked"
+    | "signed-out"
+    | "unavailable"
+    | "link-unavailable";
   readonly reservation?: AuthorizedReservation | null | "unreadable";
   /** Whether the order is one of the signed-in review account's sandbox orders. */
   readonly sandboxOrder?: boolean | "unreadable";
-}) => {
+};
+
+const resolveLinkedAccount = (owner: AuthorizationOptions["owner"]) => {
+  switch (owner) {
+    case "link-unavailable":
+      return Effect.fail(
+        new CustomerAccountAccessError({ reason: "unavailable" })
+      );
+    case "unavailable":
+    case "unlinked":
+    case "signed-out":
+      return Effect.fail(
+        new CustomerAccountAccessError({
+          reason: "link-required",
+          linkReason: "not-found",
+        })
+      );
+    default:
+      return Effect.succeed({
+        accountId: customerAccountIdSchema.make("account-id"),
+        dotyposCustomerId:
+          owner === "different" ? "another-customer" : accountCustomerId,
+      });
+  }
+};
+
+const prepareAuthorization = (options: AuthorizationOptions) => {
   const findById = mock(() =>
     options.reservation === "unreadable"
       ? Effect.fail(queryFailure)
@@ -63,28 +100,17 @@ const runAuthorization = async (options: {
         )
   );
   const activeAccountId =
-    options.owner === "unavailable"
-      ? Effect.fail(new CustomerAccountAccessError({ reason: "unavailable" }))
-      : Effect.succeed(customerAccountIdSchema.make("account-id"));
-  const resolve =
-    options.owner === "unavailable" || options.owner === "unlinked"
-      ? mock(() =>
-          Effect.fail(
-            new CustomerAccountAccessError({
-              reason: "link-required",
-              linkReason: "not-found",
-            })
-          )
-        )
-      : mock(() =>
-          Effect.succeed({
-            accountId: customerAccountIdSchema.make("account-id"),
-            dotyposCustomerId:
-              options.owner === "different"
-                ? "another-customer"
-                : accountCustomerId,
+    options.owner === "unavailable" || options.owner === "signed-out"
+      ? Effect.fail(
+          new CustomerAccountAccessError({
+            reason:
+              options.owner === "signed-out"
+                ? "unauthenticated"
+                : "unavailable",
           })
-        );
+        )
+      : Effect.succeed(customerAccountIdSchema.make("account-id"));
+  const resolve = mock(() => resolveLinkedAccount(options.owner));
   const input: ReservationAuthorizationInput = {
     locale: "en-US",
     orderId,
@@ -92,12 +118,8 @@ const runAuthorization = async (options: {
     ...options.input,
   };
 
-  const authorized = await Effect.gen(function* () {
-    const service = yield* ReservationAuthorizationService;
-    return yield* service.isAuthorized(input);
-  }).pipe(
-    Effect.provide(ReservationAuthorizationService.Default),
-    Effect.provide(
+  const layer = ReservationAuthorizationService.Default.pipe(
+    Layer.provide(
       Layer.mergeAll(
         Layer.succeed(CustomerAccountReservationOwnership, {
           activeAccountId,
@@ -111,11 +133,33 @@ const runAuthorization = async (options: {
               : Effect.succeed(options.sandboxOrder ?? false),
         })
       )
-    ),
+    )
+  );
+
+  return { layer, input, findById, resolve };
+};
+
+/** Runs the fail-closed check every reservation page uses. */
+const runAuthorization = async (options: AuthorizationOptions) => {
+  const { layer, input, findById, resolve } = prepareAuthorization(options);
+  const authorized = await ReservationAuthorizationService.pipe(
+    Effect.flatMap((service) => service.isAuthorized(input)),
+    Effect.provide(layer),
     Effect.runPromise
   );
 
   return { authorized, findById, resolve };
+};
+
+/** Runs the check that reports a failed read instead of denying. */
+const runAuthorize = (options: AuthorizationOptions) => {
+  const { layer, input } = prepareAuthorization(options);
+  return ReservationAuthorizationService.pipe(
+    Effect.flatMap((service) => service.authorize(input)),
+    Effect.result,
+    Effect.provide(layer),
+    Effect.runPromise
+  );
 };
 
 const makeAccessToken = async (tokenOrderId = orderId) =>
@@ -312,6 +356,65 @@ describe("ReservationAuthorizationService", () => {
       expect(result.authorized).toBe(true);
     }
   );
+});
+
+describe("authorizing without failing closed", () => {
+  test.each([
+    ["account", "view-invoice", { owner: "unavailable" }],
+    ["customer link", "view-invoice", { owner: "link-unavailable" }],
+    [
+      "reservation",
+      "view-invoice",
+      { owner: "matches", reservation: "unreadable" },
+    ],
+    // Only a permission the author holds reaches the sandbox lookup.
+    [
+      "review sandbox",
+      "view-status",
+      { owner: "matches", reservation: null, sandboxOrder: "unreadable" },
+    ],
+  ] as const)(
+    "reports an unreadable %s instead of denying %s",
+    async (_label, permission, options) => {
+      const result = await runAuthorize({ ...options, input: { permission } });
+      const failClosed = await runAuthorization({
+        ...options,
+        input: { permission },
+      });
+
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "ReservationAuthorizationUnavailableError", orderId },
+      });
+      expect(failClosed.authorized).toBe(false);
+    }
+  );
+
+  test.each([
+    ["grants the linked customer", { owner: "matches" }, true],
+    ["denies a signed-out visitor", { owner: "signed-out" }, false],
+    ["denies an unlinked account", { owner: "unlinked" }, false],
+    ["denies a missing order", { owner: "matches", reservation: null }, false],
+  ] as const)("%s", async (_label, options, expected) => {
+    const result = await runAuthorize({
+      ...options,
+      input: { permission: "view-invoice" },
+    });
+
+    expect(result).toMatchObject({ _tag: "Success", success: expected });
+  });
+
+  test("accepts a valid capability while the account is unreadable", async () => {
+    const result = await runAuthorize({
+      owner: "unavailable",
+      input: {
+        accessToken: await makeAccessToken(),
+        permission: "view-invoice",
+      },
+    });
+
+    expect(result).toMatchObject({ _tag: "Success", success: true });
+  });
 });
 
 describe("a review account's sandbox order", () => {

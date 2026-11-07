@@ -1,7 +1,10 @@
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer } from "effect";
 import type { Locale } from "@/features/i18n";
-import { ReservationAuthorizationService } from "@/features/reservation/backend/reservation-authorization.service";
+import {
+  ReservationAuthorizationService,
+  type ReservationAuthorizationUnavailableError,
+} from "@/features/reservation/backend/reservation-authorization.service";
 import type { WorkspaceReservationDetailsMalformedError } from "@/features/reservation/backend/stored-reservation-details.server";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
@@ -49,6 +52,7 @@ interface ReservationInvoicePdfRequest {
 type ReservationInvoicePdfError =
   | ReservationInvoiceNotFoundError
   | ReservationInvoiceNotIssuedError
+  | ReservationAuthorizationUnavailableError
   | EffectDrizzleQueryError
   | InvoiceStorageError
   | InvoicePdfRenderingError
@@ -78,7 +82,7 @@ export class ReservationInvoicePdfService extends Context.Service<
 
       const getPdf = Effect.fn("ReservationInvoicePdfService.getPdf")(
         function* (request: ReservationInvoicePdfRequest) {
-          const authorized = yield* authorization.isAuthorized({
+          const authorized = yield* authorization.authorize({
             ...request,
             permission: "view-invoice",
           });

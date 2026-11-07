@@ -47,7 +47,9 @@ type Visitor =
   /** Signed in with an unrelated account. */
   | "other-account"
   /** Not signed in. */
-  | "anonymous";
+  | "anonymous"
+  /** The signed-in account can't be read. */
+  | "unreadable-account";
 
 const runGetPdf = async (options: {
   readonly visitor: Visitor;
@@ -77,8 +79,16 @@ const runGetPdf = async (options: {
   );
   const ownership = Layer.succeed(CustomerAccountReservationOwnership, {
     activeAccountId:
-      options.visitor === "anonymous"
-        ? Effect.fail(new CustomerAccountAccessError({ reason: "unavailable" }))
+      options.visitor === "anonymous" ||
+      options.visitor === "unreadable-account"
+        ? Effect.fail(
+            new CustomerAccountAccessError({
+              reason:
+                options.visitor === "anonymous"
+                  ? "unauthenticated"
+                  : "unavailable",
+            })
+          )
         : Effect.succeed(signedInAccountId),
     resolve: Effect.succeed({
       accountId: signedInAccountId,
@@ -195,6 +205,18 @@ describe("ReservationInvoicePdfService", () => {
       _tag: "Failure",
       failure: { _tag: "ReservationInvoiceNotIssuedError", orderId },
     });
+  });
+
+  test("keeps an unreadable account in the error channel instead of reporting not found", async () => {
+    const { result, findByReservationId } = await runGetPdf({
+      visitor: "unreadable-account",
+    });
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "ReservationAuthorizationUnavailableError", orderId },
+    });
+    expect(findByReservationId).not.toHaveBeenCalled();
   });
 
   test("keeps an invoice storage failure in the error channel", async () => {
