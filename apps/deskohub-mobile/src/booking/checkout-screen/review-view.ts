@@ -2,7 +2,6 @@ import type {
   CustomerCheckoutSummary,
   CustomerCheckoutSummaryItem,
   CustomerLegalDocument,
-  Money,
 } from "@deskohub/workspace-customer-api";
 import { Option } from "effect";
 import { canPay } from "../checkout/checkout-machine";
@@ -11,14 +10,11 @@ import type {
   HeldCheckout,
   ReviewState,
 } from "../checkout/checkout-state";
-
-/** What a summary line is, from its key (`CustomerCheckoutSummaryItem.key`). */
-export type SummaryLineKind =
-  | { readonly _tag: "Product"; readonly product: string }
-  | { readonly _tag: "Coffee" }
-  | { readonly _tag: "Workstation" }
-  | { readonly _tag: "Monitor"; readonly option: string }
-  | { readonly _tag: "Other"; readonly key: string };
+import type {
+  SummaryLineKind,
+  SummaryLineView,
+  SummaryView,
+} from "../ui/price-summary";
 
 export const summaryLineKind = (key: string): SummaryLineKind => {
   const [prefix, ...rest] = key.split(":");
@@ -29,34 +25,6 @@ export const summaryLineKind = (key: string): SummaryLineKind => {
   if (prefix === "monitor") return { _tag: "Monitor", option: name };
   return { _tag: "Other", key };
 };
-
-/** One summary line as the review shows it. */
-export interface SummaryLineView {
-  readonly key: string;
-  readonly kind: SummaryLineKind;
-  readonly amount: Money;
-  /** The price before discounts, on a discounted line. */
-  readonly originalAmount: Option.Option<Money>;
-  readonly discounts: ReadonlyArray<{
-    readonly label: string;
-    readonly amount: Money;
-  }>;
-  /** Office lines: the days and seats booked, with each part's price. */
-  readonly office: Option.Option<{
-    readonly dayCount: number;
-    readonly seats: number;
-    readonly accessAmount: Option.Option<Money>;
-    readonly seatAmount: Option.Option<Money>;
-  }>;
-  /** The price review names this line as changed. */
-  readonly changed: boolean;
-}
-
-export interface SummaryView {
-  readonly lines: ReadonlyArray<SummaryLineView>;
-  readonly total: Money;
-  readonly totalChanged: boolean;
-}
 
 /** The changed lines and sections a price review names. */
 export type ChangedKeys = Option.Option<
@@ -92,8 +60,10 @@ const lineView = (
 
 /**
  * The itemized summary (no VAT line: the summary has none), with the lines
- * a price review changed marked. A changed section marks all its lines; the
- * total is marked when its section or the final total line changed.
+ * a price review changed marked. A line is marked when its own key changed
+ * (a section changes when its total does, which says nothing about its
+ * other lines, as on the site); the total is marked when its section or the
+ * final total line changed.
  */
 export const summaryView = (
   summary: CustomerCheckoutSummary,
@@ -103,17 +73,11 @@ export const summaryView = (
     sectionKeys: [] as ReadonlyArray<string>,
     itemKeys: [] as ReadonlyArray<string>,
   }));
-  const lines = summary.sections.flatMap((section) => {
-    const sectionChanged = changed.sectionKeys.includes(section.key);
-    return section.items
+  const lines = summary.sections.flatMap((section) =>
+    section.items
       .filter((item) => item.key !== totalKey)
-      .map((item) =>
-        lineView(
-          item,
-          (key) => sectionChanged || changed.itemKeys.includes(key)
-        )
-      );
-  });
+      .map((item) => lineView(item, (key) => changed.itemKeys.includes(key)))
+  );
   return {
     lines,
     total: summary.total,
@@ -196,8 +160,11 @@ export interface ReviewView {
   readonly code: CodeFieldView;
   readonly consent: ConsentView;
   readonly canPay: boolean;
+  /** A write runs: every other review action holds still. */
+  readonly busy: boolean;
   readonly submitting: boolean;
-  readonly expiresAt: number;
+  /** Whole seconds left on the hold at the flow clock's latest tick. */
+  readonly holdSecondsLeft: number;
 }
 
 const pendingIs =
@@ -205,7 +172,7 @@ const pendingIs =
   (tag: "ApplyDiscountCode" | "AcceptPriceChange" | "SubmitCheckout") =>
     Option.exists(review.pending, (pending) => pending._tag === tag);
 
-export const reviewView = (review: ReviewState): ReviewView => {
+export const reviewView = (review: ReviewState, now: number): ReviewView => {
   const idle = Option.isNone(review.pending);
   const pending = pendingIs(review);
   const { checkout, code, legal } = review;
@@ -226,8 +193,9 @@ export const reviewView = (review: ReviewState): ReviewView => {
       earlyPerformance: checkout.earlyPerformanceConsent.required,
     },
     canPay: canPay(review),
+    busy: !idle,
     submitting: pending("SubmitCheckout"),
-    expiresAt: Date.parse(checkout.expiresAt),
+    holdSecondsLeft: holdSecondsLeft(Date.parse(checkout.expiresAt), now),
   };
 };
 

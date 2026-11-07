@@ -9,6 +9,7 @@ import {
   emptyDetailsDraft,
   type SelfContact,
   validateDetails,
+  withRejectedSavedFields,
 } from "./details-form";
 
 const linkedAccount = (
@@ -246,6 +247,27 @@ describe("validateDetails", () => {
         },
       },
     });
+  });
+});
+
+describe("withRejectedSavedFields", () => {
+  test("a saved phone the server rejected is asked for and sent as entered", () => {
+    const rejected = withRejectedSavedFields(profileSelf, new Set(["phone"]));
+    expect(rejected.name).toEqual(profileSelf.name);
+    expect(problemsOf(rejected, draft())).toEqual({ phone: "required" });
+    const corrected = validateDetails(
+      rejected,
+      draft({ self: { name: "", phone: "+420 777 123 456" } })
+    );
+    expect(corrected._tag === "Valid" && corrected.details.contact.phone).toBe(
+      "+420 777 123 456"
+    );
+  });
+
+  test("a rejected saved name is asked for too", () => {
+    const rejected = withRejectedSavedFields(profileSelf, new Set(["name"]));
+    expect(Option.isNone(rejected.name)).toBe(true);
+    expect(rejected.phone).toEqual(profileSelf.phone);
   });
 });
 

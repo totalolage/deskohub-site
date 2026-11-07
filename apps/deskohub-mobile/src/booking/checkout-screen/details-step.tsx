@@ -23,6 +23,7 @@ import {
   type FieldProblem,
   type SelfContact,
   validateDetails,
+  withRejectedSavedFields,
 } from "./details-form";
 
 type Locale = { readonly locale: CustomerLocale };
@@ -60,6 +61,22 @@ export function DetailsStep({
         : Option.none()
     )
   );
+  // A saved name or phone the server rejected stays editable from then on.
+  const [rejectedSaved, setRejectedSaved] = useState<
+    ReadonlySet<"name" | "phone">
+  >(new Set());
+  const rejectedNow = Option.filter(
+    serverField,
+    (field): field is "name" | "phone" =>
+      draft.bookingFor === "self" && (field === "name" || field === "phone")
+  );
+  const contact = withRejectedSavedFields(
+    self,
+    Option.match(rejectedNow, {
+      onNone: () => rejectedSaved,
+      onSome: (field) => new Set([...rejectedSaved, field]),
+    })
+  );
   const shownProblems: DetailsFieldProblems = Option.match(serverField, {
     onNone: () => problems,
     onSome: (field) => ({ ...problems, [field]: "invalid" }),
@@ -70,7 +87,10 @@ export function DetailsStep({
     locale,
   });
   const submit = () => {
-    const validation = validateDetails(self, draft);
+    if (Option.isSome(rejectedNow)) {
+      setRejectedSaved(new Set([...rejectedSaved, rejectedNow.value]));
+    }
+    const validation = validateDetails(contact, draft);
     if (validation._tag === "Invalid") {
       setProblems(validation.problems);
       return;
@@ -101,7 +121,7 @@ export function DetailsStep({
       />
       {draft.bookingFor === "self" ? (
         <SelfFields
-          self={self}
+          self={contact}
           draft={draft}
           onDraftChange={onDraftChange}
           fieldProps={fieldProps}

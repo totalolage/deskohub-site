@@ -25,6 +25,7 @@ const selection = {
 
 const summary = sampleSummary({ lines: pricedLines(selection) });
 const documents = sampleLegalDocuments("en-US", 1);
+const now = Date.parse("2026-11-20T09:05:00.000Z");
 
 const held = (overrides: Partial<CustomerCheckout> = {}): CustomerCheckout => ({
   status: "ready",
@@ -146,7 +147,7 @@ describe("summaryView", () => {
     expect(view.totalChanged).toBe(false);
   });
 
-  test("marks the changed items, every item of a changed section, and the total", () => {
+  test("marks only the changed items; a changed total section marks the total", () => {
     const [first, second] = pricedLines(selection);
     const byItem = summaryView(
       summary,
@@ -158,7 +159,7 @@ describe("summaryView", () => {
       summary,
       Option.some({ sectionKeys: ["order", "total"], itemKeys: [] })
     );
-    expect(bySection.lines.map((line) => line.changed)).toEqual([true, true]);
+    expect(bySection.lines.map((line) => line.changed)).toEqual([false, false]);
     expect(bySection.totalChanged).toBe(true);
     expect(second?.key).toBe("addon:coffee");
     expect(bySection.lines[1]?.kind).toEqual({ _tag: "Coffee" });
@@ -195,7 +196,7 @@ describe("reviewView", () => {
       reviewing.state,
       CheckoutEvent.ToggleConsent({ accepted: true })
     );
-    const before = reviewView(asReview(ticked.state));
+    const before = reviewView(asReview(ticked.state), now);
     expect(before.priceReview).toBe(true);
     expect(before.summary.lines.map((line) => line.changed)).toEqual([
       false,
@@ -204,7 +205,7 @@ describe("reviewView", () => {
     expect(before.canPay).toBe(false);
 
     const accepting = run(ticked.state, CheckoutEvent.AcceptPrice());
-    const pending = reviewView(asReview(accepting.state));
+    const pending = reviewView(asReview(accepting.state), now);
     expect(pending.acceptingPrice).toBe(true);
     expect(pending.code.editable).toBe(false);
     expect(pending.consent.disabled).toBe(true);
@@ -216,7 +217,7 @@ describe("reviewView", () => {
         checkout: held({ payStateToken: "token-2" }),
       })
     );
-    const after = reviewView(asReview(accepted.state));
+    const after = reviewView(asReview(accepted.state), now);
     expect(after.priceReview).toBe(false);
     expect(after.summary.lines.every((line) => !line.changed)).toBe(true);
     expect(after.canPay).toBe(after.consent.checked);
@@ -224,21 +225,21 @@ describe("reviewView", () => {
 
   test("Pay needs the loaded documents ticked, and holds still while submitting", () => {
     const loading = reviewWith(held(), { loadLegal: false });
-    const whileLoading = reviewView(asReview(loading.state));
+    const whileLoading = reviewView(asReview(loading.state), now);
     expect(whileLoading.consent.legal._tag).toBe("Loading");
     expect(whileLoading.consent.disabled).toBe(true);
     expect(whileLoading.canPay).toBe(false);
 
     const loaded = reviewWith(held());
-    expect(reviewView(asReview(loaded.state)).canPay).toBe(false);
+    expect(reviewView(asReview(loaded.state), now).canPay).toBe(false);
     const ticked = run(
       loaded.state,
       CheckoutEvent.ToggleConsent({ accepted: true })
     );
-    expect(reviewView(asReview(ticked.state)).canPay).toBe(true);
+    expect(reviewView(asReview(ticked.state), now).canPay).toBe(true);
 
     const paying = run(ticked.state, CheckoutEvent.Pay());
-    const submitting = reviewView(asReview(paying.state));
+    const submitting = reviewView(asReview(paying.state), now);
     expect(submitting.submitting).toBe(true);
     expect(submitting.canPay).toBe(false);
     expect(submitting.code.editable).toBe(false);
@@ -253,9 +254,9 @@ describe("reviewView", () => {
         },
       })
     );
-    expect(reviewView(asReview(loaded.state)).consent.earlyPerformance).toBe(
-      true
-    );
+    expect(
+      reviewView(asReview(loaded.state), now).consent.earlyPerformance
+    ).toBe(true);
   });
 
   test("code: applying, applied, and an unavailable code stays retryable", () => {
@@ -264,11 +265,12 @@ describe("reviewView", () => {
       loaded.state,
       CheckoutEvent.CodeChanged({ input: " SAVE10 " })
     );
-    expect(reviewView(asReview(typed.state)).code.canApply).toBe(true);
+    expect(reviewView(asReview(typed.state), now).code.canApply).toBe(true);
 
     const applying = run(typed.state, CheckoutEvent.ApplyCode());
-    const pending = reviewView(asReview(applying.state));
+    const pending = reviewView(asReview(applying.state), now);
     expect(pending.code.message._tag).toBe("Applying");
+    expect(pending.busy).toBe(true);
     expect(pending.code.canApply).toBe(false);
     expect(pending.consent.disabled).toBe(true);
 
@@ -283,7 +285,7 @@ describe("reviewView", () => {
         }),
       })
     );
-    const retryable = reviewView(asReview(unavailable.state));
+    const retryable = reviewView(asReview(unavailable.state), now);
     expect(retryable.code.message._tag).toBe("Retryable");
     expect(retryable.code.canApply).toBe(true);
     expect(retryable.code.input).toBe(" SAVE10 ");
@@ -298,7 +300,7 @@ describe("reviewView", () => {
         },
       })
     );
-    expect(reviewView(asReview(applied.state)).code.message).toEqual({
+    expect(reviewView(asReview(applied.state), now).code.message).toEqual({
       _tag: "Applied",
       outcome: "applied",
     });
@@ -320,11 +322,17 @@ describe("reviewView", () => {
         }),
       })
     );
-    expect(reviewView(asReview(rejected.state)).code.message).toEqual({
+    expect(reviewView(asReview(rejected.state), now).code.message).toEqual({
       _tag: "Rejected",
       reason: "ineligible",
     });
   });
+});
+
+test("reviewView counts the hold down from the flow clock's tick", () => {
+  const loaded = reviewWith(held());
+  expect(reviewView(asReview(loaded.state), now).holdSecondsLeft).toBe(300);
+  expect(reviewView(asReview(loaded.state), now).busy).toBe(false);
 });
 
 describe("holdSecondsLeft", () => {

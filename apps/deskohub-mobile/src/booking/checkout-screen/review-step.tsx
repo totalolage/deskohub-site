@@ -49,10 +49,10 @@ export function ReviewStep({
   readonly selection: CustomerBookingSelection;
   readonly send: Send;
 }) {
-  const view = reviewView(review);
+  const view = reviewView(review, now);
   return (
     <View style={styles.step}>
-      <HoldCountdown expiresAt={view.expiresAt} now={now} locale={locale} />
+      <HoldCountdown secondsLeft={view.holdSecondsLeft} locale={locale} />
       <PriceReviewBanner view={view} send={send} locale={locale} />
       <PriceSummary
         summary={view.summary}
@@ -106,7 +106,7 @@ function PriceReviewBanner({
               : m.booking_checkout_accept_price({}, { locale })
           }
           onPress={() => send(CheckoutEvent.AcceptPrice())}
-          disabled={view.acceptingPrice}
+          disabled={view.busy}
         />
       )}
     </View>

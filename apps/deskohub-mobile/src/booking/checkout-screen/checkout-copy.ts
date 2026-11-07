@@ -4,7 +4,7 @@ import type {
 } from "@deskohub/workspace-customer-api";
 import { m } from "../../i18n/messages";
 import type { CheckoutRetryKind } from "../checkout/booking-problem";
-import type { SummaryLineView } from "./review-view";
+import type { SummaryLineView } from "../ui/price-summary";
 
 /** What went wrong that the customer can retry, as one sentence. */
 export const retryMessage = (kind: CheckoutRetryKind, locale: CustomerLocale) =>

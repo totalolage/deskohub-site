@@ -77,6 +77,20 @@ export const detailsAccess = (account: CustomerAccountState): DetailsAccess => {
   }
 };
 
+/**
+ * The contact to book as once the server rejected a saved name or phone:
+ * that field is asked for inline, as a missing one is, so the customer can
+ * correct it (the app's checks are looser than the server's).
+ */
+export const withRejectedSavedFields = (
+  self: SelfContact,
+  rejected: ReadonlySet<"name" | "phone">
+): SelfContact => ({
+  ...self,
+  name: rejected.has("name") ? Option.none() : self.name,
+  phone: rejected.has("phone") ? Option.none() : self.phone,
+});
+
 /** What the invoice needs: none, a personal invoice, or a business one. */
 export type BillingChoice = "none" | "personal-invoice" | "business";
 

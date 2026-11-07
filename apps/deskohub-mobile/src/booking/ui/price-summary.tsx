@@ -4,10 +4,42 @@ import { Option } from "effect";
 import { StyleSheet, Text, View } from "react-native";
 import { m } from "../../i18n/messages";
 import { theme } from "../../theme";
-import type {
-  SummaryLineView,
-  SummaryView,
-} from "../checkout-screen/review-view";
+
+/** What a summary line is, from its key (`CustomerCheckoutSummaryItem.key`). */
+export type SummaryLineKind =
+  | { readonly _tag: "Product"; readonly product: string }
+  | { readonly _tag: "Coffee" }
+  | { readonly _tag: "Workstation" }
+  | { readonly _tag: "Monitor"; readonly option: string }
+  | { readonly _tag: "Other"; readonly key: string };
+
+/** One summary line as the review shows it. */
+export interface SummaryLineView {
+  readonly key: string;
+  readonly kind: SummaryLineKind;
+  readonly amount: Money;
+  /** The price before discounts, on a discounted line. */
+  readonly originalAmount: Option.Option<Money>;
+  readonly discounts: ReadonlyArray<{
+    readonly label: string;
+    readonly amount: Money;
+  }>;
+  /** Office lines: the days and seats booked, with each part's price. */
+  readonly office: Option.Option<{
+    readonly dayCount: number;
+    readonly seats: number;
+    readonly accessAmount: Option.Option<Money>;
+    readonly seatAmount: Option.Option<Money>;
+  }>;
+  /** The price review names this line as changed. */
+  readonly changed: boolean;
+}
+
+export interface SummaryView {
+  readonly lines: ReadonlyArray<SummaryLineView>;
+  readonly total: Money;
+  readonly totalChanged: boolean;
+}
 
 /** Formats a minor-unit amount for the locale, e.g. "350 Kč". */
 export function formatMoney(money: Money, locale: CustomerLocale): string {
