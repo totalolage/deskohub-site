@@ -163,7 +163,10 @@ describe("isCurrentPaymentSubmitLegalAcceptance", () => {
       "one document twice",
       [current[0], { key: "terms-and-conditions", hash: termsHash }],
     ],
-    ["an extra document", [...current, { key: "privacy-policy", hash: termsHash }]],
+    [
+      "an extra document",
+      [...current, { key: "privacy-policy", hash: termsHash }],
+    ],
     [
       "another document in place of the operating rules",
       [current[0], { key: "privacy-policy", hash: operatingRulesHash }],

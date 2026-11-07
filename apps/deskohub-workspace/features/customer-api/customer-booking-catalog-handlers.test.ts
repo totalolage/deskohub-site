@@ -2,13 +2,20 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
 import { DotyposUnavailable } from "@deskohub/dotypos";
+import { testEmailAddress } from "@deskohub/test-email";
 import { customerAvailabilityReplacementHeader } from "@deskohub/workspace-customer-api";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
+import {
+  buildSignedPayState,
+  sealPayState,
+} from "@/features/checkout/backend/checkout/pay-state";
 import { ReservationSupersessionService } from "@/features/checkout/backend/checkout/reservation-supersession.service";
+import { buildCoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
 import {
   type DiscountAdvertisementInput,
   discountAdvertisementQuoteCodec,
+  discountIdSchema,
 } from "@/features/discounts/contracts";
 import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
 import {
@@ -20,6 +27,7 @@ import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
+import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import type {
   MeetingRoomStartTimes,
@@ -27,6 +35,11 @@ import type {
 } from "@/features/reservation/workspace-availability";
 import { moneyWithValue } from "@/shared/money/money";
 import { TestSealedStateKeys } from "@/shared/testing/sealed-state-keys.test-utils";
+import {
+  instantStringSchema,
+  localDateTimeSchema,
+  plainDateStringSchema,
+} from "@/shared/utils/temporal";
 import {
   type CustomerApiCall,
   customerApiRequest,
@@ -43,7 +56,10 @@ const workspaceDateFromToday = (days: number) =>
   getCurrentWorkspaceDate().add({ days }).toString();
 
 /** No public sale runs. */
-const noSale = ({ product, discountableSubtotal }: DiscountAdvertisementInput) =>
+const noSale = ({
+  product,
+  discountableSubtotal,
+}: DiscountAdvertisementInput) =>
   Effect.succeed({
     complete: true,
     quote: discountAdvertisementQuoteCodec.make({
@@ -55,11 +71,58 @@ const noSale = ({ product, discountableSubtotal }: DiscountAdvertisementInput) =
     }),
   });
 
+/** Every sale source answers but one, so the prices may miss a sale. */
+const incompleteSale = (input: DiscountAdvertisementInput) =>
+  noSale(input).pipe(
+    Effect.map((discovery) => ({ ...discovery, complete: false }))
+  );
+
+const saleDiscountId = Schema.decodeSync(discountIdSchema)("app-sale");
+
+/** A public 10 % sale on every product. */
+const tenPercentSale = ({
+  product,
+  discountableSubtotal,
+}: DiscountAdvertisementInput) => {
+  const amount = moneyWithValue(
+    Math.round(discountableSubtotal.value / 10),
+    discountableSubtotal
+  );
+  const after = moneyWithValue(
+    discountableSubtotal.value - amount.value,
+    discountableSubtotal
+  );
+  return Effect.succeed({
+    complete: true,
+    quote: discountAdvertisementQuoteCodec.make({
+      product,
+      discountableSubtotal,
+      discounts: [
+        {
+          discount: {
+            id: saleDiscountId,
+            label: "App sale",
+            adjustment: { kind: "percentage", basisPoints: 1000 },
+          },
+          subtotalBefore: discountableSubtotal,
+          amount,
+          subtotalAfter: after,
+        },
+      ],
+      totalDiscount: amount,
+      discountedSubtotal: after,
+    }),
+  });
+};
+
 /** Anonymous pricing whose sale source answers with `discover`. */
 const pricingWith = (
   discoverAdvertisedDiscounts: (
     input: DiscountAdvertisementInput
-  ) => Effect.Effect<never, unknown> | ReturnType<typeof noSale>
+  ) =>
+    | Effect.Effect<never, unknown>
+    | ReturnType<typeof noSale>
+    | ReturnType<typeof tenPercentSale>
 ) =>
   CheckoutPricingService.Default.pipe(
     Layer.provide(
@@ -125,8 +188,10 @@ describe("listOfferings", () => {
     expect(body.openingHours).toEqual(expect.any(String));
     expect(
       body.offerings.map(
-        (offering: { family: string; tier?: string; duration?: string }) =>
-          [offering.family, offering.tier ?? offering.duration]
+        (offering: { family: string; tier?: string; duration?: string }) => [
+          offering.family,
+          offering.tier ?? offering.duration,
+        ]
       )
     ).toEqual([
       ["cowork", "open-space"],
@@ -165,10 +230,26 @@ describe("listOfferings", () => {
     const api = makeCustomerApiTestServer({ bookingCatalog: pricedCatalog() });
 
     const response = await api.handle(
-      customerApiRequest({ ...listOfferings, path: "/booking/offerings?locale=de-DE" })
+      customerApiRequest({
+        ...listOfferings,
+        path: "/booking/offerings?locale=de-DE",
+      })
     );
 
     expect(response.status).toBe(400);
+  });
+
+  test("answers unavailable while a sale source can't answer, rather than prices that may miss a sale", async () => {
+    const api = makeCustomerApiTestServer({
+      bookingCatalog: pricedCatalog({ pricing: pricingWith(incompleteSale) }),
+    });
+
+    const response = await api.handle(customerApiRequest(listOfferings));
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      _tag: "CustomerServiceUnavailable",
+    });
   });
 
   test("answers unavailable while the sale source can't be read", async () => {
@@ -212,6 +293,39 @@ const testAvailability: WorkspaceAvailability = {
     },
   ],
 };
+
+/** A signed cowork pay state, as a client changing that booking sends it. */
+const coworkReplacementToken = Effect.runPromise(
+  Effect.gen(function* () {
+    const reservation = Schema.decodeUnknownSync(
+      normalizedCoworkReservationOrderSchema
+    )({
+      kind: "cowork",
+      entryTier: "open-space",
+      date: "2099-06-20",
+      coffee: false,
+      name: "Ada Lovelace",
+      email: testEmailAddress("ada"),
+      phone: "+420777000111",
+    });
+    const state = yield* buildSignedPayState({
+      locale: "en-US",
+      reservation,
+      quote: yield* buildCoworkReservationQuote({
+        kind: "cowork",
+        entryTier: reservation.entryTier,
+        date: reservation.date,
+        coffee: reservation.coffee,
+      }),
+      orderId: "reservation-id",
+      bookedAt: Schema.decodeUnknownSync(instantStringSchema)(
+        "2099-06-01T10:00:00Z"
+      ),
+      checkoutSessionId: "session-id",
+    });
+    return yield* sealPayState(state);
+  }).pipe(Effect.provide(TestSealedStateKeys))
+);
 
 describe("getAvailability", () => {
   const getAvailability: CustomerApiCall = {
@@ -257,6 +371,49 @@ describe("getAvailability", () => {
     ]);
   });
 
+  test("ignores the hold of the pay state the client replaces", async () => {
+    const queries: AvailabilityRequest[] = [];
+    const lookups: unknown[] = [];
+    const api = makeCustomerApiTestServer({
+      bookingCatalog: {
+        availability: Layer.mergeAll(
+          Layer.mock(WorkspaceAvailabilityService, {
+            getAvailability: (input) => {
+              queries.push(input);
+              return Effect.succeed(testAvailability);
+            },
+          }),
+          Layer.mock(ReservationSupersessionService, {
+            findCurrent: (input) => {
+              lookups.push(input);
+              return Effect.succeed({
+                dotyposReservationId: "dotypos-reservation-1",
+              } as never);
+            },
+          }),
+          TestSealedStateKeys
+        ),
+      },
+    });
+
+    const response = await api.handle(
+      customerApiRequest({
+        ...getAvailability,
+        headers: {
+          [customerAvailabilityReplacementHeader]: await coworkReplacementToken,
+        },
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(lookups).toEqual([
+      { orderId: "reservation-id", checkoutSessionId: "session-id" },
+    ]);
+    expect(queries.map(({ occupancyExclusion }) => occupancyExclusion)).toEqual(
+      [{ dotyposReservationId: "dotypos-reservation-1" }]
+    );
+  });
+
   test.each([
     ["an unknown tier", "kind=cowork&entryTier=basic"],
     ["a malformed date", "kind=cowork&from=7.11.2026"],
@@ -265,7 +422,10 @@ describe("getAvailability", () => {
     const api = makeCustomerApiTestServer();
 
     const response = await api.handle(
-      customerApiRequest({ method: "GET", path: `/booking/availability?${query}` })
+      customerApiRequest({
+        method: "GET",
+        path: `/booking/availability?${query}`,
+      })
     );
 
     expect(response.status).toBe(400);
@@ -311,18 +471,18 @@ describe("getMeetingRoomStartTimes", () => {
     path: "/booking/availability/meeting-room-start-times?date=2026-11-09&duration=hour:4",
   };
 
-  const startTimes = {
-    date: "2026-11-09",
+  const startTimes: MeetingRoomStartTimes = {
+    date: plainDateStringSchema.make("2026-11-09"),
     duration: "hour:4",
     startTimes: [
       {
-        startDateTime: "2026-11-09T09:00",
-        startsAt: "2026-11-09T08:00:00Z",
-        endsAt: "2026-11-09T12:00:00Z",
+        startDateTime: localDateTimeSchema.make("2026-11-09T09:00"),
+        startsAt: instantStringSchema.make("2026-11-09T08:00:00Z"),
+        endsAt: instantStringSchema.make("2026-11-09T12:00:00Z"),
         earlySetupAvailable: true,
       },
     ],
-  } as unknown as MeetingRoomStartTimes;
+  };
 
   testCustomerEndpointGuards(getStartTimes);
 
@@ -418,6 +578,43 @@ describe("getQuote", () => {
     expect(body.advertisedPriceToken.length).toBeGreaterThan(0);
   });
 
+  test("itemizes a sale on the discounted line", async () => {
+    const api = makeCustomerApiTestServer({
+      bookingCatalog: pricedCatalog({ pricing: pricingWith(tenPercentSale) }),
+    });
+
+    const response = await api.handle(
+      customerApiRequest({
+        method: "GET",
+        path: quotePath(
+          `family=meeting-room&duration=hour:1&startTime=10:00&date=${workspaceDateFromToday(2)}`
+        ),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.discount.value).toBeGreaterThan(0);
+    expect(body.total.value).toBe(
+      body.regularPrice.value - body.discount.value
+    );
+    const [product] = body.summary.sections[0].items;
+    expect(Object.keys(product).toSorted()).toEqual([
+      "amount",
+      "discounts",
+      "key",
+      "originalAmount",
+    ]);
+    expect(product.key).toStartWith("product:meeting-room:");
+    expect(product.originalAmount).toEqual(body.regularPrice);
+    expect(product.discounts).toEqual([
+      {
+        discount: { id: "app-sale", label: "App sale" },
+        amount: body.discount,
+      },
+    ]);
+  });
+
   test("names the field a family needs", async () => {
     const api = makeCustomerApiTestServer({ bookingCatalog: pricedCatalog() });
 
@@ -478,7 +675,9 @@ describe("getQuote", () => {
     const response = await api.handle(
       customerApiRequest({
         method: "GET",
-        path: quotePath(`family=office&seats=2&date=${workspaceDateFromToday(1)}`),
+        path: quotePath(
+          `family=office&seats=2&date=${workspaceDateFromToday(1)}`
+        ),
       })
     );
 
@@ -488,6 +687,22 @@ describe("getQuote", () => {
       family: "office",
     });
   });
+
+  test.each([["a sale source that can't answer", incompleteSale]])(
+    "answers %s as retryable unavailable",
+    async (_case, discover) => {
+      const api = makeCustomerApiTestServer({
+        bookingCatalog: pricedCatalog({ pricing: pricingWith(discover) }),
+      });
+
+      const response = await api.handle(customerApiRequest(getQuote));
+
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({
+        _tag: "CustomerServiceUnavailable",
+      });
+    }
+  );
 
   test.each([
     [
@@ -504,20 +719,23 @@ describe("getQuote", () => {
         message: "Calendar down",
       }),
     ],
-  ])("answers %s as retryable unavailable, never as a changed price", async (_case, failure) => {
-    const api = makeCustomerApiTestServer({
-      bookingCatalog: pricedCatalog({
-        pricing: pricingWith(() => Effect.fail(failure)),
-      }),
-    });
+  ])(
+    "answers %s as retryable unavailable, never as a changed price",
+    async (_case, failure) => {
+      const api = makeCustomerApiTestServer({
+        bookingCatalog: pricedCatalog({
+          pricing: pricingWith(() => Effect.fail(failure)),
+        }),
+      });
 
-    const response = await api.handle(customerApiRequest(getQuote));
+      const response = await api.handle(customerApiRequest(getQuote));
 
-    expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({
-      _tag: "CustomerServiceUnavailable",
-    });
-  });
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({
+        _tag: "CustomerServiceUnavailable",
+      });
+    }
+  );
 });
 
 describe("listLegalDocuments", () => {
