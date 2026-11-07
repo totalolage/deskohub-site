@@ -28,8 +28,8 @@ export type BookingServices =
  * instances the account's runtime built, never a second `customerDataLayer`.
  *
  * Its default is the live Layer (the platform's payment page, the account's
- * storage, random ids), which also serves sample-data mode, whose fake
- * Workspace replaces only the API. Tests seed fakes with
+ * storage, random ids); sample-data mode keeps it but completes the fake
+ * Workspace's payment page instead of opening it. Tests seed fakes with
  * `Atom.initialValue(bookingServicesLayer, layer)`. Kept alive so a seeded
  * Layer never falls back to the default; that keeps the Layer value, not
  * built services, which each command builds afresh. Booking services must
@@ -39,10 +39,20 @@ export type BookingServices =
  */
 export const bookingServicesLayer = Atom.keepAlive(
   Atom.make<Layer.Layer<BookingServices, never, CustomerDataServices>>(
-    Layer.mergeAll(
-      paymentBrowserLayer,
-      RememberedReferralCode.Default,
-      BookingIds.Default
+    // Suspended because bun's tests don't define `__DEV__`; they seed fakes.
+    Layer.suspend(() =>
+      // Metro inlines `__DEV__` and EXPO_PUBLIC_ values and drops this
+      // branch from release bundles, so the sample payment page and the fake
+      // Workspace never ship there; a static import would bundle them.
+      __DEV__ && process.env.EXPO_PUBLIC_ACCOUNT_SAMPLE_DATA === "1"
+        ? (
+            require("../testing/sample-booking-services-layer") as typeof import("../testing/sample-booking-services-layer")
+          ).sampleBookingServicesLayer
+        : Layer.mergeAll(
+            paymentBrowserLayer,
+            RememberedReferralCode.Default,
+            BookingIds.Default
+          )
     )
   )
 );

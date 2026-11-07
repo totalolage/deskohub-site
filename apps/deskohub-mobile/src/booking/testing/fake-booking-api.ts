@@ -26,8 +26,11 @@ import {
   type CustomerMonitorOption,
   CustomerOfferingUnavailable,
   CustomerQuoteExpired,
+  CustomerReservationOrderId,
+  type CustomerReservationSummary,
   CustomerSelectionUnavailable,
   customerReferralCodeHeader,
+  type Money,
   ReferralCode,
   type SubmitCustomerCheckout,
   WorkspaceCustomerApi,
@@ -43,6 +46,10 @@ import {
   type FakeWorkspace,
   fakeWorkspaceOrigin,
 } from "../../customer-api/testing/fake-workspace";
+import {
+  type SampleOrder,
+  sampleInvoicePdf,
+} from "../../customer-api/testing/sample-fixtures";
 import { selectionKey } from "../selection/booking-selection";
 import {
   addDays,
@@ -51,6 +58,7 @@ import {
   pragueMidnight,
   pragueToday,
 } from "../selection/prague-date";
+import { issueFakePaymentPage } from "./fake-payment-gateway";
 import {
   inclusiveDays,
   pricedLines,
@@ -314,9 +322,31 @@ export class FakeBookingApi {
     return this.tokens.get(token);
   }
 
-  /** @internal Marks the order submitted; no token of it is payable again. */
+  /**
+   * @internal Marks the order submitted, so no token of it is payable again,
+   * and books it in the Workspace's reservations: fulfilled when nothing is
+   * left to pay, else pending until its payment completes.
+   */
   submit(checkout: FakeBookingCheckout) {
-    this.checkouts.set(checkout.orderId, { ...checkout, status: "submitted" });
+    const submitted = { ...checkout, status: "submitted" as const };
+    this.checkouts.set(checkout.orderId, submitted);
+    const { total } = summaryOf(submitted);
+    this.book(submitted, total, total.value === 0 ? "fulfilled" : "pending");
+  }
+
+  /**
+   * Completes a submitted order's payment, as its payment page does: the
+   * order is paid and fulfilled, with its door code and invoice.
+   */
+  completePayment(orderId: string) {
+    const checkout = this.checkouts.get(orderId);
+    if (checkout?.status !== "submitted") return;
+    this.book(checkout, summaryOf(checkout).total, "fulfilled");
+  }
+
+  /** @internal The order's payment page; completing it completes the payment. */
+  paymentPage(orderId: string) {
+    return issueFakePaymentPage(orderId, () => this.completePayment(orderId));
   }
 
   /** @internal Whether a payment for the order started. */
@@ -333,6 +363,29 @@ export class FakeBookingApi {
   /** @internal Remembers the order a create attempt made. */
   attempt(sessionId: string, attemptId: string, orderId: string) {
     this.attempts.set(`${sessionId}\u0000${attemptId}`, orderId);
+  }
+
+  /** Puts the order and its history row in the Workspace's reservations. */
+  private book(
+    checkout: FakeBookingCheckout,
+    total: Money,
+    status: BookedStatus
+  ) {
+    const { order, row } = bookedReservation(checkout, total, status);
+    const { data } = this.workspace;
+    const { current } = data.history;
+    this.workspace.data = {
+      ...data,
+      orders: new Map(data.orders).set(checkout.orderId, order),
+      history: {
+        ...data.history,
+        current: current.some((entry) => entry.orderId === checkout.orderId)
+          ? current.map((entry) =>
+              entry.orderId === checkout.orderId ? row : entry
+            )
+          : [...current, row],
+      },
+    };
   }
 
   private script<N extends BookingEndpointName>(
@@ -837,7 +890,7 @@ const submitHeld = ({
     ),
     Effect.tap((checkout) => Effect.sync(() => booking.submit(checkout))),
     Effect.map((checkout) =>
-      submission(checkout, remembered, payload.returnTarget)
+      submission(booking, checkout, remembered, payload.returnTarget)
     )
   );
 
@@ -856,6 +909,7 @@ const acceptsCurrentDocuments = (
  * page is the one the submission's return target names, as #1021 serves it.
  */
 const submission = (
+  booking: FakeBookingApi,
   checkout: FakeBookingCheckout,
   remembered: string | undefined,
   returnTarget: (typeof SubmitCustomerCheckout.Type)["returnTarget"]
@@ -874,8 +928,116 @@ const submission = (
   return {
     status: "payment_required",
     orderId: checkout.orderId,
-    paymentUrl: `https://pay.sample.example/checkout/${checkout.orderId}`,
+    paymentUrl: booking.paymentPage(checkout.orderId),
     statusUrl,
+  };
+};
+
+/** How a submitted order stands in the Workspace's reservations. */
+type BookedStatus = "pending" | "fulfilled";
+
+const bookedStates = {
+  pending: {
+    status: "pending",
+    paymentStatus: "pending",
+    fulfillmentStatus: "not_started",
+  },
+  fulfilled: {
+    status: "fulfilled",
+    paymentStatus: "paid",
+    fulfillmentStatus: "fulfilled",
+  },
+} as const;
+
+const bookedRowStatuses = {
+  pending: "pending",
+  fulfilled: "confirmed",
+} as const;
+
+const accessMargin = 30 * 60_000;
+
+/**
+ * A submitted order as the status page and the history read it, shaped like
+ * the sample fixtures' orders: a fulfilled one has its door code, and an
+ * invoice unless it was free.
+ */
+const bookedReservation = (
+  checkout: FakeBookingCheckout,
+  total: Money,
+  status: BookedStatus
+): {
+  readonly order: SampleOrder;
+  readonly row: CustomerReservationSummary;
+} => {
+  const { selection } = checkout;
+  const { startsAt, endsAt } = bookedTimes(selection);
+  const orderId = CustomerReservationOrderId.make(checkout.orderId);
+  const fulfilled = status === "fulfilled";
+  return {
+    order: {
+      state: {
+        orderId,
+        kind: selection.family,
+        ...bookedStates[status],
+        startsAt,
+        endsAt,
+        total,
+      },
+      ...(fulfilled
+        ? {
+            access: {
+              code: "000000",
+              accessStartsAt: new Date(
+                Date.parse(startsAt) - accessMargin
+              ).toISOString(),
+              accessEndsAt: new Date(
+                Date.parse(endsAt) + accessMargin
+              ).toISOString(),
+            },
+          }
+        : {}),
+      ...(fulfilled && total.value > 0 ? { invoice: sampleInvoicePdf() } : {}),
+    },
+    row: {
+      id: `sample-reservation-${checkout.orderId}`,
+      orderId,
+      product:
+        selection.family === "cowork"
+          ? { kind: "cowork", tier: selection.tier ?? "open-space" }
+          : { kind: selection.family },
+      startsAt,
+      endsAt,
+      seats:
+        selection.family === "meeting-room" ? null : (selection.seats ?? 1),
+      status: bookedRowStatuses[status],
+    },
+  };
+};
+
+/**
+ * When a selection's reservation runs: a meeting room's hourly slot, else
+ * whole Prague days (23 or 25 hours across a daylight-saving change) through
+ * the last booked date.
+ */
+const bookedTimes = (selection: CustomerBookingSelection) => {
+  if (selection.family === "meeting-room" && selection.duration !== "day:1") {
+    const { length } = meetingRoomSlots[selection.duration ?? "hour:1"];
+    const startsAt = pragueInstant(
+      selection.date,
+      selection.startTime ?? "00:00"
+    );
+    return {
+      startsAt,
+      endsAt: new Date(Date.parse(startsAt) + length * 3_600_000).toISOString(),
+    };
+  }
+  const lastDate =
+    selection.family === "office"
+      ? (selection.endDate ?? selection.date)
+      : selection.date;
+  return {
+    startsAt: pragueMidnight(selection.date).toISOString(),
+    endsAt: pragueMidnight(addDays(lastDate, 1)).toISOString(),
   };
 };
 
