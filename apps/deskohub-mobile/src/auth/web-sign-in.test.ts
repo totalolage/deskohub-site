@@ -556,4 +556,9 @@ describe("sendSignInEmail", () => {
     emailSent = null;
     expect(await send()).toEqual({ email, signInCode: false });
   });
+
+  test("takes only a literal yes as a code", async () => {
+    emailSent = { status: true, signInCode: "true" };
+    expect(await send()).toEqual({ email, signInCode: false });
+  });
 });
