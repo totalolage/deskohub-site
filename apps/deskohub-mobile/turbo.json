@@ -3,8 +3,19 @@
   "extends": ["//"],
   "tasks": {
     "build:web": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["^build", "i18n:compile"],
       "outputs": ["dist/**"]
+    },
+    "dev": {
+      "dependsOn": ["i18n:compile"]
+    },
+    "i18n:compile": {
+      "inputs": [
+        "messages/*.json",
+        "project.inlang/settings.json",
+        "package.json"
+      ],
+      "outputs": ["src/i18n/paraglide/**"]
     },
     "lint": {
       "inputs": [
@@ -13,12 +24,19 @@
         "$TURBO_ROOT$/lint/**"
       ]
     },
+    "start": {
+      "dependsOn": ["i18n:compile"]
+    },
     "test": {
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/biome.json",
         "$TURBO_ROOT$/lint/**"
-      ]
+      ],
+      "dependsOn": ["$TURBO_EXTENDS$", "i18n:compile"]
+    },
+    "typecheck": {
+      "dependsOn": ["$TURBO_EXTENDS$", "i18n:compile"]
     }
   }
 }
