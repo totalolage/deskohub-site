@@ -34,4 +34,17 @@ describe("customer API package imports", () => {
 
     expect(imports).toEqual(["effect"]);
   });
+
+  test("the customer locale entry point imports only Effect", async () => {
+    // The app takes it for its sign-in requests; anything more would pull
+    // the HTTP API contract into its bundle.
+    const source = await Bun.file(
+      new URL("./customer-locale.ts", import.meta.url)
+    ).text();
+    const imports = [...source.matchAll(/\bfrom\s+["']([^"']+)["']/g)].map(
+      ([, specifier]) => specifier
+    );
+
+    expect(imports).toEqual(["effect"]);
+  });
 });

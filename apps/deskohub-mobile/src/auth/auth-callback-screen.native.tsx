@@ -1,17 +1,26 @@
+import { Effect } from "effect";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo } from "react";
+import type { AppLocale } from "../i18n/app-locale";
 import { useAppLocale } from "../i18n/locale-context";
 import { m } from "../i18n/messages";
 import { Button, LiveMessage, Screen } from "../ui/controls";
-import { parseAuthCallbackParams } from "./auth-callback";
+import { type AuthCallback, parseAuthCallbackParams } from "./auth-callback";
 import { nativeAuthRuntime } from "./native-auth-runtime";
 import { completeAuthCallback } from "./native-sign-in";
 import { SignInUnavailable } from "./native-sign-in-errors";
 import { nativeSignInFailureMessage } from "./sign-in-failure-message";
+import { SignInLocale } from "./sign-in-locale";
 import { useAuthSession } from "./use-auth-session";
 import { useAuthTask } from "./use-auth-task";
 
 const unexpected = () => new SignInUnavailable({});
+
+/** Finishes the callback in the language the screen shows. */
+const completeCallback = (callback: AuthCallback, locale: AppLocale) =>
+  completeAuthCallback(callback).pipe(
+    Effect.provideService(SignInLocale, locale)
+  );
 
 const leave = () => {
   if (router.canGoBack()) router.back();
@@ -48,13 +57,13 @@ export function AuthCallbackScreen() {
   const session = useAuthSession();
   const { state, start } = useAuthTask(
     nativeAuthRuntime,
-    completeAuthCallback,
+    completeCallback,
     unexpected
   );
 
   useEffect(() => {
-    void start(callback);
-  }, [start, callback]);
+    void start(callback, locale);
+  }, [start, callback, locale]);
 
   const completed = state.status === "succeeded";
   const signedIn = session.status === "signed-in";

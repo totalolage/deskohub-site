@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { customerSignInLocaleHeader } from "@deskohub/workspace-customer-api/customer-locale";
 
 /**
  * An in-memory Workspace auth server for the native sign-in tests. It
@@ -24,6 +25,8 @@ export interface FakeAuthCall {
   readonly method: string;
   readonly path: string;
   readonly query: ReadonlyArray<string>;
+  /** The app locale the request named, if any. */
+  readonly locale?: string;
 }
 
 const cookieName = "__Secure-better-auth.session_token";
@@ -94,7 +97,13 @@ export const makeFakeAuthServer = (origin: string) => {
     body: string
   ) => {
     const path = url.pathname.replace(/^\/api\/auth/, "");
-    calls.push({ method, path, query: [...url.searchParams.keys()] });
+    const locale = headers.get(customerSignInLocaleHeader);
+    calls.push({
+      method,
+      path,
+      query: [...url.searchParams.keys()],
+      ...(locale === null ? {} : { locale }),
+    });
 
     if (method === "GET" && path === "/magic-link/verify") {
       const token = url.searchParams.get("token") ?? "";

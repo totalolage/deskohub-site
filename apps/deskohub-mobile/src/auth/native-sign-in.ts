@@ -36,6 +36,7 @@ import {
   pkceRandomByteCount,
   pkceVerifierFromBytes,
 } from "./pkce";
+import { SignInLocale } from "./sign-in-locale";
 
 /**
  * Native email sign-in. Production screens the email send and the sign-in
@@ -46,7 +47,9 @@ import {
  * app redeems it with the verifier for its own session. A magic link opened
  * from a mail app lands on the `/app/auth/callback` App Link instead and is
  * verified directly. Either way the new session's cookie is stored in
- * SecureStore once the app accepts it.
+ * SecureStore once the app accepts it. The verification names the app's
+ * locale (`SignInLocale`), which an account it creates takes as its language;
+ * the web page names it for the accounts it creates.
  */
 
 export type NativeSignInServices =
@@ -54,7 +57,8 @@ export type NativeSignInServices =
   | PendingSignIns
   | AuthSessionBrowser
   | AuthCrypto
-  | AuthCallbackCompletions;
+  | AuthCallbackCompletions
+  | SignInLocale;
 
 /**
  * How long a `Closed` auth session waits for a callback to arrive. Android
@@ -262,6 +266,7 @@ const completeToken = Effect.fn("NativeSignIn.completeToken")(function* (
 ) {
   const auth = yield* NativeAuth;
   const completions = yield* AuthCallbackCompletions;
+  const locale = yield* SignInLocale;
   const now = yield* Clock.currentTimeMillis;
   const stored = yield* loadPendingSignIn;
   const pending = Option.filter(stored, (found) => !isExpired(found, now));
@@ -272,7 +277,7 @@ const completeToken = Effect.fn("NativeSignIn.completeToken")(function* (
   return yield* magicLinkExpectedUserId(stored).pipe(
     Effect.flatMap((expectedUserId) =>
       auth
-        .verifyMagicLink(token)
+        .verifyMagicLink(token, locale)
         .pipe(
           Effect.mapError(fromAuthFailure),
           Effect.flatMap(confirmSignedInUser(expectedUserId))

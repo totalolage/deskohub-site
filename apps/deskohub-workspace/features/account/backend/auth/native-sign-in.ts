@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { isMatchingSecret } from "@deskohub/secret-comparison";
+import { customerSignInLocaleHeader } from "@deskohub/workspace-customer-api/customer-locale";
 import { APIError, type AuthContext, type BetterAuthPlugin } from "better-auth";
 import {
   createAuthEndpoint,
@@ -10,6 +11,7 @@ import {
 import { setSessionCookie } from "better-auth/cookies";
 import { generateRandomString } from "better-auth/crypto";
 import { Data, Effect, Option, Schema } from "effect";
+import { isLocale, type Locale } from "@/features/i18n";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { digestVerificationKey } from "./auth-options";
 import { nativeAppOrigin } from "./native-app";
@@ -63,6 +65,66 @@ export const nativeAppLinkFor = (verificationURL: string): string => {
   link.searchParams.set("token", token);
   return link.toString();
 };
+
+/**
+ * The requests that can create an account from the app: the `/app/` page's
+ * sign-in code, and the magic-link verification of its App Link. The app
+ * names its locale on them in `customerSignInLocaleHeader`, since `/app/`
+ * paths carry no locale segment for the callback to show.
+ */
+const appLocalePaths: ReadonlySet<string> = new Set([
+  "/sign-in/email-otp",
+  "/magic-link/verify",
+]);
+
+type AppLocaleRequest = {
+  readonly path?: string;
+  /** Present on HTTP requests and on `auth.api` calls that pass headers. */
+  readonly headers?: Headers;
+};
+
+const appLocaleHeaderValue = (request: AppLocaleRequest | null | undefined) =>
+  Option.fromNullishOr(request).pipe(
+    Option.filter(({ path }) => path !== undefined && appLocalePaths.has(path)),
+    Option.flatMapNullishOr(({ headers }) =>
+      headers?.get(customerSignInLocaleHeader)
+    )
+  );
+
+/**
+ * The app's locale on a sign-in code or magic-link verification, when it
+ * names a supported one. The sign-in's callback locale takes precedence, so
+ * this only applies where the request has none.
+ */
+export const appSignInLocale = (
+  request: AppLocaleRequest | null | undefined
+): Locale | undefined =>
+  Option.getOrUndefined(Option.filter(appLocaleHeaderValue(request), isLocale));
+
+const unsupportedAppLocale = () =>
+  new APIError("BAD_REQUEST", {
+    code: "INVALID_LOCALE",
+    message: "The app's locale is not one the Workspace supports.",
+  });
+
+/**
+ * Refuses a sign-in code or magic-link verification whose app locale isn't a
+ * supported one. The auth guard runs this before it takes the request's
+ * sign-in claim and before Better Auth uses the code or link, so the same
+ * code or link still works when it is sent again with a valid locale.
+ */
+export const refuseUnsupportedAppLocale = (request: AppLocaleRequest) =>
+  Option.match(
+    Option.filter(appLocaleHeaderValue(request), (value) => !isLocale(value)),
+    {
+      onNone: () => Effect.void,
+      onSome: () =>
+        Effect.logWarning("Native sign-in refused.", {
+          code: "account.native-sign-in.rejected",
+          reason: "unsupported-locale",
+        }).pipe(Effect.andThen(Effect.fail(unsupportedAppLocale()))),
+    }
+  );
 
 const verifyCallbackParameters = [
   "callbackURL",
