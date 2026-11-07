@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Exit, Layer, ManagedRuntime, Option } from "effect";
 import { nativeReturnUri, parseAuthCallbackUrl } from "./auth-callback";
 import { AuthCallbackCompletions } from "./auth-callback-completions.service";
@@ -27,8 +28,8 @@ import {
 } from "./testing/fake-auth-server";
 
 const origin = "https://workspace.deskohub.cz";
-const ada: FakeUser = { id: "user-ada", email: "ada@example.test" };
-const bob: FakeUser = { id: "user-bob", email: "bob@example.test" };
+const ada: FakeUser = { id: "user-ada", email: testEmailAddress("ada") };
+const bob: FakeUser = { id: "user-bob", email: testEmailAddress("bob") };
 
 type WebPage = (url: string) => Promise<AuthSessionResult>;
 

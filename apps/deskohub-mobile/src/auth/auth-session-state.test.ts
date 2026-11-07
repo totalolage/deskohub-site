@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import {
   isFreshSignIn,
   isReauthenticationRequired,
@@ -6,7 +7,7 @@ import {
   toAuthSessionState,
 } from "./auth-session-state";
 
-const user = { id: "user-ada", email: "ada@example.test" };
+const user = { id: "user-ada", email: testEmailAddress("ada") };
 const signedInAt = new Date(Date.UTC(2026, 10, 7, 12));
 const session = { user, session: { createdAt: signedInAt } };
 

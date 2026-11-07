@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Exit, Option } from "effect";
 
 type SessionRead = () => Promise<{
@@ -338,7 +339,7 @@ describe("the stored reauthentication outlives failed attempts", () => {
       prepareReauthenticationEmail({ kind: "account", userId: "ada" })
     );
     const codeExit = await Effect.runPromiseExit(
-      completeWebCodeSignIn("bob@example.test", "123456", {
+      completeWebCodeSignIn(testEmailAddress("bob"), "123456", {
         kind: "account",
         userId: "ada",
       })
