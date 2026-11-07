@@ -110,6 +110,14 @@ export const submitWorkspaceReservation = Effect.fn(
                         )
                       )
                     ),
+                    // Other callers tell missing consents apart; the site
+                    // keeps showing its generic checkout failure.
+                    Match.whenOr(
+                      "legal_consent_required",
+                      "early_performance_consent_required",
+                      () =>
+                        m.reservationErrorMessage({}, { locale: input.locale })
+                    ),
                     Match.exhaustive
                   ),
               })

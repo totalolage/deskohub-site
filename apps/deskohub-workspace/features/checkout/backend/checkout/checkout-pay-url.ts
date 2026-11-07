@@ -79,6 +79,29 @@ export const issueFreshPayState = Effect.fn("issueFreshPayState")(function* (
   return issued;
 });
 
+/**
+ * A replacement Pay state as a checkout result carries it: the Pay URL with
+ * the sealed token and expiry behind it, all from one seal.
+ */
+export type FreshPayState = {
+  readonly freshPayUrl: string;
+  readonly freshPayStateToken: string;
+  readonly expiresAt: string;
+};
+
+/** A checkout result without a replacement Pay state. */
+export type NoFreshPayState = {
+  readonly freshPayUrl?: undefined;
+  readonly freshPayStateToken?: undefined;
+  readonly expiresAt?: undefined;
+};
+
+export const toFreshPayState = (issued: IssuedPayState): FreshPayState => ({
+  freshPayUrl: issued.payUrl,
+  freshPayStateToken: issued.payStateToken,
+  expiresAt: issued.expiresAt,
+});
+
 /** The instant the Pay page stops accepting a signed state. */
 export const getPayStateExpiresAt = (state: Pick<SignedPayState, "exp">) =>
   temporalInstantToIsoString(
