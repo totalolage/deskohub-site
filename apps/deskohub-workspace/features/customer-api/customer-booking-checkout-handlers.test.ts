@@ -15,6 +15,7 @@ import {
   CheckoutService,
   openPayState,
   PayStateAuthorNotFoundError,
+  PayStateIssueError,
   PayStateTokenError,
 } from "@/features/checkout/backend/checkout";
 import {
@@ -55,6 +56,14 @@ const workspaceDateFromToday = (days: number) =>
 const readyToken = await sealSyntheticPayStateToken();
 const reviewToken = await sealSyntheticPayStateToken({
   changedKeys: syntheticChangedKeys,
+});
+
+/** Sealing a fresh checkout state failed: the keys can't seal. */
+const unsignablePayState = new PayStateIssueError({
+  cause: new PayStateTokenError({
+    code: "missing-secret",
+    message: "no sealing key",
+  }),
 });
 
 const openTestPayState = (token: string) =>
@@ -685,6 +694,23 @@ describe("applyCheckoutDiscountCode", () => {
     }
   );
 
+  test("answers a replacement checkout the server can't sign as unavailable", async () => {
+    const api = makeCustomerApiTestServer({
+      bookingCheckout: {
+        operations: operationsWith({
+          applyDiscountCode: () => Effect.fail(unsignablePayState),
+        }),
+      },
+    });
+
+    const response = await api.handle(customerApiRequest(applyCode()));
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      _tag: "CustomerServiceUnavailable",
+    });
+  });
+
   test("answers another account's checkout as not found, before the code is checked", async () => {
     let applied = 0;
     const api = makeCustomerApiTestServer({
@@ -761,6 +787,23 @@ describe("acceptCheckoutPriceChange", () => {
     expect(await response.json()).toEqual({
       _tag: "CustomerCheckoutUnavailable",
       reason: "expired",
+    });
+  });
+
+  test("answers an accepted checkout the server can't sign as unavailable", async () => {
+    const api = makeCustomerApiTestServer({
+      bookingCheckout: {
+        operations: operationsWith({
+          acceptPriceChange: () => Effect.fail(unsignablePayState),
+        }),
+      },
+    });
+
+    const response = await api.handle(customerApiRequest(acceptPrice));
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      _tag: "CustomerServiceUnavailable",
     });
   });
 

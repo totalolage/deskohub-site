@@ -504,6 +504,8 @@ const answerDiscountCodeFailure =
       Match.tagsExhaustive({
         PayStateTokenError: answerTokenFailure(operation),
         SealedStateTokenError: retryable(operation),
+        // Signing the replacement checkout failed, not the client's token.
+        PayStateIssueError: retryable(operation),
         MoneyUnitMismatch: retryable(operation),
         DiscountCalculationError: retryable(operation),
         EffectDrizzleQueryError: retryable(operation),
@@ -527,6 +529,7 @@ const acceptPriceChange = Effect.fn("customerApi.acceptCheckoutPriceChange")(
     const accepted = yield* operations.acceptPriceChange(payload).pipe(
       Effect.catchTags({
         PayStateTokenError: answerTokenFailure(operation),
+        PayStateIssueError: retryable(operation),
         CheckoutServicesUnavailable: retryable(operation),
       })
     );
