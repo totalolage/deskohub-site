@@ -12,15 +12,7 @@ import {
   MobileReleaseLookupError,
 } from "./android-release-lookup";
 
-export {
-  ANDROID_PACKAGE_ID,
-  RELEASE_CERTIFICATE_SHA256,
-} from "../android-app";
-export {
-  type AndroidRelease,
-  GitHubRelease,
-  selectLatestAndroidRelease,
-} from "../android-release";
+export type { AndroidRelease } from "../android-release";
 export { MobileReleaseLookupError } from "./android-release-lookup";
 
 /**

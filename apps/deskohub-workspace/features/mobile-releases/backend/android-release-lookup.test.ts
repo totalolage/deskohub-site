@@ -214,6 +214,16 @@ describe("findLatestAndroidRelease", () => {
         "/releases/tags/mobile-v1.0.0": () =>
           Response.json({ tag_name: "mobile-v1.0.0" }),
       }),
+      fakeGitHubApi({
+        "/git/matching-refs/tags/mobile-v": () => refs("mobile-v1.0.0"),
+        "/releases/tags/mobile-v1.0.0": () => {
+          const release = githubMobileRelease("1.0.0");
+          return Response.json({
+            ...release,
+            assets: release.assets.map((asset) => ({ ...asset, size: 1.5 })),
+          });
+        },
+      }),
     ]) {
       expectLookupFailure(await lookUp(api));
     }
