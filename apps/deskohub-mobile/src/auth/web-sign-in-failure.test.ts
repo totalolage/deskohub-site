@@ -29,6 +29,12 @@ test("maps each operation's Better Auth errors to a reason", () => {
     ["verify-link", { status: 400, code: "INVALID_TOKEN" }, "link-rejected"],
     ["verify-link", { status: 500 }, "failed"],
     [
+      "verify-link",
+      { status: 403, code: "ACCOUNT_SWITCH_REFUSED" },
+      "account-switch",
+    ],
+    ["verify-link", { status: 403 }, "failed"],
+    [
       "mint-handoff",
       { status: 403, code: "SESSION_NOT_FRESH" },
       "session-not-fresh",

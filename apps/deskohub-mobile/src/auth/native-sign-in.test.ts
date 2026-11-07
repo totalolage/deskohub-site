@@ -1,5 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import { Effect, Exit, Layer, ManagedRuntime, Option } from "effect";
+import { testEmailAddress } from "@deskohub/test-email";
+import { Effect, Exit, Fiber, Layer, ManagedRuntime, Option } from "effect";
 import * as WebBrowser from "expo-web-browser";
 import { Platform } from "react-native";
 import { nativeReturnUri, parseAuthCallbackUrl } from "./auth-callback";
@@ -11,6 +12,10 @@ import {
   AuthSessionUnavailable,
   customTabsBrowserPackage,
 } from "./auth-session-browser.service";
+import {
+  type MemorySecureStore,
+  makeMemorySecureStore,
+} from "./memory-secure-store";
 import { NativeAuth } from "./native-auth.service";
 import { createNativeAuthClient } from "./native-auth-client";
 import { readNativeHandoffRequest } from "./native-handoff-request";
@@ -25,14 +30,12 @@ import { PendingSignIns, pendingSignInKey } from "./pending-sign-in.service";
 import {
   type FakeAuthServer,
   type FakeUser,
-  type MemorySecureStore,
   makeFakeAuthServer,
-  makeMemorySecureStore,
 } from "./testing/fake-auth-server";
 
 const origin = "https://workspace.deskohub.cz";
-const ada: FakeUser = { id: "user-ada", email: "ada@example.test" };
-const bob: FakeUser = { id: "user-bob", email: "bob@example.test" };
+const ada: FakeUser = { id: "user-ada", email: testEmailAddress("ada") };
+const bob: FakeUser = { id: "user-bob", email: testEmailAddress("bob") };
 
 type WebPage = (url: string) => Promise<AuthSessionResult>;
 
@@ -45,11 +48,8 @@ const launchApp = (
   store: MemorySecureStore,
   webPage: WebPage = async () => AuthSessionResult.Closed()
 ) => {
-  const client = createNativeAuthClient({
-    origin,
-    storage: store,
-    fetch: server.fetch,
-  });
+  const options = { origin, storage: store, fetch: server.fetch };
+  const client = createNativeAuthClient(options);
   const opened: Array<string> = [];
   const browser = Layer.succeed(AuthSessionBrowser, {
     open: (url, returnUri) => {
@@ -61,7 +61,7 @@ const launchApp = (
   });
   const runtime = ManagedRuntime.make(
     Layer.mergeAll(
-      NativeAuth.fromClient(origin, client),
+      NativeAuth.fromClient(client, options),
       PendingSignIns.fromStore(store),
       AuthCrypto.Live,
       AuthCallbackCompletions.Default,
@@ -88,11 +88,21 @@ const failureTag = (exit: Exit.Exit<unknown, { readonly _tag: string }>) =>
 const storedCookie = (store: MemorySecureStore) =>
   store.values.get("deskohub_cookie") ?? "";
 
+/** How often the client told `useSession` its session changed. */
+const sessionSignals = (client: ReturnType<typeof launchApp>["client"]) => {
+  let count = 0;
+  client.$store.atoms.$sessionSignal?.listen(() => {
+    count += 1;
+  });
+  return () => count;
+};
+
 describe("native session store", () => {
   test("a verified magic link stores the session cookie", async () => {
     const server = makeFakeAuthServer(origin);
     const store = makeMemorySecureStore();
     const app = launchApp(server, store);
+    const signals = sessionSignals(app.client);
 
     const user = await app.runtime.runPromise(
       completeAuthCallback({
@@ -103,6 +113,8 @@ describe("native session store", () => {
 
     expect(user).toEqual(ada);
     expect(storedCookie(store)).toContain("better-auth.session_token");
+    expect(signals()).toBeGreaterThan(0);
+    expect((await app.client.getSession()).data?.user.id).toBe(ada.id);
     // Amendment A: the app verifies with the token alone.
     expect(
       server.callsTo("/magic-link/verify").map((call) => call.query)
@@ -147,6 +159,37 @@ describe("native session store", () => {
     expect((await restarted.client.getSession()).data).toBeNull();
   });
 
+  test("an interrupted sign-in finishes storing the session it accepted", async () => {
+    const server = makeFakeAuthServer(origin);
+    const store = makeMemorySecureStore();
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let writing = false;
+    const write = store.setItemAsync;
+    store.setItemAsync = async (key, value) => {
+      if (key === "deskohub_cookie") {
+        writing = true;
+        await gate;
+      }
+      await write(key, value);
+    };
+    const app = launchApp(server, store);
+    const signals = sessionSignals(app.client);
+
+    const signIn = app.runtime.runFork(
+      completeAuthCallback({ kind: "token", token: server.issueMagicLink(ada) })
+    );
+    while (!writing) await Bun.sleep(1);
+    const interrupted = app.runtime.runPromise(Fiber.interrupt(signIn));
+    release();
+    await interrupted;
+
+    expect(storedCookie(store)).toContain("session_token");
+    expect(signals()).toBeGreaterThan(0);
+  });
+
   test("a used magic link is refused", async () => {
     const server = makeFakeAuthServer(origin);
     const app = launchApp(server, makeMemorySecureStore());
@@ -168,6 +211,7 @@ describe("native email sign-in through the auth session", () => {
     const server = makeFakeAuthServer(origin);
     const store = makeMemorySecureStore();
     const app = launchApp(server, store, webSignInAs(server, ada));
+    const signals = sessionSignals(app.client);
 
     const user = await app.runtime.runPromise(signInWithEmail(Option.none()));
 
@@ -175,6 +219,8 @@ describe("native email sign-in through the auth session", () => {
     expect(server.callsTo("/native-handoff/exchange")).toHaveLength(1);
     expect(store.values.has(pendingSignInKey)).toBe(false);
     expect(storedCookie(store)).toContain("session_token");
+    expect(signals()).toBeGreaterThan(0);
+    expect((await app.client.getSession()).data?.user.id).toBe(ada.id);
     const signInUrl = new URL(app.opened[0] ?? "");
     expect(signInUrl.origin + signInUrl.pathname).toBe(`${origin}/app/sign-in`);
     expect(signInUrl.searchParams.has("prompt")).toBe(false);
@@ -456,13 +502,29 @@ describe("reauthentication", () => {
       })
     );
     await app.runtime.dispose();
+    return storedCookie(store);
+  };
+
+  /** The app is still signed in to `user` with the cookie it had before. */
+  const expectStillSignedIn = async (
+    server: FakeAuthServer,
+    store: MemorySecureStore,
+    user: FakeUser,
+    cookie: string
+  ) => {
+    expect(storedCookie(store)).toBe(cookie);
+    expect(server.openSessions()).toContainEqual(user);
+    const restarted = launchApp(server, store);
+    expect((await restarted.client.getSession()).data?.user.id).toBe(user.id);
+    await restarted.runtime.dispose();
   };
 
   test("asks the page to sign in again and keeps the same account", async () => {
     const server = makeFakeAuthServer(origin);
     const store = makeMemorySecureStore();
-    await signedInAs(server, store, ada);
+    const before = await signedInAs(server, store, ada);
     const app = launchApp(server, store, webSignInAs(server, ada));
+    const signals = sessionSignals(app.client);
 
     const user = await app.runtime.runPromise(reauthenticate);
 
@@ -470,39 +532,66 @@ describe("reauthentication", () => {
     expect(new URL(app.opened[0] ?? "").searchParams.get("prompt")).toBe(
       "login"
     );
+    // The app now holds the fresh session, not the one it started with.
+    expect(storedCookie(store)).toContain("session_token");
+    expect(storedCookie(store)).not.toBe(before);
+    expect(signals()).toBeGreaterThan(0);
+    expect((await app.client.getSession()).data?.user.id).toBe(ada.id);
   });
 
-  test("refuses to switch to another account and signs that session out", async () => {
+  test("refuses to switch to another account and stays signed in", async () => {
     const server = makeFakeAuthServer(origin);
     const store = makeMemorySecureStore();
-    await signedInAs(server, store, ada);
+    const adaCookie = await signedInAs(server, store, ada);
     const app = launchApp(server, store, webSignInAs(server, bob));
 
     const exit = await app.runtime.runPromiseExit(reauthenticate);
 
     expect(failureTag(exit)).toBe("AccountSwitchRefused");
     expect(server.openSessions()).not.toContainEqual(bob);
-    expect(storedCookie(store)).not.toContain("session_token");
+    expect((await app.client.getSession()).data?.user.id).toBe(ada.id);
+    await expectStillSignedIn(server, store, ada, adaCookie);
+  });
+
+  test("refuses another account's handoff after a cold start and stays signed in", async () => {
+    const server = makeFakeAuthServer(origin);
+    const store = makeMemorySecureStore();
+    const adaCookie = await signedInAs(server, store, ada);
+    const first = launchApp(server, store);
+    const request = await first.runtime.runPromise(
+      startPendingSignIn(Option.some(ada.id))
+    );
+    const callbackUrl = server.mintHandoff(bob, request);
+    await first.runtime.dispose();
+
+    const coldStart = launchApp(server, store);
+    const exit = await coldStart.runtime.runPromiseExit(
+      completeAuthCallback(parseAuthCallbackUrl(callbackUrl))
+    );
+
+    expect(failureTag(exit)).toBe("AccountSwitchRefused");
+    expect(server.openSessions()).not.toContainEqual(bob);
+    await expectStillSignedIn(server, store, ada, adaCookie);
   });
 
   test("signs the new session out when its account can't be confirmed", async () => {
     const server = makeFakeAuthServer(origin);
     const store = makeMemorySecureStore();
-    await signedInAs(server, store, ada);
+    const adaCookie = await signedInAs(server, store, ada);
     server.failSessionReadsAfterExchange(100);
     const app = launchApp(server, store, webSignInAs(server, bob));
 
     const exit = await app.runtime.runPromiseExit(reauthenticate);
 
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(server.openSessions()).not.toContainEqual(bob);
-    expect(storedCookie(store)).not.toContain("session_token");
+    expect(server.openSessions()).toEqual([ada]);
+    expect(storedCookie(store)).toBe(adaCookie);
   });
 
   test("keeps refusing the other account's links after a refusal", async () => {
     const server = makeFakeAuthServer(origin);
     const store = makeMemorySecureStore();
-    await signedInAs(server, store, ada);
+    const adaCookie = await signedInAs(server, store, ada);
     // The reauthentication email's link for Bob opens in the mail app while
     // the auth session waits, twice.
     const links: Array<string> = [];
@@ -525,12 +614,13 @@ describe("reauthentication", () => {
     expect(failureTag(secondExit)).toBe("AccountSwitchRefused");
     expect(failureTag(await flow)).toBe("AccountSwitchRefused");
     expect(server.openSessions()).not.toContainEqual(bob);
+    await expectStillSignedIn(server, store, ada, adaCookie);
   });
 
-  test("a signed-in app refuses another account's magic link", async () => {
+  test("a signed-in app refuses another account's magic link and stays signed in", async () => {
     const server = makeFakeAuthServer(origin);
     const store = makeMemorySecureStore();
-    await signedInAs(server, store, ada);
+    const adaCookie = await signedInAs(server, store, ada);
     const app = launchApp(server, store);
 
     const exit = await app.runtime.runPromiseExit(
@@ -539,14 +629,15 @@ describe("reauthentication", () => {
 
     expect(failureTag(exit)).toBe("AccountSwitchRefused");
     expect(server.openSessions()).not.toContainEqual(bob);
+    expect((await app.client.getSession()).data?.user.id).toBe(ada.id);
+    await expectStillSignedIn(server, store, ada, adaCookie);
   });
 
   test("an expired reauthentication still guards its email's links", async () => {
     const server = makeFakeAuthServer(origin);
     const store = makeMemorySecureStore();
     // Ada's reauthentication started two hours ago and its attempt expired;
-    // the app is signed out after an earlier refusal, and the page sent a
-    // late email.
+    // the app is signed out, and the page sent a late email.
     store.values.set(
       pendingSignInKey,
       JSON.stringify({
