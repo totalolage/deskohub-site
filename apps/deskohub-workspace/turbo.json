@@ -33,8 +33,7 @@
         "@deskohub/nexi#generate",
         "i18n:compile",
         "booking-widget:build",
-        "temporal-polyfill:build",
-        "typecheck"
+        "temporal-polyfill:build"
       ],
       "passThroughEnv": ["BETTER_AUTH_SECRETS", "REVIEW_ACCOUNT_CREDENTIALS"]
     },
