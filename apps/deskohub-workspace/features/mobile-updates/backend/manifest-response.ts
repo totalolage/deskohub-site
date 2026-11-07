@@ -106,7 +106,7 @@ const replyToPublication = (
 ): ManifestReply =>
   Match.value(publication).pipe(
     Match.discriminatorsExhaustive("type")({
-      update: (update) =>
+      update: (update): ManifestReply =>
         request.currentUpdateId === update.id
           ? noUpdateAvailable
           : {
@@ -121,7 +121,7 @@ const replyToPublication = (
                 extra: update.extra,
               },
             },
-      rollBackToEmbedded: () =>
+      rollBackToEmbedded: (): ManifestReply =>
         request.currentUpdateId !== null &&
         request.currentUpdateId === request.embeddedUpdateId
           ? noUpdateAvailable
