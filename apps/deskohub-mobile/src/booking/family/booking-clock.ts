@@ -1,15 +1,16 @@
-import { Atom } from "effect/unstable/reactivity";
+import { Stream } from "effect";
+import { AsyncResult, Atom } from "effect/unstable/reactivity";
 
-/** How often the selection screens re-read the time. */
-const tick = 30_000;
+/** The current time, read again every 30 seconds while a screen reads it. */
+const clockTicksAtom = Atom.make(
+  Stream.tick("30 seconds").pipe(Stream.map(() => new Date()))
+);
 
 /**
- * The current time for the selection screens, refreshed every 30 seconds
- * while a screen reads it, so the same-day Open Space cutoff and ended
- * meeting-room starts take effect without a selection change.
+ * The current time for the selection screens, so the same-day Open Space
+ * cutoff and ended meeting-room starts take effect without a selection
+ * change.
  */
-export const bookingClockAtom = Atom.make((get) => {
-  const timer = setInterval(() => get.setSelf(new Date()), tick);
-  get.addFinalizer(() => clearInterval(timer));
-  return new Date();
-});
+export const bookingClockAtom = Atom.map(clockTicksAtom, (ticks) =>
+  AsyncResult.getOrElse(ticks, () => new Date())
+);

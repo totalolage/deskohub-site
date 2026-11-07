@@ -40,12 +40,15 @@ export const meetingRoomQueryOf = (
 
 export const meetingRoomBookingModel = ({
   draft,
+  settled,
   now,
   startTimes,
   availability,
 }: {
   /** The draft as the customer last changed it. */
   readonly draft: MeetingRoomDraft;
+  /** The draft once unchanged for the debounce, which the reads are for. */
+  readonly settled: MeetingRoomDraft;
   readonly now: Date;
   /** The latest free starts read, for any date and duration. */
   readonly startTimes: Option.Option<CustomerMeetingRoomStartTimes>;
@@ -70,10 +73,21 @@ export const meetingRoomBookingModel = ({
     availability: current,
   });
   const selection = Result.getSuccess(toMeetingRoomSelection(fitted));
+  // Quoted only once the selection has settled, like its availability, so
+  // quick changes spend no quote reads on the drafts in between.
+  const settledSelection = Result.getSuccess(
+    toMeetingRoomSelection(reconcileMeetingRoomDraft(settled, startTimes, now))
+  );
   return {
     draft: fitted,
     enablement,
     selection,
-    quotable: quotableSelection(selection, enablement.blockers),
+    quotable: Option.filter(
+      quotableSelection(selection, enablement.blockers),
+      (current) =>
+        Option.exists(settledSelection, (answered) =>
+          Equal.equals(current, answered)
+        )
+    ),
   };
 };

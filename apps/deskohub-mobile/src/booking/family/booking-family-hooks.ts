@@ -1,7 +1,7 @@
 import type { CustomerReservationFamily } from "@deskohub/workspace-customer-api";
 import { Option } from "effect";
-import { useLocalSearchParams } from "expo-router";
-import { useEffect, useRef } from "react";
+import { useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useCallback, useEffect, useRef } from "react";
 import { trackBookingStarted } from "../../analytics/events";
 import type { CheckoutRestartReason } from "../checkout/booking-problem";
 import { reservationKindOf } from "../selection/booking-selection";
@@ -16,21 +16,26 @@ export const useBookingStarted = (family: CustomerReservationFamily) => {
 
 /**
  * Why checkout sent the customer back here, from the `restart` parameter.
- * When it arrives on a screen already open, `reread` reads availability and
- * the quote again; a screen that opens with it reads them fresh anyway.
+ * Each time the screen comes back into focus with one (checkout opened on
+ * top of it, then restarted the booking), `reread` reads availability and
+ * the quote again, even for the same reason twice; a screen that opens with
+ * the parameter reads them fresh anyway.
  */
 export const useRestartReason = (
   reread: () => void
 ): Option.Option<CheckoutRestartReason> => {
   const { restart } = useLocalSearchParams<{ restart?: string }>();
   const reason = restartReasonOf(restart);
-  const key = Option.getOrUndefined(reason);
-  const opened = useRef(false);
-  const rereadRef = useRef(reread);
-  rereadRef.current = reread;
-  useEffect(() => {
-    if (opened.current && key !== undefined) rereadRef.current();
-    opened.current = true;
-  }, [key]);
+  const latest = useRef({ reason, reread });
+  latest.current = { reason, reread };
+  const focusedBefore = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (focusedBefore.current && Option.isSome(latest.current.reason)) {
+        latest.current.reread();
+      }
+      focusedBefore.current = true;
+    }, [])
+  );
   return reason;
 };

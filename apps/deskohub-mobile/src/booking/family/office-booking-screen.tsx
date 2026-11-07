@@ -6,12 +6,12 @@ import type { AppLocale } from "../../i18n/app-locale";
 import { useAppLocale } from "../../i18n/locale-context";
 import { m } from "../../i18n/messages";
 import { theme } from "../../theme";
+import { LiveMessage } from "../../ui/controls";
 import { SectionHeader } from "../../ui/list";
 import { Notice } from "../../ui/notice";
 import { ScrollScreen } from "../../ui/scroll-screen";
 import {
   bookingAvailabilityAtom,
-  bookingOfferingsAtom,
   bookingQuoteAtom,
 } from "../data/booking-queries";
 import { BookingCatalogViewError } from "../data/booking-query-error";
@@ -39,10 +39,12 @@ import { useBookingStarted, useRestartReason } from "./booking-family-hooks";
 import {
   bookingReadOf,
   checkoutRequestOf,
+  freshValue,
   loadedValue,
 } from "./booking-family-view";
 import { BookingGate } from "./booking-gate";
-import { BookingReadFailure, BookingReadView } from "./booking-read-view";
+import { BookingOfferingsView } from "./booking-offerings-view";
+import { BookingReadFailure } from "./booking-read-view";
 import { officeBookingModel, officeOfferingOf } from "./office-booking-model";
 
 /** The customer's office draft; none until they change the default. */
@@ -61,12 +63,10 @@ const blockerMessage = (blocker: OfficeBlocker, locale: AppLocale) =>
 export function OfficeBookingScreen() {
   useBookingStarted("office");
   const locale = useAppLocale();
-  const offerings = useAtomValue(bookingOfferingsAtom(locale));
-  const refresh = useAtomRefresh(bookingOfferingsAtom(locale));
   return (
     <ScrollScreen>
       <BookingGate>
-        <BookingReadView read={bookingReadOf(offerings)} onRetry={refresh}>
+        <BookingOfferingsView>
           {(catalog) =>
             Option.match(officeOfferingOf(catalog.offerings), {
               onNone: () => (
@@ -83,7 +83,7 @@ export function OfficeBookingScreen() {
               onSome: (offering) => <OfficeSelection offering={offering} />,
             })
           }
-        </BookingReadView>
+        </BookingOfferingsView>
       </BookingGate>
     </ScrollScreen>
   );
@@ -196,28 +196,30 @@ function OfficeSelection({ offering }: { readonly offering: OfficeOffering }) {
         incrementLabel={m.booking_office_seats_increase({}, { locale })}
       />
 
-      {enablement.notices.map((notice) => (
-        <Notice
-          key={`${notice.startsAt}-${notice.endsAt}`}
-          tone="info"
-          message={availabilityNoticeMessage(notice, locale)}
-        />
-      ))}
+      <Notice
+        tone="info"
+        message={enablement.notices
+          .map((notice) => availabilityNoticeMessage(notice, locale))
+          .join(" ")}
+      />
       <Notice tone="warning" message={blockers[0]} />
       <BookingReadFailure
         reads={[availabilityRead]}
         onRetry={refreshAvailability}
       />
-      <Text role="status" style={styles.caption}>
-        {pending ? m.booking_availability_loading({}, { locale }) : ""}
-      </Text>
+      <LiveMessage
+        role="status"
+        message={
+          pending ? m.booking_availability_loading({}, { locale }) : undefined
+        }
+      />
       <BookingContinue
         quote={quote}
         checkout={checkoutRequestOf({
           locale,
           selection: Option.some(model.selection),
           blockers: enablement.blockers,
-          quote: Option.flatMap(quote, loadedValue),
+          quote: Option.flatMap(quote, freshValue),
         })}
         onRetryQuote={refreshQuote}
       />

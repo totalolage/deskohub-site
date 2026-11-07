@@ -50,6 +50,7 @@ describe("meetingRoomBookingModel", () => {
 
     const model = meetingRoomBookingModel({
       draft,
+      settled: draft,
       now,
       startTimes: Option.some(startTimes),
       availability: Option.some({ query, value: availability }),
@@ -76,6 +77,7 @@ describe("meetingRoomBookingModel", () => {
 
     const model = meetingRoomBookingModel({
       draft: { ...draft, startTime: Option.some(later) },
+      settled: draft,
       now,
       startTimes: Option.some(startTimes),
       availability: Option.some({ query, value: availability }),
@@ -84,6 +86,29 @@ describe("meetingRoomBookingModel", () => {
     expect(model.enablement.blockers.map(({ _tag }) => _tag)).toEqual([
       "AvailabilityPending",
     ]);
+    // Not quoted until the new start has settled for the debounce.
+    expect(model.quotable).toEqual(Option.none());
+  });
+
+  test("quotes a changed start once it has settled", async () => {
+    const { draft, startTimes } = await setup();
+    const later = {
+      ...draft,
+      startTime: Option.some(
+        startTimes.startTimes[1]?.startDateTime.slice(11, 16) ?? ""
+      ),
+    };
+
+    const model = meetingRoomBookingModel({
+      draft: later,
+      settled: later,
+      now,
+      startTimes: Option.some(startTimes),
+      availability: Option.none(),
+    });
+
+    expect(Option.isSome(model.quotable)).toBe(true);
+    expect(model.quotable).toEqual(model.selection);
   });
 
   test("starts read for another date leave the draft waiting", async () => {
@@ -91,6 +116,7 @@ describe("meetingRoomBookingModel", () => {
 
     const model = meetingRoomBookingModel({
       draft: { ...draft, date: booking.dateIn(4) },
+      settled: draft,
       now,
       startTimes: Option.some(startTimes),
       availability: Option.none(),

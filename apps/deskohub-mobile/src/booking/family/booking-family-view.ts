@@ -139,3 +139,13 @@ export const restartReasonOf = (
 /** The read's value only while it is current: loaded, also when reloading. */
 export const loadedValue = <A>(read: BookingRead<A>): Option.Option<A> =>
   read.kind === "loaded" ? Option.some(read.value) : Option.none();
+
+/**
+ * The read's value only once it is loaded and not being read again, so a
+ * quote refreshed after a restart (or by its timer) is never continued
+ * with the token it replaces.
+ */
+export const freshValue = <A>(read: BookingRead<A>): Option.Option<A> =>
+  read.kind === "loaded" && !read.refreshing
+    ? Option.some(read.value)
+    : Option.none();

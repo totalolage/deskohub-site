@@ -7,6 +7,7 @@ import { toOfficeSelection } from "../selection/office-selection";
 import {
   bookingReadOf,
   checkoutRequestOf,
+  freshValue,
   isRetryableBookingQueryError,
   quotableSelection,
   restartReasonOf,
@@ -103,6 +104,20 @@ describe("restartReasonOf", () => {
       expect(restartReasonOf(param)).toEqual(Option.none());
     }
   );
+});
+
+describe("freshValue", () => {
+  test("continues only with a quote that isn't being read again", () => {
+    expect(freshValue(bookingReadOf(AsyncResult.success(1)))).toEqual(
+      Option.some(1)
+    );
+    expect(
+      freshValue(bookingReadOf(AsyncResult.success(1, { waiting: true })))
+    ).toEqual(Option.none());
+    expect(freshValue(bookingReadOf(AsyncResult.initial()))).toEqual(
+      Option.none()
+    );
+  });
 });
 
 describe("bookingReadOf", () => {
