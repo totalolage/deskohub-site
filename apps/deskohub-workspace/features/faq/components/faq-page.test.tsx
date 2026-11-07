@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { brandThemeVariables } from "@deskohub/brand-tokens";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { m } from "@/features/i18n";
 import {
@@ -60,9 +61,7 @@ test("FAQ focus indicator has at least 3:1 contrast against its navy offset", as
   expect(styles).toContain(
     `--color-${focusRingToken}: var(--brand-${focusRingToken});`
   );
-  const focusRingColor = styles.match(
-    new RegExp(`--brand-${focusRingToken}:\\s*(#[\\da-f]{6})\\s*;`, "i")
-  )?.[1];
+  const focusRingColor = brandThemeVariables[`--brand-${focusRingToken}`];
   if (!focusRingColor) {
     throw new Error(`FAQ focus ring token ${focusRingToken} has no hex color.`);
   }
