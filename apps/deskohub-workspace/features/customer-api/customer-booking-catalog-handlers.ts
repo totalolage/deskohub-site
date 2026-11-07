@@ -1,13 +1,11 @@
 import "server-only";
 
 import {
-  CustomerBookingDateOutOfRange,
   type CustomerBookingOfferings,
   type CustomerBookingQuote,
   CustomerBookingSelectionInvalid,
   type CustomerBookingSelectionQuery,
   type CustomerOffering,
-  CustomerOfferingUnavailable,
   customerAvailabilityReplacementHeader,
 } from "@deskohub/workspace-customer-api";
 import { Effect, Layer, Match, Option, Schema, Struct } from "effect";
@@ -28,7 +26,6 @@ import {
 import {
   type BookingSelectionInput,
   BookingSelectionRejected,
-  type BookingSelectionRejection,
   resolveBookingQuoteSelection,
 } from "@/features/reservation/backend/booking-selection";
 import { getMeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
@@ -39,10 +36,8 @@ import {
 import { currentInstant, plainDateStringSchema } from "@/shared/utils/temporal";
 import { CustomerBookingCatalogLayers } from "./customer-booking-catalog-layers";
 import type { CustomerBookingEndpoint } from "./customer-booking-endpoint";
-import {
-  answerSessionApiFailure,
-  type CustomerSessionApiFailure,
-} from "./customer-api-failure";
+import { answerSessionApiFailure } from "./customer-api-failure";
+import { answerBookingSelectionFailure } from "./customer-booking-selection-failure";
 
 /** The booking catalog's endpoints, which a booking reads before checkout. */
 export type CustomerBookingCatalogEndpointName =
@@ -134,7 +129,7 @@ export const handleCustomerBookingCatalog = <R>(
       .handle("getQuote", ({ query }) =>
         quoteSelection(query).pipe(
           Effect.provide(quoting),
-          answerSelectionRejection("customerApi.getQuote")
+          answerBookingSelectionFailure("customerApi.getQuote")
         )
       )
       .handle("listLegalDocuments", ({ query: { locale } }) =>
@@ -205,41 +200,6 @@ const toBookingSelectionInput = ({
       ...(coffee !== undefined && { coffee: coffee === "true" }),
     } satisfies BookingSelectionInput;
   });
-
-/** The public error a selection the booking pages wouldn't accept answers with. */
-const toSelectionRejectionAnswer = (reason: BookingSelectionRejection) =>
-  Match.value(reason).pipe(
-    Match.discriminatorsExhaustive("kind")({
-      "invalid-field": ({ field }) =>
-        new CustomerBookingSelectionInvalid({ field }),
-      "date-out-of-range": ({ earliest, latest }) =>
-        new CustomerBookingDateOutOfRange({ earliest, latest }),
-      "office-closed": () => new CustomerOfferingUnavailable({ family: "office" }),
-    })
-  );
-
-/**
- * Answers a rejected selection with its public error, and every other
- * failure, such as a price that can't be quoted, as unavailable: a Calendar
- * sale that can't be read is retried, never answered as a changed price.
- */
-const answerSelectionRejection =
-  (operation: string) =>
-  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-    effect.pipe(
-      Effect.catch(
-        (
-          failure
-        ): Effect.Effect<
-          never,
-          | ReturnType<typeof toSelectionRejectionAnswer>
-          | CustomerSessionApiFailure<Exclude<E, BookingSelectionRejected>>
-        > =>
-          failure instanceof BookingSelectionRejected
-          ? Effect.fail(toSelectionRejectionAnswer(failure.reason))
-          : Effect.fail(failure).pipe(answerSessionApiFailure(operation))
-      )
-    );
 
 /**
  * Reads the query the way the availability route does, so both accept the
