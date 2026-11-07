@@ -1,4 +1,4 @@
-import { RELEASE_CERTIFICATE_SHA256 } from "./android-app";
+import { nativeApp } from "@/features/account/backend/auth/native-app";
 import type { GitHubRelease } from "./android-release";
 
 const releasesUrl = "https://github.com/totalolage/deskohub-site/releases";
@@ -18,7 +18,7 @@ export const androidReleaseNotes = (
   {
     apkFileName = `deskohub-${version}.apk`,
     apkSha256 = "a".repeat(64),
-    certificateSha256 = RELEASE_CERTIFICATE_SHA256,
+    certificateSha256 = nativeApp.androidReleaseCertificate,
   }: {
     readonly apkFileName?: string;
     readonly apkSha256?: string | null;

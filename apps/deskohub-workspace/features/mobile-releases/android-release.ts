@@ -1,6 +1,6 @@
 import { Array as Arr, Option, Order, Schema } from "effect";
 import { compare, valid } from "semver";
-import { RELEASE_CERTIFICATE_SHA256 } from "./android-app";
+import { nativeApp } from "@/features/account/backend/auth/native-app";
 
 /** The APK a published mobile release offers Android users. */
 export type AndroidRelease = {
@@ -10,7 +10,7 @@ export type AndroidRelease = {
   readonly apkSizeBytes: number;
   /** Lowercase hex SHA-256 of the APK file. */
   readonly apkSha256: string;
-  /** Always {@link RELEASE_CERTIFICATE_SHA256}. */
+  /** Always `nativeApp.androidReleaseCertificate`. */
   readonly certificateSha256: string;
   /** ISO 8601 instant GitHub published the release at. */
   readonly publishedAt: string;
@@ -93,7 +93,7 @@ const toAndroidRelease = (
     const notes = yield* readAndroidApkNotes(release.body ?? "");
     if (
       notes.apkFileName !== apkFileName ||
-      notes.certificateSha256 !== RELEASE_CERTIFICATE_SHA256
+      notes.certificateSha256 !== nativeApp.androidReleaseCertificate
     ) {
       return yield* Option.none();
     }

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Option } from "effect";
-import { RELEASE_CERTIFICATE_SHA256 } from "./android-app";
+import { nativeApp } from "@/features/account/backend/auth/native-app";
 import {
   type GitHubRelease,
   selectLatestAndroidRelease,
@@ -24,7 +24,7 @@ describe("selectLatestAndroidRelease", () => {
           "https://github.com/totalolage/deskohub-site/releases/download/mobile-v1.2.3/deskohub-1.2.3.apk",
         apkSizeBytes: 54_321_000,
         apkSha256: "a".repeat(64),
-        certificateSha256: RELEASE_CERTIFICATE_SHA256,
+        certificateSha256: nativeApp.androidReleaseCertificate,
         publishedAt: "2026-11-07T09:30:00Z",
         releaseUrl:
           "https://github.com/totalolage/deskohub-site/releases/tag/mobile-v1.2.3",
@@ -87,7 +87,10 @@ describe("selectLatestAndroidRelease", () => {
       selectLatestAndroidRelease([
         githubMobileRelease("1.2.3", {
           body: androidReleaseNotes("1.2.3", {
-            certificateSha256: RELEASE_CERTIFICATE_SHA256.replace(/^69/, "70"),
+            certificateSha256: nativeApp.androidReleaseCertificate.replace(
+              /^69/,
+              "70"
+            ),
           }),
         }),
       ])
