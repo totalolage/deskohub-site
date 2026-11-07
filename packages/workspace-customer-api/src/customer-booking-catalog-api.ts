@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import { HttpApiEndpoint } from "effect/unstable/httpapi";
-import { CustomerLocale, Money } from "./customer-account-api";
+import { Money } from "./customer-account-api";
 import {
   CustomerBookableCoworkTier,
   CustomerBookingDateOutOfRange,
@@ -13,6 +13,7 @@ import {
   CustomerReservationFamily,
 } from "./customer-booking-selection";
 import { CustomerCheckoutSummary } from "./customer-checkout-summary";
+import { CustomerLocale } from "./customer-locale";
 import { CustomerCoworkTier } from "./customer-reservations-api";
 import { CustomerServiceUnavailable } from "./customer-session";
 
