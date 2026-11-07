@@ -1,11 +1,15 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, jest, test } from "bun:test";
 import {
   type CustomerBookingSelection,
   CustomerBookingSelectionInvalid,
 } from "@deskohub/workspace-customer-api";
-import { Effect, Layer } from "effect";
+import { Duration, Effect, Layer } from "effect";
 import { TestClock } from "effect/testing";
-import { AsyncResult, type AtomRegistry } from "effect/unstable/reactivity";
+import {
+  AsyncResult,
+  type Atom,
+  type AtomRegistry,
+} from "effect/unstable/reactivity";
 import { customerDataRuntime } from "../../customer-api/customer-data-runtime";
 import {
   automaticRefreshReserve,
@@ -22,11 +26,15 @@ import {
   makeFakeDevice,
 } from "../../customer-api/testing/fake-customer-data";
 import { FakeWorkspace } from "../../customer-api/testing/fake-workspace";
-import { fakeBooking } from "../testing/fake-booking-api";
+import {
+  type BookingEndpointName,
+  fakeBooking,
+} from "../testing/fake-booking-api";
 import {
   bookingAvailabilityAtom,
   bookingOfferingsAtom,
   bookingQuoteAtom,
+  catalogIdleTTL,
   legalDocumentsAtom,
   meetingRoomStartTimesAtom,
   quoteRefreshInterval,
@@ -275,6 +283,154 @@ describe("bookingQuoteAtom refresh", () => {
     unmount();
 
     expect(quoteCalls(harness)).toBe(1);
+  });
+});
+
+/**
+ * Lets the runtime's fibers and the registry's scheduled tasks run. Both
+ * queue on `setImmediate`, which the fake timers leave real.
+ */
+const drain = async () => {
+  for (let round = 0; round < 5; round++) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+};
+
+/**
+ * Moves the fake timers, which drive both the registry's idle sweep and the
+ * runtime's sleeps, after letting a just-unmounted atom start its idle wait.
+ */
+const elapse = async (duration: Duration.Input) => {
+  await drain();
+  jest.advanceTimersByTime(
+    Duration.toMillis(Duration.fromInputUnsafe(duration))
+  );
+  await drain();
+};
+
+/** The registry sweeps idle atoms in one-second buckets. */
+const pastIdleTTL = (ttl: Duration.Duration) =>
+  Duration.sum(ttl, Duration.seconds(1));
+
+interface CatalogRead {
+  readonly name: string;
+  readonly endpoint: BookingEndpointName;
+  readonly idleTTL: Duration.Duration;
+  readonly atom: (
+    booking: ReturnType<typeof fakeBooking>
+  ) => Atom.Atom<AsyncResult.AsyncResult<unknown, unknown>>;
+}
+
+const catalogReads: ReadonlyArray<CatalogRead> = [
+  {
+    name: "offerings",
+    endpoint: "listOfferings",
+    idleTTL: catalogIdleTTL.offerings,
+    atom: () => bookingOfferingsAtom("en-US"),
+  },
+  {
+    name: "availability",
+    endpoint: "getAvailability",
+    idleTTL: catalogIdleTTL.availability,
+    atom: (booking) =>
+      bookingAvailabilityAtom({
+        query: { kind: "cowork", date: booking.dateIn(7) },
+      }),
+  },
+  {
+    name: "meeting-room start times",
+    endpoint: "getMeetingRoomStartTimes",
+    idleTTL: catalogIdleTTL.availability,
+    atom: (booking) =>
+      meetingRoomStartTimesAtom({
+        date: booking.dateIn(1),
+        duration: "hour:1",
+      }),
+  },
+  {
+    name: "quote",
+    endpoint: "getQuote",
+    idleTTL: catalogIdleTTL.quote,
+    atom: (booking) =>
+      bookingQuoteAtom(coworkSelection(booking.dateIn(20)), "en-US"),
+  },
+];
+
+describe("catalog idle TTL", () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  const readsOf = (
+    booking: ReturnType<typeof fakeBooking>,
+    endpoint: BookingEndpointName
+  ) => booking.endpoints.filter((called) => called === endpoint).length;
+
+  test.each(catalogReads)(
+    "reuses the $name read when the screen comes back within its idle TTL",
+    async ({ endpoint, idleTTL, atom }) => {
+      const { registry, workspace } = makeFakeCustomerData("linked");
+      const booking = fakeBooking(workspace);
+
+      await settle(registry, atom(booking));
+      await elapse(Duration.subtract(idleTTL, Duration.seconds(1)));
+      const again = await settle(registry, atom(booking));
+
+      expect(again._tag).toBe("Success");
+      expect(readsOf(booking, endpoint)).toBe(1);
+    }
+  );
+
+  test.each(catalogReads)(
+    "reads the $name again when the screen comes back after its idle TTL",
+    async ({ endpoint, idleTTL, atom }) => {
+      const { registry, workspace } = makeFakeCustomerData("linked");
+      const booking = fakeBooking(workspace);
+
+      await settle(registry, atom(booking));
+      await elapse(pastIdleTTL(idleTTL));
+      await settle(registry, atom(booking));
+
+      expect(readsOf(booking, endpoint)).toBe(2);
+    }
+  );
+
+  test("doesn't refresh a quote no screen shows", async () => {
+    const { registry, workspace } = makeFakeCustomerData("linked");
+    const booking = fakeBooking(workspace);
+    const atom = bookingQuoteAtom(coworkSelection(booking.dateIn(23)), "en-US");
+
+    await settle(registry, atom);
+    await elapse(quoteRefreshInterval);
+    await elapse(quoteRefreshInterval);
+
+    expect(readsOf(booking, "getQuote")).toBe(1);
+  });
+
+  test("drops an idle quote whose refresh fell due, and reads it on return", async () => {
+    const { registry, workspace } = makeFakeCustomerData("linked");
+    const booking = fakeBooking(workspace);
+    const atom = bookingQuoteAtom(coworkSelection(booking.dateIn(24)), "en-US");
+    const unmount = registry.mount(atom);
+    const first = await settle(registry, atom);
+
+    await elapse(Duration.subtract(quoteRefreshInterval, Duration.seconds(30)));
+    unmount();
+    await elapse("40 seconds");
+    const readsWhileIdle = readsOf(booking, "getQuote");
+    const returned = await settle(registry, atom);
+
+    expect(readsWhileIdle).toBe(1);
+    expect(readsOf(booking, "getQuote")).toBe(2);
+    expect(
+      first._tag === "Success" &&
+        returned._tag === "Success" &&
+        first.success.advertisedPriceToken !==
+          returned.success.advertisedPriceToken
+    ).toBe(true);
   });
 });
 

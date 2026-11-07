@@ -24,9 +24,43 @@ import { selectionKey } from "../selection/booking-selection";
  * apps/deskohub-workspace/features/customer-api/customer-request-budget.ts):
  * offerings, availability, meeting-room start times and quotes are
  * `dotypos-read` (the shared table and reservation snapshots read Dotypos on
- * a miss), legal documents are `workspace-only`. Errors stay typed; screens
- * map them with `toBookingQueryError`.
+ * a miss), legal documents are `workspace-only`. Each catalog read stays
+ * cached for its `catalogIdleTTL` after the last screen showing it leaves.
+ * Errors stay typed; screens map them with `toBookingQueryError`.
  */
+
+/**
+ * How long each catalog read stays cached once no screen shows it, so a
+ * customer stepping back to a family, date or duration they just viewed
+ * reuses the read instead of spending the account's read budget again. The
+ * registry drops the read after this idle time; showing it again within the
+ * time keeps it.
+ */
+export const catalogIdleTTL = {
+  /**
+   * Offerings change only when the catalog or its prices are edited, and
+   * the price checkout charges comes from the quote, so an offering list a
+   * few minutes old costs nothing.
+   */
+  offerings: Duration.minutes(10),
+  /**
+   * Availability and meeting-room start times are advisory and may be a few
+   * minutes old: checkout checks the selection again. Two minutes covers a
+   * customer comparing a few dates or durations without showing a slot taken
+   * meanwhile as free for long.
+   */
+  availability: Duration.minutes(2),
+  /**
+   * A quote carries the `advertisedPriceToken` checkout redeems. An idle
+   * quote's refresh still falls due at `quoteRefreshInterval`: it reads
+   * nothing while no screen shows the quote but marks it stale, so the TTL
+   * never serves a quote older than a mounted one would be. The short TTL
+   * also bounds a quote whose refresh was skipped at the budget's reserve,
+   * so a stale token doesn't send checkout to CustomerQuoteExpired. A minute
+   * covers stepping back to a selection just priced.
+   */
+  quote: Duration.minutes(1),
+} as const;
 
 /** Offerings, availability, start times and quotes read Dotypos on a cache miss. */
 const catalogRead = customerRead({ dotyposBacked: true });
@@ -40,11 +74,13 @@ const bookingApi = Effect.map(
 
 /** Every offering with its advertised price, in the customer's language. */
 export const bookingOfferingsAtom = Atom.family((locale: CustomerLocale) =>
-  customerDataRuntime.atom(
-    Effect.flatMap(bookingApi, (booking) =>
-      booking.listOfferings({ query: { locale } })
-    ).pipe(catalogRead)
-  )
+  customerDataRuntime
+    .atom(
+      Effect.flatMap(bookingApi, (booking) =>
+        booking.listOfferings({ query: { locale } })
+      ).pipe(catalogRead)
+    )
+    .pipe(Atom.setIdleTTL(catalogIdleTTL.offerings))
 );
 
 /** One availability read: the query, and the pay state a change replaces. */
@@ -66,14 +102,16 @@ const replacementHeaders = (token: string | undefined) =>
  */
 export const bookingAvailabilityAtom = Atom.family(
   ({ query, replacingPayStateToken }: BookingAvailabilityRequest) =>
-    customerDataRuntime.atom(
-      Effect.flatMap(bookingApi, (booking) =>
-        booking.getAvailability({
-          query,
-          headers: replacementHeaders(replacingPayStateToken),
-        })
-      ).pipe(catalogRead)
-    )
+    customerDataRuntime
+      .atom(
+        Effect.flatMap(bookingApi, (booking) =>
+          booking.getAvailability({
+            query,
+            headers: replacementHeaders(replacingPayStateToken),
+          })
+        ).pipe(catalogRead)
+      )
+      .pipe(Atom.setIdleTTL(catalogIdleTTL.availability))
 );
 
 /** The free meeting-room starts on a Prague date for a duration. */
@@ -85,14 +123,16 @@ export interface MeetingRoomStartTimesRequest {
 
 export const meetingRoomStartTimesAtom = Atom.family(
   ({ date, duration, replacingPayStateToken }: MeetingRoomStartTimesRequest) =>
-    customerDataRuntime.atom(
-      Effect.flatMap(bookingApi, (booking) =>
-        booking.getMeetingRoomStartTimes({
-          query: { date, duration },
-          headers: replacementHeaders(replacingPayStateToken),
-        })
-      ).pipe(catalogRead)
-    )
+    customerDataRuntime
+      .atom(
+        Effect.flatMap(bookingApi, (booking) =>
+          booking.getMeetingRoomStartTimes({
+            query: { date, duration },
+            headers: replacementHeaders(replacingPayStateToken),
+          })
+        ).pipe(catalogRead)
+      )
+      .pipe(Atom.setIdleTTL(catalogIdleTTL.availability))
 );
 
 /** One selection priced in one language; equal when their keys are. */
@@ -143,6 +183,8 @@ const quoteQuery = (
  * the automatic read is skipped once the budget is down to its reserve, and
  * automatic reads then stay off until the quote is read again (a selection
  * change or the screen's retry). A failed read schedules nothing either.
+ * While the quote idles within its TTL the wait goes on, and a read that
+ * falls due only marks the quote stale; dropping the idle quote ends it.
  */
 const refreshQuoteLater = (get: Atom.AtomContext) =>
   Effect.sleep(quoteRefreshInterval).pipe(
@@ -162,14 +204,16 @@ const refreshQuoteLater = (get: Atom.AtomContext) =>
   );
 
 const quoteFamily = Atom.family(({ selection, locale }: BookingQuoteRequest) =>
-  customerDataRuntime.atom((get) =>
-    Effect.flatMap(bookingApi, (booking) =>
-      booking.getQuote({ query: quoteQuery(selection, locale) })
-    ).pipe(
-      catalogRead,
-      Effect.tap(() => refreshQuoteLater(get))
+  customerDataRuntime
+    .atom((get) =>
+      Effect.flatMap(bookingApi, (booking) =>
+        booking.getQuote({ query: quoteQuery(selection, locale) })
+      ).pipe(
+        catalogRead,
+        Effect.tap(() => refreshQuoteLater(get))
+      )
     )
-  )
+    .pipe(Atom.setIdleTTL(catalogIdleTTL.quote))
 );
 
 /**
