@@ -1,11 +1,20 @@
 import * as SecureStore from "expo-secure-store";
 import { resolveApiOrigin } from "./api-origin";
-import { createNativeAuthClient } from "./native-auth-client";
+import {
+  createNativeAuthClient,
+  type NativeAuthClientOptions,
+} from "./native-auth-client";
 
 export const apiOrigin = resolveApiOrigin(
   process.env.EXPO_PUBLIC_API_ORIGIN,
   undefined
 );
+
+/** What the app's client is built from; sign-ins build their own from it. */
+export const authClientOptions: NativeAuthClientOptions = {
+  origin: apiOrigin,
+  storage: SecureStore,
+};
 
 /**
  * The native Better Auth client. The Expo plugin keeps the session cookie in
@@ -15,7 +24,4 @@ export const apiOrigin = resolveApiOrigin(
  * exchanges handoff codes, runs the passkey ceremonies, reads the session and
  * signs out.
  */
-export const authClient = createNativeAuthClient({
-  origin: apiOrigin,
-  storage: SecureStore,
-});
+export const authClient = createNativeAuthClient(authClientOptions);

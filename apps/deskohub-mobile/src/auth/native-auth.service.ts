@@ -1,6 +1,12 @@
-import { Context, Data, Effect, Layer, Option } from "effect";
+import { Context, Data, Effect, Layer, Option, Semaphore } from "effect";
 import type { AuthUser } from "./auth-session-state";
-import type { NativeAuthClient } from "./native-auth-client";
+import { makeMemorySecureStore } from "./memory-secure-store";
+import {
+  createNativeAuthClient,
+  moveSession,
+  type NativeAuthClient,
+  type NativeAuthClientOptions,
+} from "./native-auth-client";
 
 export type { AuthUser } from "./auth-session-state";
 
@@ -33,17 +39,31 @@ export interface HandoffExchange {
   readonly returnUri: string;
 }
 
+/**
+ * A session a sign-in just opened. It is held apart from the app's own
+ * session until the app accepts it, so a session the app refuses never
+ * replaces the one it has.
+ */
+export interface SignInSession {
+  /** The account the session belongs to. */
+  readonly user: Effect.Effect<Option.Option<AuthUser>, NativeAuthFailure>;
+  /** Makes it the app's session and tells `useSession`. */
+  readonly accept: Effect.Effect<void>;
+  /** Ends it on the server; the app's own session is untouched. */
+  readonly revoke: Effect.Effect<void, NativeAuthFailure>;
+}
+
 interface INativeAuth {
   /** The Workspace origin the client talks to. */
   readonly origin: string;
-  /** Claims a magic-link token; the session cookie lands in storage. */
+  /** Claims a magic-link token for a new session. */
   readonly verifyMagicLink: (
     token: string
-  ) => Effect.Effect<void, NativeAuthFailure>;
+  ) => Effect.Effect<SignInSession, NativeAuthFailure>;
   /** Redeems a handoff code for a new app session. */
   readonly exchangeHandoff: (
     exchange: HandoffExchange
-  ) => Effect.Effect<void, NativeAuthFailure>;
+  ) => Effect.Effect<SignInSession, NativeAuthFailure>;
   readonly currentUser: Effect.Effect<
     Option.Option<AuthUser>,
     NativeAuthFailure
@@ -54,14 +74,18 @@ interface INativeAuth {
 
 /**
  * The native Better Auth calls the sign-in flows make. Requests carry the
- * stored session cookie; the Expo plugin stores any new one and signals the
- * `useSession` store.
+ * stored session cookie. A sign-in runs on a client of its own over memory,
+ * so its new session stays out of the app's storage until it is accepted.
  */
 export class NativeAuth extends Context.Service<NativeAuth, INativeAuth>()(
   "deskohub-mobile/NativeAuth"
 ) {
-  static fromClient(origin: string, client: NativeAuthClient) {
-    return Layer.succeed(NativeAuth, makeNativeAuth(origin, client));
+  /** `options` are the ones `client` was built from. */
+  static fromClient(
+    client: NativeAuthClient,
+    options: NativeAuthClientOptions
+  ) {
+    return Layer.succeed(NativeAuth, makeNativeAuth(client, options));
   }
 }
 
@@ -95,24 +119,8 @@ const call = <A>(
     )
   );
 
-const makeNativeAuth = (
-  origin: string,
-  client: NativeAuthClient
-): INativeAuth => ({
-  origin,
-  verifyMagicLink: (token) =>
-    call("verify-magic-link", (signal) =>
-      client.magicLink.verify({ query: { token }, fetchOptions: { signal } })
-    ).pipe(Effect.asVoid),
-  exchangeHandoff: ({ code, codeVerifier, returnUri }) =>
-    call("exchange-handoff", (signal) =>
-      client.$fetch("/native-handoff/exchange", {
-        method: "POST",
-        body: { code, code_verifier: codeVerifier, return_uri: returnUri },
-        signal,
-      })
-    ).pipe(Effect.asVoid),
-  currentUser: call("get-session", (signal) =>
+const userOf = (client: NativeAuthClient) =>
+  call("get-session", (signal) =>
     client.getSession({ fetchOptions: { signal } })
   ).pipe(
     Effect.map((data) =>
@@ -120,8 +128,60 @@ const makeNativeAuth = (
         Option.map(({ id, email }): AuthUser => ({ id, email }))
       )
     )
-  ),
-  signOut: call("sign-out", (signal) =>
+  );
+
+const signOutOf = (client: NativeAuthClient) =>
+  call("sign-out", (signal) =>
     client.signOut({ fetchOptions: { signal } })
-  ).pipe(Effect.asVoid),
-});
+  ).pipe(Effect.asVoid);
+
+const makeNativeAuth = (
+  client: NativeAuthClient,
+  options: NativeAuthClientOptions
+): INativeAuth => {
+  // Two sign-ins accepted at once would interleave their writes.
+  const acceptance = Semaphore.makeUnsafe(1);
+  const openSession = <A>(
+    operation: NativeAuthOperation,
+    request: (
+      signIn: NativeAuthClient,
+      signal: AbortSignal
+    ) => Promise<ClientResult<A>>
+  ): Effect.Effect<SignInSession, NativeAuthFailure> =>
+    Effect.suspend(() => {
+      const storage = makeMemorySecureStore();
+      const signIn = createNativeAuthClient({ ...options, storage });
+      return call(operation, (signal) => request(signIn, signal)).pipe(
+        Effect.as({
+          user: userOf(signIn),
+          accept: acceptance
+            .withPermits(1)(
+              Effect.promise(() => moveSession(storage, options.storage))
+            )
+            .pipe(
+              Effect.andThen(
+                Effect.sync(() => client.$store.notify("$sessionSignal"))
+              )
+            ),
+          revoke: signOutOf(signIn),
+        })
+      );
+    });
+  return {
+    origin: options.origin,
+    verifyMagicLink: (token) =>
+      openSession("verify-magic-link", (signIn, signal) =>
+        signIn.magicLink.verify({ query: { token }, fetchOptions: { signal } })
+      ),
+    exchangeHandoff: ({ code, codeVerifier, returnUri }) =>
+      openSession("exchange-handoff", (signIn, signal) =>
+        signIn.$fetch("/native-handoff/exchange", {
+          method: "POST",
+          body: { code, code_verifier: codeVerifier, return_uri: returnUri },
+          signal,
+        })
+      ),
+    currentUser: userOf(client),
+    signOut: signOutOf(client),
+  };
+};

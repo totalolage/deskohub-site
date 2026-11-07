@@ -13,6 +13,7 @@ import {
   type AuthUser,
   NativeAuth,
   type NativeAuthFailure,
+  type SignInSession,
 } from "./native-auth.service";
 import {
   type NativeHandoffRequest,
@@ -44,7 +45,8 @@ import {
  * attempt's PKCE challenge and returns to `deskohub://auth/callback`; the
  * app redeems it with the verifier for its own session. A magic link opened
  * from a mail app lands on the `/app/auth/callback` App Link instead and is
- * verified directly. Either way the session cookie ends up in SecureStore.
+ * verified directly. Either way the new session's cookie is stored in
+ * SecureStore once the app accepts it.
  */
 
 export type NativeSignInServices =
@@ -114,36 +116,45 @@ export const startPendingSignIn = Effect.fn("NativeSignIn.startPendingSignIn")(
   })
 );
 
+/** A session without a user is a refused sign-in. */
+const requireUser = Option.match({
+  onNone: () => Effect.fail(new SignInRejected({})),
+  onSome: (user: AuthUser) => Effect.succeed(user),
+});
+
+const signedInUser = Effect.service(NativeAuth).pipe(
+  Effect.flatMap((auth) => auth.currentUser),
+  Effect.mapError(fromAuthFailure),
+  Effect.flatMap(requireUser)
+);
+
 /**
- * The signed-in user after a completion. A reauthentication must land on the
- * account it started from: another account's session, or one whose account
- * can't be confirmed, is signed out again. The Expo client drops the stored
- * cookie before the sign-out request goes out, so this holds offline too.
+ * Accepts the session a completion opened and returns its user. A
+ * reauthentication must land on the account it started from: another
+ * account's session, or one whose account can't be confirmed, is ended on
+ * the server and never replaces the app's own, which stays signed in. Any
+ * other sign-in accepts its session even when its user can't be read yet.
  */
-const confirmSignedInUser = (expectedUserId: string | undefined) =>
-  Effect.service(NativeAuth).pipe(
-    Effect.flatMap((auth) => {
-      const refuse = <E>(failure: E) =>
-        auth.signOut.pipe(Effect.ignore, Effect.andThen(Effect.fail(failure)));
-      return auth.currentUser.pipe(
-        Effect.mapError(fromAuthFailure),
-        Effect.flatMap(
-          Option.match({
-            onNone: () => Effect.fail(new SignInRejected({})),
-            onSome: Effect.succeed,
-          })
-        ),
-        Effect.catch((failure) =>
-          expectedUserId === undefined ? Effect.fail(failure) : refuse(failure)
-        ),
-        Effect.filterOrElse(
-          (user) => expectedUserId === undefined || user.id === expectedUserId,
-          () => refuse(new AccountSwitchRefused())
+const confirmSignedInUser =
+  (expectedUserId: string | undefined) => (session: SignInSession) =>
+    (expectedUserId === undefined
+      ? session.accept.pipe(Effect.andThen(signedInUser))
+      : session.user.pipe(
+          Effect.mapError(fromAuthFailure),
+          Effect.flatMap(requireUser),
+          Effect.filterOrFail(
+            (user) => user.id === expectedUserId,
+            () => new AccountSwitchRefused()
+          ),
+          Effect.catch((failure) =>
+            session.revoke.pipe(
+              Effect.ignore,
+              Effect.andThen(Effect.fail(failure))
+            )
+          ),
+          Effect.tap(() => session.accept)
         )
-      );
-    }),
-    Effect.withSpan("NativeSignIn.confirmSignedInUser")
-  );
+    ).pipe(Effect.withSpan("NativeSignIn.confirmSignedInUser"));
 
 const loadPendingSignIn = Effect.service(PendingSignIns).pipe(
   Effect.flatMap((pendingSignIns) => pendingSignIns.load),
@@ -194,17 +205,17 @@ const completeHandoff = (code: string, state: string) =>
   Effect.Do.pipe(
     Effect.bind("pending", () => pendingSignInFor(state)),
     Effect.bind("auth", () => Effect.service(NativeAuth)),
-    Effect.tap(({ auth, pending }) =>
+    Effect.flatMap(({ auth, pending }) =>
       auth
         .exchangeHandoff({
           code,
           codeVerifier: pending.verifier,
           returnUri: pending.returnUri,
         })
-        .pipe(Effect.mapError(fromAuthFailure))
-    ),
-    Effect.flatMap(({ pending }) =>
-      confirmSignedInUser(pending.expectedUserId)
+        .pipe(
+          Effect.mapError(fromAuthFailure),
+          Effect.flatMap(confirmSignedInUser(pending.expectedUserId))
+        )
     ),
     // Only a confirmed sign-in ends the attempt: a refused one keeps its
     // expected account for the email's other links until it expires.
@@ -256,7 +267,7 @@ const completeToken = Effect.fn("NativeSignIn.completeToken")(function* (
         .verifyMagicLink(token)
         .pipe(
           Effect.mapError(fromAuthFailure),
-          Effect.andThen(confirmSignedInUser(expectedUserId))
+          Effect.flatMap(confirmSignedInUser(expectedUserId))
         )
     ),
     // Only a confirmed sign-in ends the attempt (and any expired one).
@@ -351,7 +362,7 @@ export const signInWithEmail = Effect.fn("NativeSignIn.signInWithEmail")(
  * refused with `SESSION_NOT_FRESH` or `SESSION_EXPIRED`. Runs a new email
  * sign-in through the auth session; the handoff session inherits the browser
  * sign-in's age, so the page always signs in again. Signing in to another
- * account is refused and that session signed out.
+ * account is refused: that session is ended and the app stays signed in.
  */
 export const reauthenticate: Effect.Effect<
   AuthUser,
