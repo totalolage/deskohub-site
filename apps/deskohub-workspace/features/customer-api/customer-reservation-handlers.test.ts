@@ -17,6 +17,13 @@ import {
   CustomerAccountAccessError,
   customerAccountUnavailable,
 } from "@/features/account/customer-account";
+import type { InvoicePdfFile } from "@/features/accounting/backend/invoice-pdf";
+import { InvoicePdfRenderingError } from "@/features/accounting/backend/invoice-pdf";
+import {
+  ReservationInvoiceNotFoundError,
+  ReservationInvoiceNotIssuedError,
+  ReservationInvoicePdfService,
+} from "@/features/accounting/backend/reservation-invoice-pdf.service";
 import {
   CheckoutStatusService,
   type CheckoutStatusViewModel,
@@ -25,7 +32,11 @@ import {
   ReservationAccessService,
   type ReservationAccessViewModel,
 } from "@/features/reservation/backend/reservation-access.service";
-import { ReservationAuthorizationService } from "@/features/reservation/backend/reservation-authorization.service";
+import {
+  type ReservationAuthorizationInput,
+  ReservationAuthorizationService,
+  ReservationAuthorizationUnavailableError,
+} from "@/features/reservation/backend/reservation-authorization.service";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import {
   type CustomerApiCall,
@@ -49,8 +60,8 @@ const ownOrderAuthorization = (
   return (authentication) =>
     Layer.effect(
       ReservationAuthorizationService,
-      Effect.map(CustomerAuthentication, (session) => ({
-        isAuthorized: (input) =>
+      Effect.map(CustomerAuthentication, (session) => {
+        const isAuthorized = (input: ReservationAuthorizationInput) =>
           session.currentUser.pipe(
             Effect.map(
               (user) =>
@@ -59,8 +70,9 @@ const ownOrderAuthorization = (
                 user?.accountId === testCustomerSession.accountId
             ),
             Effect.orElseSucceed(() => false)
-          ),
-      }))
+          );
+        return { isAuthorized, authorize: isAuthorized };
+      })
     ).pipe(Layer.provide(authentication));
 };
 
@@ -565,5 +577,148 @@ describe("getReservationAccess", () => {
     await response.catch(() => undefined);
 
     expect(issued).toEqual(["issued"]);
+  });
+});
+
+describe("getReservationInvoice", () => {
+  const getReservationInvoice: CustomerApiCall = {
+    method: "GET",
+    path: `/reservations/${orderId}/invoice`,
+  };
+
+  const issuedInvoice: InvoicePdfFile = {
+    bytes: new TextEncoder().encode("%PDF-1.7\n%%EOF\n"),
+    fileName: "WS-FV-2026-000042.pdf",
+  };
+
+  const invoiceServices = (
+    getPdf: ReservationInvoicePdfService["Service"]["getPdf"]
+  ): Partial<CustomerReservationServiceLayers> => ({
+    authorization: ownOrderAuthorization(true),
+    invoice: () => Layer.mock(ReservationInvoicePdfService, { getPdf }),
+  });
+
+  const failingWith = (
+    failure: Effect.Error<
+      ReturnType<ReservationInvoicePdfService["Service"]["getPdf"]>
+    >
+  ) => invoiceServices(() => Effect.fail(failure));
+
+  testCustomerEndpointGuards(getReservationInvoice);
+
+  test("downloads the issued invoice of the account's order as a PDF named by its number", async () => {
+    const getPdf = mock(() => Effect.succeed(issuedInvoice));
+    const api = makeCustomerApiTestServer({
+      reservations: invoiceServices(getPdf),
+    });
+
+    const response = await api.handle(
+      customerApiRequest(getReservationInvoice)
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("application/pdf");
+    expect(response.headers.get("content-disposition")).toBe(
+      'attachment; filename="WS-FV-2026-000042.pdf"'
+    );
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    const body = new Uint8Array(await response.arrayBuffer());
+    expect(new TextDecoder().decode(body.subarray(0, 5))).toBe("%PDF-");
+    expect(body).toEqual(issuedInvoice.bytes);
+    // The session alone authorizes it: no access cookie or link token.
+    expect(getPdf).toHaveBeenCalledWith({ orderId, locale: "en-US" });
+  });
+
+  test("hands the invoice service the authorization read through the session", async () => {
+    const authorizations: boolean[] = [];
+    const api = makeCustomerApiTestServer({
+      reservations: {
+        authorization: ownOrderAuthorization(true),
+        invoice: (authorization) =>
+          Layer.effect(
+            ReservationInvoicePdfService,
+            Effect.map(ReservationAuthorizationService, (authorizer) => ({
+              getPdf: (input) =>
+                authorizer
+                  .authorize({ ...input, permission: "view-invoice" })
+                  .pipe(
+                    Effect.tap((authorized) =>
+                      Effect.sync(() => authorizations.push(authorized))
+                    ),
+                    Effect.andThen(
+                      Effect.fail(
+                        new ReservationInvoiceNotFoundError({ orderId })
+                      )
+                    )
+                  ),
+            }))
+          ).pipe(Layer.provide(authorization)),
+      },
+    });
+
+    await api.handle(customerApiRequest(getReservationInvoice));
+
+    expect(authorizations).toEqual([true]);
+  });
+
+  test("answers someone else's order, or one that doesn't exist, as not found", async () => {
+    const api = makeCustomerApiTestServer({
+      reservations: failingWith(
+        new ReservationInvoiceNotFoundError({ orderId })
+      ),
+    });
+
+    const response = await api.handle(
+      customerApiRequest(getReservationInvoice)
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({
+      _tag: "CustomerReservationNotFound",
+    });
+  });
+
+  test("answers an order without an issued invoice, such as one not fulfilled yet, as not issued", async () => {
+    const api = makeCustomerApiTestServer({
+      reservations: failingWith(
+        new ReservationInvoiceNotIssuedError({ orderId })
+      ),
+    });
+
+    const response = await api.handle(
+      customerApiRequest(getReservationInvoice)
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      _tag: "CustomerInvoiceNotIssued",
+    });
+  });
+
+  test.each([
+    [
+      "whether the account may see the order can't be read",
+      new ReservationAuthorizationUnavailableError({
+        orderId,
+        cause: customerAccountUnavailable("account-link.read"),
+      }),
+    ],
+    [
+      "the stored invoice can't be rendered",
+      new InvoicePdfRenderingError({ message: "renderer failed" }),
+    ],
+  ])("answers unavailable when %s", async (_case, failure) => {
+    const api = makeCustomerApiTestServer({
+      reservations: failingWith(failure),
+    });
+
+    const response = await api.handle(
+      customerApiRequest(getReservationInvoice)
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      _tag: "CustomerServiceUnavailable",
+    });
   });
 });

@@ -6,6 +6,7 @@ import {
   type CustomerAccountAccessError,
   CustomerAccountReservationOwnership,
 } from "@/features/account";
+import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
@@ -228,13 +229,24 @@ export class ReservationAuthorizationService extends Context.Service<
     })
   );
 
-  static Live = this.Default.pipe(
-    Layer.provide(
-      Layer.mergeAll(
-        CustomerAccountReservationOwnership.Live,
-        WorkspaceReservationRepository.Live,
-        ReviewSandbox.Live
+  /**
+   * The service deciding for the account `authentication` reads, such as
+   * the customer API's session.
+   */
+  static withAuthentication = <E, R>(
+    authentication: Layer.Layer<CustomerAuthentication, E, R>
+  ) =>
+    this.Default.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          CustomerAccountReservationOwnership.withAuthentication(
+            authentication
+          ),
+          WorkspaceReservationRepository.Live,
+          ReviewSandbox.Live
+        )
       )
-    )
-  );
+    );
+
+  static Live = this.withAuthentication(CustomerAuthentication.Default);
 }

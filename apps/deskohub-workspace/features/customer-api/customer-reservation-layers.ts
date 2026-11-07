@@ -1,34 +1,17 @@
 import { Context, Layer } from "effect";
 import {
   CustomerAccountContactService,
-  CustomerAccountReservationOwnership,
   CustomerReservationHistoryService,
 } from "@/features/account";
 import type { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
+import { ReservationInvoicePdfService } from "@/features/accounting/backend/reservation-invoice-pdf.service";
 import { CheckoutStatusService } from "@/features/checkout/backend/checkout/checkout-status.service";
 import { ReservationAccessService } from "@/features/reservation/backend/reservation-access.service";
 import { ReservationAuthorizationService } from "@/features/reservation/backend/reservation-authorization.service";
-import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
-import { ReviewSandbox } from "@/features/review-accounts";
 
-/**
- * Who may see an order, decided for the account `authentication` reads, as
- * `ReservationAuthorizationService.Live` decides it for the browser session.
- */
-const authorizationFor = (
-  authentication: Layer.Layer<CustomerAuthentication>
-) =>
-  ReservationAuthorizationService.Default.pipe(
-    Layer.provide(
-      Layer.mergeAll(
-        CustomerAccountReservationOwnership.withAuthentication(authentication),
-        WorkspaceReservationRepository.Live,
-        ReviewSandbox.Live
-      )
-    )
-  );
-
-type AuthorizationLayerError = Layer.Error<ReturnType<typeof authorizationFor>>;
+type AuthorizationLayerError = Layer.Error<
+  typeof ReservationAuthorizationService.Live
+>;
 
 /**
  * The reservation services' Layers. Those that read the signed-in account
@@ -48,6 +31,11 @@ export type CustomerReservationServiceLayers = {
     CustomerReservationHistoryService,
     Layer.Error<typeof CustomerReservationHistoryService.Live>
   >;
+  /**
+   * Who may see an order, decided for the account `authentication` reads,
+   * as `ReservationAuthorizationService.Live` decides it for the browser
+   * session.
+   */
   readonly authorization: (
     authentication: Layer.Layer<CustomerAuthentication>
   ) => Layer.Layer<ReservationAuthorizationService, AuthorizationLayerError>;
@@ -66,6 +54,16 @@ export type CustomerReservationServiceLayers = {
     ReservationAccessService,
     Layer.Error<typeof ReservationAccessService.Live>
   >;
+  /** Issued invoices, shown to whom `authorization` lets see them. */
+  readonly invoice: (
+    authorization: Layer.Layer<
+      ReservationAuthorizationService,
+      AuthorizationLayerError
+    >
+  ) => Layer.Layer<
+    ReservationInvoicePdfService,
+    Layer.Error<typeof ReservationInvoicePdfService.Live>
+  >;
 };
 
 /**
@@ -80,8 +78,9 @@ export class CustomerReservationLayers extends Context.Service<
   static Live = Layer.succeed(this, {
     contacts: CustomerAccountContactService.withAuthentication,
     history: CustomerReservationHistoryService.Live,
-    authorization: authorizationFor,
+    authorization: ReservationAuthorizationService.withAuthentication,
     checkoutStatus: CheckoutStatusService.Live,
     access: ReservationAccessService.withAuthorization,
+    invoice: ReservationInvoicePdfService.withAuthorization,
   });
 }

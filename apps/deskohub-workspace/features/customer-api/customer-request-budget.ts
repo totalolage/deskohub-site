@@ -78,6 +78,8 @@ export const customerRequestBudgetClasses = {
     listReservations: "dotypos-read",
     getReservationStatus: "dotypos-read",
     getReservationAccess: "dotypos-read",
+    // Authorizing the invoice can resolve the account's Dotypos customer.
+    getReservationInvoice: "dotypos-read",
   },
   booking: {},
 } as const satisfies CustomerApiEndpointClassification;

@@ -31,6 +31,17 @@ export class CustomerAccessCodeUnavailable extends Schema.TaggedErrorClass<Custo
   static schema = this.pipe(HttpApiSchema.status("Conflict"));
 }
 
+/**
+ * The order has no issued invoice: it isn't paid and confirmed yet, or it
+ * needs none. Asking again can succeed only once its status changes.
+ */
+export class CustomerInvoiceNotIssued extends Schema.TaggedErrorClass<CustomerInvoiceNotIssued>()(
+  "CustomerInvoiceNotIssued",
+  {}
+) {
+  static schema = this.pipe(HttpApiSchema.status("Conflict"));
+}
+
 // Reservations
 
 const isoInstant = Schema.String.annotate({
@@ -221,15 +232,26 @@ export const CustomerReservationAccess = Schema.Struct({
 }).annotate({ identifier: "CustomerReservationAccess" });
 export type CustomerReservationAccess = typeof CustomerReservationAccess.Type;
 
+/**
+ * An order's issued invoice as a PDF document, served as an attachment
+ * named by the invoice number.
+ */
+export const CustomerInvoicePdf = Schema.Uint8Array.pipe(
+  HttpApiSchema.asUint8Array({ contentType: "application/pdf" })
+).annotate({
+  identifier: "CustomerInvoicePdf",
+  description: "The issued invoice as a PDF document.",
+});
+
 // Endpoints
 
 const OrderParams = { orderId: CustomerReservationOrderId } as const;
 
 /**
- * The signed-in customer's reservations: the history, and the status and
- * door code of an order the account booked or whose customer it is. The
- * status and door code reads refresh the order, as the website's pages do,
- * and the door code only the order's customer sees.
+ * The signed-in customer's reservations: the history, and the status, door
+ * code and invoice of an order the account booked or whose customer it is.
+ * The status and door code reads refresh the order, as the website's pages
+ * do, and the door code and invoice only the order's customer sees.
  */
 export const CustomerReservationsApi = HttpApiGroup.make("reservations")
   .add(
@@ -258,6 +280,17 @@ export const CustomerReservationsApi = HttpApiGroup.make("reservations")
       error: [
         CustomerReservationNotFound.schema,
         CustomerAccessCodeUnavailable.schema,
+        CustomerServiceUnavailable.schema,
+      ],
+    })
+  )
+  .add(
+    HttpApiEndpoint.get("getReservationInvoice", "/:orderId/invoice", {
+      params: OrderParams,
+      success: CustomerInvoicePdf,
+      error: [
+        CustomerReservationNotFound.schema,
+        CustomerInvoiceNotIssued.schema,
         CustomerServiceUnavailable.schema,
       ],
     })

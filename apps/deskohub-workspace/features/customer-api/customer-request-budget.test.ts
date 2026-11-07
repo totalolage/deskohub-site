@@ -27,7 +27,7 @@ describe("customer request budget classes", () => {
       )
       .toSorted();
 
-    expect(contractEndpoints()).toHaveLength(15);
+    expect(contractEndpoints()).toHaveLength(16);
     expect(classified).toEqual(contractEndpoints());
   });
 
@@ -64,6 +64,6 @@ describe("customer request budget classes", () => {
       Object.values(customerRequestBudgetClasses.reservations).filter(
         (budgetClass) => budgetClass === "dotypos-read"
       )
-    ).toHaveLength(3);
+    ).toHaveLength(4);
   });
 });

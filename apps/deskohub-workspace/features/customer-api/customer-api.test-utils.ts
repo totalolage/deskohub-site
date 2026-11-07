@@ -31,6 +31,7 @@ import {
   type CustomerAccountAccessError,
   customerAccountUnavailable,
 } from "@/features/account/customer-account";
+import { ReservationInvoicePdfService } from "@/features/accounting/backend/reservation-invoice-pdf.service";
 import { CheckoutStatusService } from "@/features/checkout/backend/checkout/checkout-status.service";
 import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import { MarketingPreferences } from "@/features/legal/backend/marketing-preferences.service";
@@ -180,6 +181,7 @@ const unusedReservationServices: CustomerReservationServiceLayers = {
   authorization: () => Layer.mock(ReservationAuthorizationService, {}),
   checkoutStatus: Layer.mock(CheckoutStatusService, {}),
   access: () => Layer.mock(ReservationAccessService, {}),
+  invoice: () => Layer.mock(ReservationInvoicePdfService, {}),
 };
 
 /** The Dotypos profile of `linkedAccountServices`' account. */

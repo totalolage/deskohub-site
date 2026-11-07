@@ -47,6 +47,8 @@ export {
 export {
   CustomerAccessCodeUnavailable,
   CustomerCoworkTier,
+  CustomerInvoiceNotIssued,
+  CustomerInvoicePdf,
   CustomerOrderFulfillmentStatus,
   CustomerOrderPaymentStatus,
   CustomerOrderState,

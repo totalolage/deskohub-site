@@ -21,7 +21,7 @@ import type { InvoiceStorageError } from "./invoice-reads";
  * The reservation doesn't exist, or the visitor may not see its invoice. The
  * two stay indistinguishable, so the answer never reveals a reservation.
  */
-class ReservationInvoiceNotFoundError extends Data.TaggedError(
+export class ReservationInvoiceNotFoundError extends Data.TaggedError(
   "ReservationInvoiceNotFoundError"
 )<{
   readonly orderId: WorkspaceReservationId;
@@ -31,7 +31,7 @@ class ReservationInvoiceNotFoundError extends Data.TaggedError(
  * The visitor may see the reservation's invoice, but none has been issued:
  * the reservation isn't paid and fulfilled yet, or it needs no invoice.
  */
-class ReservationInvoiceNotIssuedError extends Data.TaggedError(
+export class ReservationInvoiceNotIssuedError extends Data.TaggedError(
   "ReservationInvoiceNotIssuedError"
 )<{
   readonly orderId: WorkspaceReservationId;
@@ -114,13 +114,22 @@ export class ReservationInvoicePdfService extends Context.Service<
     })
   );
 
-  static Live = this.Default.pipe(
-    Layer.provide(
-      Layer.mergeAll(
-        ReservationAuthorizationService.Live,
-        InvoiceRepository.Live,
-        WorkspaceReservationRepository.Live
+  /**
+   * The service deciding who may see an invoice through `authorization`,
+   * such as one reading the customer API's session.
+   */
+  static withAuthorization = <E, R>(
+    authorization: Layer.Layer<ReservationAuthorizationService, E, R>
+  ) =>
+    this.Default.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          authorization,
+          InvoiceRepository.Live,
+          WorkspaceReservationRepository.Live
+        )
       )
-    )
-  );
+    );
+
+  static Live = this.withAuthorization(ReservationAuthorizationService.Live);
 }
