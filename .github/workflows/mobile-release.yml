@@ -110,9 +110,6 @@ jobs:
           if-no-files-found: error
           retention-days: ${{ github.event_name == 'push' && 90 || 14 }}
 
-  # The over-the-air update publish for a release (#994) belongs in its own job
-  # after build.
-
   release:
     if: github.event_name == 'push'
     needs: build
@@ -162,3 +159,38 @@ jobs:
           gh release upload "$TAG" "$APK" --clobber
           gh release edit "$TAG" --draft=false --latest=false \
             --title "mobile: v$VERSION" --notes-file release-notes.md
+
+  # The tagged commit's JavaScript goes to the production update server once
+  # its release is published, for every installed app whose native runtime
+  # (fingerprint) matches. It is a separate job, so a failed publish leaves the
+  # release as it is and a rerun of this job retries only the publish.
+  ota-update:
+    if: github.event_name == 'push'
+    needs: [build, release]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.23.2
+
+      - run: bun install --frozen-lockfile
+
+      # The export must see the same app config the APK build saw, so the
+      # resolved runtime version matches the one the APK embeds.
+      - name: Publish the over-the-air update
+        working-directory: apps/deskohub-workspace
+        env:
+          MOBILE_UPDATES_PUBLISH_TOKEN: ${{ secrets.MOBILE_UPDATES_PUBLISH_TOKEN }}
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          EXPO_PUBLIC_POSTHOG_KEY: ${{ vars.POSTHOG_PROJECT_TOKEN }}
+          EXPO_PUBLIC_POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
+        run: bun scripts/publish-mobile-update.ts --project ../deskohub-mobile --target https://workspace.deskohub.cz
