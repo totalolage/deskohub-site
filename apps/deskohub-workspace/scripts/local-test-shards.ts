@@ -98,6 +98,7 @@ export const turboCommand = (
   extraArguments: ReadonlyArray<string>
 ): readonly string[] => [
   "bun",
+  "--no-env-file",
   "turbo",
   "run",
   ...shardTasks,

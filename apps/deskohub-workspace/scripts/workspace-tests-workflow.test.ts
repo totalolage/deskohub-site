@@ -84,7 +84,7 @@ test("runs each matrix shard as its cached Turbo task and uploads the shard's re
   // The shard task balances by the committed test-timings.json and records
   // into its own file, which a cache hit restores.
   expect(stepByName("Run Workspace tests").run).toBe(
-    "bun turbo run test:shard-$" +
+    "bun --no-env-file turbo run test:shard-$" +
       "{{ matrix.shard }} --filter=./apps/deskohub-workspace"
   );
 
@@ -100,6 +100,14 @@ test("runs each matrix shard as its cached Turbo task and uploads the shard's re
       artifactName.replace("$" + "{{ matrix.shard }}", "1")
     )
   ).toBe(true);
+});
+
+test("checks the shard inputs outside Turbo's cache on every pull request", () => {
+  const check = workflowSteps(doc, "validate-workspace").find(
+    (step) => step.name === "Check Workspace test shard inputs"
+  );
+  expect(check?.["working-directory"]).toBe("apps/deskohub-workspace");
+  expect(check?.run).toBe("bun test scripts/test-shard.test.ts");
 });
 
 test("runs the shards with the Bun the repository pins", () => {

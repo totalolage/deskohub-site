@@ -271,37 +271,64 @@ describe("cached shard tasks", () => {
     expect(rootTurbo.tasks.test?.env).toEqual(["CI", "TZ"]);
     expect(rootTurbo.globalPassThroughEnv).toContain("TMPDIR");
   });
+});
 
-  test("hashes every test file the repository-wide audits enumerate", async () => {
-    // no-source-string-tests reads every tracked or unignored test file in
-    // the repository, so each one outside this package must be an input.
-    const rootInputs = (shardTask(1).inputs ?? [])
-      .filter((input) => input.startsWith("$TURBO_ROOT$/"))
-      .map((input) => new Bun.Glob(input.slice("$TURBO_ROOT$/".length)));
-    const files = (
-      await commandOutput(
-        [
-          "git",
-          "ls-files",
-          "--cached",
-          "--others",
-          "--exclude-standard",
-          "--",
-          "*.test.ts",
-          "*.test.tsx",
-        ],
-        { cwd: repositoryRoot, timeoutMs: 20_000 }
-      )
+/**
+ * The repository files git reports for these pathspecs, tracked or
+ * untracked but not ignored, that no shard input hashes.
+ */
+const unhashedRepositoryFiles = async (
+  pathspecs: ReadonlyArray<string>
+): Promise<{ readonly files: number; readonly unhashed: string[] }> => {
+  const rootInputs = (shardTask(1).inputs ?? [])
+    .filter((input) => input.startsWith("$TURBO_ROOT$/"))
+    .map((input) => new Bun.Glob(input.slice("$TURBO_ROOT$/".length)));
+  const files = (
+    await commandOutput(
+      [
+        "git",
+        "ls-files",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+        "--",
+        ...pathspecs,
+      ],
+      { cwd: repositoryRoot, timeoutMs: 20_000 }
     )
-      .split("\n")
-      .filter(Boolean);
-    const workspaceDirectory = relative(repositoryRoot, workspaceRoot);
-    const unhashed = files.filter(
+  )
+    .split("\n")
+    .filter(Boolean);
+  const workspaceDirectory = relative(repositoryRoot, workspaceRoot);
+  return {
+    files: files.length,
+    unhashed: files.filter(
       (file) =>
         !file.startsWith(`${workspaceDirectory}/`) &&
         !rootInputs.some((glob) => glob.match(file))
-    );
-    expect(files.length).toBeGreaterThan(0);
+    ),
+  };
+};
+
+// Workspace CI also runs this file outside Turbo: a file these checks would
+// reject changes no shard hash, so a cached shard would replay their pass.
+describe("shard inputs outside the package", () => {
+  test("hash every test file the repository-wide audits enumerate", async () => {
+    // no-source-string-tests reads every tracked or unignored test file in
+    // the repository, so each one outside this package must be an input.
+    const { files, unhashed } = await unhashedRepositoryFiles([
+      "*.test.ts",
+      "*.test.tsx",
+    ]);
+    expect(files).toBeGreaterThan(0);
+    expect(unhashed).toEqual([]);
+  });
+
+  test("hash every ignore file that decides which test files those audits see", async () => {
+    const { files, unhashed } = await unhashedRepositoryFiles([
+      ":(glob)**/.gitignore",
+    ]);
+    expect(files).toBeGreaterThan(0);
     expect(unhashed).toEqual([]);
   });
 });

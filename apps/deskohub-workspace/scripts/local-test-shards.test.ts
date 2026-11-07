@@ -45,8 +45,10 @@ describe("local test shards", () => {
       .split(/\s+/)
       .filter(Boolean);
     const localCommand = turboCommand(["--dry=json"]);
-    expect(ciCommand.slice(0, 3)).toEqual(["bun", "turbo", "run"]);
-    expect(localCommand.slice(0, 3)).toEqual(["bun", "turbo", "run"]);
+    // Neither launcher lets Bun load untracked .env files into Turbo.
+    const launch = ["bun", "--no-env-file", "turbo", "run"];
+    expect(ciCommand.slice(0, launch.length)).toEqual(launch);
+    expect(localCommand.slice(0, launch.length)).toEqual(launch);
     const ciFilter = ciCommand.filter((word) => word.startsWith("--filter="));
     expect(ciFilter).toEqual(
       localCommand.filter((word) => word.startsWith("--filter="))
