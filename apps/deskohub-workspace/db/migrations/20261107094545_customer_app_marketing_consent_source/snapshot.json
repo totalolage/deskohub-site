@@ -1,9 +1,9 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "2d6f0861-c514-4e32-b702-ce659d5b9ae8",
+  "id": "1b5cb4f1-4b1e-4fb2-aeaf-546bc3c9365d",
   "prevIds": [
-    "ab44f777-a631-406d-8faa-e67dfa0f6eef"
+    "aa3839ea-8d52-4659-ae4c-3922919ec128"
   ],
   "ddl": [
     {
@@ -289,6 +289,12 @@
     {
       "isRlsEnabled": false,
       "name": "manual_invoice_creation_requests",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "mobile_update_publications",
       "entityType": "tables",
       "schema": "public"
     },
@@ -5831,6 +5837,71 @@
       "entityType": "columns",
       "schema": "public",
       "table": "manual_invoice_creation_requests"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "mobile_update_publications"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "platform",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "mobile_update_publications"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "runtime_version",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "mobile_update_publications"
+    },
+    {
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "publication",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "mobile_update_publications"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "published_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "mobile_update_publications"
     },
     {
       "type": "text",
@@ -11706,6 +11777,41 @@
       "nameExplicit": true,
       "columns": [
         {
+          "value": "platform",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "runtime_version",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "published_at",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "mobile_update_publications_published_at_key",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "mobile_update_publications"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
           "value": "provider_order_id",
           "isExpression": false,
           "asc": true,
@@ -15622,6 +15728,16 @@
       "name": "manual_invoice_creation_requests_pkey",
       "schema": "public",
       "table": "manual_invoice_creation_requests",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "mobile_update_publications_pkey",
+      "schema": "public",
+      "table": "mobile_update_publications",
       "entityType": "pks"
     },
     {
