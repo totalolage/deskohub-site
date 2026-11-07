@@ -70,7 +70,7 @@ export const makeWorkspaceCustomerApiLayer = () =>
   );
 
 /** The Workspace services behind the customer API. */
-export const provideWorkspaceCustomerApiServices = <A, E, R>(
+const provideWorkspaceCustomerApiServices = <A, E, R>(
   layer: Layer.Layer<A, E, R>
 ) =>
   layer.pipe(

@@ -244,7 +244,7 @@ export const customerApiRequest = (call: CustomerApiCall) => {
 };
 
 /** Headers a browser sends on a cross-site request. */
-export const crossSiteHeaders = {
+const crossSiteHeaders = {
   "sec-fetch-site": "cross-site",
   origin: "https://attacker.example",
 } as const;
@@ -258,7 +258,7 @@ export const withoutClientHeader = (
 });
 
 /** The call as a cross-site browser page would send it. */
-export const fromCrossSite = (call: CustomerApiCall): CustomerApiCall => ({
+const fromCrossSite = (call: CustomerApiCall): CustomerApiCall => ({
   ...call,
   headers: { ...call.headers, ...crossSiteHeaders },
 });
