@@ -37,6 +37,7 @@ import { BookingContinue } from "./booking-continue";
 import { unneededReadAtom } from "./booking-family-atoms";
 import {
   availabilityNoticeMessage,
+  bookingQueryMessage,
   restartMessage,
 } from "./booking-family-copy";
 import { useBookingStarted, useRestartReason } from "./booking-family-hooks";
@@ -45,6 +46,7 @@ import {
   checkoutRequestOf,
   freshValue,
   loadedValue,
+  quoteFailureRepeats,
   readValue,
 } from "./booking-family-view";
 import { BookingGate } from "./booking-gate";
@@ -149,6 +151,14 @@ function CoworkSelection({
     rereadAvailability();
     refreshQuote();
   });
+  const supportingReads = [range, selected, requirement];
+  const quoteRepeats = quoteFailureRepeats(quote, supportingReads, (error) =>
+    bookingQueryMessage(error, locale)
+  );
+  const retrySupportingReads = () => {
+    rereadAvailability();
+    if (quoteRepeats) refreshQuote();
+  };
 
   const tiers = offerings.filter(
     (offering): offering is Extract<CustomerOffering, { family: "cowork" }> =>
@@ -287,8 +297,8 @@ function CoworkSelection({
       />
       <Notice tone="warning" message={blockers[0]} />
       <BookingReadFailure
-        reads={[range, selected, requirement]}
-        onRetry={rereadAvailability}
+        reads={supportingReads}
+        onRetry={retrySupportingReads}
       />
       <LiveMessage
         role="status"
@@ -305,6 +315,7 @@ function CoworkSelection({
           quote: Option.flatMap(quote, freshValue),
         })}
         onRetryQuote={refreshQuote}
+        quoteFailureShown={!quoteRepeats}
       />
     </>
   );

@@ -12,6 +12,7 @@ import { Notice } from "../../ui/notice";
 import { bookingQueryMessage } from "./booking-family-copy";
 import {
   type BookingRead,
+  firstFailedRead,
   isRetryableBookingQueryError,
   readValue,
 } from "./booking-family-view";
@@ -77,27 +78,26 @@ export function BookingReadFailure({
   readonly onRetry: () => void;
 }) {
   const locale = useAppLocale();
-  const failed = reads.find((read) => read.kind === "failed");
+  const failed = firstFailedRead(reads);
   return (
     <>
       {/* Kept mounted so assistive tech announces each change. */}
       <Notice
         tone="error"
         message={
-          failed?.kind === "failed"
-            ? bookingQueryMessage(failed.error, locale)
-            : undefined
+          failed === undefined
+            ? undefined
+            : bookingQueryMessage(failed.error, locale)
         }
       />
-      {failed?.kind === "failed" &&
-        isRetryableBookingQueryError(failed.error) && (
-          <Button
-            variant="secondary"
-            label={m.account_retry({}, { locale })}
-            disabled={failed.retrying}
-            onPress={onRetry}
-          />
-        )}
+      {failed !== undefined && isRetryableBookingQueryError(failed.error) && (
+        <Button
+          variant="secondary"
+          label={m.account_retry({}, { locale })}
+          disabled={failed.retrying}
+          onPress={onRetry}
+        />
+      )}
     </>
   );
 }

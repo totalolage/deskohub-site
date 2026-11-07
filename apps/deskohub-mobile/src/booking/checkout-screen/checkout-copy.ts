@@ -21,7 +21,7 @@ export const retryMessage = (kind: CheckoutRetryKind, locale: CustomerLocale) =>
   })[kind]();
 
 /** The booked product's name, as the site's summary names it. */
-const productLabel = (
+export const productLabel = (
   selection: CustomerBookingSelection,
   locale: CustomerLocale
 ) => {

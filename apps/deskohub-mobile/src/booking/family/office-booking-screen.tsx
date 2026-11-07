@@ -41,6 +41,7 @@ import {
   checkoutRequestOf,
   freshValue,
   loadedValue,
+  quoteFailureRepeats,
 } from "./booking-family-view";
 import { BookingGate } from "./booking-gate";
 import { BookingOfferingsView } from "./booking-offerings-view";
@@ -123,6 +124,14 @@ function OfficeSelection({ offering }: { readonly offering: OfficeOffering }) {
     refreshAvailability();
     refreshQuote();
   });
+  const supportingReads = [availabilityRead];
+  const quoteRepeats = quoteFailureRepeats(quote, supportingReads, (error) =>
+    bookingQueryMessage(error, locale)
+  );
+  const retrySupportingReads = () => {
+    refreshAvailability();
+    if (quoteRepeats) refreshQuote();
+  };
 
   const blockers = enablement.blockers.flatMap((blocker) => {
     const message = blockerMessage(blocker, locale);
@@ -204,8 +213,8 @@ function OfficeSelection({ offering }: { readonly offering: OfficeOffering }) {
       />
       <Notice tone="warning" message={blockers[0]} />
       <BookingReadFailure
-        reads={[availabilityRead]}
-        onRetry={refreshAvailability}
+        reads={supportingReads}
+        onRetry={retrySupportingReads}
       />
       <LiveMessage
         role="status"
@@ -222,6 +231,7 @@ function OfficeSelection({ offering }: { readonly offering: OfficeOffering }) {
           quote: Option.flatMap(quote, freshValue),
         })}
         onRetryQuote={refreshQuote}
+        quoteFailureShown={!quoteRepeats}
       />
     </>
   );

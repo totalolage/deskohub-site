@@ -33,6 +33,7 @@ import { BookingContinue } from "./booking-continue";
 import { unneededReadAtom } from "./booking-family-atoms";
 import {
   availabilityNoticeMessage,
+  bookingQueryMessage,
   restartMessage,
 } from "./booking-family-copy";
 import { useBookingStarted, useRestartReason } from "./booking-family-hooks";
@@ -41,6 +42,7 @@ import {
   checkoutRequestOf,
   freshValue,
   loadedValue,
+  quoteFailureRepeats,
   readValue,
 } from "./booking-family-view";
 import { BookingGate } from "./booking-gate";
@@ -149,6 +151,14 @@ function MeetingRoomSelection({
     rereadAvailability();
     refreshQuote();
   });
+  const supportingReads = [startTimesRead, availabilityRead];
+  const quoteRepeats = quoteFailureRepeats(quote, supportingReads, (error) =>
+    bookingQueryMessage(error, locale)
+  );
+  const retrySupportingReads = () => {
+    rereadAvailability();
+    if (quoteRepeats) refreshQuote();
+  };
 
   const durations = offerings.filter(
     (
@@ -240,8 +250,8 @@ function MeetingRoomSelection({
       />
       <Notice tone="warning" message={blockers[0]} />
       <BookingReadFailure
-        reads={[startTimesRead, availabilityRead]}
-        onRetry={rereadAvailability}
+        reads={supportingReads}
+        onRetry={retrySupportingReads}
       />
       <LiveMessage
         role="status"
@@ -259,6 +269,7 @@ function MeetingRoomSelection({
           earlySetup: model.draft.earlySetup,
         })}
         onRetryQuote={refreshQuote}
+        quoteFailureShown={!quoteRepeats}
       />
     </>
   );
