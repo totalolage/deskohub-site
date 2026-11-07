@@ -30,6 +30,7 @@ import {
   type CustomerAccountAccessError,
   customerAccountUnavailable,
 } from "@/features/account/customer-account";
+import { CheckoutService } from "@/features/checkout/backend/checkout";
 import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import { ReservationSupersessionService } from "@/features/checkout/backend/checkout/reservation-supersession.service";
 import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
@@ -57,6 +58,11 @@ import {
   type CustomerBookingCatalogLayerSet,
   CustomerBookingCatalogLayers,
 } from "./customer-booking-catalog-layers";
+import {
+  type CustomerBookingCheckoutLayerSet,
+  CustomerBookingCheckoutLayers,
+} from "./customer-booking-checkout-layers";
+import { CustomerCheckoutOperations } from "./customer-checkout-operations.service";
 
 /** The origin Better Auth trusts in a customer API test. */
 export const trustedOrigin = "https://workspace.deskohub.test";
@@ -94,6 +100,8 @@ export type CustomerApiTestOptions = {
    * with nothing implemented, and its release gates are closed.
    */
   readonly bookingCatalog?: Partial<CustomerBookingCatalogLayerSet>;
+  /** Booking checkout fakes, like `bookingCatalog`. */
+  readonly bookingCheckout?: Partial<CustomerBookingCheckoutLayerSet>;
 };
 
 /**
@@ -149,6 +157,10 @@ export const makeCustomerApiTestServer = (
     Layer.succeed(CustomerBookingCatalogLayers, {
       ...unusedBookingCatalog,
       ...options.bookingCatalog,
+    }),
+    Layer.succeed(CustomerBookingCheckoutLayers, {
+      ...unusedBookingCheckout,
+      ...options.bookingCheckout,
     })
   );
 
@@ -229,6 +241,16 @@ const unusedBookingCatalog: CustomerBookingCatalogLayerSet = {
     TestSealedStateKeys
   ),
   sealedStateKeys: TestSealedStateKeys,
+  releases: {
+    office: OfficeReleaseGate.fromDecision(false),
+    referral: ReferralReleaseGate.fromDecision(false),
+  },
+};
+
+const unusedBookingCheckout: CustomerBookingCheckoutLayerSet = {
+  operations: Layer.mock(CustomerCheckoutOperations, {}),
+  checkout: Layer.mock(CheckoutService, {}),
+  inventory: Layer.mock(AdvisoryAvailabilityInventory, {}),
   releases: {
     office: OfficeReleaseGate.fromDecision(false),
     referral: ReferralReleaseGate.fromDecision(false),

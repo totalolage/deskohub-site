@@ -1,4 +1,4 @@
-import { Effect, Match } from "effect";
+import { Effect, Match, Struct } from "effect";
 import { CheckoutService } from "@/features/checkout/backend/checkout";
 import { m } from "@/features/i18n";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
@@ -47,7 +47,7 @@ export const submitWorkspaceReservation = Effect.fn(
 
     return {
       message: "Checkout started successfully",
-      ...checkout,
+      ...toSiteCheckoutResult(checkout),
     };
   },
   (effect, input) =>
@@ -110,6 +110,14 @@ export const submitWorkspaceReservation = Effect.fn(
                         )
                       )
                     ),
+                    // Other callers tell missing consents apart; the site
+                    // keeps showing its generic checkout failure.
+                    Match.whenOr(
+                      "legal_consent_required",
+                      "early_performance_consent_required",
+                      () =>
+                        m.reservationErrorMessage({}, { locale: input.locale })
+                    ),
                     Match.exhaustive
                   ),
               })
@@ -119,3 +127,28 @@ export const submitWorkspaceReservation = Effect.fn(
       )
     )
 );
+
+type HostedPaymentCheckout = Effect.Success<
+  ReturnType<CheckoutService["Service"]["createHostedPaymentCheckout"]>
+>;
+
+/**
+ * What the Pay page's form reads from a submission. The checkout's sealed
+ * token, its expiry and the order id serve the customer HTTP API; the
+ * browser follows `freshPayUrl` and `statusUrl` instead.
+ */
+const toSiteCheckoutResult = (checkout: HostedPaymentCheckout) =>
+  Match.value(checkout).pipe(
+    Match.discriminatorsExhaustive("status")({
+      redirect: (redirect) =>
+        Struct.pick(redirect, ["status", "redirectUrl", "statusUrl", "paid"]),
+      pricing_changed: (changed) =>
+        Struct.pick(changed, [
+          "status",
+          "changedKeys",
+          "freshSummary",
+          "freshPayUrl",
+        ]),
+      in_progress: (inProgress) => Struct.pick(inProgress, ["status"]),
+    })
+  );
