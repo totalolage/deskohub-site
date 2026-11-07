@@ -1,5 +1,9 @@
 import { Data, Match, Schema } from "effect";
 import { type Locale, m } from "@/features/i18n";
+import type {
+  BookingSelectionField,
+  BookingSelectionRejected,
+} from "@/features/reservation/backend/booking-selection";
 
 /** The failures an agent tool reports, as stable codes agents can branch on. */
 export type AgentToolErrorCode =
@@ -170,6 +174,19 @@ export type AgentToolErrorResult =
   | typeof agentToolErrorResultSchema.Type
   | typeof administrationAgentToolErrorResultSchema.Type;
 
+/** The tool argument that carries each booking selection field. */
+const selectionArgumentNames = {
+  family: "family",
+  date: "date",
+  endDate: "end_date",
+  startTime: "start_time",
+  duration: "duration",
+  seats: "seats",
+  tier: "tier",
+  coffee: "coffee",
+  monitorOption: "monitor_option",
+} satisfies Record<BookingSelectionField, string>;
+
 export class AgentToolError extends Data.TaggedError("AgentToolError")<{
   readonly details: AgentToolErrorDetails;
   readonly cause?: unknown;
@@ -187,6 +204,22 @@ export class AgentToolError extends Data.TaggedError("AgentToolError")<{
 
   static unsupportedFamily = () =>
     new AgentToolError({ details: { code: "unsupported_family" } });
+
+  /**
+   * A selection the booking pages would not accept, named by its tool
+   * argument. It keeps no `cause`, so the call is logged as rejected rather
+   * than failed.
+   */
+  static rejectedSelection = ({ reason }: BookingSelectionRejected) =>
+    Match.value(reason).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        "invalid-field": ({ field }) =>
+          AgentToolError.invalidInput(selectionArgumentNames[field]),
+        "date-out-of-range": ({ earliest, latest }) =>
+          AgentToolError.dateOutOfRange({ earliest, latest }),
+        "office-closed": () => AgentToolError.unsupportedFamily(),
+      })
+    );
 
   static rateLimited = () =>
     new AgentToolError({ details: { code: "rate_limited" } });
