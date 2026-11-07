@@ -388,6 +388,27 @@ describe("useCheckoutFlow's flow", () => {
     ]);
   });
 
+  test("a blur the flow hasn't heard about yet still holds the page", async () => {
+    const flow = await startFlow();
+    // The submission is reported as its answer lands, before the payment
+    // page would open: the screen leaves view right then.
+    const capture = spyOn(analytics, "capture").mockImplementation(() =>
+      flow.setFocused(false)
+    );
+    cleanups.push(() => capture.mockRestore());
+
+    await toReview(flow);
+    await pay(flow);
+    await flow.untilState("Paying");
+    await settle();
+    expect(capture).toHaveBeenCalledTimes(1);
+    expect(flow.checkout.browser.opened).toEqual([]);
+
+    flow.setFocused(true);
+    await flow.untilState("Done");
+    expect(flow.checkout.browser.opened).toHaveLength(1);
+  });
+
   test("a page held out of view never opens once the screen unmounts", async () => {
     const flow = await startFlow();
     await flow.untilState("Details");
