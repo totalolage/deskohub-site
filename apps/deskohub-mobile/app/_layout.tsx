@@ -5,6 +5,7 @@ import { initializeBotProtection } from "../src/auth/bot-protection";
 import { useAuthSession } from "../src/auth/use-auth-session";
 import { readDeviceLocale } from "../src/i18n/device-locale";
 import { AppLocaleProvider } from "../src/i18n/locale-context";
+import { UpdateBanner } from "../src/updates/update-banner";
 
 // The entry (index.ts) has already taken sign-in secrets out of the address
 // bar; now load BotID for the sign-in requests (web production only).
@@ -33,6 +34,7 @@ export default function RootLayout() {
           <Stack.Screen name="dev/effect-smoke" />
         </Stack>
       </AnalyticsRoot>
+      <UpdateBanner />
     </AppLocaleProvider>
   );
 }

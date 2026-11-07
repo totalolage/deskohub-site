@@ -12,6 +12,7 @@ export {
   type CustomerAgentChallengeReason,
   customerAgentChallenge,
 } from "./backend/auth/customer-agent-challenge";
+export { currentReservationHistoryAccount } from "./backend/current-reservation-history-account";
 export { OptionalAccountActivityGuard } from "./backend/customer-account-activity";
 export { findActiveCustomerAccountByEmail } from "./backend/customer-account-by-email";
 export { CustomerAccountContactService } from "./backend/customer-account-contact.service";

@@ -8,12 +8,11 @@ import type {
   ListToolsResult,
   Resource,
 } from "@modelcontextprotocol/client";
-import { DateTime, Effect, Layer, Option, Schema } from "effect";
+import { Effect, Layer, Option, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import type { AgentToolClient } from "@/features/agent-tools/agent-tool-client";
 import { m } from "@/features/i18n";
 import type { AgentTrafficEvent } from "@/shared/backend/agent-traffic/agent-traffic-events";
-import type { RequestBudgetPolicy } from "@/shared/backend/request-budget/request-budget.service";
 
 const agentTrafficEvents = await import(
   "@/shared/backend/agent-traffic/agent-traffic-events"
@@ -95,20 +94,12 @@ mock.module("@/db/database-provider.server", () => ({
 const requestBudget = await import(
   "@/shared/backend/request-budget/request-budget.service"
 );
-const budgetSpends: RequestBudgetPolicy[] = [];
-let exhaustedBudget: ((key: string) => boolean) | undefined;
+const { makeMemoryRequestBudget } = await import(
+  "@/shared/backend/request-budget/memory-request-budget.test-utils"
+);
+const memoryBudget = makeMemoryRequestBudget();
 class TestRequestBudget extends requestBudget.RequestBudget {
-  static override Live = Layer.succeed(requestBudget.RequestBudget, {
-    spend: (policy) =>
-      Effect.sync(() => {
-        budgetSpends.push(policy);
-        return exhaustedBudget?.(policy.key)
-          ? requestBudget.RequestBudgetSpend.Exhausted({
-              retryAt: DateTime.nowUnsafe(),
-            })
-          : requestBudget.RequestBudgetSpend.Granted();
-      }),
-  });
+  static override Live = memoryBudget.layer;
 }
 mock.module("@/shared/backend/request-budget/request-budget.service", () => ({
   ...requestBudget,
@@ -359,8 +350,7 @@ describe("customer MCP route", () => {
     rateLimit = { rateLimited: false };
     checkRateLimit.mockClear();
     scheduledEvents.length = 0;
-    budgetSpends.length = 0;
-    exhaustedBudget = undefined;
+    memoryBudget.reset();
     authorizationServerReachable = true;
     accessTokens.clear();
   });
@@ -750,8 +740,7 @@ describe("customer MCP route for signed-in tools", () => {
   beforeEach(() => {
     rateLimit = { rateLimited: false };
     checkRateLimit.mockClear();
-    budgetSpends.length = 0;
-    exhaustedBudget = undefined;
+    memoryBudget.reset();
     authorizationServerReachable = true;
     accessTokens.clear();
   });
@@ -852,22 +841,28 @@ describe("customer MCP route for signed-in tools", () => {
       client_id: agentClientId,
       scopes: ["reservations:read", "reservations:create"],
     });
-    expect(budgetSpends.map(({ key }) => key.split(":").slice(0, 2))).toEqual([
+    expect(
+      memoryBudget.spends().map(({ key }) => key.split(":").slice(0, 2))
+    ).toEqual([
       ["agent-tool", "grant"],
       ["agent-tool", "account"],
     ]);
     expect(
-      budgetSpends.every(
-        ({ key }) =>
-          !key.includes(agentAccountId) && !key.includes(agentClientId)
-      )
+      memoryBudget
+        .spends()
+        .every(
+          ({ key }) =>
+            !key.includes(agentAccountId) && !key.includes(agentClientId)
+        )
     ).toBe(true);
     expect(checkRateLimit).toHaveBeenCalledTimes(1);
   });
 
   test("spends a tool's own account budget on top of the signed-in budgets", async () => {
     accessTokens.set("valid", "reservations:create");
-    exhaustedBudget = (key) => key.startsWith("agent-tool:start_reservation:");
+    memoryBudget.exhaust((key) =>
+      key.startsWith("agent-tool:start_reservation:")
+    );
 
     const response = await callToolAs(
       "start_reservation",
@@ -883,7 +878,7 @@ describe("customer MCP route for signed-in tools", () => {
       structuredContent: { error: { code: "rate_limited" } },
     });
     expect(
-      budgetSpends.map(({ key, limit }) => [key.split(":")[1], limit])
+      memoryBudget.spends().map(({ key, limit }) => [key.split(":")[1], limit])
     ).toEqual([
       ["grant", 10],
       ["account", 20],
@@ -893,7 +888,7 @@ describe("customer MCP route for signed-in tools", () => {
 
   test("refuses a signed-in call over the account budget as rate limited", async () => {
     accessTokens.set("valid", "reservations:read");
-    exhaustedBudget = (key) => key.startsWith("agent-tool:account:");
+    memoryBudget.exhaust((key) => key.startsWith("agent-tool:account:"));
 
     const response = await callToolAs("whoami", {}, bearer("valid"));
     const { result } = (await readJsonRpc(response)) as {
@@ -915,7 +910,7 @@ describe("customer MCP route for signed-in tools", () => {
     };
 
     expect(result?.isError).toBeFalsy();
-    expect(budgetSpends).toEqual([]);
+    expect(memoryBudget.spends()).toEqual([]);
   });
 
   test("fails the request while the authorization server is unreachable", async () => {
@@ -940,7 +935,7 @@ describe("customer MCP route for administration tools", () => {
   beforeEach(() => {
     rateLimit = { rateLimited: false };
     checkRateLimit.mockClear();
-    budgetSpends.length = 0;
+    memoryBudget.reset();
     authorizationServerReachable = true;
     accessTokens.clear();
     administratorGrant = "live";
@@ -1246,7 +1241,7 @@ describe("customer MCP route for administration tools", () => {
         authorization: "Bearer administrator",
       },
     ]);
-    expect(budgetSpends).toEqual([]);
+    expect(memoryBudget.spends()).toEqual([]);
   });
 
   test("answers a destructive call without confirm with a preview and changes nothing", async () => {

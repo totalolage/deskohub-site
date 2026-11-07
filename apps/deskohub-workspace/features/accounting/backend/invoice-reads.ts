@@ -9,6 +9,7 @@ import {
 } from "@/features/accounting/invoice";
 import { invoiceIdSchema } from "@/features/accounting/manual-invoice";
 import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { censorLogValue } from "@/shared/backend/logging/censorship";
 import { AccountingSnapshotKeyService } from "./accounting-snapshot-key.service";
 import { decryptAccountingSnapshot } from "./accounting-snapshot-sql";
@@ -144,16 +145,17 @@ export const makeInvoiceReads = Effect.gen(function* () {
         paymentAttemptIdSchema.make(paymentAttemptId)
       ),
       lookupId: paymentAttemptId,
-    }).pipe(
-      Effect.map((invoice) =>
-        invoice && !isManualInvoiceDocument(invoice.document)
-          ? ({
-              ...invoice,
-              document: invoice.document,
-            } as ReservationInvoice)
-          : null
-      )
-    )
+    }).pipe(Effect.map(asReservationInvoice))
+  );
+
+  /** A reservation has at most one invoice (`invoices_reservation_unique_idx`). */
+  const findByReservationId = Effect.fn(
+    "InvoiceRepository.findByReservationId"
+  )((reservationId: WorkspaceReservationId) =>
+    loadInvoice({
+      where: eq(invoices.workspaceReservationId, reservationId),
+      lookupId: reservationId,
+    }).pipe(Effect.map(asReservationInvoice))
   );
 
   const list = Effect.fn("InvoiceRepository.list")(function* () {
@@ -196,10 +198,16 @@ export const makeInvoiceReads = Effect.gen(function* () {
   return {
     findById,
     findByPaymentAttemptId,
+    findByReservationId,
     list,
     listManualInvoiceProvenance,
   };
 });
+
+const asReservationInvoice = (invoice: Invoice | null) =>
+  invoice && !isManualInvoiceDocument(invoice.document)
+    ? ({ ...invoice, document: invoice.document } as ReservationInvoice)
+    : null;
 
 interface StoredInvoiceRow {
   readonly id: string;
