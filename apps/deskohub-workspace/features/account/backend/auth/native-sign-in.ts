@@ -29,7 +29,7 @@ import { nativeAppOrigin } from "./native-app";
  */
 
 /** The `/app/` page that receives the App Link. */
-export const nativeAppCallbackPath = "/app/auth/callback";
+const nativeAppCallbackPath = "/app/auth/callback";
 
 const nativeAppReturnURI = `${nativeAppOrigin}auth/callback`;
 
