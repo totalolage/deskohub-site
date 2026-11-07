@@ -46,6 +46,10 @@ const tagOnly = "github.event_name == 'push'";
 const pullRequestOnly = "github.event_name == 'pull_request'";
 // An empty environment name leaves pull request dry runs without one.
 const releaseEnvironment = `\${{ ${tagOnly} && 'mobile-release' || '' }}`;
+// Secrets kept only in the mobile-release environment. EXPO_TOKEN is not one:
+// pull request dry runs read the repository's copy.
+const environmentSecret =
+  /\bsecrets\.(ANDROID_KEYSTORE_\w+|BLOB_READ_WRITE_TOKEN|MOBILE_UPDATES_PUBLISH_TOKEN)\b/;
 
 const mentionsReleaseKey = (value: unknown) =>
   releaseKeySecret.test(JSON.stringify(value ?? null));
@@ -84,6 +88,20 @@ describe("mobile-release.yml release key", () => {
     );
     expect(jobs.map(([name]) => name)).toEqual(["build"]);
     expect(build.environment).toBe(releaseEnvironment);
+  });
+
+  test("every other job that reads a mobile-release secret runs only on tag pushes, in that environment", () => {
+    const jobs = Object.entries(workflow.jobs).filter(
+      ([name, job]) =>
+        name !== "build" && environmentSecret.test(JSON.stringify(job))
+    );
+    for (const [name, job] of jobs) {
+      expect({ name, if: job.if, environment: job.environment }).toEqual({
+        name,
+        if: tagOnly,
+        environment: "mobile-release",
+      });
+    }
   });
 
   test("every step that reads the release key runs only on tag pushes", () => {
