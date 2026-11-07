@@ -298,13 +298,13 @@ describe("details", () => {
       creating.state,
       failed(
         first.operationId,
-        BookingProblem.Retryable({ kind: "service_unavailable" })
+        BookingProblem.Retryable({ kind: "rate_limited" })
       )
     );
     expect(notice.state).toMatchObject({
       _tag: "Details",
       details: Option.some(details),
-      notice: Option.some({ _tag: "Retryable", kind: "service_unavailable" }),
+      notice: Option.some({ _tag: "Retryable", kind: "rate_limited" }),
     });
     const retried = run(notice.state, CheckoutEvent.Retry());
     expect(retried.state._tag).toBe("Creating");
@@ -830,8 +830,17 @@ describe("codes", () => {
       summary: summary(30000),
       earlyPerformanceConsent: { required: true },
     });
-    expect(canPay(state)).toBe(true);
-    const submit = commandOf(paid(state), "SubmitCheckout");
+    // The tick didn't ask to start early, which this booking now needs.
+    expect(state.consent).toEqual(Option.none());
+    expect(canPay(state)).toBe(false);
+    const submit = commandOf(
+      run(
+        state,
+        CheckoutEvent.ToggleConsent({ accepted: true }),
+        CheckoutEvent.Pay()
+      ),
+      "SubmitCheckout"
+    );
     expect(submit.request.payStateToken).toBe("token-2");
     expect(submit.request.earlyPerformanceConsent).toBe(true);
   });
@@ -1235,7 +1244,7 @@ describe("retry after a change", () => {
       sent.state,
       failed(
         lastOperation(sent, "SubmitCheckout"),
-        BookingProblem.Retryable({ kind: "service_unavailable" })
+        BookingProblem.Retryable({ kind: "session_required" })
       ),
       CheckoutEvent.ToggleConsent({ accepted: false })
     );
@@ -1258,6 +1267,184 @@ describe("retry after a change", () => {
       CheckoutEvent.CodeChanged({ input: "SAVE20" })
     );
     expect(step(edited.state, CheckoutEvent.Retry()).commands).toEqual([]);
+  });
+});
+
+describe("advisor regressions", () => {
+  test("a create the service failed may have held the selection, so only an identical resend follows", () => {
+    const creating = run(startCheckout(startInput), continueEvent);
+    const first = commandOf(creating, "CreateCheckout");
+    const failedCreate = run(
+      creating.state,
+      failed(
+        first.operationId,
+        BookingProblem.Retryable({ kind: "service_unavailable" })
+      )
+    );
+    expect(failedCreate.state).toMatchObject({
+      _tag: "Uncertain",
+      notice: Option.some("service_unavailable"),
+    });
+    expect(step(failedCreate.state, continueEvent).commands).toEqual([]);
+    expect(
+      commandOf(
+        run(failedCreate.state, CheckoutEvent.Retry()),
+        "CreateCheckout"
+      ).request
+    ).toEqual(first.request);
+  });
+
+  test("a submit the service failed may have started the payment, so the hold clock shows the status", () => {
+    const sent = paid(consented().state);
+    const failedSubmit = run(
+      sent.state,
+      failed(
+        lastOperation(sent, "SubmitCheckout"),
+        BookingProblem.Retryable({ kind: "service_unavailable" })
+      )
+    );
+    expect(failedSubmit.state._tag).toBe("Uncertain");
+    expect(
+      step(
+        failedSubmit.state,
+        CheckoutEvent.HoldTimerElapsed({ now: expiresAtMillis })
+      ).state
+    ).toEqual({
+      _tag: "Done",
+      orderId: "order-1",
+    } as CheckoutState);
+  });
+
+  test("a code or price acceptance the service failed stays retryable", () => {
+    const sent = run(
+      consented().state,
+      CheckoutEvent.CodeChanged({ input: "SAVE10" }),
+      CheckoutEvent.ApplyCode()
+    );
+    const failedCode = run(
+      sent.state,
+      failed(
+        lastOperation(sent, "ApplyDiscountCode"),
+        BookingProblem.Retryable({ kind: "service_unavailable" })
+      )
+    );
+    expect(review(failedCode).notice).toMatchObject(
+      Option.some({ _tag: "Retryable", kind: "service_unavailable" })
+    );
+  });
+
+  test.each([
+    ["documents changed", BookingProblem.LegalDocumentsChanged()],
+    ["consent required", BookingProblem.ConsentRequired({ consent: "legal" })],
+    ["price review pending", BookingProblem.PriceReviewPending()],
+  ] as const)(
+    "a resent submit refused because %s shows the status: the first may have executed",
+    (_name, problem) => {
+      const sent = paid(consented().state);
+      const retried = run(
+        sent.state,
+        failed(
+          lastOperation(sent, "SubmitCheckout"),
+          BookingProblem.Unconfirmed()
+        ),
+        CheckoutEvent.Retry()
+      );
+      expect(
+        step(
+          retried.state,
+          failed(lastOperation(retried, "SubmitCheckout"), problem)
+        ).state
+      ).toEqual({
+        _tag: "Done",
+        orderId: "order-1",
+      } as CheckoutState);
+    }
+  );
+
+  test("an unsettled submit keeps its retry until the hold runs out", () => {
+    const sent = paid(consented().state);
+    const lost = run(
+      sent.state,
+      failed(
+        lastOperation(sent, "SubmitCheckout"),
+        BookingProblem.Unconfirmed()
+      )
+    );
+    expect(
+      step(
+        lost.state,
+        CheckoutEvent.HoldTimerElapsed({ now: expiresAtMillis - 1 })
+      ).state
+    ).toEqual(lost.state);
+  });
+
+  test("the checkbox holds still while a submit runs, so a retry resends what the customer sees", () => {
+    const sent = paid(consented().state);
+    const toggled = run(
+      sent.state,
+      CheckoutEvent.ToggleConsent({ accepted: false })
+    );
+    expect(Option.isSome(review(toggled).consent)).toBe(true);
+    const retried = run(
+      toggled.state,
+      failed(
+        lastOperation(sent, "SubmitCheckout"),
+        BookingProblem.Retryable({ kind: "rate_limited" })
+      ),
+      CheckoutEvent.Retry()
+    );
+    expect(commandOf(retried, "SubmitCheckout").request.legalConsent).toBe(
+      true
+    );
+    expect(Option.isSome(review(retried).consent)).toBe(true);
+  });
+
+  test("the code field holds still while a code applies, so its answer belongs to the shown code", () => {
+    const sent = run(
+      consented().state,
+      CheckoutEvent.CodeChanged({ input: "SAVE10" }),
+      CheckoutEvent.ApplyCode()
+    );
+    const result = run(
+      sent.state,
+      CheckoutEvent.CodeChanged({ input: "OTHER" }),
+      CheckoutEvent.CodeApplied({
+        operationId: lastOperation(sent, "ApplyDiscountCode"),
+        result: {
+          ...checkout({ payStateToken: "token-2" }),
+          discountCode: "applied",
+        },
+      })
+    );
+    expect(review(result).code).toEqual({
+      input: "SAVE10",
+      status: CodeStatus.Applied({ outcome: "applied" }),
+    });
+  });
+
+  test("a tick given after early performance was already required stays", () => {
+    const required = {
+      earlyPerformanceConsent: {
+        required: true,
+        requiredFrom: "2026-12-04T09:00:00.000Z",
+      },
+    };
+    const sent = run(
+      consented(checkout(required)).state,
+      CheckoutEvent.CodeChanged({ input: "SAVE10" }),
+      CheckoutEvent.ApplyCode()
+    );
+    const result = run(
+      sent.state,
+      CheckoutEvent.CodeApplied({
+        operationId: lastOperation(sent, "ApplyDiscountCode"),
+        result: {
+          ...checkout({ payStateToken: "token-2", ...required }),
+          discountCode: "applied",
+        },
+      })
+    );
+    expect(canPay(review(result))).toBe(true);
   });
 });
 

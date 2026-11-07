@@ -232,7 +232,16 @@ const createFailed = (creating: CreatingState, problem: BookingProblem) =>
     Blocked: ({ reason }) => to(CheckoutState.Blocked({ reason })),
     DetailsInvalid: ({ field }) =>
       backToDetails(creating, DetailsNotice.DetailsInvalid({ field })),
-    Retryable: ({ kind }) => createRetryable(creating, kind),
+    Retryable: ({ kind }) =>
+      mayHaveApplied(kind)
+        ? to(
+            CheckoutState.Uncertain({
+              resume: creating,
+              retrying: false,
+              notice: Option.some(kind),
+            })
+          )
+        : createRetryable(creating, kind),
     Unconfirmed: () =>
       to(
         CheckoutState.Uncertain({
@@ -268,20 +277,22 @@ const backToDetails = (creating: CreatingState, notice: DetailsNotice) =>
 
 const onReview = (review: ReviewState, event: CheckoutEvent) =>
   Event.$match(event, {
+    // The field and checkbox hold still while a write runs, so its answer
+    // and any retry match what the customer sees.
     CodeChanged: ({ input }) =>
-      stay(
-        CheckoutState.Review({
-          ...review,
-          code: {
-            input,
-            status: CodeStatus.$is("Applying")(review.code.status)
-              ? review.code.status
-              : CodeStatus.Idle(),
-          },
-          // A retry resends what was sent, so it lasts only until a change.
-          notice: Option.none(),
-        })
-      ),
+      Option.isSome(review.pending)
+        ? stay(review)
+        : stay(
+            CheckoutState.Review({
+              ...review,
+              code: {
+                input,
+                status: CodeStatus.Idle(),
+              },
+              // A retry resends what was sent, so it lasts only until a change.
+              notice: Option.none(),
+            })
+          ),
     ApplyCode: () =>
       whenIdle(review, () =>
         Option.liftPredicate(review.code.input.trim(), (code) => code !== "")
@@ -298,7 +309,10 @@ const onReview = (review: ReviewState, event: CheckoutEvent) =>
           onSome: () => acceptPrice(review),
         })
       ),
-    ToggleConsent: ({ accepted }) => toggleConsent(review, accepted),
+    ToggleConsent: ({ accepted }) =>
+      Option.isSome(review.pending)
+        ? stay(review)
+        : toggleConsent(review, accepted),
     Pay: () =>
       canPay(review)
         ? review.consent.pipe(
@@ -556,6 +570,13 @@ const replaceCheckout = (
       ...review,
       flow: withReferralUpdate(review.flow, update),
       checkout: heldCheckout(checkout),
+      // The checkbox asks to start early only while that's required, so a
+      // tick given before doesn't cover it.
+      consent:
+        checkout.earlyPerformanceConsent.required &&
+        !review.checkout.earlyPerformanceConsent.required
+          ? Option.none()
+          : review.consent,
       pending: Option.none(),
       notice: Option.none(),
     }),
@@ -675,7 +696,16 @@ const reviewFailed = (
           code: { ...settled.code, status: CodeStatus.Rejected({ reason }) },
         })
       ),
-    Retryable: ({ kind }) => reviewRetryable(settled, failedMutation, kind),
+    Retryable: ({ kind }) =>
+      Command.$is("SubmitCheckout")(failedMutation) && mayHaveApplied(kind)
+        ? to(
+            CheckoutState.Uncertain({
+              resume: review,
+              retrying: false,
+              notice: Option.some(kind),
+            })
+          )
+        : reviewRetryable(settled, failedMutation, kind),
     Unconfirmed: () =>
       to(
         CheckoutState.Uncertain({
@@ -688,6 +718,15 @@ const reviewFailed = (
       reviewRetryable(settled, failedMutation, "unexpected"),
   });
 };
+
+/**
+ * The server answers "unavailable" for a failure after its own work too:
+ * a create may have held the selection, and a submit may have started the
+ * payment, before a later step failed. A code or price acceptance only
+ * signs a new token, so it is safe to treat as not applied.
+ */
+const mayHaveApplied = (kind: CheckoutRetryKind) =>
+  kind === "service_unavailable";
 
 const reviewRetryable = (
   review: ReviewState,
@@ -723,9 +762,9 @@ const onUncertain = (
       Match.valueTags(uncertain.resume, {
         Creating: () => stay(uncertain),
         Review: (review) =>
-          submitting(review)
-            ? showStatus(review)
-            : expireHold(uncertain, review.checkout, now),
+          holdExpiredAt(review.checkout, now)
+            ? expiredUnsettled(review)
+            : stay(uncertain),
       }),
     CommandFailed: ({ operationId, problem }) =>
       answersResend(uncertain, operationId)
@@ -757,6 +796,10 @@ const onUncertain = (
     ReloadLegalDocuments: () => stay(uncertain),
     PaymentEnded: () => stay(uncertain),
   });
+
+/** A submit that may have executed never restarts the booking. */
+const expiredUnsettled = (review: ReviewState) =>
+  submitting(review) ? showStatus(review) : restartExpired();
 
 const resend = (uncertain: UncertainState): CheckoutStep => {
   const [resume, command] = Match.valueTags(uncertain.resume, {
@@ -818,36 +861,38 @@ const resendFailed = (
           notice: Option.none(),
         })
       ),
-    // The first submit may have executed: a token or checkout that's gone
-    // now can mean its payment started, so the status screen decides.
-    Restart: ({ reason }) =>
-      Match.valueTags(uncertain.resume, {
-        Creating: () => to(CheckoutState.Restart({ reason })),
-        Review: (review) =>
-          submitting(review)
-            ? showStatus(review)
-            : to(CheckoutState.Restart({ reason })),
-      }),
-    ShowStatus: () => settleFailure(uncertain.resume, problem),
-    Blocked: () => settleFailure(uncertain.resume, problem),
-    DetailsInvalid: () => settleFailure(uncertain.resume, problem),
-    PriceReviewPending: () => settleFailure(uncertain.resume, problem),
-    ConsentRequired: () => settleFailure(uncertain.resume, problem),
-    LegalDocumentsChanged: () => settleFailure(uncertain.resume, problem),
-    CodeRejected: () => settleFailure(uncertain.resume, problem),
+    Restart: () => settleResendFailure(uncertain.resume, problem),
+    ShowStatus: () => settleResendFailure(uncertain.resume, problem),
+    Blocked: () => settleResendFailure(uncertain.resume, problem),
+    DetailsInvalid: () => settleResendFailure(uncertain.resume, problem),
+    PriceReviewPending: () => settleResendFailure(uncertain.resume, problem),
+    ConsentRequired: () => settleResendFailure(uncertain.resume, problem),
+    LegalDocumentsChanged: () => settleResendFailure(uncertain.resume, problem),
+    CodeRejected: () => settleResendFailure(uncertain.resume, problem),
   });
 
-const settleFailure = (
+/**
+ * A refused resend of a submit doesn't say the first send didn't execute:
+ * the server checks the token, documents and consents before it recovers a
+ * payment already started. The status screen decides.
+ */
+const settleResendFailure = (
   resume: UncertainResume,
   problem: BookingProblem
 ): CheckoutStep =>
   Match.valueTags(resume, {
     Creating: (creating) => createFailed(creating, problem),
     Review: (review) =>
-      Option.match(review.pending, {
-        onNone: () => stay(review),
-        onSome: (pending) => reviewFailed(review, pending, problem),
-      }),
+      submitting(review) ? showStatus(review) : settleFailure(review, problem),
+  });
+
+const settleFailure = (
+  review: ReviewState,
+  problem: BookingProblem
+): CheckoutStep =>
+  Option.match(review.pending, {
+    onNone: () => stay(review),
+    onSome: (pending) => reviewFailed(review, pending, problem),
   });
 
 /** Answers the resent write from the state it was sent from. */
@@ -982,9 +1027,13 @@ const expireHold = (
   checkout: HeldCheckout,
   now: number
 ): CheckoutStep =>
-  Date.parse(checkout.expiresAt) <= now
-    ? to(CheckoutState.Restart({ reason: "hold_expired" }))
-    : stay(state);
+  holdExpiredAt(checkout, now) ? restartExpired() : stay(state);
+
+const holdExpiredAt = (checkout: HeldCheckout, now: number) =>
+  Date.parse(checkout.expiresAt) <= now;
+
+const restartExpired = () =>
+  to(CheckoutState.Restart({ reason: "hold_expired" }));
 
 /** Whether the running or unsettled write is a submit, which may have executed. */
 const submitting = (review: ReviewState) =>

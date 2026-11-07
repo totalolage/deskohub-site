@@ -20,9 +20,10 @@ import type { PaymentBrowserUnavailable } from "../payment-browser.service";
 /**
  * The shared request failures the command interpreter hands over after the
  * customer API layer has handled sessions and budgets:
- * - `RequestUnconfirmed`: a write's answer was lost, so it may have applied.
- * - `RequestUnavailable`: the request failed without changing anything, such
- *   as a connection failure or timeout before an answer.
+ * - `RequestUnconfirmed`: a write's answer was lost, so it may have applied:
+ *   any write that timed out or lost its connection after it was sent.
+ * - `RequestUnavailable`: a failure that proves nothing changed, such as a
+ *   read's connection failure, or a write that was never sent.
  * - `RequestRateLimited`: the account spent its request budget.
  * - `RequestSessionRequired`: the session lapsed; signing in again resumes.
  */
