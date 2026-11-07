@@ -124,9 +124,5 @@ const styles = StyleSheet.create({
   },
   acceptAction: { backgroundColor: theme.colors.accent },
   dismissLabel: { color: theme.colors.background, ...theme.type.body },
-  acceptLabel: {
-    color: theme.colors.background,
-    ...theme.type.body,
-    fontWeight: "600",
-  },
+  acceptLabel: { color: theme.colors.background, ...theme.type.bodyStrong },
 });

@@ -57,7 +57,23 @@
           "backgroundColor": "#00024f"
         }
       ],
-      "expo-font",
+      [
+        "expo-font",
+        {
+          "ios": {
+            "fonts": ["./assets/fonts/Sculpin.ttf"]
+          },
+          "android": {
+            "fonts": [
+              {
+                "fontFamily": "Sculpin Variable",
+                "path": "./assets/fonts/Sculpin.ttf",
+                "fontDefinitions": [{ "weight": 400 }, { "weight": 600 }]
+              }
+            ]
+          }
+        }
+      ],
       [
         "expo-build-properties",
         {
@@ -66,7 +82,13 @@
           }
         }
       ],
-      "expo-status-bar"
+      "expo-status-bar",
+      [
+        "./plugins/android-asset-statements.cjs",
+        {
+          "sites": ["https://workspace.deskohub.cz"]
+        }
+      ]
     ],
     "extra": {
       "eas": {
