@@ -29,6 +29,30 @@ interface IAuthSessionBrowser {
   readonly dismiss: Effect.Effect<void>;
 }
 
+/**
+ * The Custom Tabs browser to open the auth session in. The app claims its
+ * host's /app/ links, sign-in page included, and Android hands an https link
+ * without a named package to the app that claims it before any browser, so
+ * the sign-in page would open in the app itself. Only Android has Custom Tabs;
+ * with no known browser, the system chooses.
+ */
+const customTabsBrowser: Effect.Effect<string | undefined> = Effect.suspend(
+  () =>
+    Platform.OS === "android"
+      ? Effect.tryPromise(() =>
+          WebBrowser.getCustomTabsSupportingBrowsersAsync()
+        ).pipe(
+          Effect.map(
+            (browsers) =>
+              browsers.preferredBrowserPackage ??
+              browsers.defaultBrowserPackage ??
+              browsers.browserPackages[0]
+          ),
+          Effect.orElseSucceed(() => undefined)
+        )
+      : Effect.succeed(undefined)
+);
+
 export class AuthSessionBrowser extends Context.Service<
   AuthSessionBrowser,
   IAuthSessionBrowser
@@ -40,14 +64,18 @@ export class AuthSessionBrowser extends Context.Service<
   static layer = (previewAccess?: PreviewAccess) =>
     Layer.succeed(this, {
       open: (url, returnUri) =>
-        Effect.tryPromise({
-          try: () =>
-            WebBrowser.openAuthSessionAsync(
-              withPreviewAccessCookie(url, previewAccess),
-              returnUri
-            ),
-          catch: (cause) => new AuthSessionUnavailable({ cause }),
-        }).pipe(
+        customTabsBrowser.pipe(
+          Effect.flatMap((browserPackage) =>
+            Effect.tryPromise({
+              try: () =>
+                WebBrowser.openAuthSessionAsync(
+                  withPreviewAccessCookie(url, previewAccess),
+                  returnUri,
+                  browserPackage === undefined ? undefined : { browserPackage }
+                ),
+              catch: (cause) => new AuthSessionUnavailable({ cause }),
+            })
+          ),
           Effect.map((result) =>
             result.type === "success"
               ? AuthSessionResult.Returned({ url: result.url })

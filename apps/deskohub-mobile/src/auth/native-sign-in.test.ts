@@ -312,9 +312,11 @@ describe("native email sign-in through the auth session", () => {
 });
 
 describe("auth session browser", () => {
-  const openedUrl = async (
+  const opened = async (
     layer: Layer.Layer<AuthSessionBrowser>
-  ): Promise<string | undefined> => {
+  ): Promise<
+    Parameters<typeof WebBrowser.openAuthSessionAsync> | undefined
+  > => {
     const open = spyOn(WebBrowser, "openAuthSessionAsync");
     try {
       await Effect.runPromise(
@@ -328,11 +330,85 @@ describe("auth session browser", () => {
           Effect.provide(layer)
         )
       );
-      return open.mock.calls[0]?.[0];
+      return open.mock.calls[0];
     } finally {
       open.mockRestore();
     }
   };
+  const openedUrl = async (layer: Layer.Layer<AuthSessionBrowser>) =>
+    (await opened(layer))?.[0];
+  const withBrowsers = async <A>(
+    browsers: Awaited<
+      ReturnType<typeof WebBrowser.getCustomTabsSupportingBrowsersAsync>
+    >,
+    run: () => Promise<A>
+  ): Promise<A> => {
+    const lookup = spyOn(
+      WebBrowser,
+      "getCustomTabsSupportingBrowsersAsync"
+    ).mockResolvedValue(browsers);
+    try {
+      return await run();
+    } finally {
+      lookup.mockRestore();
+    }
+  };
+
+  // The app claims its host's /app/ links, sign-in page included, and
+  // Android hands an unaddressed https link to that app before any browser.
+  test("opens the sign-in page in the preferred Custom Tabs browser on Android", async () => {
+    const call = await withBrowsers(
+      {
+        browserPackages: ["org.example.browser", "com.android.chrome"],
+        defaultBrowserPackage: "org.example.browser",
+        preferredBrowserPackage: "com.android.chrome",
+        servicePackages: ["com.android.chrome"],
+      },
+      () => opened(AuthSessionBrowser.Live)
+    );
+    expect(call?.[2]).toEqual({ browserPackage: "com.android.chrome" });
+  });
+
+  test("falls back to the default, then any, Custom Tabs browser", async () => {
+    const byDefault = await withBrowsers(
+      {
+        browserPackages: ["org.example.browser"],
+        defaultBrowserPackage: "org.example.browser",
+        servicePackages: [],
+      },
+      () => opened(AuthSessionBrowser.Live)
+    );
+    expect(byDefault?.[2]).toEqual({ browserPackage: "org.example.browser" });
+    const any = await withBrowsers(
+      { browserPackages: ["org.example.other"], servicePackages: [] },
+      () => opened(AuthSessionBrowser.Live)
+    );
+    expect(any?.[2]).toEqual({ browserPackage: "org.example.other" });
+  });
+
+  test("leaves the choice to the system when the browser lookup fails", async () => {
+    const lookup = spyOn(
+      WebBrowser,
+      "getCustomTabsSupportingBrowsersAsync"
+    ).mockRejectedValue(new Error("no package manager"));
+    try {
+      const call = await opened(AuthSessionBrowser.Live);
+      expect(call?.[0]).toBe(
+        "https://preview.example.test/app/sign-in?native=1"
+      );
+      expect(call?.[2]).toBeUndefined();
+    } finally {
+      lookup.mockRestore();
+    }
+  });
+
+  test("leaves the choice to the system when no Custom Tabs browser is known", async () => {
+    const call = await withBrowsers(
+      { browserPackages: [], servicePackages: [] },
+      () => opened(AuthSessionBrowser.Live)
+    );
+    expect(call?.[2]).toBeUndefined();
+  });
 
   test("opens the sign-in page as given without preview access", async () => {
     expect(await openedUrl(AuthSessionBrowser.Live)).toBe(
