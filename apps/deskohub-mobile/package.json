@@ -1,6 +1,5 @@
 {
   "name": "deskohub-mobile",
-  "version": "0.1.0",
   "private": true,
   "type": "module",
   "main": "expo-router/entry",
@@ -13,6 +12,7 @@
     "test": "bun test",
     "typecheck": "tsc --project tsconfig.json",
     "i18n:compile": "bun x @inlang/paraglide-js compile --project ./project.inlang --outdir ./src/i18n/paraglide --strategy baseLocale --is-server false --disable-async-local-storage --output-structure locale-modules",
+    "release:apk": "bun scripts/release/mobile-release.ts build",
     "eas-build-post-install": "turbo run i18n:compile --filter=deskohub-mobile"
   },
   "dependencies": {
