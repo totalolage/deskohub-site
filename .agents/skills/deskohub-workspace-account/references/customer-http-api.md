@@ -42,16 +42,22 @@ authenticates every request.
 4. Classify it in `customerRequestBudgetClasses`. The Record is exhaustive
    over the contract, so an unclassified endpoint is a type error, and
    `customer-request-budget.test.ts` pins the endpoint counts: update them.
-   Every endpoint spends the account's general budget. An endpoint is
-   Dotypos-backed when it, or the account resolution it starts with, can call
-   Dotypos (resolving an unlinked account looks its customer up and may
-   reactivate an expired one): a GET is `dotypos-read`, any other method
-   `dotypos-mutation`, each with its own per-account budget so reads can't
-   use up what edits and deletion need; the test checks the method.
-   `workspace-only` reads only the Workspace database and Better Auth.
-   Reservation reads count: they read Dotypos live. If the endpoint changes
-   the Dotypos call rate, recheck the budget numbers against the site's shared
-   150 requests per 30 minutes. Per-account budgets bound one account's share;
+   Every endpoint spends the account's general budget (120 per 10 minutes).
+   An endpoint is Dotypos-backed when it, or the account resolution it starts
+   with, can call Dotypos (resolving an unlinked account looks its customer up
+   and may reactivate an expired one): a GET is `dotypos-read` (20 per 30
+   minutes), any other method `dotypos-mutation` (15 per 30 minutes, which
+   account edits and checkout steps share; two bookings fit), each with its
+   own per-account budget so reads can't use up what edits, bookings and
+   deletion need; the test checks the method. The booking catalog's reads
+   (offerings, availability, meeting-room start times, quotes) are
+   `catalog-read` (120 per 10 minutes): they read the shared snapshots, which
+   call Dotypos only on a miss, and a booking compares several dates before it
+   checks out, so they keep off the Dotypos read budget the account and its
+   reservations use. `workspace-only` reads only the Workspace database and
+   Better Auth. Reservation reads count: they read Dotypos live. If the
+   endpoint changes the Dotypos call rate, recheck the budget numbers against
+   the site's shared 150 requests per 30 minutes. Per-account budgets bound one account's share;
    they can't keep the whole site within that allowance.
 5. Regenerate the OpenAPI golden from `packages/workspace-customer-api` with
    `UPDATE_OPENAPI=1 bun test src/workspace-customer-api.test.ts`, and review

@@ -19,6 +19,10 @@ const updateProfile: CustomerApiCall = {
   body: { firstName: "Ada" },
 };
 const getAccount: CustomerApiCall = { method: "GET", path: "/account" };
+const getAvailability: CustomerApiCall = {
+  method: "GET",
+  path: "/booking/availability?kind=cowork",
+};
 const listPasskeys: CustomerApiCall = {
   method: "GET",
   path: "/account/passkeys",
@@ -184,6 +188,17 @@ describe("customer request budgets", () => {
     ]);
   });
 
+  test("spends the general and the catalog budget on a booking catalog read", async () => {
+    const api = makeCustomerApiTestServer({ services: linkedAccountServices });
+
+    await api.handle(customerApiRequest(getAvailability));
+
+    expect(api.records.budgetSpends.map(({ key }) => key)).toEqual([
+      expect.stringMatching(/^customer-api:account:/),
+      expect.stringMatching(/^customer-api:catalog-read:account:/),
+    ]);
+  });
+
   test("spends only the general budget on an endpoint that never calls Dotypos", async () => {
     const result = await serve(listPasskeys);
 
@@ -222,11 +237,38 @@ describe("customer request budgets", () => {
   test("refuses as rate limited once the account spent its Dotypos mutation budget, and still serves its reads", async () => {
     const api = makeCustomerApiTestServer({ services: linkedAccountServices });
 
-    expect(await statusesOf(api, updateProfile, 7)).toEqual([
-      ...Array(6).fill(200),
+    expect(await statusesOf(api, updateProfile, 16)).toEqual([
+      ...Array(15).fill(200),
       429,
     ]);
     expect(await statusesOf(api, getAccount, 1)).toEqual([200]);
+  });
+
+  test("keeps serving catalog reads once the account spent its Dotypos read budget", async () => {
+    const api = makeCustomerApiTestServer({ services: linkedAccountServices });
+
+    await statusesOf(api, getAccount, 20);
+
+    expect(await statusesOf(api, getAccount, 1)).toEqual([429]);
+    expect(await statusesOf(api, getAvailability, 1)).not.toEqual([429]);
+  });
+
+  test("refuses as rate limited once the account made 120 catalog reads", async () => {
+    const api = makeCustomerApiTestServer({ services: linkedAccountServices });
+
+    const statuses = await statusesOf(api, getAvailability, 121);
+
+    expect(statuses.slice(0, 120)).not.toContain(429);
+    expect(statuses[120]).toBe(429);
+  });
+
+  test("refuses as rate limited once the account made 120 requests of any kind", async () => {
+    const api = makeCustomerApiTestServer({ services: linkedAccountServices });
+
+    const statuses = await statusesOf(api, listPasskeys, 121);
+
+    expect(statuses.slice(0, 120)).not.toContain(429);
+    expect(statuses[120]).toBe(429);
   });
 
   test("fails closed when the budget can't be checked", async () => {

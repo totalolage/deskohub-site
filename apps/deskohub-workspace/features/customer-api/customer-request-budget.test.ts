@@ -51,7 +51,7 @@ describe("customer request budget classes", () => {
           .filter(
             ([endpoint, budgetClass]) =>
               (methods.get(`${group}.${endpoint}`) === "GET") !==
-              (budgetClass === "dotypos-read")
+              (budgetClass === "dotypos-read" || budgetClass === "catalog-read")
           )
           .map(
             ([endpoint, budgetClass]) => `${group}.${endpoint}: ${budgetClass}`
@@ -73,11 +73,21 @@ describe("customer request budget classes", () => {
       Object.values(customerRequestBudgetClasses.booking).filter(
         (budgetClass) => budgetClass === "dotypos-read"
       )
-    ).toHaveLength(4);
+    ).toHaveLength(0);
     expect(
       Object.values(customerRequestBudgetClasses.booking).filter(
         (budgetClass) => budgetClass === "dotypos-mutation"
       )
     ).toHaveLength(3);
+  });
+  // Browsing the catalog reads the shared snapshots many times per booking,
+  // so it spends its own budget instead of the account's Dotypos reads.
+  test("classify the booking catalog's reads as catalog reads", () => {
+    expect(customerRequestBudgetClasses.booking).toMatchObject({
+      listOfferings: "catalog-read",
+      getAvailability: "catalog-read",
+      getMeetingRoomStartTimes: "catalog-read",
+      getQuote: "catalog-read",
+    });
   });
 });
