@@ -4,8 +4,6 @@ import {
   type CustomerAvatar,
   CustomerAvatarRejected,
   type CustomerAvatarRejectionReason,
-  CustomerFeatureUnavailable,
-  CustomerServiceUnavailable,
   customerAvatarFileField,
   customerAvatarMaxUploadBytes,
 } from "@deskohub/workspace-customer-api";
@@ -19,7 +17,10 @@ import {
   uploadAccountAvatar,
 } from "@/features/account/backend/customer-avatar-mutations";
 import { CustomerAccountLayers } from "./customer-account-layers";
-import { answerCustomerApiFailure } from "./customer-api-failure";
+import {
+  answerCustomerApiFailure,
+  answerUnavailable,
+} from "./customer-api-failure";
 
 const operation = "customerApi.uploadAvatar";
 
@@ -57,8 +58,6 @@ export const customerAvatarUploadHandler = Effect.gen(function* () {
     Effect.provide(admission),
     Effect.catchTags(
       {
-        AccountFeatureWithheldError: ({ feature }) =>
-          Effect.fail(new CustomerFeatureUnavailable({ feature })),
         CustomerAvatarRejected: (rejection) => Effect.fail(rejection),
         // Already logged with the reason it answers.
         CustomerServiceUnavailable: (unavailable) => Effect.fail(unavailable),
@@ -171,13 +170,6 @@ const answerAvatarUpload = (
         }),
       rejected: ({ reason }) => avatarRejected(reason),
       retryable: () =>
-        Effect.logWarning("Customer API request failed.").pipe(
-          Effect.annotateLogs({
-            operation,
-            answer: "CustomerServiceUnavailable",
-            reason: "avatar-provider-retryable",
-          }),
-          Effect.andThen(Effect.fail(new CustomerServiceUnavailable()))
-        ),
+        answerUnavailable(operation, { reason: "avatar-provider-retryable" }),
     })
   );
