@@ -6,6 +6,7 @@ import {
 } from "effect/unstable/httpapi";
 import { CustomerAccountLinkRequired, Money } from "./customer-account-api";
 import { CustomerServiceUnavailable } from "./customer-session";
+import { responseHeaders } from "./openapi-response-headers";
 
 // Errors
 
@@ -293,6 +294,13 @@ export const CustomerReservationsApi = HttpApiGroup.make("reservations")
         CustomerInvoiceNotIssued.schema,
         CustomerServiceUnavailable.schema,
       ],
-    })
+    }).annotateMerge(
+      responseHeaders(200, {
+        "Content-Disposition": {
+          description:
+            'Serves the PDF as an attachment named by the invoice number, as `attachment; filename="<invoice number>.pdf"`.',
+        },
+      })
+    )
   )
   .prefix("/reservations");

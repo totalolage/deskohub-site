@@ -261,7 +261,7 @@ const answerReservationAccess = (access: ReservationAccessViewModel) =>
 /**
  * The invoice as a download named by its number. The contract declares the
  * bytes; the file name travels in `Content-Disposition`, which the
- * contract's success can't carry.
+ * contract's success can't carry and its OpenAPI annotation describes.
  */
 const answerInvoicePdf = ({ bytes, fileName }: InvoicePdfFile) =>
   HttpServerResponse.uint8Array(bytes, {
