@@ -1448,6 +1448,84 @@ describe("advisor regressions", () => {
   });
 });
 
+describe("review regressions", () => {
+  test.each([
+    ["the lost send", () => BookingProblem.Unconfirmed()],
+    [
+      "a rate-limited resend",
+      () => BookingProblem.Retryable({ kind: "rate_limited" }),
+    ],
+  ] as const)(
+    "a repeated failure of %s keeps the submit unsettled",
+    (_name, problem) => {
+      const sent = paid(consented().state);
+      const first = commandOf(sent, "SubmitCheckout");
+      const lost = run(
+        sent.state,
+        failed(first.operationId, BookingProblem.Unconfirmed())
+      );
+      const settledOperation = (() => {
+        if (problem()._tag === "Unconfirmed")
+          return { state: lost.state, operationId: first.operationId };
+        const retried = run(lost.state, CheckoutEvent.Retry());
+        const operationId = lastOperation(retried, "SubmitCheckout");
+        return {
+          state: run(retried.state, failed(operationId, problem())).state,
+          operationId,
+        };
+      })();
+      const late = run(
+        settledOperation.state,
+        failed(
+          settledOperation.operationId,
+          BookingProblem.Retryable({ kind: "connection" })
+        )
+      );
+      expect(late.state).toEqual(settledOperation.state);
+      expect(
+        commandOf(run(late.state, CheckoutEvent.Retry()), "SubmitCheckout")
+          .request
+      ).toEqual(first.request);
+      expect(
+        step(
+          late.state,
+          CheckoutEvent.HoldTimerElapsed({ now: expiresAtMillis })
+        ).state
+      ).toEqual({
+        _tag: "Done",
+        orderId: "order-1",
+      } as CheckoutState);
+    }
+  );
+
+  test("a document load finishing while a write is unsettled still lands", () => {
+    const entered = held();
+    const sent = run(
+      entered.state,
+      CheckoutEvent.CodeChanged({ input: "SAVE10" }),
+      CheckoutEvent.ApplyCode()
+    );
+    const lost = run(
+      sent.state,
+      failed(
+        lastOperation(sent, "ApplyDiscountCode"),
+        BookingProblem.Unconfirmed()
+      )
+    );
+    const loaded = run(
+      lost.state,
+      CheckoutEvent.LegalDocumentsLoaded({
+        operationId: lastOperation(entered, "LoadLegalDocuments"),
+        documents,
+      })
+    );
+    expect(loaded.state).toMatchObject({
+      _tag: "Uncertain",
+      resume: { legal: LegalDocuments.Loaded({ documents }) },
+    });
+  });
+});
+
 describe("unconfirmed submit", () => {
   const lostSubmit = () => {
     const sent = paid(consented().state);

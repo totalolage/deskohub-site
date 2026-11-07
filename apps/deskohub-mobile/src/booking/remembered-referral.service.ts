@@ -93,44 +93,47 @@ export class RememberedReferralCode extends Context.Service<
     Effect.gen(function* () {
       const storage = yield* RememberedReferralStorage;
 
-      const forget = Effect.fn("RememberedReferralCode.forget")(function* (
-        scope: RememberedReferralScope
-      ) {
-        yield* storage
-          .removeItem(rememberedReferralKey(scope))
-          .pipe(Effect.ignore);
-      });
+      const forget = Effect.fn("RememberedReferralCode.forget")(
+        (scope: RememberedReferralScope) =>
+          storage.removeItem(rememberedReferralKey(scope)).pipe(Effect.ignore)
+      );
 
-      const remember = Effect.fn("RememberedReferralCode.remember")(function* (
-        scope: RememberedReferralScope,
-        code: ReferralCode
-      ) {
-        const now = yield* Clock.currentTimeMillis;
-        yield* storage
-          .setItem(
-            rememberedReferralKey(scope),
-            encodeEntry({ code, expiresAt: now + lifetimeMillis })
+      const remember = Effect.fn("RememberedReferralCode.remember")(
+        (scope: RememberedReferralScope, code: ReferralCode) =>
+          Clock.currentTimeMillis.pipe(
+            Effect.flatMap((now) =>
+              storage.setItem(
+                rememberedReferralKey(scope),
+                encodeEntry({ code, expiresAt: now + lifetimeMillis })
+              )
+            ),
+            Effect.ignore
           )
-          .pipe(Effect.ignore);
-      });
+      );
 
-      const get = Effect.fn("RememberedReferralCode.get")(function* (
-        scope: RememberedReferralScope
-      ) {
-        const now = yield* Clock.currentTimeMillis;
-        const stored = yield* storage
+      const get = Effect.fn("RememberedReferralCode.get")(
+        (scope: RememberedReferralScope) =>
+          Effect.Do.pipe(
+            Effect.bind("now", () => Clock.currentTimeMillis),
+            Effect.bind("stored", () => readStored(scope)),
+            Effect.let("live", liveEntry),
+            // An expired or unreadable entry is dropped, as a browser drops
+            // an expired cookie.
+            Effect.tap(({ stored, live }) =>
+              Effect.when(
+                forget(scope),
+                Effect.succeed(Option.isSome(stored) && Option.isNone(live))
+              )
+            ),
+            Effect.map(({ live }) => Option.map(live, ({ code }) => code))
+          )
+      );
+
+      /** A failed read remembers nothing. */
+      const readStored = (scope: RememberedReferralScope) =>
+        storage
           .getItem(rememberedReferralKey(scope))
           .pipe(Effect.orElseSucceed(() => Option.none<string>()));
-        const entry = Option.flatMap(stored, decodeEntry);
-        const live = Option.filter(entry, ({ expiresAt }) => expiresAt > now);
-        // An expired or unreadable entry is dropped, as a browser drops an
-        // expired cookie.
-        yield* Effect.when(
-          forget(scope),
-          Effect.sync(() => Option.isSome(stored) && Option.isNone(live))
-        );
-        return Option.map(live, ({ code }) => code);
-      });
 
       return RememberedReferralCode.of({
         get,
@@ -157,3 +160,15 @@ const StoredReferralJson = Schema.fromJsonString(StoredReferral);
 const encodeEntry = Schema.encodeSync(StoredReferralJson);
 
 const decodeEntry = Schema.decodeUnknownOption(StoredReferralJson);
+
+/** The stored entry while it is readable and unexpired at `now`. */
+const liveEntry = ({
+  now,
+  stored,
+}: {
+  readonly now: number;
+  readonly stored: Option.Option<string>;
+}) =>
+  Option.flatMap(stored, decodeEntry).pipe(
+    Option.filter(({ expiresAt }) => expiresAt > now)
+  );

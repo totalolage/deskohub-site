@@ -769,7 +769,7 @@ const onUncertain = (
     CommandFailed: ({ operationId, problem }) =>
       answersResend(uncertain, operationId)
         ? resendFailed(uncertain, problem)
-        : besideWrite(uncertain, event),
+        : besideWrite(uncertain, operationId, event),
     CheckoutCreated: ({ operationId }) =>
       answersResend(uncertain, operationId)
         ? settleWith(uncertain.resume, event)
@@ -786,7 +786,8 @@ const onUncertain = (
       answersResend(uncertain, operationId)
         ? settleWith(uncertain.resume, event)
         : stay(uncertain),
-    LegalDocumentsLoaded: () => besideWrite(uncertain, event),
+    LegalDocumentsLoaded: ({ operationId }) =>
+      besideWrite(uncertain, operationId, event),
     Continue: () => stay(uncertain),
     CodeChanged: () => stay(uncertain),
     ApplyCode: () => stay(uncertain),
@@ -905,14 +906,20 @@ const settleWith = (
     Review: (review) => onReview(review, event),
   });
 
-/** An answer to a document load, which leaves the write unsettled. */
+/**
+ * An answer to the running document load, which leaves the write unsettled.
+ * Any other answer belongs to a send already settled as unknown and is
+ * dropped.
+ */
 const besideWrite = (
   uncertain: UncertainState,
+  operationId: CheckoutOperationId,
   event: CheckoutEvent
 ): CheckoutStep =>
   Match.valueTags(uncertain.resume, {
     Creating: () => stay(uncertain),
     Review: (review) => {
+      if (!legalLoadAnswered(review, operationId)) return stay(uncertain);
       const next = onReview(review, event);
       return CheckoutState.$is("Review")(next.state)
         ? to(
