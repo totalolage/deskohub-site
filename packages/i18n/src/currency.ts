@@ -64,7 +64,8 @@ const toFormattableAmount = (
 
 /**
  * Names a currency in the reader's language, such as "česká koruna" for CZK in
- * Czech. Falls back to the ISO code when the runtime has no display name.
+ * Czech. Falls back to the ISO code when the runtime has no display name,
+ * and on runtimes without `Intl.DisplayNames`.
  */
 export function formatCurrencyName({
   currency,
@@ -73,6 +74,9 @@ export function formatCurrencyName({
   readonly currency: string;
   readonly locale: string;
 }): string {
+  if (typeof Intl.DisplayNames !== "function") {
+    return currency;
+  }
   return (
     new Intl.DisplayNames([locale], { type: "currency" }).of(currency) ??
     currency
