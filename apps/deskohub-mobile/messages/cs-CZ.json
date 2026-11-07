@@ -5,5 +5,15 @@
   "smoke_title": "Kontroly běhového prostředí",
   "smoke_running": "Probíhají kontroly…",
   "smoke_finished": "Kontroly dokončeny.",
-  "smoke_totals": "{passed} z {total} prošlo, {failed} selhalo"
+  "smoke_totals": "{passed} z {total} prošlo, {failed} selhalo",
+  "passkey_sign_in": "Přihlásit se přístupovým klíčem",
+  "passkey_sign_in_pending": "Čekáme na přístupový klíč…",
+  "passkey_sign_in_failed": "Přihlášení přístupovým klíčem se nepovedlo. Zkus to znovu, nebo použij e-mail.",
+  "passkey_sign_in_no_credential": "V tomto zařízení nemáš přístupový klíč pro Deskohub. Přihlas se e-mailem.",
+  "passkey_unsupported": "Přístupové klíče v tomto zařízení nejsou k dispozici.",
+  "passkey_add": "Přidat přístupový klíč",
+  "passkey_add_pending": "Pokračuj podle výzvy zařízení…",
+  "passkey_added": "Přístupový klíč je vytvořený. Příště se s ním můžeš přihlásit.",
+  "passkey_add_failed": "Přístupový klíč se nepodařilo vytvořit. Zkus to znovu.",
+  "passkey_add_already_registered": "Toto zařízení už má přístupový klíč k tvému účtu."
 }

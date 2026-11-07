@@ -5,5 +5,15 @@
   "smoke_title": "Runtime smoke checks",
   "smoke_running": "Running checks…",
   "smoke_finished": "Checks finished.",
-  "smoke_totals": "{passed} of {total} passed, {failed} failed"
+  "smoke_totals": "{passed} of {total} passed, {failed} failed",
+  "passkey_sign_in": "Sign in with a passkey",
+  "passkey_sign_in_pending": "Waiting for your passkey…",
+  "passkey_sign_in_failed": "Signing in with a passkey didn't work. Try again, or use your email.",
+  "passkey_sign_in_no_credential": "This device has no passkey for Deskohub. Sign in with your email instead.",
+  "passkey_unsupported": "Passkeys aren't available on this device.",
+  "passkey_add": "Add a passkey",
+  "passkey_add_pending": "Follow your device's prompt…",
+  "passkey_added": "Passkey created. You can sign in with it next time.",
+  "passkey_add_failed": "The passkey wasn't created. Try again.",
+  "passkey_add_already_registered": "This device already has a passkey for your account."
 }
