@@ -1,9 +1,9 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "de5a5f7e-266f-4613-ae37-f183dc8ca86f",
+  "id": "dc02a2bb-6e77-4685-8b6e-0034038ad189",
   "prevIds": [
-    "aa3839ea-8d52-4659-ae4c-3922919ec128"
+    "1b5cb4f1-4b1e-4fb2-aeaf-546bc3c9365d"
   ],
   "ddl": [
     {
@@ -16532,7 +16532,7 @@
       "table": "customer_marketing_consents"
     },
     {
-      "value": "\"grant_source\" is null or \"grant_source\" in ('reservation_form', 'site_tool', 'mcp_tool', 'account', 'link')",
+      "value": "\"grant_source\" is null or \"grant_source\" in ('reservation_form', 'site_tool', 'mcp_tool', 'account', 'link', 'customer_app')",
       "name": "customer_marketing_consents_grant_source_check",
       "entityType": "checks",
       "schema": "public",

@@ -114,6 +114,7 @@
         "@deskohub/reservation": "workspace:*",
         "@deskohub/standard-schema": "workspace:*",
         "@deskohub/test-email": "workspace:*",
+        "@deskohub/workspace-customer-api": "workspace:*",
         "@react-native-async-storage/async-storage": "2.2.0",
         "better-auth": "1.7.2",
         "botid": "^1.5.11",

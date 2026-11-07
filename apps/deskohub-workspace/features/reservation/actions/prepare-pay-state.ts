@@ -50,7 +50,10 @@ import {
   type CheckoutSessionId,
   promoteCheckoutAttemptToSessionId,
 } from "@/features/checkout/checkout-identifiers";
-import { addCheckoutReferralAppliedMarker } from "@/features/checkout/checkout-referral-notice";
+import {
+  addCheckoutReferralAppliedMarker,
+  hasCheckoutReferralBenefit,
+} from "@/features/checkout/checkout-referral-notice";
 import {
   type CheckoutSummaryChangedKeys,
   getCheckoutSummaryChangedKeys,
@@ -64,6 +67,7 @@ import type { CanonicalPromotionCode } from "@/features/discounts/contracts";
 import { type Locale, m } from "@/features/i18n";
 import { mirrorDeviceAnalyticsConsent } from "@/features/legal/backend/analytics-consent-mirror";
 import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
+import type { MarketingConsentGrantSource } from "@/features/legal/marketing-consent-grant-source";
 import { ensureOfficeReservationsEnabled } from "@/features/office/backend/office-release-gate";
 import {
   RememberedReferral,
@@ -137,6 +141,21 @@ import {
   verifyReservationFormHuman,
 } from "./prepare-pay-state-form";
 
+/**
+ * One submission a server caller prepares Pay for. Beside the site's tools,
+ * the customer HTTP API labels a grant from the customer's native app; the
+ * site's schema keeps accepting only the site's tools.
+ */
+export type PayStateSubmission = Omit<
+  PreparePayStateInput,
+  "marketingConsentSource"
+> & {
+  readonly marketingConsentSource?: Extract<
+    MarketingConsentGrantSource,
+    "site_tool" | "customer_app"
+  >;
+};
+
 const decodeLegalEvidenceMap = Schema.decodeUnknownSync(
   legalEvidenceMapSchema,
   {
@@ -155,7 +174,8 @@ type PreparedAdvertisement =
 
 const prepareAdvertisement = Effect.fn("preparePayState.prepareAdvertisement")(
   (
-    input: PreparePayStateInput & {
+    // Advertising prices the selection; it never reads the consent label.
+    input: Omit<PayStateSubmission, "marketingConsentSource"> & {
       readonly bookedAt: Temporal.Instant;
     }
   ) =>
@@ -280,6 +300,12 @@ const toReadyResult = Effect.fn("preparePayState.toReadyResult")(
     readonly bookedAt: Temporal.Instant;
     readonly changedKeys?: CheckoutSummaryChangedKeys;
     /**
+     * The customer the quote was priced for, when the booking carries the
+     * remembered referral: the result reports the referral applied only when
+     * the Pay state holds that customer's invitation benefit.
+     */
+    readonly referralCustomer?: DotyposCustomerId;
+    /**
      * Issues the Pay state as of `bookedAt` and seals it deterministically,
      * so rebuilding it for the same hold returns the same link.
      */
@@ -309,25 +335,31 @@ const toReadyResult = Effect.fn("preparePayState.toReadyResult")(
     const expiresAt = temporalInstantToIsoString(
       Temporal.Instant.fromEpochMilliseconds(state.exp * 1000)
     );
+    const referralApplied =
+      input.referralCustomer !== undefined &&
+      hasCheckoutReferralBenefit({
+        discounts: state.quote.payment.discounts,
+        dotyposCustomerId: input.referralCustomer,
+      });
+    const issued = {
+      orderId: input.reservationId,
+      redirectUrl,
+      payStateToken: sealedState.token,
+      expiresAt,
+      ...(referralApplied && { referralApplied: true as const }),
+    };
 
     if (input.changedKeys) {
       return {
         status: "pricing_changed" as const,
-        orderId: input.reservationId,
-        redirectUrl,
-        expiresAt,
+        ...issued,
         affectedProductKeys: input.changedKeys.itemKeys.flatMap((key) =>
           key.startsWith("product:") ? [key] : []
         ),
       };
     }
 
-    return {
-      status: "ready" as const,
-      orderId: input.reservationId,
-      redirectUrl,
-      expiresAt,
-    };
+    return { status: "ready" as const, ...issued };
   }
 );
 
@@ -1169,7 +1201,7 @@ const resolveAccountCustomer = Effect.fn(
   input,
   bookingAgent,
 }: {
-  readonly input: PreparePayStateInput;
+  readonly input: PayStateSubmission;
   readonly bookingAgent: Option.Option<BookingAgent["Service"]>;
 }) {
   if (input.customer !== "account") return undefined;
@@ -1242,7 +1274,7 @@ const prepareReviewSandboxHold = Effect.fn(
   accountId,
   bookingAgent,
 }: {
-  readonly input: PreparePayStateInput;
+  readonly input: PayStateSubmission;
   readonly accountId: CustomerAccountId;
   readonly bookingAgent: Option.Option<BookingAgent["Service"]>;
 }) {
@@ -1274,7 +1306,7 @@ const prepareReviewSandboxHold = Effect.fn(
  * its {@link BookingAgent}.
  */
 export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
-  function* (input: PreparePayStateInput) {
+  function* (input: PayStateSubmission) {
     // A review account books in its sandbox, which captures no checkout
     // analytics, whatever the outcome.
     const inReviewSandbox = yield* Ref.make(false);
@@ -1383,7 +1415,7 @@ const recordCheckoutMarketingConsent = Effect.fnUntraced(function* ({
   bookingAgent,
   dotyposCustomerId,
 }: {
-  readonly input: PreparePayStateInput;
+  readonly input: PayStateSubmission;
   readonly bookingAgent: Option.Option<BookingAgent["Service"]>;
   readonly dotyposCustomerId: DotyposCustomerId;
 }) {
@@ -1442,7 +1474,7 @@ const mirrorBookingDeviceAnalyticsConsent = Effect.fnUntraced(
 );
 
 const prepareSubmission = Effect.fn("prepareWorkspacePayState.submission")(
-  function* (input: PreparePayStateInput, inReviewSandbox: Ref.Ref<boolean>) {
+  function* (input: PayStateSubmission, inReviewSandbox: Ref.Ref<boolean>) {
     const bookingAgent = yield* Effect.serviceOption(BookingAgent);
     const accountActivity = yield* OptionalAccountActivityGuard;
     const rememberedReferral = yield* RememberedReferral;
@@ -1506,6 +1538,9 @@ const prepareSubmission = Effect.fn("prepareWorkspacePayState.submission")(
         const { accountReferral, referralCodePrefill } =
           splitReferralForBooking(referralForBooking);
         yield* Ref.set(carriesAccountReferral, accountReferral !== undefined);
+        // The customer whose invitation a carried referral prices, if any.
+        const referralCustomerFor = (pricedFor: DotyposCustomerId) =>
+          accountReferral === undefined ? undefined : pricedFor;
 
         const advertiseAt = (at: Temporal.Instant) =>
           prepareAdvertisement({
@@ -1615,24 +1650,29 @@ const prepareSubmission = Effect.fn("prepareWorkspacePayState.submission")(
                 checkoutSessionId: held.checkoutSessionId,
                 bookedAt,
                 changedKeys: held.prepared.changedKeys,
+                referralCustomer: referralCustomerFor(dotyposCustomerId),
               });
             }
 
-            const anchoredPrepared = holdBookedAt.equals(bookedAt)
-              ? held.prepared
-              : yield* quoteAt(
-                  holdBookedAt,
-                  yield* getDotyposCustomerId(
-                    held.reservation.dotyposCustomerId
+            const anchored = holdBookedAt.equals(bookedAt)
+              ? { prepared: held.prepared, pricedFor: dotyposCustomerId }
+              : yield* getDotyposCustomerId(
+                  held.reservation.dotyposCustomerId
+                ).pipe(
+                  Effect.flatMap((pricedFor) =>
+                    quoteAt(holdBookedAt, pricedFor).pipe(
+                      Effect.map((prepared) => ({ prepared, pricedFor }))
+                    )
                   )
                 );
             return yield* toReadyResult({
               locale: input.locale,
-              prepared: anchoredPrepared,
+              prepared: anchored.prepared,
               reservationId: held.reservation.id,
               checkoutSessionId: held.checkoutSessionId,
               bookedAt: holdBookedAt,
-              changedKeys: anchoredPrepared.changedKeys,
+              changedKeys: anchored.prepared.changedKeys,
+              referralCustomer: referralCustomerFor(anchored.pricedFor),
               stableLink: true,
             });
           }
@@ -1956,6 +1996,7 @@ const prepareSubmission = Effect.fn("prepareWorkspacePayState.submission")(
             checkoutSessionId,
             bookedAt,
             changedKeys: prepared.changedKeys,
+            referralCustomer: referralCustomerFor(dotyposCustomerId),
             stableLink: Option.isSome(bookingAgent),
           });
         });

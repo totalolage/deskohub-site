@@ -285,6 +285,10 @@ describe.skipIf(!database)(
         getReviewPaymentDisabledPath("en-US", first.orderId)
       );
       expect(repeat).toEqual(first);
+      // A sandbox hold has no Pay state to hand out and prices no referral.
+      expect(first.reviewSandbox).toBe(true);
+      expect(first).not.toHaveProperty("payStateToken");
+      expect(first).not.toHaveProperty("referralApplied");
       expect((await statusOf(first.orderId)).status).toBe("created");
     });
 

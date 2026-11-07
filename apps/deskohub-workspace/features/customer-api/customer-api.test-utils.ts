@@ -32,14 +32,20 @@ import {
   customerAccountUnavailable,
 } from "@/features/account/customer-account";
 import { ReservationInvoicePdfService } from "@/features/accounting/backend/reservation-invoice-pdf.service";
+import { CheckoutService } from "@/features/checkout/backend/checkout";
+import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import { CheckoutStatusService } from "@/features/checkout/backend/checkout/checkout-status.service";
+import { ReservationSupersessionService } from "@/features/checkout/backend/checkout/reservation-supersession.service";
 import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import { MarketingPreferences } from "@/features/legal/backend/marketing-preferences.service";
+import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
 import { ReferralServiceMock } from "@/features/referrals/referral.service.mock";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { ReferralSignupIntentRepository } from "@/features/referrals/signup-intent.repository";
+import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
 import { ReservationAccessService } from "@/features/reservation/backend/reservation-access.service";
 import { ReservationAuthorizationService } from "@/features/reservation/backend/reservation-authorization.service";
+import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import { ReviewAccountsMock } from "@/features/review-accounts/backend/review-accounts.repository.mock";
 import {
   makeMemoryRequestBudget,
@@ -47,11 +53,21 @@ import {
 } from "@/shared/backend/request-budget/memory-request-budget.test-utils";
 import { toWorkspaceWebHandler } from "@/shared/backend/workspace-effect";
 import { continueMutationsAfterDisconnect } from "@/shared/backend/workspace-http-api-route";
+import { TestSealedStateKeys } from "@/shared/testing/sealed-state-keys.test-utils";
 import {
   CustomerAccountLayers,
   type CustomerAccountServiceLayers,
 } from "./customer-account-layers";
 import { makeWorkspaceCustomerApiLayer } from "./customer-api.server";
+import {
+  type CustomerBookingCatalogLayerSet,
+  CustomerBookingCatalogLayers,
+} from "./customer-booking-catalog-layers";
+import {
+  type CustomerBookingCheckoutLayerSet,
+  CustomerBookingCheckoutLayers,
+} from "./customer-booking-checkout-layers";
+import { CustomerCheckoutOperations } from "./customer-checkout-operations.service";
 import {
   CustomerReservationLayers,
   type CustomerReservationServiceLayers,
@@ -88,6 +104,13 @@ export type CustomerApiTestOptions = {
   readonly services?: Partial<CustomerAccountServiceLayers>;
   /** Release gates; each left out is closed. */
   readonly releases?: Partial<AccountReleaseLayers>;
+  /**
+   * Booking catalog fakes, like `services`: each left out is a `Layer.mock`
+   * with nothing implemented, and its release gates are closed.
+   */
+  readonly bookingCatalog?: Partial<CustomerBookingCatalogLayerSet>;
+  /** Booking checkout fakes, like `bookingCatalog`. */
+  readonly bookingCheckout?: Partial<CustomerBookingCheckoutLayerSet>;
   /**
    * Reservation service fakes, each left out a `Layer.mock` with nothing
    * implemented, like `services`.
@@ -144,6 +167,14 @@ export const makeCustomerApiTestServer = (
     Layer.succeed(CustomerAccountLayers, {
       services: { ...unusedAccountServices, ...options.services },
       releases: { ...closedReleases, ...options.releases },
+    }),
+    Layer.succeed(CustomerBookingCatalogLayers, {
+      ...unusedBookingCatalog,
+      ...options.bookingCatalog,
+    }),
+    Layer.succeed(CustomerBookingCheckoutLayers, {
+      ...unusedBookingCheckout,
+      ...options.bookingCheckout,
     }),
     Layer.succeed(CustomerReservationLayers, {
       ...unusedReservationServices,
@@ -226,6 +257,31 @@ export const linkedAccountServices: CustomerAccountServiceLayers = {
   signupIntents: Layer.mock(ReferralSignupIntentRepository, {
     find: () => Effect.succeed(undefined),
   }),
+};
+
+const unusedBookingCatalog: CustomerBookingCatalogLayerSet = {
+  pricing: Layer.mock(CheckoutPricingService, {}),
+  inventory: Layer.mock(AdvisoryAvailabilityInventory, {}),
+  availability: Layer.mergeAll(
+    Layer.mock(WorkspaceAvailabilityService, {}),
+    Layer.mock(ReservationSupersessionService, {}),
+    TestSealedStateKeys
+  ),
+  sealedStateKeys: TestSealedStateKeys,
+  releases: {
+    office: OfficeReleaseGate.fromDecision(false),
+    referral: ReferralReleaseGate.fromDecision(false),
+  },
+};
+
+const unusedBookingCheckout: CustomerBookingCheckoutLayerSet = {
+  operations: Layer.mock(CustomerCheckoutOperations, {}),
+  checkout: Layer.mock(CheckoutService, {}),
+  inventory: Layer.mock(AdvisoryAvailabilityInventory, {}),
+  releases: {
+    office: OfficeReleaseGate.fromDecision(false),
+    referral: ReferralReleaseGate.fromDecision(false),
+  },
 };
 
 const closedReleases: AccountReleaseLayers = {

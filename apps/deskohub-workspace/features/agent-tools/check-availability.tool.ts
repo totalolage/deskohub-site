@@ -5,6 +5,14 @@ import {
 } from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
 import { loadAdvisoryOfficeSeatCapacity } from "@/features/office/backend/office-advisory-seat-capacity";
+import {
+  ensureOfficeOpen,
+  getRequestedCoworkTiers,
+  isCoworkOfferOpen,
+  resolveCoworkDates,
+  resolveMeetingRoomSelection,
+  resolveOfficeRange,
+} from "@/features/reservation/backend/booking-selection";
 import { getShareableReservationUrl } from "@/features/reservation/backend/shareable-reservation-url";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import type { MeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
@@ -37,15 +45,7 @@ import {
   type CheckAvailabilityResult,
   checkAvailabilityResultSchema,
 } from "./check-availability.schema";
-import {
-  ensureOfficeOpen,
-  getRequestedCoworkTiers,
-  isCoworkOfferOpen,
-  reservationSelectionFields,
-  resolveCoworkDates,
-  resolveMeetingRoomSelection,
-  resolveOfficeRange,
-} from "./reservation-selection";
+import { reservationSelectionFields } from "./reservation-selection";
 
 const inputSchema = Schema.Struct({
   ...reservationSelectionFields,
@@ -132,7 +132,7 @@ const checkCowork = Effect.fn("agentTools.checkCoworkAvailability")(
           date: input.date,
           endDate: input.end_date,
           today,
-        })
+        }).pipe(Effect.mapError(AgentToolError.rejectedSelection))
       ),
       Effect.bind("tierAvailability", ({ input, today }) =>
         loadCoworkTierAvailability({
@@ -228,7 +228,7 @@ const checkMeetingRoom = Effect.fn("agentTools.checkMeetingRoomAvailability")(
           startTime: input.start_time,
           duration: input.duration,
           now,
-        })
+        }).pipe(Effect.mapError(AgentToolError.rejectedSelection))
       ),
       Effect.bind("checks", ({ meetingRoom }) =>
         Effect.all(
@@ -305,14 +305,16 @@ const loadEarlySetupAvailability = ({
 const checkOffice = Effect.fn("agentTools.checkOfficeAvailability")(
   (selection: AvailabilitySelection) =>
     Effect.succeed(selection).pipe(
-      Effect.tap(() => ensureOfficeOpen),
+      Effect.tap(() =>
+        ensureOfficeOpen.pipe(Effect.mapError(AgentToolError.rejectedSelection))
+      ),
       Effect.let("today", ({ now }) => getCurrentWorkspaceDate(now)),
       Effect.bind("range", ({ input, today }) =>
         resolveOfficeRange({
           date: input.date,
           endDate: input.end_date,
           today,
-        })
+        }).pipe(Effect.mapError(AgentToolError.rejectedSelection))
       ),
       Effect.let("seats", ({ input }) => input.seats ?? 1),
       Effect.bind("office", ({ today }) => loadOfficeAvailability(today)),
