@@ -1,0 +1,24 @@
+{
+  "name": "@deskohub/workspace-customer-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./client": "./src/client.ts",
+    "./referral-code": "./src/referral-code.ts"
+  },
+  "scripts": {
+    "lint": "cd ../.. && biome check packages/workspace-customer-api/src --config-path biome.json --vcs-root .",
+    "test": "bun test",
+    "typecheck": "tsc --project tsconfig.json"
+  },
+  "dependencies": {
+    "@deskohub/dotypos": "workspace:*",
+    "effect": "4.0.0-beta.85"
+  },
+  "devDependencies": {
+    "@deskohub/test-email": "workspace:*",
+    "typescript": "npm:@typescript/typescript6@6.0.2"
+  }
+}
