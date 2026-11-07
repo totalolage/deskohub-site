@@ -1,9 +1,6 @@
 import { getWorkspacePageUrl } from "@/features/i18n/page-url";
 import { workspaceSiteOrigin } from "@/shared/utils/site-constants";
-
-// TODO(#994): import ANDROID_PACKAGE_ID from
-// "@/features/mobile-releases/android-app" once that module lands.
-export const ANDROID_PACKAGE_ID = "cz.deskohub.workspace";
+import { ANDROID_PACKAGE_ID } from "./android-app";
 
 /**
  * An entry `navigator.getInstalledRelatedApps()` resolves with. Declared here

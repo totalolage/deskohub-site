@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import {
-  ANDROID_PACKAGE_ID,
-  androidAppIntentUrl,
-  includesAndroidApp,
-} from "./install-android-app";
+import { ANDROID_PACKAGE_ID } from "./android-app";
+import { androidAppIntentUrl, includesAndroidApp } from "./install-android-app";
 
 describe("androidAppIntentUrl", () => {
   test("opens the account page in the app's package over https", () => {

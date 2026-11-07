@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { ANDROID_PACKAGE_ID } from "./install-android-app";
+import { ANDROID_PACKAGE_ID } from "./android-app";
 import {
   createInstallEnvironment,
   type InstallBrowser,
