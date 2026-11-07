@@ -13,11 +13,11 @@ export default function HomeScreen() {
         {m.home_title({}, { locale })}
       </Text>
       <Text style={styles.tagline}>{m.home_tagline({}, { locale })}</Text>
-      {__DEV__ ? (
+      {__DEV__ && (
         <Link href="/dev/effect-smoke" style={styles.devLink}>
           {m.home_smoke_link({}, { locale })}
         </Link>
-      ) : null}
+      )}
     </View>
   );
 }
