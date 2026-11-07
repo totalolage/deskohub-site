@@ -103,6 +103,9 @@ export const isSafeReturnPath = (value: unknown): value is string => {
     (url) =>
       url.origin === pathBase &&
       `${url.pathname}${url.search}${url.hash}` === value &&
+      // The router collapses repeated slashes, so `/auth//callback` would
+      // still reach sign-in.
+      !url.pathname.includes("//") &&
       !authRoutes.has(url.pathname.replace(/\/+$/, ""))
   );
 };

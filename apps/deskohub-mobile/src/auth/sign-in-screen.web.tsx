@@ -36,12 +36,12 @@ import { loadReauthenticatingUser } from "./web-reauthentication-store";
 import {
   completeWebCodeSignIn,
   completeWebPasskeySignIn,
-  lockedReauthenticationEmail,
   mintNativeHandoff,
   prepareNativeHandoffEmail,
   prepareReauthenticationEmail,
   reauthenticationExpectation,
   sendSignInEmail,
+  signInEmailField,
   type WebAccountExpectation,
 } from "./web-sign-in";
 import { WebSignInFailure } from "./web-sign-in-failure";
@@ -169,10 +169,7 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
     setPageSession((known) => known ?? { user });
   }, [sessionRead, sessionUserId, sessionEmail]);
   // Its email goes only to that account, through any start over.
-  const lockedEmail = lockedReauthenticationEmail({
-    reauthenticating,
-    pageSession,
-  });
+  const emailField = signInEmailField({ reauthenticating, pageSession });
   const verify = useAuthTask(
     standaloneTaskRuntime,
     (address: string, entered: string, expectation: WebAccountExpectation) =>
@@ -271,8 +268,9 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
   // Enter in a field submits too, so each submission checks that no other
   // sign-in method is running.
   const submitEmail = () => {
-    if (busy) return;
-    const address = lockedEmail ?? email.trim();
+    if (busy || emailField.kind === "waiting") return;
+    const address =
+      emailField.kind === "locked" ? emailField.email : email.trim();
     const valid = emailPattern.test(address);
     setInvalidEmail(!valid);
     if (!valid) return;
@@ -332,19 +330,19 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
         <>
           <TextField
             label={m.signin_email_label({}, { locale })}
-            value={lockedEmail ?? email}
+            value={emailField.kind === "locked" ? emailField.email : email}
             onChangeText={setEmail}
             onSubmitEditing={submitEmail}
             autoComplete="email"
             inputMode="email"
             keyboardType="email-address"
             textContentType="emailAddress"
-            editable={!busy && lockedEmail === undefined}
+            editable={!busy && emailField.kind !== "locked"}
           />
           <Button
             label={m.signin_send_link({}, { locale })}
             onPress={submitEmail}
-            disabled={busy}
+            disabled={busy || emailField.kind === "waiting"}
           />
         </>
       )}

@@ -93,6 +93,7 @@ describe("safeReturnPath", () => {
       "/sign-in",
       "/sign-in/",
       "/sign-in?x=1",
+      "/auth//callback",
       "/auth/callback",
       "/auth/callback#token",
     ]) {

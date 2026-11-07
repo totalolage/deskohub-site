@@ -2,8 +2,8 @@ import { afterEach, expect, test } from "bun:test";
 import { Option } from "effect";
 import {
   clearReauthenticatingUser,
-  loadReauthentication,
   loadReauthenticatingUser,
+  loadReauthentication,
   reauthenticationMarkerTtlMs,
   saveReauthenticatingUser,
 } from "./web-reauthentication-store";

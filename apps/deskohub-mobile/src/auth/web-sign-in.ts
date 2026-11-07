@@ -2,6 +2,7 @@ import { Effect, Match, Option } from "effect";
 import type { AppLocale } from "../i18n/app-locale";
 import { webCallbackPath } from "./auth-callback";
 import { authClient } from "./auth-client.web";
+import type { AuthUser } from "./auth-session-state";
 import type { NativeHandoffRequest } from "./native-handoff-request";
 import {
   clearReauthenticatingUser,
@@ -130,23 +131,31 @@ export const reauthenticationExpectation = ({
 };
 
 /**
- * The address a web reauthentication's email must go to: the account this
- * page's browser session had when the page first read it. A code or link for
- * any other address would sign in to that account and replace the browser's
- * session cookie, which the page can't restore, so the field is locked to it.
- * Without a session there is nothing to keep, and the account check still
- * refuses a switch.
+ * The sign-in page's email field. A web reauthentication's email goes only to
+ * the account this page's browser session had when the page first read it:
+ * a code or link for any other address would sign in to that account and
+ * replace the browser's session cookie, which the page can't restore. Until
+ * that first read nothing is sent, so an address entered early can't slip
+ * past the lock. Without a session there is nothing to keep, and the account
+ * check still refuses a switch.
  */
-export const lockedReauthenticationEmail = ({
+export type SignInEmailField =
+  | { readonly kind: "waiting" }
+  | { readonly kind: "locked"; readonly email: string }
+  | { readonly kind: "free" };
+
+export const signInEmailField = ({
   reauthenticating,
   pageSession,
 }: {
   readonly reauthenticating: boolean;
-  readonly pageSession:
-    | { readonly user: { readonly email: string } | undefined }
-    | undefined;
-}): string | undefined =>
-  reauthenticating ? pageSession?.user?.email : undefined;
+  readonly pageSession: { readonly user: AuthUser | undefined } | undefined;
+}): SignInEmailField => {
+  if (pageSession === undefined) return { kind: "waiting" };
+  return reauthenticating && pageSession.user !== undefined
+    ? { kind: "locked", email: pageSession.user.email }
+    : { kind: "free" };
+};
 
 const refuseAccount = (
   reason: "account-switch" | "reauthentication-unconfirmed"

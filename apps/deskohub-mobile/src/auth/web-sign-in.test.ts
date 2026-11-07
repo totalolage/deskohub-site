@@ -60,10 +60,10 @@ const {
   completeWebMagicLink,
   completeWebPasskeySignIn,
   confirmWebAccount,
-  lockedReauthenticationEmail,
   prepareNativeHandoffEmail,
   prepareReauthenticationEmail,
   reauthenticationExpectation,
+  signInEmailField,
 } = await import("./web-sign-in");
 const {
   clearReauthenticatingUser,
@@ -193,29 +193,33 @@ describe("reauthenticationExpectation", () => {
   });
 });
 
-describe("lockedReauthenticationEmail", () => {
-  const email = testEmailAddress("ada");
+describe("signInEmailField", () => {
+  const user = { id: "ada", email: testEmailAddress("ada") };
 
   test("locks a reauthentication to the page's signed-in account", () => {
     expect(
-      lockedReauthenticationEmail({
-        reauthenticating: true,
-        pageSession: { user: { id: "ada", email } },
-      })
-    ).toBe(email);
+      signInEmailField({ reauthenticating: true, pageSession: { user } })
+    ).toEqual({ kind: "locked", email: user.email });
+  });
+
+  test("sends nothing before the page's first session read", () => {
+    for (const reauthenticating of [true, false]) {
+      expect(
+        signInEmailField({ reauthenticating, pageSession: undefined })
+      ).toEqual({ kind: "waiting" });
+    }
   });
 
   test("leaves the address free with no account to keep", () => {
-    for (const context of [
-      { reauthenticating: true, pageSession: undefined },
-      { reauthenticating: true, pageSession: { user: undefined } },
-      {
-        reauthenticating: false,
-        pageSession: { user: { id: "ada", email } },
-      },
-    ]) {
-      expect(lockedReauthenticationEmail(context)).toBeUndefined();
-    }
+    expect(
+      signInEmailField({
+        reauthenticating: true,
+        pageSession: { user: undefined },
+      })
+    ).toEqual({ kind: "free" });
+    expect(
+      signInEmailField({ reauthenticating: false, pageSession: { user } })
+    ).toEqual({ kind: "free" });
   });
 });
 
