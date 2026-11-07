@@ -15,6 +15,10 @@ import {
  * purpose. Regenerate it with
  * `UPDATE_OPENAPI=1 bun test src/workspace-customer-api.test.ts` and review
  * the diff. The test writes the fixture in Biome's format.
+ *
+ * A shipped build fails to decode a response variant, status or reason it
+ * doesn't know, so adding one is a breaking change: keep what shipped builds
+ * decode, or serve the change under a new API version.
  */
 const fixture = new URL(
   "./workspace-customer-api.openapi.golden.json",

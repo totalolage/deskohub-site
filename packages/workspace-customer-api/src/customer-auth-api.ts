@@ -26,6 +26,7 @@ export class CustomerAuthRejected extends Schema.TaggedErrorClass<CustomerAuthRe
       "unauthorized",
       "forbidden",
       "not-found",
+      "rate-limited",
     ]),
     code: Schema.optional(Schema.String),
   }
@@ -43,7 +44,12 @@ const BetterAuthErrorBody = Schema.Struct({
   error: Schema.optional(Schema.String),
 });
 
-type RejectionStatus = "BadRequest" | "Unauthorized" | "Forbidden" | "NotFound";
+type RejectionStatus =
+  | "BadRequest"
+  | "Unauthorized"
+  | "Forbidden"
+  | "NotFound"
+  | "TooManyRequests";
 
 const rejectionWithBody = (
   reason: CustomerAuthRejectionReason,
@@ -87,6 +93,7 @@ const customerAuthRejections = [
   ...rejection("unauthorized", "Unauthorized"),
   ...rejection("forbidden", "Forbidden"),
   ...rejection("not-found", "NotFound"),
+  ...rejection("rate-limited", "TooManyRequests"),
 ];
 
 const isoInstant = Schema.String.annotate({

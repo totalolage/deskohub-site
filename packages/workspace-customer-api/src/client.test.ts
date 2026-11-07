@@ -224,6 +224,12 @@ describe("makeCustomerAuthApiClient", () => {
         new CustomerAuthRejected({ reason: "not-found", code: "not_found" })
       )
     );
+    const throttled = recordingClient(() =>
+      json({ message: "Too many requests. Please try again later." }, 429)
+    );
+    expect(await run(disconnect, throttled.client)).toEqual(
+      Result.fail(new CustomerAuthRejected({ reason: "rate-limited" }))
+    );
     expect(await run(disconnect, foreignConsent.client)).toEqual(
       Result.fail(new CustomerAuthRejected({ reason: "unauthorized" }))
     );

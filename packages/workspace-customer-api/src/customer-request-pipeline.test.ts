@@ -5,7 +5,12 @@ import {
   HttpServer,
   HttpServerRequest,
 } from "effect/unstable/http";
-import { HttpApi, HttpApiBuilder, HttpApiGroup } from "effect/unstable/httpapi";
+import {
+  HttpApi,
+  HttpApiBuilder,
+  type HttpApiEndpoint,
+  HttpApiGroup,
+} from "effect/unstable/httpapi";
 import { CustomerAccountApi } from "./customer-account-api";
 import type { CustomerProfileInput } from "./customer-profile";
 import {
@@ -22,10 +27,16 @@ import {
  * the order `WorkspaceCustomerApi` adds them (its test pins that order), to
  * show what that order and the payload's parse options do at runtime.
  */
+// A group's `endpoints` record is typed loosely; this names the endpoint's
+// declared type.
+const updateProfileEndpoint = CustomerAccountApi.endpoints
+  .updateProfile as HttpApiEndpoint.WithName<
+  HttpApiGroup.Endpoints<typeof CustomerAccountApi>,
+  "updateProfile"
+>;
+
 const api = HttpApi.make("customerRequestPipeline")
-  .add(
-    HttpApiGroup.make("account").add(CustomerAccountApi.endpoints.updateProfile)
-  )
+  .add(HttpApiGroup.make("account").add(updateProfileEndpoint))
   .prefix("/api/customer")
   .middleware(CustomerSessionAuthentication)
   .middleware(CustomerRequestOriginCheck);
@@ -48,14 +59,16 @@ const server = HttpRouter.toWebHandler(
     Layer.provide(
       Layer.mergeAll(
         Layer.succeed(CustomerRequestOriginCheck, (httpEffect) =>
-          Effect.gen(function* () {
-            ran.push("origin check");
-            const request = yield* HttpServerRequest.HttpServerRequest;
-            return request.headers[customerApiClientHeader.name] ===
-              customerApiClientHeader.value
-              ? yield* httpEffect
-              : yield* new CustomerRequestRejected({});
-          })
+          HttpServerRequest.HttpServerRequest.pipe(
+            Effect.tap(() => Effect.sync(() => ran.push("origin check"))),
+            Effect.filterOrFail(
+              (request) =>
+                request.headers[customerApiClientHeader.name] ===
+                customerApiClientHeader.value,
+              () => new CustomerRequestRejected({})
+            ),
+            Effect.andThen(httpEffect)
+          )
         ),
         Layer.succeed(CustomerSessionAuthentication, (httpEffect) =>
           Effect.suspend(() => {

@@ -50,6 +50,10 @@ export const makeWorkspaceCustomerApiClient = (
  * A typed client of the Better Auth endpoints the customer calls directly:
  * session, sign-out, passkey rename and delete, and assistant disconnect.
  * Requires an `HttpClient`.
+ *
+ * Better Auth refuses a cookie-authenticated mutation without a trusted
+ * `Origin`; the customer API client header doesn't satisfy that check, so
+ * the caller's client must send an origin Better Auth trusts.
  */
 export const makeCustomerAuthApiClient = (options: CustomerApiClientOptions) =>
   HttpApiClient.make(CustomerAuthApi, {
