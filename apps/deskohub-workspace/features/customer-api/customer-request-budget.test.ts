@@ -5,16 +5,19 @@ import { WorkspaceCustomerApi } from "@deskohub/workspace-customer-api";
 import { HttpApi } from "effect/unstable/httpapi";
 import { customerRequestBudgetClasses } from "./customer-request-budget";
 
-const contractEndpoints = () => {
-  const endpoints: string[] = [];
+/** Each contract endpoint's method, by `group.endpoint`. */
+const contractMethods = () => {
+  const methods = new Map<string, string>();
   HttpApi.reflect(WorkspaceCustomerApi, {
     onGroup: () => undefined,
     onEndpoint: ({ group, endpoint }) => {
-      endpoints.push(`${group.identifier}.${endpoint.name}`);
+      methods.set(`${group.identifier}.${endpoint.name}`, endpoint.method);
     },
   });
-  return endpoints.toSorted();
+  return methods;
 };
+
+const contractEndpoints = () => [...contractMethods().keys()].toSorted();
 
 describe("customer request budget classes", () => {
   test("classify exactly the endpoints the contract has", () => {
@@ -28,15 +31,34 @@ describe("customer request budget classes", () => {
     expect(classified).toEqual(contractEndpoints());
   });
 
-  test("keep only the endpoints that never reach Dotypos general", () => {
+  test("classify the endpoints that never reach Dotypos as workspace-only", () => {
     expect(customerRequestBudgetClasses.account).toMatchObject({
-      listPasskeys: "general",
-      listAssistantConnections: "general",
+      listPasskeys: "workspace-only",
+      listAssistantConnections: "workspace-only",
     });
+  });
+
+  test("give each Dotypos-backed endpoint the budget of its method: GET reads, every other method mutates", () => {
+    const methods = contractMethods();
+    const mismatched = Object.entries(customerRequestBudgetClasses).flatMap(
+      ([group, endpoints]) =>
+        Object.entries(endpoints)
+          .filter(([, budgetClass]) => budgetClass !== "workspace-only")
+          .filter(
+            ([endpoint, budgetClass]) =>
+              (methods.get(`${group}.${endpoint}`) === "GET") !==
+              (budgetClass === "dotypos-read")
+          )
+          .map(
+            ([endpoint, budgetClass]) => `${group}.${endpoint}: ${budgetClass}`
+          )
+    );
+
+    expect(mismatched).toEqual([]);
     expect(
       Object.values(customerRequestBudgetClasses.account).filter(
-        (budgetClass) => budgetClass === "dotypos"
+        (budgetClass) => budgetClass === "dotypos-read"
       )
-    ).toHaveLength(10);
+    ).toHaveLength(3);
   });
 });

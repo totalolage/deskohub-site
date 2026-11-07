@@ -19,11 +19,15 @@ import {
 import { budgetKeyDigest } from "@/shared/backend/request-budget/request-budget-key";
 
 /**
- * What an endpoint costs beyond its general request budget: `general` reads
- * only the Workspace database and Better Auth; `dotypos` may call Dotypos,
- * whose allowance the whole site shares.
+ * What an endpoint costs beyond its general request budget:
+ * `workspace-only` reads only the Workspace database and Better Auth;
+ * `dotypos-read` and `dotypos-mutation` may call Dotypos, whose allowance the
+ * whole site shares, and spend that kind's Dotypos budget.
  */
-export type CustomerRequestBudgetClass = "general" | "dotypos";
+export type CustomerRequestBudgetClass =
+  | "workspace-only"
+  | "dotypos-read"
+  | "dotypos-mutation";
 
 type CustomerApiGroup =
   typeof WorkspaceCustomerApi extends HttpApi.HttpApi<infer _Id, infer Groups>
@@ -40,31 +44,33 @@ export type CustomerApiEndpointClassification = {
 
 /**
  * The budget class of every customer API endpoint. A new endpoint is a type
- * error here until it is classified. An endpoint is `dotypos` when it, or
- * the account resolution it starts with, can call Dotypos: resolving an
+ * error here until it is classified. An endpoint is Dotypos-backed when it,
+ * or the account resolution it starts with, can call Dotypos: resolving an
  * account that isn't linked yet looks its customer up, and may reactivate
- * an expired one.
+ * an expired one. A Dotypos-backed GET is a read; every other method is a
+ * mutation (`customer-request-budget.test.ts` checks it against the
+ * contract).
  */
 export const customerRequestBudgetClasses = {
   account: {
     // The account's profile, and the lookup that links an unlinked account.
-    getAccount: "dotypos",
-    updateProfile: "dotypos",
-    completeProfile: "dotypos",
+    getAccount: "dotypos-read",
+    updateProfile: "dotypos-mutation",
+    completeProfile: "dotypos-mutation",
     // Resolves the account's Dotypos customer the avatar belongs to.
-    uploadAvatar: "dotypos",
-    removeAvatar: "dotypos",
+    uploadAvatar: "dotypos-mutation",
+    removeAvatar: "dotypos-mutation",
     // Better Auth's own tables.
-    listPasskeys: "general",
-    listAssistantConnections: "general",
+    listPasskeys: "workspace-only",
+    listAssistantConnections: "workspace-only",
     // Consent belongs to the account's Dotypos customer.
-    getMarketingPreferences: "dotypos",
-    saveMarketingPreferences: "dotypos",
+    getMarketingPreferences: "dotypos-read",
+    saveMarketingPreferences: "dotypos-mutation",
     // Referral standing and savings follow the account's Dotypos customer.
-    getReferrals: "dotypos",
-    acknowledgeSignupReferral: "dotypos",
+    getReferrals: "dotypos-read",
+    acknowledgeSignupReferral: "dotypos-mutation",
     // Deletion expires the Dotypos customer.
-    requestDeletion: "dotypos",
+    requestDeletion: "dotypos-mutation",
   },
   reservations: {},
   booking: {},
@@ -79,23 +85,32 @@ export const customerRequestBudgetClasses = {
 const generalBudget = { limit: 60, window: Duration.minutes(10) };
 
 /**
- * Dotypos-backed requests one account may make. A linked account's request
- * costs one or two Dotypos requests; resolving an unlinked account and
- * retrying a version conflict can reach four. The whole site shares 150
- * Dotypos requests per 30 minutes, so 12 requests are about 24 Dotypos
- * requests (a sixth) for a linked account, and at most 48 (under a third),
- * leaving the site, assistant tools (`agentTools.spendSignedInCallBudgets`)
- * and other accounts the rest. A session that opens the account, edits the
- * profile and the avatar, and reloads after each, spends about six.
+ * Dotypos-backed requests one account may make, reads and mutations apart so
+ * an app that reloads its account screens can't spend the allowance its edits
+ * and its deletion need. Opening the app reads up to three Dotypos-backed
+ * endpoints; editing the profile or the avatar, saving consent and deleting
+ * the account are mutations.
+ *
+ * The whole site shares 150 Dotypos requests per 30 minutes. A linked
+ * account's request costs one or two Dotypos requests; resolving an unlinked
+ * account and retrying a version conflict can reach four. An account that
+ * spends both budgets makes about 52 Dotypos requests (20 reads and 6
+ * mutations at two each), a third of the allowance, and at most 104. These
+ * per-account budgets bound what one account, such as a looping client, can
+ * take; they can't keep the site within the shared allowance, since enough
+ * accounts each within their budgets still exceed it. The site, assistant
+ * tools (`agentTools.spendSignedInCallBudgets`) and other accounts share the
+ * rest.
  */
-const dotyposBudget = { limit: 12, window: Duration.minutes(30) };
+const dotyposReadBudget = { limit: 20, window: Duration.minutes(30) };
+const dotyposMutationBudget = { limit: 6, window: Duration.minutes(30) };
 
 /**
- * Spends the account's general budget, then its Dotypos budget when the
- * endpoint is Dotypos-backed. An exhausted budget refuses the request as
- * rate limited; a budget that can't be checked fails closed. An endpoint
- * the classification doesn't know spends both, though the type keeps that
- * from happening.
+ * Spends the account's general budget, then its Dotypos read or mutation
+ * budget when the endpoint is Dotypos-backed. An exhausted budget refuses
+ * the request as rate limited; a budget that can't be checked fails closed.
+ * An endpoint the classification doesn't know spends the mutation budget,
+ * though the type keeps that from happening.
  */
 export const spendCustomerRequestBudgets = Effect.fn(
   "customerApi.spendCustomerRequestBudgets"
@@ -111,9 +126,23 @@ export const spendCustomerRequestBudgets = Effect.fn(
   const account = digest("account", session.accountId);
   const policies: RequestBudgetPolicy[] = [
     { key: `customer-api:account:${account}`, ...generalBudget },
-    ...(budgetClassOf(group, endpoint) === "dotypos"
-      ? [{ key: `customer-api:dotypos:account:${account}`, ...dotyposBudget }]
-      : []),
+    ...Match.value(budgetClassOf(group, endpoint)).pipe(
+      Match.withReturnType<RequestBudgetPolicy[]>(),
+      Match.when("workspace-only", () => []),
+      Match.when("dotypos-read", () => [
+        {
+          key: `customer-api:dotypos-read:account:${account}`,
+          ...dotyposReadBudget,
+        },
+      ]),
+      Match.when("dotypos-mutation", () => [
+        {
+          key: `customer-api:dotypos-mutation:account:${account}`,
+          ...dotyposMutationBudget,
+        },
+      ]),
+      Match.exhaustive
+    ),
   ];
   const budget = yield* RequestBudget;
 
@@ -144,7 +173,7 @@ const budgetClassOf = (
       string,
       Record<string, CustomerRequestBudgetClass> | undefined
     >
-  )[group]?.[endpoint] ?? "dotypos";
+  )[group]?.[endpoint] ?? "dotypos-mutation";
 
 const digest = (...parts: ReadonlyArray<string>) =>
   budgetKeyDigest("deskohub-workspace/customer-api-budget", ...parts);
