@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View } from "react-native";
 import { theme } from "../theme";
+import { useLiveRegionAnnouncement } from "./live-announcement";
 
 export type NoticeTone = "info" | "warning" | "error";
 
@@ -16,6 +17,7 @@ export function Notice({
   readonly tone: NoticeTone;
   readonly message: string | undefined;
 }) {
+  useLiveRegionAnnouncement(message);
   const shown = message !== undefined && message !== "";
   const alert = tone === "error";
   return (

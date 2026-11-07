@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { theme } from "../theme";
+import { useLiveRegionAnnouncement } from "./live-announcement";
 import { textFieldSubmit } from "./text-field-submit";
 
 /** A centred screen with a heading, used by the sign-in screens. */
@@ -113,7 +114,8 @@ export function TextField({
 
 /**
  * Live regions stay mounted so assistive tech announces each change; only
- * their text changes. `status` is polite progress, `alert` an error.
+ * their text changes. `status` is polite progress, `alert` an error. iOS,
+ * which ignores `aria-live`, has each change announced directly.
  */
 export function LiveMessage({
   role,
@@ -122,6 +124,7 @@ export function LiveMessage({
   readonly role: "status" | "alert";
   readonly message: string | undefined;
 }) {
+  useLiveRegionAnnouncement(message);
   return (
     <Text
       role={role}

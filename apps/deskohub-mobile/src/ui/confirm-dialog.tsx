@@ -1,4 +1,12 @@
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { theme } from "../theme";
 import { Button, LiveMessage } from "./controls";
 
@@ -31,6 +39,7 @@ export function ConfirmDialog({
   readonly busy?: boolean;
   readonly busyMessage?: string;
 }) {
+  const insets = useSafeAreaInsets();
   const dismiss = () => {
     if (!busy) onCancel();
   };
@@ -42,7 +51,15 @@ export function ConfirmDialog({
       statusBarTranslucent
       onRequestClose={dismiss}
     >
-      <View style={styles.backdrop}>
+      <View
+        style={[
+          styles.backdrop,
+          {
+            paddingBottom: insets.bottom + theme.spacing.lg,
+            paddingTop: insets.top + theme.spacing.lg,
+          },
+        ]}
+      >
         <Pressable
           accessible={false}
           importantForAccessibility="no"
@@ -57,10 +74,13 @@ export function ConfirmDialog({
           accessibilityViewIsModal
           style={styles.dialog}
         >
-          <Text role="heading" style={styles.title}>
-            {title}
-          </Text>
-          <Text style={styles.body}>{body}</Text>
+          {/* Long copy or large text scrolls; the actions stay in view. */}
+          <ScrollView style={styles.scroll} contentContainerStyle={styles.copy}>
+            <Text role="heading" style={styles.title}>
+              {title}
+            </Text>
+            <Text style={styles.body}>{body}</Text>
+          </ScrollView>
           <LiveMessage role="status" message={busy ? busyMessage : undefined} />
           <View style={styles.actions}>
             <View style={styles.action}>
@@ -92,7 +112,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.scrim,
     flex: 1,
     justifyContent: "center",
-    padding: theme.spacing.lg,
+    paddingHorizontal: theme.spacing.lg,
   },
   dialog: {
     backgroundColor: theme.colors.background,
@@ -101,10 +121,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     boxShadow: "0 12px 32px rgba(0, 0, 0, 0.45)",
     gap: theme.spacing.md,
+    maxHeight: "100%",
     maxWidth: 420,
     padding: theme.spacing.lg,
     width: "100%",
   },
+  scroll: { flexGrow: 0, flexShrink: 1 },
+  copy: { gap: theme.spacing.md },
   title: { color: theme.colors.text, ...theme.type.heading },
   body: { color: theme.colors.textMuted, ...theme.type.body },
   actions: {
