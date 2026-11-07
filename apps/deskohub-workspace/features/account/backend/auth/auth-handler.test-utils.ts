@@ -72,6 +72,7 @@ export type TestAuthOptions = {
   readonly database?: WorkspaceAuthConfig["database"];
   readonly secrets?: { readonly version: number; readonly value: string }[];
   readonly sentLinks?: CapturedMagicLink[];
+  readonly nativeAppLinkOrigin?: WorkspaceAuthConfig["nativeAppLinkOrigin"];
   readonly isSignInCodeEnabled?: WorkspaceAuthConfig["isSignInCodeEnabled"];
   readonly arePasskeysEnabled?: WorkspaceAuthConfig["arePasskeysEnabled"];
   readonly passkeyRelyingParty?: WorkspaceAuthConfig["passkeyRelyingParty"];
@@ -188,6 +189,7 @@ export const makeTestAuth = (options: TestAuthOptions = {}) => {
     database: options.database ?? buildDatabaseAdapter(),
     secrets: options.secrets ?? [{ version: 1, value: SECRET_V1 }],
     allowedHosts: [HOST],
+    nativeAppLinkOrigin: options.nativeAppLinkOrigin ?? `https://${HOST}`,
     passkeyRelyingParty: options.passkeyRelyingParty ?? {
       rpID: HOST,
       origins: [`https://${HOST}`],

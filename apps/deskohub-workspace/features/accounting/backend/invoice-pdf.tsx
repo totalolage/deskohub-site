@@ -49,6 +49,25 @@ export class InvoicePdfRenderingError extends Data.TaggedError(
   readonly message: string;
 }> {}
 
+/** An issued invoice's PDF as a file to download, named by its number. */
+export interface InvoicePdfFile {
+  readonly bytes: Uint8Array;
+  /** `<invoice number>.pdf`; invoice numbers are ASCII letters, digits and hyphens. */
+  readonly fileName: string;
+}
+
+export const renderInvoicePdfFile = (
+  document: InvoiceDocument
+): Effect.Effect<InvoicePdfFile, InvoicePdfRenderingError> =>
+  renderInvoicePdf(document).pipe(
+    Effect.map(
+      (bytes): InvoicePdfFile => ({
+        bytes,
+        fileName: `${document.invoiceNumber}.pdf`,
+      })
+    )
+  );
+
 export const renderInvoicePdf = (
   document: InvoiceDocument
 ): Effect.Effect<Buffer, InvoicePdfRenderingError> =>
