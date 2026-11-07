@@ -1,4 +1,4 @@
-import { usePathname } from "expo-router";
+import { useSegments } from "expo-router";
 import { type ReactNode, useEffect } from "react";
 import { Platform } from "react-native";
 import { useAuthSession } from "../auth/use-auth-session";
@@ -15,6 +15,7 @@ import {
 import { trackScreenView } from "./events";
 import { detectOtherPostHogSdk } from "./other-posthog-sdk";
 import { createPostHogClient } from "./posthog-client";
+import { screenPathPattern } from "./screen-path";
 import { analyticsIdentityOf } from "./session-identity";
 
 const webHostname = () =>
@@ -65,7 +66,8 @@ const useSessionAnalyticsIdentity = () => {
  */
 export function AnalyticsRoot({ children }: { readonly children: ReactNode }) {
   const consent = useAnalyticsConsent();
-  const pathname = usePathname();
+  // The route pattern (`/reservations/[orderId]`), never the concrete path.
+  const screen = screenPathPattern(useSegments());
   // Screen views wait in memory while the answer loads; a later grant records
   // the current screen again, since it was dropped while undecided.
   const recording =
@@ -74,8 +76,8 @@ export function AnalyticsRoot({ children }: { readonly children: ReactNode }) {
   useEffect(connectAnalytics, []);
   useSessionAnalyticsIdentity();
   useEffect(() => {
-    if (recording) trackScreenView(pathname);
-  }, [pathname, recording]);
+    if (recording) trackScreenView(screen);
+  }, [screen, recording]);
 
   return (
     <>
