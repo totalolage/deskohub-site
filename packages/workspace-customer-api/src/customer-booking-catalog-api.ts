@@ -50,7 +50,9 @@ export const CustomerOfferingAddOn = Schema.Struct({
   included: Schema.Boolean,
   /** The configurations to choose between, which share one price. */
   options: Schema.optionalKey(
-    Schema.Array(Schema.Struct({ id: CustomerMonitorOption, name: Schema.String }))
+    Schema.Array(
+      Schema.Struct({ id: CustomerMonitorOption, name: Schema.String })
+    )
   ),
 }).annotate({ identifier: "CustomerOfferingAddOn" });
 
@@ -117,8 +119,7 @@ const AvailabilityReplacementHeaders = Schema.Struct({
 const reservationTimestamp = Schema.String.check(
   Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/)
 ).annotate({
-  description:
-    "Prague local date-time (YYYY-MM-DDTHH:mm) or ISO 8601 instant.",
+  description: "Prague local date-time (YYYY-MM-DDTHH:mm) or ISO 8601 instant.",
 });
 
 /**

@@ -13,12 +13,6 @@ import {
   PasskeyReleaseGate,
 } from "@/features/account/backend/account-release-gates";
 import type { AccountReleaseLayers } from "@/features/account/backend/account-state-capabilities";
-import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
-import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
-import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
-import { ReservationSupersessionService } from "@/features/checkout/backend/checkout/reservation-supersession.service";
-import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
-import { TestSealedStateKeys } from "@/shared/testing/sealed-state-keys.test-utils";
 import { CustomerAgentConnections } from "@/features/account/backend/auth/customer-agent-connections.service";
 import { CustomerPasskeys } from "@/features/account/backend/auth/customer-passkeys.service";
 import { CustomerRequestOrigins } from "@/features/account/backend/auth/customer-request-origins.service";
@@ -36,11 +30,16 @@ import {
   type CustomerAccountAccessError,
   customerAccountUnavailable,
 } from "@/features/account/customer-account";
+import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
+import { ReservationSupersessionService } from "@/features/checkout/backend/checkout/reservation-supersession.service";
 import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import { MarketingPreferences } from "@/features/legal/backend/marketing-preferences.service";
+import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
 import { ReferralServiceMock } from "@/features/referrals/referral.service.mock";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { ReferralSignupIntentRepository } from "@/features/referrals/signup-intent.repository";
+import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
+import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import { ReviewAccountsMock } from "@/features/review-accounts/backend/review-accounts.repository.mock";
 import {
   makeMemoryRequestBudget,
@@ -48,14 +47,15 @@ import {
 } from "@/shared/backend/request-budget/memory-request-budget.test-utils";
 import { toWorkspaceWebHandler } from "@/shared/backend/workspace-effect";
 import { continueMutationsAfterDisconnect } from "@/shared/backend/workspace-http-api-route";
+import { TestSealedStateKeys } from "@/shared/testing/sealed-state-keys.test-utils";
 import {
   CustomerAccountLayers,
   type CustomerAccountServiceLayers,
 } from "./customer-account-layers";
 import { makeWorkspaceCustomerApiLayer } from "./customer-api.server";
 import {
-  CustomerBookingCatalogLayers,
   type CustomerBookingCatalogLayerSet,
+  CustomerBookingCatalogLayers,
 } from "./customer-booking-catalog-layers";
 
 /** The origin Better Auth trusts in a customer API test. */

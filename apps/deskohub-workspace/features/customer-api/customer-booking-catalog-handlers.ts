@@ -8,7 +8,7 @@ import {
   type CustomerOffering,
   customerAvailabilityReplacementHeader,
 } from "@deskohub/workspace-customer-api";
-import { Effect, Layer, Match, Option, Struct } from "effect";
+import { Data, Effect, Layer, Match, Option, Struct } from "effect";
 import type { HttpApiBuilder } from "effect/unstable/httpapi";
 import { buildAdvertisedPrice } from "@/features/checkout/backend/checkout/advertised-price.server";
 import { loadPublicOfferings } from "@/features/checkout/backend/checkout/public-offerings";
@@ -37,6 +37,13 @@ import {
   answerBookingSelectionFailure,
   toBookingSelectionInput,
 } from "./customer-booking-selection";
+
+/**
+ * A public sale source couldn't answer, so the prices may miss a sale. The
+ * booking pages still show them; the API answers unavailable instead, so a
+ * client retries rather than starting checkout from a price that changes.
+ */
+class SalePricesUnavailable extends Data.TaggedError("SalePricesUnavailable") {}
 
 /** The booking catalog's endpoints, which a booking reads before checkout. */
 export type CustomerBookingCatalogEndpointName =
@@ -78,6 +85,10 @@ export const handleCustomerBookingCatalog = <R>(
     return handlers
       .handle("listOfferings", ({ query: { locale } }) =>
         loadPublicOfferings(locale).pipe(
+          Effect.filterOrFail(
+            ({ complete }) => complete,
+            () => new SalePricesUnavailable()
+          ),
           Effect.map(
             (listing): CustomerBookingOfferings => ({
               advertisedOn: listing.advertisedOn.toString(),
@@ -159,6 +170,7 @@ const quoteSelection = Effect.fn("customerApi.quoteSelection")(function* (
     now,
   });
   const advertised = yield* buildAdvertisedPrice(selection.request);
+  if (!advertised.discountsComplete) return yield* new SalePricesUnavailable();
   const { payment } = advertised.quote;
 
   return {
