@@ -74,7 +74,8 @@ const verifyCallbackParameters = [
  * the site root when none was named. A verification the app makes names no
  * callback, so it gets the error as JSON instead of a page to follow. Better
  * Auth keeps the endpoint's redirect status for a replaced error, so the hook
- * answers with a whole response.
+ * answers with a whole response. Only HTTP requests get it; a server-side
+ * `auth.api` call keeps Better Auth's thrown error.
  */
 const answerCallbacklessVerifyFailure = createAuthMiddleware(async (ctx) => {
   const returned = ctx.context.returned;
@@ -301,6 +302,7 @@ export const nativeSignIn = ({ appLinkOrigin }: NativeSignInOptions) => {
       after: [
         {
           matcher: (ctx) =>
+            ctx.request !== undefined &&
             ctx.path === "/magic-link/verify" &&
             verifyCallbackParameters.every((name) => !ctx.query?.[name]),
           handler: answerCallbacklessVerifyFailure,

@@ -188,19 +188,41 @@ describe("magic-link App Link", () => {
     );
     expect(replayed.status).toBe(400);
     expect(replayed.headers.get("location")).toBeNull();
+    expect(replayed.headers.get("cache-control")).toBe("no-store");
     expect(await errorCode(replayed)).toBe("INVALID_TOKEN");
   });
 
-  test("keeps the redirect for a failed verification that names a callback", async () => {
-    const { auth } = makeMemoryTestAuth();
-    const failed = await callHandler(
+  test("answers an expired App Link token with JSON", async () => {
+    const { auth, link } = await sendFor({ callbackURL: "/app/auth/callback" });
+    const token = new URL(link.url).searchParams.get("token")!;
+    setSystemTime(new Date(Date.now() + 10 * 60 * 1000 + 1000));
+
+    const expired = await callNativeHandler(
       auth,
-      `/magic-link/verify?token=unknown&callbackURL=${encodeURIComponent("/cs-CZ/auth/callback")}`
+      `/magic-link/verify?token=${encodeURIComponent(token)}`
     );
-    expect(failed.status).toBe(302);
-    expect(
-      new URL(failed.headers.get("location")!).searchParams.get("error")
-    ).toBe("INVALID_TOKEN");
+    expect(expired.status).toBe(400);
+    expect(expired.headers.get("location")).toBeNull();
+    expect(await errorCode(expired)).toBe("INVALID_TOKEN");
+    expect(getSessionCookie(expired)).toBeUndefined();
+  });
+
+  test("keeps the redirect for a failed verification that names any callback", async () => {
+    const { auth } = makeMemoryTestAuth();
+    for (const [name, callback] of [
+      ["callbackURL", "/cs-CZ/auth/callback"],
+      ["errorCallbackURL", "/cs-CZ/sign-in"],
+      ["newUserCallbackURL", "/cs-CZ/account"],
+    ] as const) {
+      const failed = await callHandler(
+        auth,
+        `/magic-link/verify?token=unknown&${name}=${encodeURIComponent(callback)}`
+      );
+      expect(failed.status).toBe(302);
+      expect(
+        new URL(failed.headers.get("location")!).searchParams.get("error")
+      ).toBe("INVALID_TOKEN");
+    }
   });
 });
 
