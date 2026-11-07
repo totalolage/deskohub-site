@@ -8,7 +8,7 @@ import {
   type CustomerOffering,
   customerAvailabilityReplacementHeader,
 } from "@deskohub/workspace-customer-api";
-import { Effect, Layer, Match, Option, Schema, Struct } from "effect";
+import { Effect, Layer, Match, Option, Struct } from "effect";
 import type { HttpApiBuilder } from "effect/unstable/httpapi";
 import { buildAdvertisedPrice } from "@/features/checkout/backend/checkout/advertised-price.server";
 import { loadPublicOfferings } from "@/features/checkout/backend/checkout/public-offerings";
@@ -19,25 +19,24 @@ import {
 import { getReservationQuoteDiscount } from "@/features/checkout/reservation-quote-schema";
 import type { Locale } from "@/features/i18n";
 import { getPaymentSubmitLegalDocuments } from "@/features/legal/payment-submit-evidence";
+import { resolveBookingQuoteSelection } from "@/features/reservation/backend/booking-selection";
 import {
   loadAvailability,
   loadMeetingRoomStartTimes,
 } from "@/features/reservation/backend/workspace-availability-loader";
-import {
-  type BookingSelectionInput,
-  BookingSelectionRejected,
-  resolveBookingQuoteSelection,
-} from "@/features/reservation/backend/booking-selection";
 import { getMeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
 import {
   parseMeetingRoomStartTimesQuery,
   parseWorkspaceAvailabilityQuery,
 } from "@/features/reservation/workspace-availability";
-import { currentInstant, plainDateStringSchema } from "@/shared/utils/temporal";
+import { currentInstant } from "@/shared/utils/temporal";
+import { answerSessionApiFailure } from "./customer-api-failure";
 import { CustomerBookingCatalogLayers } from "./customer-booking-catalog-layers";
 import type { CustomerBookingEndpoint } from "./customer-booking-endpoint";
-import { answerSessionApiFailure } from "./customer-api-failure";
-import { answerBookingSelectionFailure } from "./customer-booking-selection-failure";
+import {
+  answerBookingSelectionFailure,
+  toBookingSelectionInput,
+} from "./customer-booking-selection";
 
 /** The booking catalog's endpoints, which a booking reads before checkout. */
 export type CustomerBookingCatalogEndpointName =
@@ -150,8 +149,12 @@ const quoteSelection = Effect.fn("customerApi.quoteSelection")(function* (
   query: QuoteQuery
 ) {
   const now = yield* currentInstant;
+  const { locale: _locale, coffee, ...fields } = query;
   const selection = yield* resolveBookingQuoteSelection({
-    selection: yield* toBookingSelectionInput(query),
+    selection: yield* toBookingSelectionInput({
+      ...fields,
+      ...(coffee !== undefined && { coffee: coffee === "true" }),
+    }),
     locale: query.locale,
     now,
   });
@@ -168,38 +171,6 @@ const quoteSelection = Effect.fn("customerApi.quoteSelection")(function* (
     advertisedPriceToken: advertised.advertisedPriceToken,
   } satisfies CustomerBookingQuote;
 });
-
-const decodePlainDate = Schema.decodeUnknownOption(plainDateStringSchema);
-
-/** The contract's dates as calendar dates, and its coffee flag. */
-const toBookingSelectionInput = ({
-  locale: _locale,
-  date,
-  endDate,
-  coffee,
-  ...selection
-}: QuoteQuery) =>
-  Effect.gen(function* () {
-    const plainDate = (field: "date" | "endDate", value: string) =>
-      Option.match(decodePlainDate(value), {
-        onNone: () =>
-          Effect.fail(
-            new BookingSelectionRejected({
-              reason: { kind: "invalid-field", field },
-            })
-          ),
-        onSome: Effect.succeed,
-      });
-
-    return {
-      ...selection,
-      date: yield* plainDate("date", date),
-      ...(endDate !== undefined && {
-        endDate: yield* plainDate("endDate", endDate),
-      }),
-      ...(coffee !== undefined && { coffee: coffee === "true" }),
-    } satisfies BookingSelectionInput;
-  });
 
 /**
  * Reads the query the way the availability route does, so both accept the
