@@ -1,4 +1,3 @@
-import { brandColors } from "@deskohub/brand-tokens";
 import { Context, Layer } from "effect";
 import * as WebBrowser from "expo-web-browser";
 import { AppState, type AppStateStatus, Linking, Platform } from "react-native";
@@ -15,10 +14,16 @@ interface Subscription {
 interface IAuthSessionDevice {
   readonly platform: string;
   readonly trustedWebActivity: TrustedWebActivity;
-  /** Expo's auth session: Safari's sheet on iOS, a Custom Tab on Android. */
+  /** The Android browsers that can show a Custom Tab. */
+  readonly findCustomTabsBrowsers: () => Promise<WebBrowser.WebBrowserCustomTabsResults>;
+  /**
+   * Expo's auth session: Safari's sheet on iOS, a Custom Tab of
+   * `browserPackage` on Android.
+   */
   readonly openAuthSession: (
     url: string,
-    returnUri: string
+    returnUri: string,
+    options: { readonly browserPackage: string } | undefined
   ) => Promise<WebBrowser.WebBrowserAuthSessionResult>;
   /** Links the app receives while it runs. */
   readonly onUrl: (listener: (url: string) => void) => Subscription;
@@ -31,19 +36,17 @@ export class AuthSessionDevice extends Context.Service<
   AuthSessionDevice,
   IAuthSessionDevice
 >()("deskohub-mobile/AuthSessionDevice") {
-  static Live = Layer.succeed(this, {
+  // Built when provided, so the platform is read then, not at import.
+  static Live = Layer.sync(this, () => ({
     platform: Platform.OS,
     trustedWebActivity,
-    // The Custom Tab gets the brand navy toolbar; iOS takes no colours.
-    openAuthSession: (url, returnUri) =>
-      Platform.OS === "android"
-        ? WebBrowser.openAuthSessionAsync(url, returnUri, {
-            toolbarColor: brandColors.navyBlue,
-          })
-        : WebBrowser.openAuthSessionAsync(url, returnUri),
+    findCustomTabsBrowsers: () =>
+      WebBrowser.getCustomTabsSupportingBrowsersAsync(),
+    openAuthSession: (url, returnUri, options) =>
+      WebBrowser.openAuthSessionAsync(url, returnUri, options),
     onUrl: (listener) =>
       Linking.addEventListener("url", ({ url }) => listener(url)),
     onAppStateChange: (listener) =>
       AppState.addEventListener("change", listener),
-  });
+  }));
 }

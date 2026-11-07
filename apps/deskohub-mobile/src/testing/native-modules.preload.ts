@@ -40,6 +40,10 @@ mock.module("expo-crypto", () => ({
 
 mock.module("expo-web-browser", () => ({
   openAuthSessionAsync: async () => ({ type: "cancel" }),
+  getCustomTabsSupportingBrowsersAsync: async () => ({
+    browserPackages: [],
+    servicePackages: [],
+  }),
   // Like Expo on Android, where a Custom Tab can't be closed.
   dismissAuthSession: () => {
     throw new Error("WebBrowser.dismissAuthSession is unavailable");

@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -28,12 +29,17 @@ export function PasskeySignInOption({
   readonly onPendingChange?: (pending: boolean) => void;
 }) {
   const locale = useAppLocale();
-  const { state, start } = usePasskeyCeremony({
+  const { state, start, clearFailure } = usePasskeyCeremony({
     ceremony: (ceremonies) => ceremonies.signIn,
     onSucceeded: onSignedIn,
     onPendingChange,
   });
   const pending = state.status === "pending";
+  // Another sign-in method starting holds this option; its earlier failure
+  // then gives way to that attempt.
+  useEffect(() => {
+    if (disabled) clearFailure();
+  }, [disabled, clearFailure]);
 
   return (
     <View style={styles.option}>

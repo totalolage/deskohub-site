@@ -21,7 +21,10 @@ export type WebSignInFailureReason =
   /** The browser session is too old to hand off; sign in again. */
   | "session-not-fresh"
   | "signed-out"
-  /** A reauthentication signed in to another account; it was signed out. */
+  /**
+   * A sign-in came back as another account than the one it had to keep: the
+   * server refused the link, or the browser was signed out again.
+   */
   | "account-switch"
   /** A reauthentication's account couldn't be confirmed; it was signed out. */
   | "reauthentication-unconfirmed"
@@ -62,6 +65,10 @@ export const webSignInFailureReason = (
       }
       return status === 429 ? "rate-limited" : "failed";
     case "verify-link":
+      // The browser's session belongs to another account; the server kept it.
+      if (status === 403 && code === "ACCOUNT_SWITCH_REFUSED") {
+        return "account-switch";
+      }
       return status === 400 ? "link-rejected" : "failed";
     case "confirm-account":
       return "failed";

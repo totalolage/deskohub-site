@@ -97,5 +97,5 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.8 },
   label: { color: theme.colors.accent, ...theme.type.body },
-  status: { color: theme.colors.text, ...theme.type.body },
+  status: { color: theme.colors.text, textAlign: "center", ...theme.type.body },
 });

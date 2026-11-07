@@ -1,17 +1,19 @@
 import type { Effect } from "effect";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { makeCeremonyRun } from "./ceremony-run";
 import type { PasskeyCeremonyApi } from "./passkey-ceremony";
 import {
   type PasskeyCeremonyState,
   passkeyCeremonyAttempt,
+  withoutEarlierFailure,
 } from "./passkey-ceremony-attempt";
 import type { PasskeyFailure } from "./passkey-failure";
 import { passkeyRuntime } from "./passkey-runtime";
 
 /**
  * Runs one passkey ceremony per control at a time. `start` runs `ceremony`
- * unless one is already running; leaving the screen interrupts it. See
+ * unless one is already running; leaving the screen interrupts it.
+ * `clearFailure` drops an earlier failure once another method starts. See
  * `passkeyCeremonyAttempt` for `takeOver` and `onPendingChange`.
  */
 export const usePasskeyCeremony = <A>({
@@ -45,5 +47,7 @@ export const usePasskeyCeremony = <A>({
       })
     );
 
-  return { state, start };
+  const clearFailure = useCallback(() => setState(withoutEarlierFailure), []);
+
+  return { state, start, clearFailure };
 };

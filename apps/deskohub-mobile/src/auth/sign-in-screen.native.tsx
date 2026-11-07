@@ -65,13 +65,19 @@ const unexpected = () => new SignInUnavailable({});
 export function SignInScreen({ passkeyOption }: SignInScreenProps) {
   const locale = useAppLocale();
   const session = useAuthSession();
-  const { state, start } = useAuthTask(
+  const { state, start, reset } = useAuthTask(
     nativeAuthRuntime,
     signInWithEmailNow,
     unexpected
   );
 
   const [passkeyPending, setPasskeyPending] = useState(false);
+  // A passkey attempt replaces the email sign-in's earlier failure, so its
+  // alert doesn't stay up during and after the attempt.
+  const handlePasskeyPendingChange = (pending: boolean) => {
+    if (pending) reset();
+    setPasskeyPending(pending);
+  };
 
   if (session.status === "signed-in") return <Redirect href="/" />;
 
@@ -88,7 +94,7 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
       {passkeyOption?.({
         onSignedIn: recordPasskeySignIn,
         disabled: restoring || running,
-        onPendingChange: setPasskeyPending,
+        onPendingChange: handlePasskeyPendingChange,
       })}
       <LiveMessage
         role="status"

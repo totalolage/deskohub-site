@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { resendSimulatorAddress, testEmailAddress } from "@deskohub/test-email";
 import { analyticsDistinctId } from "./identity";
 import { analyticsIdentityOf } from "./session-identity";
 
@@ -11,7 +12,7 @@ test("follows the session from restoring to signed in to signed out", () => {
   expect(
     analyticsIdentityOf({
       status: "signed-in",
-      user: { id: "acct-1", email: "ada@example.test" },
+      user: { id: "acct-1", email: resendSimulatorAddress("delivered", "ada") },
       signedInAt,
     })
   ).toEqual({ kind: "authenticated", accountId: "acct-1", testAccount: false });
@@ -24,7 +25,7 @@ test("marks the site's test recipients as test accounts", () => {
   expect(
     analyticsIdentityOf({
       status: "signed-in",
-      user: { id: "acct-2", email: "qa@deskohub.test" },
+      user: { id: "acct-2", email: testEmailAddress("qa") },
       signedInAt,
     })
   ).toEqual({ kind: "authenticated", accountId: "acct-2", testAccount: true });

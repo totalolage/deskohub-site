@@ -34,7 +34,8 @@ interface IAuthSessionBrowser {
 
 /**
  * Opens sign-in pages in a Trusted Web Activity where Android has a browser
- * for one, else in Expo's auth session.
+ * for one, else in Expo's auth session, which on Android needs a named
+ * Custom Tabs browser.
  */
 export class AuthSessionBrowser extends Context.Service<
   AuthSessionBrowser,
@@ -175,15 +176,59 @@ const makeTrustedWebActivitySessions = (
   return { open };
 };
 
+/**
+ * The Custom Tabs browser to open the auth session in. The app claims its
+ * host's /app/ links, sign-in page included, and Android hands an https link
+ * without a named package to the app that claims it before any browser, so
+ * the sign-in page would open in the app itself. Android without a known
+ * Custom Tabs browser therefore can't open the auth session; only Android has
+ * Custom Tabs, so other platforms skip the lookup.
+ */
+export const customTabsBrowserPackage = (
+  browsers: WebBrowser.WebBrowserCustomTabsResults
+): string | undefined =>
+  browsers.preferredBrowserPackage ??
+  browsers.defaultBrowserPackage ??
+  browsers.browserPackages[0];
+
+const customTabsBrowser = (
+  device: AuthSessionDevice["Service"]
+): Effect.Effect<string | undefined, AuthSessionUnavailable> =>
+  device.platform === "android"
+    ? Effect.tryPromise({
+        try: () => device.findCustomTabsBrowsers(),
+        catch: (cause) => new AuthSessionUnavailable({ cause }),
+      }).pipe(
+        Effect.map(customTabsBrowserPackage),
+        Effect.flatMap((browserPackage) =>
+          browserPackage === undefined
+            ? Effect.fail(
+                new AuthSessionUnavailable({
+                  cause: "No browser supports Custom Tabs.",
+                })
+              )
+            : Effect.succeed(browserPackage)
+        )
+      )
+    : Effect.succeed(undefined);
+
 const openAuthSession = (
   device: AuthSessionDevice["Service"],
   url: string,
   returnUri: string
 ) =>
-  Effect.tryPromise({
-    try: () => device.openAuthSession(url, returnUri),
-    catch: (cause) => new AuthSessionUnavailable({ cause }),
-  }).pipe(
+  customTabsBrowser(device).pipe(
+    Effect.flatMap((browserPackage) =>
+      Effect.tryPromise({
+        try: () =>
+          device.openAuthSession(
+            url,
+            returnUri,
+            browserPackage === undefined ? undefined : { browserPackage }
+          ),
+        catch: (cause) => new AuthSessionUnavailable({ cause }),
+      })
+    ),
     Effect.map((result) =>
       result.type === "success"
         ? AuthSessionResult.Returned({ url: result.url })

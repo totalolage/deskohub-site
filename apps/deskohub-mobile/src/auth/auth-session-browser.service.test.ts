@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Exit, Fiber, Layer, ManagedRuntime } from "effect";
 import { TestClock } from "effect/testing";
+import type { WebBrowserCustomTabsResults } from "expo-web-browser";
 import type { AppStateStatus } from "react-native";
 import type {
   TrustedWebActivityColors,
@@ -30,10 +31,16 @@ const makeDevice = ({
   platform = "android",
   provider = chrome,
   launch = async () => undefined,
+  customTabsBrowsers = async () => ({
+    browserPackages: ["com.android.chrome"],
+    defaultBrowserPackage: "com.android.chrome",
+    servicePackages: ["com.android.chrome"],
+  }),
 }: {
   readonly platform?: string;
   readonly provider?: TrustedWebActivityProvider | null;
   readonly launch?: () => Promise<void>;
+  readonly customTabsBrowsers?: () => Promise<WebBrowserCustomTabsResults>;
 } = {}) => {
   const urlListeners = new Set<(url: string) => void>();
   const appStateListeners = new Set<(state: AppStateStatus) => void>();
@@ -42,7 +49,11 @@ const makeDevice = ({
     readonly provider: TrustedWebActivityProvider;
     readonly colors: TrustedWebActivityColors;
   }> = [];
-  const authSessions: Array<string> = [];
+  const authSessions: Array<{
+    readonly url: string;
+    readonly options: { readonly browserPackage: string } | undefined;
+  }> = [];
+  let customTabsLookups = 0;
   let releases = 0;
   const device = Layer.succeed(AuthSessionDevice, {
     platform,
@@ -56,8 +67,12 @@ const makeDevice = ({
         releases += 1;
       },
     },
-    openAuthSession: async (url) => {
-      authSessions.push(url);
+    findCustomTabsBrowsers: () => {
+      customTabsLookups += 1;
+      return customTabsBrowsers();
+    },
+    openAuthSession: async (url, _returnUri, options) => {
+      authSessions.push({ url, options });
       return { type: "success", url: callbackUrl };
     },
     onUrl: (listener) => {
@@ -83,6 +98,7 @@ const makeDevice = ({
   return {
     launches,
     authSessions,
+    customTabsLookups: () => customTabsLookups,
     releases: () => releases,
     listeners: () => urlListeners.size + appStateListeners.size,
     sendLink: (url: string) => {
@@ -222,10 +238,22 @@ describe("Trusted Web Activity sign-in", () => {
 });
 
 describe("auth session sign-in", () => {
+  test("iOS opens its auth session without a browser lookup", async () => {
+    const device = makeDevice({ platform: "ios" });
+
+    expect(await device.open()).toEqual(
+      Exit.succeed(AuthSessionResult.Returned({ url: callbackUrl }))
+    );
+    expect(device.authSessions).toEqual([
+      { url: signInUrl, options: undefined },
+    ]);
+    expect(device.customTabsLookups()).toBe(0);
+    expect(device.launches).toEqual([]);
+  });
+
   test.each([
-    ["iOS", { platform: "ios" }],
     [
-      "Android with only a Custom Tabs browser",
+      "only a Custom Tabs browser",
       {
         provider: {
           packageName: "org.example.browser",
@@ -233,14 +261,63 @@ describe("auth session sign-in", () => {
         },
       },
     ],
-    ["Android without a browser", { provider: null }],
-  ] as const)("%s opens Expo's auth session", async (_, options) => {
-    const device = makeDevice(options);
+    ["no Trusted Web Activity browser", { provider: null }],
+  ] as const)(
+    "Android with %s opens a Custom Tabs auth session",
+    async (_, options) => {
+      const device = makeDevice(options);
+
+      expect(await device.open()).toEqual(
+        Exit.succeed(AuthSessionResult.Returned({ url: callbackUrl }))
+      );
+      expect(device.authSessions).toEqual([
+        { url: signInUrl, options: { browserPackage: "com.android.chrome" } },
+      ]);
+      expect(device.launches).toEqual([]);
+    }
+  );
+
+  test("a Trusted Web Activity skips the Custom Tabs lookup", async () => {
+    const device = makeDevice();
+    const fiber = await device.startOpen();
+    device.sendLink(callbackUrl);
+
+    expect(await Effect.runPromise(Fiber.join(fiber))).toEqual(
+      AuthSessionResult.Returned({ url: callbackUrl })
+    );
+    expect(device.customTabsLookups()).toBe(0);
+    expect(device.authSessions).toEqual([]);
+  });
+
+  test("Android without a Trusted Web Activity fails as unavailable when no Custom Tabs browser is known", async () => {
+    const device = makeDevice({
+      provider: null,
+      customTabsBrowsers: async () => ({
+        browserPackages: [],
+        servicePackages: [],
+      }),
+    });
 
     expect(await device.open()).toEqual(
-      Exit.succeed(AuthSessionResult.Returned({ url: callbackUrl }))
+      Exit.fail(
+        new AuthSessionUnavailable({
+          cause: "No browser supports Custom Tabs.",
+        })
+      )
     );
-    expect(device.authSessions).toEqual([signInUrl]);
-    expect(device.launches).toEqual([]);
+    expect(device.authSessions).toEqual([]);
+  });
+
+  test("Android without a Trusted Web Activity fails as unavailable when the browser lookup fails", async () => {
+    const lookupFailure = new Error("no package manager");
+    const device = makeDevice({
+      provider: null,
+      customTabsBrowsers: () => Promise.reject(lookupFailure),
+    });
+
+    expect(await device.open()).toEqual(
+      Exit.fail(new AuthSessionUnavailable({ cause: lookupFailure }))
+    );
+    expect(device.authSessions).toEqual([]);
   });
 });

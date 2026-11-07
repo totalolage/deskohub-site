@@ -1,7 +1,7 @@
 import { Layer, ManagedRuntime } from "effect";
 import * as SecureStore from "expo-secure-store";
 import { AuthCallbackCompletions } from "./auth-callback-completions.service";
-import { apiOrigin, authClient } from "./auth-client.native";
+import { authClient, authClientOptions } from "./auth-client.native";
 import { AuthCrypto } from "./auth-crypto.service";
 import { AuthSessionBrowser } from "./auth-session-browser.service";
 import { NativeAuth } from "./native-auth.service";
@@ -14,7 +14,7 @@ import { PendingSignIns } from "./pending-sign-in.service";
  */
 export const nativeAuthRuntime = ManagedRuntime.make(
   Layer.mergeAll(
-    NativeAuth.fromClient(apiOrigin, authClient),
+    NativeAuth.fromClient(authClient, authClientOptions),
     PendingSignIns.fromStore(SecureStore),
     AuthSessionBrowser.Live,
     AuthCrypto.Live,

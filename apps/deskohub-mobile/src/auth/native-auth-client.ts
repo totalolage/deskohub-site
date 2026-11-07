@@ -1,4 +1,4 @@
-import { expoClient } from "@better-auth/expo/client";
+import { expoClient, storageAdapter } from "@better-auth/expo/client";
 import type { BetterFetchOption } from "better-auth/client";
 import { magicLinkClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
@@ -17,6 +17,11 @@ export interface NativeAuthClientOptions {
   readonly fetch?: BetterFetchOption["customFetchImpl"];
 }
 
+const storagePrefix = "deskohub";
+/** Where the Expo plugin keeps the session cookie and the cached session. */
+const sessionCookieKey = `${storagePrefix}_cookie`;
+const sessionCacheKey = `${storagePrefix}_session_data`;
+
 /**
  * Builds the native Better Auth client. The Expo plugin keeps the session
  * cookie in `storage` under the `deskohub` prefix, sends it on every request
@@ -34,9 +39,30 @@ export const createNativeAuthClient = ({
       ? {}
       : { fetchOptions: { customFetchImpl: fetch } }),
     plugins: [
-      expoClient({ scheme: "deskohub", storagePrefix: "deskohub", storage }),
+      expoClient({ scheme: "deskohub", storagePrefix, storage }),
       magicLinkClient(),
     ],
   });
 
 export type NativeAuthClient = ReturnType<typeof createNativeAuthClient>;
+
+/**
+ * Makes the session stored in `from` the one in `into`. The cached session
+ * is cleared before the cookie is written and filled after it, so a move cut
+ * short by the app closing doesn't pair one account's cookie with another's
+ * cached session. The plugin's own adapter reads and writes the values,
+ * chunks included, and like the plugin logs a failed write instead of
+ * failing.
+ */
+export const moveSession = async (
+  from: SessionCookieStore,
+  into: SessionCookieStore
+) => {
+  const source = storageAdapter(from);
+  const target = storageAdapter(into);
+  const cookie = (await source.getItemAsync(sessionCookieKey)) ?? "{}";
+  const cache = (await source.getItemAsync(sessionCacheKey)) ?? "{}";
+  await target.setItemAsync(sessionCacheKey, "{}");
+  await target.setItemAsync(sessionCookieKey, cookie);
+  await target.setItemAsync(sessionCacheKey, cache);
+};

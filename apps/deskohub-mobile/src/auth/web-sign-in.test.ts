@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Exit, Option } from "effect";
 
 type SessionRead = () => Promise<{
@@ -32,6 +33,14 @@ mock.module("./auth-client.web", () => ({
         if (query.token === "used") {
           return { data: null, error: { status: 400, code: "INVALID_TOKEN" } };
         }
+        // The server refuses another account's link while this browser is
+        // signed in, and leaves its session as it was.
+        if (query.token === "another-account") {
+          return {
+            data: null,
+            error: { status: 403, code: "ACCOUNT_SWITCH_REFUSED" },
+          };
+        }
         readSession = async () => ({
           data: { user: { id: linkAccount } },
           error: null,
@@ -54,10 +63,13 @@ const {
   prepareNativeHandoffEmail,
   prepareReauthenticationEmail,
   reauthenticationExpectation,
+  signInEmailField,
 } = await import("./web-sign-in");
-const { clearReauthenticatingUser, loadReauthenticatingUser } = await import(
-  "./web-reauthentication-store"
-);
+const {
+  clearReauthenticatingUser,
+  loadReauthentication,
+  loadReauthenticatingUser,
+} = await import("./web-reauthentication-store");
 
 /** A browser `localStorage`, or one that refuses access. */
 const useStorage = (available: boolean) => {
@@ -181,6 +193,36 @@ describe("reauthenticationExpectation", () => {
   });
 });
 
+describe("signInEmailField", () => {
+  const user = { id: "ada", email: testEmailAddress("ada") };
+
+  test("locks a reauthentication to the page's signed-in account", () => {
+    expect(
+      signInEmailField({ reauthenticating: true, pageSession: { user } })
+    ).toEqual({ kind: "locked", email: user.email });
+  });
+
+  test("sends nothing before the page's first session read", () => {
+    for (const reauthenticating of [true, false]) {
+      expect(
+        signInEmailField({ reauthenticating, pageSession: undefined })
+      ).toEqual({ kind: "waiting" });
+    }
+  });
+
+  test("leaves the address free with no account to keep", () => {
+    expect(
+      signInEmailField({
+        reauthenticating: true,
+        pageSession: { user: undefined },
+      })
+    ).toEqual({ kind: "free" });
+    expect(
+      signInEmailField({ reauthenticating: false, pageSession: { user } })
+    ).toEqual({ kind: "free" });
+  });
+});
+
 describe("completeWebMagicLink", () => {
   const linkReason = async (
     context: Parameters<typeof completeWebMagicLink>[1]
@@ -243,6 +285,26 @@ describe("completeWebMagicLink", () => {
     ).toBe("reauthentication-unconfirmed");
     expect(signOuts).toBe(1);
   });
+
+  test("keeps the browser's session when the server refuses another account", async () => {
+    useStorage(true);
+    await Effect.runPromise(
+      prepareReauthenticationEmail({ kind: "account", userId: "ada" }, "/")
+    );
+    const exit = await Effect.runPromiseExit(
+      completeWebMagicLink("another-account", {
+        nativePending: false,
+        storedUserId: loadReauthenticatingUser(Date.now()),
+      })
+    );
+    expect(Option.getOrUndefined(Exit.findErrorOption(exit))?.reason).toBe(
+      "account-switch"
+    );
+    expect(signOuts).toBe(0);
+    expect((await readSession()).data?.user.id).toBe("ada");
+    expect(loadReauthenticatingUser(Date.now())).toEqual(Option.some("ada"));
+    clearReauthenticatingUser();
+  });
 });
 
 describe("prepareReauthenticationEmail", () => {
@@ -250,7 +312,7 @@ describe("prepareReauthenticationEmail", () => {
     expectation: Parameters<typeof prepareReauthenticationEmail>[0]
   ) => {
     const exit = await Effect.runPromiseExit(
-      prepareReauthenticationEmail(expectation)
+      prepareReauthenticationEmail(expectation, "/")
     );
     return Exit.isSuccess(exit)
       ? undefined
@@ -270,6 +332,23 @@ describe("prepareReauthenticationEmail", () => {
     expect(loadReauthenticatingUser(Date.now())).toEqual(Option.some("ada"));
   });
 
+  test("keeps the screen the reauthentication returns to", async () => {
+    useStorage(true);
+    await Effect.runPromise(
+      prepareReauthenticationEmail(
+        { kind: "account", userId: "ada" },
+        "/account/passkeys"
+      )
+    );
+    expect(loadReauthentication(Date.now())).toEqual(
+      Option.some({
+        userId: "ada",
+        returnPath: Option.some("/account/passkeys"),
+      })
+    );
+    clearReauthenticatingUser();
+  });
+
   test("stops the email when the account can't be stored or recovered", async () => {
     useStorage(false);
     expect(await prepareReason({ kind: "account", userId: "ada" })).toBe(
@@ -283,7 +362,7 @@ describe("prepareReauthenticationEmail", () => {
   test("its link refuses another account after the session is gone", async () => {
     useStorage(true);
     await Effect.runPromise(
-      prepareReauthenticationEmail({ kind: "account", userId: "ada" })
+      prepareReauthenticationEmail({ kind: "account", userId: "ada" }, "/")
     );
     // Ada's session expired before Bob's link was opened.
     readSession = async () => ({ data: null, error: null });
@@ -320,7 +399,7 @@ describe("the stored reauthentication outlives failed attempts", () => {
   test("a used link, then the other account's valid link", async () => {
     useStorage(true);
     await Effect.runPromise(
-      prepareReauthenticationEmail({ kind: "account", userId: "ada" })
+      prepareReauthenticationEmail({ kind: "account", userId: "ada" }, "/")
     );
     readSession = async () => ({ data: null, error: null });
 
@@ -335,10 +414,10 @@ describe("the stored reauthentication outlives failed attempts", () => {
   test("a refused code, then the email's link", async () => {
     useStorage(true);
     await Effect.runPromise(
-      prepareReauthenticationEmail({ kind: "account", userId: "ada" })
+      prepareReauthenticationEmail({ kind: "account", userId: "ada" }, "/")
     );
     const codeExit = await Effect.runPromiseExit(
-      completeWebCodeSignIn("bob@example.test", "123456", {
+      completeWebCodeSignIn(testEmailAddress("bob"), "123456", {
         kind: "account",
         userId: "ada",
       })
@@ -352,7 +431,7 @@ describe("the stored reauthentication outlives failed attempts", () => {
     useStorage(true);
     linkAccount = "ada";
     await Effect.runPromise(
-      prepareReauthenticationEmail({ kind: "account", userId: "ada" })
+      prepareReauthenticationEmail({ kind: "account", userId: "ada" }, "/")
     );
     expect(reasonOfExit(await openLink("valid"))).toBeUndefined();
     expect(loadReauthenticatingUser(Date.now())).toEqual(Option.none());
@@ -380,7 +459,7 @@ describe("completeWebPasskeySignIn", () => {
   test("refuses a reauthentication's passkey for another account", async () => {
     useStorage(true);
     await Effect.runPromise(
-      prepareReauthenticationEmail({ kind: "account", userId: "ada" })
+      prepareReauthenticationEmail({ kind: "account", userId: "ada" }, "/")
     );
     readSession = async () => ({ data: { user: { id: "bob" } }, error: null });
     expect(await reasonOfPasskey({ kind: "account", userId: "ada" })).toBe(
@@ -402,7 +481,7 @@ describe("completeWebPasskeySignIn", () => {
   test("ends a reauthentication its passkey confirms", async () => {
     useStorage(true);
     await Effect.runPromise(
-      prepareReauthenticationEmail({ kind: "account", userId: "ada" })
+      prepareReauthenticationEmail({ kind: "account", userId: "ada" }, "/")
     );
     expect(
       await reasonOfPasskey({ kind: "account", userId: "ada" })
