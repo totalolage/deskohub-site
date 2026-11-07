@@ -1,0 +1,37 @@
+/** Event property values stay scalar, like the site's server events. */
+export type AnalyticsProperties = Readonly<
+  Record<string, string | number | boolean | null>
+>;
+
+/**
+ * The analytics SDK calls the app makes. `posthog-client.ts` adapts
+ * posthog-react-native; tests use a fake.
+ */
+export interface AnalyticsClient {
+  readonly capture: (event: string, properties?: AnalyticsProperties) => void;
+  readonly screen: (name: string) => void;
+  readonly identify: (distinctId: string) => void;
+  readonly setPersonProperties: (properties: AnalyticsProperties) => void;
+  readonly reset: () => void;
+  readonly reloadFeatureFlags: () => void;
+  /** A flag's value, or `undefined` until flags have loaded. */
+  readonly getFeatureFlag: (flag: string) => boolean | string | undefined;
+  /** Calls the listener whenever flags load. Returns the unsubscribe function. */
+  readonly onFeatureFlags: (listener: () => void) => () => void;
+  /**
+   * Stops all delivery for good: opts out, drops queued events and stored
+   * identity, and detaches timers. The client is unusable afterwards.
+   */
+  readonly shutDown: () => Promise<void>;
+}
+
+export interface AnalyticsClientOptions {
+  readonly apiKey: string;
+  readonly host: string;
+  /** Properties sent with every event the client captures. */
+  readonly superProperties: AnalyticsProperties;
+}
+
+export type CreateAnalyticsClient = (
+  options: AnalyticsClientOptions
+) => AnalyticsClient;

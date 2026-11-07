@@ -5,5 +5,8 @@
   "smoke_title": "Runtime smoke checks",
   "smoke_running": "Running checks…",
   "smoke_finished": "Checks finished.",
-  "smoke_totals": "{passed} of {total} passed, {failed} failed"
+  "smoke_totals": "{passed} of {total} passed, {failed} failed",
+  "consent_prompt_message": "May we measure how you use the app so we can improve it?",
+  "consent_prompt_accept": "Allow analytics",
+  "consent_prompt_decline": "Decline"
 }
