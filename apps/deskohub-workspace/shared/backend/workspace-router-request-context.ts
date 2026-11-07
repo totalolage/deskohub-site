@@ -3,13 +3,14 @@ import { HttpRouter, HttpServerRequest } from "effect/unstable/http";
 import { withWorkspaceRequestContext } from "./workspace-request-context";
 
 /**
- * Serves every request an Effect router handles in that request's own
- * context, as `withWorkspaceRequestContext` gives a Next route or action: its
+ * Serves each request an Effect router routes in that request's own context,
+ * as `withWorkspaceRequestContext` gives a Next route or action: its
  * headers, consented visitor, and agent category. A handler from
  * `toWorkspaceWebHandler` runs outside Next's request scope, so without this
- * Layer `currentRequestHeaders` there falls back to Next's request store and
- * fails or reads another request. Each HTTP adapter adds it to the API Layer
- * it serves, as the customer API does.
+ * Layer `currentRequestHeaders` there falls back to Next's request store.
+ * An HTTP adapter merges it into the API Layer it hands
+ * `toWorkspaceWebHandler`, beside its routes. A request no route matches
+ * skips global middleware and runs no handler.
  */
 export const WorkspaceRouterRequestContext = HttpRouter.middleware(
   (effect) =>

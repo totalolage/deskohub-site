@@ -7,14 +7,12 @@ export interface CustomerRequestOriginAuthority {
 
 /**
  * Better Auth could not say whether an origin is trusted, so the request
- * fails closed. Distinct from an untrusted origin: the request is not
- * forged, the check is unavailable. `cause` is for the log line only.
+ * fails closed. Distinct from an untrusted origin: the request is not shown
+ * to be forged, the check is unavailable. It carries no raw failure.
  */
 export class CustomerRequestOriginsUnavailableError extends Data.TaggedError(
   "CustomerRequestOriginsUnavailableError"
-)<{
-  readonly cause: unknown;
-}> {}
+) {}
 
 interface ICustomerRequestOrigins {
   /**
@@ -31,17 +29,30 @@ interface ICustomerRequestOrigins {
 const originsOver = (
   authority: CustomerRequestOriginAuthority
 ): ICustomerRequestOrigins => ({
-  isTrusted: (origin) =>
-    Effect.tryPromise({
+  isTrusted: Effect.fn("CustomerRequestOrigins.isTrusted")(function* (
+    origin: string
+  ) {
+    return yield* Effect.tryPromise({
       try: () => authority.isTrustedOrigin(origin),
-      catch: (cause) => new CustomerRequestOriginsUnavailableError({ cause }),
-    }),
+      catch: (cause) => cause,
+    }).pipe(
+      Effect.tapError((cause) =>
+        Effect.logWarning("Customer request origin check failed closed.", {
+          category: cause instanceof Error ? cause.name : typeof cause,
+        })
+      ),
+      Effect.mapError(() => new CustomerRequestOriginsUnavailableError())
+    );
+  }),
 });
 
 /**
- * The origins a customer request may come from: exactly those Better Auth
- * trusts, so the customer API and Better Auth's own endpoints accept the
- * same origins, including any its configuration adds later.
+ * The origins a customer request may come from: those Better Auth trusts,
+ * so the customer API and Better Auth's own endpoints accept the same
+ * origins. That covers the allowed hosts and every listed trusted origin,
+ * including ones the auth configuration adds later. A `trustedOrigins`
+ * callback is asked without a request, so an origin it trusts only for
+ * some requests is not trusted here.
  */
 export class CustomerRequestOrigins extends Context.Service<
   CustomerRequestOrigins,
