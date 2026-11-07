@@ -6,7 +6,6 @@
     "scheme": "deskohub",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "userInterfaceStyle": "light",
     "runtimeVersion": {
       "policy": "fingerprint"
     },
