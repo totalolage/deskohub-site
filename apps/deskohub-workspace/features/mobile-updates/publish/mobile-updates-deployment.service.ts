@@ -52,7 +52,8 @@ const attemptTimeout = "15 seconds";
 const requestDeadline = "90 seconds";
 
 /**
- * Retries transport failures, timeouts, and HTTP 408, 429 and 5xx. A
+ * Retries transport failures, timeouts, and the transient HTTP statuses 408,
+ * 429, 500, 502, 503 and 504; other statuses would answer the same again. A
  * publication's id makes publishing it again a no-op, so retries are safe.
  */
 const transientRetry = {
@@ -88,8 +89,13 @@ export class MobileUpdatesDeployment extends Context.Service<
               ),
           })
         ),
+        // Each attempt reads the whole body, which the response then keeps,
+        // so a body that stalls times out and is retried like a hung request.
         HttpClient.transform((response) =>
-          Effect.timeout(response, attemptTimeout)
+          response.pipe(
+            Effect.tap((attempt) => attempt.text),
+            Effect.timeout(attemptTimeout)
+          )
         ),
         HttpClient.retryTransient(transientRetry)
       );
