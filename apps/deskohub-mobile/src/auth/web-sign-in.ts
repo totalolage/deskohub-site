@@ -47,19 +47,37 @@ const call = <A>(
     )
   );
 
+/** A sent sign-in email, and whether it carries a sign-in code. */
+export interface SentSignInEmail {
+  readonly email: string;
+  readonly signInCode: boolean;
+}
+
 /**
  * Sends the sign-in email. The relative `/app/auth/callback` (and no other
- * callback) makes the server send the App Link with the bare token.
+ * callback) makes the server send the App Link with the bare token. The
+ * server answers whether the email also carries a sign-in code; anything but
+ * a clear yes means the link alone.
  */
 export const sendSignInEmail = (email: string, locale: AppLocale) =>
-  call("send-email", (signal) =>
-    authClient.signIn.magicLink({
-      email,
-      callbackURL: webCallbackPath,
-      metadata: { locale },
-      fetchOptions: { signal },
-    })
-  ).pipe(Effect.asVoid, Effect.withSpan("WebSignIn.sendSignInEmail"));
+  call<{ readonly status: boolean; readonly signInCode?: unknown }>(
+    "send-email",
+    (signal) =>
+      authClient.signIn.magicLink({
+        email,
+        callbackURL: webCallbackPath,
+        metadata: { locale },
+        fetchOptions: { signal },
+      })
+  ).pipe(
+    Effect.map(
+      (data): SentSignInEmail => ({
+        email,
+        signInCode: data?.signInCode === true,
+      })
+    ),
+    Effect.withSpan("WebSignIn.sendSignInEmail")
+  );
 
 /**
  * Signs in with the email's code. The request names the app's locale, which

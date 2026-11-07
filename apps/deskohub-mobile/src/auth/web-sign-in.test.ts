@@ -22,11 +22,14 @@ interface FetchOptions {
 const recordLocale = (fetchOptions: FetchOptions | undefined) => {
   namedLocales.push(fetchOptions?.headers?.[customerSignInLocaleHeader]);
 };
+/** What the server answers a sign-in email request with. */
+let emailSent: unknown = { status: true, signInCode: true };
 
 mock.module("./auth-client.web", () => ({
   authClient: {
     getSession: () => readSession(),
     signIn: {
+      magicLink: async () => ({ data: emailSent, error: null }),
       emailOtp: async ({
         fetchOptions,
       }: {
@@ -82,6 +85,7 @@ const {
   prepareNativeHandoffEmail,
   prepareReauthenticationEmail,
   reauthenticationExpectation,
+  sendSignInEmail,
   signInEmailField,
 } = await import("./web-sign-in");
 const {
@@ -124,6 +128,7 @@ beforeEach(() => {
   namedLocales = [];
   signOuts = 0;
   linkAccount = "bob";
+  emailSent = { status: true, signInCode: true };
   readSession = async () => ({ data: { user: { id: "ada" } }, error: null });
 });
 
@@ -585,5 +590,31 @@ describe("the app's locale", () => {
     );
 
     expect(namedLocales).toEqual(["cs-CZ", "en-US"]);
+  });
+});
+
+describe("sendSignInEmail", () => {
+  const email = testEmailAddress("ada");
+  const send = () => Effect.runPromise(sendSignInEmail(email, "en-US"));
+
+  test("reports a code when the server issued one", async () => {
+    expect(await send()).toEqual({ email, signInCode: true });
+  });
+
+  test("reports a link-only email when the server issued no code", async () => {
+    emailSent = { status: true, signInCode: false };
+    expect(await send()).toEqual({ email, signInCode: false });
+  });
+
+  test("treats an answer without the decision as link-only", async () => {
+    emailSent = { status: true };
+    expect(await send()).toEqual({ email, signInCode: false });
+    emailSent = null;
+    expect(await send()).toEqual({ email, signInCode: false });
+  });
+
+  test("takes only a literal yes as a code", async () => {
+    emailSent = { status: true, signInCode: "true" };
+    expect(await send()).toEqual({ email, signInCode: false });
   });
 });
