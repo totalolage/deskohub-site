@@ -81,7 +81,10 @@ import {
   InvoiceEmailDeliveryRepository,
 } from "../backend/invoice-email-delivery.repository";
 import { InvoiceEmailDeliveryService } from "../backend/invoice-email-delivery.service";
-import { renderInvoicePdf } from "../backend/invoice-pdf";
+import {
+  renderInvoicePdf,
+  renderInvoicePdfFile,
+} from "../backend/invoice-pdf";
 import {
   decodeInvoiceAdministrationId,
   InvoiceAdministrationNotFoundError,
@@ -318,8 +321,7 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
     const stored = yield* invoices.findById(id);
     if (!stored)
       return yield* new InvoiceAdministrationNotFoundError({ invoiceId });
-    const bytes = yield* renderInvoicePdf(stored.document);
-    return { bytes, fileName: `${stored.invoiceNumber}.pdf` };
+    return yield* renderInvoicePdfFile(stored.document);
   });
 
   const searchCustomers = Effect.fn(
