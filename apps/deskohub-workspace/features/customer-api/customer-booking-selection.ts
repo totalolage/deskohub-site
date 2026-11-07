@@ -1,17 +1,50 @@
 import {
   CustomerBookingDateOutOfRange,
+  type CustomerBookingSelection,
   CustomerBookingSelectionInvalid,
   CustomerOfferingUnavailable,
 } from "@deskohub/workspace-customer-api";
-import { Effect, Match } from "effect";
+import { Effect, Match, Option, Schema } from "effect";
 import {
+  type BookingSelectionInput,
   BookingSelectionRejected,
   type BookingSelectionRejection,
 } from "@/features/reservation/backend/booking-selection";
+import { plainDateStringSchema } from "@/shared/utils/temporal";
 import {
   answerSessionApiFailure,
   type CustomerSessionApiFailure,
 } from "./customer-api-failure";
+
+const decodePlainDate = Schema.decodeUnknownOption(plainDateStringSchema);
+
+/**
+ * The selection a client sent, as the booking domain resolves it: its dates
+ * as calendar dates, which the contract checks only for their format.
+ */
+export const toBookingSelectionInput = ({
+  date,
+  endDate,
+  ...selection
+}: CustomerBookingSelection): Effect.Effect<
+  BookingSelectionInput,
+  BookingSelectionRejected
+> =>
+  Effect.gen(function* () {
+    const plainDate = (field: "date" | "endDate", value: string) =>
+      Option.match(decodePlainDate(value), {
+        onNone: () => Effect.fail(BookingSelectionRejected.invalidField(field)),
+        onSome: Effect.succeed,
+      });
+
+    return {
+      ...selection,
+      date: yield* plainDate("date", date),
+      ...(endDate !== undefined && {
+        endDate: yield* plainDate("endDate", endDate),
+      }),
+    };
+  });
 
 /** The public error a selection the booking pages wouldn't accept answers with. */
 const toSelectionRejectionAnswer = (reason: BookingSelectionRejection) =>
