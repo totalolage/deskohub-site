@@ -45,6 +45,14 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      # The Vercel build only builds. Pull request CI typechecks each head,
+      # but main's merge result is checked here before it can ship.
+      - name: Typecheck Workspace
+        env:
+          TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+          TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+        run: bun turbo typecheck --filter=deskohub-workspace
+
       - name: Verify the production baseline before building
         id: rollback-target
         working-directory: apps/deskohub-workspace

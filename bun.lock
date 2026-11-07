@@ -105,7 +105,6 @@
     },
     "apps/deskohub-mobile": {
       "name": "deskohub-mobile",
-      "version": "0.1.0",
       "dependencies": {
         "@better-auth/expo": "1.7.2",
         "@better-auth/passkey": "1.7.2",

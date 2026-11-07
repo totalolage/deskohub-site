@@ -80,6 +80,7 @@ export const auth = makeWorkspaceAuth({
   database: makeWorkspaceAuthDatabase(),
   secrets: secrets.secrets,
   allowedHosts: allowedHosts.hosts,
+  nativeAppLinkOrigin: `https://${workspaceSiteConstants.brand.domain}`,
   passkeyRelyingParty: passkeyRelyingParty.relyingParty,
   customerMcpResource,
   httpsOnly: env.VERCEL_ENV !== "development",
