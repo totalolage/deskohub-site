@@ -140,9 +140,8 @@ export class CustomerCheckoutOperations extends Context.Service<
         Layer.provide(
           Layer.mergeAll(
             ReferralService.Live,
-            CustomerAccountContactService.Live,
-            releases.referral
-          )
+            CustomerAccountContactService.Live
+          ).pipe(Layer.provideMerge(releases.referral))
         )
       );
 

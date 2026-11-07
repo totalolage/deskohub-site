@@ -14,7 +14,7 @@ export const CustomerBookingApiHandlers = HttpApiBuilder.group(
   WorkspaceCustomerApi,
   "booking",
   (handlers) =>
-    handleCustomerBookingCatalog(handlers).pipe(
-      Effect.flatMap(handleCustomerBookingCheckout)
+    handleCustomerBookingCheckout(handlers).pipe(
+      Effect.flatMap(handleCustomerBookingCatalog)
     )
 );
