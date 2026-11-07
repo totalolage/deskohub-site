@@ -1,6 +1,7 @@
 import { cacheLife } from "next/cache";
 import { type Locale, m } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
+import { AppInstallCallToAction } from "@/features/mobile-distribution/app-install-call-to-action";
 import {
   getCoworkReservationPath,
   getMeetingRoomReservationPath,
@@ -161,9 +162,18 @@ export async function PublicSiteFooter() {
               >
                 {m.footerAiAssistantsLink({}, { locale })}
               </Link>
+              <Link
+                href={`${localePath}/android`}
+                prefetch={false}
+                className="transition-colors hover:text-sunset-yellow"
+              >
+                {m.appInstallFooterLink({}, { locale })}
+              </Link>
             </nav>
           </div>
         </div>
+
+        <AppInstallCallToAction locale={locale} />
 
         <div className="mt-10 border-t border-white/10 pt-5 text-sm text-white/56">
           {m.footerCopyright(
