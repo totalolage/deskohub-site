@@ -16,6 +16,10 @@ import {
   type CustomerAccountState,
 } from "./customer-account-api";
 import { CustomerAuthRejected } from "./customer-auth-api";
+import {
+  CustomerInvoiceNotIssued,
+  CustomerReservationOrderId,
+} from "./customer-reservations-api";
 import { CustomerSessionRequired } from "./customer-session";
 
 const baseUrl = "https://workspace.deskohub.test";
@@ -126,6 +130,37 @@ describe("makeWorkspaceCustomerApiClient", () => {
     expect(await run(update, signedOut.client)).toEqual(
       Result.fail(new CustomerSessionRequired({}))
     );
+  });
+
+  test("decodes an invoice PDF as its bytes, and an unissued invoice as its tagged error", async () => {
+    const orderId = CustomerReservationOrderId.make(
+      "019edbcf-5026-7ecc-821b-eda46998eaaa"
+    );
+    const pdf = new TextEncoder().encode("%PDF-1.7\n%%EOF\n");
+    const { client, requests } = recordingClient(() =>
+      requests.length === 1
+        ? new Response(pdf, {
+            headers: {
+              "content-type": "application/pdf",
+              "content-disposition":
+                'attachment; filename="WS-FV-2026-000042.pdf"',
+            },
+          })
+        : json({ _tag: "CustomerInvoiceNotIssued" }, 409)
+    );
+    const download = Effect.flatMap(
+      makeWorkspaceCustomerApiClient({ baseUrl }),
+      (api) => api.reservations.getReservationInvoice({ params: { orderId } })
+    );
+
+    expect(await run(download, client)).toEqual(Result.succeed(pdf));
+    expect(await run(download, client)).toEqual(
+      Result.fail(new CustomerInvoiceNotIssued())
+    );
+    expect(requests.map((request) => request.url)).toEqual([
+      `${baseUrl}/api/customer/reservations/${orderId}/invoice`,
+      `${baseUrl}/api/customer/reservations/${orderId}/invoice`,
+    ]);
   });
 
   test("uploads the avatar as one multipart file part", async () => {

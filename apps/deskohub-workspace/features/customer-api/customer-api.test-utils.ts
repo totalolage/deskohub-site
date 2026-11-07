@@ -25,16 +25,21 @@ import {
 } from "@/features/account/backend/customer-authentication.service";
 import { CustomerAvatarService } from "@/features/account/backend/customer-avatar.service";
 import { CustomerProfileService } from "@/features/account/backend/customer-profile.service";
+import { CustomerReservationHistoryService } from "@/features/account/backend/customer-reservation-history.service";
 import type { CustomerProfile } from "@/features/account/contracts";
 import {
   type CustomerAccountAccessError,
   customerAccountUnavailable,
 } from "@/features/account/customer-account";
+import { ReservationInvoicePdfService } from "@/features/accounting/backend/reservation-invoice-pdf.service";
+import { CheckoutStatusService } from "@/features/checkout/backend/checkout/checkout-status.service";
 import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import { MarketingPreferences } from "@/features/legal/backend/marketing-preferences.service";
 import { ReferralServiceMock } from "@/features/referrals/referral.service.mock";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { ReferralSignupIntentRepository } from "@/features/referrals/signup-intent.repository";
+import { ReservationAccessService } from "@/features/reservation/backend/reservation-access.service";
+import { ReservationAuthorizationService } from "@/features/reservation/backend/reservation-authorization.service";
 import { ReviewAccountsMock } from "@/features/review-accounts/backend/review-accounts.repository.mock";
 import {
   makeMemoryRequestBudget,
@@ -47,6 +52,10 @@ import {
   type CustomerAccountServiceLayers,
 } from "./customer-account-layers";
 import { makeWorkspaceCustomerApiLayer } from "./customer-api.server";
+import {
+  CustomerReservationLayers,
+  type CustomerReservationServiceLayers,
+} from "./customer-reservation-layers";
 
 /** The origin Better Auth trusts in a customer API test. */
 export const trustedOrigin = "https://workspace.deskohub.test";
@@ -79,6 +88,11 @@ export type CustomerApiTestOptions = {
   readonly services?: Partial<CustomerAccountServiceLayers>;
   /** Release gates; each left out is closed. */
   readonly releases?: Partial<AccountReleaseLayers>;
+  /**
+   * Reservation service fakes, each left out a `Layer.mock` with nothing
+   * implemented, like `services`.
+   */
+  readonly reservations?: Partial<CustomerReservationServiceLayers>;
 };
 
 /**
@@ -130,6 +144,10 @@ export const makeCustomerApiTestServer = (
     Layer.succeed(CustomerAccountLayers, {
       services: { ...unusedAccountServices, ...options.services },
       releases: { ...closedReleases, ...options.releases },
+    }),
+    Layer.succeed(CustomerReservationLayers, {
+      ...unusedReservationServices,
+      ...options.reservations,
     })
   );
 
@@ -155,6 +173,15 @@ const unusedAccountServices: CustomerAccountServiceLayers = {
   marketingPreferences: Layer.mock(MarketingPreferences, {}),
   consentLedger: Layer.mock(MarketingConsentLedger, {}),
   accountDeletion: Layer.mock(CustomerAccountDeletionEndpoint, {}),
+};
+
+const unusedReservationServices: CustomerReservationServiceLayers = {
+  contacts: () => Layer.mock(CustomerAccountContactService, {}),
+  history: Layer.mock(CustomerReservationHistoryService, {}),
+  authorization: () => Layer.mock(ReservationAuthorizationService, {}),
+  checkoutStatus: Layer.mock(CheckoutStatusService, {}),
+  access: () => Layer.mock(ReservationAccessService, {}),
+  invoice: () => Layer.mock(ReservationInvoicePdfService, {}),
 };
 
 /** The Dotypos profile of `linkedAccountServices`' account. */

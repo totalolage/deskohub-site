@@ -44,7 +44,26 @@ export {
   customerProfileBusinessBillingFields,
   ProfileCompletionReferralOutcome,
 } from "./customer-profile";
-export { CustomerReservationsApi } from "./customer-reservations-api";
+export {
+  CustomerAccessCodeUnavailable,
+  CustomerCoworkTier,
+  CustomerInvoiceNotIssued,
+  CustomerInvoicePdf,
+  CustomerOrderFulfillmentStatus,
+  CustomerOrderPaymentStatus,
+  CustomerOrderState,
+  CustomerOrderStatus,
+  CustomerReservationAccess,
+  CustomerReservationHistory,
+  CustomerReservationKind,
+  CustomerReservationNotFound,
+  CustomerReservationOrderId,
+  CustomerReservationParty,
+  CustomerReservationProduct,
+  CustomerReservationStatus,
+  CustomerReservationSummary,
+  CustomerReservationsApi,
+} from "./customer-reservations-api";
 export {
   CurrentCustomerSession,
   CustomerAccountId,

@@ -27,4 +27,15 @@ describe("customer API route", () => {
 
     expect(missing).toEqual([]);
   });
+
+  // The handler decides what a disconnect stops (`runToCompletion`); a GET
+  // route that interrupted its own runner would answer before a door code
+  // or payment refresh finished.
+  test("serves every method through the one route that waits for its handler", async () => {
+    const route = await import("./route");
+
+    expect(new Set([route.DELETE, route.PATCH, route.POST, route.PUT])).toEqual(
+      new Set([route.GET])
+    );
+  });
 });
