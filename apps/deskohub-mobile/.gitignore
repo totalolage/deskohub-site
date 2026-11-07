@@ -1,0 +1,15 @@
+# Expo continuous native generation: android/ and ios/ come from app.json
+/android/
+/ios/
+/.expo/
+/dist/
+/expo-env.d.ts
+/web-build/
+
+# Signing material stays on the build machine
+credentials.json
+*.keystore
+*.jks
+*.p8
+*.p12
+*.mobileprovision
