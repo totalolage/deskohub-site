@@ -2,7 +2,8 @@ name: Mobile release
 
 # A `mobile-vX.Y.Z` tag on main builds the release-signed Android APK and
 # publishes it as the GitHub Release "mobile: vX.Y.Z". Pull requests that
-# touch the app or this workflow run the same build as a dry run: the signed
+# touch the app or this workflow run the same build as a dry run, signed with
+# a throwaway key generated in the job instead of the release keystore: the
 # APK is checked and kept as a workflow artifact, and nothing is released.
 on:
   push:
@@ -28,7 +29,7 @@ concurrency:
 
 jobs:
   build:
-    # Pull requests from forks get no secrets, so they can't sign.
+    # Pull requests from forks get no secrets, so they have no EXPO_TOKEN.
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -86,7 +87,11 @@ jobs:
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;27.1.12297006" > /dev/null
           ls -d "$ANDROID_HOME/ndk/27.1.12297006"
 
-      - name: Build and verify the signed APK
+      # Only tag pushes read the release keystore. A dry run fails if the
+      # release certificate signed its APK. Keep the two steps' env the same
+      # apart from the keystore, so the dry run builds the app that ships.
+      - name: Build and verify the release-signed APK
+        if: github.event_name == 'push'
         working-directory: apps/deskohub-mobile
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -97,6 +102,15 @@ jobs:
           EXPO_PUBLIC_POSTHOG_KEY: ${{ vars.POSTHOG_PROJECT_TOKEN }}
           EXPO_PUBLIC_POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
         run: bun scripts/release/mobile-release.ts build --tag "$RELEASE_TAG" --out-dir "$RUNNER_TEMP/mobile-release"
+
+      - name: Build and verify the debug-signed dry-run APK
+        if: github.event_name == 'pull_request'
+        working-directory: apps/deskohub-mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_PUBLIC_POSTHOG_KEY: ${{ vars.POSTHOG_PROJECT_TOKEN }}
+          EXPO_PUBLIC_POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
+        run: bun scripts/release/mobile-release.ts build --signing debug --out-dir "$RUNNER_TEMP/mobile-release"
 
       - name: Summarize the build
         run: cat "$RUNNER_TEMP/mobile-release/release-notes.md" >> "$GITHUB_STEP_SUMMARY"

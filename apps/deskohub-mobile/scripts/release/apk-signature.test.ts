@@ -4,6 +4,7 @@ import {
   normalizeCertificateSha256,
   releaseCertificateSha256,
   signerCertificateSha256s,
+  verifyNonReleaseSigners,
   verifyReleaseSigners,
 } from "./apk-signature";
 
@@ -75,6 +76,30 @@ describe("verifyReleaseSigners", () => {
 
   test("rejects output without signers", () => {
     expect(() => verifyReleaseSigners(apksignerOutput())).toThrow();
+  });
+});
+
+describe("verifyNonReleaseSigners", () => {
+  test("accepts an APK signed with another certificate", () => {
+    expect(verifyNonReleaseSigners(apksignerOutput(otherDigest))).toEqual([
+      otherDigest,
+    ]);
+  });
+
+  test("rejects an APK signed with the release certificate", () => {
+    expect(() =>
+      verifyNonReleaseSigners(apksignerOutput(releaseDigest))
+    ).toThrow(formatCertificateSha256(releaseDigest));
+  });
+
+  test("rejects an APK with the release certificate among its signers", () => {
+    expect(() =>
+      verifyNonReleaseSigners(apksignerOutput(otherDigest, releaseDigest))
+    ).toThrow();
+  });
+
+  test("rejects output without signers", () => {
+    expect(() => verifyNonReleaseSigners(apksignerOutput())).toThrow();
   });
 });
 
