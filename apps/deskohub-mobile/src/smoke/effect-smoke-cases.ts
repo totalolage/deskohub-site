@@ -27,23 +27,25 @@ class Boom extends Data.TaggedError("Boom")<{ readonly reason: string }> {}
 class Greeter extends Context.Service<
   Greeter,
   { readonly greet: (name: string) => Effect.Effect<string> }
->()("deskohub-mobile/smoke/Greeter") {}
-
-const GreeterLive = Layer.succeed(Greeter, {
-  greet: (name: string) => Effect.succeed(`hello ${name}`),
-});
+>()("deskohub-mobile/smoke/Greeter") {
+  static readonly Default = Layer.succeed(this, {
+    greet: (name: string) => Effect.succeed(`hello ${name}`),
+  });
+}
 
 const SmokePerson = Schema.Struct({
   name: Schema.NonEmptyString,
   age: Schema.Number,
 });
 
-const collected = (values: Iterable<number>) => JSON.stringify(Array.from(values));
+const collected = (values: Iterable<number>) =>
+  JSON.stringify(Array.from(values));
 
-const effectCase = (
-  name: string,
-  run: SmokeCase["run"]
-): SmokeCase => ({ group: "effect", name, run });
+const effectCase = (name: string, run: SmokeCase["run"]): SmokeCase => ({
+  group: "effect",
+  name,
+  run,
+});
 
 export const effectSmokeCases: ReadonlyArray<SmokeCase> = [
   effectCase("gen-run-promise", async () => {
@@ -69,7 +71,10 @@ export const effectSmokeCases: ReadonlyArray<SmokeCase> = [
     return JSON.stringify(person);
   }),
   effectCase("schema-encode", () => {
-    const Stamped = Schema.Struct({ at: Schema.DateFromString, n: Schema.Number });
+    const Stamped = Schema.Struct({
+      at: Schema.DateFromString,
+      n: Schema.Number,
+    });
     const encoded = Schema.encodeSync(Stamped)({ at: new Date(0), n: 1 });
     assertSmoke(
       encoded.at === "1970-01-01T00:00:00.000Z",
@@ -128,7 +133,7 @@ export const effectSmokeCases: ReadonlyArray<SmokeCase> = [
       Effect.gen(function* () {
         const greeter = yield* Greeter;
         return yield* greeter.greet("hermes");
-      }).pipe(Effect.provide(GreeterLive))
+      }).pipe(Effect.provide(Greeter.Default))
     );
     assertSmoke(greeting === "hello hermes", greeting);
     return greeting;
@@ -226,10 +231,7 @@ export const effectSmokeCases: ReadonlyArray<SmokeCase> = [
       )
     );
     const order = events.join(",");
-    assertSmoke(
-      order === "acquire a,acquire b,use,release b,release a",
-      order
-    );
+    assertSmoke(order === "acquire a,acquire b,use,release b,release a", order);
     return order;
   }),
   effectCase("retry-recurs", async () => {
@@ -344,9 +346,7 @@ export const effectSmokeCases: ReadonlyArray<SmokeCase> = [
       return [yield* Random.next, yield* Random.next] as const;
     });
     const first = await Effect.runPromise(draw.pipe(Random.withSeed("smoke")));
-    const second = await Effect.runPromise(
-      draw.pipe(Random.withSeed("smoke"))
-    );
+    const second = await Effect.runPromise(draw.pipe(Random.withSeed("smoke")));
     assertSmoke(
       first[0] === second[0] && first[1] === second[1] && first[0] !== first[1],
       `first=${first.join(",")} second=${second.join(",")}`

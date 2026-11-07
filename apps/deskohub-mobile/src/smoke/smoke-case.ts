@@ -44,14 +44,14 @@ export function assertSmoke(
 
 // Total for anything a case can throw: String() itself throws for an object
 // without a prototype, so other objects use Object.prototype.toString.
-const describeThrown = (thrown: unknown): string =>
-  toOneLine(
-    thrown instanceof Error
-      ? `${thrown.name}: ${thrown.message}`
-      : thrown !== null && typeof thrown === "object"
-        ? Object.prototype.toString.call(thrown)
-        : String(thrown)
-  );
+const describeThrown = (thrown: unknown): string => {
+  if (thrown instanceof Error)
+    return toOneLine(`${thrown.name}: ${thrown.message}`);
+  if (thrown !== null && typeof thrown === "object") {
+    return Object.prototype.toString.call(thrown);
+  }
+  return toOneLine(String(thrown));
+};
 
 const runSmokeCase = (
   smokeCase: SmokeCase,

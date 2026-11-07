@@ -1,7 +1,10 @@
 // Intl checks that depend on the engine's Intl backend, which differs between
 // Hermes on Android, Hermes on iOS and the web. Expected values are the known
 // results from Node and Bun, written out rather than recomputed here.
-import { formatCurrencyAmount, formatCurrencyName } from "@deskohub/i18n/currency";
+import {
+  formatCurrencyAmount,
+  formatCurrencyName,
+} from "@deskohub/i18n/currency";
 import { getLocalTimeInTimezone } from "@deskohub/reservation";
 import type { SmokeCase } from "./smoke-case";
 import { assertSmoke } from "./smoke-case";

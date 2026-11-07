@@ -35,7 +35,12 @@ describe("runSmokeCases", () => {
           status: "FAIL",
           actual: "RangeError: bad time zone",
         },
-        { group: "i18n", name: "async", status: "PASS", actual: "česká koruna" },
+        {
+          group: "i18n",
+          name: "async",
+          status: "PASS",
+          actual: "česká koruna",
+        },
       ],
       passed: 2,
       failed: 2,

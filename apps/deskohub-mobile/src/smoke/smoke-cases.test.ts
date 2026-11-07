@@ -11,9 +11,9 @@ describe("smoke cases on Bun", () => {
   });
 
   test("every case passes", () => {
-    expect(
-      report.results.filter((result) => result.status === "FAIL")
-    ).toEqual([]);
+    expect(report.results.filter((result) => result.status === "FAIL")).toEqual(
+      []
+    );
     expect(report).toMatchObject({
       passed: smokeCases.length,
       failed: 0,
