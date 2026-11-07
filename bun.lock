@@ -107,6 +107,7 @@
       "name": "deskohub-mobile",
       "version": "0.1.0",
       "dependencies": {
+        "@deskohub/brand-tokens": "workspace:*",
         "@deskohub/i18n": "workspace:*",
         "@deskohub/reservation": "workspace:*",
         "@deskohub/standard-schema": "workspace:*",

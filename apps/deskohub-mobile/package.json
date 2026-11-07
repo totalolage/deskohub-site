@@ -16,6 +16,7 @@
     "eas-build-post-install": "turbo run i18n:compile --filter=deskohub-mobile"
   },
   "dependencies": {
+    "@deskohub/brand-tokens": "workspace:*",
     "@deskohub/i18n": "workspace:*",
     "@deskohub/reservation": "workspace:*",
     "@deskohub/standard-schema": "workspace:*",
@@ -43,5 +44,12 @@
     "@types/react": "^19.3.0",
     "chokidar-cli": "^3.0.0",
     "typescript": "npm:@typescript/typescript6@6.0.2"
+  },
+  "expo": {
+    "install": {
+      "exclude": [
+        "typescript"
+      ]
+    }
   }
 }
