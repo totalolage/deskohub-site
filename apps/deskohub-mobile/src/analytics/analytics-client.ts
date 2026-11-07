@@ -8,6 +8,8 @@ export type AnalyticsProperties = Readonly<
  * posthog-react-native; tests use a fake.
  */
 export interface AnalyticsClient {
+  /** The distinct ID the stored SDK identity is identified as, or `null` while anonymous. */
+  readonly identifiedAs: () => string | null;
   readonly capture: (event: string, properties?: AnalyticsProperties) => void;
   readonly screen: (name: string) => void;
   readonly identify: (distinctId: string) => void;
@@ -32,6 +34,7 @@ export interface AnalyticsClientOptions {
   readonly superProperties: AnalyticsProperties;
 }
 
+/** Resolves once the client has loaded its stored identity. */
 export type CreateAnalyticsClient = (
   options: AnalyticsClientOptions
-) => AnalyticsClient;
+) => Promise<AnalyticsClient>;

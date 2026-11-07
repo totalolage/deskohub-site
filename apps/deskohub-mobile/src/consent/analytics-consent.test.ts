@@ -126,13 +126,15 @@ describe("createAnalyticsConsent", () => {
     expect(warnings).toHaveLength(2);
   });
 
-  test("grants and withdraws, saving and notifying each change", () => {
+  test("grants once saved and withdraws at once, notifying each change", async () => {
     const { storage, writes } = memoryStorage({ kind: "undecided" });
     const consent = createAnalyticsConsent(storage, () => {});
     let notifications = 0;
     consent.subscribe(() => notifications++);
 
     consent.grant();
+    expect(consent.status()).toBe("undecided");
+    await settle();
     expect(consent.status()).toBe("granted");
     consent.deny();
     expect(consent.status()).toBe("denied");
@@ -160,7 +162,7 @@ describe("createAnalyticsConsent", () => {
     expect(consent.status()).toBe("denied");
   });
 
-  test("keeps the in-session answer when saving fails", async () => {
+  test("declines when saving a grant fails", async () => {
     const warnings: string[] = [];
     const consent = createAnalyticsConsent(
       {
@@ -171,7 +173,7 @@ describe("createAnalyticsConsent", () => {
     );
     consent.grant();
     await settle();
-    expect(consent.status()).toBe("granted");
+    expect(consent.status()).toBe("denied");
     expect(warnings).toHaveLength(1);
   });
 });

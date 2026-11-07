@@ -80,6 +80,8 @@ export const createAnalytics = (): AnalyticsController => {
   let detachClientFlags: (() => void) | undefined;
   let applied: AppliedDistinctId = null;
   let blockedByOtherSdk = false;
+  let constructing: Promise<void> | undefined;
+  let needsFlagLoad = false;
   let shutdownInProgress: Promise<void> | undefined;
   let outbox: Delivery[] = [];
   let heldForAccount: AnalyticsEvent[] = [];
@@ -135,13 +137,7 @@ export const createAnalytics = (): AnalyticsController => {
     heldForAccount = [];
   };
 
-  const shutDownClient = () => {
-    const closing = client;
-    if (closing === undefined) return;
-    detachClientFlags?.();
-    detachClientFlags = undefined;
-    client = undefined;
-    applied = null;
+  const retire = (closing: AnalyticsClient) => {
     const shutdown = closing
       .shutDown()
       .catch((error: unknown) => {
@@ -152,10 +148,20 @@ export const createAnalytics = (): AnalyticsController => {
         reconcile();
       });
     shutdownInProgress = shutdown;
+  };
+
+  const shutDownClient = () => {
+    const closing = client;
+    if (closing === undefined) return;
+    detachClientFlags?.();
+    detachClientFlags = undefined;
+    client = undefined;
+    applied = null;
+    retire(closing);
     notifyFlags();
   };
 
-  const applyIdentity = (target: AnalyticsClient, fresh: boolean) => {
+  const applyIdentity = (target: AnalyticsClient) => {
     if (identity.kind === "pending") return;
     const steps = identitySteps(applied, identity);
     for (const step of steps) {
@@ -172,10 +178,10 @@ export const createAnalytics = (): AnalyticsController => {
         identity.testAccount || runtime?.settings?.environment !== "production";
       if (markInternal) target.setPersonProperties(internalOrTestUser);
     }
-    // identify() reloads flags itself; an anonymous identity needs a load.
-    if (identity.kind === "anonymous" && (steps.length > 0 || fresh)) {
-      target.reloadFeatureFlags();
-    }
+    // identify() to a new ID and reset() reload flags themselves; a new
+    // client whose stored identity already matches needs its first load.
+    if (needsFlagLoad && steps.length === 0) target.reloadFeatureFlags();
+    needsFlagLoad = false;
   };
 
   const flush = (target: AnalyticsClient) => {
@@ -198,7 +204,11 @@ export const createAnalytics = (): AnalyticsController => {
     }
     const settings = runtime.settings;
     if (settings === null || blockedByOtherSdk) return;
-    if (identity.kind === "pending" || shutdownInProgress !== undefined) {
+    if (
+      identity.kind === "pending" ||
+      shutdownInProgress !== undefined ||
+      constructing !== undefined
+    ) {
       return;
     }
     if (client === undefined) {
@@ -210,22 +220,42 @@ export const createAnalytics = (): AnalyticsController => {
         );
         return;
       }
-      const created = runtime.createClient({
+      construct(runtime, settings);
+      return;
+    }
+    applyIdentity(client);
+    flush(client);
+    notifyFlags();
+  };
+
+  const construct = (owner: AnalyticsRuntime, settings: AnalyticsSettings) => {
+    const building = owner
+      .createClient({
         apiKey: settings.apiKey,
         host: settings.host,
         superProperties: {
           "deployment.environment.name": settings.environment,
         },
-      });
-      client = created;
-      applied = null;
-      applyIdentity(created, true);
-      detachClientFlags = created.onFeatureFlags(notifyFlags);
-    } else {
-      applyIdentity(client, false);
-    }
-    flush(client);
-    notifyFlags();
+      })
+      .then(
+        (created) => {
+          constructing = undefined;
+          if (runtime !== owner || !consentGranted()) {
+            retire(created);
+            return;
+          }
+          client = created;
+          applied = created.identifiedAs();
+          needsFlagLoad = true;
+          detachClientFlags = created.onFeatureFlags(notifyFlags);
+          reconcile();
+        },
+        (error: unknown) => {
+          constructing = undefined;
+          owner.warn(`Analytics failed to start: ${String(error)}`);
+        }
+      );
+    constructing = building;
   };
 
   return {

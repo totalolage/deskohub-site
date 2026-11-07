@@ -9,7 +9,8 @@ export const consentRecordKey = "deskohub:consent";
 
 /**
  * Reads the stored native consent record. A missing record is no answer; a
- * malformed one reads as declined, like a malformed site cookie.
+ * malformed one, including one with an unknown category, reads as declined,
+ * like a malformed site cookie.
  */
 export const parseConsentRecord = (raw: string | null): StoredConsent => {
   if (raw === null) return { kind: "undecided" };
@@ -25,9 +26,10 @@ export const parseConsentRecord = (raw: string | null): StoredConsent => {
       : undefined;
   return {
     kind: "decided",
-    categories: Array.isArray(categories)
-      ? categories.filter(isConsentCategory)
-      : [],
+    categories:
+      Array.isArray(categories) && categories.every(isConsentCategory)
+        ? categories
+        : [],
   };
 };
 

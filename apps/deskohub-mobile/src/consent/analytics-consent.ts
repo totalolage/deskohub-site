@@ -79,7 +79,8 @@ const declined: StoredConsent = { kind: "decided", categories: ["necessary"] };
 
 /**
  * The analytics consent answer, read from storage and kept in sync with it.
- * Unreadable storage fails closed: analytics stays off and no prompt shows.
+ * Unreadable or unwritable storage fails closed: analytics stays off and no
+ * prompt shows.
  */
 export const createAnalyticsConsent = (
   storage: ConsentStorage,
@@ -125,15 +126,29 @@ export const createAnalyticsConsent = (
 
   const choose = (granted: boolean) => {
     // A later read must not overwrite the answer just given.
-    readGeneration++;
-    const categories = withAnalyticsChoice(
-      stored ?? { kind: "undecided" },
-      granted
-    );
-    set({ kind: "decided", categories });
-    storage.write(categories).catch((error: unknown) => {
+    const generation = ++readGeneration;
+    const answer: StoredConsent = {
+      kind: "decided",
+      categories: withAnalyticsChoice(stored ?? { kind: "undecided" }, granted),
+    };
+    const saving = storage.write(answer.categories);
+    const failed = (error: unknown) =>
       warn(`Saving the consent answer failed: ${String(error)}`);
-    });
+    if (!granted) {
+      set(answer);
+      saving.catch(failed);
+      return;
+    }
+    // Fail closed: a grant applies only once it is saved.
+    saving.then(
+      () => {
+        if (generation === readGeneration) set(answer);
+      },
+      (error: unknown) => {
+        failed(error);
+        if (generation === readGeneration) set(declined);
+      }
+    );
   };
 
   refresh();

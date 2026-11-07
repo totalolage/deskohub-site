@@ -6,12 +6,24 @@ describe("parseConsentRecord", () => {
     expect(parseConsentRecord(null)).toEqual({ kind: "undecided" });
   });
 
-  test("reads a saved answer and ignores unknown categories", () => {
+  test("reads a saved answer", () => {
     expect(
       parseConsentRecord(
-        JSON.stringify({ categories: ["necessary", "analytics", "tracking"] })
+        JSON.stringify({ categories: ["necessary", "analytics"] })
       )
     ).toEqual({ kind: "decided", categories: ["necessary", "analytics"] });
+  });
+
+  test("reads a record with an unknown or invalid category as declined", () => {
+    for (const categories of [
+      ["analytics", "tracking"],
+      ["analytics", 42],
+    ]) {
+      expect(parseConsentRecord(JSON.stringify({ categories }))).toEqual({
+        kind: "decided",
+        categories: [],
+      });
+    }
   });
 
   test("reads a malformed record as declined", () => {
