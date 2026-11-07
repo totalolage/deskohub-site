@@ -68,17 +68,35 @@ export const intlSmokeCases: ReadonlyArray<SmokeCase> = [
     group: "intl",
     name: "currency-amount-exact-decimal",
     run: () => {
-      // Past Number.MAX_SAFE_INTEGER: a double would round this to ...568,00.
-      const amount = formatCurrencyAmount({
-        amount: "12345678901234567.89",
+      // V8 and Bun format decimal text digit for digit; Hermes converts it to
+      // a double first, so only amounts within double precision stay exact.
+      const exactDecimalText =
+        new Intl.NumberFormat("en-US", { useGrouping: false }).format(
+          "9007199254740993"
+        ) === "9007199254740993";
+      const realistic = formatCurrencyAmount({
+        amount: "9007199254740.99",
         currency: "CZK",
         locale: "cs-CZ",
       });
       assertSmoke(
-        amount === "12\u00a0345\u00a0678\u00a0901\u00a0234\u00a0567,89\u00a0Kč",
-        `got ${JSON.stringify(amount)}`
+        realistic === "9\u00a0007\u00a0199\u00a0254\u00a0740,99\u00a0Kč",
+        `got ${JSON.stringify(realistic)}`
       );
-      return amount;
+      if (exactDecimalText) {
+        // Past Number.MAX_SAFE_INTEGER: a double would round this to ...568,00.
+        const large = formatCurrencyAmount({
+          amount: "12345678901234567.89",
+          currency: "CZK",
+          locale: "cs-CZ",
+        });
+        assertSmoke(
+          large ===
+            "12\u00a0345\u00a0678\u00a0901\u00a0234\u00a0567,89\u00a0Kč",
+          `got ${JSON.stringify(large)}`
+        );
+      }
+      return `${realistic} (exact decimal text ${exactDecimalText ? "supported" : "unsupported"})`;
     },
   },
   {

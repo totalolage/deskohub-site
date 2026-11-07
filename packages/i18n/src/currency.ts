@@ -5,10 +5,13 @@ import { BigDecimal, Option } from "effect";
  * units; fractional amounts render every minor digit of the currency, so a
  * price never shows a truncated fraction such as "307.5".
  *
- * Pass decimal text, such as "1234.50", to render it exactly: every digit
- * survives, however large, where a JavaScript number would round. A negative
- * zero such as "-0.00" keeps its sign, as the same number would. Text that is
- * not a plain decimal formats as `Number(text)` does.
+ * Pass decimal text, such as "1234.50", to render it exactly. Where the engine
+ * formats decimal text digit for digit, as V8 (Node) and Bun do, every digit
+ * survives however large. Hermes converts the text to a double first, so
+ * there amounts beyond double precision (about 15 to 17 significant digits)
+ * round; realistic currency amounts stay exact. A negative zero such as
+ * "-0.00" keeps its sign, as the same number would. Text that is not a plain
+ * decimal formats as `Number(text)` does.
  *
  * `fractionDigits` is the currency's minor-unit exponent. When omitted, the
  * Intl currency default applies.
