@@ -130,6 +130,7 @@
         "react-native-web": "^0.21.4",
       },
       "devDependencies": {
+        "@inlang/paraglide-js": "^2.26.0",
         "@types/react": "^19.3.0",
         "typescript": "npm:@typescript/typescript6@6.0.2",
       },

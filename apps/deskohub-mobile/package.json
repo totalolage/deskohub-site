@@ -5,11 +5,13 @@
   "type": "module",
   "main": "expo-router/entry",
   "scripts": {
-    "start": "expo start",
+    "start": "bun run i18n:compile && expo start",
     "build:web": "expo export --platform web",
     "lint": "cd ../.. && biome check apps/deskohub-mobile --config-path biome.json --vcs-root .",
     "test": "bun test",
-    "typecheck": "tsc --project tsconfig.json"
+    "typecheck": "tsc --project tsconfig.json",
+    "i18n:compile": "bun x @inlang/paraglide-js compile --project ./project.inlang --outdir ./src/i18n/paraglide --strategy baseLocale --is-server false --disable-async-local-storage --output-structure locale-modules",
+    "eas-build-post-install": "bun run i18n:compile"
   },
   "dependencies": {
     "@deskohub/i18n": "workspace:*",
@@ -35,6 +37,7 @@
     "react-native-web": "^0.21.4"
   },
   "devDependencies": {
+    "@inlang/paraglide-js": "^2.26.0",
     "@types/react": "^19.3.0",
     "typescript": "npm:@typescript/typescript6@6.0.2"
   }

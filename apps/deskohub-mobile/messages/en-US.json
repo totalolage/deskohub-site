@@ -1,0 +1,9 @@
+{
+  "home_title": "Deskohub",
+  "home_tagline": "Self-service coworking at Palmovka, Prague.",
+  "home_smoke_link": "Run runtime smoke checks",
+  "smoke_title": "Runtime smoke checks",
+  "smoke_running": "Running checks…",
+  "smoke_finished": "Checks finished.",
+  "smoke_totals": "{passed} of {total} passed, {failed} failed"
+}
