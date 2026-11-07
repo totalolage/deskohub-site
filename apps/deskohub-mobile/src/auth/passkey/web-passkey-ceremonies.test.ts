@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { Deferred, Effect, Exit, Fiber } from "effect";
+import { Deferred, Effect, Exit, Fiber, Layer } from "effect";
+import { PasskeyCeremonies } from "./passkey-ceremony";
 import type { PasskeyFailure } from "./passkey-failure";
 import {
-  makeWebPasskeyCeremonies,
+  PasskeyPluginClient,
   type PasskeyPluginResult,
-} from "./web-passkey-ceremonies";
+} from "./passkey-plugin-client.service";
 
 const signedIn: PasskeyPluginResult = {
   data: { session: { id: "synthetic-session" }, user: { id: "synthetic" } },
@@ -36,11 +37,20 @@ const setup = ({
     readonly name?: string;
   }) => Promise<PasskeyPluginResult>;
 } = {}) =>
-  makeWebPasskeyCeremonies({
-    isSupported: () => supported,
-    signIn,
-    addPasskey,
-  });
+  Effect.runSync(
+    Effect.service(PasskeyCeremonies).pipe(
+      Effect.provide(
+        PasskeyCeremonies.Web.pipe(
+          Layer.provide(
+            PasskeyPluginClient.fromClient(
+              { signIn: { passkey: signIn }, passkey: { addPasskey } },
+              () => supported
+            )
+          )
+        )
+      )
+    )
+  );
 
 const failureOf = async <A>(
   effect: Effect.Effect<A, PasskeyFailure>

@@ -1,5 +1,6 @@
-import { Effect, Schema } from "effect";
-import { oneCeremonyAtATime, type PasskeyCeremonies } from "./passkey-ceremony";
+import { Effect, Result, Schema } from "effect";
+import { oneCeremonyAtATime } from "./one-ceremony-at-a-time";
+import type { PasskeyCeremonyApi } from "./passkey-ceremony";
 import {
   PasskeyAlreadyRegistered,
   PasskeyCancelled,
@@ -8,6 +9,10 @@ import {
   PasskeyNotSupported,
   PasskeyRejected,
 } from "./passkey-failure";
+import {
+  PasskeyPluginClient,
+  type PasskeyPluginResult,
+} from "./passkey-plugin-client.service";
 
 /*
  * The web bundle runs the ceremonies through Better Auth's browser passkey
@@ -21,15 +26,6 @@ import {
  * as `AUTH_CANCELLED`, so it settles quietly like a closed prompt.
  */
 
-/** A plugin call's `{ data, error }` result. */
-export type PasskeyPluginResult = {
-  readonly data: unknown;
-  readonly error: {
-    readonly code?: string;
-    readonly status?: number;
-  } | null;
-};
-
 /**
  * Browser outcomes without a passkey. A dismissed prompt reaches the plugin
  * as `NotAllowedError`, which SimpleWebAuthn passes through; an aborted one
@@ -42,10 +38,10 @@ const cancelledCodes = new Set([
   "ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY",
 ]);
 
+type PluginError = NonNullable<PasskeyPluginResult["error"]>;
+
 /** Maps a plugin call's error to a ceremony failure. */
-export const fromPasskeyPluginError = (
-  error: NonNullable<PasskeyPluginResult["error"]>
-): PasskeyFailure => {
+export const fromPasskeyPluginError = (error: PluginError): PasskeyFailure => {
   const code = error.code ?? "";
   if (cancelledCodes.has(code)) return new PasskeyCancelled();
   if (code === "ERROR_AUTHENTICATOR_PREVIOUSLY_REGISTERED") {
@@ -58,50 +54,48 @@ export const fromPasskeyPluginError = (
   return new PasskeyRejected({ status: error.status ?? 0, code: error.code });
 };
 
+/** The call's data, or its error as a ceremony failure. */
+const accepted = ({ data, error }: PasskeyPluginResult) =>
+  Effect.fromResult(
+    error === null
+      ? Result.succeed(data)
+      : Result.fail(fromPasskeyPluginError(error))
+  );
+
 const AddedPasskeyData = Schema.Struct({
   id: Schema.String,
   name: Schema.optional(Schema.NullOr(Schema.String)),
 });
 
-export const makeWebPasskeyCeremonies = ({
-  isSupported,
-  signIn,
-  addPasskey,
-}: {
-  readonly isSupported: () => boolean;
-  readonly signIn: () => Promise<PasskeyPluginResult>;
-  readonly addPasskey: (input: {
-    readonly name?: string;
-  }) => Promise<PasskeyPluginResult>;
-}): PasskeyCeremonies => {
-  /**
-   * One plugin call. It can't be cancelled, so an interruption waits for it
-   * to settle and keeps the next ceremony from starting before then.
-   */
-  const call = (run: () => Promise<PasskeyPluginResult>) =>
-    Effect.gen(function* () {
-      if (!isSupported()) return yield* new PasskeyNotSupported();
-      const { data, error } = yield* Effect.tryPromise({
-        try: run,
-        catch: (cause) => new PasskeyCeremonyFailed({ step: "request", cause }),
-      }).pipe(Effect.uninterruptible);
-      if (error !== null) return yield* fromPasskeyPluginError(error);
-      return data;
-    });
-
-  return oneCeremonyAtATime({
-    isSupported,
-    signIn: Effect.asVoid(call(signIn)),
-    addPasskey: (input = {}) =>
-      call(() => addPasskey(input)).pipe(
-        Effect.flatMap((data) =>
-          Schema.decodeUnknownEffect(AddedPasskeyData)(data).pipe(
-            Effect.mapError(
-              (cause) => new PasskeyCeremonyFailed({ step: "response", cause })
-            )
-          )
-        ),
-        Effect.map(({ id, name }) => ({ id, name: name ?? undefined }))
+export const webPasskeyCeremonies = Effect.service(PasskeyPluginClient).pipe(
+  Effect.map((plugin): PasskeyCeremonyApi => {
+    const supported = plugin.isSupported.pipe(
+      Effect.filterOrFail(
+        (isSupported) => isSupported,
+        () => new PasskeyNotSupported()
+      )
+    );
+    return oneCeremonyAtATime({
+      isSupported: plugin.isSupported,
+      signIn: supported.pipe(
+        Effect.andThen(plugin.signIn),
+        Effect.flatMap(accepted),
+        Effect.asVoid
       ),
-  });
-};
+      addPasskey: (input = {}) =>
+        supported.pipe(
+          Effect.andThen(plugin.addPasskey(input)),
+          Effect.flatMap(accepted),
+          Effect.flatMap((data) =>
+            Schema.decodeUnknownEffect(AddedPasskeyData)(data).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new PasskeyCeremonyFailed({ step: "response", cause })
+              )
+            )
+          ),
+          Effect.map(({ id, name }) => ({ id, name: name ?? undefined }))
+        ),
+    });
+  })
+);

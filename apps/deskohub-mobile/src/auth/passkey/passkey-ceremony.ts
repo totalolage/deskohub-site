@@ -1,5 +1,8 @@
-import { Effect, Option, Semaphore } from "effect";
-import { PasskeyCeremonyBusy, type PasskeyFailure } from "./passkey-failure";
+import type { Effect } from "effect";
+import { Context, Layer } from "effect";
+import { nativePasskeyCeremonies } from "./native-passkey-ceremonies";
+import type { PasskeyFailure } from "./passkey-failure";
+import { webPasskeyCeremonies } from "./web-passkey-ceremonies";
 
 /** The passkey a registration ceremony saved to the account. */
 export type AddedPasskey = {
@@ -7,14 +10,9 @@ export type AddedPasskey = {
   readonly name: string | undefined;
 };
 
-/**
- * The passkey ceremonies of one platform. Native runs them through the
- * native passkey module and the Expo auth client, web through Better Auth's
- * browser passkey client.
- */
-export type PasskeyCeremonies = {
+export interface PasskeyCeremonyApi {
   /** Whether this device or browser can run a passkey ceremony at all. */
-  readonly isSupported: () => boolean;
+  readonly isSupported: Effect.Effect<boolean>;
   /**
    * Signs in with a passkey saved for the app's sign-in. On success the
    * session exists and the auth client has started refreshing it.
@@ -27,34 +25,17 @@ export type PasskeyCeremonies = {
   readonly addPasskey: (input?: {
     readonly name?: string;
   }) => Effect.Effect<AddedPasskey, PasskeyFailure>;
-};
+}
 
 /**
- * Runs the ceremonies one at a time. Every options request replaces the one
- * challenge cookie the server verifies against, and the platform shows one
- * passkey prompt at a time, so a ceremony that starts while another runs
- * fails as `PasskeyCeremonyBusy` without sending anything.
+ * The passkey ceremonies of one platform: `Native` runs them through the
+ * native passkey module and the Expo auth client, `Web` through Better
+ * Auth's browser passkey client. Each runs one ceremony at a time.
  */
-export const oneCeremonyAtATime = (
-  ceremonies: PasskeyCeremonies
-): PasskeyCeremonies => {
-  const permit = Semaphore.makeUnsafe(1);
-  const exclusive = <A>(
-    ceremony: Effect.Effect<A, PasskeyFailure>
-  ): Effect.Effect<A, PasskeyFailure> =>
-    permit
-      .withPermitsIfAvailable(1)(ceremony)
-      .pipe(
-        Effect.flatMap(
-          Option.match({
-            onNone: () => Effect.fail(new PasskeyCeremonyBusy()),
-            onSome: Effect.succeed,
-          })
-        )
-      );
-  return {
-    isSupported: ceremonies.isSupported,
-    signIn: exclusive(ceremonies.signIn),
-    addPasskey: (input) => exclusive(ceremonies.addPasskey(input)),
-  };
-};
+export class PasskeyCeremonies extends Context.Service<
+  PasskeyCeremonies,
+  PasskeyCeremonyApi
+>()("deskohub-mobile/PasskeyCeremonies") {
+  static Native = Layer.effect(this, nativePasskeyCeremonies);
+  static Web = Layer.effect(this, webPasskeyCeremonies);
+}

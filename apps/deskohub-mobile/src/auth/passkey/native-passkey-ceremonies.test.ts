@@ -1,12 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { Deferred, Effect, Exit, Fiber } from "effect";
+import { Deferred, Effect, Exit, Fiber, Layer } from "effect";
 import {
-  type AuthFetch,
-  type AuthFetchOptions,
-  makeNativePasskeyCeremonies,
-  type NativePasskeyAuthenticator,
-} from "./native-passkey-ceremonies";
+  NativePasskeyModule,
+  type NativePasskeyModuleSource,
+} from "./native-passkey-module.service";
 import fixtures from "./passkey.test-fixtures.json";
+import {
+  PasskeyAuthClient,
+  type PasskeyAuthClientSource,
+} from "./passkey-auth-client.service";
+import { PasskeyCeremonies } from "./passkey-ceremony";
 import type { PasskeyFailure } from "./passkey-failure";
 
 const {
@@ -15,6 +18,38 @@ const {
   authenticationOptions,
   authenticationResponse,
 } = fixtures;
+
+type AuthFetch = PasskeyAuthClientSource["$fetch"];
+type AuthFetchOptions = Parameters<AuthFetch>[1];
+type NativePasskeyAuthenticator = NativePasskeyModuleSource;
+
+/** The native ceremonies on fake auth client and native module Layers. */
+const makeNativePasskeyCeremonies = ({
+  fetch,
+  authenticator,
+  refreshSession,
+}: {
+  readonly fetch: AuthFetch;
+  readonly authenticator: NativePasskeyAuthenticator;
+  readonly refreshSession: () => void;
+}) =>
+  Effect.runSync(
+    Effect.service(PasskeyCeremonies).pipe(
+      Effect.provide(
+        PasskeyCeremonies.Native.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              PasskeyAuthClient.fromClient({
+                $fetch: fetch,
+                $store: { notify: refreshSession },
+              }),
+              NativePasskeyModule.fromModule(authenticator)
+            )
+          )
+        )
+      )
+    )
+  );
 
 type Reply = { readonly status: number; readonly body: unknown };
 

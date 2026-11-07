@@ -9,7 +9,6 @@ import {
 import { useAppLocale } from "../../i18n/locale-context";
 import { m } from "../../i18n/messages";
 import { theme } from "../../theme";
-import { passkeyCeremonies } from "./passkey-ceremonies";
 import type { AddedPasskey } from "./passkey-ceremony";
 import { addPasskeyFailureMessage } from "./passkey-failure-message";
 import { usePasskeyCeremony } from "./use-passkey-ceremony";
@@ -32,7 +31,7 @@ export function AddPasskeyAction({
 }) {
   const locale = useAppLocale();
   const { state, start } = usePasskeyCeremony({
-    ceremony: () => passkeyCeremonies.addPasskey({ name }),
+    ceremony: (ceremonies) => ceremonies.addPasskey({ name }),
     onSucceeded: onAdded,
     takeOver: (failure) => {
       if (

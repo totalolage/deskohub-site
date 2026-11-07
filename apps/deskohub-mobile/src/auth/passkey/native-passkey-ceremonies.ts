@@ -1,14 +1,13 @@
-import { Effect, Schema } from "effect";
-import { fromNativePasskeyError } from "./native-passkey-error";
+import { Effect, Result, Schema } from "effect";
+import { NativePasskeyModule } from "./native-passkey-module.service";
+import { oneCeremonyAtATime } from "./one-ceremony-at-a-time";
 import {
-  type AddedPasskey,
-  oneCeremonyAtATime,
-  type PasskeyCeremonies,
-} from "./passkey-ceremony";
+  type AuthFetchResult,
+  PasskeyAuthClient,
+} from "./passkey-auth-client.service";
+import type { AddedPasskey, PasskeyCeremonyApi } from "./passkey-ceremony";
 import {
   NativeAuthentication,
-  type NativeAuthenticationRequest,
-  type NativeCreationRequest,
   NativeRegistration,
   PasskeyCreationOptions,
   PasskeyRequestOptions,
@@ -32,47 +31,126 @@ import {
  * - registration: GET /passkey/generate-register-options, the module's
  *   `create`, POST /passkey/verify-registration `{ name?, response }`.
  *
- * Every request goes through the Expo auth client's `$fetch`, so the
- * challenge cookie from the options response returns with the verification
- * and the session cookie the verification sets lands in SecureStore.
+ * Every request goes through the Expo auth client, so the challenge cookie
+ * from the options response returns with the verification and the session
+ * cookie the verification sets lands in SecureStore.
  */
-
-export type AuthFetchOptions = {
-  readonly method: "GET" | "POST";
-  readonly body?: unknown;
-  readonly signal: AbortSignal;
-};
-
-/** Better Auth's `{ data, error }` result of a `$fetch` with `throw: false`. */
-export type AuthFetchResult = {
-  readonly data: unknown;
-  readonly error: {
-    readonly status: number;
-    readonly code?: string;
-  } | null;
-};
-
-/** The auth client's `$fetch`, relative to its `/api/auth` base URL. */
-export type AuthFetch = (
-  path: string,
-  options: AuthFetchOptions
-) => Promise<AuthFetchResult>;
-
-/**
- * The native passkey module. `create` and `get` take the server's options
- * JSON and resolve the credential JSON the platform returned, which the
- * ceremony reads as untrusted.
- */
-export type NativePasskeyAuthenticator = {
-  readonly isSupported: () => boolean;
-  readonly create: (request: NativeCreationRequest) => Promise<unknown>;
-  readonly get: (request: NativeAuthenticationRequest) => Promise<unknown>;
-};
 
 const VerifiedPasskey = Schema.Struct({
   id: Schema.String,
   name: Schema.optional(Schema.NullOr(Schema.String)),
 });
+
+export const nativePasskeyCeremonies = Effect.Do.pipe(
+  Effect.bind("auth", () => Effect.service(PasskeyAuthClient)),
+  Effect.bind("passkeys", () => Effect.service(NativePasskeyModule)),
+  Effect.map(({ auth, passkeys }): PasskeyCeremonyApi => {
+    const supported = passkeys.isSupported.pipe(
+      Effect.filterOrFail(
+        (isSupported) => isSupported,
+        () => new PasskeyNotSupported()
+      )
+    );
+
+    /** One request; a refusal carries the Better Auth code. */
+    const send = <A>({
+      path,
+      method,
+      body,
+      schema,
+    }: {
+      readonly path: string;
+      readonly method: "GET" | "POST";
+      readonly body?: unknown;
+      readonly schema: Schema.Decoder<A>;
+    }) =>
+      auth.request(path, { method, body }).pipe(
+        Effect.flatMap(accepted),
+        Effect.flatMap((data) => decode(schema, data, "response"))
+      );
+
+    const signIn = Effect.Do.pipe(
+      Effect.tap(() => supported),
+      Effect.bind("options", () =>
+        send({
+          path: "/passkey/generate-authenticate-options",
+          method: "GET",
+          schema: PasskeyRequestOptions,
+        })
+      ),
+      Effect.bind("assertion", ({ options }) =>
+        passkeys
+          .get(toNativeAuthenticationRequest(options))
+          .pipe(
+            Effect.flatMap((result) =>
+              decode(NativeAuthentication, result, "authenticator")
+            )
+          )
+      ),
+      Effect.tap(({ assertion }) =>
+        send({
+          path: "/passkey/verify-authentication",
+          method: "POST",
+          body: { response: toAuthenticationResponseJSON(assertion) },
+          schema: Schema.Unknown,
+        })
+      ),
+      Effect.tap(() => auth.refreshSession),
+      Effect.asVoid
+    );
+
+    const addPasskey = ({ name }: { readonly name?: string } = {}) =>
+      Effect.Do.pipe(
+        Effect.tap(() => supported),
+        Effect.bind("options", () =>
+          send({
+            path: "/passkey/generate-register-options",
+            method: "GET",
+            schema: PasskeyCreationOptions,
+          })
+        ),
+        Effect.bind("registration", ({ options }) =>
+          passkeys
+            .create(toNativeCreationRequest(options))
+            .pipe(
+              Effect.flatMap((result) =>
+                decode(NativeRegistration, result, "authenticator")
+              )
+            )
+        ),
+        Effect.bind("passkey", ({ registration }) =>
+          send({
+            path: "/passkey/verify-registration",
+            method: "POST",
+            body: { name, response: toRegistrationResponseJSON(registration) },
+            schema: VerifiedPasskey,
+          })
+        ),
+        Effect.map(
+          ({ passkey }): AddedPasskey => ({
+            id: passkey.id,
+            name: passkey.name ?? undefined,
+          })
+        )
+      );
+
+    return oneCeremonyAtATime({
+      isSupported: passkeys.isSupported,
+      signIn,
+      addPasskey,
+    });
+  })
+);
+
+/** The response's data, or the server's refusal with its Better Auth code. */
+const accepted = ({ data, error }: AuthFetchResult) =>
+  Effect.fromResult(
+    error === null
+      ? Result.succeed(data)
+      : Result.fail(
+          new PasskeyRejected({ status: error.status, code: error.code })
+        )
+  );
 
 /** Reads a value the server or the module sent; another shape fails `step`. */
 const decode = <A>(
@@ -83,129 +161,3 @@ const decode = <A>(
   Schema.decodeUnknownEffect(schema)(value).pipe(
     Effect.mapError((cause) => new PasskeyCeremonyFailed({ step, cause }))
   );
-
-/**
- * Sends a request that an interruption aborts and then waits out. The Expo
- * client may already be writing a response's cookies to SecureStore when
- * the abort comes, and `$fetch` settles only once that write is done, so
- * the next ceremony can't start before a stale challenge cookie lands.
- */
-const abortable = (send: (signal: AbortSignal) => Promise<AuthFetchResult>) =>
-  Effect.suspend(() => {
-    const controller = new AbortController();
-    const response = send(controller.signal);
-    return Effect.tryPromise({
-      try: () => response,
-      catch: (cause) => new PasskeyCeremonyFailed({ step: "request", cause }),
-    }).pipe(
-      Effect.onInterrupt(() =>
-        Effect.promise(() => {
-          controller.abort();
-          return response.then(
-            () => undefined,
-            () => undefined
-          );
-        })
-      )
-    );
-  });
-
-/** One request. A refusal carries the Better Auth code. */
-const request =
-  (fetch: AuthFetch) =>
-  <A>(
-    path: string,
-    method: AuthFetchOptions["method"],
-    schema: Schema.Decoder<A>,
-    body?: unknown
-  ): Effect.Effect<A, PasskeyRejected | PasskeyCeremonyFailed> =>
-    Effect.gen(function* () {
-      const { data, error } = yield* abortable((signal) =>
-        fetch(path, { method, body, signal })
-      );
-      if (error !== null) {
-        return yield* new PasskeyRejected({
-          status: error.status,
-          code: error.code,
-        });
-      }
-      return yield* decode(schema, data, "response");
-    });
-
-/**
- * The native prompt. It can't be cancelled, so an interruption waits for
- * the customer to finish with it and then sends nothing further.
- */
-const ceremony = <A>(
-  prompt: () => Promise<unknown>,
-  schema: Schema.Decoder<A>
-) =>
-  Effect.tryPromise({ try: prompt, catch: fromNativePasskeyError }).pipe(
-    Effect.uninterruptible,
-    Effect.flatMap((result) => decode(schema, result, "authenticator"))
-  );
-
-export const makeNativePasskeyCeremonies = ({
-  fetch,
-  authenticator,
-  refreshSession,
-}: {
-  readonly fetch: AuthFetch;
-  readonly authenticator: NativePasskeyAuthenticator;
-  /** Tells the auth client the session changed. */
-  readonly refreshSession: () => void;
-}): PasskeyCeremonies => {
-  const send = request(fetch);
-  const supported = Effect.suspend(() =>
-    authenticator.isSupported()
-      ? Effect.void
-      : Effect.fail(new PasskeyNotSupported())
-  );
-
-  const signIn = Effect.gen(function* () {
-    yield* supported;
-    const options = yield* send(
-      "/passkey/generate-authenticate-options",
-      "GET",
-      PasskeyRequestOptions
-    );
-    const assertion = yield* ceremony(
-      () => authenticator.get(toNativeAuthenticationRequest(options)),
-      NativeAuthentication
-    );
-    yield* send("/passkey/verify-authentication", "POST", Schema.Unknown, {
-      response: toAuthenticationResponseJSON(assertion),
-    });
-    refreshSession();
-  });
-
-  const addPasskey = ({ name }: { readonly name?: string } = {}) =>
-    Effect.gen(function* () {
-      yield* supported;
-      const options = yield* send(
-        "/passkey/generate-register-options",
-        "GET",
-        PasskeyCreationOptions
-      );
-      const registration = yield* ceremony(
-        () => authenticator.create(toNativeCreationRequest(options)),
-        NativeRegistration
-      );
-      const passkey = yield* send(
-        "/passkey/verify-registration",
-        "POST",
-        VerifiedPasskey,
-        { name, response: toRegistrationResponseJSON(registration) }
-      );
-      return {
-        id: passkey.id,
-        name: passkey.name ?? undefined,
-      } satisfies AddedPasskey;
-    });
-
-  return oneCeremonyAtATime({
-    isSupported: authenticator.isSupported,
-    signIn,
-    addPasskey,
-  });
-};

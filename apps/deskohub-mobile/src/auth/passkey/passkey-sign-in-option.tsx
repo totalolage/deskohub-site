@@ -8,7 +8,6 @@ import {
 import { useAppLocale } from "../../i18n/locale-context";
 import { m } from "../../i18n/messages";
 import { theme } from "../../theme";
-import { passkeyCeremonies } from "./passkey-ceremonies";
 import { passkeySignInFailureMessage } from "./passkey-failure-message";
 import { usePasskeyCeremony } from "./use-passkey-ceremony";
 
@@ -24,7 +23,7 @@ export function PasskeySignInOption({
 }) {
   const locale = useAppLocale();
   const { state, start } = usePasskeyCeremony({
-    ceremony: () => passkeyCeremonies.signIn,
+    ceremony: (ceremonies) => ceremonies.signIn,
     onSucceeded: onSignedIn,
   });
   const pending = state.status === "pending";
