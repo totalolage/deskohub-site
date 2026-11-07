@@ -1610,6 +1610,503 @@
           }
         }
       }
+    },
+    "/api/customer/booking/checkouts": {
+      "post": {
+        "tags": ["booking"],
+        "operationId": "booking.createCheckout",
+        "parameters": [
+          {
+            "name": "x-deskohub-referral-code",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "allOf": [
+                {
+                  "maxLength": 64
+                }
+              ]
+            },
+            "required": false
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "CustomerCheckoutStart",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerCheckoutStart"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "CustomerBookingSelectionInvalid | CustomerCheckoutDetailsInvalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CustomerBookingSelectionInvalid"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CustomerCheckoutDetailsInvalid"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "CustomerSessionRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerSessionRequired"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CustomerRequestRejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRequestRejected"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CustomerOfferingUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerOfferingUnavailable"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CustomerSelectionUnavailable | CustomerQuoteExpired | CustomerAccountLinkRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CustomerSelectionUnavailable"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CustomerQuoteExpired"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CustomerAccountLinkRequired"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "CustomerBookingDateOutOfRange",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerBookingDateOutOfRange"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "CustomerRateLimited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRateLimited"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CustomerServiceUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCustomerCheckout"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/customer/booking/checkouts/discount-code": {
+      "post": {
+        "tags": ["booking"],
+        "operationId": "booking.applyCheckoutDiscountCode",
+        "parameters": [
+          {
+            "name": "x-deskohub-referral-code",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "allOf": [
+                {
+                  "maxLength": 64
+                }
+              ]
+            },
+            "required": false
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "CustomerCheckoutDiscountCodeResult",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerCheckoutDiscountCodeResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "CustomerSessionRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerSessionRequired"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CustomerRequestRejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRequestRejected"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CustomerCheckoutNotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerCheckoutNotFound"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CustomerCheckoutUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerCheckoutUnavailable"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "CustomerDiscountCodeRejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerDiscountCodeRejected"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "CustomerRateLimited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRateLimited"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CustomerServiceUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyCustomerCheckoutDiscountCode"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/customer/booking/checkouts/price-acceptance": {
+      "post": {
+        "tags": ["booking"],
+        "operationId": "booking.acceptCheckoutPriceChange",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "CustomerCheckout",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerCheckout"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "CustomerSessionRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerSessionRequired"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CustomerRequestRejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRequestRejected"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CustomerCheckoutNotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerCheckoutNotFound"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CustomerCheckoutUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerCheckoutUnavailable"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "CustomerRateLimited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRateLimited"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CustomerServiceUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptCustomerCheckoutPriceChange"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/customer/booking/checkouts/submit": {
+      "post": {
+        "tags": ["booking"],
+        "operationId": "booking.submitCheckout",
+        "parameters": [
+          {
+            "name": "x-deskohub-referral-code",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "allOf": [
+                {
+                  "maxLength": 64
+                }
+              ]
+            },
+            "required": false
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "CustomerCheckoutSubmission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerCheckoutSubmission"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "CustomerSessionRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerSessionRequired"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CustomerRequestRejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRequestRejected"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CustomerCheckoutNotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerCheckoutNotFound"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CustomerLegalDocumentsChanged | CustomerSelectionUnavailable | CustomerCheckoutUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CustomerLegalDocumentsChanged"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CustomerSelectionUnavailable"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CustomerCheckoutUnavailable"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "CustomerConsentRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerConsentRequired"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "CustomerRateLimited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRateLimited"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CustomerServiceUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitCustomerCheckout"
+              }
+            }
+          },
+          "required": true
+        }
+      }
     }
   },
   "components": {
@@ -3707,6 +4204,718 @@
           }
         },
         "required": ["documents"],
+        "additionalProperties": false
+      },
+      "CustomerBookingSelection": {
+        "type": "object",
+        "properties": {
+          "family": {
+            "$ref": "#/components/schemas/CustomerReservationFamily"
+          },
+          "date": {
+            "$ref": "#/components/schemas/CustomerPlainDate"
+          },
+          "endDate": {
+            "$ref": "#/components/schemas/CustomerPlainDate"
+          },
+          "startTime": {
+            "$ref": "#/components/schemas/CustomerStartTime"
+          },
+          "duration": {
+            "$ref": "#/components/schemas/CustomerMeetingRoomDuration"
+          },
+          "tier": {
+            "$ref": "#/components/schemas/CustomerCoworkTier"
+          },
+          "monitorOption": {
+            "$ref": "#/components/schemas/CustomerMonitorOption"
+          },
+          "seats": {
+            "type": "integer",
+            "allOf": [
+              {
+                "minimum": 1
+              }
+            ]
+          },
+          "coffee": {
+            "type": "boolean"
+          }
+        },
+        "required": ["family", "date"],
+        "additionalProperties": false
+      },
+      "CustomerInvoiceAddress": {
+        "type": "object",
+        "properties": {
+          "line1": {
+            "type": "string",
+            "allOf": [
+              {
+                "maxLength": 180
+              }
+            ]
+          },
+          "line2": {
+            "type": "string",
+            "allOf": [
+              {
+                "maxLength": 180
+              }
+            ]
+          },
+          "city": {
+            "type": "string",
+            "allOf": [
+              {
+                "maxLength": 255
+              }
+            ]
+          },
+          "postalCode": {
+            "type": "string",
+            "allOf": [
+              {
+                "maxLength": 20
+              }
+            ]
+          },
+          "country": {
+            "type": "string",
+            "allOf": [
+              {
+                "pattern": "^[A-Z]{2}$"
+              }
+            ]
+          }
+        },
+        "required": ["line1", "city", "postalCode", "country"],
+        "additionalProperties": false
+      },
+      "CustomerCheckoutBilling": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "purpose": {
+                "type": "string",
+                "enum": ["personal"]
+              },
+              "invoice": {
+                "type": "string",
+                "enum": ["none"]
+              }
+            },
+            "required": ["purpose", "invoice"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "purpose": {
+                "type": "string",
+                "enum": ["personal"]
+              },
+              "invoice": {
+                "type": "string",
+                "enum": ["requested"]
+              },
+              "address": {
+                "$ref": "#/components/schemas/CustomerInvoiceAddress"
+              }
+            },
+            "required": ["purpose", "invoice", "address"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "purpose": {
+                "type": "string",
+                "enum": ["business"]
+              },
+              "invoice": {
+                "type": "string",
+                "enum": ["required"]
+              },
+              "buyer": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": ["business"]
+                  },
+                  "legalName": {
+                    "type": "string",
+                    "allOf": [
+                      {
+                        "maxLength": 180
+                      }
+                    ]
+                  },
+                  "companyId": {
+                    "type": "string",
+                    "allOf": [
+                      {
+                        "maxLength": 64
+                      }
+                    ]
+                  },
+                  "vatId": {
+                    "type": "string",
+                    "allOf": [
+                      {
+                        "maxLength": 64
+                      }
+                    ]
+                  },
+                  "address": {
+                    "$ref": "#/components/schemas/CustomerInvoiceAddress"
+                  }
+                },
+                "required": ["kind", "legalName", "companyId", "address"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["purpose", "invoice", "buyer"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "CreateCustomerCheckout": {
+        "type": "object",
+        "properties": {
+          "locale": {
+            "$ref": "#/components/schemas/CustomerLocale"
+          },
+          "checkoutSessionId": {
+            "type": "string",
+            "allOf": [
+              {
+                "minLength": 1
+              }
+            ]
+          },
+          "checkoutAttemptId": {
+            "type": "string",
+            "allOf": [
+              {
+                "minLength": 1
+              }
+            ]
+          },
+          "advertisedPriceToken": {
+            "type": "string",
+            "allOf": [
+              {
+                "minLength": 1
+              }
+            ]
+          },
+          "selection": {
+            "$ref": "#/components/schemas/CustomerBookingSelection"
+          },
+          "earlySetup": {
+            "type": "boolean"
+          },
+          "bookingFor": {
+            "type": "string",
+            "enum": ["self", "someone-else"]
+          },
+          "contact": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "allOf": [
+                  {
+                    "maxLength": 255
+                  }
+                ]
+              },
+              "email": {
+                "type": "string",
+                "allOf": [
+                  {
+                    "maxLength": 255
+                  }
+                ]
+              },
+              "phone": {
+                "type": "string",
+                "allOf": [
+                  {
+                    "maxLength": 32
+                  }
+                ]
+              }
+            },
+            "required": ["name", "email", "phone"],
+            "additionalProperties": false
+          },
+          "billing": {
+            "$ref": "#/components/schemas/CustomerCheckoutBilling"
+          },
+          "marketingConsent": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "locale",
+          "checkoutSessionId",
+          "checkoutAttemptId",
+          "advertisedPriceToken",
+          "selection",
+          "bookingFor",
+          "contact",
+          "billing"
+        ],
+        "additionalProperties": false
+      },
+      "CustomerCheckoutChangedKeys": {
+        "type": "object",
+        "properties": {
+          "sectionKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "itemKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["sectionKeys", "itemKeys"],
+        "additionalProperties": false
+      },
+      "CustomerCheckout": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["ready", "price_review"]
+          },
+          "orderId": {
+            "type": "string"
+          },
+          "payStateToken": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string",
+            "description": "ISO 8601 instant."
+          },
+          "summary": {
+            "$ref": "#/components/schemas/CustomerCheckoutSummary"
+          },
+          "priceReview": {
+            "type": "object",
+            "properties": {
+              "changedKeys": {
+                "$ref": "#/components/schemas/CustomerCheckoutChangedKeys"
+              }
+            },
+            "required": ["changedKeys"],
+            "additionalProperties": false
+          },
+          "earlyPerformanceConsent": {
+            "type": "object",
+            "properties": {
+              "required": {
+                "type": "boolean"
+              },
+              "requiredFrom": {
+                "type": "string",
+                "description": "ISO 8601 instant."
+              }
+            },
+            "required": ["required", "requiredFrom"],
+            "additionalProperties": false
+          },
+          "referralApplied": {
+            "type": "boolean",
+            "enum": [true]
+          },
+          "rememberedReferralCodeUsed": {
+            "type": "boolean",
+            "enum": [true]
+          },
+          "rememberReferralCode": {
+            "$ref": "#/components/schemas/ReferralCode"
+          }
+        },
+        "required": [
+          "status",
+          "orderId",
+          "payStateToken",
+          "expiresAt",
+          "summary",
+          "earlyPerformanceConsent"
+        ],
+        "additionalProperties": false
+      },
+      "CustomerCheckoutPaymentDisabled": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["payment_disabled"]
+          },
+          "orderId": {
+            "type": "string"
+          }
+        },
+        "required": ["status", "orderId"],
+        "additionalProperties": false
+      },
+      "CustomerCheckoutStart": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/CustomerCheckout"
+          },
+          {
+            "$ref": "#/components/schemas/CustomerCheckoutPaymentDisabled"
+          }
+        ]
+      },
+      "CustomerCheckoutDetailsInvalid": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["CustomerCheckoutDetailsInvalid"]
+          },
+          "field": {
+            "type": "string"
+          }
+        },
+        "required": ["_tag"],
+        "additionalProperties": false
+      },
+      "CustomerSelectionUnavailable": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["CustomerSelectionUnavailable"]
+          },
+          "reason": {
+            "type": "string",
+            "enum": ["availability_changed", "checkout_conflict"]
+          }
+        },
+        "required": ["_tag", "reason"],
+        "additionalProperties": false
+      },
+      "CustomerQuoteExpired": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["CustomerQuoteExpired"]
+          }
+        },
+        "required": ["_tag"],
+        "additionalProperties": false
+      },
+      "ApplyCustomerCheckoutDiscountCode": {
+        "type": "object",
+        "properties": {
+          "locale": {
+            "$ref": "#/components/schemas/CustomerLocale"
+          },
+          "payStateToken": {
+            "type": "string",
+            "allOf": [
+              {
+                "minLength": 1
+              }
+            ]
+          },
+          "code": {
+            "type": "string",
+            "allOf": [
+              {
+                "maxLength": 64
+              }
+            ]
+          }
+        },
+        "required": ["locale", "payStateToken", "code"],
+        "additionalProperties": false
+      },
+      "CustomerCheckoutDiscountCodeResult": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["ready", "price_review"]
+          },
+          "orderId": {
+            "type": "string"
+          },
+          "payStateToken": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string",
+            "description": "ISO 8601 instant."
+          },
+          "summary": {
+            "$ref": "#/components/schemas/CustomerCheckoutSummary"
+          },
+          "priceReview": {
+            "type": "object",
+            "properties": {
+              "changedKeys": {
+                "$ref": "#/components/schemas/CustomerCheckoutChangedKeys"
+              }
+            },
+            "required": ["changedKeys"],
+            "additionalProperties": false
+          },
+          "earlyPerformanceConsent": {
+            "type": "object",
+            "properties": {
+              "required": {
+                "type": "boolean"
+              },
+              "requiredFrom": {
+                "type": "string",
+                "description": "ISO 8601 instant."
+              }
+            },
+            "required": ["required", "requiredFrom"],
+            "additionalProperties": false
+          },
+          "referralApplied": {
+            "type": "boolean",
+            "enum": [true]
+          },
+          "rememberedReferralCodeUsed": {
+            "type": "boolean",
+            "enum": [true]
+          },
+          "rememberReferralCode": {
+            "$ref": "#/components/schemas/ReferralCode"
+          },
+          "discountCode": {
+            "type": "string",
+            "enum": ["applied", "referral_accepted"]
+          }
+        },
+        "required": [
+          "status",
+          "orderId",
+          "payStateToken",
+          "expiresAt",
+          "summary",
+          "earlyPerformanceConsent"
+        ],
+        "additionalProperties": false
+      },
+      "CustomerDiscountCodeRejected": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["CustomerDiscountCodeRejected"]
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "unavailable",
+              "already_attributed",
+              "ineligible",
+              "code_already_applied"
+            ]
+          },
+          "payStateToken": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string",
+            "description": "ISO 8601 instant."
+          }
+        },
+        "required": ["_tag", "reason"],
+        "additionalProperties": false
+      },
+      "CustomerCheckoutNotFound": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["CustomerCheckoutNotFound"]
+          }
+        },
+        "required": ["_tag"],
+        "additionalProperties": false
+      },
+      "CustomerCheckoutUnavailableReason": {
+        "type": "string",
+        "enum": [
+          "expired",
+          "payment_in_progress",
+          "price_review_pending",
+          "not_payable",
+          "reservation_ended",
+          "offer_replaced"
+        ],
+        "description": "expired: the hold or its token ended, start a new checkout. payment_in_progress: a payment for the order has started. price_review_pending: accept the changed price first. not_payable: the order's payment is in progress or it can no longer be paid, open its status screen. reservation_ended: the booked time has passed. offer_replaced: the cowork offer booked is no longer sold."
+      },
+      "CustomerCheckoutUnavailable": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["CustomerCheckoutUnavailable"]
+          },
+          "reason": {
+            "$ref": "#/components/schemas/CustomerCheckoutUnavailableReason"
+          }
+        },
+        "required": ["_tag", "reason"],
+        "additionalProperties": false
+      },
+      "AcceptCustomerCheckoutPriceChange": {
+        "type": "object",
+        "properties": {
+          "locale": {
+            "$ref": "#/components/schemas/CustomerLocale"
+          },
+          "payStateToken": {
+            "type": "string",
+            "allOf": [
+              {
+                "minLength": 1
+              }
+            ]
+          }
+        },
+        "required": ["locale", "payStateToken"],
+        "additionalProperties": false
+      },
+      "SubmitCustomerCheckout": {
+        "type": "object",
+        "properties": {
+          "locale": {
+            "$ref": "#/components/schemas/CustomerLocale"
+          },
+          "payStateToken": {
+            "type": "string",
+            "allOf": [
+              {
+                "minLength": 1
+              }
+            ]
+          },
+          "legalConsent": {
+            "type": "boolean"
+          },
+          "earlyPerformanceConsent": {
+            "type": "boolean"
+          },
+          "acceptedLegalDocuments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "hash": {
+                  "type": "string"
+                }
+              },
+              "required": ["key", "hash"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "locale",
+          "payStateToken",
+          "legalConsent",
+          "acceptedLegalDocuments"
+        ],
+        "additionalProperties": false
+      },
+      "CustomerCheckoutSubmission": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["payment_required"]
+              },
+              "orderId": {
+                "type": "string"
+              },
+              "paymentUrl": {
+                "type": "string"
+              },
+              "statusUrl": {
+                "type": "string"
+              }
+            },
+            "required": ["status", "orderId", "paymentUrl", "statusUrl"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["paid"]
+              },
+              "orderId": {
+                "type": "string"
+              },
+              "statusUrl": {
+                "type": "string"
+              },
+              "rememberedReferralCodeUsed": {
+                "type": "boolean",
+                "enum": [true]
+              }
+            },
+            "required": ["status", "orderId", "statusUrl"],
+            "additionalProperties": false
+          },
+          {
+            "$ref": "#/components/schemas/CustomerCheckout"
+          }
+        ]
+      },
+      "CustomerConsentRequired": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["CustomerConsentRequired"]
+          },
+          "consent": {
+            "type": "string",
+            "enum": ["legal", "early_performance"]
+          }
+        },
+        "required": ["_tag", "consent"],
+        "additionalProperties": false
+      },
+      "CustomerLegalDocumentsChanged": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["CustomerLegalDocumentsChanged"]
+          }
+        },
+        "required": ["_tag"],
         "additionalProperties": false
       }
     },
