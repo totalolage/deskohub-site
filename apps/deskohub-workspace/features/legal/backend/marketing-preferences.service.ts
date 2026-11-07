@@ -290,6 +290,22 @@ export class MarketingPreferences extends Context.Service<
     )
   );
 
+  /**
+   * Marketing preferences for a client that holds no e-mail-link management
+   * credentials, such as the native app through the customer HTTP API: read
+   * and save always resolve the signed-in account's authority.
+   */
+  static AccountScoped = this.Default.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        MarketingManagementCookies.none,
+        MarketingManagementService.Default.pipe(
+          Layer.provide(WorkspaceDatabase.Default)
+        )
+      )
+    )
+  );
+
   static Live = this.ManagementLive.pipe(
     Layer.provideMerge(
       Layer.mergeAll(CustomerAccountResolver.Live, MarketingConsentLedger.Live)

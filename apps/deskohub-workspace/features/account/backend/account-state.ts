@@ -11,6 +11,7 @@ import {
 import { CustomerAgentConnections } from "@/features/account/backend/auth/customer-agent-connections.service";
 import { CustomerPasskeys } from "@/features/account/backend/auth/customer-passkeys.service";
 import { acceptAutoLinkedReferral } from "@/features/account/backend/auto-linked-referral";
+import { accountReferralOverview } from "@/features/account/backend/current-referral-overview";
 import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
 import {
   type CustomerAccountSession,
@@ -41,15 +42,11 @@ import {
 import type { CustomerAgentConnection } from "@/features/account/customer-agent-connections";
 import type { AccountPasskeySettings } from "@/features/account/passkeys";
 import { ReferralService } from "@/features/referrals";
-import {
-  getReferralShareUrl,
-  type ReferralCode,
-} from "@/features/referrals/client";
+import type { ReferralCode } from "@/features/referrals/client";
 import type { ReferralAccountOverview } from "@/features/referrals/contracts";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import { ReviewAccounts } from "@/features/review-accounts";
-import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/workspace-url.config";
 import {
   catchRecoverableCause,
   failuresAsDefects,
@@ -530,22 +527,7 @@ const readReviewAccount = (user: CustomerAccountSession) =>
  * degrades to the referral screen's unavailable state.
  */
 const loadReferralOverview = (account: LinkedCustomerAccount) =>
-  Effect.flatMap(ReferralService, (service) =>
-    service.getAccountSummary({
-      customerAccountId: account.accountId,
-      dotyposCustomerId: account.dotyposCustomerId,
-    })
-  ).pipe(
-    Effect.flatMap((summary) =>
-      getWorkspaceRuntimeCallbackOrigin.pipe(
-        Effect.map(
-          (origin): ReferralAccountOverview => ({
-            summary,
-            shareUrl: getReferralShareUrl(summary.code, origin),
-          })
-        )
-      )
-    ),
+  accountReferralOverview(account).pipe(
     degradable("account.referrals.unavailable", () => undefined),
     withOperation("account.referrals")
   );

@@ -3,7 +3,7 @@ import {
   customerApiClientHeader,
   customerApiPathPrefix,
 } from "@deskohub/workspace-customer-api";
-import { DateTime, Effect, Layer } from "effect";
+import { Effect, Layer } from "effect";
 import {
   testCustomerSession,
   testLinkedAccount,
@@ -12,13 +12,11 @@ import {
   AccountAvatarReleaseGate,
   PasskeyReleaseGate,
 } from "@/features/account/backend/account-release-gates";
-import type {
-  AccountReleaseLayers,
-  AccountServiceLayers,
-} from "@/features/account/backend/account-state-capabilities";
+import type { AccountReleaseLayers } from "@/features/account/backend/account-state-capabilities";
 import { CustomerAgentConnections } from "@/features/account/backend/auth/customer-agent-connections.service";
 import { CustomerPasskeys } from "@/features/account/backend/auth/customer-passkeys.service";
 import { CustomerRequestOrigins } from "@/features/account/backend/auth/customer-request-origins.service";
+import { CustomerAccountDeletionEndpoint } from "@/features/account/backend/auth/delete-account-endpoint";
 import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
 import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
 import {
@@ -32,19 +30,22 @@ import {
   type CustomerAccountAccessError,
   customerAccountUnavailable,
 } from "@/features/account/customer-account";
+import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
+import { MarketingPreferences } from "@/features/legal/backend/marketing-preferences.service";
 import { ReferralServiceMock } from "@/features/referrals/referral.service.mock";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { ReferralSignupIntentRepository } from "@/features/referrals/signup-intent.repository";
 import { ReviewAccountsMock } from "@/features/review-accounts/backend/review-accounts.repository.mock";
 import {
-  RequestBudget,
-  type RequestBudgetPolicy,
-  RequestBudgetSpend,
-  RequestBudgetUnavailable,
-} from "@/shared/backend/request-budget/request-budget.service";
+  makeMemoryRequestBudget,
+  unavailableRequestBudget,
+} from "@/shared/backend/request-budget/memory-request-budget.test-utils";
 import { toWorkspaceWebHandler } from "@/shared/backend/workspace-effect";
 import { continueMutationsAfterDisconnect } from "@/shared/backend/workspace-http-api-route";
-import { CustomerAccountLayers } from "./customer-account-layers";
+import {
+  CustomerAccountLayers,
+  type CustomerAccountServiceLayers,
+} from "./customer-account-layers";
 import { makeWorkspaceCustomerApiLayer } from "./customer-api.server";
 
 /** The origin Better Auth trusts in a customer API test. */
@@ -75,7 +76,7 @@ export type CustomerApiTestOptions = {
    * Account service fakes. Every service left out is a `Layer.mock` with
    * nothing implemented, so an endpoint that uses it dies.
    */
-  readonly services?: Partial<Omit<AccountServiceLayers, "authentication">>;
+  readonly services?: Partial<CustomerAccountServiceLayers>;
   /** Release gates; each left out is closed. */
   readonly releases?: Partial<AccountReleaseLayers>;
 };
@@ -90,20 +91,25 @@ export type CustomerApiTestOptions = {
 export const makeCustomerApiTestServer = (
   options: CustomerApiTestOptions = {}
 ) => {
+  let sessionReads = 0;
+  const budget = makeMemoryRequestBudget();
   const records = {
-    sessionReads: 0,
-    budgetSpends: [] as RequestBudgetPolicy[],
+    get sessionReads() {
+      return sessionReads;
+    },
+    get budgetSpends() {
+      return budget.spends();
+    },
   };
   const session =
     options.session === undefined ? testCustomerSession : options.session;
   const isTrustedOrigin =
     options.isTrustedOrigin ?? ((origin: string) => origin === trustedOrigin);
-  const spent = new Map<string, number>();
 
   const fakes = Layer.mergeAll(
     Layer.succeed(CustomerAuthentication, {
       currentUser: Effect.suspend(() => {
-        records.sessionReads += 1;
+        sessionReads += 1;
         return session !== null && "failure" in session
           ? Effect.fail(session.failure)
           : Effect.succeed(session);
@@ -118,27 +124,9 @@ export const makeCustomerApiTestServer = (
         return answer;
       },
     }),
-    Layer.succeed(RequestBudget, {
-      spend: (policy) =>
-        options.budgetUnavailable
-          ? Effect.fail(
-              new RequestBudgetUnavailable({
-                key: policy.key,
-                cause: "budget store down",
-              })
-            )
-          : Effect.sync(() => {
-              records.budgetSpends.push(policy);
-              const count = spent.get(policy.key) ?? 0;
-              if (count >= policy.limit) {
-                return RequestBudgetSpend.Exhausted({
-                  retryAt: DateTime.nowUnsafe(),
-                });
-              }
-              spent.set(policy.key, count + 1);
-              return RequestBudgetSpend.Granted();
-            }),
-    }),
+    options.budgetUnavailable
+      ? unavailableRequestBudget("budget store down")
+      : budget.layer,
     Layer.succeed(CustomerAccountLayers, {
       services: { ...unusedAccountServices, ...options.services },
       releases: { ...closedReleases, ...options.releases },
@@ -154,7 +142,7 @@ export const makeCustomerApiTestServer = (
   return { handle, records };
 };
 
-const unusedAccountServices: Omit<AccountServiceLayers, "authentication"> = {
+const unusedAccountServices: CustomerAccountServiceLayers = {
   resolver: Layer.mock(CustomerAccountResolver, {}),
   profile: Layer.mock(CustomerProfileService, {}),
   avatar: Layer.mock(CustomerAvatarService, {}),
@@ -164,6 +152,9 @@ const unusedAccountServices: Omit<AccountServiceLayers, "authentication"> = {
   referrals: ReferralServiceMock({}),
   signupIntents: Layer.mock(ReferralSignupIntentRepository, {}),
   contacts: Layer.mock(CustomerAccountContactService, {}),
+  marketingPreferences: Layer.mock(MarketingPreferences, {}),
+  consentLedger: Layer.mock(MarketingConsentLedger, {}),
+  accountDeletion: Layer.mock(CustomerAccountDeletionEndpoint, {}),
 };
 
 /** The Dotypos profile of `linkedAccountServices`' account. */
@@ -179,10 +170,7 @@ export const testCustomerProfile: CustomerProfile = {
  * customer with `testCustomerProfile`, no avatar, passkeys or assistants,
  * and no referral. Spread overrides over it.
  */
-export const linkedAccountServices: Omit<
-  AccountServiceLayers,
-  "authentication"
-> = {
+export const linkedAccountServices: CustomerAccountServiceLayers = {
   ...unusedAccountServices,
   resolver: Layer.mock(CustomerAccountResolver, {
     resolve: Effect.succeed(testLinkedAccount),
