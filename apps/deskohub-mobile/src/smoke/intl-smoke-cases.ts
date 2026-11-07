@@ -86,7 +86,7 @@ export const intlSmokeCases: ReadonlyArray<SmokeCase> = [
     name: "currency-name-czk",
     run: () => {
       // Hermes has no Intl.DisplayNames; the helper then names the ISO code.
-      const hasDisplayNames = "DisplayNames" in Intl;
+      const hasDisplayNames = typeof Intl.DisplayNames === "function";
       const name = formatCurrencyName({ currency: "CZK", locale: "cs" });
       assertSmoke(
         name === (hasDisplayNames ? "česká koruna" : "CZK"),
