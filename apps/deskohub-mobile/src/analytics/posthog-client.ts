@@ -76,7 +76,7 @@ export const createPostHogClient: CreateAnalyticsClient = ({
     // settles with flags requested after the call. A failed request resolves
     // with no flags.
     reloadFeatureFlags: async () => {
-      const flags = await posthog.reloadFeatureFlagsAsync(true);
+      const flags = await posthog.reloadFeatureFlagsAsync();
       if (flags === undefined) throw new Error("No feature flags returned.");
     },
     getFeatureFlag: (flag) => posthog.getFeatureFlag(flag),
