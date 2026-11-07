@@ -157,7 +157,14 @@ mock.module("@/features/account/backend/customer-avatar.service", () => ({
   CustomerAvatarService: Avatar,
 }));
 
-Object.assign(Avatar, { Live: AvatarLayer });
+let avatarLive: Layer.Layer<Avatar, unknown> = AvatarLayer;
+Object.defineProperty(Avatar, "Live", { get: () => avatarLive });
+
+/** A media service whose construction fails, as with invalid configuration. */
+const UnconfiguredAvatarLayer = Layer.effect(
+  Avatar,
+  Effect.fail({ _tag: "CloudinaryConfigError" })
+) as Layer.Layer<Avatar, unknown>;
 
 const activeSession = {
   accountId: "@test/account-id" as const,
@@ -189,6 +196,7 @@ describe("customer avatar actions", () => {
     removeOutcome = { status: "removed" };
     revalidatePath.mockClear();
     readAvatarFlag.mockClear();
+    avatarLive = AvatarLayer;
     avatarFlag = Effect.succeed(true);
     currentUser = Effect.succeed(activeSession);
     resolverCalls = 0;
@@ -349,6 +357,40 @@ describe("customer avatar actions", () => {
     expect(arrayBuffer).not.toHaveBeenCalled();
     expect(uploadCalls).toHaveLength(0);
     expect(removeCalls).toHaveLength(0);
+  });
+
+  test("reports an unconfigured media service as unavailable once the mutation is admitted", async () => {
+    avatarLive = UnconfiguredAvatarLayer;
+    const { uploadCustomerAvatar, removeCustomerAvatar } =
+      await importActions();
+
+    const uploadResult = await uploadCustomerAvatar(uploadForm());
+    const removeResult = await removeCustomerAvatar();
+
+    const unavailableMessage = m.accountUnavailableDescription(
+      {},
+      { locale: "en-US" }
+    );
+    expect(uploadResult.serverError).toBe(unavailableMessage);
+    expect(removeResult.serverError).toBe(unavailableMessage);
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  test("refuses a missing session before building the media service", async () => {
+    avatarLive = UnconfiguredAvatarLayer;
+    currentUser = Effect.succeed(null);
+    const { uploadCustomerAvatar, removeCustomerAvatar } =
+      await importActions();
+
+    const uploadResult = await uploadCustomerAvatar(uploadForm());
+    const removeResult = await removeCustomerAvatar();
+
+    const sessionExpiredMessage = m.accountSessionExpired(
+      {},
+      { locale: "en-US" }
+    );
+    expect(uploadResult.serverError).toBe(sessionExpiredMessage);
+    expect(removeResult.serverError).toBe(sessionExpiredMessage);
   });
 
   test("removes the avatar and revalidates the account path", async () => {

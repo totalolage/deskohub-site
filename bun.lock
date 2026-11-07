@@ -144,6 +144,7 @@
         "@deskohub/standard-schema": "workspace:*",
         "@deskohub/test-email": "workspace:*",
         "@deskohub/workspace-admin-api": "workspace:*",
+        "@deskohub/workspace-customer-api": "workspace:*",
         "@doist/react-interpolate": "^2.2.1",
         "@effect/atom-react": "4.0.0-beta.85",
         "@effect/opentelemetry": "4.0.0-beta.85",
@@ -589,6 +590,18 @@
         "typescript": "npm:@typescript/typescript6@6.0.2",
       },
     },
+    "packages/workspace-customer-api": {
+      "name": "@deskohub/workspace-customer-api",
+      "version": "0.1.0",
+      "dependencies": {
+        "@deskohub/dotypos": "workspace:*",
+        "effect": "4.0.0-beta.85",
+      },
+      "devDependencies": {
+        "@deskohub/test-email": "workspace:*",
+        "typescript": "npm:@typescript/typescript6@6.0.2",
+      },
+    },
   },
   "patchedDependencies": {
     "@effect/sql-pg@4.0.0-beta.85": "patches/@effect%2Fsql-pg@4.0.0-beta.85.patch",
@@ -837,6 +850,8 @@
     "@deskohub/test-email": ["@deskohub/test-email@workspace:packages/test-email"],
 
     "@deskohub/workspace-admin-api": ["@deskohub/workspace-admin-api@workspace:packages/workspace-admin-api"],
+
+    "@deskohub/workspace-customer-api": ["@deskohub/workspace-customer-api@workspace:packages/workspace-customer-api"],
 
     "@doist/react-interpolate": ["@doist/react-interpolate@2.2.4", "", { "peerDependencies": { "prop-types": "15.8.1", "react": ">=17.0.2", "react-dom": ">=17.0.2" } }, "sha512-b7JVndb3TeKypKSDYKswPHFMbaRIr1bwNhEKHJD6bKEDoPWJOiZbmVbAm41ZqimGXDAWtFvbcVuMq7Uzh8Wcrg=="],
 

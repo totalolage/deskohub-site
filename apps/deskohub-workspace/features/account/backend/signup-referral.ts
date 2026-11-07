@@ -2,12 +2,18 @@ import { Effect, Match, Result } from "effect";
 import type { ReferralSignupOutcome } from "@/db/schema/referrals";
 import { ReferralService } from "@/features/referrals";
 import type { ReferralError } from "@/features/referrals/contracts";
+import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import {
   type ReferralSignupIntent,
   ReferralSignupIntentRepository,
 } from "@/features/referrals/signup-intent.repository";
 import type { ProfileCompletionReferralOutcome } from "../contracts";
-import type { LinkedCustomerAccount } from "../customer-account";
+import {
+  type LinkedCustomerAccount,
+  mapCustomerAccountFailure,
+} from "../customer-account";
+import { requireAccountFeature } from "./account-feature-withheld";
+import { CustomerAccountResolver } from "./customer-account-resolver.service";
 
 const applied = { status: "applied" } as const;
 const pending = { status: "pending" } as const;
@@ -181,6 +187,26 @@ const settleSignupReferral = Effect.fnUntraced(function* (
   return winner?.outcome && !winner.acknowledged
     ? toOutcome(winner.outcome)
     : undefined;
+});
+
+/**
+ * Hides the settled outcome of the referral code the current session's
+ * account entered at profile completion. The notice shows from stored state
+ * until this runs. A withheld referral program shows no notice, so it
+ * refuses and leaves the stored outcome untouched.
+ */
+export const acknowledgeCurrentSignupReferral = Effect.fn(
+  "account.acknowledgeCurrentSignupReferral"
+)(function* () {
+  yield* requireAccountFeature("referrals", ReferralReleaseGate.isOpen);
+  const account = yield* Effect.flatMap(
+    CustomerAccountResolver,
+    (resolver) => resolver.resolve
+  );
+  yield* acknowledgeSignupReferral(account).pipe(
+    Effect.mapError(mapCustomerAccountFailure("referral.signup-acknowledge"))
+  );
+  return { status: "acknowledged" } as const;
 });
 
 /** Hides the account's settled completion-code outcome for good. */
