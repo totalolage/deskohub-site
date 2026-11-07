@@ -84,8 +84,9 @@ authenticates every request.
   (`accountAccessApiFailure`), anything else to 503
   `CustomerServiceUnavailable`, and only fixed codes reach the log. Never put
   provider messages, identifiers, or customer data in a public error.
-- Mutations run to completion when the client disconnects: the route passes
-  every method but GET and HEAD through `continueMutationsAfterDisconnect`.
+- Mutations run to completion when the client disconnects: the route serves
+  every method with `continue-after-disconnect` and passes every method but
+  GET and HEAD through `continueMutationsAfterDisconnect`.
   Keep reads on GET so they still stop with the client. A GET whose port
   provisions or finalizes something, such as the order status refresh or the
   door code, runs that call to completion like a mutation: wrap it in

@@ -8,6 +8,7 @@ import {
   HttpServerResponse,
 } from "effect/unstable/http";
 import { NextRequest } from "next/server";
+import { runToCompletion } from "./run-to-completion";
 import { toWorkspaceWebHandler } from "./workspace-effect";
 import {
   continueMutationsAfterDisconnect,
@@ -21,7 +22,10 @@ const encoder = new TextEncoder();
  * `release`, then answers. `outcome` resolves once it either finished or was
  * interrupted.
  */
-const slowRoute = (method: "GET" | "POST") => {
+const slowRoute = (
+  method: "GET" | "POST",
+  options: { readonly toCompletion?: boolean } = {}
+) => {
   const received = Promise.withResolvers<string>();
   const release = Promise.withResolvers<void>();
   const outcome = Promise.withResolvers<"finished" | "interrupted">();
@@ -32,8 +36,10 @@ const slowRoute = (method: "GET" | "POST") => {
       Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest;
         received.resolve(yield* Effect.orDie(request.text));
-        yield* Effect.promise(() => release.promise);
-        outcome.resolve("finished");
+        const work = Effect.promise(() => release.promise).pipe(
+          Effect.andThen(Effect.sync(() => outcome.resolve("finished")))
+        );
+        yield* options.toCompletion ? runToCompletion(work) : work;
         return HttpServerResponse.text("done");
       }).pipe(
         Effect.onInterrupt(() =>
@@ -149,5 +155,78 @@ describe("defineWorkspaceHttpApiRoute", () => {
     const answer = await response;
     expect(answer.status).toBe(200);
     expect(await answer.text()).toBe("done");
+  });
+
+  /** A customer or admin API route, serving every method the same way. */
+  const apiRoute = (
+    cancellation: "interrupt-on-disconnect" | "continue-after-disconnect",
+    handler: (request: Request) => Promise<Response>
+  ) =>
+    defineWorkspaceHttpApiRoute(
+      {
+        operation: "workspaceHttpApiRouteTest",
+        cancellation,
+        caller: "client",
+        failureMessage: "The test request could not be completed.",
+      },
+      continueMutationsAfterDisconnect(handler)
+    );
+
+  /**
+   * Disconnects a GET whose work runs to completion, then reports whether
+   * the route answered before the work was released.
+   */
+  const answeredBeforeRelease = async (
+    cancellation: "interrupt-on-disconnect" | "continue-after-disconnect"
+  ) => {
+    const route = slowRoute("GET", { toCompletion: true });
+    const client = new AbortController();
+    let answered = false;
+    // An interrupted runner rejects; either way the route has answered.
+    const response = apiRoute(cancellation, route.handle)(
+      workRequest("GET", client.signal)
+    ).then(
+      () => {
+        answered = true;
+      },
+      () => {
+        answered = true;
+      }
+    );
+    await route.received.promise;
+    client.abort();
+    await Bun.sleep(20);
+    const before = answered;
+    route.release.resolve();
+    await response;
+    return { before, outcome: await route.outcome.promise };
+  };
+
+  // The route's runner stops waiting for its handler on the abort, so the
+  // platform may end the invocation while the work still runs.
+  test("an interrupting route answers before a GET's run-to-completion work ends", async () => {
+    expect(await answeredBeforeRelease("interrupt-on-disconnect")).toEqual({
+      before: true,
+      outcome: "finished",
+    });
+  });
+
+  test("a continuing route waits for a GET's run-to-completion work", async () => {
+    expect(await answeredBeforeRelease("continue-after-disconnect")).toEqual({
+      before: false,
+      outcome: "finished",
+    });
+  });
+
+  test("a continuing route still stops an ordinary GET whose client disconnects", async () => {
+    const route = slowRoute("GET");
+
+    const { outcome } = await disconnectMidway(
+      route,
+      apiRoute("continue-after-disconnect", route.handle),
+      "GET"
+    );
+
+    expect(outcome).toBe("interrupted");
   });
 });

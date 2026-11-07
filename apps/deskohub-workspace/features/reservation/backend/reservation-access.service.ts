@@ -2,6 +2,7 @@ import { DotyposService } from "@deskohub/dotypos";
 import { Context, Effect, Layer, Option, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceCheckoutAccessCodeService } from "@/features/checkout/backend/reservation/access-code.service";
+import { ReservationAccessIssuanceError } from "@/features/reservation-access";
 import type { Locale } from "@/features/i18n";
 import { decodeBookedReservation } from "@/features/reservation/backend/booked-reservation";
 import { ReservationAuthorizationService } from "@/features/reservation/backend/reservation-authorization.service";
@@ -10,7 +11,6 @@ import { getDotyposReservationAccessTiming } from "@/features/reservation/backen
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import type { ReservationAccessToken } from "@/features/reservation/reservation-access-token";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
-import { currentInstant } from "@/shared/utils/temporal";
 
 export type ReservationAccessViewModel =
   | {
@@ -27,8 +27,8 @@ export type ReservationAccessViewModel =
 
 /**
  * Why a code can't be shown: the reservation's state doesn't grant one (not
- * paid or confirmed, or ended without a code), or a lookup it needs failed
- * and a later try may succeed.
+ * paid or confirmed, or issuance refuses it, such as once it ended), or a
+ * lookup it needs failed and a later try may succeed.
  */
 export type ReservationAccessUnavailableReason =
   | "reservation-state"
@@ -150,16 +150,13 @@ const implementation = Effect.gen(function* () {
           Effect.tapError(() =>
             Effect.logError("Reservation access code resolution failed")
           ),
-          // No code is issued once the reservation has ended, so a failure
-          // then is the reservation's state, not one to retry.
-          Effect.catch(() =>
-            currentInstant.pipe(
-              Effect.map((now) =>
-                unavailableAccess(
-                  Temporal.Instant.compare(now, timing.reservedUntil) >= 0
-                    ? "reservation-state"
-                    : "lookup-failed"
-                )
+          Effect.catch((failure) =>
+            Effect.succeed(
+              unavailableAccess(
+                failure instanceof ReservationAccessIssuanceError &&
+                  failure.refusal
+                  ? "reservation-state"
+                  : "lookup-failed"
               )
             )
           )

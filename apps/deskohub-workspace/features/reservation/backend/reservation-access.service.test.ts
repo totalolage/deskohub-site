@@ -8,6 +8,7 @@ import {
   WorkspaceCheckoutAccessCodeService,
   type WorkspaceCheckoutAccessCodeService as WorkspaceCheckoutAccessCodeServiceType,
 } from "@/features/checkout/backend/reservation/access-code.service";
+import { ReservationAccessIssuanceError } from "@/features/reservation-access";
 import type { Locale } from "@/features/i18n";
 import {
   createReservationAccessToken,
@@ -315,10 +316,6 @@ describe("ReservationAccessService", () => {
     for (const resolver of resolvers) {
       const result = await runAccess({
         accessToken,
-        providerReservation: makeProviderReservation({
-          startDate: "2099-06-20T08:15:00Z",
-          endDate: "2099-06-20T09:00:00Z",
-        }),
         resolver:
           resolver as WorkspaceCheckoutAccessCodeServiceType["resolveCustomerAccessCode"],
       });
@@ -330,20 +327,53 @@ describe("ReservationAccessService", () => {
     }
   });
 
-  test("blames the reservation's end when no code can be resolved after it", async () => {
+  test("blames the reservation when issuance refuses it", async () => {
     const accessToken = await createAccessToken();
 
+    for (const refusal of [
+      "reservation-ended",
+      "unrepresentable-interval",
+    ] as const) {
+      const result = await runAccess({
+        accessToken,
+        resolver: () =>
+          Effect.fail(
+            new ReservationAccessIssuanceError({
+              reservationId: orderId,
+              outcome: "rejected",
+              message: "refused",
+              refusal,
+            })
+          ),
+      });
+
+      expect(result.access).toEqual({
+        state: "unavailable",
+        reason: "reservation-state",
+      });
+    }
+  });
+
+  test("treats a failed issuance as a failed lookup, even after the reservation ended", async () => {
+    const accessToken = await createAccessToken();
+
+    // The fixture reservation ended in June 2026; a stored code could still
+    // be shown, so a storage failure reading it is no refusal.
     const result = await runAccess({
       accessToken,
       resolver: () =>
         Effect.fail(
-          new Error("no code after the reservation ends")
-        ) as never,
+          new ReservationAccessIssuanceError({
+            reservationId: orderId,
+            outcome: "uncertain",
+            message: "Reservation access grant could not be loaded.",
+          })
+        ),
     });
 
     expect(result.access).toEqual({
       state: "unavailable",
-      reason: "reservation-state",
+      reason: "lookup-failed",
     });
   });
 });
