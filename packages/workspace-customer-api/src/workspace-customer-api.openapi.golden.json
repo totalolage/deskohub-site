@@ -1299,6 +1299,15 @@
                   "format": "binary"
                 }
               }
+            },
+            "headers": {
+              "Content-Disposition": {
+                "description": "Serves the PDF as an attachment named by the invoice number, as `attachment; filename=\"<invoice number>.pdf\"`.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
             }
           },
           "401": {
