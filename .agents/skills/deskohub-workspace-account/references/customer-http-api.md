@@ -86,6 +86,11 @@ authenticates every request.
 - Mutations run to completion when the client disconnects: the route passes
   every method but GET and HEAD through `continueMutationsAfterDisconnect`.
   Keep reads on GET so they still stop with the client.
+- Don't validate an upload from the endpoint's multipart part stream: Effect
+  lets the body's end overwrite a parser failure from the same chunk, and its
+  part limit counts the part's headers. Parse the handler's `request` body as
+  `customer-avatar-upload.ts` does, with `Multipasta`, keeping the first
+  failure.
 - A client that keeps the remembered referral code sends it in
   `x-deskohub-referral-code`; declare that header on endpoints that read it
   and serve it through `RememberedReferral.fromClient` (see the referrals
@@ -108,3 +113,7 @@ cross-site 403 cases; add a happy path and at least one domain failure, as
 the `updateProfile` tests in `customer-account-handlers.test.ts` do. Budget
 fakes come from `makeMemoryRequestBudget`
 (`shared/backend/request-budget/memory-request-budget.test-utils.ts`).
+Send a streamed body that the handler stops reading early as a `NextRequest`
+through `defineWorkspaceHttpApiRoute`, as the route serves it: Bun never
+settles `cancel()` on a plain streamed `Request` that the served handler
+re-wraps, so such a test hangs.
