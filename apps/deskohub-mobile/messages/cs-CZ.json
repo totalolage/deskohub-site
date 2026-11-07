@@ -51,5 +51,6 @@
   "signin_error_failed": "Něco se pokazilo. Zkuste to znovu.",
   "consent_prompt_message": "Můžeme měřit, jak aplikaci používáte, abychom ji mohli zlepšovat?",
   "consent_prompt_accept": "Povolit analytiku",
-  "consent_prompt_decline": "Odmítnout"
+  "consent_prompt_decline": "Odmítnout",
+  "signin_error_reauth_unconfirmed": "Nepodařilo se ověřit, že jde o stejný účet, proto jsme vás odhlásili. Přihlaste se znovu."
 }

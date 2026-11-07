@@ -35,8 +35,10 @@ import {
 import {
   confirmWebAccount,
   mintNativeHandoff,
+  reauthenticationExpectation,
   sendSignInEmail,
   verifySignInCode,
+  type WebAccountExpectation,
 } from "./web-sign-in";
 import { WebSignInFailure } from "./web-sign-in-failure";
 
@@ -127,18 +129,19 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
   const [useAnotherAccount, setUseAnotherAccount] = useState(false);
 
   const send = useAuthTask(standaloneTaskRuntime, sendSignInEmail, unexpected);
-  // A web reauthentication must come back as the account it started from.
-  const [expectedUser] = useState(() =>
-    params.prompt === "login" && Option.isNone(nativeRequest)
-      ? loadReauthenticatingUser(Date.now())
-      : Option.none<string>()
-  );
+  // A web reauthentication must come back as the account it started from:
+  // the one this page's browser session had, else the one stored for it.
+  const reauthenticating =
+    params.prompt === "login" && Option.isNone(nativeRequest);
+  const [pageSessionUserId, setPageSessionUserId] = useState<string>();
+  const sessionUserId =
+    session.status === "signed-in" ? session.user.id : undefined;
   const verify = useAuthTask(
     standaloneTaskRuntime,
-    (address: string, entered: string) =>
+    (address: string, entered: string, expectation: WebAccountExpectation) =>
       verifySignInCode(address, entered).pipe(
         Effect.andThen(
-          confirmWebAccount(expectedUser).pipe(
+          confirmWebAccount(expectation).pipe(
             Effect.ensuring(Effect.sync(clearReauthenticatingUser))
           )
         ),
@@ -146,6 +149,12 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
       ),
     unexpected
   );
+  const verifyStarted = verify.state.status !== "idle";
+  useEffect(() => {
+    if (!verifyStarted && sessionUserId !== undefined) {
+      setPageSessionUserId((known) => known ?? sessionUserId);
+    }
+  }, [verifyStarted, sessionUserId]);
   const handoff = useAuthTask(standaloneTaskRuntime, finishSignIn, unexpected);
   // For the passkey option: it signed in on this page, so finish the same way.
   const handlePasskeySignedIn = () =>
@@ -215,7 +224,18 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
   };
 
   const submitCode = () => {
-    if (sentTo !== undefined) void verify.start(sentTo, code.trim());
+    if (sentTo === undefined) return;
+    void verify.start(
+      sentTo,
+      code.trim(),
+      reauthenticationExpectation({
+        reauthenticating,
+        sessionUserId: pageSessionUserId,
+        storedUserId: reauthenticating
+          ? loadReauthenticatingUser(Date.now())
+          : Option.none(),
+      })
+    );
   };
 
   const startOver = () => {

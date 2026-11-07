@@ -40,9 +40,13 @@ const completeWebCallback = (callback: AuthCallback) =>
       token: ({ token }) =>
         verifyMagicLinkToken(token).pipe(
           Effect.andThen(
-            confirmWebAccount(loadReauthenticatingUser(Date.now())).pipe(
-              Effect.ensuring(Effect.sync(clearReauthenticatingUser))
-            )
+            // Only the stored marker says a link finishes a reauthentication.
+            confirmWebAccount(
+              Option.match(loadReauthenticatingUser(Date.now()), {
+                onNone: () => ({ kind: "none" }) as const,
+                onSome: (userId) => ({ kind: "account", userId }) as const,
+              })
+            ).pipe(Effect.ensuring(Effect.sync(clearReauthenticatingUser)))
           )
         ),
       handoff: () => Effect.fail(linkRejected()),

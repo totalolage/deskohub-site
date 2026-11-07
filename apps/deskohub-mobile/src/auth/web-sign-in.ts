@@ -1,4 +1,4 @@
-import { Effect, Option } from "effect";
+import { Effect, Match, Option } from "effect";
 import type { AppLocale } from "../i18n/app-locale";
 import { webCallbackPath } from "./auth-callback";
 import { authClient } from "./auth-client.web";
@@ -99,32 +99,71 @@ export const mintNativeHandoff = (request: NativeHandoffRequest) =>
   );
 
 /**
- * After a reauthentication's sign-in, the browser must still be signed in to
- * the account it started from; another account's new session is signed out
- * and refused, so the page never carries on as someone else.
+ * Which account a sign-in on this page must come back as. An ordinary
+ * sign-in has no expectation; a reauthentication expects the account it
+ * started from, and fails closed when that account can't be recovered.
  */
-export const confirmWebAccount = (expectedUserId: Option.Option<string>) =>
-  Option.match(expectedUserId, {
-    onNone: () => Effect.void,
-    onSome: (expected) =>
-      call("confirm-account", (signal) =>
-        authClient.getSession({ fetchOptions: { signal } })
-      ).pipe(
-        Effect.filterOrElse(
-          (data) => data?.user.id === expected,
-          () =>
-            Effect.tryPromise(() => authClient.signOut()).pipe(
-              Effect.ignore,
-              Effect.andThen(
-                Effect.fail(
-                  new WebSignInFailure({
-                    operation: "confirm-account",
-                    reason: "account-switch",
-                  })
-                )
+export type WebAccountExpectation =
+  | { readonly kind: "none" }
+  | { readonly kind: "account"; readonly userId: string }
+  | { readonly kind: "unrecoverable" };
+
+export const reauthenticationExpectation = ({
+  reauthenticating,
+  sessionUserId,
+  storedUserId,
+}: {
+  readonly reauthenticating: boolean;
+  /** The account this page's browser session had before signing in again. */
+  readonly sessionUserId: string | undefined;
+  readonly storedUserId: Option.Option<string>;
+}): WebAccountExpectation => {
+  if (!reauthenticating) return { kind: "none" };
+  const userId = sessionUserId ?? Option.getOrUndefined(storedUserId);
+  return userId === undefined
+    ? { kind: "unrecoverable" }
+    : { kind: "account", userId };
+};
+
+const refuseAccount = (
+  reason: "account-switch" | "reauthentication-unconfirmed"
+) =>
+  Effect.tryPromise(() => authClient.signOut()).pipe(
+    Effect.ignore,
+    Effect.andThen(
+      Effect.fail(
+        new WebSignInFailure({ operation: "confirm-account", reason })
+      )
+    )
+  );
+
+/**
+ * After a reauthentication's sign-in, the browser must be signed in to the
+ * account it started from. Another account's session, or one whose account
+ * can't be read or was never known, is signed out and refused, so the page
+ * never carries on as someone else.
+ */
+export const confirmWebAccount = (expectation: WebAccountExpectation) =>
+  Match.value(expectation).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      none: () => Effect.void,
+      unrecoverable: () => refuseAccount("reauthentication-unconfirmed"),
+      account: ({ userId }) =>
+        call("confirm-account", (signal) =>
+          authClient.getSession({ fetchOptions: { signal } })
+        ).pipe(
+          Effect.catch(() => refuseAccount("reauthentication-unconfirmed")),
+          Effect.filterOrElse(
+            (data) => data?.user.id === userId,
+            (data) =>
+              refuseAccount(
+                data === null || data === undefined
+                  ? "reauthentication-unconfirmed"
+                  : "account-switch"
               )
-            )
+          ),
+          Effect.asVoid
         ),
-        Effect.asVoid
-      ),
-  }).pipe(Effect.withSpan("WebSignIn.confirmWebAccount"));
+    }),
+    Effect.withSpan("WebSignIn.confirmWebAccount")
+  );

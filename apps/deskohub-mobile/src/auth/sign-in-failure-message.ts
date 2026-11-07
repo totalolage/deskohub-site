@@ -53,6 +53,9 @@ export const webSignInFailureMessage = (
     Match.when("account-switch", () =>
       m.signin_error_account_switch({}, { locale })
     ),
+    Match.when("reauthentication-unconfirmed", () =>
+      m.signin_error_reauth_unconfirmed({}, { locale })
+    ),
     Match.when("unavailable", () => m.signin_error_unavailable({}, { locale })),
     Match.when("failed", () => m.signin_error_failed({}, { locale })),
     Match.exhaustive
