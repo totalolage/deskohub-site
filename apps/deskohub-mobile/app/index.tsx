@@ -1,6 +1,6 @@
 import { Link } from "expo-router";
 import { useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text } from "react-native";
 import { AddPasskeyAction } from "../src/auth/passkey/add-passkey-action";
 import {
   type ReauthenticationOutcome,
@@ -16,7 +16,7 @@ import { standaloneTaskRuntime, useAuthTask } from "../src/auth/use-auth-task";
 import { useAppLocale } from "../src/i18n/locale-context";
 import { m } from "../src/i18n/messages";
 import { theme } from "../src/theme";
-import { Button, LiveMessage } from "../src/ui/controls";
+import { Button, LiveMessage, Screen } from "../src/ui/controls";
 
 const runSignOut = () => signOut;
 const unexpected = () => new SignOutFailure();
@@ -46,10 +46,7 @@ export default function HomeScreen() {
   };
 
   return (
-    <View style={styles.screen}>
-      <Text role="heading" style={styles.title}>
-        {m.home_title({}, { locale })}
-      </Text>
+    <Screen title={m.home_title({}, { locale })} align="center">
       <Text style={styles.tagline}>{m.home_tagline({}, { locale })}</Text>
       {session.status === "signed-in" && (
         <Text style={styles.tagline}>
@@ -103,20 +100,11 @@ export default function HomeScreen() {
           {m.home_smoke_link({}, { locale })}
         </Link>
       )}
-    </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    alignItems: "center",
-    backgroundColor: theme.colors.background,
-    flex: 1,
-    gap: theme.spacing.md,
-    justifyContent: "center",
-    padding: theme.spacing.lg,
-  },
-  title: { color: theme.colors.text, ...theme.type.title },
   tagline: {
     color: theme.colors.textMuted,
     textAlign: "center",
