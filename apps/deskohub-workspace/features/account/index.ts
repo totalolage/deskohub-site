@@ -20,6 +20,7 @@ export { CustomerAccountResolver } from "./backend/customer-account-resolver.ser
 export { customerAgentAccountServices } from "./backend/customer-agent-account-services";
 export { CustomerEmailLocaleService } from "./backend/customer-email-locale.service";
 export { CustomerReservationHistoryService } from "./backend/customer-reservation-history.service";
+export { currentReservationHistoryAccount } from "./backend/current-reservation-history-account";
 export {
   isCustomerOwnAuthor,
   type ReservationAuthor,

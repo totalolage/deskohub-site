@@ -206,13 +206,13 @@ describe("ReservationAccessService", () => {
   test("fails closed when the local reservation is missing or cannot be read", async () => {
     const accessToken = await createAccessToken();
 
-    for (const options of [
-      { accessToken, reservation: null },
-      { accessToken, reservationFails: true },
-    ]) {
+    for (const [options, reason] of [
+      [{ accessToken, reservation: null }, "reservation-state"],
+      [{ accessToken, reservationFails: true }, "lookup-failed"],
+    ] as const) {
       const result = await runAccess(options);
 
-      expect(result.access).toEqual({ state: "unavailable" });
+      expect(result.access).toEqual({ state: "unavailable", reason });
       expect(result.getReservation).not.toHaveBeenCalled();
       expect(result.resolveCustomerAccessCode).not.toHaveBeenCalled();
     }
@@ -231,7 +231,10 @@ describe("ReservationAccessService", () => {
         reservation: makeReservation(overrides),
       });
 
-      expect(result.access).toEqual({ state: "unavailable" });
+      expect(result.access).toEqual({
+        state: "unavailable",
+        reason: "reservation-state",
+      });
       expect(result.getReservation).not.toHaveBeenCalled();
       expect(result.resolveCustomerAccessCode).not.toHaveBeenCalled();
     }
@@ -239,23 +242,29 @@ describe("ReservationAccessService", () => {
 
   test("fails closed when the provider is unavailable, cancelled, or returns invalid timing", async () => {
     const accessToken = await createAccessToken();
-    const cases: readonly HarnessOptions[] = [
-      { accessToken, providerFails: true },
-      {
-        accessToken,
-        providerReservation: makeProviderReservation({ status: "CANCELLED" }),
-      },
-      {
-        accessToken,
-        providerReservation: makeProviderReservation({
-          startDate: "invalid-start",
-        }),
-      },
+    const cases: readonly (readonly [HarnessOptions, string])[] = [
+      [{ accessToken, providerFails: true }, "lookup-failed"],
+      [
+        {
+          accessToken,
+          providerReservation: makeProviderReservation({ status: "CANCELLED" }),
+        },
+        "reservation-state",
+      ],
+      [
+        {
+          accessToken,
+          providerReservation: makeProviderReservation({
+            startDate: "invalid-start",
+          }),
+        },
+        "lookup-failed",
+      ],
     ];
 
-    for (const options of cases) {
+    for (const [options, reason] of cases) {
       const result = await runAccess(options);
-      expect(result.access).toEqual({ state: "unavailable" });
+      expect(result.access).toEqual({ state: "unavailable", reason });
       expect(result.resolveCustomerAccessCode).not.toHaveBeenCalled();
     }
   });
@@ -306,11 +315,35 @@ describe("ReservationAccessService", () => {
     for (const resolver of resolvers) {
       const result = await runAccess({
         accessToken,
+        providerReservation: makeProviderReservation({
+          startDate: "2099-06-20T08:15:00Z",
+          endDate: "2099-06-20T09:00:00Z",
+        }),
         resolver:
           resolver as WorkspaceCheckoutAccessCodeServiceType["resolveCustomerAccessCode"],
       });
 
-      expect(result.access).toEqual({ state: "unavailable" });
+      expect(result.access).toEqual({
+        state: "unavailable",
+        reason: "lookup-failed",
+      });
     }
+  });
+
+  test("blames the reservation's end when no code can be resolved after it", async () => {
+    const accessToken = await createAccessToken();
+
+    const result = await runAccess({
+      accessToken,
+      resolver: () =>
+        Effect.fail(
+          new Error("no code after the reservation ends")
+        ) as never,
+    });
+
+    expect(result.access).toEqual({
+      state: "unavailable",
+      reason: "reservation-state",
+    });
   });
 });

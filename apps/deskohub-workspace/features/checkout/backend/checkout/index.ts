@@ -22,6 +22,7 @@ export {
   CheckoutStatusService,
   type CheckoutStatusViewModel,
 } from "./checkout-status.service";
+export { loadAuthorizedCheckoutStatus } from "./authorized-checkout-status";
 export { loadCheckoutStatusPage } from "./checkout-status-page.server";
 export { checkoutSubmitDeadline } from "./checkout-submit-deadline";
 export {
