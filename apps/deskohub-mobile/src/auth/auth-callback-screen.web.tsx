@@ -65,6 +65,12 @@ const mintLinkHandoff = (request: NativeHandoffRequest) =>
     Effect.map((url) => withSignInMethod(url, "link"))
   );
 
+/**
+ * How long a verified link waits for the app to read its session before it
+ * routes on anyway. The read normally lands within a moment.
+ */
+const sessionReadWaitMs = 5000;
+
 const unexpected = () =>
   new WebSignInFailure({ operation: "verify-link", reason: "failed" });
 
@@ -103,14 +109,22 @@ export function AuthCallbackScreen() {
   const verified = verify.state.status === "succeeded";
   const offerApp = verified && Option.isSome(nativeRequest);
   // The verify refreshes the app's session after it returns. Routing on
-  // before that read lands would send the signed-in screen back to sign-in.
-  const routingOn = verified && !offerApp;
-  const sessionRead = session.status === "signed-in";
+  // before that read lands would send the signed-in screen back to sign-in,
+  // so a verified link waits for it, for a few seconds at most.
+  const [sessionWaitOver, setSessionWaitOver] = useState(false);
   useEffect(() => {
-    if (!routingOn || !sessionRead) return;
+    if (!verified) return;
+    const timer = setTimeout(() => setSessionWaitOver(true), sessionReadWaitMs);
+    return () => clearTimeout(timer);
+  }, [verified]);
+  const sessionReady =
+    verified && (session.status === "signed-in" || sessionWaitOver);
+  const routingOn = verified && !offerApp;
+  useEffect(() => {
+    if (!routingOn || !sessionReady) return;
     trackSignInCompleted("link");
     router.replace(returnPath);
-  }, [routingOn, sessionRead, returnPath]);
+  }, [routingOn, sessionReady, returnPath]);
 
   const appUrl =
     handoff.state.status === "succeeded" ? handoff.state.value : undefined;
@@ -124,7 +138,7 @@ export function AuthCallbackScreen() {
   const verifying =
     verify.state.status === "idle" ||
     verify.state.status === "running" ||
-    (routingOn && !sessionRead);
+    (routingOn && !sessionReady);
   const status = callbackStatus(verifying, appUrl !== undefined, locale);
 
   return (
@@ -145,6 +159,7 @@ export function AuthCallbackScreen() {
           <Button
             variant="secondary"
             label={m.callback_continue_here({}, { locale })}
+            disabled={!sessionReady}
             onPress={() => {
               clearNativeHandoffRequest();
               trackSignInCompleted("link");
