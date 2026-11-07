@@ -173,6 +173,19 @@ export const workspaceServerEnvSchema = Schema.Struct({
   ANALYTICS_WAREHOUSE_SOURCE_TOKEN: toEnvSchema(
     Schema.optional(Schema.String.check(Schema.isMinLength(32)))
   ),
+  // Bearer token the release pipeline presents to publish mobile app updates.
+  MOBILE_UPDATES_PUBLISH_TOKEN: toEnvSchema(
+    Schema.optional(Schema.String.check(Schema.isMinLength(32)))
+  ),
+  // PEM RSA key that signs mobile update manifests; the app embeds its
+  // certificate, features/mobile-updates/code-signing-certificate.pem.
+  MOBILE_UPDATES_SIGNING_PRIVATE_KEY: toEnvSchema(
+    Schema.optional(
+      Schema.String.check(
+        Schema.isPattern(/-----BEGIN (RSA )?PRIVATE KEY-----/)
+      )
+    )
+  ),
   NEXI_API_KEY: nonEmptyStringSchema,
   NEXI_API_ORIGIN: urlEnvSchema,
   NEXI_CHECKOUT_CURRENCY_OVERRIDE: toEnvSchema(
