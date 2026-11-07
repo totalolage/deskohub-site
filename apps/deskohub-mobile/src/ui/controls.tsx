@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { theme } from "../theme";
+import { textFieldSubmit } from "./text-field-submit";
 
 /** A centred screen with a heading, used by the sign-in screens. */
 export function Screen({
@@ -71,6 +72,7 @@ export function Button({
 
 export function TextField({
   label,
+  onSubmitEditing,
   ...input
 }: { readonly label: string } & Pick<
   TextInputProps,
@@ -94,6 +96,7 @@ export function TextField({
         style={styles.input}
         placeholderTextColor={theme.colors.textMuted}
         {...input}
+        onSubmitEditing={textFieldSubmit(input.editable, onSubmitEditing)}
       />
     </View>
   );

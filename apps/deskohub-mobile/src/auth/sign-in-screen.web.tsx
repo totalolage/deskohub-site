@@ -253,7 +253,10 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
 
   const handlePasskeySignedIn = () => void passkey.start(accountExpectation());
 
+  // Enter in a field submits too, so each submission checks that no other
+  // sign-in method is running.
   const submitEmail = () => {
+    if (busy) return;
     const address = email.trim();
     const valid = emailPattern.test(address);
     setInvalidEmail(!valid);
@@ -266,7 +269,7 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
   };
 
   const submitCode = () => {
-    if (sentTo === undefined) return;
+    if (busy || sentTo === undefined) return;
     void verify.start(sentTo, code.trim(), accountExpectation());
   };
 
