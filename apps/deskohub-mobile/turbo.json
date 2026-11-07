@@ -36,7 +36,8 @@
       "dependsOn": ["$TURBO_EXTENDS$", "i18n:compile"]
     },
     "typecheck": {
-      "dependsOn": ["$TURBO_EXTENDS$", "i18n:compile"]
+      "dependsOn": ["$TURBO_EXTENDS$", "i18n:compile"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/tsconfig.json"]
     }
   }
 }
