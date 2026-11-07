@@ -150,6 +150,53 @@ describe("submitWorkspaceReservation", () => {
 
   test.each([
     [
+      "a hosted payment",
+      {
+        status: "redirect",
+        orderId: "reservation-id",
+        redirectUrl: "https://payments.example.test/checkout",
+        statusUrl: "/en-US/reservation/status/reservation-id",
+      },
+      ["message", "redirectUrl", "status", "statusUrl"],
+    ],
+    [
+      "a paid order",
+      {
+        status: "redirect",
+        orderId: "reservation-id",
+        redirectUrl: "/en-US/reservation/status/reservation-id",
+        paid: true,
+      },
+      ["message", "paid", "redirectUrl", "status"],
+    ],
+    [
+      "a changed price",
+      {
+        status: "pricing_changed",
+        changedKeys: { sectionKeys: [], itemKeys: [] },
+        freshSummary: { sections: [] },
+        freshPayUrl: "/en-US/checkout/pay?payState=fresh",
+        freshPayStateToken: "fresh-token",
+        expiresAt: "2099-07-01T10:13:00.000Z",
+      },
+      ["changedKeys", "freshPayUrl", "freshSummary", "message", "status"],
+    ],
+    ["a payment in progress", { status: "in_progress" }, ["message", "status"]],
+  ] as const)(
+    "answers the Pay page %s without the API's checkout fields",
+    async (_label, checkout, keys) => {
+      const scenario = await runSubmitReservation({
+        createHostedPaymentCheckout: mock(() => Effect.succeed(checkout)),
+      });
+
+      const result = await Effect.runPromise(scenario.effect);
+
+      expect(Object.keys(result).toSorted()).toEqual([...keys]);
+    }
+  );
+
+  test.each([
+    [
       "zero-total",
       "/en-US/reservation/status/reservation-zero-total?outcome=success",
     ],
