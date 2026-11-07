@@ -53,5 +53,15 @@
   "consent_prompt_accept": "Povolit analytiku",
   "consent_prompt_decline": "Odmítnout",
   "signin_error_reauth_unconfirmed": "Nepodařilo se ověřit, že jde o stejný účet, proto jsme vás odhlásili. Přihlaste se znovu.",
-  "signin_error_reauth_storage": "Tento prohlížeč neukládá údaje, které potřebujeme k ověření, že jste to vy. Povolte Deskohubu ukládání dat a zkuste to znovu."
+  "signin_error_reauth_storage": "Tento prohlížeč neukládá údaje, které potřebujeme k ověření, že jste to vy. Povolte Deskohubu ukládání dat a zkuste to znovu.",
+  "passkey_sign_in": "Přihlásit se přístupovým klíčem",
+  "passkey_sign_in_pending": "Čekáme na přístupový klíč…",
+  "passkey_sign_in_failed": "Přihlášení přístupovým klíčem se nepovedlo. Zkus to znovu, nebo použij e-mail.",
+  "passkey_sign_in_no_credential": "V tomto zařízení nemáš přístupový klíč pro Deskohub. Přihlas se e-mailem.",
+  "passkey_unsupported": "Přístupové klíče v tomto zařízení nejsou k dispozici.",
+  "passkey_add": "Přidat přístupový klíč",
+  "passkey_add_pending": "Pokračuj podle výzvy zařízení…",
+  "passkey_added": "Přístupový klíč je vytvořený. Příště se s ním můžeš přihlásit.",
+  "passkey_add_failed": "Přístupový klíč se nepodařilo vytvořit. Zkus to znovu.",
+  "passkey_add_already_registered": "Toto zařízení už má přístupový klíč k tvému účtu."
 }
