@@ -173,7 +173,7 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
   const verify = useAuthTask(
     standaloneTaskRuntime,
     (address: string, entered: string, expectation: WebAccountExpectation) =>
-      completeWebCodeSignIn(address, entered, expectation).pipe(
+      completeWebCodeSignIn(address, entered, expectation, locale).pipe(
         Effect.andThen(finishSignIn(nativeRequest, "code"))
       ),
     unexpected

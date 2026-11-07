@@ -119,6 +119,11 @@ authenticates every request.
   `features/account/backend/auth/customer-auth-api-drift.test.ts` checks each
   entry's path and method against Better Auth's own endpoints and that none is
   disabled.
+- The app names its locale on the sign-in code and magic-link verification in
+  `customerSignInLocaleHeader`, a `CustomerLocale`
+  (`@deskohub/workspace-customer-api/customer-locale`, an Effect-only entry
+  point the app bundles without the HTTP API). The account it creates takes it
+  as its language; see the locale-preference reference.
 
 ## Tests
 

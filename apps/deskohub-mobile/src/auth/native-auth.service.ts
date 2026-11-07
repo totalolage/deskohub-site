@@ -1,4 +1,5 @@
 import { Context, Data, Effect, Layer, Option, Semaphore } from "effect";
+import type { AppLocale } from "../i18n/app-locale";
 import type { AuthUser } from "./auth-session-state";
 import { makeMemorySecureStore } from "./memory-secure-store";
 import {
@@ -7,6 +8,7 @@ import {
   type NativeAuthClient,
   type NativeAuthClientOptions,
 } from "./native-auth-client";
+import { signInLocaleHeaders } from "./sign-in-locale";
 
 export type { AuthUser } from "./auth-session-state";
 
@@ -56,9 +58,13 @@ export interface SignInSession {
 interface INativeAuth {
   /** The Workspace origin the client talks to. */
   readonly origin: string;
-  /** Claims a magic-link token for a new session. */
+  /**
+   * Claims a magic-link token for a new session. An account it creates gets
+   * `locale` as its language.
+   */
   readonly verifyMagicLink: (
-    token: string
+    token: string,
+    locale: AppLocale
   ) => Effect.Effect<SignInSession, NativeAuthFailure>;
   /** Redeems a handoff code for a new app session. */
   readonly exchangeHandoff: (
@@ -170,9 +176,12 @@ const makeNativeAuth = (
     });
   return {
     origin: options.origin,
-    verifyMagicLink: (token) =>
+    verifyMagicLink: (token, locale) =>
       openSession("verify-magic-link", (signIn, signal) =>
-        signIn.magicLink.verify({ query: { token }, fetchOptions: { signal } })
+        signIn.magicLink.verify({
+          query: { token },
+          fetchOptions: { signal, headers: signInLocaleHeaders(locale) },
+        })
       ),
     exchangeHandoff: ({ code, codeVerifier, returnUri }) =>
       openSession("exchange-handoff", (signIn, signal) =>

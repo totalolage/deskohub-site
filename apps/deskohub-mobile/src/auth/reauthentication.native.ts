@@ -1,5 +1,7 @@
-import { Exit, Option } from "effect";
+import { Effect, Exit, Option } from "effect";
 import { useCallback } from "react";
+import type { AppLocale } from "../i18n/app-locale";
+import { useAppLocale } from "../i18n/locale-context";
 import type { AuthUser } from "./auth-session-state";
 import { nativeAuthRuntime } from "./native-auth-runtime";
 import { reauthenticate } from "./native-sign-in";
@@ -7,6 +9,7 @@ import {
   type NativeSignInFailure,
   SignInUnavailable,
 } from "./native-sign-in-errors";
+import { SignInLocale } from "./sign-in-locale";
 import { type AuthTaskState, useAuthTask } from "./use-auth-task";
 
 export { isReauthenticationRequired } from "./auth-session-state";
@@ -27,7 +30,8 @@ export interface Reauthentication {
   readonly reauthenticate: () => Promise<ReauthenticationOutcome>;
 }
 
-const runReauthentication = () => reauthenticate;
+const runReauthentication = (locale: AppLocale) =>
+  reauthenticate.pipe(Effect.provideService(SignInLocale, locale));
 const unexpected = () => new SignInUnavailable({});
 
 /**
@@ -38,6 +42,7 @@ const unexpected = () => new SignInUnavailable({});
  * Show `state` with `nativeSignInFailureMessage` in a mounted live region.
  */
 export const useReauthentication = (): Reauthentication => {
+  const locale = useAppLocale();
   const { state, start } = useAuthTask(
     nativeAuthRuntime,
     runReauthentication,
@@ -45,11 +50,11 @@ export const useReauthentication = (): Reauthentication => {
   );
   const run = useCallback(
     async (): Promise<ReauthenticationOutcome> =>
-      Option.match(await start(), {
+      Option.match(await start(locale), {
         onNone: () => "busy",
         onSome: (exit) => (Exit.isSuccess(exit) ? "reauthenticated" : "failed"),
       }),
-    [start]
+    [start, locale]
   );
   return { state, reauthenticate: run };
 };

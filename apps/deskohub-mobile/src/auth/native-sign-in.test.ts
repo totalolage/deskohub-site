@@ -27,6 +27,7 @@ import {
   startPendingSignIn,
 } from "./native-sign-in";
 import { PendingSignIns, pendingSignInKey } from "./pending-sign-in.service";
+import { SignInLocale } from "./sign-in-locale";
 import {
   type FakeAuthServer,
   type FakeUser,
@@ -65,7 +66,8 @@ const launchApp = (
       PendingSignIns.fromStore(store),
       AuthCrypto.Live,
       AuthCallbackCompletions.Default,
-      browser
+      browser,
+      Layer.succeed(SignInLocale, "cs-CZ")
     )
   );
   return { client, runtime, opened };
@@ -119,6 +121,31 @@ describe("native session store", () => {
     expect(
       server.callsTo("/magic-link/verify").map((call) => call.query)
     ).toEqual([["token"]]);
+  });
+
+  test("a magic-link verification names the locale the app shows", async () => {
+    const server = makeFakeAuthServer(origin);
+    const app = launchApp(server, makeMemorySecureStore());
+
+    await app.runtime.runPromise(
+      completeAuthCallback({ kind: "token", token: server.issueMagicLink(ada) })
+    );
+    await app.runtime.runPromise(
+      completeAuthCallback({
+        kind: "token",
+        token: server.issueMagicLink(ada),
+      }).pipe(Effect.provideService(SignInLocale, "en-US"))
+    );
+
+    expect(
+      server.callsTo("/magic-link/verify").map((call) => call.locale)
+    ).toEqual(["cs-CZ", "en-US"]);
+    // Only the requests that can create an account name it.
+    expect(
+      server.calls
+        .filter((call) => call.locale !== undefined)
+        .map((call) => call.path)
+    ).toEqual(["/magic-link/verify", "/magic-link/verify"]);
   });
 
   test("a new client on the same storage restores the session", async () => {
