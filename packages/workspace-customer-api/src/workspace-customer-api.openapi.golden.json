@@ -1496,7 +1496,7 @@
             "name": "entryTier",
             "in": "query",
             "schema": {
-              "$ref": "#/components/schemas/CustomerCoworkTier2"
+              "$ref": "#/components/schemas/CustomerBookableCoworkTier"
             },
             "required": false
           },
@@ -1768,7 +1768,7 @@
             "name": "tier",
             "in": "query",
             "schema": {
-              "$ref": "#/components/schemas/CustomerCoworkTier3"
+              "$ref": "#/components/schemas/CustomerBookableCoworkTier"
             },
             "required": false
           },
@@ -4416,7 +4416,7 @@
           }
         ]
       },
-      "CustomerCoworkTier1": {
+      "CustomerBookableCoworkTier": {
         "type": "string",
         "enum": ["open-space", "reserved-desk"]
       },
@@ -4491,7 +4491,7 @@
                 "enum": ["cowork"]
               },
               "tier": {
-                "$ref": "#/components/schemas/CustomerCoworkTier1"
+                "$ref": "#/components/schemas/CustomerBookableCoworkTier"
               },
               "name": {
                 "type": "string"
@@ -4637,10 +4637,6 @@
         "type": "string",
         "enum": ["cowork", "meeting-room", "office"]
       },
-      "CustomerCoworkTier2": {
-        "type": "string",
-        "enum": ["open-space", "reserved-desk"]
-      },
       "CustomerAvailabilityNotice": {
         "type": "object",
         "properties": {
@@ -4687,8 +4683,7 @@
           "unavailableCoworkTiers": {
             "type": "array",
             "items": {
-              "type": "string",
-              "enum": ["basic", "plus", "profi", "open-space", "reserved-desk"]
+              "$ref": "#/components/schemas/CustomerCoworkTier"
             }
           },
           "meetingRoomUnavailable": {
@@ -4787,10 +4782,6 @@
             "description": "Prague start time in HH:mm, such as 09:00."
           }
         ]
-      },
-      "CustomerCoworkTier3": {
-        "type": "string",
-        "enum": ["open-space", "reserved-desk"]
       },
       "CustomerCheckoutSummaryDiscount": {
         "type": "object",
@@ -5012,7 +5003,7 @@
             "$ref": "#/components/schemas/CustomerMeetingRoomDuration"
           },
           "tier": {
-            "$ref": "#/components/schemas/CustomerCoworkTier3"
+            "$ref": "#/components/schemas/CustomerBookableCoworkTier"
           },
           "monitorOption": {
             "$ref": "#/components/schemas/CustomerMonitorOption"

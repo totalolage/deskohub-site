@@ -2,10 +2,10 @@ import { Schema } from "effect";
 import { HttpApiEndpoint } from "effect/unstable/httpapi";
 import { CustomerLocale, Money } from "./customer-account-api";
 import {
+  CustomerBookableCoworkTier,
   CustomerBookingDateOutOfRange,
   CustomerBookingSelectionInvalid,
   CustomerBookingSelectionQuery,
-  CustomerCoworkTier,
   CustomerMeetingRoomDuration,
   CustomerMonitorOption,
   CustomerOfferingUnavailable,
@@ -13,6 +13,7 @@ import {
   CustomerReservationFamily,
 } from "./customer-booking-selection";
 import { CustomerCheckoutSummary } from "./customer-checkout-summary";
+import { CustomerCoworkTier } from "./customer-reservations-api";
 import { CustomerServiceUnavailable } from "./customer-session";
 
 const isoInstant = Schema.String.annotate({
@@ -60,7 +61,7 @@ export const CustomerOfferingAddOn = Schema.Struct({
 export const CustomerOffering = Schema.Union([
   Schema.Struct({
     family: Schema.Literal("cowork"),
-    tier: CustomerCoworkTier,
+    tier: CustomerBookableCoworkTier,
     ...offeringCopyFields,
     /** Per Prague calendar day. */
     price: Money,
@@ -135,7 +136,7 @@ export const CustomerAvailabilityQuery = Schema.Struct({
   /** Cowork only: the date the tier and monitor answers are for. */
   date: Schema.optionalKey(CustomerPlainDate),
   /** Cowork only. */
-  entryTier: Schema.optionalKey(CustomerCoworkTier),
+  entryTier: Schema.optionalKey(CustomerBookableCoworkTier),
   /** Cowork only. */
   monitorOption: Schema.optionalKey(CustomerMonitorOption),
   /** Meeting room: one booking's interval. Office: the first day. */
@@ -170,9 +171,7 @@ export const CustomerAvailability = Schema.Struct({
   /** Dates a Reserved Desk can be booked only with a monitor workstation. */
   reservedDeskWorkstationRequiredDates: Schema.Array(Schema.String),
   /** Includes tiers no longer offered, which a held booking may carry. */
-  unavailableCoworkTiers: Schema.Array(
-    Schema.Literals(["basic", "plus", "profi", "open-space", "reserved-desk"])
-  ),
+  unavailableCoworkTiers: Schema.Array(CustomerCoworkTier),
   meetingRoomUnavailable: Schema.Boolean,
   officeUnavailable: Schema.Boolean,
   unavailableMonitorOptions: Schema.Array(CustomerMonitorOption),

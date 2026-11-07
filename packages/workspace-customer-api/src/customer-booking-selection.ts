@@ -16,11 +16,12 @@ export const CustomerReservationFamily = Schema.Literals([
 ]).annotate({ identifier: "CustomerReservationFamily" });
 export type CustomerReservationFamily = typeof CustomerReservationFamily.Type;
 
-export const CustomerCoworkTier = Schema.Literals([
+/** The cowork tiers a customer can book now. */
+export const CustomerBookableCoworkTier = Schema.Literals([
   "open-space",
   "reserved-desk",
-]).annotate({ identifier: "CustomerCoworkTier" });
-export type CustomerCoworkTier = typeof CustomerCoworkTier.Type;
+]).annotate({ identifier: "CustomerBookableCoworkTier" });
+export type CustomerBookableCoworkTier = typeof CustomerBookableCoworkTier.Type;
 
 export const CustomerMonitorOption = Schema.Literals([
   "2x27-qhd",
@@ -64,7 +65,7 @@ const selectionFields = {
   /** Meeting room only. */
   duration: Schema.optionalKey(CustomerMeetingRoomDuration),
   /** Cowork only, required. */
-  tier: Schema.optionalKey(CustomerCoworkTier),
+  tier: Schema.optionalKey(CustomerBookableCoworkTier),
   /** Cowork Reserved Desk only: a monitor workstation configuration. */
   monitorOption: Schema.optionalKey(CustomerMonitorOption),
 };

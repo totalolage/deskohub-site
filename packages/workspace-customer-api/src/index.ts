@@ -73,11 +73,11 @@ export {
   SubmitCustomerCheckout,
 } from "./customer-booking-checkout-api";
 export {
+  CustomerBookableCoworkTier,
   CustomerBookingDateOutOfRange,
   CustomerBookingSelection,
   CustomerBookingSelectionInvalid,
   CustomerBookingSelectionQuery,
-  CustomerCoworkTier,
   CustomerMeetingRoomDuration,
   CustomerMonitorOption,
   CustomerOfferingUnavailable,
