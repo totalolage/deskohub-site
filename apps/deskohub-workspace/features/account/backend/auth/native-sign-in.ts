@@ -70,12 +70,6 @@ const verifyCallbackParameters = [
   "errorCallbackURL",
 ] as const;
 
-const namesNoCallback = (
-  query:
-    | Partial<Record<(typeof verifyCallbackParameters)[number], unknown>>
-    | undefined
-) => verifyCallbackParameters.every((name) => !query?.[name]);
-
 const verifyQuery = Schema.Struct({
   token: Schema.String,
   callbackURL: Schema.optional(Schema.String),
@@ -83,12 +77,11 @@ const verifyQuery = Schema.Struct({
   errorCallbackURL: Schema.optional(Schema.String),
 });
 
-/** The token of a verification the app makes: one that names no callback. */
-const appVerifyToken = (query: unknown) =>
-  Schema.decodeUnknownOption(verifyQuery)(query).pipe(
-    Option.filter(namesNoCallback),
-    Option.map(({ token }) => token)
-  );
+const decodeVerifyQuery = Schema.decodeUnknownOption(verifyQuery);
+
+/** A verification the app makes names no callback. */
+const namesNoCallback = (query: Partial<typeof verifyQuery.Type> | undefined) =>
+  verifyCallbackParameters.every((name) => !query?.[name]);
 
 /** The email a magic-link verification row signs in. */
 const decodeLinkEmail = Schema.decodeUnknownOption(
@@ -127,43 +120,40 @@ type AppVerifyGuard = {
  * link still works once the customer signs out. A link Better Auth won't
  * accept gets its usual error.
  */
-export const refuseMagicLinkAccountSwitch = ({
-  request,
-  sessionUserId,
-}: AppVerifyGuard) =>
-  Option.match(
+const refuseLinkOfAnotherAccount = Effect.fn(
+  "NativeSignIn.refuseMagicLinkAccountSwitch"
+)(function* (token: string, { request, sessionUserId }: AppVerifyGuard) {
+  const currentUserId = yield* Effect.promise(sessionUserId);
+  if (currentUserId === undefined) return;
+  const { internalAdapter } = request.context;
+  const link = yield* Effect.promise(async () =>
+    internalAdapter.findVerificationValue(await digestVerificationKey(token))
+  );
+  const email = Option.fromNullishOr(link).pipe(
+    Option.filter(({ expiresAt }) => expiresAt > new Date()),
+    Option.flatMap(({ value }) => decodeLinkEmail(value))
+  );
+  if (Option.isNone(email)) return;
+  const owner = yield* Effect.promise(() =>
+    internalAdapter.findUserByEmail(email.value.email)
+  );
+  if (owner?.user.id === currentUserId) return;
+  yield* Effect.logWarning("Native sign-in refused.", {
+    code: "account.native-sign-in.rejected",
+    reason: "account-switch",
+  });
+  return yield* Effect.fail(accountSwitchRefused());
+});
+
+export const refuseMagicLinkAccountSwitch = (guard: AppVerifyGuard) =>
+  decodeVerifyQuery(guard.request.query).pipe(
     Option.filter(
-      appVerifyToken(request.query),
-      () => request.request !== undefined
+      (query) => guard.request.request !== undefined && namesNoCallback(query)
     ),
-    {
+    Option.match({
       onNone: () => Effect.void,
-      onSome: (token) =>
-        Effect.gen(function* () {
-          const currentUserId = yield* Effect.promise(sessionUserId);
-          if (currentUserId === undefined) return;
-          const { internalAdapter } = request.context;
-          const link = yield* Effect.promise(async () =>
-            internalAdapter.findVerificationValue(
-              await digestVerificationKey(token)
-            )
-          );
-          const email = Option.fromNullishOr(link).pipe(
-            Option.filter(({ expiresAt }) => expiresAt > new Date()),
-            Option.flatMap(({ value }) => decodeLinkEmail(value))
-          );
-          if (Option.isNone(email)) return;
-          const owner = yield* Effect.promise(() =>
-            internalAdapter.findUserByEmail(email.value.email)
-          );
-          if (owner?.user.id === currentUserId) return;
-          yield* Effect.logWarning("Native sign-in refused.", {
-            code: "account.native-sign-in.rejected",
-            reason: "account-switch",
-          });
-          return yield* Effect.fail(accountSwitchRefused());
-        }).pipe(Effect.withSpan("NativeSignIn.refuseMagicLinkAccountSwitch")),
-    }
+      onSome: ({ token }) => refuseLinkOfAnotherAccount(token, guard),
+    })
   );
 
 /**
