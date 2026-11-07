@@ -3,6 +3,7 @@ import "server-only";
 import { desc, eq } from "drizzle-orm";
 import { Context, Data, Effect, Layer, Option } from "effect";
 import { WorkspaceDatabase, WorkspaceTransaction } from "@/db/database.service";
+import { toStoredInstant } from "@/db/instant";
 import { accountAnalyticsConsentDecisions as decisions } from "@/db/schema";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
 import { WorkspaceLocks } from "@/db/workspace-locks";
@@ -178,9 +179,11 @@ export class AnalyticsConsentLedger extends Context.Service<
                 // A future date would outrank every later decision, and
                 // dating it now would let each replay of the same copy
                 // outrank them again, so it counts as undated.
+                // Compared as the database stores it, so a stored decision
+                // and a copy of its own instant compare equal.
                 const decidedAt = Option.match(
                   Option.filter(
-                    input.decidedAt,
+                    Option.map(input.decidedAt, toStoredInstant),
                     (instant) => Temporal.Instant.compare(instant, now) <= 0
                   ),
                   {

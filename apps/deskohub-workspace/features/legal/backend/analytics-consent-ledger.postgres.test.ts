@@ -373,6 +373,42 @@ describe.skipIf(!testDatabase)("AnalyticsConsentLedger", () => {
       expect((await currentDecisionOf(accountId))?.decision).toBe("withdraw");
     });
 
+    test("compares a sub-microsecond date as the database stores it", async () => {
+      const accountId = await newAccount();
+      // Stored as ...00.123456Z, after this older grant's instant.
+      await runLedgerAt("2026-11-05T10:00:00.123456999Z", (ledger) =>
+        ledger.record({
+          accountId,
+          decision: "withdraw",
+          locale: "cs-CZ",
+          source: "banner",
+        })
+      );
+      const mirrorPrecise = (decidedAt: string) =>
+        mirrorAt("2026-11-07T10:00:00Z", {
+          accountId,
+          decision: "grant",
+          source: "hydration_mirror",
+          decidedAt,
+        });
+
+      expect(await mirrorPrecise("2026-11-05T10:00:00.123456789Z")).toBe(false);
+      expect(await mirrorPrecise("2026-11-06T10:00:00.000000789Z")).toBe(true);
+      expect(await mirrorPrecise("2026-11-06T10:00:00.000000789Z")).toBe(false);
+      expect(await storedDecisionsOf(accountId)).toEqual([
+        {
+          decision: "withdraw",
+          decidedAt: "2026-11-05T10:00:00.123456Z",
+          source: "banner",
+        },
+        {
+          decision: "grant",
+          decidedAt: "2026-11-06T10:00:00Z",
+          source: "hydration_mirror",
+        },
+      ]);
+    });
+
     test("keeps each account's decisions apart", async () => {
       const decided = await newAccount();
       const other = await newAccount();
