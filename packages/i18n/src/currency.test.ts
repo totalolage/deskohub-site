@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { formatCurrencyAmount, formatCurrencyName } from "./currency";
 
 describe("formatCurrencyAmount", () => {
@@ -94,5 +94,39 @@ describe("formatCurrencyName", () => {
     expect(formatCurrencyName({ currency: "EUR", locale: "en-US" })).toBe(
       "Euro"
     );
+  });
+
+  describe("on a runtime without currency display names", () => {
+    const displayNames = Intl.DisplayNames;
+    const replaceDisplayNames = (replacement: unknown) => {
+      Object.defineProperty(Intl, "DisplayNames", {
+        configurable: true,
+        value: replacement,
+        writable: true,
+      });
+    };
+    afterEach(() => replaceDisplayNames(displayNames));
+
+    test("shows the ISO code when Intl has no DisplayNames", () => {
+      replaceDisplayNames(undefined);
+
+      expect(formatCurrencyName({ currency: "CZK", locale: "cs-CZ" })).toBe(
+        "CZK"
+      );
+    });
+
+    test("shows the ISO code when DisplayNames has no name for it", () => {
+      replaceDisplayNames(
+        class {
+          of() {
+            return undefined;
+          }
+        }
+      );
+
+      expect(formatCurrencyName({ currency: "EUR", locale: "en-US" })).toBe(
+        "EUR"
+      );
+    });
   });
 });
