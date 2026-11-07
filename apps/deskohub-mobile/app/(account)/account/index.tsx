@@ -1,5 +1,5 @@
-import { PlaceholderScreen } from "../../../src/ui/placeholder-screen";
+import { AccountIndexScreen } from "../../../src/account/account-index-screen";
 
 export default function AccountRoute() {
-  return <PlaceholderScreen />;
+  return <AccountIndexScreen />;
 }
