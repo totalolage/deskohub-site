@@ -134,7 +134,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: theme.spacing.sm,
-    marginTop: theme.spacing.sm,
   },
   action: { flexBasis: 140, flexGrow: 1 },
 });
