@@ -17,6 +17,7 @@ import { CustomerAuthentication } from "@/features/account/backend/customer-auth
 import { updateCurrentCustomerProfile } from "@/features/account/backend/customer-profile-saving";
 import { CustomerAccountLayers } from "./customer-account-layers";
 import { answerCustomerApiFailure } from "./customer-api-failure";
+import { customerAvatarUploadHandler } from "./customer-avatar-upload";
 
 /**
  * The account group's handlers. Each endpoint builds its operation's Layers
@@ -71,7 +72,7 @@ export const CustomerAccountApiHandlers = HttpApiBuilder.group(
         // unavailable until the account endpoints clone replaces it with
         // the real operation and its four colocated tests.
         .handle("completeProfile", () => notServedYet)
-        .handle("uploadAvatar", () => notServedYet)
+        .handle("uploadAvatar", yield* customerAvatarUploadHandler)
         .handle("removeAvatar", () => notServedYet)
         .handle("listPasskeys", () => notServedYet)
         .handle("listAssistantConnections", () => notServedYet)
