@@ -192,10 +192,14 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
     }
   }, [finished, returnPath]);
 
+  // A passkey sign-in being finished routes on once it is done, so the
+  // session it created doesn't redirect before then.
+  const finishingPasskey = passkey.state.status === "running";
   if (
     session.status === "signed-in" &&
     Option.isNone(nativeRequest) &&
     !reauthenticate &&
+    !finishingPasskey &&
     finished === undefined
   ) {
     return <Redirect href={returnPath} />;
@@ -206,6 +210,7 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
     Option.isSome(nativeRequest) &&
     !reauthenticate &&
     !useAnotherAccount &&
+    !finishingPasskey &&
     isFreshSignIn(session.signedInAt, Date.now()) &&
     handoff.state.status !== "failed"
       ? session.user.email
@@ -318,7 +323,6 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
             onPress={submitEmail}
             disabled={busy}
           />
-          {passkeyOption?.(handlePasskeySignedIn)}
         </>
       )}
       {step === "code" && (
@@ -349,6 +353,11 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
           />
         </>
       )}
+      {/* Mounted across the steps, so finishing another method's step can't
+          interrupt a passkey ceremony before its sign-in is checked. It waits
+          for the page's first session read, which fixes the account a
+          reauthentication expects. */}
+      {pageSession !== undefined && passkeyOption?.(handlePasskeySignedIn)}
       <LiveMessage role="status" message={status} />
       <LiveMessage role="alert" message={alert} />
     </Screen>
