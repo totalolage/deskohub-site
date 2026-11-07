@@ -11,7 +11,7 @@ import {
 import { Notice } from "../ui/notice";
 import {
   type CustomerRequestFailure,
-  type CustomerViewError,
+  CustomerViewError,
   isRetryableViewError,
   toCustomerViewError,
 } from "./customer-view-error";
@@ -22,7 +22,7 @@ export const viewErrorOf = <E extends CustomerRequestFailure>(
   cause: Cause.Cause<E>
 ): CustomerViewError =>
   Option.match(Cause.findErrorOption(cause), {
-    onNone: () => toCustomerViewError({ _tag: "SchemaError" } as never),
+    onNone: () => CustomerViewError.Unexpected(),
     onSome: toCustomerViewError,
   });
 
