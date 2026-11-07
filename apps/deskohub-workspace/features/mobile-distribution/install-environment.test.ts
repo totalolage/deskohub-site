@@ -23,6 +23,9 @@ const fakeBrowser = ({
 }) =>
   Object.assign(new EventTarget(), {
     navigator,
+    document: Object.assign(new EventTarget(), {
+      visibilityState: "visible" as DocumentVisibilityState,
+    }),
     matchMedia: (query: string) => ({
       matches: query === "(display-mode: standalone)" && displayModeStandalone,
     }),
@@ -119,6 +122,32 @@ describe("createInstallEnvironment", () => {
         androidAppInstalled: false,
       });
     }
+  });
+
+  test("looks the Android app up again when the visitor returns to the tab", async () => {
+    let relatedApps: { platform: string; id: string }[] = [];
+    const browser = fakeBrowser({
+      navigator: {
+        userAgent: androidChrome,
+        maxTouchPoints: 5,
+        getInstalledRelatedApps: () => Promise.resolve(relatedApps),
+      },
+    });
+    const environment = createInstallEnvironment(browser);
+    await settle();
+    expect(environment.getSnapshot().androidAppInstalled).toBe(false);
+
+    relatedApps = [{ platform: "play", id: ANDROID_PACKAGE_ID }];
+    browser.document.visibilityState = "hidden";
+    browser.document.dispatchEvent(new Event("visibilitychange"));
+    await settle();
+    expect(environment.getSnapshot().androidAppInstalled).toBe(false);
+
+    browser.document.visibilityState = "visible";
+    browser.document.dispatchEvent(new Event("visibilitychange"));
+    expect(environment.getSnapshot().androidAppInstalled).toBe(false);
+    await settle();
+    expect(environment.getSnapshot().androidAppInstalled).toBe(true);
   });
 
   test("doesn't look up the Android app on other platforms", () => {

@@ -30,6 +30,13 @@ export type InstallBrowser = {
       readonly InstalledRelatedApp[]
     >;
   };
+  readonly document: {
+    readonly visibilityState: DocumentVisibilityState;
+    readonly addEventListener: (
+      type: "visibilitychange",
+      listener: () => void
+    ) => void;
+  };
   readonly matchMedia: (query: string) => { readonly matches: boolean };
   readonly addEventListener: (
     type: string,
@@ -59,8 +66,9 @@ export type InstallEnvironmentStore = {
 
 /**
  * Tracks the install environment of one browser window: the platform and
- * display mode once, the Android app lookup on Android, and the install
- * prompt that desktop Chromium offers until the web app is installed.
+ * display mode once, on Android whether the app is installed (looked up again
+ * whenever the tab becomes visible), and the install prompt that desktop
+ * Chromium offers until the web app is installed.
  */
 export const createInstallEnvironment = (
   browser: InstallBrowser
@@ -99,16 +107,29 @@ export const createInstallEnvironment = (
   });
   browser.addEventListener("appinstalled", dropInstallPrompt);
 
-  if (platform === "android") {
+  const setAndroidAppInstalled = (androidAppInstalled: boolean) => {
+    if (snapshot.androidAppInstalled !== androidAppInstalled) {
+      update({ androidAppInstalled });
+    }
+  };
+  const lookUpAndroidApp = () => {
     // A missing API, a synchronous throw and a rejection all mean the app
     // can't be found.
     void Promise.resolve()
       .then(() => navigator.getInstalledRelatedApps?.() ?? [])
       .then(
         (relatedApps) =>
-          update({ androidAppInstalled: includesAndroidApp(relatedApps) }),
-        () => update({ androidAppInstalled: false })
+          setAndroidAppInstalled(includesAndroidApp(relatedApps)),
+        () => setAndroidAppInstalled(false)
       );
+  };
+
+  if (platform === "android") {
+    lookUpAndroidApp();
+    // A visitor who installs the downloaded app comes back to this tab.
+    browser.document.addEventListener("visibilitychange", () => {
+      if (browser.document.visibilityState === "visible") lookUpAndroidApp();
+    });
   }
 
   return {
