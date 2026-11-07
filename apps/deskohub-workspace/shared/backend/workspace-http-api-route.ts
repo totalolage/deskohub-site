@@ -39,8 +39,21 @@ export const continueMutationsAfterDisconnect =
     handler(
       request.method === "GET" || request.method === "HEAD"
         ? request
-        : new Request(request, { signal: null })
+        : withoutAbortSignal(request)
     );
+
+/**
+ * The request without its abort signal, rebuilt from its parts: Next.js
+ * hands an app route its request behind a Proxy, which `new Request(request)`
+ * can't copy.
+ */
+const withoutAbortSignal = (request: Request) =>
+  new Request(request.url, {
+    method: request.method,
+    headers: request.headers,
+    body: request.body,
+    duplex: "half",
+  });
 
 /**
  * Marks every routed response `Cache-Control: private, no-store`, for an
