@@ -68,13 +68,6 @@ import {
 } from "./customer-checkout-operations.service";
 import { CustomerReferralUpdates } from "./customer-referral-updates";
 
-/** The booking checkout's endpoints, in the order a booking calls them. */
-export type CustomerBookingCheckoutEndpointName =
-  | "createCheckout"
-  | "applyCheckoutDiscountCode"
-  | "acceptCheckoutPriceChange"
-  | "submitCheckout";
-
 type Operations = CustomerCheckoutOperations["Service"];
 type PreparationResult = Effect.Success<
   ReturnType<Operations["preparePayState"]>

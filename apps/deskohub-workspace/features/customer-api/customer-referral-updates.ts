@@ -9,7 +9,7 @@ import { RememberedReferral } from "@/features/referrals/remembered-referral.ser
  * its response to tell the client: the client owns that storage, so the
  * server can't write it.
  */
-export type CustomerReferralUpdate = {
+type CustomerReferralUpdate = {
   /** Remember this accepted code and send it with later bookings. */
   readonly rememberReferralCode?: ReferralCode;
   /** The code the client sent is used up: stop sending it. */
