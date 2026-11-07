@@ -5,7 +5,7 @@
  * anything. Every URL is unique in the process, so fake Workspaces never
  * complete each other's orders.
  */
-const pages = new Map<string, () => void>();
+const pages = new Map<string, (() => void) | "completed">();
 let issued = 0;
 
 /** Issues a payment page for the order; completing it runs `complete`. */
@@ -20,11 +20,16 @@ export const issueFakePaymentPage = (
 };
 
 /**
- * Completes the payment the page at `url` takes, again on a reopened page;
- * false for a URL no fake Workspace issued.
+ * Completes the payment the page at `url` takes; a reopened page answers
+ * that it's done without paying again. False for a URL no fake Workspace
+ * issued. A completed page lets go of its Workspace.
  */
 export const completeFakePayment = (url: string): boolean => {
-  const complete = pages.get(url);
-  complete?.();
-  return complete !== undefined;
+  const page = pages.get(url);
+  if (page === undefined) return false;
+  if (page !== "completed") {
+    page();
+    pages.set(url, "completed");
+  }
+  return true;
 };

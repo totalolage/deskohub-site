@@ -110,6 +110,15 @@ const reservationOf = (api: CustomerApi["Service"], orderId: string) =>
     }))
   );
 
+/** The door code and the invoice the order's status screen offers. */
+const documentsOf = (api: CustomerApi["Service"], orderId: string) => {
+  const params = { orderId: CustomerReservationOrderId.make(orderId) };
+  return Effect.all({
+    access: Effect.result(api.reservations.getReservationAccess({ params })),
+    invoice: Effect.result(api.reservations.getReservationInvoice({ params })),
+  });
+};
+
 const paymentUrlOf = (submission: CustomerCheckoutSubmission) => {
   if (submission.status !== "payment_required") {
     throw new Error(`expected payment_required, got ${submission.status}`);
@@ -163,14 +172,15 @@ describe("sample booking", () => {
       seats: 1,
       status: "confirmed",
     });
-    const access = await run((api) =>
-      api.reservations.getReservationAccess({
-        params: {
-          orderId: CustomerReservationOrderId.make(submission.orderId),
-        },
-      })
-    );
-    expect(access).toMatchObject({ code: "000000" });
+    expect(
+      await run((api) => documentsOf(api, submission.orderId))
+    ).toMatchObject({
+      access: { _tag: "Success", success: { code: "000000" } },
+      invoice: {
+        _tag: "Failure",
+        failure: { _tag: "CustomerInvoiceNotIssued" },
+      },
+    });
   });
 
   test("a submission to pay stays pending until the sample payment page completes", async () => {
@@ -211,14 +221,44 @@ describe("sample booking", () => {
       total: pending.status.total,
     });
     expect(paid.row).toMatchObject({ status: "confirmed" });
+    expect(
+      await run((api) => documentsOf(api, submission.orderId))
+    ).toMatchObject({
+      access: { _tag: "Success", success: { code: "000000" } },
+      invoice: { _tag: "Success" },
+    });
 
-    // A reopened page answers the same and leaves the order paid.
+    // A reopened page answers the same and leaves the order as it was.
     expect(await openSamplePayment(paymentUrl, returnUrl)).toMatchObject({
       success: "returned",
     });
+    const history = await run((api) => api.reservations.listReservations());
+    expect(
+      history.current.filter((row) => row.orderId === submission.orderId)
+    ).toEqual([paid.row as NonNullable<typeof paid.row>]);
     expect(
       (await run((api) => reservationOf(api, submission.orderId))).status
-    ).toMatchObject({ status: "fulfilled" });
+    ).toEqual(paid.status);
+  });
+
+  test("a whole-day meeting room runs the Prague calendar day, 23 hours when clocks go forward", async () => {
+    const { booking, run } = harness();
+    booking.now = () => new Date("2027-03-01T10:00:00Z");
+    const submission = await run((api) =>
+      submitted(
+        api,
+        { family: "meeting-room", date: "2027-03-28", duration: "day:1" },
+        fakeBookingCodes.free
+      )
+    );
+    const { status } = await run((api) =>
+      reservationOf(api, submission.orderId)
+    );
+
+    expect(status).toMatchObject({
+      startsAt: "2027-03-27T23:00:00.000Z",
+      endsAt: "2027-03-28T22:00:00.000Z",
+    });
   });
 
   test("each fake Workspace's payment page pays only its own order", async () => {

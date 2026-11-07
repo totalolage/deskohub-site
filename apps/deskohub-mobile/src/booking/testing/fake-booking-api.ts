@@ -1015,11 +1015,12 @@ const bookedReservation = (
 };
 
 /**
- * When a selection's reservation runs: a meeting room's slot, else whole
- * Prague days through the last booked date.
+ * When a selection's reservation runs: a meeting room's hourly slot, else
+ * whole Prague days (23 or 25 hours across a daylight-saving change) through
+ * the last booked date.
  */
 const bookedTimes = (selection: CustomerBookingSelection) => {
-  if (selection.family === "meeting-room") {
+  if (selection.family === "meeting-room" && selection.duration !== "day:1") {
     const { length } = meetingRoomSlots[selection.duration ?? "hour:1"];
     const startsAt = pragueInstant(
       selection.date,
