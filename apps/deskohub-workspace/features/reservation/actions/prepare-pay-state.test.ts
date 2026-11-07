@@ -14,7 +14,8 @@ import { EmailRecipientDomainServiceMock } from "@deskohub/email/backend/recipie
 import { testEmailAddress } from "@deskohub/test-email";
 import { eq } from "drizzle-orm";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Duration, Effect, Fiber, Layer, Schema } from "effect";
+import { Duration, Effect, Fiber, Layer, Option, Schema } from "effect";
+import type { AnalyticsConsentMirrorRecord } from "@/features/legal/backend/analytics-consent-ledger";
 import { TestClock } from "effect/testing";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -422,6 +423,9 @@ const runReusableReservationScenario = async (input: {
   readonly marketingConsentSource?: "site_tool";
   /** Replaces the mocked marketing consent ledger. */
   readonly marketingConsentLedger?: Layer.Layer<MarketingConsentLedgerService>;
+  /** The `Cookie` header of the booking request; none by default. */
+  readonly requestCookie?: string;
+  readonly mirrorAnalyticsConsent?: ReturnType<typeof mock>;
   readonly affirmAdvertisement?: ReturnType<typeof mock>;
   readonly quoteForCustomer?: ReturnType<typeof mock>;
   readonly ensureAvailable?: ReturnType<typeof mock>;
@@ -465,6 +469,12 @@ const runReusableReservationScenario = async (input: {
   const { MarketingConsentLedger } = await import(
     "@/features/legal/backend/marketing-consent-ledger"
   );
+  const { AnalyticsConsentLedger } = await import(
+    "@/features/legal/backend/analytics-consent-ledger"
+  );
+  const { CurrentWorkspaceRequestHeaders } = await import(
+    "@/shared/backend/workspace-request-context"
+  );
   const { ReservationHoldCleanupScheduleService } = await import(
     "@/features/checkout/backend/holds"
   );
@@ -483,6 +493,8 @@ const runReusableReservationScenario = async (input: {
   const recordMarketingConsent =
     input.recordMarketingConsent ?? mock(() => Effect.void);
   const withdrawActiveMarketingConsent = mock(() => Effect.succeed(false));
+  const mirrorAnalyticsConsent =
+    input.mirrorAnalyticsConsent ?? mock(() => Effect.succeed(true));
   const ensureAvailable = input.ensureAvailable ?? mock(() => Effect.void);
   const verifyHuman = mock(() => Effect.void);
   const findLatestByAgentSelectionKey =
@@ -633,6 +645,7 @@ const runReusableReservationScenario = async (input: {
         status: mock(() => Effect.succeed("absent")),
         withdrawActive: withdrawActiveMarketingConsent,
       } satisfies IMarketingConsentLedger),
+    Layer.mock(AnalyticsConsentLedger, { mirror: mirrorAnalyticsConsent }),
     Layer.mock(ReservationHoldCleanupScheduleService, {
       enqueueCleanup,
     } as never),
@@ -676,7 +689,15 @@ const runReusableReservationScenario = async (input: {
       : prepareFromReservationForm(submission).pipe(
           Effect.provide(BotProtectionServiceMock({ verifyHuman }))
         )
-  ).pipe(Effect.provide(testLayer));
+  ).pipe(
+    input.requestCookie === undefined
+      ? (preparation) => preparation
+      : Effect.provideService(
+          CurrentWorkspaceRequestHeaders,
+          new Headers({ cookie: input.requestCookie })
+        ),
+    Effect.provide(testLayer)
+  );
   const timedPreparation = input.instantSleeps
     ? withSecondSleeps(
         TestClock.setTime(Date.now()).pipe(Effect.andThen(bookingPreparation))
@@ -695,6 +716,7 @@ const runReusableReservationScenario = async (input: {
     updateReservationDetails,
     recordMarketingConsent,
     withdrawActiveMarketingConsent,
+    mirrorAnalyticsConsent,
     ensureAvailable,
     findLatestByAgentSelectionKey,
     findSupersedableByAgentClient,
@@ -1462,6 +1484,73 @@ describe("prepareWorkspacePayState", () => {
       channel: "reservation_form",
     });
     // An initial grant keeps an existing row, including a withdrawal.
+  });
+
+  describe("analytics consent mirror", () => {
+    const savedChoice = `cc_cookie=${encodeURIComponent(
+      JSON.stringify({
+        categories: ["necessary", "analytics"],
+        lastConsentTimestamp: "2026-11-02T09:30:00.000Z",
+      })
+    )}`;
+
+    test("mirrors the booking device's saved choice into the account's ledger", async () => {
+      const result = await runReusableReservationScenario({
+        findByAttemptKeys: mock(() => Effect.succeed(makeReusableReservation())),
+        requestCookie: savedChoice,
+      });
+
+      expect(result.result?.status).toBe("ready");
+      const [mirrored] = result.mirrorAnalyticsConsent.mock.calls.map(
+        ([record]) => record as AnalyticsConsentMirrorRecord
+      );
+      expect(result.mirrorAnalyticsConsent).toHaveBeenCalledTimes(1);
+      expect(mirrored).toMatchObject({
+        decision: "grant",
+        locale: "en-US",
+        source: "hydration_mirror",
+      });
+      expect(String(mirrored?.decidedAt.pipe(Option.getOrUndefined))).toBe(
+        "2026-11-02T09:30:00Z"
+      );
+    });
+
+    test("books when the mirror fails", async () => {
+      const { AnalyticsConsentUnavailable } = await import(
+        "@/features/legal/backend/analytics-consent-ledger"
+      );
+      const result = await runReusableReservationScenario({
+        findByAttemptKeys: mock(() => Effect.succeed(makeReusableReservation())),
+        requestCookie: savedChoice,
+        mirrorAnalyticsConsent: mock(() =>
+          Effect.fail(new AnalyticsConsentUnavailable({ cause: "down" }))
+        ),
+      });
+
+      expect(result.result?.status).toBe("ready");
+    });
+
+    test("mirrors nothing for a request without a saved choice", async () => {
+      const result = await runReusableReservationScenario({
+        findByAttemptKeys: mock(() => Effect.succeed(makeReusableReservation())),
+      });
+
+      expect(result.result?.status).toBe("ready");
+      expect(result.mirrorAnalyticsConsent).not.toHaveBeenCalled();
+    });
+
+    test("mirrors nothing for a customer agent's booking", async () => {
+      const result = await runReusableReservationScenario({
+        findByAttemptKeys: mock(() => Effect.succeed(makeReusableReservation())),
+        requestCookie: savedChoice,
+        bookingAgent: {
+          clientId: "https://assistant.example/oauth-client.json",
+          selectionKey: "analytics-mirror-agent-selection",
+        },
+      });
+
+      expect(result.mirrorAnalyticsConsent).not.toHaveBeenCalled();
+    });
   });
 
   test("labels an opt-in submitted through the site's tools", async () => {

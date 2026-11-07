@@ -39,6 +39,8 @@ import {
   customerAccountIdSchema,
 } from "@/features/account/customer-account";
 import { defaultLocale, isLocale, type Locale, locales } from "@/features/i18n";
+import type { AnalyticsConsentUnavailable } from "@/features/legal/backend/analytics-consent-ledger";
+import type { DeviceAnalyticsConsent } from "@/features/legal/backend/analytics-consent-mirror";
 import {
   classifyAgentTraffic,
   unclassifiedTraffic,
@@ -48,7 +50,10 @@ import type {
   BotVerificationError,
   VerifyHumanInput,
 } from "@/shared/backend/bot-protection/bot-protection.service";
-import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
+import {
+  runWorkspaceEffect,
+  runWorkspaceEffectOrElse,
+} from "@/shared/backend/workspace-effect";
 import { CurrentAgentTraffic } from "@/shared/backend/workspace-request-context";
 import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
 import {
@@ -177,6 +182,13 @@ export type WorkspaceAuthConfig = ReviewLoginConfig & {
     accountId: CustomerAccountId,
     locale: Locale
   ) => Effect.Effect<void, EffectDrizzleQueryError>;
+  /**
+   * Mirrors the signing-in device's analytics consent choice into the
+   * account's ledger once Better Auth has created the session.
+   */
+  readonly mirrorSignInAnalyticsConsent: (
+    device: DeviceAnalyticsConsent
+  ) => Effect.Effect<unknown, AnalyticsConsentUnavailable>;
 };
 
 /** Both steps of adding a passkey; `login_passkeys` gates them. */
@@ -731,6 +743,8 @@ const signInCodeBodySchema = Schema.Struct({
 type AuthEndpointContext = {
   readonly path?: string;
   readonly body?: unknown;
+  /** The HTTP request's headers; a server-side `auth.api` call may have none. */
+  readonly headers?: Headers;
   readonly context: { readonly adapter: DBAdapter };
 } | null;
 
@@ -841,6 +855,36 @@ const prepareSession = <Session extends { readonly userId: string }>(request: {
       data: { ...session, ipAddress: null, userAgent: null },
     }))
   );
+
+/**
+ * Mirrors the signing-in device's analytics consent choice for the account
+ * of the session Better Auth just created, in the banner language the choice
+ * was saved in, else the sign-in callback locale. A session created without
+ * a request cookie, such as a server-side one, mirrors nothing.
+ */
+const mirrorSessionAnalyticsConsent = ({
+  config,
+  session,
+  ctx,
+}: {
+  readonly config: WorkspaceAuthConfig;
+  readonly session: { readonly userId: string };
+  readonly ctx: AuthEndpointContext;
+}) => {
+  const accountId = decodeAccountId(session.userId);
+  const cookieHeader = ctx?.headers?.get("cookie");
+  if (!accountId || !cookieHeader) return Effect.void;
+  return config
+    .mirrorSignInAnalyticsConsent({
+      accountId,
+      cookieHeader,
+      locale:
+        callbackLocaleFromAuthContext(
+          Option.getOrElse(decodeAuthContext(ctx), () => ({}))
+        ) ?? defaultLocale,
+    })
+    .pipe(Effect.asVoid);
+};
 
 type SignInEmailCompletion = {
   readonly status: true;
@@ -1169,6 +1213,14 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
             runWorkspaceEffect("account.auth.capture-locale", {
               boundary: "route",
             })(prepareSession({ config, session, ctx })),
+          // A failed mirror is logged and never fails the sign-in; the next
+          // hydration of the session mirrors the choice again.
+          after: (session, ctx) =>
+            runWorkspaceEffectOrElse("account.auth.mirror-analytics-consent", {
+              boundary: "route",
+              failureCode: "analytics-consent.sign-in-mirror-failed",
+              orElse: () => undefined,
+            })(mirrorSessionAnalyticsConsent({ config, session, ctx })),
         },
       },
       verification: {

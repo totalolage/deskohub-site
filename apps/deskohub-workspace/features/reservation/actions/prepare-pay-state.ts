@@ -62,6 +62,7 @@ import { legalEvidenceMapSchema } from "@/features/checkout/legal-evidence";
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
 import type { CanonicalPromotionCode } from "@/features/discounts/contracts";
 import { type Locale, m } from "@/features/i18n";
+import { mirrorDeviceAnalyticsConsent } from "@/features/legal/backend/analytics-consent-mirror";
 import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import { ensureOfficeReservationsEnabled } from "@/features/office/backend/office-release-gate";
 import {
@@ -98,6 +99,7 @@ import { getReservationCustomerProfile } from "@/features/reservation/reservatio
 import { ReviewAccounts, ReviewSandbox } from "@/features/review-accounts";
 import { MissingDotyposId } from "@/shared/backend/missing-dotypos-id";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
+import { currentRequestHeaders } from "@/shared/backend/workspace-request-context";
 import {
   currentInstant,
   instantStringSchema,
@@ -1405,6 +1407,40 @@ const recordCheckoutMarketingConsent = Effect.fnUntraced(function* ({
   );
 });
 
+/**
+ * Mirrors the booking device's analytics consent choice into the account's
+ * ledger. An agent's request carries no device choice, so it mirrors
+ * nothing. A failure is logged and never blocks the booking.
+ */
+const mirrorBookingDeviceAnalyticsConsent = Effect.fnUntraced(
+  function* ({
+    input,
+    bookingAgent,
+    accountId,
+  }: {
+    readonly input: PreparePayStateInput;
+    readonly bookingAgent: Option.Option<BookingAgent["Service"]>;
+    readonly accountId: CustomerAccountId;
+  }) {
+    if (Option.isSome(bookingAgent)) return;
+    const headers = yield* currentRequestHeaders;
+    yield* mirrorDeviceAnalyticsConsent({
+      accountId,
+      cookieHeader: headers.get("cookie") ?? "",
+      locale: input.locale,
+      source: "hydration_mirror",
+    });
+  },
+  Effect.catch((cause) =>
+    Effect.logWarning(
+      "Analytics consent mirror failed; continuing the booking.",
+      {
+        cause,
+      }
+    )
+  )
+);
+
 const prepareSubmission = Effect.fn("prepareWorkspacePayState.submission")(
   function* (input: PreparePayStateInput, inReviewSandbox: Ref.Ref<boolean>) {
     const bookingAgent = yield* Effect.serviceOption(BookingAgent);
@@ -1430,6 +1466,11 @@ const prepareSubmission = Effect.fn("prepareWorkspacePayState.submission")(
             reason: "unauthenticated",
           });
         }
+        yield* mirrorBookingDeviceAnalyticsConsent({
+          input,
+          bookingAgent,
+          accountId,
+        });
         const reviewAccount = yield* ReviewAccounts.pipe(
           Effect.flatMap((accounts) => accounts.isReviewAccount(accountId))
         );
