@@ -161,7 +161,7 @@ const styles = StyleSheet.create({
   },
   secondary: { borderColor: theme.colors.textMuted },
   disabled: { opacity: 0.5 },
-  buttonLabel: { ...theme.type.body, fontWeight: "600" },
+  buttonLabel: theme.type.bodyStrong,
   primaryLabel: { color: theme.colors.background },
   secondaryLabel: { color: theme.colors.text },
   field: { gap: theme.spacing.sm },
