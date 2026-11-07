@@ -4,6 +4,7 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
+import { formatFileSize } from "@/shared/utils/number";
 import type { AndroidDownload } from "../android-download";
 import {
   type AndroidRelease,
@@ -33,7 +34,8 @@ const release: AndroidRelease = {
   apkSizeBytes: 42_123_456,
   apkSha256: "ab".repeat(32),
   certificateSha256: RELEASE_CERTIFICATE_SHA256,
-  publishedAt: "2026-11-05T09:30:00Z",
+  // Already the next day in Prague, where the page dates releases.
+  publishedAt: "2026-11-05T23:30:00Z",
   releaseUrl:
     "https://github.com/totalolage/deskohub-site/releases/tag/mobile-v1.2.3",
 };
@@ -52,9 +54,7 @@ afterEach(() => {
   cleanup();
 });
 
-afterAll(() => {
-  unregisterWorkspaceComponentTestEnv();
-});
+afterAll(() => unregisterWorkspaceComponentTestEnv());
 
 /** Every state shows the pinned certificate and the three install steps. */
 const expectCertificateAndSteps = (page: RenderedPage) => {
@@ -78,12 +78,17 @@ test("offers the latest release's APK and the Obtainium import", () => {
   expect(badge.getAttribute("alt")).not.toBe("");
 
   expect(page.getByText(release.versionName)).toBeDefined();
-  expect(page.container.querySelector("time")?.getAttribute("datetime")).toBe(
-    release.publishedAt
+  const date = page.container.querySelector("time");
+  expect(date?.getAttribute("datetime")).toBe(release.publishedAt);
+  expect(date?.textContent).toBe(
+    new Intl.DateTimeFormat("cs-CZ", {
+      dateStyle: "long",
+      timeZone: "Europe/Prague",
+    }).format(new Date("2026-11-06T12:00:00Z"))
   );
-  expect(page.container.querySelector("data")?.getAttribute("value")).toBe(
-    String(release.apkSizeBytes)
-  );
+  const size = page.container.querySelector("data");
+  expect(size?.getAttribute("value")).toBe(String(release.apkSizeBytes));
+  expect(size?.textContent).toBe(formatFileSize(release.apkSizeBytes, "cs-CZ"));
   expect(linksTo(page, releasesListUrl)).toHaveLength(0);
   expectCertificateAndSteps(page);
 });

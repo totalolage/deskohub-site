@@ -35,9 +35,10 @@ mock.module("../android-download-release", () => ({
 
 const { loadAndroidDownload } = await import("./android-download.server");
 
-// Bun keeps module mocks for the rest of the run, so later files see no release.
+// Bun keeps module mocks for the rest of the run, so later files get the real
+// module back.
 afterAll(() => {
-  lookup = Effect.succeed(Option.none());
+  mock.module("../android-download-release", () => releaseModule);
 });
 
 test("offers the latest release", async () => {
