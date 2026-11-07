@@ -1,5 +1,6 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { writeReservationJournal } from "../reservation-journal";
 import { workspaceDir } from "../runtime";
 
 /**
@@ -72,14 +73,8 @@ export const writeWorkspaceE2EAccountJournal = async (
   journal: WorkspaceE2EAccountJournal,
   directory: string = checkoutJournalDirectory
 ) => {
-  await mkdir(directory, { recursive: true });
   const path = journalPath(journal.laneId, directory);
-  const temporaryPath = `${path}.${process.pid}.${crypto.randomUUID()}.tmp`;
-  await writeFile(temporaryPath, `${JSON.stringify(journal, null, 2)}\n`, {
-    encoding: "utf8",
-    mode: 0o600,
-  });
-  await rename(temporaryPath, path);
+  await writeReservationJournal(path, journal);
 };
 
 type WorkspaceE2EAccountJournalIds = Pick<

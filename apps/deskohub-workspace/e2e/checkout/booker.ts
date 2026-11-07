@@ -68,6 +68,7 @@ const checkoutBookerJournalOwnerId = (caseId: string) =>
 
 export const workspaceE2ECheckoutBookerJournalOwners: readonly WorkspaceE2EAccountJournalOwner[] =
   workspaceE2ECheckoutBookerCaseIds.map((caseId) => ({
+    caseId,
     ownerId: checkoutBookerJournalOwnerId(caseId),
     recipientLabels: [workspaceE2ECheckoutBookerLabel(caseId)],
   }));
