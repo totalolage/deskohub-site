@@ -1,6 +1,3 @@
-/** The Android application ID of the Deskohub Workspace app. */
-export const ANDROID_PACKAGE_ID = "cz.deskohub.workspace";
-
 /**
  * The SHA-256 of the certificate that signs every released APK, as
  * `apksigner` and the release notes print it: uppercase byte pairs joined by

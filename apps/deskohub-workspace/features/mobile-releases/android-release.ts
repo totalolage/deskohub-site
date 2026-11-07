@@ -20,7 +20,7 @@ export type AndroidRelease = {
 /** One file attached to a GitHub release. */
 const GitHubReleaseAsset = Schema.Struct({
   name: Schema.String,
-  size: Schema.Number,
+  size: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   browser_download_url: Schema.String,
 });
 
