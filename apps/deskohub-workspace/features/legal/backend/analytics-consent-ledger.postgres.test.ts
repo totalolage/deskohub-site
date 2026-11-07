@@ -334,6 +334,45 @@ describe.skipIf(!testDatabase)("AnalyticsConsentLedger", () => {
       expect((await currentDecisionOf(accountId))?.decision).toBe("withdraw");
     });
 
+    test("waits for a decision being recorded, so an undated choice never seeds past it", async () => {
+      const accountId = await newAccount();
+      const holder = await testDatabase!.pool.connect();
+      const waitingForLedgerLock = async () => {
+        const { rows } = await testDatabase!.pool.query(
+          "select count(*)::int as waiting from pg_locks where locktype = 'advisory' and not granted"
+        );
+        return (rows[0]?.waiting as number) > 0;
+      };
+      try {
+        // Another request holds the ledger lock while recording a
+        // withdrawal it has not committed yet.
+        await holder.query("begin");
+        await holder.query(
+          "select pg_advisory_xact_lock(hashtext('analytics-consent-ledger'), hashtext($1))",
+          [accountId]
+        );
+        await holder.query(
+          `insert into account_analytics_consent_decisions
+             (account_id, decision, document_hash, locale, decided_at, source)
+           values ($1, 'withdraw', $2, 'cs-CZ', now(), 'banner')`,
+          [accountId, privacyNoticeHash("cs-CZ")]
+        );
+
+        const seeding = mirrorAt("2099-01-01T00:00:00Z", {
+          accountId,
+          decision: "grant",
+          source: "sign_in_mirror",
+        });
+        while (!(await waitingForLedgerLock())) await Bun.sleep(10);
+        await holder.query("commit");
+
+        expect(await seeding).toBe(false);
+      } finally {
+        holder.release(true);
+      }
+      expect((await currentDecisionOf(accountId))?.decision).toBe("withdraw");
+    });
+
     test("keeps each account's decisions apart", async () => {
       const decided = await newAccount();
       const other = await newAccount();

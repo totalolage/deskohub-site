@@ -37,10 +37,10 @@ stays the place where the choice is made; the account copies it.
   cookie without a valid timestamp, or dated in the future (a device clock
   ahead), seeds only an empty ledger, dated now: dating a future cookie now
   would let each replay of it outrank later decisions.
-- The check and the insert are one statement without a lock. Concurrent
-  writers can both land; the latest `decided_at` still decides, so only an
-  undated seed racing another device's decision in the same instant can
-  order the two by arrival.
+- Every write takes the account's `analyticsConsentLedger` lock
+  (`WorkspaceLocks`, rank 25, above the account lock that Pay-state
+  preparation holds) and reads its instant after the lock, so a mirror's
+  check sees every decision recorded before it.
 - `visitorConsent`'s cross-tab overwrite (`CookieConsent.setCookieData`)
   rewrites the categories without a new `lastConsentTimestamp`. While signed
   in, the tab records that change as a banner save; a signed-out change made

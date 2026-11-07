@@ -34,15 +34,14 @@ const signInWithCookie = async (
   const email = uniqueEmail("sign-in-analytics-consent");
   await signInForMagicLink(auth, email, getAuthCallbackPath("cs-CZ"));
   const link = sentLinks.at(-1)!;
+  const forwardedFor = uniqueIp();
+  const headers = cookie
+    ? { "x-vercel-forwarded-for": forwardedFor, cookie }
+    : { "x-vercel-forwarded-for": forwardedFor };
   const signedIn = await callHandler(
     auth,
     link.url.slice(`https://${HOST}/api/auth`.length),
-    {
-      headers: {
-        "x-vercel-forwarded-for": uniqueIp(),
-        ...(cookie ? { cookie } : {}),
-      },
-    }
+    { headers }
   );
   return { signedIn, accountId: await userIdForEmail(email) };
 };

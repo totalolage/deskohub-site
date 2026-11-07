@@ -1,9 +1,11 @@
 import "server-only";
 
-import { and, desc, eq, gte, notExists, type SQL, sql } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { Context, Data, Effect, Layer, Option } from "effect";
-import { WorkspaceDatabase } from "@/db/database.service";
+import { WorkspaceDatabase, WorkspaceTransaction } from "@/db/database.service";
 import { accountAnalyticsConsentDecisions as decisions } from "@/db/schema";
+import type { DatabaseQueryError } from "@/db/sql-constraint";
+import { WorkspaceLocks } from "@/db/workspace-locks";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { Locale } from "@/features/i18n";
 import type {
@@ -95,6 +97,7 @@ const unavailable = (cause: unknown) =>
  * An account's analytics consent decisions, appended in the order they are
  * made known and never changed. The account's latest decision by its own
  * decision time is its current one; ties go to the decision recorded last.
+ * Writes for one account take turns under its ledger lock.
  */
 export class AnalyticsConsentLedger extends Context.Service<
   AnalyticsConsentLedger,
@@ -103,7 +106,7 @@ export class AnalyticsConsentLedger extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const { db } = yield* WorkspaceDatabase;
+      const { db, transaction } = yield* WorkspaceDatabase;
 
       const storedDecision = (
         input: AnalyticsConsentDecisionInput & {
@@ -120,77 +123,87 @@ export class AnalyticsConsentLedger extends Context.Service<
       });
 
       /**
-       * Appends the decision in one statement, unless the account already
-       * holds a decision the condition matches.
+       * Runs `write` under the account's ledger lock, so writes for one
+       * account take turns. The instant is read after the lock, so a write
+       * that waited is never dated before the one it waited for.
        */
-      const appendUnless = (
-        decision: ReturnType<typeof storedDecision>,
-        superseding: SQL | undefined
+      const underLedgerLock = <A>(
+        accountId: CustomerAccountId,
+        write: (
+          now: Temporal.Instant
+        ) => Effect.Effect<A, DatabaseQueryError, WorkspaceTransaction>
       ) =>
-        db
-          .insert(decisions)
-          .select((qb) =>
-            qb
-              .select({
-                id: sql<string>`uuid_generate_v7()::text`.as("id"),
-                accountId: sql<string>`${decision.accountId}`.as("account_id"),
-                decision: sql<string>`${decision.decision}`.as("decision"),
-                documentHash: sql<string>`${decision.documentHash}`.as(
-                  "document_hash"
-                ),
-                locale: sql<string>`${decision.locale}`.as("locale"),
-                decidedAt: sql<string>`${sql.param(
-                  decision.decidedAt,
-                  decisions.decidedAt
-                )}::timestamptz`.as("decided_at"),
-                source: sql<string>`${decision.source}`.as("source"),
-                createdAt: sql<string>`now()`.as("created_at"),
-              })
-              .from(sql`(select 1) as decision_candidate`)
-              .where(
-                notExists(
-                  qb
-                    .select({ found: sql`1` })
-                    .from(decisions)
-                    .where(
-                      and(
-                        eq(decisions.accountId, decision.accountId),
-                        superseding
-                      )
-                    )
-                )
-              )
-          )
-          .returning({ id: decisions.id });
+        transaction(
+          Effect.gen(function* () {
+            yield* WorkspaceLocks.analyticsConsentLedger(accountId);
+            return yield* write(yield* currentPreciseInstant);
+          })
+        );
+
+      const append = Effect.fnUntraced(function* (
+        decision: ReturnType<typeof storedDecision>
+      ) {
+        const { db } = yield* WorkspaceTransaction;
+        yield* db.insert(decisions).values(decision);
+      });
+
+      /** When the account's latest decision was made, if it made one. */
+      const latestDecisionTime = Effect.fnUntraced(function* (
+        accountId: CustomerAccountId
+      ) {
+        const { db } = yield* WorkspaceTransaction;
+        const [latest] = yield* db
+          .select({ decidedAt: decisions.decidedAt })
+          .from(decisions)
+          .where(eq(decisions.accountId, accountId))
+          .orderBy(desc(decisions.decidedAt))
+          .limit(1);
+        return Option.fromNullishOr(latest?.decidedAt);
+      });
 
       return {
-        record: Effect.fn("AnalyticsConsentLedger.record")(function* (input) {
-          yield* db
-            .insert(decisions)
-            .values(storedDecision(input, yield* currentPreciseInstant));
-        }, Effect.mapError(unavailable)),
-        mirror: Effect.fn("AnalyticsConsentLedger.mirror")(function* (input) {
-          const now = yield* currentPreciseInstant;
-          // A future date would outrank every later decision, and dating it
-          // now would let each replay of the same copy outrank them again.
-          const decidedAt = Option.filter(
-            input.decidedAt,
-            (instant) => Temporal.Instant.compare(instant, now) <= 0
-          );
-          const appended = yield* Option.match(decidedAt, {
-            // An undated decision seeds only an empty ledger.
-            onNone: () => appendUnless(storedDecision(input, now), undefined),
-            onSome: (dated) =>
-              appendUnless(
-                storedDecision(input, dated),
-                gte(
-                  decisions.decidedAt,
-                  sql`${sql.param(dated, decisions.decidedAt)}::timestamptz`
-                )
-              ),
-          });
-          return appended.length > 0;
-        }, Effect.mapError(unavailable)),
+        record: Effect.fn("AnalyticsConsentLedger.record")(
+          (input) =>
+            underLedgerLock(input.accountId, (now) =>
+              append(storedDecision(input, now))
+            ),
+          Effect.mapError(unavailable)
+        ),
+        mirror: Effect.fn("AnalyticsConsentLedger.mirror")(
+          (input) =>
+            underLedgerLock(
+              input.accountId,
+              Effect.fnUntraced(function* (now) {
+                const latest = yield* latestDecisionTime(input.accountId);
+                // A future date would outrank every later decision, and
+                // dating it now would let each replay of the same copy
+                // outrank them again, so it counts as undated.
+                const decidedAt = Option.match(
+                  Option.filter(
+                    input.decidedAt,
+                    (instant) => Temporal.Instant.compare(instant, now) <= 0
+                  ),
+                  {
+                    // An undated decision seeds only an empty ledger.
+                    onNone: () =>
+                      Option.isNone(latest) ? Option.some(now) : Option.none(),
+                    onSome: (dated) =>
+                      // Only a decision newer than every recorded one is taken.
+                      !Option.exists(
+                        latest,
+                        (made) => Temporal.Instant.compare(dated, made) <= 0
+                      )
+                        ? Option.some(dated)
+                        : Option.none(),
+                  }
+                );
+                if (Option.isNone(decidedAt)) return false;
+                yield* append(storedDecision(input, decidedAt.value));
+                return true;
+              })
+            ),
+          Effect.mapError(unavailable)
+        ),
         currentDecision: Effect.fn("AnalyticsConsentLedger.currentDecision")(
           function* (accountId) {
             const [current] = yield* db
