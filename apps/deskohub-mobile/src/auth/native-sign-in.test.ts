@@ -1,11 +1,15 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { Effect, Exit, Layer, ManagedRuntime, Option } from "effect";
+import * as WebBrowser from "expo-web-browser";
+import { Platform } from "react-native";
 import { nativeReturnUri, parseAuthCallbackUrl } from "./auth-callback";
 import { AuthCallbackCompletions } from "./auth-callback-completions.service";
 import { AuthCrypto } from "./auth-crypto.service";
 import {
   AuthSessionBrowser,
   AuthSessionResult,
+  AuthSessionUnavailable,
+  customTabsBrowserPackage,
 } from "./auth-session-browser.service";
 import { NativeAuth } from "./native-auth.service";
 import { createNativeAuthClient } from "./native-auth-client";
@@ -310,6 +314,122 @@ describe("native email sign-in through the auth session", () => {
 });
 
 describe("auth session browser", () => {
+  type Browsers = WebBrowser.WebBrowserCustomTabsResults;
+  const opened = async (lookup: () => Promise<Browsers>) => {
+    const browsers = spyOn(
+      WebBrowser,
+      "getCustomTabsSupportingBrowsersAsync"
+    ).mockImplementation(lookup);
+    const open = spyOn(WebBrowser, "openAuthSessionAsync");
+    try {
+      const exit = await Effect.runPromiseExit(
+        Effect.service(AuthSessionBrowser).pipe(
+          Effect.flatMap((browser) =>
+            browser.open(
+              "https://workspace.example.test/app/sign-in?native=1",
+              "deskohub://auth/callback"
+            )
+          ),
+          Effect.provide(AuthSessionBrowser.Live)
+        )
+      );
+      return {
+        exit,
+        call: open.mock.calls[0],
+        lookups: browsers.mock.calls.length,
+      };
+    } finally {
+      open.mockRestore();
+      browsers.mockRestore();
+    }
+  };
+  const unavailable = (exit: Exit.Exit<unknown, unknown>) =>
+    Exit.isFailure(exit) &&
+    Option.match(Exit.findErrorOption(exit), {
+      onNone: () => false,
+      onSome: (error) => error instanceof AuthSessionUnavailable,
+    });
+
+  // The app claims its host's /app/ links, sign-in page included, and
+  // Android hands an https link without a named package to that app before
+  // any browser.
+  test("picks the preferred, then the default, then any Custom Tabs browser", () => {
+    expect(
+      customTabsBrowserPackage({
+        browserPackages: ["org.example.other", "com.android.chrome"],
+        defaultBrowserPackage: "org.example.default",
+        preferredBrowserPackage: "com.android.chrome",
+        servicePackages: [],
+      })
+    ).toBe("com.android.chrome");
+    expect(
+      customTabsBrowserPackage({
+        browserPackages: ["org.example.other", "org.example.default"],
+        defaultBrowserPackage: "org.example.default",
+        servicePackages: [],
+      })
+    ).toBe("org.example.default");
+    expect(
+      customTabsBrowserPackage({
+        browserPackages: ["org.example.other"],
+        servicePackages: [],
+      })
+    ).toBe("org.example.other");
+    expect(
+      customTabsBrowserPackage({ browserPackages: [], servicePackages: [] })
+    ).toBeUndefined();
+  });
+
+  test("opens the sign-in page in the chosen Custom Tabs browser on Android", async () => {
+    const { call } = await opened(async () => ({
+      browserPackages: ["com.android.chrome"],
+      preferredBrowserPackage: "com.android.chrome",
+      servicePackages: ["com.android.chrome"],
+    }));
+    expect(call).toEqual([
+      "https://workspace.example.test/app/sign-in?native=1",
+      "deskohub://auth/callback",
+      { browserPackage: "com.android.chrome" },
+    ]);
+  });
+
+  // Without a named browser the sign-in page would open in the app itself.
+  test("fails as unavailable on Android when no Custom Tabs browser is known", async () => {
+    const { exit, call } = await opened(async () => ({
+      browserPackages: [],
+      servicePackages: [],
+    }));
+    expect(unavailable(exit)).toBe(true);
+    expect(call).toBeUndefined();
+  });
+
+  test("fails as unavailable on Android when the browser lookup fails", async () => {
+    const { exit, call } = await opened(() =>
+      Promise.reject(new Error("no package manager"))
+    );
+    expect(unavailable(exit)).toBe(true);
+    expect(call).toBeUndefined();
+  });
+
+  test("lets iOS open its auth session without a browser lookup", async () => {
+    const platform = Platform.OS;
+    Object.assign(Platform, { OS: "ios" });
+    try {
+      const { call, lookups } = await opened(async () => ({
+        browserPackages: ["com.android.chrome"],
+        servicePackages: [],
+      }));
+      expect(lookups).toBe(0);
+      expect(call).toEqual([
+        "https://workspace.example.test/app/sign-in?native=1",
+        "deskohub://auth/callback",
+        undefined,
+      ]);
+    } finally {
+      Object.assign(Platform, { OS: platform });
+    }
+  });
+
   test("closing is a no-op where the platform can't close the session", async () => {
     await expect(
       Effect.runPromise(
