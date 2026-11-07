@@ -1,6 +1,7 @@
 import "server-only";
 
 import { drizzleAdapter } from "@better-auth/drizzle-adapter/relations-v2";
+import { expo } from "@better-auth/expo";
 import {
   getAuthenticatorName,
   type PasskeyOptions,
@@ -72,6 +73,7 @@ import {
   makeCustomerAgentAuthorizationPlugins,
 } from "./customer-agent-authorization-server";
 import { renderMagicLinkEmail } from "./magic-link-email";
+import { nativeAppOrigin } from "./native-app";
 import {
   findReviewAccountCredential,
   type ReviewAccountCredential,
@@ -1026,6 +1028,9 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
     ...authOptions,
     secrets: config.secrets,
     baseURL,
+    // The hosts in `baseURL` are trusted already; the native app adds its
+    // scheme, which its Expo client sends as `expo-origin`.
+    trustedOrigins: [nativeAppOrigin],
     database: config.database,
     logger: { disabled: true },
     onAPIError: {
@@ -1134,6 +1139,10 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
         resource: config.customerMcpResource,
         clientMetadataTransport: config.clientMetadataTransport,
       }),
+      // The native app's requests carry no browser `Origin`: the plugin takes
+      // it from `expo-origin`, and a magic link the app started returns to
+      // the app scheme with the session cookie.
+      expo(),
       // Better Auth requires `nextCookies` to be the last plugin: it forwards
       // Set-Cookie headers into the Next.js cookie store for Server Action
       // `auth.api` calls and defers RSC-only session refreshes.
