@@ -21,4 +21,17 @@ describe("customer API package imports", () => {
 
     expect(offenders).toEqual([]);
   });
+
+  test("the referral code entry point imports only Effect", async () => {
+    // Client components take it to validate codes; anything more would pull
+    // the HTTP API contract into their bundles.
+    const source = await Bun.file(
+      new URL("./referral-code.ts", import.meta.url)
+    ).text();
+    const imports = [...source.matchAll(/\bfrom\s+["']([^"']+)["']/g)].map(
+      ([, specifier]) => specifier
+    );
+
+    expect(imports).toEqual(["effect"]);
+  });
 });

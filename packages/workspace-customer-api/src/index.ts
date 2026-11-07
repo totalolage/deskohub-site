@@ -24,7 +24,6 @@ export {
   Money,
   ReferralAccountOverview,
   ReferralAccountSummary,
-  ReferralCode,
   RequestCustomerAccountDeletion,
   SaveCustomerMarketingPreferences,
 } from "./customer-account-api";
@@ -58,6 +57,7 @@ export {
   customerApiClientHeader,
   customerReferralCodeHeader,
 } from "./customer-session";
+export { ReferralCode } from "./referral-code";
 export {
   customerApiPathPrefix,
   WorkspaceCustomerApi,

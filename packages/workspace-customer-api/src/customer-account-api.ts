@@ -17,6 +17,7 @@ import {
   CustomerServiceUnavailable,
   customerReferralCodeHeader,
 } from "./customer-session";
+import { ReferralCode } from "./referral-code";
 
 // Errors
 
@@ -88,17 +89,6 @@ export class CustomerMarketingPreferencesRejected extends Schema.TaggedErrorClas
 const isoInstant = Schema.String.annotate({
   description: "ISO 8601 instant.",
 });
-
-export const ReferralCode = Schema.String.check(
-  Schema.isPattern(/^[A-Z0-9][A-Z0-9_-]{2,63}$/)
-)
-  .pipe(Schema.brand("ReferralCode"))
-  .annotate({
-    identifier: "ReferralCode",
-    description:
-      "Uppercase ASCII referral code in the shared promotion namespace.",
-  });
-export type ReferralCode = typeof ReferralCode.Type;
 
 export const AccountPasskey = Schema.Struct({
   id: Schema.String,

@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./client": "./src/client.ts"
+    "./client": "./src/client.ts",
+    "./referral-code": "./src/referral-code.ts"
   },
   "scripts": {
     "lint": "cd ../.. && biome check packages/workspace-customer-api/src --config-path biome.json --vcs-root .",
