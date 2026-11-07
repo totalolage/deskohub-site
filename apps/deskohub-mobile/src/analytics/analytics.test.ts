@@ -11,13 +11,20 @@ type Call = readonly [string, ...unknown[]];
 
 const createFakeClient = (
   options: AnalyticsClientOptions,
-  restoredDistinctId: string | null
+  restoredDistinctId: string | null,
+  holdLoading: boolean
 ) => {
   const calls: Call[] = [];
   const flagListeners = new Set<() => void>();
   let flags: Record<string, boolean | string> | undefined;
   let finishShutdown: () => void = () => {};
+  let finishLoading: () => void = () => {};
+  const loading = new Promise<void>((resolve) => {
+    finishLoading = resolve;
+  });
+  if (!holdLoading) finishLoading();
   const client: AnalyticsClient = {
+    ready: () => loading,
     identifiedAs: () => restoredDistinctId,
     capture: (event, properties) => calls.push(["capture", event, properties]),
     screen: (name) => calls.push(["screen", name]),
@@ -47,6 +54,7 @@ const createFakeClient = (
       for (const listener of flagListeners) listener();
     },
     finishShutdown: () => finishShutdown(),
+    finishLoading: () => finishLoading(),
     flagListenerCount: () => flagListeners.size,
   };
 };
@@ -64,12 +72,15 @@ const setup = ({
   runtimeSettings = settings,
   otherSdk = false,
   restoredDistinctId = null,
+  holdLoading = false,
 }: {
   readonly consent?: AnalyticsConsentStatus;
   readonly runtimeSettings?: AnalyticsSettings | null;
   readonly otherSdk?: boolean;
   /** The identity the SDK's stored state already holds. */
   readonly restoredDistinctId?: string | null;
+  /** Keeps each client loading until the test finishes it. */
+  readonly holdLoading?: boolean;
 } = {}) => {
   const analytics = createAnalytics();
   const clients: FakeClient[] = [];
@@ -79,9 +90,9 @@ const setup = ({
   const runtime: AnalyticsRuntime = {
     settings: runtimeSettings,
     createClient: (options) => {
-      const fake = createFakeClient(options, restoredDistinctId);
+      const fake = createFakeClient(options, restoredDistinctId, holdLoading);
       clients.push(fake);
-      return Promise.resolve(fake.client);
+      return fake.client;
     },
     detectOtherSdk: () => otherSdk,
     consent: {
@@ -190,13 +201,47 @@ describe("client construction", () => {
     expect(app.clients).toHaveLength(1);
   });
 
-  test("drops a client that finishes starting after withdrawal", async () => {
-    const app = setup();
+  test("retires a still-loading client at once on withdrawal", async () => {
+    const app = setup({ holdLoading: true });
     app.connect();
     app.analytics.setIdentity({ kind: "anonymous" });
     app.setConsent("denied");
+    expect(app.clients[0]?.calls).toEqual([["shutDown"]]);
+
+    app.clients[0]?.finishLoading();
     await settle();
     expect(app.clients[0]?.calls).toEqual([["shutDown"]]);
+  });
+
+  test("retires a still-loading client on disconnect", () => {
+    const app = setup({ holdLoading: true });
+    const disconnect = app.connect();
+    app.analytics.setIdentity({ kind: "anonymous" });
+    disconnect();
+    expect(app.clients[0]?.calls).toEqual([["shutDown"]]);
+  });
+
+  test("never reuses a client withdrawn while loading when consent returns", async () => {
+    const app = setup({ holdLoading: true });
+    app.connect();
+    app.analytics.setIdentity({ kind: "anonymous" });
+    app.setConsent("denied");
+    app.setConsent("granted");
+    app.clients[0]?.finishLoading();
+    app.analytics.capture({ name: "booking started" });
+    await settle();
+    expect(app.clients).toHaveLength(1);
+
+    app.clients[0]?.finishShutdown();
+    await settle();
+    expect(app.clients).toHaveLength(2);
+    app.clients[1]?.finishLoading();
+    await settle();
+    expect(app.clients[0]?.calls).toEqual([["shutDown"]]);
+    expect(app.clients[1]?.calls).toEqual([
+      ["reloadFeatureFlags"],
+      ["capture", "booking started", undefined],
+    ]);
   });
 });
 
@@ -367,6 +412,20 @@ describe("identity", () => {
     expect(app.clients[0]?.calls).toEqual([
       ["reset"],
       ["identify", "workspace-account:acc_2"],
+    ]);
+  });
+
+  test("marks a stored matching account internal outside production", async () => {
+    const app = setup({
+      restoredDistinctId: "workspace-account:acc_1",
+      runtimeSettings: { ...settings, environment: "preview" },
+    });
+    app.connect();
+    app.analytics.setIdentity(account("acc_1"));
+    await settle();
+    expect(app.clients[0]?.calls).toEqual([
+      ["setPersonProperties", { $internal_or_test_user: true }],
+      ["reloadFeatureFlags"],
     ]);
   });
 

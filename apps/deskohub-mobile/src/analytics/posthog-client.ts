@@ -1,9 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import PostHog, { PostHogPersistedProperty } from "posthog-react-native";
-import type {
-  AnalyticsClient,
-  CreateAnalyticsClient,
-} from "./analytics-client";
+import type { CreateAnalyticsClient } from "./analytics-client";
 
 /**
  * A PostHog client that can be retired: once retired it sends nothing, and
@@ -31,7 +28,7 @@ class RetirablePostHog extends PostHog {
  * config. Automatic capture, surveys, session replay and exception capture
  * stay off; Expo Router screens are recorded manually.
  */
-export const createPostHogClient: CreateAnalyticsClient = async ({
+export const createPostHogClient: CreateAnalyticsClient = ({
   apiKey,
   host,
   superProperties,
@@ -57,10 +54,10 @@ export const createPostHogClient: CreateAnalyticsClient = async ({
   // A withdrawal persists the opt-out; this client exists only with consent.
   void posthog.optIn();
   void posthog.register(superProperties);
-  // Wait for the stored identity so the controller can reconcile with it.
-  await posthog.ready();
 
-  const client: AnalyticsClient = {
+  return {
+    // The SDK loads its stored identity asynchronously.
+    ready: () => posthog.ready(),
     identifiedAs: () => {
       const distinctId = posthog.getDistinctId();
       return distinctId !== posthog.getAnonymousId() ? distinctId : null;
@@ -79,18 +76,23 @@ export const createPostHogClient: CreateAnalyticsClient = async ({
     getFeatureFlag: (flag) => posthog.getFeatureFlag(flag),
     onFeatureFlags: (listener) => posthog.onFeatureFlags(() => listener()),
     shutDown: async () => {
-      // Flushes ignore the opt-out, so stop sending first. Then clear every
-      // stored property, the event queue and identity included, record the
-      // opt-out, and let shutdown save the cleared storage before fencing it.
-      // A request already in flight cannot be recalled.
+      // Flushes ignore the opt-out, so stop sending at once, before any
+      // await. Once the stored state has loaded, so it cannot restore what
+      // is cleared, clear every stored property, the event queue and identity
+      // included, record the opt-out, and let shutdown save the cleared
+      // storage before fencing it. A request already in flight cannot be
+      // recalled.
       posthog.networkRetired = true;
-      for (const key of Object.values(PostHogPersistedProperty)) {
-        posthog.setPersistedProperty(key, null);
+      try {
+        await posthog.ready();
+        for (const key of Object.values(PostHogPersistedProperty)) {
+          posthog.setPersistedProperty(key, null);
+        }
+        posthog.setPersistedProperty(PostHogPersistedProperty.OptedOut, true);
+        await posthog.shutdown();
+      } finally {
+        storageRetired = true;
       }
-      posthog.setPersistedProperty(PostHogPersistedProperty.OptedOut, true);
-      await posthog.shutdown();
-      storageRetired = true;
     },
   };
-  return client;
 };

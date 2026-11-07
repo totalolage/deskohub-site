@@ -8,7 +8,9 @@ export type AnalyticsProperties = Readonly<
  * posthog-react-native; tests use a fake.
  */
 export interface AnalyticsClient {
-  /** The distinct ID the stored SDK identity is identified as, or `null` while anonymous. */
+  /** Resolves once the client has loaded its stored state. */
+  readonly ready: () => Promise<void>;
+  /** After `ready`, the distinct ID the stored SDK identity is identified as, or `null` while anonymous. */
   readonly identifiedAs: () => string | null;
   readonly capture: (event: string, properties?: AnalyticsProperties) => void;
   readonly screen: (name: string) => void;
@@ -21,8 +23,9 @@ export interface AnalyticsClient {
   /** Calls the listener whenever flags load. Returns the unsubscribe function. */
   readonly onFeatureFlags: (listener: () => void) => () => void;
   /**
-   * Stops all delivery for good: opts out, drops queued events and stored
-   * identity, and detaches timers. The client is unusable afterwards.
+   * Stops all delivery for good, at once even while the client is still
+   * loading: opts out, drops queued events and stored identity, and detaches
+   * timers. The client is unusable afterwards.
    */
   readonly shutDown: () => Promise<void>;
 }
@@ -34,7 +37,6 @@ export interface AnalyticsClientOptions {
   readonly superProperties: AnalyticsProperties;
 }
 
-/** Resolves once the client has loaded its stored identity. */
 export type CreateAnalyticsClient = (
   options: AnalyticsClientOptions
-) => Promise<AnalyticsClient>;
+) => AnalyticsClient;

@@ -80,8 +80,10 @@ export const createAnalytics = (): AnalyticsController => {
   let detachClientFlags: (() => void) | undefined;
   let applied: AppliedDistinctId = null;
   let blockedByOtherSdk = false;
-  let constructing: Promise<void> | undefined;
-  let needsFlagLoad = false;
+  /** A client built but still loading its stored state. */
+  let starting: AnalyticsClient | undefined;
+  /** The client was just adopted and has not had an identity applied yet. */
+  let adopting = false;
   let shutdownInProgress: Promise<void> | undefined;
   let outbox: Delivery[] = [];
   let heldForAccount: AnalyticsEvent[] = [];
@@ -151,6 +153,11 @@ export const createAnalytics = (): AnalyticsController => {
   };
 
   const shutDownClient = () => {
+    if (starting !== undefined) {
+      const abandoned = starting;
+      starting = undefined;
+      retire(abandoned);
+    }
     const closing = client;
     if (closing === undefined) return;
     detachClientFlags?.();
@@ -173,15 +180,15 @@ export const createAnalytics = (): AnalyticsController => {
         applied = step.distinctId;
       }
     }
-    if (identity.kind === "authenticated" && steps.length > 0) {
+    if (identity.kind === "authenticated" && (steps.length > 0 || adopting)) {
       const markInternal =
         identity.testAccount || runtime?.settings?.environment !== "production";
       if (markInternal) target.setPersonProperties(internalOrTestUser);
     }
     // identify() to a new ID and reset() reload flags themselves; a new
     // client whose stored identity already matches needs its first load.
-    if (needsFlagLoad && steps.length === 0) target.reloadFeatureFlags();
-    needsFlagLoad = false;
+    if (adopting && steps.length === 0) target.reloadFeatureFlags();
+    adopting = false;
   };
 
   const flush = (target: AnalyticsClient) => {
@@ -207,7 +214,7 @@ export const createAnalytics = (): AnalyticsController => {
     if (
       identity.kind === "pending" ||
       shutdownInProgress !== undefined ||
-      constructing !== undefined
+      starting !== undefined
     ) {
       return;
     }
@@ -229,33 +236,33 @@ export const createAnalytics = (): AnalyticsController => {
   };
 
   const construct = (owner: AnalyticsRuntime, settings: AnalyticsSettings) => {
-    const building = owner
-      .createClient({
-        apiKey: settings.apiKey,
-        host: settings.host,
-        superProperties: {
-          "deployment.environment.name": settings.environment,
-        },
-      })
-      .then(
-        (created) => {
-          constructing = undefined;
-          if (runtime !== owner || !consentGranted()) {
-            retire(created);
-            return;
-          }
-          client = created;
-          applied = created.identifiedAs();
-          needsFlagLoad = true;
-          detachClientFlags = created.onFeatureFlags(notifyFlags);
-          reconcile();
-        },
-        (error: unknown) => {
-          constructing = undefined;
-          owner.warn(`Analytics failed to start: ${String(error)}`);
-        }
-      );
-    constructing = building;
+    const created = owner.createClient({
+      apiKey: settings.apiKey,
+      host: settings.host,
+      superProperties: {
+        "deployment.environment.name": settings.environment,
+      },
+    });
+    // Reachable while it loads, so a withdrawal can retire it at once.
+    starting = created;
+    created.ready().then(
+      () => {
+        // Withdrawn or disconnected meanwhile: it was already retired.
+        if (starting !== created) return;
+        starting = undefined;
+        client = created;
+        applied = created.identifiedAs();
+        adopting = true;
+        detachClientFlags = created.onFeatureFlags(notifyFlags);
+        reconcile();
+      },
+      (error: unknown) => {
+        if (starting !== created) return;
+        starting = undefined;
+        owner.warn(`Analytics failed to start: ${String(error)}`);
+        retire(created);
+      }
+    );
   };
 
   return {
