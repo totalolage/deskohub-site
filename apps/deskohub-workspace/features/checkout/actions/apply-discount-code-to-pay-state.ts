@@ -76,11 +76,11 @@ type RejectionReplacement = FreshPayState | NoFreshPayState;
 
 export type ApplyDiscountCodeResult =
   | ({ readonly status: "applied" } & FreshPayState)
-  | ({ readonly status: "accepted" | "already_accepted" } & FreshPayState)
+  | ({ readonly status: "accepted" } & FreshPayState)
+  | ({ readonly status: "already_accepted" } & FreshPayState)
   | ({ readonly status: "pricing_changed" } & FreshPayState)
-  | ({
-      readonly status: "already_attributed" | "ineligible";
-    } & RejectionReplacement)
+  | ({ readonly status: "already_attributed" } & RejectionReplacement)
+  | ({ readonly status: "ineligible" } & RejectionReplacement)
   | (DiscountCodeUnavailable & RejectionReplacement);
 
 const referralRejections = {
@@ -255,7 +255,7 @@ const applyPromotionCode = Effect.fnUntraced(function* (
       Effect.catchTag("PromotionCodeUnavailableError", () =>
         issueRejectedCodePayState(entry, "unavailable").pipe(
           Effect.map(
-            (freshPayState): ApplyDiscountCodeResult => ({
+            (freshPayState): DiscountCodeUnavailable & FreshPayState => ({
               status: "unavailable",
               reason: "code",
               ...freshPayState,

@@ -87,9 +87,8 @@ export type CheckoutReferralUnavailable =
     };
 
 export type CheckoutReferralResult =
-  | ({
-      readonly status: "accepted" | "already_accepted";
-    } & FreshPayState)
+  | ({ readonly status: "accepted" } & FreshPayState)
+  | ({ readonly status: "already_accepted" } & FreshPayState)
   | ({ readonly status: "pricing_changed" } & (FreshPayState | NoFreshPayState))
   | CheckoutReferralUnavailable
   | {
@@ -371,7 +370,7 @@ export class CheckoutReferralService extends Context.Service<
             // Every other failure is an outage, never a verdict on the code:
             // the referral registry's code-kind lookup, the stored customer
             // identity, pricing and affirmation, storage, or the seal.
-            Effect.catch(() => Effect.succeed(providerUnavailable)),
+            Effect.orElseSucceed(() => providerUnavailable),
             Effect.provideService(SealedStateKeys, sealedStateKeys)
           )
       );
