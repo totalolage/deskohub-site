@@ -1,6 +1,12 @@
+import { PasskeySignInOption } from "../src/auth/passkey/passkey-sign-in-option";
 import { SignInScreen } from "../src/auth/sign-in-screen";
 
-/** The passkey option is passed in as `passkeyOption` once it is wired. */
 export default function SignInRoute() {
-  return <SignInScreen />;
+  return (
+    <SignInScreen
+      passkeyOption={(onSignedIn) => (
+        <PasskeySignInOption onSignedIn={onSignedIn} />
+      )}
+    />
+  );
 }

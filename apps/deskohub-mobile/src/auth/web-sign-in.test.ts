@@ -49,6 +49,7 @@ mock.module("./auth-client.web", () => ({
 const {
   completeWebCodeSignIn,
   completeWebMagicLink,
+  completeWebPasskeySignIn,
   confirmWebAccount,
   prepareNativeHandoffEmail,
   prepareReauthenticationEmail,
@@ -354,6 +355,59 @@ describe("the stored reauthentication outlives failed attempts", () => {
       prepareReauthenticationEmail({ kind: "account", userId: "ada" })
     );
     expect(reasonOfExit(await openLink("valid"))).toBeUndefined();
+    expect(loadReauthenticatingUser(Date.now())).toEqual(Option.none());
+  });
+});
+
+describe("completeWebPasskeySignIn", () => {
+  const reasonOfPasskey = async (
+    expectation: Parameters<typeof completeWebPasskeySignIn>[0]
+  ) => {
+    const exit = await Effect.runPromiseExit(
+      completeWebPasskeySignIn(expectation)
+    );
+    return Exit.isSuccess(exit)
+      ? undefined
+      : Option.getOrUndefined(Exit.findErrorOption(exit))?.reason;
+  };
+
+  test("finishes an ordinary passkey sign-in as any account", async () => {
+    readSession = async () => ({ data: { user: { id: "bob" } }, error: null });
+    expect(await reasonOfPasskey({ kind: "none" })).toBeUndefined();
+    expect(signOuts).toBe(0);
+  });
+
+  test("refuses a reauthentication's passkey for another account", async () => {
+    useStorage(true);
+    await Effect.runPromise(
+      prepareReauthenticationEmail({ kind: "account", userId: "ada" })
+    );
+    readSession = async () => ({ data: { user: { id: "bob" } }, error: null });
+    expect(await reasonOfPasskey({ kind: "account", userId: "ada" })).toBe(
+      "account-switch"
+    );
+    expect(signOuts).toBe(1);
+    // The email's links are still checked against the stored account.
+    expect(loadReauthenticatingUser(Date.now())).toEqual(Option.some("ada"));
+    clearReauthenticatingUser();
+  });
+
+  test("refuses a passkey when the reauthentication's account is unknown", async () => {
+    expect(await reasonOfPasskey({ kind: "unrecoverable" })).toBe(
+      "reauthentication-unconfirmed"
+    );
+    expect(signOuts).toBe(1);
+  });
+
+  test("ends a reauthentication its passkey confirms", async () => {
+    useStorage(true);
+    await Effect.runPromise(
+      prepareReauthenticationEmail({ kind: "account", userId: "ada" })
+    );
+    expect(
+      await reasonOfPasskey({ kind: "account", userId: "ada" })
+    ).toBeUndefined();
+    expect(signOuts).toBe(0);
     expect(loadReauthenticatingUser(Date.now())).toEqual(Option.none());
   });
 });

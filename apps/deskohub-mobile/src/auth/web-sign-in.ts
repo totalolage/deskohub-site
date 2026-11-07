@@ -283,6 +283,17 @@ export const completeWebMagicLink = (
     Effect.withSpan("WebSignIn.completeWebMagicLink")
   );
 
+/**
+ * Confirms the account a passkey just signed the browser in to, refusing an
+ * account switch. The passkey ceremony has already signed in, so a refusal
+ * signs the browser out again.
+ */
+export const completeWebPasskeySignIn = (expectation: WebAccountExpectation) =>
+  confirmWebAccount(expectation).pipe(
+    Effect.tap(() => clearOnceConfirmed),
+    Effect.withSpan("WebSignIn.completeWebPasskeySignIn")
+  );
+
 /** Signs the browser in with the email's code, refusing an account switch. */
 export const completeWebCodeSignIn = (
   email: string,

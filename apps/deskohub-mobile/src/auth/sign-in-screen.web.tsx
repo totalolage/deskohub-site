@@ -31,6 +31,7 @@ import {
 import { loadReauthenticatingUser } from "./web-reauthentication-store";
 import {
   completeWebCodeSignIn,
+  completeWebPasskeySignIn,
   mintNativeHandoff,
   prepareNativeHandoffEmail,
   prepareReauthenticationEmail,
@@ -139,12 +140,22 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
     unexpected
   );
   // A web reauthentication must come back as the account it started from:
-  // the one this page's browser session had, else the one stored for it.
+  // the one this page's browser session had when the page first read it,
+  // else the one stored for it. A later sign-in on this page, by code or by
+  // passkey, never replaces it.
   const reauthenticating =
     params.prompt === "login" && Option.isNone(nativeRequest);
-  const [pageSessionUserId, setPageSessionUserId] = useState<string>();
+  const [pageSession, setPageSession] = useState<{
+    readonly userId: string | undefined;
+  }>();
   const sessionUserId =
     session.status === "signed-in" ? session.user.id : undefined;
+  const sessionRead = session.status !== "restoring";
+  useEffect(() => {
+    if (sessionRead) {
+      setPageSession((known) => known ?? { userId: sessionUserId });
+    }
+  }, [sessionRead, sessionUserId]);
   const verify = useAuthTask(
     standaloneTaskRuntime,
     (address: string, entered: string, expectation: WebAccountExpectation) =>
@@ -153,22 +164,23 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
       ),
     unexpected
   );
-  const verifyStarted = verify.state.status !== "idle";
-  useEffect(() => {
-    if (!verifyStarted && sessionUserId !== undefined) {
-      setPageSessionUserId((known) => known ?? sessionUserId);
-    }
-  }, [verifyStarted, sessionUserId]);
   const handoff = useAuthTask(standaloneTaskRuntime, finishSignIn, unexpected);
-  // For the passkey option: it signed in on this page, so finish the same way.
-  const handlePasskeySignedIn = () =>
-    void handoff.start(nativeRequest, "passkey");
+  // The passkey option signed in on this page, so it finishes the same way,
+  // after the same account check as a code.
+  const passkey = useAuthTask(
+    standaloneTaskRuntime,
+    (expectation: WebAccountExpectation) =>
+      completeWebPasskeySignIn(expectation).pipe(
+        Effect.andThen(finishSignIn(nativeRequest, "passkey"))
+      ),
+    unexpected
+  );
 
   const reauthenticate =
     params.prompt === "login" ||
     Option.exists(nativeRequest, (request) => request.reauthenticate);
   const returnPath = safeReturnPath(params.return_to);
-  const finished = firstSuccess(verify.state, handoff.state);
+  const finished = firstSuccess(verify.state, handoff.state, passkey.state);
 
   useEffect(() => {
     if (finished === undefined) return;
@@ -200,11 +212,16 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
       : undefined;
   const step = signInStep(continueAs, sentTo);
 
-  const failure = firstFailure(handoff.state, verify.state, send.state);
+  const failure = firstFailure(
+    handoff.state,
+    passkey.state,
+    verify.state,
+    send.state
+  );
   const alert = invalidEmail
     ? m.signin_error_invalid_email({}, { locale })
     : failure && webSignInFailureMessage(failure.reason, locale);
-  const busy = [send.state, verify.state, handoff.state].some(
+  const busy = [send.state, verify.state, handoff.state, passkey.state].some(
     (state) => state.status === "running"
   );
   const status = signInStatus({
@@ -218,11 +235,13 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
   const accountExpectation = () =>
     reauthenticationExpectation({
       reauthenticating,
-      sessionUserId: pageSessionUserId,
+      sessionUserId: pageSession?.userId,
       storedUserId: reauthenticating
         ? loadReauthenticatingUser(Date.now())
         : Option.none(),
     });
+
+  const handlePasskeySignedIn = () => void passkey.start(accountExpectation());
 
   const submitEmail = () => {
     const address = email.trim();
@@ -248,6 +267,7 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
     send.reset();
     verify.reset();
     handoff.reset();
+    passkey.reset();
   };
 
   return (
