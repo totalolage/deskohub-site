@@ -25,9 +25,13 @@ export const loadAndroidDownload: Effect.Effect<AndroidDownload> =
       })
     ),
     Effect.catchTag("MobileReleaseLookupError", (error) =>
-      findNextControlFlow(Cause.fail(error)) === undefined
-        ? Effect.succeed<AndroidDownload>({ kind: "unavailable" })
-        : Effect.die(error)
+      Option.fromNullishOr(findNextControlFlow(Cause.fail(error))).pipe(
+        Option.match({
+          onNone: () =>
+            Effect.succeed<AndroidDownload>({ kind: "unavailable" }),
+          onSome: () => Effect.die(error),
+        })
+      )
     ),
     Effect.withSpan("MobileDistribution.loadAndroidDownload")
   );
