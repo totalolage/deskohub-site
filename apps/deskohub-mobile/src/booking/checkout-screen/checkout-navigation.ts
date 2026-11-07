@@ -1,5 +1,5 @@
 import type { CustomerBookingSelection } from "@deskohub/workspace-customer-api";
-import type { Router } from "expo-router";
+import type { ImperativeRouter } from "expo-router";
 import { bookFamilyHref, paymentStatusHref } from "../booking-routes";
 import type { CheckoutFlowView } from "../checkout/checkout-flow";
 
@@ -74,7 +74,7 @@ export const navigationDecision = (
 
 /** Leaves the checkout for `destination` (see `CheckoutDestination`). */
 export const leaveCheckout = (
-  router: Pick<Router, "replace" | "dismissTo">,
+  router: Pick<ImperativeRouter, "replace" | "dismissTo">,
   destination: CheckoutDestination
 ) => {
   switch (destination._tag) {

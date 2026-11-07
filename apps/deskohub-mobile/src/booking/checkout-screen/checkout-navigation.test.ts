@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Option } from "effect";
+import type { Href } from "expo-router";
 import { bookFamilyHref, paymentStatusHref } from "../booking-routes";
 import type { CheckoutFlowView } from "../checkout/checkout-flow";
 import { startCheckout } from "../checkout/checkout-machine";
@@ -110,12 +111,12 @@ describe("navigationDecision", () => {
 
 describe("leaveCheckout", () => {
   const recordingRouter = () => {
-    const calls: Array<readonly [string, string]> = [];
+    const calls: Array<readonly [string, Href]> = [];
     return {
       calls,
       router: {
-        replace: (href: string) => void calls.push(["replace", href]),
-        dismissTo: (href: string) => void calls.push(["dismissTo", href]),
+        replace: (href: Href) => void calls.push(["replace", href]),
+        dismissTo: (href: Href) => void calls.push(["dismissTo", href]),
       },
     };
   };
