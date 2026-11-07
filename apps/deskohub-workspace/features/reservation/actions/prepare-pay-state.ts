@@ -171,7 +171,8 @@ type PreparedAdvertisement =
 
 const prepareAdvertisement = Effect.fn("preparePayState.prepareAdvertisement")(
   (
-    input: PayStateSubmission & {
+    // Advertising prices the selection; it never reads the consent label.
+    input: Omit<PayStateSubmission, "marketingConsentSource"> & {
       readonly bookedAt: Temporal.Instant;
     }
   ) =>
