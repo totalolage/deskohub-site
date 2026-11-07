@@ -30,9 +30,7 @@ export type ReservationAccessViewModel =
  * paid or confirmed, or issuance refuses it, such as once it ended), or a
  * lookup it needs failed and a later try may succeed.
  */
-export type ReservationAccessUnavailableReason =
-  | "reservation-state"
-  | "lookup-failed";
+type ReservationAccessUnavailableReason = "reservation-state" | "lookup-failed";
 
 export interface IReservationAccessService {
   readonly getAccess: (input: {

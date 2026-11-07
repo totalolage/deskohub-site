@@ -4,7 +4,6 @@ export {
   openSubmittedAdvertisedPriceState,
   sealAdvertisedPriceState,
 } from "./advertised-price-state";
-export { loadAuthorizedCheckoutStatus } from "./authorized-checkout-status";
 export { CheckoutError, CheckoutService } from "./checkout.service";
 export {
   buildCheckoutPayContinuationPath,
