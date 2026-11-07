@@ -11,11 +11,14 @@ let readSession: SessionRead = async () => ({ data: null, error: null });
 let signOuts = 0;
 /** The account a verified magic link signs the browser in to. */
 let linkAccount = "bob";
+/** What the server answers a sign-in email request with. */
+let emailSent: unknown = { status: true, signInCode: true };
 
 mock.module("./auth-client.web", () => ({
   authClient: {
     getSession: () => readSession(),
     signIn: {
+      magicLink: async () => ({ data: emailSent, error: null }),
       emailOtp: async () => {
         readSession = async () => ({
           data: { user: { id: linkAccount } },
@@ -63,6 +66,7 @@ const {
   prepareNativeHandoffEmail,
   prepareReauthenticationEmail,
   reauthenticationExpectation,
+  sendSignInEmail,
   signInEmailField,
 } = await import("./web-sign-in");
 const {
@@ -104,6 +108,7 @@ afterEach(() => {
 beforeEach(() => {
   signOuts = 0;
   linkAccount = "bob";
+  emailSent = { status: true, signInCode: true };
   readSession = async () => ({ data: { user: { id: "ada" } }, error: null });
 });
 
@@ -529,5 +534,31 @@ describe("prepareNativeHandoffEmail", () => {
         currentRequest: Option.none(),
       })
     ).toBe("native-request-expired");
+  });
+});
+
+describe("sendSignInEmail", () => {
+  const email = testEmailAddress("ada");
+  const send = () => Effect.runPromise(sendSignInEmail(email, "en-US"));
+
+  test("reports a code when the server issued one", async () => {
+    expect(await send()).toEqual({ email, signInCode: true });
+  });
+
+  test("reports a link-only email when the server issued no code", async () => {
+    emailSent = { status: true, signInCode: false };
+    expect(await send()).toEqual({ email, signInCode: false });
+  });
+
+  test("treats an answer without the decision as link-only", async () => {
+    emailSent = { status: true };
+    expect(await send()).toEqual({ email, signInCode: false });
+    emailSent = null;
+    expect(await send()).toEqual({ email, signInCode: false });
+  });
+
+  test("takes only a literal yes as a code", async () => {
+    emailSent = { status: true, signInCode: "true" };
+    expect(await send()).toEqual({ email, signInCode: false });
   });
 });

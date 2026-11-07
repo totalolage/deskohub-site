@@ -21,6 +21,7 @@ import {
 import type { NativeHandoffRequest } from "./native-handoff-request";
 import { webSignInFailureMessage } from "./sign-in-failure-message";
 import type { SignInScreenProps } from "./sign-in-screen.native";
+import { signInStep } from "./sign-in-step";
 import { useAuthSession } from "./use-auth-session";
 import {
   firstFailure,
@@ -40,6 +41,7 @@ import {
   prepareNativeHandoffEmail,
   prepareReauthenticationEmail,
   reauthenticationExpectation,
+  type SentSignInEmail,
   sendSignInEmail,
   signInEmailField,
   type WebAccountExpectation,
@@ -77,16 +79,6 @@ const finishSignIn = (
       ),
   });
 
-type SignInStep = "continue" | "email" | "code";
-
-const signInStep = (
-  continueAs: string | undefined,
-  sentTo: string | undefined
-): SignInStep => {
-  if (continueAs !== undefined) return "continue";
-  return sentTo === undefined ? "email" : "code";
-};
-
 const signInStatus = ({
   restoring,
   returningToApp,
@@ -114,7 +106,7 @@ const unexpected = () =>
 
 /**
  * `/app/sign-in` on the web: email, then the sign-in code (or the link in the
- * email). Opened by the native app with `?native=1`, it hands the finished
+ * email), or only the link when the email carries no code. Opened by the native app with `?native=1`, it hands the finished
  * sign-in back to the app; a fresh browser session can continue without
  * signing in again, unless the app asked to reauthenticate.
  */
@@ -128,7 +120,7 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
   const [nativeRequest] = useState(() => loadNativeHandoffRequest(Date.now()));
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
-  const [sentTo, setSentTo] = useState<string>();
+  const [sent, setSent] = useState<SentSignInEmail>();
   const [invalidEmail, setInvalidEmail] = useState(false);
   const [useAnotherAccount, setUseAnotherAccount] = useState(false);
   const [passkeyPending, setPasskeyPending] = useState(false);
@@ -228,7 +220,7 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
     handoff.state.status !== "failed"
       ? session.user.email
       : undefined;
-  const step = signInStep(continueAs, sentTo);
+  const step = signInStep(continueAs, sent);
 
   const failure = firstFailure(
     handoff.state,
@@ -275,19 +267,20 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
     setInvalidEmail(!valid);
     if (!valid) return;
     void send.start(address, accountExpectation()).then((exit) => {
-      if (!Option.exists(exit, Exit.isSuccess)) return;
+      const sentEmail = Option.flatMap(exit, Exit.getSuccess);
+      if (Option.isNone(sentEmail)) return;
       trackSignInStarted("link");
-      setSentTo(address);
+      setSent(sentEmail.value);
     });
   };
 
   const submitCode = () => {
-    if (busy || sentTo === undefined) return;
-    void verify.start(sentTo, code.trim(), accountExpectation());
+    if (busy || sent?.signInCode !== true) return;
+    void verify.start(sent.email, code.trim(), accountExpectation());
   };
 
   const startOver = () => {
-    setSentTo(undefined);
+    setSent(undefined);
     setCode("");
     setUseAnotherAccount(true);
     send.reset();
@@ -299,7 +292,7 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
   return (
     <Screen
       title={
-        step === "code"
+        step === "code" || step === "link"
           ? m.signin_sent_title({}, { locale })
           : m.signin_title({}, { locale })
       }
@@ -349,7 +342,7 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
       {step === "code" && (
         <>
           <BodyText>
-            {m.signin_sent_body({ email: sentTo ?? "" }, { locale })}
+            {m.signin_sent_code_body({ email: sent?.email ?? "" }, { locale })}
           </BodyText>
           <TextField
             label={m.signin_code_label({}, { locale })}
@@ -366,6 +359,19 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
             onPress={submitCode}
             disabled={busy || code.trim() === ""}
           />
+          <Button
+            variant="secondary"
+            label={m.signin_use_another_email({}, { locale })}
+            onPress={startOver}
+            disabled={busy}
+          />
+        </>
+      )}
+      {step === "link" && (
+        <>
+          <BodyText>
+            {m.signin_sent_link_body({ email: sent?.email ?? "" }, { locale })}
+          </BodyText>
           <Button
             variant="secondary"
             label={m.signin_use_another_email({}, { locale })}
