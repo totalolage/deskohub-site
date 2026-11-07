@@ -1,0 +1,80 @@
+{
+  "expo": {
+    "name": "Deskohub",
+    "slug": "deskohub-mobile",
+    "version": "0.1.0",
+    "scheme": "deskohub",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "url": "https://workspace.deskohub.cz/api/mobile/updates/manifest"
+    },
+    "ios": {
+      "bundleIdentifier": "cz.deskohub.workspace",
+      "associatedDomains": [
+        "applinks:workspace.deskohub.cz",
+        "webcredentials:workspace.deskohub.cz"
+      ],
+      "infoPlist": {}
+    },
+    "android": {
+      "package": "cz.deskohub.workspace",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#00024f"
+      },
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "workspace.deskohub.cz",
+              "pathPrefix": "/app/"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
+    },
+    "web": {
+      "output": "single",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "experiments": {
+      "baseUrl": "/app"
+    },
+    "owner": "deskohub-workspace",
+    "plugins": [
+      "expo-router",
+      "expo-localization",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash.png",
+          "imageWidth": 200,
+          "backgroundColor": "#00024f"
+        }
+      ],
+      "expo-font",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 28
+          }
+        }
+      ],
+      "expo-status-bar"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "c61ba7bc-07cd-436d-ab0b-97c1fbf288ec"
+      }
+    }
+  }
+}
