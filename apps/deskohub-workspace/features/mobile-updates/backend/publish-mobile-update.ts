@@ -38,12 +38,13 @@ const authorizePublisher = (request: Request) => {
 const readPublication = (request: Request) =>
   Effect.tryPromise(() => request.json()).pipe(
     Effect.flatMap(Schema.decodeUnknownEffect(MobileUpdatePublication)),
-    Effect.mapError((cause) =>
-      new WorkspaceRouteFailure({
-        statusCode: 400,
-        publicMessage: "The body is not a mobile update publication",
-        cause,
-      })
+    Effect.mapError(
+      (cause) =>
+        new WorkspaceRouteFailure({
+          statusCode: 400,
+          publicMessage: "The body is not a mobile update publication",
+          cause,
+        })
     )
   );
 

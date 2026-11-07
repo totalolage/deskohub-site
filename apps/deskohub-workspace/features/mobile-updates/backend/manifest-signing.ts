@@ -6,10 +6,10 @@ import { serializeDictionary } from "structured-headers";
 import { env } from "@/env";
 
 /** The key id and algorithm the app's `updates.codeSigningMetadata` names. */
-export const manifestSigningKeyId = "main";
-export const manifestSigningAlgorithm = "rsa-v1_5-sha256";
+const manifestSigningKeyId = "main";
+const manifestSigningAlgorithm = "rsa-v1_5-sha256";
 
-export class ManifestSigningUnavailable extends Data.TaggedError(
+class ManifestSigningUnavailable extends Data.TaggedError(
   "ManifestSigningUnavailable"
 )<{ readonly cause?: unknown }> {}
 
@@ -22,7 +22,8 @@ export const signManifestBody = Effect.fn("signManifestBody")(function* (
   body: string
 ) {
   const privateKey = env.MOBILE_UPDATES_SIGNING_PRIVATE_KEY;
-  if (privateKey === undefined) return yield* new ManifestSigningUnavailable();
+  if (privateKey === undefined)
+    return yield* new ManifestSigningUnavailable({});
 
   const signature = yield* Effect.try({
     try: () =>

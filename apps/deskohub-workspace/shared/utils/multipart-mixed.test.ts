@@ -58,14 +58,13 @@ describe("multipart/mixed bodies", () => {
   });
 
   test("parses a quoted boundary and ignores preamble and epilogue", () => {
-    const body =
-      'preamble\r\n--b\r\nname: x\r\n\r\nvalue\r\n--b--\r\nepilogue';
+    const body = "preamble\r\n--b\r\nname: x\r\n\r\nvalue\r\n--b--\r\nepilogue";
 
     const parsed = parseMultipartMixed('multipart/mixed; boundary="b"', body);
 
-    expect(parsed?.map((part) => [part.headers.get("name"), part.body])).toEqual(
-      [["x", "value"]]
-    );
+    expect(
+      parsed?.map((part) => [part.headers.get("name"), part.body])
+    ).toEqual([["x", "value"]]);
   });
 
   test("rejects a body that is not multipart/mixed or never closes", () => {

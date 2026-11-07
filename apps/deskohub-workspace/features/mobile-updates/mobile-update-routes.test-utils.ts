@@ -1,12 +1,12 @@
-import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { mock } from "bun:test";
+import { generateKeyPairSync, randomUUID } from "node:crypto";
 import * as workspaceEnv from "@/env";
 import type {
   MobileUpdatePlatform,
   MobileUpdatePublication,
 } from "./mobile-update-publication";
 
-export const publishToken = "synthetic-mobile-updates-publish-token";
+const publishToken = "synthetic-mobile-updates-publish-token";
 
 export const signingKeys = generateKeyPairSync("rsa", {
   modulusLength: 2048,
@@ -14,27 +14,39 @@ export const signingKeys = generateKeyPairSync("rsa", {
   privateKeyEncoding: { type: "pkcs8", format: "pem" },
 });
 
-/** The mobile-updates variables the routes read, which tests may change. */
-export const mobileUpdatesEnv: {
-  MOBILE_UPDATES_PUBLISH_TOKEN: string | undefined;
-  MOBILE_UPDATES_SIGNING_PRIVATE_KEY: string | undefined;
-} = {
+type MobileUpdatesSecret =
+  | "MOBILE_UPDATES_PUBLISH_TOKEN"
+  | "MOBILE_UPDATES_SIGNING_PRIVATE_KEY";
+
+const syntheticSecrets = {
   MOBILE_UPDATES_PUBLISH_TOKEN: publishToken,
   MOBILE_UPDATES_SIGNING_PRIVATE_KEY: signingKeys.privateKey,
+} satisfies Record<MobileUpdatesSecret, string>;
+
+const unsetSecrets = new Set<string | symbol>();
+
+/** Makes the routes see a deployment without the variable. */
+export const unsetMobileUpdatesSecret = (name: MobileUpdatesSecret) => {
+  unsetSecrets.add(name);
 };
 
-export const resetMobileUpdatesEnv = () => {
-  mobileUpdatesEnv.MOBILE_UPDATES_PUBLISH_TOKEN = publishToken;
-  mobileUpdatesEnv.MOBILE_UPDATES_SIGNING_PRIVATE_KEY = signingKeys.privateKey;
+export const resetMobileUpdatesSecrets = () => {
+  unsetSecrets.clear();
 };
 
 mock.module("@/env", () => ({
   ...workspaceEnv,
   env: new Proxy(workspaceEnv.env, {
-    get: (target, key) =>
-      typeof key === "string" && key in mobileUpdatesEnv
-        ? mobileUpdatesEnv[key as keyof typeof mobileUpdatesEnv]
-        : Reflect.get(target, key),
+    get: (target, key) => {
+      if (unsetSecrets.has(key)) return undefined;
+      if (key === "MOBILE_UPDATES_PUBLISH_TOKEN") {
+        return syntheticSecrets.MOBILE_UPDATES_PUBLISH_TOKEN;
+      }
+      if (key === "MOBILE_UPDATES_SIGNING_PRIVATE_KEY") {
+        return syntheticSecrets.MOBILE_UPDATES_SIGNING_PRIVATE_KEY;
+      }
+      return Reflect.get(target, key);
+    },
   }),
 }));
 
@@ -73,8 +85,13 @@ export const syntheticUpdate = (
   extra: { expoClient: { name: "Synthetic", slug: "synthetic" } },
 });
 
+/** A publication, or one whose platform the server must reject. */
+type PublicationBody =
+  | MobileUpdatePublication
+  | (Omit<MobileUpdatePublication, "platform"> & { readonly platform: string });
+
 export const publishRequest = (
-  publication: unknown,
+  publication: PublicationBody,
   authorization: string | null = `Bearer ${publishToken}`
 ) =>
   new Request("https://workspace.test/api/mobile/updates", {

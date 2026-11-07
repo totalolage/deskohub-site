@@ -5,8 +5,8 @@ import { toStoredInstant } from "@/db/instant";
 import { mobileUpdatePublications } from "@/db/schema";
 import { currentInstant } from "@/shared/utils/temporal";
 import {
-  MobileUpdatePublication,
   type MobileUpdatePlatform,
+  MobileUpdatePublication,
 } from "../mobile-update-publication";
 
 /** A publication as installed apps receive it, with its server-side time. */
@@ -15,14 +15,14 @@ export interface PublishedMobileUpdate {
   readonly publishedAt: Temporal.Instant;
 }
 
-export type MobileUpdatePublishOutcome = "published" | "already-published";
+type MobileUpdatePublishOutcome = "published" | "already-published";
 
 /** Another publication already holds the id. */
-export class MobileUpdatePublicationConflict extends Data.TaggedError(
+class MobileUpdatePublicationConflict extends Data.TaggedError(
   "MobileUpdatePublicationConflict"
 )<{ readonly id: string }> {}
 
-export class MobileUpdatePublicationsUnavailable extends Data.TaggedError(
+class MobileUpdatePublicationsUnavailable extends Data.TaggedError(
   "MobileUpdatePublicationsUnavailable"
 )<{ readonly cause: unknown }> {}
 

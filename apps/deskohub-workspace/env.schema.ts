@@ -181,7 +181,9 @@ export const workspaceServerEnvSchema = Schema.Struct({
   // certificate, features/mobile-updates/code-signing-certificate.pem.
   MOBILE_UPDATES_SIGNING_PRIVATE_KEY: toEnvSchema(
     Schema.optional(
-      Schema.String.check(Schema.isPattern(/-----BEGIN (RSA )?PRIVATE KEY-----/))
+      Schema.String.check(
+        Schema.isPattern(/-----BEGIN (RSA )?PRIVATE KEY-----/)
+      )
     )
   ),
   NEXI_API_KEY: nonEmptyStringSchema,

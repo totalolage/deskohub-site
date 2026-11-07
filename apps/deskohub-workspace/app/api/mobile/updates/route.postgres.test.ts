@@ -1,21 +1,20 @@
 import "@/shared/testing/workspace-test-env";
 
+import { afterEach, describe, expect, test } from "bun:test";
 import {
-  mobileUpdatesEnv,
   publishRequest,
-  resetMobileUpdatesEnv,
+  resetMobileUpdatesSecrets,
   syntheticUpdate,
   uniqueRuntimeVersion,
+  unsetMobileUpdatesSecret,
 } from "@/features/mobile-updates/mobile-update-routes.test-utils";
-
-import { afterEach, describe, expect, test } from "bun:test";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 const { POST } = await import("./route");
 
 describe.skipIf(!testDatabase)("mobile update publish route", () => {
-  afterEach(resetMobileUpdatesEnv);
+  afterEach(resetMobileUpdatesSecrets);
 
   const android = () => ({
     platform: "android" as const,
@@ -75,16 +74,19 @@ describe.skipIf(!testDatabase)("mobile update publish route", () => {
   test.each([
     ["no", null],
     ["a wrong", "Bearer wrong-token"],
-  ])("rejects a request with %s publish token with 401", async (_, authorization) => {
-    const response = await POST(
-      publishRequest(syntheticUpdate(android()), authorization)
-    );
+  ])(
+    "rejects a request with %s publish token with 401",
+    async (_, authorization) => {
+      const response = await POST(
+        publishRequest(syntheticUpdate(android()), authorization)
+      );
 
-    expect(response.status).toBe(401);
-  });
+      expect(response.status).toBe(401);
+    }
+  );
 
   test("answers 503 while the deployment has no publish token", async () => {
-    mobileUpdatesEnv.MOBILE_UPDATES_PUBLISH_TOKEN = undefined;
+    unsetMobileUpdatesSecret("MOBILE_UPDATES_PUBLISH_TOKEN");
 
     const response = await POST(
       publishRequest(syntheticUpdate(android()), "Bearer undefined")

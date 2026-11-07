@@ -1,18 +1,20 @@
 import "@/shared/testing/workspace-test-env";
 
-import {
-  mobileUpdatesEnv,
-  publishRequest,
-  resetMobileUpdatesEnv,
-  signingKeys,
-  syntheticUpdate,
-  uniqueRuntimeVersion,
-} from "@/features/mobile-updates/mobile-update-routes.test-utils";
-
 import { afterEach, describe, expect, test } from "bun:test";
 import { createVerify, randomUUID } from "node:crypto";
 import { parseDictionary } from "structured-headers";
-import type { MobileUpdatePlatform } from "@/features/mobile-updates/mobile-update-publication";
+import type {
+  MobileUpdatePlatform,
+  MobileUpdatePublication,
+} from "@/features/mobile-updates/mobile-update-publication";
+import {
+  publishRequest,
+  resetMobileUpdatesSecrets,
+  signingKeys,
+  syntheticUpdate,
+  uniqueRuntimeVersion,
+  unsetMobileUpdatesSecret,
+} from "@/features/mobile-updates/mobile-update-routes.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { parseMultipartMixed } from "@/shared/utils/multipart-mixed";
 
@@ -64,7 +66,7 @@ const verifiesSignature = (part: { headers: Headers; body: string }) => {
     .verify(signingKeys.publicKey, String(sig), "base64");
 };
 
-const publish = async (publication: unknown) => {
+const publish = async (publication: MobileUpdatePublication) => {
   const response = await POST(publishRequest(publication));
   expect(response.status).toBe(201);
 };
@@ -75,7 +77,7 @@ const target = (platform: MobileUpdatePlatform = "android") => ({
 });
 
 describe.skipIf(!testDatabase)("mobile update manifest route", () => {
-  afterEach(resetMobileUpdatesEnv);
+  afterEach(resetMobileUpdatesSecrets);
 
   test("serves the newest update for the platform and runtime version as a signed manifest", async () => {
     const android = target();
@@ -83,9 +85,7 @@ describe.skipIf(!testDatabase)("mobile update manifest route", () => {
     const newer = syntheticUpdate(android);
     await publish(older);
     await publish(newer);
-    await publish(
-      syntheticUpdate({ ...android, platform: "ios" })
-    );
+    await publish(syntheticUpdate({ ...android, platform: "ios" }));
 
     const response = await GET(manifestRequest(android));
 
@@ -109,7 +109,9 @@ describe.skipIf(!testDatabase)("mobile update manifest route", () => {
     const body = JSON.parse(manifest?.body ?? "");
     expect(body).toEqual({
       id: newer.id,
-      createdAt: expect.stringMatching(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/),
+      createdAt: expect.stringMatching(
+        /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/
+      ),
       runtimeVersion: android.runtimeVersion,
       launchAsset: newer.type === "update" ? newer.launchAsset : undefined,
       assets: newer.type === "update" ? newer.assets : undefined,
@@ -205,7 +207,7 @@ describe.skipIf(!testDatabase)("mobile update manifest route", () => {
   });
 
   test("answers 503 to an app expecting a signature while no signing key is configured", async () => {
-    mobileUpdatesEnv.MOBILE_UPDATES_SIGNING_PRIVATE_KEY = undefined;
+    unsetMobileUpdatesSecret("MOBILE_UPDATES_SIGNING_PRIVATE_KEY");
 
     const response = await GET(manifestRequest(target()));
 

@@ -19,8 +19,8 @@ describe("mobile update code-signing certificate", () => {
   });
 
   test("stays valid for released apps well beyond their support window", () => {
-    expect(new Date(certificate.validTo).getUTCFullYear()).toBeGreaterThanOrEqual(
-      2050
-    );
+    expect(
+      new Date(certificate.validTo).getUTCFullYear()
+    ).toBeGreaterThanOrEqual(2050);
   });
 });

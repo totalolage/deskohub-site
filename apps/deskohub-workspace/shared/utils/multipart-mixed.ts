@@ -58,7 +58,10 @@ const parsePart = (text: string): ParsedMultipartPart => {
   for (const line of headerBlock.split(lineBreak)) {
     const separator = line.indexOf(":");
     if (separator > 0) {
-      headers.append(line.slice(0, separator), line.slice(separator + 1).trim());
+      headers.append(
+        line.slice(0, separator),
+        line.slice(separator + 1).trim()
+      );
     }
   }
 
