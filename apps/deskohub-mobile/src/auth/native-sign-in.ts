@@ -216,6 +216,42 @@ const completeHandoff = (code: string, state: string) =>
   );
 
 /**
+ * How long a reauthentication's expected account guards magic links, past
+ * the attempt's own expiry: longer than the email's ten-minute link, which
+ * the page may send late, so every link that can still sign in is checked.
+ */
+const reauthenticationGuardMs = 30 * 60 * 1000;
+
+/**
+ * The account a magic link must sign in to: the reauthentication's while it
+ * guards links, else the app's current one. A signed-in app only gets a sign-in
+ * link through a reauthentication; a signed-out app has no account to switch
+ * from. A session that can't be read stops before the token is spent.
+ */
+const magicLinkExpectedUserId = (
+  stored: Option.Option<PendingSignIn>,
+  now: number
+) =>
+  Option.match(
+    Option.flatMapNullishOr(
+      Option.filter(
+        stored,
+        (found) => now - found.startedAt < reauthenticationGuardMs
+      ),
+      (found) => found.expectedUserId
+    ),
+    {
+      onSome: (userId) => Effect.succeed<string | undefined>(userId),
+      onNone: () =>
+        Effect.service(NativeAuth).pipe(
+          Effect.flatMap((auth) => auth.currentUser),
+          Effect.mapError(fromAuthFailure),
+          Effect.map((user) => Option.getOrUndefined(user)?.id)
+        ),
+    }
+  );
+
+/**
  * Claims a magic-link token. A link opened from the mail app finishes the
  * attempt in progress too, so its auth session stops waiting.
  */
@@ -225,25 +261,24 @@ const completeToken = Effect.fn("NativeSignIn.completeToken")(function* (
   const auth = yield* NativeAuth;
   const completions = yield* AuthCallbackCompletions;
   const now = yield* Clock.currentTimeMillis;
-  const pending = Option.filter(
-    yield* loadPendingSignIn,
-    (candidate) => !isExpired(candidate, now)
-  );
+  const stored = yield* loadPendingSignIn;
+  const pending = Option.filter(stored, (found) => !isExpired(found, now));
   yield* Option.match(pending, {
     onNone: () => Effect.void,
     onSome: ({ state }) => completions.claim(attemptKey(state)),
   });
-  return yield* auth.verifyMagicLink(token).pipe(
-    Effect.mapError(fromAuthFailure),
-    Effect.andThen(
-      confirmSignedInUser(
-        Option.getOrUndefined(
-          Option.flatMapNullishOr(pending, (found) => found.expectedUserId)
+  return yield* magicLinkExpectedUserId(stored, now).pipe(
+    Effect.flatMap((expectedUserId) =>
+      auth
+        .verifyMagicLink(token)
+        .pipe(
+          Effect.mapError(fromAuthFailure),
+          Effect.andThen(confirmSignedInUser(expectedUserId))
         )
-      )
     ),
+    // Only a confirmed sign-in ends the attempt (and any expired one).
     Effect.tap(() =>
-      Effect.when(clearPendingSignIn, Effect.succeed(Option.isSome(pending)))
+      Effect.when(clearPendingSignIn, Effect.succeed(Option.isSome(stored)))
     ),
     Effect.onExit((exit) =>
       Option.match(pending, {

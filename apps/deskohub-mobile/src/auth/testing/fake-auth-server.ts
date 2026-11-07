@@ -57,10 +57,12 @@ export const makeFakeAuthServer = (origin: string) => {
   const faults: {
     exchangeGate: Promise<void> | undefined;
     getSessionFailuresAfterExchange: number;
+    getSessionFailures: number;
     exchanged: boolean;
   } = {
     exchangeGate: undefined,
     getSessionFailuresAfterExchange: 0,
+    getSessionFailures: 0,
     exchanged: false,
   };
 
@@ -135,6 +137,10 @@ export const makeFakeAuthServer = (origin: string) => {
     }
 
     if (method === "GET" && path === "/get-session") {
+      if (faults.getSessionFailures > 0) {
+        faults.getSessionFailures -= 1;
+        return json(500, { code: "INTERNAL_SERVER_ERROR" });
+      }
       if (faults.exchanged && faults.getSessionFailuresAfterExchange > 0) {
         faults.getSessionFailuresAfterExchange -= 1;
         return json(500, { code: "INTERNAL_SERVER_ERROR" });
@@ -204,6 +210,10 @@ export const makeFakeAuthServer = (origin: string) => {
     /** Holds every exchange until `gate` resolves. */
     holdExchanges: (gate: Promise<void>) => {
       faults.exchangeGate = gate;
+    },
+    /** Fails the next `count` session reads. */
+    failSessionReads: (count: number) => {
+      faults.getSessionFailures = count;
     },
     /** Fails the next `count` session reads after a code was exchanged. */
     failSessionReadsAfterExchange: (count: number) => {

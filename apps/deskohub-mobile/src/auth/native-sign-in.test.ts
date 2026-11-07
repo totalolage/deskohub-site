@@ -407,6 +407,56 @@ describe("reauthentication", () => {
     expect(server.openSessions()).not.toContainEqual(bob);
   });
 
+  test("a signed-in app refuses another account's magic link", async () => {
+    const server = makeFakeAuthServer(origin);
+    const store = makeMemorySecureStore();
+    await signedInAs(server, store, ada);
+    const app = launchApp(server, store);
+
+    const exit = await app.runtime.runPromiseExit(
+      completeAuthCallback({ kind: "token", token: server.issueMagicLink(bob) })
+    );
+
+    expect(failureTag(exit)).toBe("AccountSwitchRefused");
+    expect(server.openSessions()).not.toContainEqual(bob);
+  });
+
+  test("an expired reauthentication still guards its email's links", async () => {
+    const server = makeFakeAuthServer(origin);
+    const store = makeMemorySecureStore();
+    // Ada's reauthentication started 15 minutes ago and its attempt expired;
+    // the app is signed out after an earlier refusal.
+    store.values.set(
+      pendingSignInKey,
+      JSON.stringify({
+        verifier: "v".repeat(43),
+        state: "s".repeat(43),
+        returnUri: nativeReturnUri,
+        startedAt: Date.now() - 15 * 60 * 1000,
+        expectedUserId: ada.id,
+      })
+    );
+    const app = launchApp(server, store);
+
+    const exit = await app.runtime.runPromiseExit(
+      completeAuthCallback({ kind: "token", token: server.issueMagicLink(bob) })
+    );
+
+    expect(failureTag(exit)).toBe("AccountSwitchRefused");
+  });
+
+  test("doesn't spend a magic link when the current session can't be read", async () => {
+    const server = makeFakeAuthServer(origin);
+    const store = makeMemorySecureStore();
+    server.failSessionReads(100);
+    const app = launchApp(server, store);
+    const exit = await app.runtime.runPromiseExit(
+      completeAuthCallback({ kind: "token", token: server.issueMagicLink(bob) })
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(server.callsTo("/magic-link/verify")).toEqual([]);
+  });
+
   test("needs a signed-in session", async () => {
     const server = makeFakeAuthServer(origin);
     const app = launchApp(server, makeMemorySecureStore());
