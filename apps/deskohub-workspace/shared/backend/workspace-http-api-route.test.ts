@@ -2,55 +2,88 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
-import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
+import {
+  HttpRouter,
+  HttpServerRequest,
+  HttpServerResponse,
+} from "effect/unstable/http";
+import { NextRequest } from "next/server";
 import { toWorkspaceWebHandler } from "./workspace-effect";
-import { continueMutationsAfterDisconnect } from "./workspace-http-api-route";
+import {
+  continueMutationsAfterDisconnect,
+  defineWorkspaceHttpApiRoute,
+} from "./workspace-http-api-route";
+
+const encoder = new TextEncoder();
 
 /**
- * A route that starts, waits for `release`, then records that it finished;
- * `started` resolves once it runs.
+ * A route that reads its whole body, resolves `received` with it, waits for
+ * `release`, then answers. `outcome` resolves once it either finished or was
+ * interrupted.
  */
 const slowRoute = (method: "GET" | "POST") => {
-  const started = Promise.withResolvers<void>();
+  const received = Promise.withResolvers<string>();
   const release = Promise.withResolvers<void>();
-  const finished: string[] = [];
+  const outcome = Promise.withResolvers<"finished" | "interrupted">();
   const handle = toWorkspaceWebHandler(
     HttpRouter.add(
       method,
       "/work",
-      Effect.sync(() => started.resolve()).pipe(
-        Effect.andThen(Effect.promise(() => release.promise)),
-        Effect.andThen(
-          Effect.sync(() => {
-            finished.push(method);
-            return HttpServerResponse.text("done");
-          })
+      Effect.gen(function* () {
+        const request = yield* HttpServerRequest.HttpServerRequest;
+        received.resolve(yield* Effect.orDie(request.text));
+        yield* Effect.promise(() => release.promise);
+        outcome.resolve("finished");
+        return HttpServerResponse.text("done");
+      }).pipe(
+        Effect.onInterrupt(() =>
+          Effect.sync(() => outcome.resolve("interrupted"))
         )
       )
     )
   );
-  return { handle, started, release, finished };
+  return { handle, received, release, outcome };
 };
 
-/** Sends a request, disconnects once the route runs, then releases it. */
+/** A body that arrives as these chunks, one per read. */
+const streamedBody = (...chunks: string[]) => {
+  const pending = chunks.map((chunk) => encoder.encode(chunk));
+  return new ReadableStream<Uint8Array>({
+    pull(controller) {
+      const chunk = pending.shift();
+      if (chunk === undefined) controller.close();
+      else controller.enqueue(chunk);
+    },
+  });
+};
+
+/** The request a client sends, with a streamed body unless it's a GET. */
+const workRequest = (method: "GET" | "POST", signal: AbortSignal) =>
+  new NextRequest("https://workspace.deskohub.test/work", {
+    method,
+    signal,
+    ...(method === "POST" && {
+      body: streamedBody("first chunk, ", "last chunk"),
+      duplex: "half",
+    }),
+  });
+
+/**
+ * Sends a request, disconnects its client once the route received the whole
+ * body, then releases the route. Effect interrupts on the abort before
+ * `abort()` returns, so the release can't overtake it.
+ */
 const disconnectMidway = async (
   route: ReturnType<typeof slowRoute>,
   serve: (request: Request) => Promise<Response>,
   method: "GET" | "POST"
 ) => {
   const client = new AbortController();
-  void serve(
-    new Request("https://workspace.deskohub.test/work", {
-      method,
-      signal: client.signal,
-    })
-  );
-  await route.started.promise;
+  const response = serve(workRequest(method, client.signal));
+  const received = await route.received.promise;
   client.abort();
-  await Bun.sleep(10);
   route.release.resolve();
-  await Bun.sleep(10);
-  return route.finished;
+  return { received, outcome: await route.outcome.promise, response };
 };
 
 describe("continueMutationsAfterDisconnect", () => {
@@ -59,30 +92,62 @@ describe("continueMutationsAfterDisconnect", () => {
   test("Effect's web handler alone interrupts a mutation whose client disconnects", async () => {
     const route = slowRoute("POST");
 
-    expect(await disconnectMidway(route, route.handle, "POST")).toEqual([]);
+    const { outcome } = await disconnectMidway(route, route.handle, "POST");
+
+    expect(outcome).toBe("interrupted");
   });
 
   test("runs a mutation to completion after its client disconnects", async () => {
     const route = slowRoute("POST");
 
-    expect(
-      await disconnectMidway(
-        route,
-        continueMutationsAfterDisconnect(route.handle),
-        "POST"
-      )
-    ).toEqual(["POST"]);
+    const { outcome } = await disconnectMidway(
+      route,
+      continueMutationsAfterDisconnect(route.handle),
+      "POST"
+    );
+
+    expect(outcome).toBe("finished");
   });
 
   test("still stops a GET whose client disconnects", async () => {
     const route = slowRoute("GET");
 
-    expect(
-      await disconnectMidway(
-        route,
-        continueMutationsAfterDisconnect(route.handle),
-        "GET"
-      )
-    ).toEqual([]);
+    const { outcome } = await disconnectMidway(
+      route,
+      continueMutationsAfterDisconnect(route.handle),
+      "GET"
+    );
+
+    expect(outcome).toBe("interrupted");
+  });
+});
+
+describe("defineWorkspaceHttpApiRoute", () => {
+  /** A mutation route as the customer and admin API routes define one. */
+  const mutationRoute = (handler: (request: Request) => Promise<Response>) =>
+    defineWorkspaceHttpApiRoute(
+      {
+        operation: "workspaceHttpApiRouteTest",
+        cancellation: "continue-after-disconnect",
+        caller: "client",
+        failureMessage: "The test request could not be completed.",
+      },
+      continueMutationsAfterDisconnect(handler)
+    );
+
+  test("completes a mutation whose streamed body it received after the client disconnects", async () => {
+    const route = slowRoute("POST");
+
+    const { received, outcome, response } = await disconnectMidway(
+      route,
+      mutationRoute(route.handle),
+      "POST"
+    );
+
+    expect(received).toBe("first chunk, last chunk");
+    expect(outcome).toBe("finished");
+    const answer = await response;
+    expect(answer.status).toBe(200);
+    expect(await answer.text()).toBe("done");
   });
 });
