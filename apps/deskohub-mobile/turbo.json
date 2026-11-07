@@ -6,6 +6,9 @@
       "dependsOn": ["^build", "i18n:compile"],
       "outputs": ["dist/**"]
     },
+    "dev": {
+      "dependsOn": ["i18n:compile"]
+    },
     "i18n:compile": {
       "inputs": [
         "messages/*.json",
@@ -20,6 +23,9 @@
         "$TURBO_ROOT$/biome.json",
         "$TURBO_ROOT$/lint/**"
       ]
+    },
+    "start": {
+      "dependsOn": ["i18n:compile"]
     },
     "test": {
       "inputs": [

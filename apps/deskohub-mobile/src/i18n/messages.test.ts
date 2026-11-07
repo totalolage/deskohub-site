@@ -5,10 +5,10 @@ describe("messages", () => {
   test("interpolates smoke totals in each locale", () => {
     const totals = { passed: 3, failed: 1, total: 4 };
 
-    expect(m.smoke_totals(totals, { locale: "en-US" })).toBe(
+    expect<string>(m.smoke_totals(totals, { locale: "en-US" })).toBe(
       "3 of 4 passed, 1 failed"
     );
-    expect(m.smoke_totals(totals, { locale: "cs-CZ" })).toBe(
+    expect<string>(m.smoke_totals(totals, { locale: "cs-CZ" })).toBe(
       "3 z 4 prošlo, 1 selhalo"
     );
   });
