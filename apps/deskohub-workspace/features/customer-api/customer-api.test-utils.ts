@@ -25,13 +25,16 @@ import {
 } from "@/features/account/backend/customer-authentication.service";
 import { CustomerAvatarService } from "@/features/account/backend/customer-avatar.service";
 import { CustomerProfileService } from "@/features/account/backend/customer-profile.service";
+import { CustomerReservationHistoryService } from "@/features/account/backend/customer-reservation-history.service";
 import type { CustomerProfile } from "@/features/account/contracts";
 import {
   type CustomerAccountAccessError,
   customerAccountUnavailable,
 } from "@/features/account/customer-account";
+import { ReservationInvoicePdfService } from "@/features/accounting/backend/reservation-invoice-pdf.service";
 import { CheckoutService } from "@/features/checkout/backend/checkout";
 import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
+import { CheckoutStatusService } from "@/features/checkout/backend/checkout/checkout-status.service";
 import { ReservationSupersessionService } from "@/features/checkout/backend/checkout/reservation-supersession.service";
 import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import { MarketingPreferences } from "@/features/legal/backend/marketing-preferences.service";
@@ -40,6 +43,8 @@ import { ReferralServiceMock } from "@/features/referrals/referral.service.mock"
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { ReferralSignupIntentRepository } from "@/features/referrals/signup-intent.repository";
 import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
+import { ReservationAccessService } from "@/features/reservation/backend/reservation-access.service";
+import { ReservationAuthorizationService } from "@/features/reservation/backend/reservation-authorization.service";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import { ReviewAccountsMock } from "@/features/review-accounts/backend/review-accounts.repository.mock";
 import {
@@ -63,6 +68,10 @@ import {
   CustomerBookingCheckoutLayers,
 } from "./customer-booking-checkout-layers";
 import { CustomerCheckoutOperations } from "./customer-checkout-operations.service";
+import {
+  CustomerReservationLayers,
+  type CustomerReservationServiceLayers,
+} from "./customer-reservation-layers";
 
 /** The origin Better Auth trusts in a customer API test. */
 export const trustedOrigin = "https://workspace.deskohub.test";
@@ -102,6 +111,11 @@ export type CustomerApiTestOptions = {
   readonly bookingCatalog?: Partial<CustomerBookingCatalogLayerSet>;
   /** Booking checkout fakes, like `bookingCatalog`. */
   readonly bookingCheckout?: Partial<CustomerBookingCheckoutLayerSet>;
+  /**
+   * Reservation service fakes, each left out a `Layer.mock` with nothing
+   * implemented, like `services`.
+   */
+  readonly reservations?: Partial<CustomerReservationServiceLayers>;
 };
 
 /**
@@ -161,6 +175,10 @@ export const makeCustomerApiTestServer = (
     Layer.succeed(CustomerBookingCheckoutLayers, {
       ...unusedBookingCheckout,
       ...options.bookingCheckout,
+    }),
+    Layer.succeed(CustomerReservationLayers, {
+      ...unusedReservationServices,
+      ...options.reservations,
     })
   );
 
@@ -186,6 +204,15 @@ const unusedAccountServices: CustomerAccountServiceLayers = {
   marketingPreferences: Layer.mock(MarketingPreferences, {}),
   consentLedger: Layer.mock(MarketingConsentLedger, {}),
   accountDeletion: Layer.mock(CustomerAccountDeletionEndpoint, {}),
+};
+
+const unusedReservationServices: CustomerReservationServiceLayers = {
+  contacts: () => Layer.mock(CustomerAccountContactService, {}),
+  history: Layer.mock(CustomerReservationHistoryService, {}),
+  authorization: () => Layer.mock(ReservationAuthorizationService, {}),
+  checkoutStatus: Layer.mock(CheckoutStatusService, {}),
+  access: () => Layer.mock(ReservationAccessService, {}),
+  invoice: () => Layer.mock(ReservationInvoicePdfService, {}),
 };
 
 /** The Dotypos profile of `linkedAccountServices`' account. */

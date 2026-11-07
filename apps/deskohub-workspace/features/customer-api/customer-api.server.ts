@@ -22,13 +22,8 @@ import {
   CustomerRequestOriginCheckLive,
   CustomerSessionAuthenticationLive,
 } from "./customer-request-checks";
-
-/** The reservations group's handlers; its endpoints arrive with #984. */
-const CustomerReservationsApiHandlers = HttpApiBuilder.group(
-  WorkspaceCustomerApi,
-  "reservations",
-  (handlers) => handlers
-);
+import { CustomerReservationsApiHandlers } from "./customer-reservation-handlers";
+import { CustomerReservationLayers } from "./customer-reservation-layers";
 
 /**
  * The customer API's HTTP app: every group's handlers behind the origin
@@ -36,9 +31,9 @@ const CustomerReservationsApiHandlers = HttpApiBuilder.group(
  * Workspace request context, and every response private and uncached. Each
  * call builds its own router, group handlers and global middleware, which
  * capture the router they were built with, so instances sharing the
- * Workspace memo map must not share them. The account and booking services,
- * the request origins, the authentication and the request budget come from
- * the caller.
+ * Workspace memo map must not share them. The account, reservation and
+ * booking services, the request origins, the authentication and the
+ * request budget come from the caller.
  */
 export const makeWorkspaceCustomerApiLayer = () =>
   Layer.mergeAll(
@@ -73,6 +68,7 @@ const provideWorkspaceCustomerApiServices = <A, E, R>(
     Layer.provide(
       Layer.mergeAll(
         CustomerAccountLayers.Live,
+        CustomerReservationLayers.Live,
         CustomerBookingCatalogLayers.Live,
         CustomerBookingCheckoutLayers.Live,
         CustomerAuthentication.Default,

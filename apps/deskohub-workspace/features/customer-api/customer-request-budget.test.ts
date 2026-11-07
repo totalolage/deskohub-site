@@ -27,7 +27,7 @@ describe("customer request budget classes", () => {
       )
       .toSorted();
 
-    expect(contractEndpoints()).toHaveLength(21);
+    expect(contractEndpoints()).toHaveLength(25);
     expect(classified).toEqual(contractEndpoints());
   });
 
@@ -64,6 +64,11 @@ describe("customer request budget classes", () => {
         (budgetClass) => budgetClass === "dotypos-read"
       )
     ).toHaveLength(3);
+    expect(
+      Object.values(customerRequestBudgetClasses.reservations).filter(
+        (budgetClass) => budgetClass === "dotypos-read"
+      )
+    ).toHaveLength(4);
     expect(
       Object.values(customerRequestBudgetClasses.booking).filter(
         (budgetClass) => budgetClass === "dotypos-read"
