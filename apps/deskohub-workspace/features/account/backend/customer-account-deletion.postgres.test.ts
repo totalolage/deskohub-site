@@ -3,7 +3,6 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import {
   type DotyposCustomerId,
-  DotyposCustomerIdSchema,
   DotyposCustomerSchema,
 } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
@@ -13,7 +12,10 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { customerAccounts } from "@/db/schema";
 import { ReviewAccounts } from "@/features/review-accounts";
-import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
+import {
+  syntheticDotyposCustomerId,
+  workspaceFixtures,
+} from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   type CustomerAccountId,
@@ -27,7 +29,6 @@ import { CustomerAvatarProviderError } from "./customer-avatar.service";
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 
 const uniqueId = () => crypto.randomUUID();
-const uniqueDotyposId = () => String(60000 + Math.floor(Math.random() * 999));
 
 /** The adapter's success: the reread customer shows the expiration. */
 const expireCustomer = (customerId: DotyposCustomerId) =>
@@ -95,7 +96,7 @@ describe.skipIf(!testDatabase)(
     test("marks, expires, and destroys the avatar under the real account advisory lock", async () => {
       const layer = makeRepositoryLayer();
       const account = customerAccountIdSchema.make(uniqueId());
-      const dotyposCustomerId = uniqueDotyposId();
+      const dotyposCustomerId = syntheticDotyposCustomerId("deletion");
       await insertAuthUser(account, testEmailAddress(`del-${account}`));
       await insertLink(account, dotyposCustomerId);
 
@@ -186,7 +187,7 @@ describe.skipIf(!testDatabase)(
     test("keeps the durable marker and Dotypos customer ID when avatar destroy fails retryably", async () => {
       const layer = makeRepositoryLayer();
       const account = customerAccountIdSchema.make(uniqueId());
-      const dotyposCustomerId = uniqueDotyposId();
+      const dotyposCustomerId = syntheticDotyposCustomerId("deletion");
       await insertAuthUser(account, testEmailAddress(`del-${account}`));
       await insertLink(account, dotyposCustomerId);
 
@@ -229,13 +230,13 @@ describe.skipIf(!testDatabase)(
     test("keeps an authored reservation and its author tombstone after the identity is removed", async () => {
       const layer = makeRepositoryLayer();
       const account = customerAccountIdSchema.make(uniqueId());
-      const dotyposCustomerId = uniqueDotyposId();
+      const dotyposCustomerId = syntheticDotyposCustomerId("deletion");
       await insertAuthUser(account, testEmailAddress(`del-${account}`));
       await insertLink(account, dotyposCustomerId);
       const { id: reservationId } = await Effect.runPromise(
         workspaceFixtures(testDatabase!.db).reservation({
           stage: { reservation: "draft" },
-          customer: DotyposCustomerIdSchema.make(dotyposCustomerId),
+          customer: dotyposCustomerId,
           author: account,
         })
       );
@@ -301,11 +302,11 @@ describe.skipIf(!testDatabase)(
     test("a repeated deletion keeps the first tombstone instant", async () => {
       const layer = makeRepositoryLayer();
       const account = customerAccountIdSchema.make(uniqueId());
-      const dotyposCustomerId = `${Date.now()}${Math.floor(Math.random() * 1_000_000)}`;
+      const dotyposCustomerId = syntheticDotyposCustomerId("deletion");
       await Effect.runPromise(
         workspaceFixtures(testDatabase!.db).customerAccount({
           id: account,
-          linkedCustomer: DotyposCustomerIdSchema.make(dotyposCustomerId),
+          linkedCustomer: dotyposCustomerId,
         })
       );
 
