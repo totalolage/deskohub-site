@@ -237,6 +237,54 @@ describe("workspace environment schemas", () => {
     expect(error).not.toContain("synthetic-variant");
   });
 
+  test("reads the optional native app signing settings", () => {
+    const debugCertificate = Array.from({ length: 32 }, () => "AB").join(":");
+
+    expect(
+      createWorkspaceEnv(
+        workspaceRuntimeEnv({
+          APPLE_TEAM_ID: undefined,
+          ANDROID_DEBUG_SIGNING_CERT_SHA256: undefined,
+        })
+      )
+    ).toEqual(
+      expect.objectContaining({
+        APPLE_TEAM_ID: undefined,
+        ANDROID_DEBUG_SIGNING_CERT_SHA256: undefined,
+      })
+    );
+    expect(
+      createWorkspaceEnv(
+        workspaceRuntimeEnv({
+          APPLE_TEAM_ID: "ABCDE12345",
+          ANDROID_DEBUG_SIGNING_CERT_SHA256: debugCertificate.toLowerCase(),
+        })
+      )
+    ).toEqual(
+      expect.objectContaining({
+        APPLE_TEAM_ID: "ABCDE12345",
+        ANDROID_DEBUG_SIGNING_CERT_SHA256: debugCertificate,
+      })
+    );
+    for (const APPLE_TEAM_ID of [
+      "",
+      "abcde12345",
+      "ABCDE1234",
+      "ABCDE12345.",
+    ]) {
+      expect(invalidVariables({ APPLE_TEAM_ID })).toEqual(["APPLE_TEAM_ID"]);
+    }
+    for (const ANDROID_DEBUG_SIGNING_CERT_SHA256 of [
+      "",
+      debugCertificate.replaceAll(":", ""),
+      debugCertificate.slice(3),
+    ]) {
+      expect(invalidVariables({ ANDROID_DEBUG_SIGNING_CERT_SHA256 })).toEqual([
+        "ANDROID_DEBUG_SIGNING_CERT_SHA256",
+      ]);
+    }
+  });
+
   test("accepts review logins only on lowercase test addresses with long passwords", () => {
     const password = `review-${crypto.randomUUID()}`;
     const reviewLogins = (

@@ -51,7 +51,9 @@ if (allowedHosts.kind === "invalid") {
   );
 }
 
-const passkeyRelyingParty = resolvePasskeyRelyingParty(hostEnvironment);
+const passkeyRelyingParty = resolvePasskeyRelyingParty(hostEnvironment, {
+  androidDebugCertificate: env.ANDROID_DEBUG_SIGNING_CERT_SHA256,
+});
 if (passkeyRelyingParty.kind === "invalid") {
   throw new Error(
     `Workspace account bootstrap failed: ${passkeyRelyingParty.message}`

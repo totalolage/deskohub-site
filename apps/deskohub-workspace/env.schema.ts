@@ -10,6 +10,7 @@ import {
   type workspaceClientEnvSchema,
 } from "./client-env.schema";
 import { parseBetterAuthSecrets } from "./features/account/backend/auth/auth-secrets";
+import { signingCertificateFingerprintSchema } from "./features/account/backend/auth/native-app";
 import { reviewAccountCredentialsSchema } from "./features/account/backend/auth/review-account-credentials";
 import {
   postHogFeatureFlagOverridesEnvironmentCheck,
@@ -162,6 +163,16 @@ export const workspaceServerEnvSchema = Schema.Struct({
   RESEND_WEBHOOK_SECRET: nonEmptyStringSchema,
   // App-directory review logins, the only password sign-ins.
   REVIEW_ACCOUNT_CREDENTIALS: toEnvSchema(reviewAccountCredentialsSchema),
+  // The Apple Developer team of the native app. Without it the site serves
+  // no `/.well-known/apple-app-site-association`.
+  APPLE_TEAM_ID: toEnvSchema(
+    Schema.optional(Schema.String.check(Schema.isPattern(/^[A-Z0-9]{10}$/)))
+  ),
+  // SHA-256 fingerprint of a debug signing certificate whose app builds may
+  // use passkeys in local development only.
+  ANDROID_DEBUG_SIGNING_CERT_SHA256: toEnvSchema(
+    Schema.optional(signingCertificateFingerprintSchema)
+  ),
   CHECKOUT_PAY_STATE_KEYS: nonEmptyStringSchema,
   CHECKOUT_RETURN_STATE_TOKEN_SECRET: toEnvSchema(
     Schema.optional(Schema.String.check(Schema.isMinLength(32)))
