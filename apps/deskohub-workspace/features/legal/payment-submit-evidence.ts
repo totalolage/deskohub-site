@@ -37,7 +37,7 @@ export type PaymentSubmitLegalDocument = {
 const getAcceptedDocument = (
   locale: Locale,
   documentKey: PaymentSubmitLegalDocumentKey
-) => ({
+): Omit<PaymentSubmitLegalDocument, "key"> => ({
   path: getLegalDocumentPath(locale, documentKey),
   hash: getLegalDocumentVersion(locale, documentKey),
   hashAlgorithm: legalDocumentHashAlgorithm,
