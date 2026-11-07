@@ -81,10 +81,7 @@ import {
   InvoiceEmailDeliveryRepository,
 } from "../backend/invoice-email-delivery.repository";
 import { InvoiceEmailDeliveryService } from "../backend/invoice-email-delivery.service";
-import {
-  renderInvoicePdf,
-  renderInvoicePdfFile,
-} from "../backend/invoice-pdf";
+import { renderInvoicePdf, renderInvoicePdfFile } from "../backend/invoice-pdf";
 import {
   decodeInvoiceAdministrationId,
   InvoiceAdministrationNotFoundError,
