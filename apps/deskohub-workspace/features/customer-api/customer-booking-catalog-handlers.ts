@@ -4,6 +4,7 @@ import {
   type CustomerBookingOfferings,
   type CustomerBookingQuote,
   CustomerBookingSelectionInvalid,
+  type CustomerAvailability,
   type CustomerBookingSelectionQuery,
   type CustomerOffering,
   customerAvailabilityReplacementHeader,
@@ -28,6 +29,7 @@ import { getMeetingRoomReservationDurationKey } from "@/features/reservation/mee
 import {
   parseMeetingRoomStartTimesQuery,
   parseWorkspaceAvailabilityQuery,
+  type WorkspaceAvailability,
 } from "@/features/reservation/workspace-availability";
 import { currentInstant } from "@/shared/utils/temporal";
 import { answerSessionApiFailure } from "./customer-api-failure";
@@ -110,6 +112,7 @@ export const handleCustomerBookingCatalog = <R>(
               query: parsed,
               replacementToken: headers[customerAvailabilityReplacementHeader],
             }).pipe(
+              Effect.map(toCustomerAvailability),
               Effect.provide(availability),
               answerSessionApiFailure("customerApi.getAvailability")
             )
@@ -205,6 +208,24 @@ const definedEntries = (
   Object.entries(query).flatMap(([key, value]) =>
     value === undefined ? [] : [[key, String(value)]]
   );
+
+/**
+ * The availability the booking pages read, without the date a range query
+ * names none for or a summary an untitled calendar event lacks: the contract
+ * omits both rather than send them empty.
+ */
+const toCustomerAvailability = ({
+  date,
+  notices,
+  ...availability
+}: WorkspaceAvailability): CustomerAvailability => ({
+  ...availability,
+  ...(date !== undefined && { date }),
+  notices: notices.map(({ summary, ...notice }) => ({
+    ...notice,
+    ...(summary !== undefined && { summary }),
+  })),
+});
 
 const toCustomerOffering = (offering: PublicOffering): CustomerOffering => {
   const copy = Struct.pick(offering, ["name", "description", "usage"]);

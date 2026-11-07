@@ -371,6 +371,32 @@ describe("getAvailability", () => {
     ]);
   });
 
+  // The availability service leaves the date and a notice's summary
+  // undefined when the query names no date or the calendar event has no
+  // title, as a plain range query does.
+  test("answers a range without a date or a notice summary", async () => {
+    const api = makeCustomerApiTestServer({
+      bookingCatalog: {
+        availability: availabilityWith({
+          getAvailability: () =>
+            Effect.succeed({
+              ...testAvailability,
+              date: undefined,
+              notices: [{ ...testAvailability.notices[0], summary: undefined }],
+            }),
+        }),
+      },
+    });
+
+    const response = await api.handle(
+      customerApiRequest({ method: "GET", path: "/booking/availability" })
+    );
+
+    expect(response.status).toBe(200);
+    const { date: _date, ...range } = testAvailability;
+    expect(await response.json()).toEqual(range);
+  });
+
   test("ignores the hold of the pay state the client replaces", async () => {
     const queries: AvailabilityRequest[] = [];
     const lookups: unknown[] = [];
