@@ -24,7 +24,9 @@ export type ReleaseGateRunPolicy =
  * build of the layer, with the run-failure policy `releaseGateForRequest`
  * applies at the Next.js edge, but without React `cache` or a nested runner.
  * Build it once per request. Interruption and Next.js control flow always
- * propagate.
+ * propagate. The gate's own `Live` evaluation still reads flag definitions
+ * through Next.js's data cache (`"use cache"`), so the handler must run in
+ * the Next.js server, as a route handler does, not a standalone process.
  */
 export const releaseGateForRun = <Self>(
   gate: ReleaseGateClass<Self>,

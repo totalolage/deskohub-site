@@ -31,6 +31,13 @@ export const updateCurrentCustomerProfile = (input: CustomerProfileInput) =>
  * remembered referral code is forgotten if the customer's referral is
  * settled, whether by this completion or earlier. The completion field, not
  * the remembered code, decides which code this save records.
+ *
+ * A client that keeps the remembered code itself (`RememberedReferral.fromClient`)
+ * can't be told to forget it from here: forgetting does nothing, and an
+ * already-linked account's result carries no referral. Such a client reads
+ * the account state after completing, whose `rememberedReferralCodeUsed`
+ * says whether the code it sent is settled, and never forgets the code just
+ * because completion succeeded.
  */
 export const completeCurrentCustomerProfile = ({
   referralCode,
