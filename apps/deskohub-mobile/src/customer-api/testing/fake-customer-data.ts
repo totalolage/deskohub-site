@@ -1,5 +1,10 @@
 import { Effect, Layer, Option } from "effect";
 import {
+  AccountExitFence,
+  accountDeviceLayer,
+  makeAccountExitFence,
+} from "../account-scoped-storage";
+import {
   CustomerAccountScope,
   CustomerApi,
   CustomerAuthApi,
@@ -134,9 +139,12 @@ export const fakeCustomerApiLayer = (
 export const fakeCustomerDataLayer = ({
   workspace,
   device,
+  fence = Layer.sync(AccountExitFence, makeAccountExitFence),
 }: {
   readonly workspace: FakeWorkspace;
   readonly device: FakeDevice;
+  /** Share one fence with an exit cleanup under test. */
+  readonly fence?: Layer.Layer<AccountExitFence>;
 }): Layer.Layer<CustomerDataServices> =>
   Layer.mergeAll(
     fakeCustomerApiLayer(workspace),
@@ -149,6 +157,9 @@ export const fakeCustomerDataLayer = ({
       recheck: Effect.sync(() => {
         device.sessionChecks += 1;
       }),
-    }),
-    fakeDeviceCapabilities(device)
+    })
+  ).pipe(
+    Layer.provideMerge(
+      accountDeviceLayer(fakeDeviceCapabilities(device), fence)
+    )
   );

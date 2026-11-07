@@ -39,6 +39,7 @@ import {
   type HttpApiEndpoint,
   type HttpApiGroup,
 } from "effect/unstable/httpapi";
+import { fakeBookingGroup } from "../../booking/testing/fake-booking-api";
 import {
   type FakeWorkspaceData,
   type SampleAccountKind,
@@ -59,7 +60,9 @@ export type FakeRequestOutcome =
    */
   | "transport-failure"
   /** No answer ever comes; the client's timeout decides. */
-  | "hang";
+  | "hang"
+  /** The server handles the request, then answers a body nobody can read. */
+  | "unreadable-answer";
 
 type EndpointName = HttpApiEndpoint.Name<
   | HttpApiGroup.Endpoints<typeof CustomerAccountApi>
@@ -147,6 +150,24 @@ const linkRequiredReason = (
     ? account.kind
     : "profile-missing";
 
+// The account carries the session settings as the Workspace reads them now:
+// `passkeys` and `assistants` reflect the standalone lists, present only
+// where the account state carries them.
+const accountView = (data: FakeWorkspaceData): CustomerAccountState => ({
+  ...data.account,
+  ...(data.account.passkeys === undefined
+    ? {}
+    : {
+        passkeys: {
+          ...data.account.passkeys,
+          passkeys: [...data.passkeys],
+        },
+      }),
+  ...(data.account.assistants === undefined
+    ? {}
+    : { assistants: [...data.assistants] }),
+});
+
 const serverLayer = (workspace: FakeWorkspace) => {
   const linkedAccount = Effect.suspend(() => {
     const { account } = workspace.data;
@@ -175,7 +196,9 @@ const serverLayer = (workspace: FakeWorkspace) => {
     "account",
     (handlers) =>
       handlers
-        .handle("getAccount", () => Effect.sync(() => workspace.data.account))
+        .handle("getAccount", () =>
+          Effect.sync(() => accountView(workspace.data))
+        )
         .handle("updateProfile", ({ payload }) =>
           Effect.flatMap(linkedAccount, (current) =>
             update((data) => ({
@@ -322,11 +345,7 @@ const serverLayer = (workspace: FakeWorkspace) => {
         )
   );
 
-  const booking = HttpApiBuilder.group(
-    WorkspaceCustomerApi,
-    "booking",
-    (handlers) => handlers
-  );
+  const booking = fakeBookingGroup(workspace);
 
   const auth = HttpApiBuilder.group(CustomerAuthHttpApi, "auth", (handlers) =>
     handlers
@@ -436,7 +455,14 @@ const serverLayer = (workspace: FakeWorkspace) => {
             email: workspace.data.account.email,
           }
         );
-        return outcome === "transport-failure" ? brokenConnection() : response;
+        if (outcome === "transport-failure") return brokenConnection();
+        if (outcome === "unreadable-answer") {
+          return HttpServerResponse.text("<html>gateway</html>", {
+            status: 200,
+            contentType: "application/json",
+          });
+        }
+        return response;
       })
     )
   );
@@ -459,13 +485,31 @@ const brokenConnection = () =>
   });
 
 // Better Auth endpoints have no customer middleware, so the client records
-// them and applies their injected outcomes.
+// them and answers their injected outcomes and signed-out mutations as Better
+// Auth does.
 const endpointOfAuthPath: Record<string, EndpointName> = {
   "/api/auth/get-session": "getSession",
   "/api/auth/sign-out": "signOut",
   "/api/auth/passkey/update-passkey": "updatePasskey",
   "/api/auth/passkey/delete-passkey": "deletePasskey",
   "/api/auth/oauth2/delete-consent": "deleteConsent",
+};
+
+const betterAuthRefusal = (
+  outcome: FakeRequestOutcome | undefined,
+  signedIn: boolean
+): Response | undefined => {
+  const json = (status: number, body: object) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+  if (outcome === "session-required" || !signedIn) {
+    return json(401, { code: "UNAUTHORIZED" });
+  }
+  if (outcome === "rate-limited") return json(429, {});
+  if (outcome === "service-unavailable") return json(503, {});
+  return undefined;
 };
 
 /** An `HttpClient` that sends requests to the fake Workspace in memory. */
@@ -492,6 +536,16 @@ export const fakeWorkspaceHttpClient = (
               : workspace.nextOutcome(authEndpoint);
           if (authEndpoint !== undefined) workspace.calls.push(authEndpoint);
           if (authOutcome === "hang") return yield* Effect.never;
+          const refusal =
+            authEndpoint === undefined
+              ? undefined
+              : betterAuthRefusal(
+                  authOutcome,
+                  workspace.signedIn || authEndpoint === "getSession"
+                );
+          if (refusal !== undefined) {
+            return HttpClientResponse.fromWeb(request, refusal);
+          }
           const webRequest = yield* Effect.orDie(
             HttpClientRequest.toWeb(request)
           );
