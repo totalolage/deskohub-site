@@ -5,6 +5,20 @@
     "build:web": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**"]
+    },
+    "lint": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/biome.json",
+        "$TURBO_ROOT$/lint/**"
+      ]
+    },
+    "test": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/biome.json",
+        "$TURBO_ROOT$/lint/**"
+      ]
     }
   }
 }
