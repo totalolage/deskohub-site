@@ -2,6 +2,7 @@ import { passkeyClient } from "@better-auth/passkey/client";
 import { emailOTPClient, magicLinkClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 import { resolveApiOrigin } from "./api-origin";
+import { magicLinkSessionRefresh } from "./magic-link-session-refresh";
 
 export const apiOrigin = resolveApiOrigin(
   process.env.EXPO_PUBLIC_API_ORIGIN,
@@ -15,5 +16,10 @@ export const apiOrigin = resolveApiOrigin(
  */
 export const authClient = createAuthClient({
   baseURL: `${apiOrigin}/api/auth`,
-  plugins: [magicLinkClient(), emailOTPClient(), passkeyClient()],
+  plugins: [
+    magicLinkClient(),
+    magicLinkSessionRefresh(),
+    emailOTPClient(),
+    passkeyClient(),
+  ],
 });
