@@ -84,7 +84,7 @@ export const publicPageMarkdown = {
   "/contact": { topic: "contact", render: contactPageMarkdown },
   "/faq": { topic: "offer", render: faqPageMarkdown },
   "/ai-assistants": { topic: "booking", render: aiAssistantsPageMarkdown },
-  "/android": { topic: "optional", render: androidDownloadPageMarkdown },
+  "/android": { topic: "booking", render: androidDownloadPageMarkdown },
   "/pricing": { topic: "prices", render: pricingPageMarkdown },
   "/meeting-room": { topic: "offer", render: meetingRoomPageMarkdown },
   "/team": { topic: "offer", render: teamPageMarkdown },
