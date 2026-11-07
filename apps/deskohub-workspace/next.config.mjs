@@ -1,7 +1,9 @@
 import inlangSettings from "./project.inlang/settings.json" with {
   type: "json",
 };
+import { join } from "node:path";
 import { withBotId } from "botid/next/config";
+import { assertMobileWebAppExported } from "./features/mobile-web-app/mobile-web-app-export.js";
 import { configureWorkspaceBotId } from "./shared/bot-protection/bot-protection.policy.js";
 
 const localeRedirectPattern = inlangSettings.locales.join("|");
@@ -46,6 +48,12 @@ const nextConfig = {
     reservationRecords: { stale: 30, revalidate: 60, expire: 60 * 5 },
   },
   cacheComponents: true,
+  compiler: {
+    // `next typegen` loads this config for a production build too, so the
+    // check waits for a real compile.
+    runAfterProductionCompile: async ({ projectDir }) =>
+      assertMobileWebAppExported(join(projectDir, "public/app")),
+  },
   experimental: {
     // `next build` holds 4–5 GB on Vercel's 8 GB build machine until a few
     // seconds after compiling, while the page-data and static-generation workers
@@ -76,6 +84,10 @@ const nextConfig = {
   // deletes them before generation, so they are never deployed.
   productionBrowserSourceMaps: process.env.VERCEL_ENV === "production",
   reactCompiler: true,
+  // The app installed under /app/ has the scope `/app/`, which Next's built-in
+  // redirect would strip to `/app`. `redirects()` repeats that redirect for
+  // every other path.
+  skipTrailingSlashRedirect: true,
   // The `typecheck` task runs the native compiler before `build:compile`.
   // Next's own check runs the TS6 compiler in a worker that needs 3–3.5 GB beside
   // the `next build` process, so it hung or got OOM-killed on Vercel.
@@ -89,6 +101,11 @@ const nextConfig = {
   ],
   async redirects() {
     return [
+      {
+        source: "/:path((?!app(?:/|$)).+)/",
+        destination: "/:path",
+        permanent: true,
+      },
       {
         source: `/:locale(${localeRedirectPattern})/reservation`,
         destination: `/:locale/reservation/cowork?${new URLSearchParams({
@@ -133,6 +150,12 @@ const nextConfig = {
       // skips a dotted path under a wrong-case locale (`/en-us/x.html`); the
       // proxy's matcher catches that one and moves it to the exact locale.
       afterFiles: [
+        // The mobile web export is one page that routes on the client, so
+        // every undotted path under /app/ that isn't a file loads it.
+        {
+          source: "/app/:path([^.]*)",
+          destination: "/app/index.html",
+        },
         {
           source: `/:path((?!(?:${localeRedirectPattern})(?:/|$|\\.(?:prefetch\\.)?rsc$|\\.segments/)|api/|_next/|_vercel/|page-markdown/|workspace-location-map/).*\\..*)`,
           destination: "/locale-redirect/:path",
@@ -155,6 +178,12 @@ const nextConfig = {
             value: "no-referrer",
           },
         ],
+      },
+      {
+        // Crawlable but kept out of search: robots.txt must not block it, or
+        // crawlers never see this header.
+        source: "/app/:path*",
+        headers: [{ key: "X-Robots-Tag", value: "noindex" }],
       },
       ...(originTrialTokens.length > 0
         ? [

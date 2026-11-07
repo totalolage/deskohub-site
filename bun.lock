@@ -306,6 +306,7 @@
         "@typescript/native": "npm:typescript@7.0.2",
         "babel-plugin-react-compiler": "^1.0.0",
         "chokidar-cli": "^3.0.0",
+        "deskohub-mobile": "workspace:*",
         "drizzle-kit": "1.0.0-rc.4",
         "eslint": "^10.12.0",
         "eslint-plugin-react-hooks": "^7.1.1",
