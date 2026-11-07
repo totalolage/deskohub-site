@@ -14,8 +14,13 @@ export default function AccountLayout() {
   const session = useAuthSession();
   // The root guard mounts this group only while signed in.
   const accountId = session.status === "signed-in" ? session.user.id : "";
+  const sessionStartedAt =
+    session.status === "signed-in" ? session.signedInAt.getTime() : 0;
   return (
-    <CustomerDataProvider accountId={accountId}>
+    <CustomerDataProvider
+      accountId={accountId}
+      sessionStartedAt={sessionStartedAt}
+    >
       <Tabs screenOptions={tabScreenOptions}>
         <Tabs.Screen
           name="reservations"

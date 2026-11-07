@@ -39,14 +39,18 @@ export function CustomerDataExitCleanup({
   const previous = useRef<AccountPresence>({ status: "restoring" });
   const status = session.status;
   const accountId = session.status === "signed-in" ? session.user.id : "";
+  const sessionStartedAt =
+    session.status === "signed-in" ? session.signedInAt.getTime() : 0;
 
   useEffect(() => {
     const next: AccountPresence =
-      status === "signed-in" ? { status, accountId } : { status };
+      status === "signed-in"
+        ? { status, accountId, sessionStartedAt }
+        : { status };
     const exit = accountExitOf(previous.current, next);
     if (exit !== undefined) cleanUp(exit);
     previous.current = next;
-  }, [status, accountId, cleanUp]);
+  }, [status, accountId, sessionStartedAt, cleanUp]);
 
   return children;
 }

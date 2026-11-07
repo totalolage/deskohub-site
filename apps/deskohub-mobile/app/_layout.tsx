@@ -39,6 +39,7 @@ export default function RootLayout() {
                 <Stack.Screen name="(account)" />
               </Stack.Protected>
               <Stack.Screen name="auth/callback" />
+              <Stack.Screen name="account-deleted" />
               <Stack.Screen name="dev/effect-smoke" />
             </Stack>
           )}

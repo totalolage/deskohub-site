@@ -43,10 +43,13 @@ export const customerDataLayer = Atom.keepAlive(Atom.make(notProvided));
 // its layer with a map of its own.
 const builtPerRegistry = <A, E>(layer: Layer.Layer<A, E>) =>
   Layer.effectContext(
-    Effect.gen(function* () {
-      const memoMap = yield* Layer.makeMemoMap;
-      return yield* Layer.buildWithMemoMap(layer, memoMap, yield* Effect.scope);
-    })
+    Effect.Do.pipe(
+      Effect.bind("memoMap", () => Layer.makeMemoMap),
+      Effect.bind("scope", () => Effect.scope),
+      Effect.flatMap(({ memoMap, scope }) =>
+        Layer.buildWithMemoMap(layer, memoMap, scope)
+      )
+    )
   );
 
 /**

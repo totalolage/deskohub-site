@@ -43,10 +43,6 @@ export default function AccountSectionsLayout() {
         name="danger"
         options={{ title: m.account_section_danger({}, { locale }) }}
       />
-      <Stack.Screen
-        name="deleted"
-        options={{ title: m.account_deleted_title({}, { locale }) }}
-      />
     </Stack>
   );
 }

@@ -1,6 +1,9 @@
 import { Effect, Layer } from "effect";
 import { apiOrigin, authClient } from "../auth/auth-client";
-import { accountDeviceLayer } from "./account-scoped-storage";
+import {
+  type AccountSession,
+  accountDeviceLayer,
+} from "./account-scoped-storage";
 import {
   CustomerAccountScope,
   CustomerApi,
@@ -17,9 +20,10 @@ import { DotyposReadBudget } from "./dotypos-read-budget";
  * Better Auth client to read the session again (the same signal its own
  * session hooks use), so the guard redirects only once the session is gone.
  */
-export const liveCustomerDataLayer = (
-  accountId: string
-): Layer.Layer<CustomerDataServices> =>
+export const liveCustomerDataLayer = ({
+  accountId,
+  sessionStartedAt,
+}: AccountSession): Layer.Layer<CustomerDataServices> =>
   Layer.mergeAll(
     Layer.mergeAll(CustomerApi.Default, CustomerAuthApi.Default).pipe(
       Layer.provide(customerApiTransportLayer)
@@ -30,7 +34,11 @@ export const liveCustomerDataLayer = (
     }),
     accountDeviceLayer(deviceCapabilitiesLayer).pipe(
       Layer.provideMerge(
-        Layer.succeed(CustomerAccountScope, { accountId, apiOrigin })
+        Layer.succeed(CustomerAccountScope, {
+          accountId,
+          apiOrigin,
+          sessionStartedAt,
+        })
       )
     )
   );

@@ -1,14 +1,8 @@
-import { useEffect } from "react";
-import {
-  AccessibilityInfo,
-  ActivityIndicator,
-  Platform,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { theme } from "../theme";
 import { Button } from "./controls";
+import { useLiveRegionAnnouncement } from "./live-announcement";
 
 /**
  * Fills the screen while its content first loads. The spinner carries
@@ -30,9 +24,9 @@ export function LoadingState({ label }: { readonly label: string }) {
 
 /**
  * Replaces the screen's content when it couldn't load: the message and a
- * retry button, disabled while the retry runs. It appears together with its
- * message, which native screen readers don't announce as a live region, so
- * the message is announced directly there; browsers announce a new alert.
+ * retry button, disabled while the retry runs. Its alert region mounts empty
+ * and takes the message right after, since screen readers often skip a
+ * region inserted together with its text.
  */
 export function ErrorState({
   message,
@@ -45,15 +39,13 @@ export function ErrorState({
   readonly onRetry: () => void;
   readonly retrying?: boolean;
 }) {
-  useEffect(() => {
-    if (Platform.OS !== "web") {
-      AccessibilityInfo.announceForAccessibility(message);
-    }
-  }, [message]);
+  const [alert, setAlert] = useState<string>();
+  useEffect(() => setAlert(message), [message]);
+  useLiveRegionAnnouncement(alert);
   return (
     <View style={styles.centered}>
-      <Text role="alert" style={styles.message}>
-        {message}
+      <Text role="alert" aria-live="assertive" style={styles.message}>
+        {alert ?? ""}
       </Text>
       <Button
         variant="secondary"
@@ -77,6 +69,8 @@ export function RefreshingIndicator({
   readonly refreshing: boolean;
   readonly label: string;
 }) {
+  const message = refreshing ? label : undefined;
+  useLiveRegionAnnouncement(message);
   return (
     <View style={styles.refreshing}>
       {refreshing && (
@@ -87,7 +81,7 @@ export function RefreshingIndicator({
         />
       )}
       <Text role="status" aria-live="polite" style={styles.refreshingLabel}>
-        {refreshing ? label : ""}
+        {message ?? ""}
       </Text>
     </View>
   );

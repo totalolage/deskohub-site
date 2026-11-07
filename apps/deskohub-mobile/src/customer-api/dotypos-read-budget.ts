@@ -50,16 +50,13 @@ export class DotyposReadBudget extends Context.Service<
 >()("DotyposReadBudget") {
   static Default = Layer.effect(
     this,
-    Effect.gen(function* () {
-      const window = yield* Ref.make<ReadBudgetWindow>([]);
-      return {
-        spend: Effect.flatMap(Clock.currentTimeMillis, (now) =>
-          Ref.update(window, (spent) => spendRead(spent, now))
-        ),
-        remaining: Effect.flatMap(Clock.currentTimeMillis, (now) =>
-          Effect.map(Ref.get(window), (spent) => remainingReads(spent, now))
-        ),
-      };
-    })
+    Effect.map(Ref.make<ReadBudgetWindow>([]), (window) => ({
+      spend: Effect.flatMap(Clock.currentTimeMillis, (now) =>
+        Ref.update(window, (spent) => spendRead(spent, now))
+      ),
+      remaining: Effect.flatMap(Clock.currentTimeMillis, (now) =>
+        Effect.map(Ref.get(window), (spent) => remainingReads(spent, now))
+      ),
+    }))
   );
 }

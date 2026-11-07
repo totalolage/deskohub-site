@@ -3,6 +3,7 @@ import { Deferred, Effect, Fiber, Layer, Option } from "effect";
 import {
   AccountExitFence,
   AccountScopedStorage,
+  type AccountSession,
   accountDeviceLayer,
   accountStorageKey,
   makeAccountExitFence,
@@ -20,46 +21,79 @@ const apiOrigin = "https://x.example";
 const cache = "deskohub.reservations.v1";
 const cacheKeyOf = (accountId: string) =>
   accountStorageKey(cache, { apiOrigin, accountId });
+const sessionA1: AccountSession = { accountId: "a", sessionStartedAt: 1 };
+const sessionA2: AccountSession = { accountId: "a", sessionStartedAt: 2 };
+const sessionB: AccountSession = { accountId: "b", sessionStartedAt: 3 };
 
-/** One device and fence shared by the accounts' storage and the exit cleanup. */
+const run = <A, E>(effect: Effect.Effect<A, E>) => Effect.runPromise(effect);
+
+/** One device and fence shared by the sessions' storage and the exit cleanup. */
 const deviceWithFence = () => {
   const device = makeFakeDevice();
   const fence = Layer.succeed(AccountExitFence, makeAccountExitFence());
   const capabilities = fakeDeviceCapabilities(device);
-  const exit = (accountId: string) =>
-    Effect.runPromise(
-      customerDataExitCleanup({ scope: "account", accountId }).pipe(
-        Effect.provide(Layer.merge(capabilities, fence))
-      )
+  const exit = (session: AccountSession) =>
+    customerDataExitCleanup({ scope: "account", ...session }).pipe(
+      Effect.provide(Layer.merge(capabilities, fence))
     );
   return { device, fence, capabilities, exit };
 };
 
 type Setup = ReturnType<typeof deviceWithFence>;
 
-const storageLayer = (
-  { fence }: Setup,
-  capabilities: Layer.Layer<DeviceCapabilities>,
-  accountId: string
+/** The session's storage, opened as its runtime would open it now. */
+const openStorage = (
+  setup: Setup,
+  session: AccountSession,
+  capabilities: Layer.Layer<DeviceCapabilities> = setup.capabilities
 ) =>
-  accountDeviceLayer(capabilities, fence).pipe(
-    Layer.provide(Layer.succeed(CustomerAccountScope, { accountId, apiOrigin }))
-  );
-
-/** The account's storage, built as its runtime would build it now. */
-const openStorage = (setup: Setup, accountId: string) =>
-  Effect.runPromise(
+  run(
     Effect.service(AccountScopedStorage).pipe(
-      Effect.provide(storageLayer(setup, setup.capabilities, accountId))
+      Effect.provide(
+        accountDeviceLayer(capabilities, setup.fence).pipe(
+          Layer.provide(
+            Layer.succeed(CustomerAccountScope, { ...session, apiOrigin })
+          )
+        )
+      )
     )
   );
 
-const run = <A, E>(effect: Effect.Effect<A, E>) => Effect.runPromise(effect);
+/**
+ * A device store whose first write waits for `landed`, announcing on
+ * `inFlight` once it has started.
+ */
+const slowFirstWrite = async (device: FakeDevice) => {
+  const inFlight = await run(Deferred.make<void>());
+  const landed = await run(Deferred.make<void>());
+  let slow = true;
+  const layer = Layer.succeed(DeviceStorage, {
+    getItem: (key) =>
+      Effect.sync(() => Option.fromNullishOr(device.storage.get(key))),
+    setItem: (key, value) => {
+      const write = Effect.sync(() => {
+        device.storage.set(key, value);
+      });
+      if (!slow) return write;
+      slow = false;
+      return Deferred.succeed(inFlight, undefined).pipe(
+        Effect.andThen(Deferred.await(landed)),
+        Effect.andThen(write)
+      );
+    },
+    removeItems: (keys) =>
+      Effect.sync(() => {
+        for (const key of keys) device.storage.delete(key);
+      }),
+    keys: Effect.sync(() => [...device.storage.keys()]),
+  });
+  return { layer, inFlight, landed };
+};
 
 describe("AccountScopedStorage", () => {
-  test("keys the account's entries by origin and account", async () => {
+  test("keys the session's entries by origin and account", async () => {
     const setup = deviceWithFence();
-    const storage = await openStorage(setup, "a");
+    const storage = await openStorage(setup, sessionA1);
 
     await run(storage.setItem(cache, "{}"));
 
@@ -69,7 +103,7 @@ describe("AccountScopedStorage", () => {
 
   test("refuses a name the exit cleanup wouldn't remove", async () => {
     const setup = deviceWithFence();
-    const storage = await openStorage(setup, "a");
+    const storage = await openStorage(setup, sessionA1);
 
     const exit = await Effect.runPromiseExit(
       storage.setItem("deskohub.profile-draft", "{}")
@@ -79,53 +113,80 @@ describe("AccountScopedStorage", () => {
     expect(setup.device.storage.size).toBe(0);
   });
 
-  test("undoes a write that lands after its account exited", async () => {
+  test("an exit waits for a write in flight, then removes it", async () => {
     const setup = deviceWithFence();
-    const landed = await run(Deferred.make<void>());
-    const device: FakeDevice = setup.device;
-    // A device write that only completes once `landed` resolves.
-    const slowStorage = Layer.succeed(DeviceStorage, {
-      getItem: () => Effect.succeed(Option.none()),
-      setItem: (key, value) =>
-        Effect.andThen(
-          Deferred.await(landed),
-          Effect.sync(() => {
-            device.storage.set(key, value);
-          })
-        ),
-      removeItems: (keys) =>
-        Effect.sync(() => {
-          for (const key of keys) device.storage.delete(key);
-        }),
-      keys: Effect.sync(() => [...device.storage.keys()]),
-    });
-
-    await run(
-      Effect.gen(function* () {
-        const storage = yield* AccountScopedStorage;
-        const write = yield* Effect.forkChild(storage.setItem(cache, "{}"));
-        yield* Effect.yieldNow;
-        yield* Effect.promise(() => setup.exit("a"));
-        yield* Deferred.succeed(landed, undefined);
-        yield* Fiber.join(write);
-      }).pipe(
-        Effect.provide(
-          storageLayer(setup, Layer.merge(slowStorage, setup.capabilities), "a")
-        )
-      )
+    const slow = await slowFirstWrite(setup.device);
+    const storage = await openStorage(
+      setup,
+      sessionA1,
+      Layer.merge(setup.capabilities, slow.layer)
     );
 
-    expect(device.storage.has(cacheKeyOf("a"))).toBe(false);
+    const write = Effect.runFork(storage.setItem(cache, "{}"));
+    await run(Deferred.await(slow.inFlight));
+    const exit = Effect.runFork(setup.exit(sessionA1));
+    await run(Deferred.succeed(slow.landed, undefined));
+    await run(Fiber.join(write));
+    await run(Fiber.join(exit));
+
+    expect(setup.device.storage.has(cacheKeyOf("a"))).toBe(false);
+  });
+
+  test("an exited session reads, writes and shares nothing", async () => {
+    const setup = deviceWithFence();
+    const storage = await openStorage(setup, sessionA1);
+    await run(storage.setItem(cache, "kept until exit"));
+
+    await run(setup.exit(sessionA1));
+    await run(storage.setItem(cache, "stale"));
+
+    expect(setup.device.storage.has(cacheKeyOf("a"))).toBe(false);
+    expect(await run(storage.getItem(cache))).toEqual(Option.none());
+    expect(
+      await run(storage.writeTemporaryFile("invoice.pdf", new Uint8Array()))
+    ).toEqual(Option.none());
+    expect(setup.device.files.size).toBe(0);
+  });
+
+  test("a write from an exited session can't clobber the next sign-in's", async () => {
+    const setup = deviceWithFence();
+    const slow = await slowFirstWrite(setup.device);
+    const capabilities = Layer.merge(setup.capabilities, slow.layer);
+    const first = await openStorage(setup, sessionA1, capabilities);
+
+    const staleWrite = Effect.runFork(first.setItem(cache, "stale"));
+    await run(Deferred.await(slow.inFlight));
+    const exit = Effect.runFork(setup.exit(sessionA1));
+    const opening = openStorage(setup, sessionA2, capabilities);
+    await run(Deferred.succeed(slow.landed, undefined));
+    await run(Fiber.join(staleWrite));
+    await run(Fiber.join(exit));
+    const second = await opening;
+    await run(second.setItem(cache, "fresh"));
+    await run(first.setItem(cache, "stale again"));
+
+    expect(await run(second.getItem(cache))).toEqual(Option.some("fresh"));
+  });
+
+  test("a removal from an exited session leaves the next sign-in's entry", async () => {
+    const setup = deviceWithFence();
+    const first = await openStorage(setup, sessionA1);
+    await run(setup.exit(sessionA1));
+    const second = await openStorage(setup, sessionA2);
+    await run(second.setItem(cache, "fresh"));
+
+    await run(first.removeItem(cache));
+
+    expect(await run(second.getItem(cache))).toEqual(Option.some("fresh"));
   });
 
   test("another account signing in while the first exits keeps its storage", async () => {
     const setup = deviceWithFence();
-    const first = await openStorage(setup, "a");
+    const first = await openStorage(setup, sessionA1);
     await run(first.setItem(cache, "a-data"));
+    const second = await openStorage(setup, sessionB);
 
-    // Account B's registry is built before A's exit cleanup runs.
-    const second = await openStorage(setup, "b");
-    await setup.exit("a");
+    await run(setup.exit(sessionA1));
     await run(second.setItem(cache, "b-data"));
 
     expect(setup.device.storage.has(cacheKeyOf("a"))).toBe(false);
@@ -136,23 +197,47 @@ describe("AccountScopedStorage", () => {
       )
     ).toBe(true);
   });
+});
 
-  test("an exited account writes nothing, and signing in again starts fresh", async () => {
-    const setup = deviceWithFence();
-    const beforeExit = await openStorage(setup, "a");
+describe("AccountExitFence", () => {
+  const current = (
+    fence: ReturnType<typeof makeAccountExitFence>,
+    session: AccountSession
+  ) => Effect.runSync(fence.isCurrent(session));
 
-    await setup.exit("a");
-    await run(beforeExit.setItem(cache, "stale"));
+  test("a closed session never becomes current again", () => {
+    const fence = makeAccountExitFence();
+    Effect.runSync(fence.open(sessionA1));
+    Effect.runSync(fence.close(sessionA1));
+    Effect.runSync(fence.open(sessionA1));
 
-    expect(setup.device.storage.has(cacheKeyOf("a"))).toBe(false);
-    expect(await run(beforeExit.getItem(cache))).toEqual(Option.none());
-    expect(
-      await run(beforeExit.writeTemporaryFile("invoice.pdf", new Uint8Array()))
-    ).toEqual(Option.none());
+    expect(current(fence, sessionA1)).toBe(false);
+  });
 
-    const again = await openStorage(setup, "a");
-    await run(again.setItem(cache, "fresh"));
+  test("an exit that arrives before its session opened still closes it", () => {
+    const fence = makeAccountExitFence();
+    Effect.runSync(fence.close(sessionA1));
+    Effect.runSync(fence.open(sessionA1));
 
-    expect(await run(again.getItem(cache))).toEqual(Option.some("fresh"));
+    expect(current(fence, sessionA1)).toBe(false);
+  });
+
+  test("a later sign-in of the account opens after an exit", () => {
+    const fence = makeAccountExitFence();
+    Effect.runSync(fence.open(sessionA1));
+    Effect.runSync(fence.close(sessionA1));
+    Effect.runSync(fence.open(sessionA2));
+
+    expect(current(fence, sessionA2)).toBe(true);
+    expect(current(fence, sessionA1)).toBe(false);
+  });
+
+  test("an older session can't take over from a newer one", () => {
+    const fence = makeAccountExitFence();
+    Effect.runSync(fence.open(sessionA2));
+    Effect.runSync(fence.open(sessionA1));
+
+    expect(current(fence, sessionA2)).toBe(true);
+    expect(current(fence, sessionA1)).toBe(false);
   });
 });

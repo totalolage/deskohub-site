@@ -39,13 +39,12 @@ export class CustomerApi extends Context.Service<
 >()("CustomerApi") {
   static Default = Layer.effect(
     this,
-    Effect.gen(function* () {
-      const transport = yield* CustomerApiTransport;
-      return yield* makeWorkspaceCustomerApiClient({
+    Effect.flatMap(Effect.service(CustomerApiTransport), (transport) =>
+      makeWorkspaceCustomerApiClient({
         baseUrl: transport.apiOrigin,
         transformClient: transport.customerApi,
-      });
-    })
+      })
+    )
   );
 }
 
@@ -64,19 +63,20 @@ export class CustomerAuthApi extends Context.Service<
 >()("CustomerAuthApi") {
   static Default = Layer.effect(
     this,
-    Effect.gen(function* () {
-      const transport = yield* CustomerApiTransport;
-      return yield* makeCustomerAuthApiClient({
+    Effect.flatMap(Effect.service(CustomerApiTransport), (transport) =>
+      makeCustomerAuthApiClient({
         baseUrl: transport.apiOrigin,
         transformClient: transport.customerAuthApi,
-      });
-    })
+      })
+    )
   );
 }
 
 interface ICustomerAccountScope {
   /** The signed-in account the runtime serves; it never changes inside one. */
   readonly accountId: string;
+  /** When the session the runtime opened under started (epoch ms). */
+  readonly sessionStartedAt: number;
   /** The Workspace origin, for keys that must not mix deployments. */
   readonly apiOrigin: string;
 }
