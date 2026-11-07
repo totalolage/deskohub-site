@@ -9,7 +9,9 @@ import type { ReservationHistoryAccount } from "./customer-reservation-history.s
  * Reading the link never claims one, so a read-only caller, such as an AI
  * agent or the customer API, can't link the account as a side effect.
  */
-export const currentReservationHistoryAccount = (accountId: CustomerAccountId) =>
+export const currentReservationHistoryAccount = (
+  accountId: CustomerAccountId
+) =>
   Effect.flatMap(
     CustomerAccountContactService,
     (contacts) => contacts.currentLinkedAccount

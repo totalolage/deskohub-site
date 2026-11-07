@@ -7,8 +7,8 @@ import {
   testCustomerSession,
   testLinkedAccount,
 } from "./account-operations.test-utils";
-import { CustomerAccountContactService } from "./customer-account-contact.service";
 import { currentReservationHistoryAccount } from "./current-reservation-history-account";
+import { CustomerAccountContactService } from "./customer-account-contact.service";
 
 const readWith = (
   currentLinkedAccount: CustomerAccountContactService["Service"]["currentLinkedAccount"]

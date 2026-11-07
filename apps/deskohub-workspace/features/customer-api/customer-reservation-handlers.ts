@@ -15,10 +15,10 @@ import {
 import { Effect, Layer, Match } from "effect";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import {
-  type CustomerReservationHistory as ReservationHistoryRecord,
   CustomerReservationHistoryService,
-  type CustomerReservationSummary as ReservationSummaryRecord,
   currentReservationHistoryAccount,
+  type CustomerReservationHistory as ReservationHistoryRecord,
+  type CustomerReservationSummary as ReservationSummaryRecord,
 } from "@/features/account";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { loadAuthorizedCheckoutStatus } from "@/features/checkout/backend/checkout/authorized-checkout-status";
@@ -37,16 +37,12 @@ import {
 import { CustomerReservationLayers } from "./customer-reservation-layers";
 
 /**
- * The customer API presents only the session, never an emailed capability
- * link, so authorization doesn't read the locale such a link was issued for.
- */
-const capabilityLocale = defaultLocale;
-
-/**
  * The reservations group's handlers. Each endpoint builds its operation's
  * Layers per request from `CustomerReservationLayers`, and answers every
  * failure with the contract's fixed public errors. An order the account may
- * not see is not found, exactly like one that doesn't exist.
+ * not see is not found, exactly like one that doesn't exist. The API
+ * presents only the session, never an emailed capability link, so
+ * authorization ignores the locale it gets, the default.
  */
 export const CustomerReservationsApiHandlers = HttpApiBuilder.group(
   WorkspaceCustomerApi,
@@ -86,7 +82,7 @@ export const CustomerReservationsApiHandlers = HttpApiBuilder.group(
         .handle("getReservationStatus", ({ params: { orderId } }) =>
           loadAuthorizedCheckoutStatus({
             orderId,
-            locale: capabilityLocale,
+            locale: defaultLocale,
             returnOutcome: "unknown",
           }).pipe(
             Effect.provide(
@@ -101,7 +97,7 @@ export const CustomerReservationsApiHandlers = HttpApiBuilder.group(
         // it ends even when the client disconnects.
         .handle("getReservationAccess", ({ params: { orderId } }) =>
           Effect.flatMap(ReservationAccessService, (access) =>
-            access.getAccess({ orderId, locale: capabilityLocale })
+            access.getAccess({ orderId, locale: defaultLocale })
           ).pipe(
             Effect.provide(reservations.access(authorization)),
             runToCompletion,

@@ -521,7 +521,10 @@ describe("getReservationAccess", () => {
 
   test("answers unavailable when the code couldn't be looked up", async () => {
     const api = makeCustomerApiTestServer({
-      reservations: answering({ state: "unavailable", reason: "lookup-failed" }),
+      reservations: answering({
+        state: "unavailable",
+        reason: "lookup-failed",
+      }),
     });
 
     const response = await api.handle(customerApiRequest(getReservationAccess));

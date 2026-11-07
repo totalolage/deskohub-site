@@ -12,6 +12,7 @@ export {
   type CustomerAgentChallengeReason,
   customerAgentChallenge,
 } from "./backend/auth/customer-agent-challenge";
+export { currentReservationHistoryAccount } from "./backend/current-reservation-history-account";
 export { OptionalAccountActivityGuard } from "./backend/customer-account-activity";
 export { findActiveCustomerAccountByEmail } from "./backend/customer-account-by-email";
 export { CustomerAccountContactService } from "./backend/customer-account-contact.service";
@@ -20,7 +21,6 @@ export { CustomerAccountResolver } from "./backend/customer-account-resolver.ser
 export { customerAgentAccountServices } from "./backend/customer-agent-account-services";
 export { CustomerEmailLocaleService } from "./backend/customer-email-locale.service";
 export { CustomerReservationHistoryService } from "./backend/customer-reservation-history.service";
-export { currentReservationHistoryAccount } from "./backend/current-reservation-history-account";
 export {
   isCustomerOwnAuthor,
   type ReservationAuthor,

@@ -25,16 +25,20 @@ import {
 } from "@/features/account/backend/customer-authentication.service";
 import { CustomerAvatarService } from "@/features/account/backend/customer-avatar.service";
 import { CustomerProfileService } from "@/features/account/backend/customer-profile.service";
+import { CustomerReservationHistoryService } from "@/features/account/backend/customer-reservation-history.service";
 import type { CustomerProfile } from "@/features/account/contracts";
 import {
   type CustomerAccountAccessError,
   customerAccountUnavailable,
 } from "@/features/account/customer-account";
+import { CheckoutStatusService } from "@/features/checkout/backend/checkout/checkout-status.service";
 import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import { MarketingPreferences } from "@/features/legal/backend/marketing-preferences.service";
 import { ReferralServiceMock } from "@/features/referrals/referral.service.mock";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { ReferralSignupIntentRepository } from "@/features/referrals/signup-intent.repository";
+import { ReservationAccessService } from "@/features/reservation/backend/reservation-access.service";
+import { ReservationAuthorizationService } from "@/features/reservation/backend/reservation-authorization.service";
 import { ReviewAccountsMock } from "@/features/review-accounts/backend/review-accounts.repository.mock";
 import {
   makeMemoryRequestBudget,
@@ -42,10 +46,6 @@ import {
 } from "@/shared/backend/request-budget/memory-request-budget.test-utils";
 import { toWorkspaceWebHandler } from "@/shared/backend/workspace-effect";
 import { continueMutationsAfterDisconnect } from "@/shared/backend/workspace-http-api-route";
-import { CustomerReservationHistoryService } from "@/features/account/backend/customer-reservation-history.service";
-import { CheckoutStatusService } from "@/features/checkout/backend/checkout/checkout-status.service";
-import { ReservationAccessService } from "@/features/reservation/backend/reservation-access.service";
-import { ReservationAuthorizationService } from "@/features/reservation/backend/reservation-authorization.service";
 import {
   CustomerAccountLayers,
   type CustomerAccountServiceLayers,

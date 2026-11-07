@@ -8,7 +8,6 @@ import {
   WorkspaceCheckoutAccessCodeService,
   type WorkspaceCheckoutAccessCodeService as WorkspaceCheckoutAccessCodeServiceType,
 } from "@/features/checkout/backend/reservation/access-code.service";
-import { ReservationAccessIssuanceError } from "@/features/reservation-access";
 import type { Locale } from "@/features/i18n";
 import {
   createReservationAccessToken,
@@ -24,6 +23,7 @@ import {
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import type { ReservationAccessToken } from "@/features/reservation/reservation-access-token";
+import { ReservationAccessIssuanceError } from "@/features/reservation-access";
 
 mock.module("server-only", () => ({}));
 

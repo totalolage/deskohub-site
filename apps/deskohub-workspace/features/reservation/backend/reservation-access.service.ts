@@ -2,7 +2,6 @@ import { DotyposService } from "@deskohub/dotypos";
 import { Context, Effect, Layer, Option, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceCheckoutAccessCodeService } from "@/features/checkout/backend/reservation/access-code.service";
-import { ReservationAccessIssuanceError } from "@/features/reservation-access";
 import type { Locale } from "@/features/i18n";
 import { decodeBookedReservation } from "@/features/reservation/backend/booked-reservation";
 import { ReservationAuthorizationService } from "@/features/reservation/backend/reservation-authorization.service";
@@ -10,6 +9,7 @@ import { WorkspaceReservationRepository } from "@/features/reservation/backend/w
 import { getDotyposReservationAccessTiming } from "@/features/reservation/backend/workspace-reservation.service";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import type { ReservationAccessToken } from "@/features/reservation/reservation-access-token";
+import { ReservationAccessIssuanceError } from "@/features/reservation-access";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 
 export type ReservationAccessViewModel =

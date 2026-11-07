@@ -17,9 +17,7 @@ const recording = () => {
 
 describe("runToCompletion", () => {
   test("answers the effect's result", async () => {
-    expect(await Effect.runPromise(runToCompletion(Effect.succeed(1)))).toBe(
-      1
-    );
+    expect(await Effect.runPromise(runToCompletion(Effect.succeed(1)))).toBe(1);
   });
 
   test("finishes the effect, with the caller's services, after the caller is interrupted", async () => {

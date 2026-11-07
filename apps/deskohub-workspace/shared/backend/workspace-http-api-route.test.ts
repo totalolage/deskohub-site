@@ -183,9 +183,10 @@ describe("defineWorkspaceHttpApiRoute", () => {
     const client = new AbortController();
     let answered = false;
     // An interrupted runner rejects; either way the route has answered.
-    const response = apiRoute(cancellation, route.handle)(
-      workRequest("GET", client.signal)
-    ).then(
+    const response = apiRoute(
+      cancellation,
+      route.handle
+    )(workRequest("GET", client.signal)).then(
       () => {
         answered = true;
       },
