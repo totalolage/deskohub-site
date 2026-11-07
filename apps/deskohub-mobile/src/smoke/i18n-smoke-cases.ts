@@ -1,20 +1,13 @@
-import { type AppLocale, resolveAppLocale } from "./app-locale";
-import { m } from "./messages";
-
-type I18nSmokeCase = {
-  readonly group: "i18n";
-  readonly name: string;
-  readonly run: () => string;
-};
+import { type AppLocale, resolveAppLocale } from "../i18n/app-locale";
+import { m } from "../i18n/messages";
+import { assertSmoke, type SmokeCase } from "./smoke-case";
 
 const expectValue = (actual: string, expected: string): string => {
-  if (actual !== expected) {
-    throw new Error(`Expected "${expected}", got "${actual}"`);
-  }
+  assertSmoke(actual === expected, `expected "${expected}", got "${actual}"`);
   return actual;
 };
 
-const smokeTotals = (locale: AppLocale, expected: string): I18nSmokeCase => ({
+const smokeTotals = (locale: AppLocale, expected: string): SmokeCase => ({
   group: "i18n",
   name: `smoke_totals ${locale}`,
   run: () =>
@@ -25,7 +18,7 @@ const smokeTotals = (locale: AppLocale, expected: string): I18nSmokeCase => ({
 });
 
 /** Checks that compiled messages and locale resolution run on this runtime. */
-export const i18nSmokeCases: ReadonlyArray<I18nSmokeCase> = [
+export const i18nSmokeCases: ReadonlyArray<SmokeCase> = [
   smokeTotals("en-US", "3 of 4 passed, 1 failed"),
   smokeTotals("cs-CZ", "3 z 4 prošlo, 1 selhalo"),
   {
