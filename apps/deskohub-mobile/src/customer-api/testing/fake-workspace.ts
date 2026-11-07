@@ -39,6 +39,7 @@ import {
   type HttpApiEndpoint,
   type HttpApiGroup,
 } from "effect/unstable/httpapi";
+import { fakeBookingGroup } from "../../booking/testing/fake-booking-api";
 import {
   type FakeWorkspaceData,
   type SampleAccountKind,
@@ -322,11 +323,7 @@ const serverLayer = (workspace: FakeWorkspace) => {
         )
   );
 
-  const booking = HttpApiBuilder.group(
-    WorkspaceCustomerApi,
-    "booking",
-    (handlers) => handlers
-  );
+  const booking = fakeBookingGroup(workspace);
 
   const auth = HttpApiBuilder.group(CustomerAuthHttpApi, "auth", (handlers) =>
     handlers
