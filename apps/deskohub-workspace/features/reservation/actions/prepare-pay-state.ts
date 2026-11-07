@@ -1448,11 +1448,11 @@ const recordCheckoutMarketingConsent = Effect.fnUntraced(function* ({
  */
 const mirrorBookingDeviceAnalyticsConsent = Effect.fnUntraced(
   function* ({
-    input,
+    locale,
     bookingAgent,
     accountId,
   }: {
-    readonly input: PreparePayStateInput;
+    readonly locale: Locale;
     readonly bookingAgent: Option.Option<BookingAgent["Service"]>;
     readonly accountId: CustomerAccountId;
   }) {
@@ -1461,7 +1461,7 @@ const mirrorBookingDeviceAnalyticsConsent = Effect.fnUntraced(
     yield* mirrorDeviceAnalyticsConsent({
       accountId,
       cookieHeader: headers.get("cookie") ?? "",
-      locale: input.locale,
+      locale,
       source: "hydration_mirror",
     });
   },
@@ -1499,7 +1499,7 @@ const prepareSubmission = Effect.fn("prepareWorkspacePayState.submission")(
           });
         }
         yield* mirrorBookingDeviceAnalyticsConsent({
-          input,
+          locale: input.locale,
           bookingAgent,
           accountId,
         });
