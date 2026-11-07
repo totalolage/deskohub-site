@@ -17,7 +17,11 @@ export interface AnalyticsClient {
   readonly identify: (distinctId: string) => void;
   readonly setPersonProperties: (properties: AnalyticsProperties) => void;
   readonly reset: () => void;
-  readonly reloadFeatureFlags: () => void;
+  /**
+   * Requests flags for the client's current identity. Resolves once a
+   * response requested after this call is stored; rejects when it fails.
+   */
+  readonly reloadFeatureFlags: () => Promise<void>;
   /** A flag's value, or `undefined` until flags have loaded. */
   readonly getFeatureFlag: (flag: string) => boolean | string | undefined;
   /** Calls the listener whenever flags load. Returns the unsubscribe function. */

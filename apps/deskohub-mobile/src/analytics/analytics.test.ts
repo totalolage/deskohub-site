@@ -20,6 +20,10 @@ const createFakeClient = (
   let finishShutdown: () => void = () => {};
   let finishLoading: () => void = () => {};
   let failLoading: () => void = () => {};
+  const flagReloads: {
+    readonly resolve: () => void;
+    readonly reject: (error: Error) => void;
+  }[] = [];
   const loading = new Promise<void>((resolve, reject) => {
     finishLoading = resolve;
     failLoading = () => reject(new Error("storage"));
@@ -34,7 +38,12 @@ const createFakeClient = (
     setPersonProperties: (properties) =>
       calls.push(["setPersonProperties", properties]),
     reset: () => calls.push(["reset"]),
-    reloadFeatureFlags: () => calls.push(["reloadFeatureFlags"]),
+    reloadFeatureFlags: () => {
+      calls.push(["reloadFeatureFlags"]);
+      return new Promise<void>((resolve, reject) => {
+        flagReloads.push({ resolve, reject });
+      });
+    },
     getFeatureFlag: (flag) => flags?.[flag],
     onFeatureFlags: (listener) => {
       flagListeners.add(listener);
@@ -51,10 +60,22 @@ const createFakeClient = (
     client,
     options,
     calls,
+    /** The SDK stores flag values and notifies, as any flags response does. */
     loadFlags: (next: Record<string, boolean | string>) => {
       flags = next;
       for (const listener of flagListeners) listener();
     },
+    /** Settles the `index`th reload the controller asked for. */
+    finishFlagReload: (
+      index: number,
+      next: Record<string, boolean | string>
+    ) => {
+      flags = next;
+      for (const listener of flagListeners) listener();
+      flagReloads[index]?.resolve();
+    },
+    failFlagReload: (index: number) =>
+      flagReloads[index]?.reject(new Error("flags")),
     finishShutdown: () => finishShutdown(),
     finishLoading: () => finishLoading(),
     failLoading: () => failLoading(),
@@ -337,6 +358,7 @@ describe("outbox", () => {
     app.analytics.setIdentity(account("acc_1"));
     expect(app.clients[0]?.calls.slice(1)).toEqual([
       ["identify", "workspace-account:acc_1"],
+      ["reloadFeatureFlags"],
       ["capture", "booking started", undefined],
     ]);
   });
@@ -359,6 +381,7 @@ describe("outbox", () => {
     app.analytics.setIdentity(account("acc_1"));
     expect(app.clients[0]?.calls.slice(2)).toEqual([
       ["identify", "workspace-account:acc_1"],
+      ["reloadFeatureFlags"],
       ["capture", "sign-in completed", { method: "code" }],
     ]);
   });
@@ -372,6 +395,7 @@ describe("identity", () => {
     await settle();
     expect(app.clients[0]?.calls).toEqual([
       ["identify", "workspace-account:acc_1"],
+      ["reloadFeatureFlags"],
     ]);
   });
 
@@ -383,6 +407,7 @@ describe("identity", () => {
     expect(app.clients[0]?.calls).toEqual([
       ["identify", "workspace-account:acc_1"],
       ["setPersonProperties", { $internal_or_test_user: true }],
+      ["reloadFeatureFlags"],
     ]);
   });
 
@@ -408,9 +433,12 @@ describe("identity", () => {
     app.analytics.setIdentity({ kind: "anonymous" });
     expect(app.clients[0]?.calls).toEqual([
       ["identify", "workspace-account:acc_1"],
+      ["reloadFeatureFlags"],
       ["reset"],
       ["identify", "workspace-account:acc_2"],
+      ["reloadFeatureFlags"],
       ["reset"],
+      ["reloadFeatureFlags"],
     ]);
   });
 
@@ -422,6 +450,7 @@ describe("identity", () => {
     await settle();
     expect(app.clients[0]?.calls).toEqual([
       ["reset"],
+      ["reloadFeatureFlags"],
       ["capture", "booking started", undefined],
     ]);
   });
@@ -434,6 +463,7 @@ describe("identity", () => {
     expect(app.clients[0]?.calls).toEqual([
       ["reset"],
       ["identify", "workspace-account:acc_2"],
+      ["reloadFeatureFlags"],
     ]);
   });
 
@@ -496,6 +526,7 @@ describe("withdrawal", () => {
     expect(app.clients).toHaveLength(2);
     expect(app.clients[1]?.calls).toEqual([
       ["identify", "workspace-account:acc_1"],
+      ["reloadFeatureFlags"],
     ]);
   });
 
@@ -533,6 +564,78 @@ describe("feature flags", () => {
     app.setConsent("denied");
     expect(notifications).toBe(before + 2);
     expect(app.analytics.featureFlag("seating_map")).toBeUndefined();
+  });
+
+  test("reads the fallback after sign-in until the account's flags load", async () => {
+    const app = setup();
+    app.connect();
+    app.analytics.setIdentity({ kind: "anonymous" });
+    await settle();
+    app.clients[0]?.finishFlagReload(0, { seating_map: true });
+    await settle();
+    expect(app.analytics.featureFlag("seating_map")).toBe(true);
+
+    app.analytics.setIdentity(account("acc_1"));
+    expect(app.analytics.featureFlag("seating_map")).toBeUndefined();
+
+    // A response the SDK requested before the sign-in notifies too.
+    app.clients[0]?.loadFlags({ seating_map: true });
+    expect(app.analytics.featureFlag("seating_map")).toBeUndefined();
+
+    let notified = false;
+    app.analytics.subscribeFeatureFlags(() => {
+      notified = true;
+    });
+    app.clients[0]?.finishFlagReload(1, { seating_map: "variant" });
+    await settle();
+    expect(notified).toBe(true);
+    expect(app.analytics.featureFlag("seating_map")).toBe("variant");
+  });
+
+  test("reads the fallback after sign-out until the anonymous flags load", async () => {
+    const app = setup({ restoredDistinctId: "workspace-account:acc_1" });
+    app.connect();
+    app.analytics.setIdentity(account("acc_1"));
+    await settle();
+    app.clients[0]?.finishFlagReload(0, { seating_map: "variant" });
+    await settle();
+    expect(app.analytics.featureFlag("seating_map")).toBe("variant");
+
+    app.analytics.setIdentity({ kind: "anonymous" });
+    expect(app.analytics.featureFlag("seating_map")).toBeUndefined();
+    app.clients[0]?.finishFlagReload(1, { seating_map: false });
+    await settle();
+    expect(app.analytics.featureFlag("seating_map")).toBe(false);
+  });
+
+  test("ignores a reload for an identity that changed again", async () => {
+    const app = setup();
+    app.connect();
+    app.analytics.setIdentity({ kind: "anonymous" });
+    await settle();
+    app.analytics.setIdentity(account("acc_1"));
+    app.analytics.setIdentity(account("acc_2"));
+
+    app.clients[0]?.finishFlagReload(1, { seating_map: true });
+    await settle();
+    expect(app.analytics.featureFlag("seating_map")).toBeUndefined();
+
+    app.clients[0]?.finishFlagReload(2, { seating_map: "acc_2" });
+    await settle();
+    expect(app.analytics.featureFlag("seating_map")).toBe("acc_2");
+  });
+
+  test("keeps the fallback when the new identity's flags fail to load", async () => {
+    const app = setup();
+    app.connect();
+    app.analytics.setIdentity({ kind: "anonymous" });
+    await settle();
+    app.clients[0]?.finishFlagReload(0, { seating_map: true });
+    app.analytics.setIdentity(account("acc_1"));
+    app.clients[0]?.failFlagReload(1);
+    await settle();
+    expect(app.analytics.featureFlag("seating_map")).toBeUndefined();
+    expect(app.warnings).toHaveLength(1);
   });
 
   test("reads nothing while the identity is pending", async () => {

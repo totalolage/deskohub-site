@@ -72,7 +72,13 @@ export const createPostHogClient: CreateAnalyticsClient = ({
       // reset() clears registered properties too.
       void posthog.register(superProperties);
     },
-    reloadFeatureFlags: () => posthog.reloadFeatureFlags(),
+    // The SDK queues a reload behind one already in flight, so the promise
+    // settles with flags requested after the call. A failed request resolves
+    // with no flags.
+    reloadFeatureFlags: async () => {
+      const flags = await posthog.reloadFeatureFlagsAsync(true);
+      if (flags === undefined) throw new Error("No feature flags returned.");
+    },
     getFeatureFlag: (flag) => posthog.getFeatureFlag(flag),
     onFeatureFlags: (listener) => posthog.onFeatureFlags(() => listener()),
     shutDown: async () => {

@@ -50,7 +50,8 @@ export interface AnalyticsController {
   readonly screen: (name: string) => void;
   /**
    * A flag's value for the settled identity, or `undefined` while there is no
-   * consented client, identity or loaded flags.
+   * consented client, identity or loaded flags. After the identity changes it
+   * stays `undefined` until that identity's flags load.
    */
   readonly featureFlag: (flag: string) => boolean | string | undefined;
   /** Notified when flag values may have changed. */
@@ -89,6 +90,15 @@ export const createAnalytics = (): AnalyticsController => {
   let shutdownInProgress: Promise<void> | undefined;
   let outbox: Delivery[] = [];
   let heldForAccount: AnalyticsEvent[] = [];
+  /**
+   * Whether the client's flag values belong to the applied identity. The SDK
+   * keeps the previous identity's flags readable after identify() or
+   * reset(), and a response it requested earlier still notifies, so only a
+   * reload the controller started after the change makes them current.
+   */
+  let flagsCurrent = false;
+  /** Bumped on each identity change, so an older reload cannot vouch for flags. */
+  let flagGeneration = 0;
   const flagListeners = new Set<() => void>();
 
   const notifyFlags = () => {
@@ -167,8 +177,25 @@ export const createAnalytics = (): AnalyticsController => {
     detachClientFlags = undefined;
     client = undefined;
     applied = null;
+    flagsCurrent = false;
+    flagGeneration++;
     retire(closing);
     notifyFlags();
+  };
+
+  const loadFlagsForAppliedIdentity = (target: AnalyticsClient) => {
+    const generation = ++flagGeneration;
+    target.reloadFeatureFlags().then(
+      () => {
+        if (client !== target || generation !== flagGeneration) return;
+        flagsCurrent = true;
+        notifyFlags();
+      },
+      (error: unknown) => {
+        if (client !== target || generation !== flagGeneration) return;
+        runtime?.warn(`Feature flags failed to load: ${String(error)}`);
+      }
+    );
   };
 
   const applyIdentity = (target: AnalyticsClient) => {
@@ -188,9 +215,16 @@ export const createAnalytics = (): AnalyticsController => {
         identity.testAccount || runtime?.settings?.environment !== "production";
       if (markInternal) target.setPersonProperties(internalOrTestUser);
     }
-    // identify() to a new ID and reset() reload flags themselves; a new
-    // client whose stored identity already matches needs its first load.
-    if (adopting && steps.length === 0) target.reloadFeatureFlags();
+    // Flags stored for the restored identity stay readable while a new
+    // client refreshes them; after an identity change only the new
+    // identity's flags may be read.
+    if (steps.length > 0) {
+      flagsCurrent = false;
+      loadFlagsForAppliedIdentity(target);
+    } else if (adopting) {
+      flagsCurrent = true;
+      loadFlagsForAppliedIdentity(target);
+    }
     adopting = false;
   };
 
@@ -295,7 +329,7 @@ export const createAnalytics = (): AnalyticsController => {
     capture: (event) => enqueue({ kind: "capture", event }),
     screen: (name) => enqueue({ kind: "screen", name }),
     featureFlag: (flag) =>
-      client !== undefined && identity.kind !== "pending"
+      client !== undefined && identity.kind !== "pending" && flagsCurrent
         ? client.getFeatureFlag(flag)
         : undefined,
     subscribeFeatureFlags: (listener) => {
