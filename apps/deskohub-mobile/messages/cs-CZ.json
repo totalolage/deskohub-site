@@ -5,5 +5,8 @@
   "smoke_title": "Kontroly běhového prostředí",
   "smoke_running": "Probíhají kontroly…",
   "smoke_finished": "Kontroly dokončeny.",
-  "smoke_totals": "{passed} z {total} prošlo, {failed} selhalo"
+  "smoke_totals": "{passed} z {total} prošlo, {failed} selhalo",
+  "consent_prompt_message": "Můžeme měřit, jak aplikaci používáte, abychom ji mohli zlepšovat?",
+  "consent_prompt_accept": "Povolit analytiku",
+  "consent_prompt_decline": "Odmítnout"
 }
