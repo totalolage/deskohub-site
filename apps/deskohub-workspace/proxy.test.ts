@@ -650,6 +650,8 @@ describe("dotted paths under a locale prefix", () => {
       "/sitemap.xml",
       "/llms.txt",
       "/.well-known/security.txt",
+      "/.well-known/assetlinks.json",
+      "/.well-known/apple-app-site-association",
       indexNowKeyPathname,
       "/favicon.ico",
       "/favicon.png",

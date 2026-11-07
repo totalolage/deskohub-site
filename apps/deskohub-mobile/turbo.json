@@ -4,6 +4,11 @@
   "tasks": {
     "build:web": {
       "dependsOn": ["^build", "i18n:compile"],
+      "env": [
+        "EXPO_PUBLIC_API_ORIGIN",
+        "EXPO_PUBLIC_POSTHOG_KEY",
+        "EXPO_PUBLIC_POSTHOG_HOST"
+      ],
       "outputs": ["dist/**"]
     },
     "dev": {
