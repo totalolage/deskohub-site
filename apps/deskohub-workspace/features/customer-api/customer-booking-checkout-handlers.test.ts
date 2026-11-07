@@ -77,6 +77,23 @@ const emptyInventory = Layer.succeed(AdvisoryAvailabilityInventory, {
   listLimitations: () => Effect.succeed([]),
 });
 
+/** The one Dotypos table an office booking assigns. */
+const officeInventory = Layer.succeed(AdvisoryAvailabilityInventory, {
+  tables: Effect.succeed([
+    {
+      _cloudId: "cloud",
+      id: "office",
+      name: "Office",
+      display: true,
+      enabled: true,
+      seats: "8",
+      tags: ["reservation:office"],
+    },
+  ]),
+  listActiveReservationsOverlapping: () => Effect.succeed([]),
+  listLimitations: () => Effect.succeed([]),
+});
+
 const checkoutWith = (
   layers: Partial<CustomerBookingCheckoutLayerSet>
 ): Partial<CustomerBookingCheckoutLayerSet> => ({
@@ -418,6 +435,7 @@ describe("createCheckout", () => {
     );
     const api = makeCustomerApiTestServer({
       bookingCheckout: checkoutWith({
+        inventory: officeInventory,
         operations: preparingOperations,
         releases: {
           referral: Layer.unwrap(

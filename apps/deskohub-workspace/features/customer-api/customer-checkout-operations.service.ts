@@ -1,4 +1,4 @@
-import { Context, Data, Effect, Layer } from "effect";
+import { Cause, Context, Data, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   CustomerAccountContactService,
@@ -43,10 +43,18 @@ export class CheckoutServicesUnavailable extends Data.TaggedError(
   "CheckoutServicesUnavailable"
 )<{ readonly cause: unknown }> {
   /** `layer`, failing to build as unavailable. */
-  static whenUnbuilt = <A, E, R>(layer: Layer.Layer<A, E, R>) =>
-    Layer.mapError(
-      layer,
-      (cause) => new CheckoutServicesUnavailable({ cause })
+  static whenUnbuilt = <A, E, R>(
+    layer: Layer.Layer<A, E, R>
+  ): Layer.Layer<A, CheckoutServicesUnavailable, R> =>
+    Layer.catchCause(layer, (cause) =>
+      Layer.unwrap(
+        Effect.failCause(
+          Cause.map(
+            cause,
+            (error) => new CheckoutServicesUnavailable({ cause: error })
+          )
+        )
+      )
     );
 }
 
