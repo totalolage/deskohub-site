@@ -1,32 +1,32 @@
-import { Effect } from "effect";
+import { Match } from "effect";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
-import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
-import { AccountAvatarReleaseGate } from "./backend/account-release-gates";
-import { CustomerAuthentication } from "./backend/customer-authentication.service";
-import { CustomerAccountAccessError } from "./customer-account";
+import type { AccountFeatureWithheldError } from "./backend/account-feature-withheld";
+import type { CustomerAccountAccessError } from "./customer-account";
 
-export const requireVerifiedSession = Effect.flatMap(
-  CustomerAuthentication,
-  (authentication) => authentication.currentUser
-).pipe(
-  Effect.flatMap((user) =>
-    user
-      ? Effect.succeed(user)
-      : Effect.fail(
-          new CustomerAccountAccessError({ reason: "unauthenticated" })
-        )
-  )
-);
-
+/**
+ * Words a refused account operation in the action's locale. A withheld
+ * feature reads as "unavailable", without naming the feature.
+ */
 export const accountActionError =
   (locale: Locale) =>
-  (cause: CustomerAccountAccessError): PublicSafeActionError =>
-    new PublicSafeActionError({
-      message: accountActionErrorMessage(cause, locale),
-      cause,
-    });
+  (
+    cause: CustomerAccountAccessError | AccountFeatureWithheldError
+  ): PublicSafeActionError =>
+    Match.value(cause).pipe(
+      Match.tagsExhaustive({
+        CustomerAccountAccessError: (access) =>
+          new PublicSafeActionError({
+            message: accountActionErrorMessage(access, locale),
+            cause: access,
+          }),
+        AccountFeatureWithheldError: () =>
+          new PublicSafeActionError({
+            message: m.accountUnavailableDescription({}, { locale }),
+          }),
+      })
+    );
 
 const accountActionErrorMessage = (
   cause: CustomerAccountAccessError,
@@ -43,30 +43,3 @@ const accountActionErrorMessage = (
   }
   return m.accountProfileError({}, { locale });
 };
-
-/** A withheld referral program rejects referral-only account actions. */
-export const requireReferralsEnabled = (locale: Locale) =>
-  // The request's one decision, which already fails closed.
-  ReferralReleaseGate.isOpen.pipe(
-    Effect.filterOrFail(
-      (enabled) => enabled,
-      () =>
-        new PublicSafeActionError({
-          message: m.accountUnavailableDescription({}, { locale }),
-        })
-    ),
-    Effect.asVoid
-  );
-
-/** Withheld avatars reject the avatar actions. */
-export const requireAccountAvatarsEnabled = (locale: Locale) =>
-  AccountAvatarReleaseGate.isOpen.pipe(
-    Effect.filterOrFail(
-      (enabled) => enabled,
-      () =>
-        new PublicSafeActionError({
-          message: m.accountUnavailableDescription({}, { locale }),
-        })
-    ),
-    Effect.asVoid
-  );
