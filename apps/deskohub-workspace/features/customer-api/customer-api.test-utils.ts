@@ -42,11 +42,19 @@ import {
 } from "@/shared/backend/request-budget/memory-request-budget.test-utils";
 import { toWorkspaceWebHandler } from "@/shared/backend/workspace-effect";
 import { continueMutationsAfterDisconnect } from "@/shared/backend/workspace-http-api-route";
+import { CustomerReservationHistoryService } from "@/features/account/backend/customer-reservation-history.service";
+import { CheckoutStatusService } from "@/features/checkout/backend/checkout/checkout-status.service";
+import { ReservationAccessService } from "@/features/reservation/backend/reservation-access.service";
+import { ReservationAuthorizationService } from "@/features/reservation/backend/reservation-authorization.service";
 import {
   CustomerAccountLayers,
   type CustomerAccountServiceLayers,
 } from "./customer-account-layers";
 import { makeWorkspaceCustomerApiLayer } from "./customer-api.server";
+import {
+  CustomerReservationLayers,
+  type CustomerReservationServiceLayers,
+} from "./customer-reservation-layers";
 
 /** The origin Better Auth trusts in a customer API test. */
 export const trustedOrigin = "https://workspace.deskohub.test";
@@ -79,6 +87,11 @@ export type CustomerApiTestOptions = {
   readonly services?: Partial<CustomerAccountServiceLayers>;
   /** Release gates; each left out is closed. */
   readonly releases?: Partial<AccountReleaseLayers>;
+  /**
+   * Reservation service fakes, each left out a `Layer.mock` with nothing
+   * implemented, like `services`.
+   */
+  readonly reservations?: Partial<CustomerReservationServiceLayers>;
 };
 
 /**
@@ -130,6 +143,10 @@ export const makeCustomerApiTestServer = (
     Layer.succeed(CustomerAccountLayers, {
       services: { ...unusedAccountServices, ...options.services },
       releases: { ...closedReleases, ...options.releases },
+    }),
+    Layer.succeed(CustomerReservationLayers, {
+      ...unusedReservationServices,
+      ...options.reservations,
     })
   );
 
@@ -155,6 +172,14 @@ const unusedAccountServices: CustomerAccountServiceLayers = {
   marketingPreferences: Layer.mock(MarketingPreferences, {}),
   consentLedger: Layer.mock(MarketingConsentLedger, {}),
   accountDeletion: Layer.mock(CustomerAccountDeletionEndpoint, {}),
+};
+
+const unusedReservationServices: CustomerReservationServiceLayers = {
+  contacts: () => Layer.mock(CustomerAccountContactService, {}),
+  history: Layer.mock(CustomerReservationHistoryService, {}),
+  authorization: () => Layer.mock(ReservationAuthorizationService, {}),
+  checkoutStatus: Layer.mock(CheckoutStatusService, {}),
+  access: () => Layer.mock(ReservationAccessService, {}),
 };
 
 /** The Dotypos profile of `linkedAccountServices`' account. */
