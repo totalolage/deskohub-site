@@ -118,3 +118,44 @@ describe("marketing request cookie adapter", () => {
     expect(values.size).toBe(0);
   });
 });
+
+describe("marketing management without credentials", () => {
+  const runWithout = <A, E>(
+    use: (cookies: MarketingManagementCookies["Service"]) => Effect.Effect<A, E>
+  ) =>
+    Effect.runPromise(
+      Effect.flatMap(MarketingManagementCookies, use).pipe(
+        Effect.provide(MarketingManagementCookies.none)
+      )
+    );
+
+  test("presents no credential even when the request carries management cookies", async () => {
+    values.set(marketingManagementCookieNames.pending, "pending-token");
+    values.set(marketingManagementCookieNames.session, "session-token");
+    expect(await runWithout((cookies) => cookies.read)).toEqual({
+      pending: undefined,
+      session: undefined,
+    });
+  });
+
+  test("clears nothing and refuses to install a pending link or a session", async () => {
+    await runWithout((cookies) => cookies.clear);
+    for (const write of [
+      (cookies: MarketingManagementCookies["Service"]) =>
+        cookies.setPending("pending-token"),
+      (cookies: MarketingManagementCookies["Service"]) =>
+        cookies.setSession({
+          token: "session-token",
+          expiresAt: new Date("2030-01-02T03:04:05.678Z"),
+        }),
+    ]) {
+      const result = await runWithout((cookies) =>
+        write(cookies).pipe(Effect.result)
+      );
+      expect(Result.isFailure(result) && result.failure._tag).toBe(
+        "MarketingManagementCookiesUnavailable"
+      );
+    }
+    expect(set).not.toHaveBeenCalled();
+  });
+});

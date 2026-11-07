@@ -487,9 +487,11 @@ export async function proxy(request: NextRequest) {
     return markRedirectPrivacy(request, normalizingRedirect);
   }
 
+  const { pathname } = request.nextUrl;
+  if (isMobileWebAppPath(pathname)) return mobileWebAppResponse(request);
+
   // A file-like path under an exact locale goes on untouched to the localized
   // catch-all.
-  const { pathname } = request.nextUrl;
   if (isFileLikePath(pathname)) return NextResponse.next();
 
   if (isAdministrationPath(pathname)) {
@@ -506,6 +508,24 @@ export async function proxy(request: NextRequest) {
     localizedPageResponse(request)
   );
 }
+
+// `/app/` serves the mobile app's web export (`mobile-web-app:build`), which
+// routes on the client: it has no locale, and its account and administration
+// paths are the app's own. The installed app's scope is `/app/`, so the bare
+// path moves inside it. Next's `/app/` to `/app` redirect is off in
+// `next.config.mjs`.
+const isMobileWebAppPath = (pathname: string) =>
+  pathname === "/app" || pathname.startsWith("/app/");
+
+const mobileWebAppResponse = (request: NextRequest) => {
+  if (request.nextUrl.pathname === "/app") {
+    // `NextURL` drops a trailing slash when it serializes.
+    const appUrl = new URL(request.url);
+    appUrl.pathname = "/app/";
+    return NextResponse.redirect(appUrl, 308);
+  }
+  return previewCallbackOriginRedirect(request) ?? NextResponse.next();
+};
 
 // A preview page load on any origin other than the runtime callback origin
 // moves there, with the Vercel protection bypass and its cookie.

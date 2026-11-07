@@ -1,3 +1,5 @@
+import { androidApkKeyHashOrigin, nativeApp } from "./native-app";
+
 export type BetterAuthHostEnvironment = {
   readonly vercelEnv: "development" | "preview" | "production";
   readonly customerFacingHost: string | undefined;
@@ -132,6 +134,17 @@ export type PasskeyRelyingPartyResult =
   | { readonly kind: "valid"; readonly relyingParty: PasskeyRelyingParty }
   | { readonly kind: "invalid"; readonly message: PasskeyRelyingPartyMessage };
 
+/**
+ * The native app signing keys a deployment accepts passkeys from beyond the
+ * release key. Only local development reads a debug key.
+ */
+type NativeAppSigning = {
+  /** SHA-256 fingerprint of a debug signing certificate, if any. */
+  readonly androidDebugCertificate: string | undefined;
+};
+
+const noDebugSigning: NativeAppSigning = { androidDebugCertificate: undefined };
+
 const hostname = (host: string) => host.replace(/:\d+$/, "");
 
 const localRelyingPartyId = "localhost";
@@ -144,9 +157,16 @@ const localRelyingPartyId = "localhost";
  * and its branch alias can't share the RP ID. Local development uses
  * `localhost` over plain HTTP on each allowed localhost port. The RP ID is
  * always explicit: the plugin's own fallback reads only a string `baseURL`.
+ *
+ * The origins stay explicit too, since the plugin otherwise expects the
+ * request's own `Origin` header. Production also accepts the native app
+ * signed with the release key, whose origin is its key hash; the app signs
+ * in only against production. Development adds a debug-signed app when one
+ * is configured.
  */
 export const resolvePasskeyRelyingParty = (
-  environment: BetterAuthHostEnvironment
+  environment: BetterAuthHostEnvironment,
+  signing: NativeAppSigning = noDebugSigning
 ): PasskeyRelyingPartyResult => {
   const allowedHosts = resolveBetterAuthAllowedHosts(environment);
   if (allowedHosts.kind === "invalid") return allowedHosts;
@@ -156,9 +176,14 @@ export const resolvePasskeyRelyingParty = (
       kind: "valid",
       relyingParty: {
         rpID: localRelyingPartyId,
-        origins: allowedHosts.hosts
-          .filter((host) => hostname(host) === localRelyingPartyId)
-          .map((host) => `http://${host}`),
+        origins: [
+          ...allowedHosts.hosts
+            .filter((host) => hostname(host) === localRelyingPartyId)
+            .map((host) => `http://${host}`),
+          ...(signing.androidDebugCertificate === undefined
+            ? []
+            : [androidApkKeyHashOrigin(signing.androidDebugCertificate)]),
+        ],
       },
     };
   }
@@ -174,8 +199,18 @@ export const resolvePasskeyRelyingParty = (
     };
   }
   const host = toHost(relyingPartyUrl);
+  const webOrigin = `https://${host}`;
   return {
     kind: "valid",
-    relyingParty: { rpID: hostname(host), origins: [`https://${host}`] },
+    relyingParty: {
+      rpID: hostname(host),
+      origins:
+        environment.vercelEnv === "production"
+          ? [
+              webOrigin,
+              androidApkKeyHashOrigin(nativeApp.androidReleaseCertificate),
+            ]
+          : [webOrigin],
+    },
   };
 };

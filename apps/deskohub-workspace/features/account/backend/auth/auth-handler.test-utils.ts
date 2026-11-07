@@ -31,6 +31,7 @@ import type {
   SignInEmail,
   WorkspaceAuthConfig,
 } from "./auth-server";
+import { nativeAppOrigin } from "./native-app";
 
 /**
  * The Workspace Better Auth instance under test, against the migrated
@@ -73,6 +74,7 @@ export type TestAuthOptions = {
   readonly sentLinks?: CapturedMagicLink[];
   readonly isSignInCodeEnabled?: WorkspaceAuthConfig["isSignInCodeEnabled"];
   readonly arePasskeysEnabled?: WorkspaceAuthConfig["arePasskeysEnabled"];
+  readonly passkeyRelyingParty?: WorkspaceAuthConfig["passkeyRelyingParty"];
   readonly verifyHuman?: WorkspaceAuthConfig["verifyHuman"];
   readonly beforeDeleteUser?: WorkspaceAuthConfig["beforeDeleteUser"];
   readonly captureAccountLocalePreference?: WorkspaceAuthConfig["captureAccountLocalePreference"];
@@ -186,7 +188,10 @@ export const makeTestAuth = (options: TestAuthOptions = {}) => {
     database: options.database ?? buildDatabaseAdapter(),
     secrets: options.secrets ?? [{ version: 1, value: SECRET_V1 }],
     allowedHosts: [HOST],
-    passkeyRelyingParty: { rpID: HOST, origins: [`https://${HOST}`] },
+    passkeyRelyingParty: options.passkeyRelyingParty ?? {
+      rpID: HOST,
+      origins: [`https://${HOST}`],
+    },
     customerMcpResource: `https://${HOST}/api/mcp`,
     clientMetadataTransport: options.clientMetadataTransport,
     httpsOnly: true,
@@ -294,6 +299,27 @@ export const callHandler = (
       },
     })
   );
+
+/**
+ * Calls the handler as the native app's Better Auth Expo client does: no
+ * browser `Origin` header, and the app scheme in `expo-origin`, which the
+ * Expo server plugin turns into the origin. Pass `null` to send neither.
+ */
+export const callNativeHandler = (
+  auth: TestAuth,
+  path: string,
+  init: RequestInit = {},
+  expoOrigin: string | null = nativeAppOrigin
+) => {
+  const headers = new Headers(init.headers);
+  if (!headers.has("x-vercel-forwarded-for")) {
+    headers.set("x-vercel-forwarded-for", "192.0.2.1");
+  }
+  if (expoOrigin !== null) headers.set("expo-origin", expoOrigin);
+  return auth.handler(
+    new Request(`https://${HOST}/api/auth${path}`, { ...init, headers })
+  );
+};
 
 const runIpOctet = Math.floor(Math.random() * 200) + 20;
 let ipCounter = 0;
