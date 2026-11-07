@@ -57,15 +57,19 @@ describe("checkoutRequestOf", () => {
     ).toEqual(Option.some(false));
   });
 
-  test.each([
+  const unfinished: ReadonlyArray<
+    readonly [string, Partial<Parameters<typeof checkoutRequestOf>[0]>]
+  > = [
     ["a blocker", { blockers: [pending] }],
     ["no quote", { quote: Option.none() }],
     ["an incomplete selection", { selection: Option.none() }],
     [
       "a quote of another family",
-      { quote: Option.some({ ...quote, family: "cowork" }) },
+      { quote: Option.some({ ...quote, family: "cowork" as const }) },
     ],
-  ])("continues nowhere with %s", (_, change) => {
+  ];
+
+  test.each(unfinished)("continues nowhere with %s", (_, change) => {
     expect(checkoutRequestOf({ ...complete, ...change })).toEqual(
       Option.none()
     );
