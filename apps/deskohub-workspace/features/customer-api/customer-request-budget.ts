@@ -1,6 +1,5 @@
 import "server-only";
 
-import { createHash } from "node:crypto";
 import {
   CustomerRateLimited,
   CustomerServiceUnavailable,
@@ -17,6 +16,7 @@ import {
   RequestBudget,
   type RequestBudgetPolicy,
 } from "@/shared/backend/request-budget/request-budget.service";
+import { budgetKeyDigest } from "@/shared/backend/request-budget/request-budget-key";
 
 /**
  * What an endpoint costs beyond its general request budget: `general` reads
@@ -146,12 +146,5 @@ const budgetClassOf = (
     >
   )[group]?.[endpoint] ?? "dotypos";
 
-/**
- * Budget keys are stored verbatim, so they carry a one-way digest of the
- * account instead of its identifier.
- */
 const digest = (...parts: ReadonlyArray<string>) =>
-  createHash("sha256")
-    .update(["deskohub-workspace/customer-api-budget", ...parts].join("\0"))
-    .digest("base64url")
-    .slice(0, 32);
+  budgetKeyDigest("deskohub-workspace/customer-api-budget", ...parts);
