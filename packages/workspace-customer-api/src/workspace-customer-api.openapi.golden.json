@@ -1,0 +1,3332 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Deskohub Workspace customer API",
+    "version": "0.0.1",
+    "description": "Authenticated by the Better Auth session cookie that /api/auth sets. Every request carries the x-deskohub-client: workspace-customer-api header; a request without it, or from another site, gets 403."
+  },
+  "paths": {
+    "/api/customer/account": {
+      "get": {
+        "tags": ["account"],
+        "operationId": "account.getAccount",
+        "parameters": [
+          {
+            "name": "x-deskohub-referral-code",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "allOf": [
+                {
+                  "maxLength": 64
+                }
+              ]
+            },
+            "required": false
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "CustomerAccountState",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerAccountState"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "CustomerSessionRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerSessionRequired"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CustomerRequestRejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRequestRejected"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "CustomerRateLimited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRateLimited"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CustomerServiceUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/customer/account/profile": {
+      "put": {
+        "tags": ["account"],
+        "operationId": "account.updateProfile",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "CustomerProfileUpdated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerProfileUpdated"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "CustomerSessionRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerSessionRequired"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CustomerRequestRejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRequestRejected"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CustomerAccountLinkRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerAccountLinkRequired"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "CustomerRateLimited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRateLimited"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CustomerServiceUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerProfileInput"
+              }
+            }
+          },
+          "required": true
+        }
+      },
+      "post": {
+        "tags": ["account"],
+        "operationId": "account.completeProfile",
+        "parameters": [
+          {
+            "name": "x-deskohub-referral-code",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "allOf": [
+                {
+                  "maxLength": 64
+                }
+              ]
+            },
+            "required": false
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "CustomerProfileCompletion",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerProfileCompletion"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "CustomerSessionRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerSessionRequired"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CustomerRequestRejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRequestRejected"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CustomerAccountLinkRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerAccountLinkRequired"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "CustomerRateLimited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRateLimited"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CustomerServiceUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerProfileCompletionInput"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/customer/account/avatar": {
+      "put": {
+        "tags": ["account"],
+        "operationId": "account.uploadAvatar",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "CustomerAvatar",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerAvatar"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "CustomerSessionRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerSessionRequired"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CustomerRequestRejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRequestRejected"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CustomerFeatureUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerFeatureUnavailable"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CustomerAccountLinkRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerAccountLinkRequired"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "CustomerAvatarRejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerAvatarRejected"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "CustomerRateLimited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRateLimited"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CustomerServiceUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                },
+                "required": ["file"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        }
+      },
+      "delete": {
+        "tags": ["account"],
+        "operationId": "account.removeAvatar",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "204": {
+            "description": "<No Content>"
+          },
+          "401": {
+            "description": "CustomerSessionRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerSessionRequired"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CustomerRequestRejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRequestRejected"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CustomerFeatureUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerFeatureUnavailable"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CustomerAccountLinkRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerAccountLinkRequired"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "CustomerRateLimited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRateLimited"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CustomerServiceUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/customer/account/passkeys": {
+      "get": {
+        "tags": ["account"],
+        "operationId": "account.listPasskeys",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AccountPasskey"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "CustomerSessionRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerSessionRequired"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CustomerRequestRejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRequestRejected"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CustomerFeatureUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerFeatureUnavailable"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "CustomerRateLimited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRateLimited"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CustomerServiceUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/customer/account/assistant-connections": {
+      "get": {
+        "tags": ["account"],
+        "operationId": "account.listAssistantConnections",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CustomerAgentConnection"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "CustomerSessionRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerSessionRequired"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CustomerRequestRejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRequestRejected"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "CustomerRateLimited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRateLimited"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CustomerServiceUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/customer/account/marketing-preferences": {
+      "get": {
+        "tags": ["account"],
+        "operationId": "account.getMarketingPreferences",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "CustomerMarketingPreferences",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerMarketingPreferences"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "CustomerSessionRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerSessionRequired"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CustomerRequestRejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRequestRejected"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CustomerAccountLinkRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerAccountLinkRequired"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "CustomerRateLimited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRateLimited"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CustomerServiceUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["account"],
+        "operationId": "account.saveMarketingPreferences",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "204": {
+            "description": "<No Content>"
+          },
+          "401": {
+            "description": "CustomerSessionRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerSessionRequired"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CustomerRequestRejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRequestRejected"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CustomerMarketingPreferencesRejected | CustomerAccountLinkRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CustomerMarketingPreferencesRejected"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CustomerAccountLinkRequired"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "CustomerRateLimited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRateLimited"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CustomerServiceUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveCustomerMarketingPreferences"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/customer/account/referrals": {
+      "get": {
+        "tags": ["account"],
+        "operationId": "account.getReferrals",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "ReferralAccountOverview",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferralAccountOverview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "CustomerSessionRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerSessionRequired"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CustomerRequestRejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRequestRejected"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CustomerFeatureUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerFeatureUnavailable"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CustomerAccountLinkRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerAccountLinkRequired"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "CustomerRateLimited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRateLimited"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CustomerServiceUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/customer/account/referrals/signup-acknowledgement": {
+      "post": {
+        "tags": ["account"],
+        "operationId": "account.acknowledgeSignupReferral",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "204": {
+            "description": "<No Content>"
+          },
+          "401": {
+            "description": "CustomerSessionRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerSessionRequired"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CustomerRequestRejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRequestRejected"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CustomerFeatureUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerFeatureUnavailable"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CustomerAccountLinkRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerAccountLinkRequired"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "CustomerRateLimited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRateLimited"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CustomerServiceUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/customer/account/deletion": {
+      "post": {
+        "tags": ["account"],
+        "operationId": "account.requestDeletion",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "CustomerAccountDeletionResult",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerAccountDeletionResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "CustomerSessionRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerSessionRequired"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CustomerRequestRejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRequestRejected"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "CustomerRateLimited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRateLimited"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CustomerServiceUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestCustomerAccountDeletion"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/customer/reservations": {
+      "get": {
+        "tags": ["reservations"],
+        "operationId": "reservations.listReservations",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "CustomerReservationHistory",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerReservationHistory"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "CustomerSessionRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerSessionRequired"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CustomerRequestRejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRequestRejected"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CustomerAccountLinkRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerAccountLinkRequired"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "CustomerRateLimited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRateLimited"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CustomerServiceUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/customer/reservations/{orderId}/status": {
+      "get": {
+        "tags": ["reservations"],
+        "operationId": "reservations.getReservationStatus",
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "schema": {
+              "$ref": "#/components/schemas/CustomerReservationOrderId"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "CustomerOrderState",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerOrderState"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "CustomerSessionRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerSessionRequired"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CustomerRequestRejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRequestRejected"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CustomerReservationNotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerReservationNotFound"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "CustomerRateLimited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRateLimited"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CustomerServiceUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/customer/reservations/{orderId}/access": {
+      "get": {
+        "tags": ["reservations"],
+        "operationId": "reservations.getReservationAccess",
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "schema": {
+              "$ref": "#/components/schemas/CustomerReservationOrderId"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "CustomerReservationAccess",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerReservationAccess"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "CustomerSessionRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerSessionRequired"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CustomerRequestRejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRequestRejected"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CustomerReservationNotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerReservationNotFound"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CustomerAccessCodeUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerAccessCodeUnavailable"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "CustomerRateLimited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRateLimited"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CustomerServiceUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/customer/reservations/{orderId}/invoice": {
+      "get": {
+        "tags": ["reservations"],
+        "operationId": "reservations.getReservationInvoice",
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "schema": {
+              "$ref": "#/components/schemas/CustomerReservationOrderId"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The issued invoice as a PDF document.",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "CustomerSessionRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerSessionRequired"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CustomerRequestRejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRequestRejected"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CustomerReservationNotFound",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerReservationNotFound"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CustomerInvoiceNotIssued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerInvoiceNotIssued"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "CustomerRateLimited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRateLimited"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CustomerServiceUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CustomerAccountId": {
+        "type": "string"
+      },
+      "AccountPasskey": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "ISO 8601 instant."
+          }
+        },
+        "required": ["id", "createdAt"],
+        "additionalProperties": false
+      },
+      "CustomerAgentConnection": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "administration": {
+            "type": "boolean"
+          },
+          "connectedAt": {
+            "type": "string",
+            "description": "ISO 8601 instant."
+          }
+        },
+        "required": ["id", "scopes", "administration", "connectedAt"],
+        "additionalProperties": false
+      },
+      "ReferralCode": {
+        "type": "string",
+        "allOf": [
+          {
+            "pattern": "^[A-Z0-9][A-Z0-9_-]{2,63}$",
+            "description": "Uppercase ASCII referral code in the shared promotion namespace."
+          }
+        ]
+      },
+      "CustomerProfileBilling": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["personal", "business"]
+          },
+          "addressLine1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "addressLine2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "zip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "companyName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "companyId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "vatId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "addressLine1",
+          "addressLine2",
+          "city",
+          "zip",
+          "country",
+          "companyName",
+          "companyId",
+          "vatId"
+        ],
+        "additionalProperties": false
+      },
+      "CustomerProfile": {
+        "type": "object",
+        "properties": {
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "billing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomerProfileBilling"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["firstName", "lastName", "phone", "billing"],
+        "additionalProperties": false
+      },
+      "CustomerAvatar": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["url"],
+        "additionalProperties": false
+      },
+      "CustomerAvatarPresentation": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["hidden"]
+              }
+            },
+            "required": ["kind"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["available"]
+              },
+              "avatar": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/CustomerAvatar"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": ["kind", "avatar"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "Money": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "integer"
+          },
+          "exponent": {
+            "type": "integer",
+            "allOf": [
+              {
+                "minimum": 0
+              }
+            ]
+          },
+          "currency": {
+            "type": "string",
+            "allOf": [
+              {
+                "pattern": "^[A-Z]{3}$"
+              }
+            ]
+          }
+        },
+        "required": ["value", "exponent", "currency"],
+        "additionalProperties": false
+      },
+      "ReferralAccountSummary": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/ReferralCode"
+          },
+          "inviteeCount": {
+            "type": "integer",
+            "allOf": [
+              {
+                "minimum": 0
+              }
+            ]
+          },
+          "eligibleInviteeCount": {
+            "type": "integer",
+            "allOf": [
+              {
+                "minimum": 0
+              }
+            ]
+          },
+          "discount": {
+            "type": "string"
+          },
+          "savings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Money"
+            }
+          }
+        },
+        "required": [
+          "code",
+          "inviteeCount",
+          "eligibleInviteeCount",
+          "discount",
+          "savings"
+        ],
+        "additionalProperties": false
+      },
+      "ReferralAccountOverview": {
+        "type": "object",
+        "properties": {
+          "summary": {
+            "$ref": "#/components/schemas/ReferralAccountSummary"
+          },
+          "shareUrl": {
+            "type": "string"
+          }
+        },
+        "required": ["summary", "shareUrl"],
+        "additionalProperties": false
+      },
+      "ProfileCompletionReferralOutcome": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["applied"]
+              }
+            },
+            "required": ["status"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["pending"]
+              }
+            },
+            "required": ["status"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["not-applied"]
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "already-referred",
+                  "not-eligible",
+                  "code-unusable",
+                  "profile-already-completed"
+                ]
+              }
+            },
+            "required": ["status", "reason"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "CustomerAccountState": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["authenticated-unavailable"]
+              },
+              "email": {
+                "type": "string"
+              },
+              "deletion": {
+                "type": "string",
+                "enum": ["offered", "pending", "withheld"]
+              },
+              "passkeys": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "accountId": {
+                        "$ref": "#/components/schemas/CustomerAccountId"
+                      },
+                      "passkeys": {
+                        "anyOf": [
+                          {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/AccountPasskey"
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["accountId", "passkeys"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "assistants": {
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/CustomerAgentConnection"
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": ["kind", "email", "deletion"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["completion-required"]
+              },
+              "email": {
+                "type": "string"
+              },
+              "deletion": {
+                "type": "string",
+                "enum": ["offered", "pending", "withheld"]
+              },
+              "passkeys": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "accountId": {
+                        "$ref": "#/components/schemas/CustomerAccountId"
+                      },
+                      "passkeys": {
+                        "anyOf": [
+                          {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/AccountPasskey"
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["accountId", "passkeys"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "assistants": {
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/CustomerAgentConnection"
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "referralsEnabled": {
+                "type": "boolean"
+              },
+              "referralCode": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReferralCode"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": ["kind", "email", "deletion", "referralsEnabled"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["linked"]
+              },
+              "email": {
+                "type": "string"
+              },
+              "deletion": {
+                "type": "string",
+                "enum": ["offered", "pending", "withheld"]
+              },
+              "passkeys": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "accountId": {
+                        "$ref": "#/components/schemas/CustomerAccountId"
+                      },
+                      "passkeys": {
+                        "anyOf": [
+                          {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/AccountPasskey"
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["accountId", "passkeys"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "assistants": {
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/CustomerAgentConnection"
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "profile": {
+                "$ref": "#/components/schemas/CustomerProfile"
+              },
+              "avatar": {
+                "$ref": "#/components/schemas/CustomerAvatarPresentation"
+              },
+              "referralsEnabled": {
+                "type": "boolean"
+              },
+              "referrals": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReferralAccountOverview"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "signupReferral": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ProfileCompletionReferralOutcome"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "rememberedReferralCodeUsed": {
+                "anyOf": [
+                  {
+                    "type": "boolean",
+                    "enum": [true]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "kind",
+              "email",
+              "deletion",
+              "profile",
+              "avatar",
+              "referralsEnabled"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["support-required"]
+              },
+              "email": {
+                "type": "string"
+              },
+              "deletion": {
+                "type": "string",
+                "enum": ["offered", "pending", "withheld"]
+              },
+              "passkeys": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "accountId": {
+                        "$ref": "#/components/schemas/CustomerAccountId"
+                      },
+                      "passkeys": {
+                        "anyOf": [
+                          {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/AccountPasskey"
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["accountId", "passkeys"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "assistants": {
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/CustomerAgentConnection"
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": ["kind", "email", "deletion"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["review-account"]
+              },
+              "email": {
+                "type": "string"
+              },
+              "deletion": {
+                "type": "string",
+                "enum": ["offered", "pending", "withheld"]
+              },
+              "passkeys": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "accountId": {
+                        "$ref": "#/components/schemas/CustomerAccountId"
+                      },
+                      "passkeys": {
+                        "anyOf": [
+                          {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/AccountPasskey"
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["accountId", "passkeys"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "assistants": {
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/CustomerAgentConnection"
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": ["kind", "email", "deletion"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["deletion-pending"]
+              },
+              "email": {
+                "type": "string"
+              },
+              "deletion": {
+                "type": "string",
+                "enum": ["offered", "pending", "withheld"]
+              },
+              "passkeys": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "accountId": {
+                        "$ref": "#/components/schemas/CustomerAccountId"
+                      },
+                      "passkeys": {
+                        "anyOf": [
+                          {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/AccountPasskey"
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["accountId", "passkeys"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "assistants": {
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/CustomerAgentConnection"
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": ["kind", "email", "deletion"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "CustomerServiceUnavailable": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["CustomerServiceUnavailable"]
+          }
+        },
+        "required": ["_tag"],
+        "additionalProperties": false
+      },
+      "CustomerSessionRequired": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["CustomerSessionRequired"]
+          }
+        },
+        "required": ["_tag"],
+        "additionalProperties": false
+      },
+      "CustomerRateLimited": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["CustomerRateLimited"]
+          }
+        },
+        "required": ["_tag"],
+        "additionalProperties": false
+      },
+      "CustomerRequestRejected": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["CustomerRequestRejected"]
+          }
+        },
+        "required": ["_tag"],
+        "additionalProperties": false
+      },
+      "CustomerProfileInput": {
+        "type": "object",
+        "properties": {
+          "firstName": {
+            "$ref": "#/components/schemas/CustomerAccountId"
+          },
+          "lastName": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomerAccountId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomerAccountId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "billing": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": ["personal"]
+                      },
+                      "addressLine1": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/CustomerAccountId"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "addressLine2": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/CustomerAccountId"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "city": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/CustomerAccountId"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "zip": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/CustomerAccountId"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "country": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/CustomerAccountId"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["kind"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": ["business"]
+                      },
+                      "addressLine1": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/CustomerAccountId"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "addressLine2": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/CustomerAccountId"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "city": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/CustomerAccountId"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "zip": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/CustomerAccountId"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "country": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/CustomerAccountId"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "companyName": {
+                        "$ref": "#/components/schemas/CustomerAccountId"
+                      },
+                      "companyId": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/CustomerAccountId"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "vatId": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/CustomerAccountId"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["kind", "companyName"],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["firstName"],
+        "additionalProperties": false
+      },
+      "CustomerProfileUpdated": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["updated"]
+          }
+        },
+        "required": ["status"],
+        "additionalProperties": false
+      },
+      "CustomerAccountLinkRequired": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["CustomerAccountLinkRequired"]
+          },
+          "reason": {
+            "type": "string",
+            "enum": ["profile-missing", "support-required", "deletion-pending"]
+          }
+        },
+        "required": ["_tag", "reason"],
+        "additionalProperties": false
+      },
+      "CustomerProfileCompletionInput": {
+        "type": "object",
+        "properties": {
+          "firstName": {
+            "$ref": "#/components/schemas/CustomerAccountId"
+          },
+          "lastName": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomerAccountId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomerAccountId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "billing": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": ["personal"]
+                      },
+                      "addressLine1": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/CustomerAccountId"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "addressLine2": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/CustomerAccountId"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "city": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/CustomerAccountId"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "zip": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/CustomerAccountId"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "country": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/CustomerAccountId"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["kind"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": ["business"]
+                      },
+                      "addressLine1": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/CustomerAccountId"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "addressLine2": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/CustomerAccountId"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "city": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/CustomerAccountId"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "zip": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/CustomerAccountId"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "country": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/CustomerAccountId"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "companyName": {
+                        "$ref": "#/components/schemas/CustomerAccountId"
+                      },
+                      "companyId": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/CustomerAccountId"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "vatId": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/CustomerAccountId"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["kind", "companyName"],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "referralCode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomerAccountId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prefilledReferralCode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomerAccountId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["firstName"],
+        "additionalProperties": false
+      },
+      "CustomerProfileCompletion": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["completed"]
+              },
+              "referral": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ProfileCompletionReferralOutcome"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": ["status"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["referral-code-unavailable"]
+              }
+            },
+            "required": ["status"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "CustomerAvatarRejectionReason": {
+        "type": "string",
+        "enum": [
+          "file-missing",
+          "file-too-large",
+          "unsupported-format",
+          "undecodable-image",
+          "image-dimensions-too-large"
+        ]
+      },
+      "CustomerAvatarRejected": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["CustomerAvatarRejected"]
+          },
+          "reason": {
+            "$ref": "#/components/schemas/CustomerAvatarRejectionReason"
+          }
+        },
+        "required": ["_tag", "reason"],
+        "additionalProperties": false
+      },
+      "CustomerAccountFeature": {
+        "type": "string",
+        "enum": ["avatars", "passkeys", "referrals"]
+      },
+      "CustomerFeatureUnavailable": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["CustomerFeatureUnavailable"]
+          },
+          "feature": {
+            "$ref": "#/components/schemas/CustomerAccountFeature"
+          }
+        },
+        "required": ["_tag", "feature"],
+        "additionalProperties": false
+      },
+      "CustomerMarketingConsentStatus": {
+        "type": "string",
+        "enum": ["absent", "active", "withdrawn"]
+      },
+      "CustomerMarketingPreferences": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/CustomerMarketingConsentStatus"
+          },
+          "context": {
+            "type": "string",
+            "allOf": [
+              {
+                "minLength": 1
+              }
+            ]
+          }
+        },
+        "required": ["status", "context"],
+        "additionalProperties": false
+      },
+      "CustomerLocale": {
+        "type": "string",
+        "enum": ["en-US", "cs-CZ"]
+      },
+      "SaveCustomerMarketingPreferences": {
+        "type": "object",
+        "properties": {
+          "context": {
+            "type": "string",
+            "allOf": [
+              {
+                "minLength": 1
+              }
+            ]
+          },
+          "granted": {
+            "type": "boolean"
+          },
+          "confirmed": {
+            "type": "boolean",
+            "enum": [true]
+          },
+          "locale": {
+            "$ref": "#/components/schemas/CustomerLocale"
+          }
+        },
+        "required": ["context", "granted", "confirmed", "locale"],
+        "additionalProperties": false
+      },
+      "CustomerMarketingPreferencesRejected": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["CustomerMarketingPreferencesRejected"]
+          },
+          "reason": {
+            "type": "string",
+            "enum": ["stale-context"]
+          }
+        },
+        "required": ["_tag", "reason"],
+        "additionalProperties": false
+      },
+      "RequestCustomerAccountDeletion": {
+        "type": "object",
+        "properties": {
+          "confirmed": {
+            "type": "boolean",
+            "enum": [true]
+          }
+        },
+        "required": ["confirmed"],
+        "additionalProperties": false
+      },
+      "CustomerAccountDeletionResult": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "deleted",
+              "reauthentication-required",
+              "refused",
+              "failed"
+            ]
+          }
+        },
+        "required": ["status"],
+        "additionalProperties": false
+      },
+      "CustomerReservationOrderId": {
+        "type": "string",
+        "allOf": [
+          {
+            "minLength": 1,
+            "description": "Opaque identifier of an order booked on the website."
+          }
+        ]
+      },
+      "CustomerReservationParty": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["booked-for"]
+              },
+              "customerName": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": ["kind", "customerName"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["booked-by"]
+              },
+              "authorName": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": ["kind", "authorName"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["booked-by-deleted-account"]
+              }
+            },
+            "required": ["kind"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "CustomerCoworkTier": {
+        "type": "string",
+        "enum": ["basic", "plus", "profi", "open-space", "reserved-desk"]
+      },
+      "CustomerReservationProduct": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["cowork"]
+              },
+              "tier": {
+                "$ref": "#/components/schemas/CustomerCoworkTier"
+              }
+            },
+            "required": ["kind", "tier"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["meeting-room"]
+              }
+            },
+            "required": ["kind"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["office"]
+              }
+            },
+            "required": ["kind"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["other"]
+              }
+            },
+            "required": ["kind"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "CustomerReservationStatus": {
+        "type": "string",
+        "enum": ["cancelled", "confirmed", "pending", "requires-attention"]
+      },
+      "CustomerReservationSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "orderId": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomerReservationOrderId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reviewSandbox": {
+            "anyOf": [
+              {
+                "type": "boolean",
+                "enum": [true]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "party": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomerReservationParty"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "product": {
+            "$ref": "#/components/schemas/CustomerReservationProduct"
+          },
+          "startsAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "ISO 8601 instant."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "endsAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "ISO 8601 instant."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "setupStartsAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "ISO 8601 instant."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "seats": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/CustomerReservationStatus"
+          }
+        },
+        "required": ["id", "product", "startsAt", "endsAt", "seats", "status"],
+        "additionalProperties": false
+      },
+      "CustomerReservationHistory": {
+        "type": "object",
+        "properties": {
+          "current": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CustomerReservationSummary"
+            }
+          },
+          "past": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CustomerReservationSummary"
+            }
+          },
+          "unavailable": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CustomerReservationSummary"
+            }
+          }
+        },
+        "required": ["current", "past", "unavailable"],
+        "additionalProperties": false
+      },
+      "CustomerReservationKind": {
+        "type": "string",
+        "enum": ["cowork", "meeting-room", "office"]
+      },
+      "CustomerOrderStatus": {
+        "type": "string",
+        "enum": [
+          "created",
+          "pending",
+          "payment_pending_delayed",
+          "paid_waiting_fulfillment",
+          "paid_fulfillment_delayed",
+          "paid_awaiting_delivery",
+          "paid_delivery_delayed",
+          "fulfilled",
+          "fulfillment_failed",
+          "payment_failed",
+          "cancelled",
+          "expired",
+          "late_payment_checking",
+          "late_payment_refund",
+          "late_payment_review"
+        ]
+      },
+      "CustomerOrderPaymentStatus": {
+        "type": "string",
+        "enum": [
+          "not_started",
+          "pending",
+          "paid",
+          "failed",
+          "cancelled",
+          "expired"
+        ]
+      },
+      "CustomerOrderFulfillmentStatus": {
+        "type": "string",
+        "enum": [
+          "not_started",
+          "processing",
+          "awaiting_delivery",
+          "fulfilled",
+          "failed"
+        ]
+      },
+      "CustomerOrderState": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "$ref": "#/components/schemas/CustomerReservationOrderId"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/CustomerReservationKind"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CustomerOrderStatus"
+          },
+          "paymentStatus": {
+            "$ref": "#/components/schemas/CustomerOrderPaymentStatus"
+          },
+          "fulfillmentStatus": {
+            "$ref": "#/components/schemas/CustomerOrderFulfillmentStatus"
+          },
+          "reviewSandbox": {
+            "anyOf": [
+              {
+                "type": "boolean",
+                "enum": [true]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "startsAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "ISO 8601 instant."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "endsAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "ISO 8601 instant."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "setupStartsAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "ISO 8601 instant."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "total": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "orderId",
+          "kind",
+          "status",
+          "paymentStatus",
+          "fulfillmentStatus"
+        ],
+        "additionalProperties": false
+      },
+      "CustomerReservationNotFound": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["CustomerReservationNotFound"]
+          }
+        },
+        "required": ["_tag"],
+        "additionalProperties": false
+      },
+      "CustomerReservationAccess": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "allOf": [
+              {
+                "minLength": 1
+              }
+            ]
+          },
+          "accessStartsAt": {
+            "type": "string",
+            "description": "ISO 8601 instant."
+          },
+          "accessEndsAt": {
+            "type": "string",
+            "description": "ISO 8601 instant."
+          }
+        },
+        "required": ["code", "accessStartsAt", "accessEndsAt"],
+        "additionalProperties": false
+      },
+      "CustomerAccessCodeUnavailable": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["CustomerAccessCodeUnavailable"]
+          }
+        },
+        "required": ["_tag"],
+        "additionalProperties": false
+      },
+      "CustomerInvoiceNotIssued": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["CustomerInvoiceNotIssued"]
+          }
+        },
+        "required": ["_tag"],
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {}
+  },
+  "security": [],
+  "tags": [
+    {
+      "name": "account"
+    },
+    {
+      "name": "reservations"
+    },
+    {
+      "name": "booking"
+    }
+  ]
+}

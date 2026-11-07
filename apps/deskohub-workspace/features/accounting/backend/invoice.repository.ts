@@ -37,6 +37,7 @@ import {
 } from "@/features/accounting/manual-invoice";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { censorLogValue } from "@/shared/backend/logging/censorship";
 import { temporalInstantToIsoString } from "@/shared/utils/temporal";
 import {
@@ -120,6 +121,12 @@ export interface IInvoiceRepository {
   >;
   readonly findByPaymentAttemptId: (
     paymentAttemptId: string
+  ) => Effect.Effect<
+    ReservationInvoice | null,
+    EffectDrizzleQueryError | InvoiceStorageError
+  >;
+  readonly findByReservationId: (
+    reservationId: WorkspaceReservationId
   ) => Effect.Effect<
     ReservationInvoice | null,
     EffectDrizzleQueryError | InvoiceStorageError

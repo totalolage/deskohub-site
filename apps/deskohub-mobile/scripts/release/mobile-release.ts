@@ -2,14 +2,20 @@
 // (.github/workflows/mobile-release.yml) and on a developer machine.
 //
 //   bun scripts/release/mobile-release.ts metadata [--tag mobile-vX.Y.Z]
-//   bun scripts/release/mobile-release.ts build [--tag mobile-vX.Y.Z] --out-dir <dir>
+//   bun scripts/release/mobile-release.ts build [--tag mobile-vX.Y.Z] [--signing release|debug] --out-dir <dir>
 //
 // `metadata` prints `key=value` lines for $GITHUB_OUTPUT. With --tag, both
 // commands fail unless the tag matches `expo.version` in app.json and
-// CHANGELOG.md has a section for it. `build` needs EXPO_TOKEN,
-// ANDROID_KEYSTORE_PASSWORD, and ANDROID_KEYSTORE_BASE64 or
-// ANDROID_KEYSTORE_PATH; it writes deskohub-<version>.apk and
-// release-notes.md to the output directory after checking the APK signature.
+// CHANGELOG.md has a section for it. `build` needs EXPO_TOKEN; it writes
+// deskohub-<version>.apk and release-notes.md to the output directory after
+// checking the APK signature. `--signing release` (the default) needs
+// ANDROID_KEYSTORE_PASSWORD and ANDROID_KEYSTORE_BASE64 or
+// ANDROID_KEYSTORE_PATH, and checks that the release certificate signed the
+// APK. `--signing debug` is for pull request dry runs: it signs with a
+// throwaway key that keytool generates for the build, never reads the release
+// keystore, and checks that the release certificate did not sign the APK.
+
+import { randomBytes } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -24,12 +30,20 @@ import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { androidVersionCode } from "../../app.config";
 import { verifyApkIdentity } from "./apk-badging";
-import { formatCertificateSha256, verifyReleaseSigners } from "./apk-signature";
+import {
+  formatCertificateSha256,
+  verifyNonReleaseSigners,
+  verifyReleaseSigners,
+} from "./apk-signature";
 import { changelogSection, renderReleaseNotes } from "./release-notes";
 import { releaseTag, releaseTagVersion } from "./release-tag";
 
 const projectDirectory = resolve(import.meta.dir, "../..");
-const keyAlias = "deskohub-workspace";
+
+const signingModes = ["release", "debug"] as const;
+type Signing = (typeof signingModes)[number];
+
+type SigningKey = { readonly alias: string; readonly password: string };
 
 const print = (line: string) => {
   process.stdout.write(`${line}\n`);
@@ -109,31 +123,81 @@ const run = async (
   return output;
 };
 
+// Writes the release keystore from the environment to keystorePath.
+const writeReleaseKeystore = async (
+  keystorePath: string
+): Promise<SigningKey> => {
+  const password = requiredEnvironment("ANDROID_KEYSTORE_PASSWORD");
+  const keystoreBase64 = process.env.ANDROID_KEYSTORE_BASE64;
+  const keystore =
+    keystoreBase64 === undefined || keystoreBase64 === ""
+      ? await Bun.file(
+          requiredEnvironment("ANDROID_KEYSTORE_PATH")
+        ).arrayBuffer()
+      : Buffer.from(keystoreBase64, "base64");
+  writeFileSync(keystorePath, new Uint8Array(keystore), { mode: 0o600 });
+  return { alias: "deskohub-workspace", password };
+};
+
+// Generates a throwaway key at keystorePath. The password reaches keytool
+// through the environment, so a failed command line never shows it.
+const generateDebugKeystore = async (
+  keystorePath: string
+): Promise<SigningKey> => {
+  const password = randomBytes(24).toString("base64url");
+  const javaHome = process.env.JAVA_HOME;
+  await run(
+    [
+      javaHome === undefined ? "keytool" : join(javaHome, "bin", "keytool"),
+      "-genkeypair",
+      "-noprompt",
+      "-keystore",
+      keystorePath,
+      "-storetype",
+      "PKCS12",
+      "-alias",
+      "deskohub-dry-run",
+      "-keyalg",
+      "RSA",
+      "-keysize",
+      "2048",
+      "-validity",
+      "30",
+      "-dname",
+      "CN=Deskohub dry run",
+      "-storepass:env",
+      "DEBUG_KEYSTORE_PASSWORD",
+      "-keypass:env",
+      "DEBUG_KEYSTORE_PASSWORD",
+    ],
+    { capture: true, env: { DEBUG_KEYSTORE_PASSWORD: password } }
+  );
+  return { alias: "deskohub-dry-run", password };
+};
+
 // Writes the keystore and credentials.json that `credentialsSource: local`
 // reads, runs `use`, and removes both whatever happens.
-const withSigningCredentials = async (use: () => Promise<void>) => {
-  const password = requiredEnvironment("ANDROID_KEYSTORE_PASSWORD");
+const withSigningCredentials = async (
+  signing: Signing,
+  use: () => Promise<void>
+) => {
   const credentialsPath = join(projectDirectory, "credentials.json");
   let createdCredentials = false;
   const signingDirectory = mkdtempSync(
     join(tmpdir(), "deskohub-mobile-signing-")
   );
   try {
-    const keystorePath = join(signingDirectory, "release.keystore");
-    const keystoreBase64 = process.env.ANDROID_KEYSTORE_BASE64;
-    const keystore =
-      keystoreBase64 === undefined || keystoreBase64 === ""
-        ? await Bun.file(
-            requiredEnvironment("ANDROID_KEYSTORE_PATH")
-          ).arrayBuffer()
-        : Buffer.from(keystoreBase64, "base64");
-    writeFileSync(keystorePath, new Uint8Array(keystore), { mode: 0o600 });
+    const keystorePath = join(signingDirectory, `${signing}.keystore`);
+    const { alias, password } =
+      signing === "release"
+        ? await writeReleaseKeystore(keystorePath)
+        : await generateDebugKeystore(keystorePath);
     writeFileSync(
       credentialsPath,
       JSON.stringify({
         android: {
           keystore: {
-            keyAlias,
+            keyAlias: alias,
             keyPassword: password,
             keystorePassword: password,
             keystorePath,
@@ -150,7 +214,7 @@ const withSigningCredentials = async (use: () => Promise<void>) => {
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "EEXIST") {
       throw new Error(
-        `${credentialsPath} already exists; remove it so the build signs with the release keystore.`
+        `${credentialsPath} already exists; remove it so the build signs with the ${signing} keystore.`
       );
     }
     throw error;
@@ -185,7 +249,11 @@ const sha256File = async (path: string): Promise<string> =>
     .update(await Bun.file(path).arrayBuffer())
     .digest("hex");
 
-const build = async (tag: string | undefined, outDirectory: string) => {
+const build = async (
+  tag: string | undefined,
+  signing: Signing,
+  outDirectory: string
+) => {
   const metadata = await releaseMetadata(tag);
   requiredEnvironment("EXPO_TOKEN");
   const { cli } = await readJson<{ cli: { version: string } }>("eas.json");
@@ -194,7 +262,7 @@ const build = async (tag: string | undefined, outDirectory: string) => {
   const apkPath = join(output, metadata.apkFileName);
   rmSync(apkPath, { force: true });
 
-  await withSigningCredentials(() =>
+  await withSigningCredentials(signing, () =>
     run(
       [
         "bunx",
@@ -244,7 +312,10 @@ const build = async (tag: string | undefined, outDirectory: string) => {
     { capture: true }
   );
   process.stdout.write(apksignerOutput);
-  const [certificateSha256] = verifyReleaseSigners(apksignerOutput);
+  const [certificateSha256] =
+    signing === "release"
+      ? verifyReleaseSigners(apksignerOutput)
+      : verifyNonReleaseSigners(apksignerOutput);
   if (certificateSha256 === undefined) {
     throw new Error("apksigner reported no signer certificates.");
   }
@@ -256,7 +327,7 @@ const build = async (tag: string | undefined, outDirectory: string) => {
   print(`APK: ${apkPath}`);
   print(`APK SHA-256: ${apkSha256}`);
   print(
-    `Signing certificate SHA-256: ${formatCertificateSha256(certificateSha256)} (matches the release certificate)`
+    `Signing certificate SHA-256: ${formatCertificateSha256(certificateSha256)} (${signing === "release" ? "matches the release certificate" : "throwaway debug key, not the release certificate"})`
   );
 };
 
@@ -265,6 +336,7 @@ const main = async () => {
     allowPositionals: true,
     options: {
       "out-dir": { type: "string" },
+      signing: { default: "release", type: "string" },
       tag: { type: "string" },
     },
   });
@@ -283,12 +355,23 @@ const main = async () => {
       if (outDirectory === undefined) {
         throw new Error("build needs --out-dir.");
       }
-      await build(tag, outDirectory);
+      const signing = signingModes.find((mode) => mode === values.signing);
+      if (signing === undefined) {
+        throw new Error(
+          `--signing must be one of ${signingModes.join(", ")}, not ${JSON.stringify(values.signing)}.`
+        );
+      }
+      if (signing === "debug" && tag !== undefined) {
+        throw new Error(
+          "A release tag builds with the release key; --signing debug is for untagged dry runs."
+        );
+      }
+      await build(tag, signing, outDirectory);
       return;
     }
     default:
       throw new Error(
-        "Usage: mobile-release.ts metadata|build [--tag mobile-vX.Y.Z] [--out-dir <dir>]"
+        "Usage: mobile-release.ts metadata|build [--tag mobile-vX.Y.Z] [--signing release|debug] [--out-dir <dir>]"
       );
   }
 };
