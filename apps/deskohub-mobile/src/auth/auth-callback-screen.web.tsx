@@ -23,32 +23,21 @@ import {
   clearReauthenticatingUser,
   loadReauthenticatingUser,
 } from "./web-reauthentication-store";
-import {
-  confirmWebAccount,
-  mintNativeHandoff,
-  verifyMagicLinkToken,
-} from "./web-sign-in";
+import { completeWebMagicLink, mintNativeHandoff } from "./web-sign-in";
 import { WebSignInFailure } from "./web-sign-in-failure";
 
 const linkRejected = () =>
   new WebSignInFailure({ operation: "verify-link", reason: "link-rejected" });
 
 /** Only a magic-link token signs in on the web; anything else is refused. */
-const completeWebCallback = (callback: AuthCallback) =>
+const completeWebCallback = (callback: AuthCallback, nativePending: boolean) =>
   Match.value(callback).pipe(
     Match.discriminatorsExhaustive("kind")({
       token: ({ token }) =>
-        verifyMagicLinkToken(token).pipe(
-          Effect.andThen(
-            // Only the stored marker says a link finishes a reauthentication.
-            confirmWebAccount(
-              Option.match(loadReauthenticatingUser(Date.now()), {
-                onNone: () => ({ kind: "none" }) as const,
-                onSome: (userId) => ({ kind: "account", userId }) as const,
-              })
-            ).pipe(Effect.ensuring(Effect.sync(clearReauthenticatingUser)))
-          )
-        ),
+        completeWebMagicLink(token, {
+          nativePending,
+          storedUserId: loadReauthenticatingUser(Date.now()),
+        }).pipe(Effect.ensuring(Effect.sync(clearReauthenticatingUser))),
       handoff: () => Effect.fail(linkRejected()),
       error: () => Effect.fail(linkRejected()),
       invalid: () => Effect.fail(linkRejected()),
@@ -95,8 +84,8 @@ export function AuthCallbackScreen() {
   );
 
   useEffect(() => {
-    void verify.start(callback);
-  }, [verify.start, callback]);
+    void verify.start(callback, Option.isSome(nativeRequest));
+  }, [verify.start, callback, nativeRequest]);
 
   const verified = verify.state.status === "succeeded";
   const offerApp = verified && Option.isSome(nativeRequest);

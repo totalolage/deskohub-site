@@ -167,3 +167,52 @@ export const confirmWebAccount = (expectation: WebAccountExpectation) =>
     }),
     Effect.withSpan("WebSignIn.confirmWebAccount")
   );
+
+/**
+ * The account a magic link opened in a browser must come back as. A pending
+ * native request hands the session to the app, which checks the account
+ * itself. Otherwise a stored reauthentication names the account; without
+ * one, a browser that is already signed in can only reach a link through a
+ * reauthentication, so its current account is expected. A session that
+ * can't be read fails closed.
+ */
+export const magicLinkExpectation = ({
+  nativePending,
+  storedUserId,
+}: {
+  readonly nativePending: boolean;
+  readonly storedUserId: Option.Option<string>;
+}): Effect.Effect<WebAccountExpectation> => {
+  if (nativePending) return Effect.succeed({ kind: "none" });
+  return Option.match(storedUserId, {
+    onSome: (userId) => Effect.succeed({ kind: "account", userId }),
+    onNone: () =>
+      call("confirm-account", (signal) =>
+        authClient.getSession({ fetchOptions: { signal } })
+      ).pipe(
+        Effect.map(
+          (data): WebAccountExpectation =>
+            data === null || data === undefined
+              ? { kind: "none" }
+              : { kind: "account", userId: data.user.id }
+        ),
+        Effect.orElseSucceed(
+          (): WebAccountExpectation => ({ kind: "unrecoverable" })
+        )
+      ),
+  });
+};
+
+/** Signs the browser in with a magic link, refusing an account switch. */
+export const completeWebMagicLink = (
+  token: string,
+  context: Parameters<typeof magicLinkExpectation>[0]
+) =>
+  magicLinkExpectation(context).pipe(
+    Effect.flatMap((expectation) =>
+      verifyMagicLinkToken(token).pipe(
+        Effect.andThen(confirmWebAccount(expectation))
+      )
+    ),
+    Effect.withSpan("WebSignIn.completeWebMagicLink")
+  );

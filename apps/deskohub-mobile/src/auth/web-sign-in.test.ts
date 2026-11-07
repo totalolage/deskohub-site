@@ -8,10 +8,21 @@ type SessionRead = () => Promise<{
 
 let readSession: SessionRead = async () => ({ data: null, error: null });
 let signOuts = 0;
+/** The account a verified magic link signs the browser in to. */
+let linkAccount = "bob";
 
 mock.module("./auth-client.web", () => ({
   authClient: {
     getSession: () => readSession(),
+    magicLink: {
+      verify: async () => {
+        readSession = async () => ({
+          data: { user: { id: linkAccount } },
+          error: null,
+        });
+        return { data: { status: true }, error: null };
+      },
+    },
     signOut: async () => {
       signOuts += 1;
       return { data: { success: true }, error: null };
@@ -19,9 +30,8 @@ mock.module("./auth-client.web", () => ({
   },
 }));
 
-const { confirmWebAccount, reauthenticationExpectation } = await import(
-  "./web-sign-in"
-);
+const { completeWebMagicLink, confirmWebAccount, reauthenticationExpectation } =
+  await import("./web-sign-in");
 
 const reasonOf = async (
   expectation: Parameters<typeof confirmWebAccount>[0]
@@ -34,6 +44,7 @@ const reasonOf = async (
 
 beforeEach(() => {
   signOuts = 0;
+  linkAccount = "bob";
   readSession = async () => ({ data: { user: { id: "ada" } }, error: null });
 });
 
@@ -120,5 +131,69 @@ describe("reauthenticationExpectation", () => {
         storedUserId: Option.none(),
       })
     ).toEqual({ kind: "unrecoverable" });
+  });
+});
+
+describe("completeWebMagicLink", () => {
+  const linkReason = async (
+    context: Parameters<typeof completeWebMagicLink>[1]
+  ): Promise<string | undefined> => {
+    const exit = await Effect.runPromiseExit(
+      completeWebMagicLink("token", context)
+    );
+    return Exit.isSuccess(exit)
+      ? undefined
+      : Option.getOrUndefined(Exit.findErrorOption(exit))?.reason;
+  };
+
+  test("refuses another account's link without a stored reauthentication", async () => {
+    // Storage refused or the marker expired: the browser's own account
+    // still decides.
+    expect(
+      await linkReason({ nativePending: false, storedUserId: Option.none() })
+    ).toBe("account-switch");
+    expect(signOuts).toBe(1);
+  });
+
+  test("refuses another account's link against the stored account", async () => {
+    readSession = async () => ({ data: null, error: null });
+    expect(
+      await linkReason({
+        nativePending: false,
+        storedUserId: Option.some("ada"),
+      })
+    ).toBe("account-switch");
+  });
+
+  test("accepts the same account's link", async () => {
+    linkAccount = "ada";
+    expect(
+      await linkReason({ nativePending: false, storedUserId: Option.none() })
+    ).toBeUndefined();
+    expect(signOuts).toBe(0);
+  });
+
+  test("signs a signed-out browser in", async () => {
+    readSession = async () => ({ data: null, error: null });
+    expect(
+      await linkReason({ nativePending: false, storedUserId: Option.none() })
+    ).toBeUndefined();
+  });
+
+  test("leaves the account check to the app for a native handoff", async () => {
+    expect(
+      await linkReason({ nativePending: true, storedUserId: Option.none() })
+    ).toBeUndefined();
+    expect(signOuts).toBe(0);
+  });
+
+  test("fails closed when the browser's session can't be read first", async () => {
+    readSession = async () => {
+      throw new TypeError("Network request failed");
+    };
+    expect(
+      await linkReason({ nativePending: false, storedUserId: Option.none() })
+    ).toBe("reauthentication-unconfirmed");
+    expect(signOuts).toBe(1);
   });
 });
