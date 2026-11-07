@@ -54,6 +54,16 @@ export type NavigationDecision =
   | { readonly _tag: "Stay" };
 
 /**
+ * Whether the checkout screen is in view: as last rendered, and right now
+ * (the navigation's `isFocused`), which also catches a blur between the
+ * render and the effect that acts on it.
+ */
+export interface CheckoutScreenFocus {
+  readonly rendered: boolean;
+  readonly now: () => boolean;
+}
+
+/**
  * The checkout screen owns leaving the checkout (R8): it acts on each
  * destination once, and only while it's focused. A destination reached
  * while the customer is on another screen is dropped, not replayed on
@@ -61,13 +71,13 @@ export type NavigationDecision =
  */
 export const navigationDecision = (
   destination: CheckoutDestination | undefined,
-  focused: boolean,
+  focus: CheckoutScreenFocus,
   handled: CheckoutDestinationHref | undefined
 ): NavigationDecision => {
   if (destination === undefined || destination.href === handled) {
     return { _tag: "Stay" };
   }
-  return focused
+  return focus.rendered && focus.now()
     ? { _tag: "Navigate", destination }
     : { _tag: "Drop", destination };
 };

@@ -62,15 +62,17 @@ const replay = (
   steps: ReadonlyArray<{
     readonly destination: CheckoutDestination | undefined;
     readonly focused: boolean;
+    /** What the navigation says as the effect runs; else as rendered. */
+    readonly focusedNow?: boolean;
   }>
 ) => {
   let handled: CheckoutDestinationHref | undefined;
   const navigations: Array<CheckoutDestination> = [];
-  for (const { destination, focused } of steps) {
+  for (const { destination, focused, focusedNow = focused } of steps) {
     // Each render makes a new destination; the href identifies it.
     const decision = navigationDecision(
       destination && { ...destination },
-      focused,
+      { rendered: focused, now: () => focusedNow },
       handled
     );
     if (decision._tag === "Stay") continue;
@@ -102,6 +104,16 @@ describe("navigationDecision", () => {
     expect(
       replay([
         { destination: undefined, focused: false },
+        { destination: status, focused: false },
+        { destination: status, focused: true },
+      ])
+    ).toEqual([]);
+  });
+
+  test("a destination whose screen blurred before the effect ran is dropped", () => {
+    expect(
+      replay([
+        { destination: status, focused: true, focusedNow: false },
         { destination: status, focused: false },
         { destination: status, focused: true },
       ])
