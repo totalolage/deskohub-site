@@ -1,10 +1,10 @@
 import "server-only";
 
 import {
+  type CustomerAvailability,
   type CustomerBookingOfferings,
   type CustomerBookingQuote,
   CustomerBookingSelectionInvalid,
-  type CustomerAvailability,
   type CustomerBookingSelectionQuery,
   type CustomerOffering,
   customerAvailabilityReplacementHeader,
