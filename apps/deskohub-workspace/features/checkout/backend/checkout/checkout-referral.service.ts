@@ -53,7 +53,7 @@ import {
  * unavailable code either way; the cause only tells callers whether a retry
  * can help.
  */
-export type CheckoutReferralUnavailable =
+type CheckoutReferralUnavailable =
   | {
       readonly status: "unavailable";
       /**

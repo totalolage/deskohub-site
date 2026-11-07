@@ -8,7 +8,7 @@ import {
 } from "./checkout-pay-url";
 import { openPayStateForLocale } from "./open-pay-state-for-locale";
 
-export type PayStatePriceAcceptance = IssuedPayState & {
+type PayStatePriceAcceptance = IssuedPayState & {
   /** `already_accepted`: the state had no price review; its token is returned as is. */
   readonly status: "accepted" | "already_accepted";
 };
