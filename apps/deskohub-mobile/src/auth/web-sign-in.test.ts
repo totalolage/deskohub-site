@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
+import { customerSignInLocaleHeader } from "@deskohub/workspace-customer-api/customer-locale";
 import { Effect, Exit, Option } from "effect";
 
 type SessionRead = () => Promise<{
@@ -11,12 +12,30 @@ let readSession: SessionRead = async () => ({ data: null, error: null });
 let signOuts = 0;
 /** The account a verified magic link signs the browser in to. */
 let linkAccount = "bob";
+/** The app locale each code or link request named. */
+let namedLocales: Array<string | undefined> = [];
+
+interface FetchOptions {
+  readonly headers?: Readonly<Record<string, string>>;
+}
+
+const recordLocale = (fetchOptions: FetchOptions | undefined) => {
+  namedLocales.push(fetchOptions?.headers?.[customerSignInLocaleHeader]);
+};
+/** What the server answers a sign-in email request with. */
+let emailSent: unknown = { status: true, signInCode: true };
 
 mock.module("./auth-client.web", () => ({
   authClient: {
     getSession: () => readSession(),
     signIn: {
-      emailOtp: async () => {
+      magicLink: async () => ({ data: emailSent, error: null }),
+      emailOtp: async ({
+        fetchOptions,
+      }: {
+        readonly fetchOptions?: FetchOptions;
+      }) => {
+        recordLocale(fetchOptions);
         readSession = async () => ({
           data: { user: { id: linkAccount } },
           error: null,
@@ -27,9 +46,12 @@ mock.module("./auth-client.web", () => ({
     magicLink: {
       verify: async ({
         query,
+        fetchOptions,
       }: {
         readonly query: { readonly token: string };
+        readonly fetchOptions?: FetchOptions;
       }) => {
+        recordLocale(fetchOptions);
         if (query.token === "used") {
           return { data: null, error: { status: 400, code: "INVALID_TOKEN" } };
         }
@@ -63,6 +85,7 @@ const {
   prepareNativeHandoffEmail,
   prepareReauthenticationEmail,
   reauthenticationExpectation,
+  sendSignInEmail,
   signInEmailField,
 } = await import("./web-sign-in");
 const {
@@ -102,8 +125,10 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  namedLocales = [];
   signOuts = 0;
   linkAccount = "bob";
+  emailSent = { status: true, signInCode: true };
   readSession = async () => ({ data: { user: { id: "ada" } }, error: null });
 });
 
@@ -228,7 +253,7 @@ describe("completeWebMagicLink", () => {
     context: Parameters<typeof completeWebMagicLink>[1]
   ): Promise<string | undefined> => {
     const exit = await Effect.runPromiseExit(
-      completeWebMagicLink("token", context)
+      completeWebMagicLink("token", context, "en-US")
     );
     return Exit.isSuccess(exit)
       ? undefined
@@ -292,10 +317,14 @@ describe("completeWebMagicLink", () => {
       prepareReauthenticationEmail({ kind: "account", userId: "ada" }, "/")
     );
     const exit = await Effect.runPromiseExit(
-      completeWebMagicLink("another-account", {
-        nativePending: false,
-        storedUserId: loadReauthenticatingUser(Date.now()),
-      })
+      completeWebMagicLink(
+        "another-account",
+        {
+          nativePending: false,
+          storedUserId: loadReauthenticatingUser(Date.now()),
+        },
+        "en-US"
+      )
     );
     expect(Option.getOrUndefined(Exit.findErrorOption(exit))?.reason).toBe(
       "account-switch"
@@ -367,10 +396,14 @@ describe("prepareReauthenticationEmail", () => {
     // Ada's session expired before Bob's link was opened.
     readSession = async () => ({ data: null, error: null });
     const exit = await Effect.runPromiseExit(
-      completeWebMagicLink("token", {
-        nativePending: false,
-        storedUserId: loadReauthenticatingUser(Date.now()),
-      })
+      completeWebMagicLink(
+        "token",
+        {
+          nativePending: false,
+          storedUserId: loadReauthenticatingUser(Date.now()),
+        },
+        "en-US"
+      )
     );
     expect(Option.getOrUndefined(Exit.findErrorOption(exit))?.reason).toBe(
       "account-switch"
@@ -390,10 +423,14 @@ describe("the stored reauthentication outlives failed attempts", () => {
 
   const openLink = (token: string) =>
     Effect.runPromiseExit(
-      completeWebMagicLink(token, {
-        nativePending: false,
-        storedUserId: loadReauthenticatingUser(Date.now()),
-      })
+      completeWebMagicLink(
+        token,
+        {
+          nativePending: false,
+          storedUserId: loadReauthenticatingUser(Date.now()),
+        },
+        "en-US"
+      )
     );
 
   test("a used link, then the other account's valid link", async () => {
@@ -417,10 +454,12 @@ describe("the stored reauthentication outlives failed attempts", () => {
       prepareReauthenticationEmail({ kind: "account", userId: "ada" }, "/")
     );
     const codeExit = await Effect.runPromiseExit(
-      completeWebCodeSignIn(testEmailAddress("bob"), "123456", {
-        kind: "account",
-        userId: "ada",
-      })
+      completeWebCodeSignIn(
+        testEmailAddress("bob"),
+        "123456",
+        { kind: "account", userId: "ada" },
+        "en-US"
+      )
     );
     expect(reasonOfExit(codeExit)).toBe("account-switch");
     readSession = async () => ({ data: null, error: null });
@@ -529,5 +568,53 @@ describe("prepareNativeHandoffEmail", () => {
         currentRequest: Option.none(),
       })
     ).toBe("native-request-expired");
+  });
+});
+
+describe("the app's locale", () => {
+  test("the code and link requests name it", async () => {
+    await Effect.runPromise(
+      completeWebCodeSignIn(
+        testEmailAddress("ada"),
+        "123456",
+        { kind: "none" },
+        "cs-CZ"
+      )
+    );
+    await Effect.runPromise(
+      completeWebMagicLink(
+        "token",
+        { nativePending: true, storedUserId: Option.none() },
+        "en-US"
+      )
+    );
+
+    expect(namedLocales).toEqual(["cs-CZ", "en-US"]);
+  });
+});
+
+describe("sendSignInEmail", () => {
+  const email = testEmailAddress("ada");
+  const send = () => Effect.runPromise(sendSignInEmail(email, "en-US"));
+
+  test("reports a code when the server issued one", async () => {
+    expect(await send()).toEqual({ email, signInCode: true });
+  });
+
+  test("reports a link-only email when the server issued no code", async () => {
+    emailSent = { status: true, signInCode: false };
+    expect(await send()).toEqual({ email, signInCode: false });
+  });
+
+  test("treats an answer without the decision as link-only", async () => {
+    emailSent = { status: true };
+    expect(await send()).toEqual({ email, signInCode: false });
+    emailSent = null;
+    expect(await send()).toEqual({ email, signInCode: false });
+  });
+
+  test("takes only a literal yes as a code", async () => {
+    emailSent = { status: true, signInCode: "true" };
+    expect(await send()).toEqual({ email, signInCode: false });
   });
 });

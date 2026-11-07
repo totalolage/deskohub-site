@@ -12,6 +12,9 @@ mock.module("react-native", () => ({
     currentState: "active",
     addEventListener: () => ({ remove: () => undefined }),
   },
+  Linking: {
+    addEventListener: () => ({ remove: () => undefined }),
+  },
 }));
 
 mock.module("expo-constants", () => ({

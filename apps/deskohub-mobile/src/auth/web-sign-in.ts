@@ -4,6 +4,7 @@ import { webCallbackPath } from "./auth-callback";
 import { authClient } from "./auth-client.web";
 import type { AuthUser } from "./auth-session-state";
 import type { NativeHandoffRequest } from "./native-handoff-request";
+import { signInLocaleHeaders } from "./sign-in-locale";
 import {
   clearReauthenticatingUser,
   saveReauthenticatingUser,
@@ -46,29 +47,65 @@ const call = <A>(
     )
   );
 
+/** A sent sign-in email, and whether it carries a sign-in code. */
+export interface SentSignInEmail {
+  readonly email: string;
+  readonly signInCode: boolean;
+}
+
 /**
  * Sends the sign-in email. The relative `/app/auth/callback` (and no other
- * callback) makes the server send the App Link with the bare token.
+ * callback) makes the server send the App Link with the bare token. The
+ * server answers whether the email also carries a sign-in code; anything but
+ * a clear yes means the link alone.
  */
 export const sendSignInEmail = (email: string, locale: AppLocale) =>
-  call("send-email", (signal) =>
-    authClient.signIn.magicLink({
-      email,
-      callbackURL: webCallbackPath,
-      metadata: { locale },
-      fetchOptions: { signal },
-    })
-  ).pipe(Effect.asVoid, Effect.withSpan("WebSignIn.sendSignInEmail"));
+  call<{ readonly status: boolean; readonly signInCode?: unknown }>(
+    "send-email",
+    (signal) =>
+      authClient.signIn.magicLink({
+        email,
+        callbackURL: webCallbackPath,
+        metadata: { locale },
+        fetchOptions: { signal },
+      })
+  ).pipe(
+    Effect.map(
+      (data): SentSignInEmail => ({
+        email,
+        signInCode: data?.signInCode === true,
+      })
+    ),
+    Effect.withSpan("WebSignIn.sendSignInEmail")
+  );
 
-export const verifySignInCode = (email: string, code: string) =>
+/**
+ * Signs in with the email's code. The request names the app's locale, which
+ * an account it creates takes as its language.
+ */
+export const verifySignInCode = (
+  email: string,
+  code: string,
+  locale: AppLocale
+) =>
   call("verify-code", (signal) =>
-    authClient.signIn.emailOtp({ email, otp: code, fetchOptions: { signal } })
+    authClient.signIn.emailOtp({
+      email,
+      otp: code,
+      fetchOptions: { signal, headers: signInLocaleHeaders(locale) },
+    })
   ).pipe(Effect.asVoid, Effect.withSpan("WebSignIn.verifySignInCode"));
 
-/** Claims a magic-link token without a callback, for a JSON answer. */
-export const verifyMagicLinkToken = (token: string) =>
+/**
+ * Claims a magic-link token without a callback, for a JSON answer. The
+ * request names the app's locale, as the sign-in code does.
+ */
+export const verifyMagicLinkToken = (token: string, locale: AppLocale) =>
   call("verify-link", (signal) =>
-    authClient.magicLink.verify({ query: { token }, fetchOptions: { signal } })
+    authClient.magicLink.verify({
+      query: { token },
+      fetchOptions: { signal, headers: signInLocaleHeaders(locale) },
+    })
   ).pipe(Effect.asVoid, Effect.withSpan("WebSignIn.verifyMagicLinkToken"));
 
 /**
@@ -309,11 +346,12 @@ const clearOnceConfirmed = Effect.sync(clearReauthenticatingUser);
  */
 export const completeWebMagicLink = (
   token: string,
-  context: Parameters<typeof magicLinkExpectation>[0]
+  context: Parameters<typeof magicLinkExpectation>[0],
+  locale: AppLocale
 ) =>
   magicLinkExpectation(context).pipe(
     Effect.flatMap((expectation) =>
-      verifyMagicLinkToken(token).pipe(
+      verifyMagicLinkToken(token, locale).pipe(
         Effect.andThen(confirmWebAccount(expectation))
       )
     ),
@@ -336,9 +374,10 @@ export const completeWebPasskeySignIn = (expectation: WebAccountExpectation) =>
 export const completeWebCodeSignIn = (
   email: string,
   code: string,
-  expectation: WebAccountExpectation
+  expectation: WebAccountExpectation,
+  locale: AppLocale
 ) =>
-  verifySignInCode(email, code).pipe(
+  verifySignInCode(email, code, locale).pipe(
     Effect.andThen(confirmWebAccount(expectation)),
     Effect.tap(() => clearOnceConfirmed),
     Effect.withSpan("WebSignIn.completeWebCodeSignIn")
