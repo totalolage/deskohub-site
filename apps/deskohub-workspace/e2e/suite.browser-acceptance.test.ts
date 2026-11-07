@@ -81,20 +81,22 @@ beforeAll(async () => {
   browser = await chromium.launch({ headless: true });
   server = Bun.serve({
     port: 0,
-    fetch: async (request) => {
+    fetch: async (request, httpServer) => {
       const { pathname, searchParams } = new URL(request.url);
       if (pathname === "/api")
         return Response.json({ echoed: request.headers.get("authorization") });
       if (pathname === "/held") {
         const hold = pageHolds.get(searchParams.get("id") ?? "");
         if (!hold) return new Response("unknown hold", { status: 404 });
+        // Bun ends an idle request after 10 s, which would let the page go.
+        httpServer.timeout(request, 0);
         hold.blocked.resolve();
         await hold.released.promise;
         return new Response("released");
       }
       // After load, which the open waits for, a synchronous request holds
-      // the page's main thread, so no page read returns until the test
-      // answers it.
+      // the page's main thread, so a script evaluated in the page, as the
+      // artifact capture's reads are, can't run until the test answers it.
       const script =
         pathname === "/busy"
           ? `addEventListener("load", () => setTimeout(() => {
@@ -726,7 +728,8 @@ test.skipIf(!chromiumAvailable)(
         runStep({
           execute: Effect.gen(function* () {
             yield* openPage(run, session, `${origin()}${hold.path}`);
-            // The page's main thread is now stuck, so no page read returns.
+            // The page's main thread is now stuck, so the capture's page
+            // reads can't return.
             yield* Effect.promise(() => hold.blocked);
             return yield* workspaceE2EError("synthetic checkout failure");
           }),

@@ -29,12 +29,15 @@ export const responseHeaders = (
           ...operation.responses,
           [status]: {
             ...response,
-            headers: Object.fromEntries(
-              Object.entries(headers).map(([name, { description }]) => [
-                name,
-                { description, required: true, schema: { type: "string" } },
-              ])
-            ),
+            headers: {
+              ...response.headers,
+              ...Object.fromEntries(
+                Object.entries(headers).map(([name, { description }]) => [
+                  name,
+                  { description, required: true, schema: { type: "string" } },
+                ])
+              ),
+            },
           },
         },
       };
