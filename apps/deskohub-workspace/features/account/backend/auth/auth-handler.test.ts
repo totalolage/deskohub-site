@@ -31,6 +31,7 @@ import { CustomerDotyposAdapter } from "../customer-dotypos-adapter.service";
 import {
   type CapturedMagicLink,
   callHandler,
+  callNativeHandler,
   captureFailure,
   cookieJar,
   getSessionCookie,
@@ -243,6 +244,81 @@ test("sends an expired link to the same rejected-link callback as a replayed one
   } finally {
     setSystemTime();
   }
+});
+
+const requestNativeMagicLink = (auth: TestAuth, callbackURL: string) =>
+  callNativeHandler(auth, "/sign-in/magic-link", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-vercel-forwarded-for": uniqueIp(),
+    },
+    body: JSON.stringify({ email: uniqueEmail("native-link"), callbackURL }),
+  });
+
+test("returns a magic-link sign-in the app started to the app with its session", async () => {
+  const sentLinks: CapturedMagicLink[] = [];
+  const { auth } = makeMemoryTestAuth({ sentLinks });
+
+  expect(
+    (await requestNativeMagicLink(auth, "deskohub://account")).status
+  ).toBe(200);
+  // The customer opens the emailed link in a browser; the Expo plugin hands
+  // the session cookie to the app in the scheme redirect.
+  const verified = await verifyMagicLink(auth, sentLinks[0]!);
+
+  expect(verified.status).toBe(302);
+  const location = verified.headers.get("location") ?? "";
+  expect(location.startsWith("deskohub://account?")).toBe(true);
+  expect(
+    new URLSearchParams(location.slice(location.indexOf("?"))).get("cookie")
+  ).toContain(cookieJar(getSessionCookie(verified)!));
+});
+
+test("refuses a magic-link sign-in that returns to an untrusted app scheme", async () => {
+  const sentLinks: CapturedMagicLink[] = [];
+  const { auth } = makeMemoryTestAuth({ sentLinks });
+
+  expect((await requestNativeMagicLink(auth, "evil://account")).status).toBe(
+    403
+  );
+  expect(sentLinks).toHaveLength(0);
+});
+
+test("returns a web app sign-in to its /app/ path without handing out the cookie", async () => {
+  const sentLinks: CapturedMagicLink[] = [];
+  const { auth } = makeMemoryTestAuth({ sentLinks });
+  const returnTo = "/app/account";
+  const callbackURL = `/cs-CZ/auth/callback?${signInCallbackReturnParam}=${encodeAuthCallbackReturn(returnTo)}`;
+
+  for (const callback of [returnTo, callbackURL]) {
+    await signInForMagicLink(auth, uniqueEmail("app-link"), callback);
+  }
+  const [direct, throughSite] = sentLinks;
+
+  const directVerified = await verifyMagicLink(auth, direct!);
+  expect(directVerified.headers.get("location")).toBe(
+    `https://${HOST}${returnTo}`
+  );
+  expect(getSessionCookie(directVerified)).toBeDefined();
+
+  const siteVerified = await verifyMagicLink(auth, throughSite!);
+  const location = new URL(
+    siteVerified.headers.get("location") ?? "",
+    `https://${HOST}`
+  );
+  expect(location.searchParams.has("cookie")).toBe(false);
+  expect(
+    readAuthCallbackReturnTo(
+      location.searchParams.get(signInCallbackReturnParam)
+    )
+  ).toBe(returnTo);
+});
+
+test("keeps the site callback on the site; the Expo plugin returns app sign-ins", () => {
+  expect(
+    readAuthCallbackReturnTo(encodeAuthCallbackReturn("deskohub://account"))
+  ).toBeUndefined();
 });
 
 const postJson = (
