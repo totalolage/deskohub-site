@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer, Option } from "effect";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import {
@@ -183,7 +184,7 @@ describe("recordSignedInDeviceAnalyticsConsent", () => {
         Effect.provide(
           Layer.succeed(CustomerAuthentication, {
             currentUser: Effect.succeed(
-              session && { ...session, email: "mirror@example.test" }
+              session && { ...session, email: testEmailAddress("mirror") }
             ),
           })
         )
