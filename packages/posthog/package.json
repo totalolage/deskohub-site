@@ -11,7 +11,8 @@
     "./feature-flags/node": "./src/feature-flags/node.ts",
     "./feature-flags/react": "./src/feature-flags/react.ts",
     "./generated": "./src/generated/effect.gen.ts",
-    "./identifiers": "./src/identifiers.ts"
+    "./identifiers": "./src/identifiers.ts",
+    "./persons": "./src/persons/index.ts"
   },
   "scripts": {
     "generate": "bun scripts/generate.ts",
@@ -20,6 +21,7 @@
     "typecheck": "tsc --project tsconfig.json"
   },
   "dependencies": {
+    "@deskohub/provider-request": "workspace:*",
     "effect": "4.0.0-beta.85",
     "mustache": "^4.2.0",
     "posthog-node": "^5.55.1"
