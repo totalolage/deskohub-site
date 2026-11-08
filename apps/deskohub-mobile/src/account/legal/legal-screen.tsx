@@ -1,7 +1,13 @@
-import { useAtom, useAtomRefresh, useAtomValue } from "@effect/atom-react";
-import { Match } from "effect";
+import {
+  RegistryContext,
+  useAtom,
+  useAtomRefresh,
+  useAtomValue,
+} from "@effect/atom-react";
+import { Effect, Match, Option } from "effect";
+import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { openBrowserAsync } from "expo-web-browser";
-import { useState } from "react";
+import { useContext, useState } from "react";
 import { StyleSheet, Switch, Text, View } from "react-native";
 import { apiOrigin } from "../../auth/auth-client";
 import { AsyncView } from "../../customer-api/async-view";
@@ -34,6 +40,12 @@ const documentLabel = (document: LegalDocument, locale: AppLocale) =>
     cookies: m.legal_document_cookies,
   })[document]({}, { locale });
 
+// Opens a document in the in-app browser; it fails where no browser is
+// available.
+const openDocumentAtom = Atom.fn((url: string) =>
+  Effect.tryPromise(() => openBrowserAsync(url))
+);
+
 /**
  * Legal & Privacy: the site's legal documents (opened in the in-app
  * browser), the marketing consent of a linked account, and the data archive
@@ -44,9 +56,20 @@ export function LegalScreen() {
   const locale = useAppLocale();
   const account = useAtomValue(accountAtom);
   const refreshAccount = useAtomRefresh(accountAtom);
+  const registry = useContext(RegistryContext);
+  const [opened, openDocument] = useAtom(openDocumentAtom);
+  const linked = Option.exists(
+    AsyncResult.value(account),
+    (current) => current.kind === "linked"
+  );
+  // Only a linked account's screen shows (and so reads) the preference.
+  const refresh = () => {
+    refreshAccount();
+    if (linked) registry.refresh(marketingPreferencesAtom);
+  };
 
   return (
-    <ScrollScreen refreshing={account.waiting} onRefresh={refreshAccount}>
+    <ScrollScreen refreshing={account.waiting} onRefresh={refresh}>
       <SectionHeader title={m.legal_documents_heading({}, { locale })} />
       <ListGroup>
         {legalDocuments.map((document) => (
@@ -54,12 +77,19 @@ export function LegalScreen() {
             key={document}
             label={documentLabel(document, locale)}
             description={m.legal_document_opens_in_browser({}, { locale })}
-            onPress={() =>
-              void openBrowserAsync(legalDocumentUrl(document, apiOrigin))
-            }
+            onPress={() => openDocument(legalDocumentUrl(document, apiOrigin))}
           />
         ))}
       </ListGroup>
+      {/* Kept mounted so assistive tech announces each change. */}
+      <LiveMessage
+        role="alert"
+        message={
+          AsyncResult.isFailure(opened)
+            ? m.legal_document_open_failed({}, { locale })
+            : undefined
+        }
+      />
       <SectionHeader title={m.legal_marketing_heading({}, { locale })} />
       <AsyncView result={account} onRetry={refreshAccount}>
         {(current) =>

@@ -17,7 +17,6 @@ import {
 import {
   copyReferralCodeAtom,
   formatReferralDiscount,
-  formatSavings,
   referralsAtom,
   referralsFailure,
   referralsView,
@@ -184,15 +183,32 @@ describe("formatReferralDiscount", () => {
   });
 });
 
-describe("formatSavings", () => {
+describe("referral savings", () => {
   test.each([
-    [{ value: 15000, exponent: 2, currency: "CZK" }, "en-US", "CZK 150"],
-    [{ value: 15000, exponent: 2, currency: "CZK" }, "cs-CZ", "150 Kč"],
-    [{ value: 15050, exponent: 2, currency: "CZK" }, "cs-CZ", "150,50 Kč"],
-    [{ value: 1250, exponent: 2, currency: "EUR" }, "cs-CZ", "12,50 €"],
-  ] as const)("formats %o in %s as %s", (money, locale, expected) => {
-    expect(plain(formatSavings(money, locale))).toBe(expected);
-  });
+    [15000, "CZK", "en-US", "CZK 150"],
+    [15000, "CZK", "cs-CZ", "150 Kč"],
+    [15050, "CZK", "cs-CZ", "150,50 Kč"],
+    [1250, "EUR", "cs-CZ", "12,50 €"],
+  ] as const)(
+    "formats %d minor %s in %s as %s",
+    (value, currency, locale, expected) => {
+      const view = referralsView(
+        {
+          summary: {
+            code: ReferralCode.make("SAMPLE-ALEX"),
+            inviteeCount: 1,
+            eligibleInviteeCount: 1,
+            discount: "5",
+            savings: [{ value, exponent: 2, currency }],
+          },
+          shareUrl: "https://workspace.deskohub.example/r/SAMPLE-ALEX",
+        },
+        locale
+      );
+
+      expect(view.savings.map(plain)).toEqual([expected]);
+    }
+  );
 });
 
 describe("referralsFailure", () => {

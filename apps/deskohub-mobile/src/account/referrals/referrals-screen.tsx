@@ -89,6 +89,9 @@ function ReferralsSummary({ view }: { readonly view: ReferralsView }) {
             : { value: view.savings.join(", ") })}
         />
       </ListGroup>
+      <ListGroup>
+        <ListRow label={m.referrals_program_explanation({}, { locale })} />
+      </ListGroup>
       <SectionHeader title={m.referrals_code_label({}, { locale })} />
       <ListGroup>
         <View style={styles.code}>

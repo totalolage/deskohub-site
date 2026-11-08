@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { CustomerMarketingPreferencesRejected } from "@deskohub/workspace-customer-api";
-import { Cause, Effect } from "effect";
+import { Cause, Effect, Option } from "effect";
 import {
   AsyncResult,
   type Atom,
@@ -185,6 +185,30 @@ describe("saveMarketingPreferenceAtom", () => {
     ]);
   });
 
+  test("keeps the saved choice when the read after the save fails", async () => {
+    const data = makeFakeCustomerData("linked");
+    const screen = await openScreen(data);
+    data.workspace.fail("getMarketingPreferences", "service-unavailable");
+
+    const { outcome } = await save(data, {
+      context: data.workspace.data.marketing.context,
+      granted: true,
+    });
+    const view = marketingSwitchView({
+      preferences: data.registry.get(marketingPreferencesAtom),
+      save: data.registry.get(saveMarketingPreferenceAtom),
+      requested: true,
+    });
+    screen.close();
+
+    expect(outcome._tag).toBe("Success");
+    expect(view).toEqual({
+      granted: true,
+      enabled: false,
+      feedback: { kind: "saved" },
+    });
+  });
+
   test("keeps the shown state after a refused save", async () => {
     const data = makeFakeCustomerData("linked");
     const screen = await openScreen(data);
@@ -252,6 +276,18 @@ describe("marketingSwitchView", () => {
         requested: true,
       })
     ).toEqual({ granted: true, enabled: true, feedback: { kind: "saved" } });
+  });
+
+  test("keeps the saved choice and takes no input when the read after it fails", () => {
+    expect(
+      marketingSwitchView({
+        preferences: AsyncResult.failure(Cause.fail(new Error("unread")), {
+          previousSuccess: Option.some(preferences("absent")),
+        }),
+        save: AsyncResult.success(undefined),
+        requested: true,
+      })
+    ).toEqual({ granted: true, enabled: false, feedback: { kind: "saved" } });
   });
 
   test("shows the current state to review after a stale save", () => {

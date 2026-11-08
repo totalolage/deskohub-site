@@ -1,8 +1,4 @@
-import { formatCurrencyAmount } from "@deskohub/i18n/currency";
-import type {
-  Money,
-  ReferralAccountOverview,
-} from "@deskohub/workspace-customer-api";
+import type { ReferralAccountOverview } from "@deskohub/workspace-customer-api";
 import { Effect, Match } from "effect";
 import { CustomerApi } from "../../customer-api/customer-api.service";
 import { customerDataRuntime } from "../../customer-api/customer-data-runtime";
@@ -10,6 +6,7 @@ import { customerRead } from "../../customer-api/customer-request";
 import type { CustomerViewError } from "../../customer-api/customer-view-error";
 import { Clipboard, ShareSheet } from "../../customer-api/device-capabilities";
 import type { AppLocale } from "../../i18n/app-locale";
+import { formatMoney } from "../../i18n/money-format";
 
 /**
  * The account's referral summary and share link (GET /account/referrals).
@@ -50,15 +47,6 @@ export const formatReferralDiscount = (
   }).format(percent / 100);
 };
 
-/** A savings total in its currency, such as "150 Kč" or "CZK 150.50". */
-export const formatSavings = (money: Money, locale: AppLocale): string =>
-  formatCurrencyAmount({
-    amount: money.value / 10 ** money.exponent,
-    currency: money.currency,
-    locale,
-    fractionDigits: money.exponent,
-  });
-
 /** What the Referrals screen shows for a summary. */
 export interface ReferralsView {
   readonly code: string;
@@ -82,7 +70,7 @@ export const referralsView = (
   invitees: summary.inviteeCount,
   noInvitees: summary.inviteeCount === 0,
   discount: formatReferralDiscount(summary.discount, locale),
-  savings: summary.savings.map((money) => formatSavings(money, locale)),
+  savings: summary.savings.map((money) => formatMoney(money, locale)),
 });
 
 /**

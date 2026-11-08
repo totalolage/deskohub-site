@@ -113,9 +113,10 @@ const settledFeedback = (
 
 /**
  * What the marketing switch shows: the saved state, or the customer's
- * choice while it is being saved and until the preferences read after the
- * save arrive, so the switch doesn't flip back in between. It takes no
- * input while a save or a read is in flight.
+ * choice while it is being saved and, after a save, until a read of the
+ * saved state succeeds, so the switch neither flips back in between nor
+ * falls back to the old state when that read fails. It takes input only
+ * while it shows a current read, whose context a save must echo.
  */
 export const marketingSwitchView = ({
   preferences,
@@ -134,13 +135,14 @@ export const marketingSwitchView = ({
     isGranted(current.status)
   );
   const saving = save.waiting;
-  const awaitingSavedState = AsyncResult.isSuccess(save) && preferences.waiting;
+  const current = AsyncResult.isSuccess(preferences) && !preferences.waiting;
+  const awaitingSavedState = AsyncResult.isSuccess(save) && !current;
   return {
     granted:
       (saving || awaitingSavedState) && requested !== undefined
         ? requested
         : saved,
-    enabled: !saving && !preferences.waiting,
+    enabled: !saving && current,
     feedback: saving ? { kind: "saving" } : settledFeedback(save),
   };
 };
