@@ -439,7 +439,7 @@ const serverLayer = (workspace: FakeWorkspace) => {
         })
       )
       .handle("deleteConsent", ({ payload }) =>
-        Effect.suspend(() => {
+        Effect.suspend((): BetterAuthAnswer<void> => {
           if (
             !workspace.data.assistants.some(
               (candidate) => candidate.id === payload.id
