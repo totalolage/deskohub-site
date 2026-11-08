@@ -146,6 +146,16 @@ const sampleHistory = (now: Date): CustomerReservationHistory => ({
       seats: 4,
       status: "cancelled",
     },
+    // Booked outside the website (no order to open) and its seat count
+    // couldn't be read.
+    {
+      id: "sample-reservation-7",
+      product: { kind: "cowork", tier: "open-space" },
+      startsAt: at(now, -30 * day),
+      endsAt: at(now, -30 * day + 8 * hour),
+      seats: null,
+      status: "confirmed",
+    },
   ],
   unavailable: [
     {
