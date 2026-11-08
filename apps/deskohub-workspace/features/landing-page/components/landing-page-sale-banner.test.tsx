@@ -10,6 +10,7 @@ import {
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { Schema } from "effect";
 import type { ComponentProps } from "react";
+import { bindVisitorConsentRevision } from "@/features/cookie-consent/visitor-consent";
 import {
   type DiscountAdjustment,
   discountIdSchema,
@@ -25,7 +26,6 @@ import {
 import { SALE_BANNER_CLICKED_EVENT } from "../landing-page-sale-banner-analytics";
 import { getLandingPageSaleBannerContent } from "../landing-page-sale-banner-content";
 import { LandingPageSaleBanner } from "./landing-page-sale-banner";
-import { bindVisitorConsentRevision } from "@/features/cookie-consent/visitor-consent";
 
 type SaleBannerClickProperties = {
   readonly discount_id: string;
