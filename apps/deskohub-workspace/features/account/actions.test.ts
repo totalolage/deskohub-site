@@ -3,9 +3,14 @@ import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { AresLookupFailure } from "@deskohub/ares";
+import { DotyposUnavailable } from "@deskohub/dotypos";
 import { Context, Effect, Layer } from "effect";
+import { SqlError } from "effect/unstable/sql";
 import { m } from "@/features/i18n";
-import { ReferralError } from "@/features/referrals/contracts";
+import {
+  ReferralError,
+  type ReferralOutage,
+} from "@/features/referrals/contracts";
 import { ReferralService as Referrals } from "@/features/referrals/referral.service";
 import { referralCodeCookieName } from "@/features/referrals/referral-code-cookie";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
@@ -231,12 +236,15 @@ mock.module("@/features/account/backend/customer-profile.service", () => ({
 }));
 
 const referralCalls: { op: string; args: unknown }[] = [];
-let availableReferralCode: Effect.Effect<string | undefined, ReferralError>;
+let availableReferralCode: Effect.Effect<
+  string | undefined,
+  ReferralError | ReferralOutage
+>;
 let referralAcceptance: Effect.Effect<
   { readonly kind: "accepted" },
   ReferralError
 >;
-let settledReferral: Effect.Effect<boolean, ReferralError>;
+let settledReferral: Effect.Effect<boolean, ReferralOutage>;
 Object.assign(Referrals, {
   Live: Layer.succeed(Referrals, {
     findAvailableCode: (input) => {
@@ -467,7 +475,13 @@ describe("account actions", () => {
   test("completes without a referral when the shared-link code cannot be checked", async () => {
     resolveAsNewCustomerUntilCreated();
     availableReferralCode = Effect.fail(
-      new ReferralError({ reason: "unavailable" })
+      new SqlError.SqlError({
+        reason: new SqlError.UnknownError({
+          cause: new Error("synthetic connection refused"),
+          message: "synthetic connection refused",
+          operation: "query",
+        }),
+      })
     );
     const { completeCustomerProfile } = await importActions();
 
@@ -587,7 +601,12 @@ describe("account actions", () => {
       data: { status: "completed", referral: { status: "pending" } },
     });
 
-    settledReferral = Effect.fail(new ReferralError({ reason: "unavailable" }));
+    settledReferral = Effect.fail(
+      new DotyposUnavailable({
+        operation: "listReservations",
+        reason: "server",
+      })
+    );
     const unknown = await completeCustomerProfile({ firstName: "Ada" });
     expect(unknown).toEqual({ data: { status: "completed" } });
 
