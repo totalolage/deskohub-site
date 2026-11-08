@@ -69,6 +69,23 @@ export const sampleOrderIds = {
   awaitingFulfillment: CustomerReservationOrderId.make("sample-order-waiting"),
   past: CustomerReservationOrderId.make("sample-order-past"),
   cancelled: CustomerReservationOrderId.make("sample-order-cancelled"),
+  // Status and access screen states; reachable by deep link
+  // (deskohub://reservations/<id>), not listed in the history.
+  upcoming: CustomerReservationOrderId.make("sample-order-upcoming"),
+  accessUnavailable: CustomerReservationOrderId.make(
+    "sample-order-access-unavailable"
+  ),
+  awaitingDelivery: CustomerReservationOrderId.make(
+    "sample-order-awaiting-delivery"
+  ),
+  fulfillmentDelayed: CustomerReservationOrderId.make(
+    "sample-order-fulfillment-delayed"
+  ),
+  paymentFailed: CustomerReservationOrderId.make("sample-order-payment-failed"),
+  expired: CustomerReservationOrderId.make("sample-order-expired"),
+  latePaymentReview: CustomerReservationOrderId.make(
+    "sample-order-late-payment-review"
+  ),
 } as const;
 
 const hour = 60 * 60 * 1000;
@@ -145,6 +162,16 @@ const sampleHistory = (now: Date): CustomerReservationHistory => ({
       endsAt: at(now, -20 * day + 1 * hour),
       seats: 4,
       status: "cancelled",
+    },
+    // Booked outside the website (no order to open) and its seat count
+    // couldn't be read.
+    {
+      id: "sample-reservation-7",
+      product: { kind: "cowork", tier: "open-space" },
+      startsAt: at(now, -30 * day),
+      endsAt: at(now, -30 * day + 8 * hour),
+      seats: null,
+      status: "confirmed",
     },
   ],
   unavailable: [
@@ -244,6 +271,116 @@ const sampleOrders = (now: Date): ReadonlyMap<string, SampleOrder> =>
           status: "cancelled",
           paymentStatus: "cancelled",
           fulfillmentStatus: "not_started",
+        },
+      },
+    ],
+    [
+      sampleOrderIds.upcoming,
+      {
+        state: {
+          orderId: sampleOrderIds.upcoming,
+          kind: "meeting-room",
+          status: "fulfilled",
+          paymentStatus: "paid",
+          fulfillmentStatus: "fulfilled",
+          startsAt: at(now, 3 * day),
+          endsAt: at(now, 3 * day + 3 * hour),
+          setupStartsAt: at(now, 3 * day - 0.5 * hour),
+          total: { value: 180000, exponent: 2, currency: "CZK" },
+        },
+        access: {
+          code: "222222",
+          accessStartsAt: at(now, 3 * day - 0.5 * hour),
+          accessEndsAt: at(now, 3 * day + 3.5 * hour),
+        },
+        invoice: sampleInvoicePdf(),
+      },
+    ],
+    [
+      sampleOrderIds.accessUnavailable,
+      {
+        state: {
+          orderId: sampleOrderIds.accessUnavailable,
+          kind: "cowork",
+          status: "fulfilled",
+          paymentStatus: "paid",
+          fulfillmentStatus: "fulfilled",
+          startsAt: at(now, 1 * day),
+          endsAt: at(now, 1 * day + 8 * hour),
+          total: { value: 45000, exponent: 2, currency: "CZK" },
+        },
+        invoice: sampleInvoicePdf(),
+      },
+    ],
+    [
+      sampleOrderIds.awaitingDelivery,
+      {
+        state: {
+          orderId: sampleOrderIds.awaitingDelivery,
+          kind: "office",
+          status: "paid_awaiting_delivery",
+          paymentStatus: "paid",
+          fulfillmentStatus: "awaiting_delivery",
+          startsAt: at(now, 7 * day),
+          endsAt: at(now, 14 * day),
+          total: { value: 980000, exponent: 2, currency: "CZK" },
+        },
+      },
+    ],
+    [
+      sampleOrderIds.fulfillmentDelayed,
+      {
+        state: {
+          orderId: sampleOrderIds.fulfillmentDelayed,
+          kind: "cowork",
+          status: "paid_fulfillment_delayed",
+          paymentStatus: "paid",
+          fulfillmentStatus: "processing",
+          startsAt: at(now, 4 * day),
+          endsAt: at(now, 4 * day + 8 * hour),
+          total: { value: 45000, exponent: 2, currency: "CZK" },
+        },
+      },
+    ],
+    [
+      sampleOrderIds.paymentFailed,
+      {
+        state: {
+          orderId: sampleOrderIds.paymentFailed,
+          kind: "meeting-room",
+          status: "payment_failed",
+          paymentStatus: "failed",
+          fulfillmentStatus: "not_started",
+          startsAt: at(now, 6 * day),
+          endsAt: at(now, 6 * day + 2 * hour),
+          total: { value: 120000, exponent: 2, currency: "CZK" },
+        },
+      },
+    ],
+    [
+      sampleOrderIds.expired,
+      {
+        state: {
+          orderId: sampleOrderIds.expired,
+          kind: "cowork",
+          status: "expired",
+          paymentStatus: "expired",
+          fulfillmentStatus: "not_started",
+        },
+      },
+    ],
+    [
+      sampleOrderIds.latePaymentReview,
+      {
+        state: {
+          orderId: sampleOrderIds.latePaymentReview,
+          kind: "meeting-room",
+          status: "late_payment_review",
+          paymentStatus: "paid",
+          fulfillmentStatus: "not_started",
+          startsAt: at(now, 2 * day),
+          endsAt: at(now, 2 * day + 2 * hour),
+          total: { value: 120000, exponent: 2, currency: "CZK" },
         },
       },
     ],
