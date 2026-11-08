@@ -5,6 +5,8 @@ import {
   PostHogEventId,
 } from "@deskohub/posthog/identifiers";
 import { Context, Effect, Layer, Option, Predicate } from "effect";
+import type { CustomerAccountId } from "@/features/account/customer-account";
+import { getPostHogAccountDistinctId } from "@/features/account/posthog-account-distinct-id";
 import {
   type AgentTraffic,
   agentTrafficProperties,
@@ -30,8 +32,8 @@ export type ServerEventProperties = Readonly<
 
 /**
  * Whom a server event is about. The subject decides the event's distinct ID,
- * its UUID, and the request context it carries. No event creates a person
- * profile.
+ * its UUID, the request context it carries, and whether PostHog processes a
+ * person for it: only an account's events do.
  */
 type ServerEventSubject =
   /**
@@ -43,6 +45,18 @@ type ServerEventSubject =
   | {
       readonly kind: "record";
       readonly recordId: string;
+      readonly occurrenceId: string;
+    }
+  /**
+   * A customer account's person, the distinct ID the browser identifies the
+   * signed-in account as, for an event the account's analytics consent links
+   * to it. Each event happens once per `occurrenceId`, as for a record. Carries
+   * the request's agent traffic but never the visitor's session, since the
+   * event may be captured outside the account's own request.
+   */
+  | {
+      readonly kind: "account";
+      readonly accountId: CustomerAccountId;
       readonly occurrenceId: string;
     }
   /**
@@ -153,6 +167,19 @@ const addressEvent = (
             ...event.properties,
             ...agentTrafficProperties(traffic),
             $process_person_profile: false,
+          },
+          timestamp: event.timestamp,
+          uuid: PostHogEventId.make(`${subject.occurrenceId}:${event.name}`),
+        })
+      );
+    case "account":
+      return Effect.map(CurrentAgentTraffic, (traffic) =>
+        Option.some({
+          distinctId: getPostHogAccountDistinctId(subject.accountId),
+          event: event.name,
+          properties: {
+            ...event.properties,
+            ...agentTrafficProperties(traffic),
           },
           timestamp: event.timestamp,
           uuid: PostHogEventId.make(`${subject.occurrenceId}:${event.name}`),

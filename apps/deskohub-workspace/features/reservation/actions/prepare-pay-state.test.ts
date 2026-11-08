@@ -69,6 +69,7 @@ import type { ReservationBillingSelectionInput } from "@/features/reservation/re
 import { NoReviewAccounts } from "@/features/review-accounts/backend/review-accounts.repository.mock";
 import { getSlowestSuccessfulCalendarLoad } from "@/shared/backend/config/google-calendar.config.test-utils";
 import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
+import { savedConsentCookie } from "@/shared/testing/consent-cookie.test-utils";
 import { TestSealedStateKeys } from "@/shared/testing/sealed-state-keys.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { withInstantSleeps } from "@/shared/testing/workspace-test-clock.test-utils";
@@ -1520,12 +1521,10 @@ describe("prepareWorkspacePayState", () => {
   });
 
   describe("analytics consent mirror", () => {
-    const savedChoice = `cc_cookie=${encodeURIComponent(
-      JSON.stringify({
-        categories: ["necessary", "analytics"],
-        lastConsentTimestamp: "2026-11-02T09:30:00.000Z",
-      })
-    )}`;
+    const savedChoice = savedConsentCookie({
+      categories: ["necessary", "analytics"],
+      lastConsentTimestamp: "2026-11-02T09:30:00.000Z",
+    });
 
     test("mirrors the booking device's saved choice into the account's ledger", async () => {
       const result = await runReusableReservationScenario({

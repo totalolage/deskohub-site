@@ -34,6 +34,7 @@ let identityListeners: Array<() => void> = [];
 
 mock.module("@/features/legal/actions", () => ({
   recordDeviceAnalyticsConsent,
+  resolveSilentAnalyticsGrantForDevice: () => Promise.resolve({ data: null }),
 }));
 
 mock.module("@/shared/utils/use-workspace-action", () => ({
@@ -41,6 +42,7 @@ mock.module("@/shared/utils/use-workspace-action", () => ({
     execute: ({ occasion }: { readonly occasion: Occasion }) => {
       occasions.push(occasion);
     },
+    executeAsync: () => Promise.resolve({ data: null }),
   }),
 }));
 
@@ -59,9 +61,14 @@ mock.module("@/features/account/analytics-identity", () => ({
 const { AccountAnalyticsConsentMirror } = await import(
   "./account-analytics-consent-mirror"
 );
-const { announceVisitorConsentChange } = await import(
-  "@/features/cookie-consent/visitor-consent"
-);
+const {
+  CONSENT_UPDATED_EVENT,
+  announceVisitorConsentChange,
+  bindVisitorConsentRevision,
+} = await import("@/features/cookie-consent/visitor-consent");
+
+// The banner revision the page was served with in these tests.
+const revision = 7;
 
 const signedIn = (id: string): Identity => ({
   status: "authenticated",
@@ -81,6 +88,7 @@ const saveConsentCookie = (savedAt: string) => {
   document.cookie = `cc_cookie=${encodeURIComponent(
     JSON.stringify({
       categories: ["necessary", "analytics"],
+      revision,
       lastConsentTimestamp: savedAt,
     })
   )}; path=/`;
@@ -105,6 +113,7 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
+  bindVisitorConsentRevision(revision);
   window.happyDOM.setURL("https://deskohub.test/en-US/account");
   occasions = [];
   identity = { status: "anonymous" };
@@ -180,6 +189,27 @@ describe("AccountAnalyticsConsentMirror", () => {
     act(() => {
       saveConsentCookie("2026-11-07T10:00:00.000Z");
       window.dispatchEvent(new Event("focus"));
+    });
+    act(() => announceVisitorConsentChange());
+
+    expect(occasions).toEqual([]);
+  });
+
+  test("records no banner save for the account's own grant applied to the device", async () => {
+    identity = signedIn("account-a");
+    await mountMirror();
+
+    act(() => {
+      saveConsentCookie("2026-11-02T09:30:00.000Z");
+      window.dispatchEvent(
+        new CustomEvent(CONSENT_UPDATED_EVENT, {
+          detail: {
+            _tag: "ConsentUpdated",
+            acceptedCategories: ["necessary", "analytics"],
+            change: "account",
+          },
+        })
+      );
     });
     act(() => announceVisitorConsentChange());
 

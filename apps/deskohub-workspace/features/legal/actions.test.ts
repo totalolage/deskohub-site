@@ -94,6 +94,10 @@ describe("marketing Server Action edges", () => {
       { operation: "legal.marketing-preferences.confirm", logInput: false },
       { operation: "legal.marketing-preferences.clear", logInput: false },
       { operation: "legal.analytics-consent.record-device", logInput: false },
+      {
+        operation: "legal.analytics-consent.resolve-silent-grant",
+        logInput: false,
+      },
     ]);
     for (const invalid of [
       { ...input, confirmed: false },

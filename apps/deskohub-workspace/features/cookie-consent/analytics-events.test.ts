@@ -8,6 +8,9 @@ import {
   test,
 } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { bindVisitorConsentRevision } from "@/features/cookie-consent/visitor-consent";
+import { getConsentBannerRevision } from "@/features/legal/consent-banner-revision";
+import { savedConsentCookieValue } from "@/shared/testing/consent-cookie.test-utils";
 import {
   type AnalyticsEvent,
   captureAnalyticsEvent,
@@ -17,9 +20,7 @@ import {
 
 const setConsentCookie = (categories: readonly string[]) => {
   // biome-ignore lint/suspicious/noDocumentCookie: The test controls the consent cookie the facade reads.
-  document.cookie = `cc_cookie=${encodeURIComponent(
-    JSON.stringify({ categories })
-  )}; Path=/`;
+  document.cookie = `cc_cookie=${savedConsentCookieValue({ categories })}; Path=/`;
 };
 
 let detach: (() => void) | undefined;
@@ -38,6 +39,7 @@ describe("captureAnalyticsEvent", () => {
   });
 
   beforeEach(() => {
+    bindVisitorConsentRevision(getConsentBannerRevision());
     window.happyDOM.setURL("https://deskohub.test/");
   });
 

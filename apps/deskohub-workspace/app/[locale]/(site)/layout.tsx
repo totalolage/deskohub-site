@@ -8,6 +8,7 @@ import { PostHogProvider } from "@/features/cookie-consent/components/posthog-an
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import heroImage from "@/features/landing-page/images/hero.jpeg";
 import { AccountAnalyticsConsentMirror } from "@/features/legal/components/account-analytics-consent-mirror";
+import { getConsentBannerRevision } from "@/features/legal/consent-banner-revision";
 import { getCatalogPriceRange } from "@/features/pricing/price-range";
 import { RememberSharedReferralCodeWhenEnabled } from "@/features/referrals/remember-shared-referral-code-when-enabled";
 import { postHogRuntimeConfig } from "@/shared/backend/config/posthog.config";
@@ -35,7 +36,7 @@ export default async function SiteLayout({
       />
       {gtmId && <DeferredTagManager gtmId={gtmId} />}
       <PostHogProvider>
-        <ConsentBanner locale={locale} />
+        <ConsentBanner locale={locale} revision={getConsentBannerRevision()} />
         <AccountAnalyticsConsentMirror />
         <RememberSharedReferralCodeWhenEnabled />
         <SiteToolsWhenEnabled locale={locale} />

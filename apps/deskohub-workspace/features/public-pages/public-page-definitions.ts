@@ -113,8 +113,8 @@ export const publicPageDefinitions: Readonly<
     contentDate: "2026-10-25",
   },
   "/terms-and-conditions": legalPage("terms-and-conditions", "2026-08-12"),
-  "/privacy-policy": legalPage("privacy-policy", "2026-10-21"),
-  "/cookie-policy": legalPage("cookie-policy", "2026-10-13"),
+  "/privacy-policy": legalPage("privacy-policy", "2026-11-08"),
+  "/cookie-policy": legalPage("cookie-policy", "2026-11-08"),
   "/operating-rules": legalPage("operating-rules", "2026-08-12"),
   "/marketing-communications": legalPage(
     "marketing-communications",
