@@ -17,6 +17,7 @@ import {
   CustomerRequestRejected,
   CustomerReservationNotFound,
   type CustomerReservationsApi,
+  type ProfileCompletionReferralOutcome,
   CustomerServiceUnavailable,
   CustomerSessionAuthentication,
   CustomerSessionRequired,
@@ -78,6 +79,14 @@ type EndpointName = HttpApiEndpoint.Name<
 export class FakeWorkspace {
   data: FakeWorkspaceData;
   signedIn = true;
+  /**
+   * How first-time completion answers a submitted referral code: the outcome
+   * it reports (and stores on the linked account), or `"unavailable"`, which
+   * refuses the completion and creates nothing.
+   */
+  referralCodeAnswer: ProfileCompletionReferralOutcome | "unavailable" = {
+    status: "applied",
+  };
   /** Endpoint names in the order requests reached them. */
   readonly calls: EndpointName[] = [];
   private readonly outcomes = new Map<EndpointName, FakeRequestOutcome[]>();
@@ -207,7 +216,14 @@ const serverLayer = (workspace: FakeWorkspace) => {
           ).pipe(Effect.as({ status: "updated" as const }))
         )
         .handle("completeProfile", ({ payload }) =>
-          Effect.suspend(() => {
+          Effect.suspend((): Effect.Effect<
+            | {
+                readonly status: "completed";
+                readonly referral?: ProfileCompletionReferralOutcome;
+              }
+            | { readonly status: "referral-code-unavailable" },
+            CustomerAccountLinkRequired
+          > => {
             const current = workspace.data.account;
             if (current.kind !== "completion-required") {
               return Effect.fail(
@@ -216,6 +232,15 @@ const serverLayer = (workspace: FakeWorkspace) => {
                 })
               );
             }
+            const answer = workspace.referralCodeAnswer;
+            if (payload.referralCode !== undefined && answer === "unavailable")
+              return Effect.succeed({
+                status: "referral-code-unavailable" as const,
+              });
+            const referral =
+              payload.referralCode === undefined || answer === "unavailable"
+                ? undefined
+                : answer;
             return update((data) => ({
               ...data,
               account: {
@@ -228,8 +253,14 @@ const serverLayer = (workspace: FakeWorkspace) => {
                 avatar: { kind: "available", avatar: null },
                 referralsEnabled: current.referralsEnabled,
                 referrals: data.referrals,
+                ...(referral && { signupReferral: referral }),
               },
-            })).pipe(Effect.as({ status: "completed" as const }));
+            })).pipe(
+              Effect.as({
+                status: "completed" as const,
+                ...(referral && { referral }),
+              })
+            );
           })
         )
         .handle("uploadAvatar", () =>
@@ -298,7 +329,11 @@ const serverLayer = (workspace: FakeWorkspace) => {
                 )
           )
         )
-        .handle("acknowledgeSignupReferral", () => Effect.void)
+        .handle("acknowledgeSignupReferral", () =>
+          Effect.flatMap(linkedAccount, ({ signupReferral: _, ...current }) =>
+            update((data) => ({ ...data, account: current }))
+          )
+        )
         .handle("requestDeletion", () =>
           Effect.sync(() => {
             workspace.signedIn = false;
