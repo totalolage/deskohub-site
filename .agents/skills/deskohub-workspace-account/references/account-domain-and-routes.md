@@ -182,13 +182,17 @@ glossary defines the customer account, reservation author, and tombstone.
   `local` save. The analytics session then resets the browser identity on
   off, or re-verifies the account and identifies on on. The switch is
   optimistic and returns to the last saved value when the save fails or the
-  session ended; nothing is written to the device then.
+  session ended; nothing is written to the device then. A device choice
+  saved while the save ran (its own analytics switch, another tab) or a
+  change of signed-in account also leaves the device as it is.
 - Other devices take a withdrawal at their next signed-in page load: the
   hydration mirror (`recordSignedInDeviceAnalyticsConsent`) returns the
   account's withdrawal when the device's saved choice accepts analytics and
   the ledger didn't take that choice over it, and
   `AccountAnalyticsConsentMirror` declines analytics on the device, dated at
-  the withdrawal, unless the device's choice changed while the request ran.
+  the withdrawal, unless the device's choice or the signed-in account
+  changed while the request ran. A device choice dated at the withdrawal's
+  own instant takes the withdrawal too.
   A grant reaches only devices without a choice, through the silent grant.
 - Build account, section, and sign-in URLs with `features/account/routes.ts`.
   Its helpers pass Next's generated `/[locale]/...` route patterns, with any
