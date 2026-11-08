@@ -11,7 +11,11 @@ import {
 import { FakeWorkspace } from "../../customer-api/testing/fake-workspace";
 import { sampleOrderIds } from "../../customer-api/testing/sample-fixtures";
 import { eventually, quietly } from "../../testing/eventually";
-import { makeOrderStatusAtoms } from "./order-status-state";
+import {
+  focusGained,
+  focusLost,
+  makeOrderStatusAtoms,
+} from "./order-status-state";
 import type { StatusRefreshState } from "./status-refresh";
 import type { StatusVisit } from "./status-refresh-rules";
 
@@ -27,29 +31,46 @@ const harness = (visit: StatusVisit = "normal") => {
   );
   const foreground = Atom.make(true);
   const atoms = makeOrderStatusAtoms(foreground);
-  const status = atoms.status(orderId)(visit);
-  const states: Array<StatusRefreshState> = [];
+  const status = atoms.status(orderId);
+  // Each state the screen saw, with the number of reads sent by then.
+  const seen: Array<{ readonly state: StatusRefreshState; readonly reads: number }> = [];
+  const reads = () =>
+    workspace.calls.filter((call) => call === "getReservationStatus").length;
   // Keeps the runtime (and its test clock) alive like a mounted screen does.
   const unmountRuntime = registry.mount(customerDataRuntime);
   const unmount = registry.subscribe(
     status,
     (result) =>
       Option.map(AsyncResult.value(result), (state) => {
-        if (states.at(-1) !== state) states.push(state);
+        if (seen.at(-1)?.state !== state) seen.push({ state, reads: reads() });
       }),
     { immediate: true }
   );
-  const reads = () =>
-    workspace.calls.filter((call) => call === "getReservationStatus").length;
+  /**
+   * Settles once `count` reads were sent and the screen shows the outcome of
+   * the last one, then lets the refreshes reach their next wait.
+   */
   const readsSettled = (count: number) =>
-    eventually(
-      () =>
+    eventually(() => {
+      const last = seen.at(-1);
+      return (
         reads() === count &&
-        Option.match(AsyncResult.value(registry.get(status)), {
-          onNone: () => false,
-          onSome: (state) => !state.reading,
-        })
-    );
+        last !== undefined &&
+        last.reads === count &&
+        !last.state.reading
+      );
+    }, () =>
+      JSON.stringify({
+        expected: count,
+        reads: reads(),
+        seen: seen.map(({ state, reads }) => [
+          reads,
+          state.reading,
+          state.attempt,
+          state.automatic._tag,
+        ]),
+      })
+    ).pipe(Effect.andThen(quietly));
   const adjust = (duration: Duration.Input) =>
     Effect.runPromise(
       Effect.flatMap(
@@ -64,12 +85,16 @@ const harness = (visit: StatusVisit = "normal") => {
     atoms,
     status,
     foreground,
-    states,
     reads,
     readsSettled: (count: number) => settle(readsSettled(count)),
     quietly: () => settle(quietly),
     adjust,
-    focus: (focused: boolean) => registry.set(atoms.focused(orderId), focused),
+    focus: (focused: boolean) =>
+      registry.update(
+        atoms.focus(orderId),
+        focused ? focusGained(visit) : focusLost
+      ),
+    tap: () => registry.update(atoms.refreshRequests(orderId), (n) => n + 1),
     dispose: () => {
       unmount();
       unmountRuntime();
@@ -105,19 +130,56 @@ describe("order status atoms", () => {
     h.dispose();
   });
 
-  test("going to the background cancels the pending refresh", async () => {
+  test("the background interrupts refreshes; the foreground continues the same count", async () => {
     const h = harness();
     h.focus(true);
     await h.readsSettled(1);
+    await h.adjust("10 seconds");
+    await h.readsSettled(2);
 
     h.registry.set(h.foreground, false);
     await h.adjust("30 minutes");
     await h.quietly();
-
-    expect(h.reads()).toBe(1);
+    expect(h.reads()).toBe(2);
 
     h.registry.set(h.foreground, true);
+    await h.quietly();
+    expect(h.reads()).toBe(2);
+    await h.adjust("20 seconds");
+    await h.readsSettled(3);
+    await h.adjust("40 seconds");
+    await h.readsSettled(4);
+    await h.adjust("30 minutes");
+    await h.quietly();
+
+    expect(h.reads()).toBe(4);
+    h.dispose();
+  });
+
+  test("a stop after 429 holds across the background for the same visit", async () => {
+    const h = harness();
+    h.focus(true);
+    await h.readsSettled(1);
+    h.workspace.fail("getReservationStatus", "rate-limited");
+    await h.adjust("10 seconds");
     await h.readsSettled(2);
+
+    h.registry.set(h.foreground, false);
+    h.registry.set(h.foreground, true);
+    await h.adjust("30 minutes");
+    await h.quietly();
+
+    expect(h.reads()).toBe(2);
+    h.dispose();
+  });
+
+  test("shows the screen as waiting only while a read is under way", async () => {
+    const h = harness();
+    h.focus(true);
+    await h.readsSettled(1);
+
+    const shown = h.registry.get(h.status);
+    expect(AsyncResult.isSuccess(shown) && shown.waiting).toBe(false);
     h.dispose();
   });
 
@@ -153,7 +215,7 @@ describe("order status atoms", () => {
       await h.readsSettled(reads);
     }
 
-    h.registry.update(h.atoms.refreshRequests(orderId), (count) => count + 1);
+    h.tap();
     await h.readsSettled(5);
     await h.adjust("30 minutes");
     await h.quietly();
@@ -169,6 +231,33 @@ describe("order status atoms", () => {
 
     await h.adjust("3 seconds");
     await h.readsSettled(2);
+    h.dispose();
+  });
+
+  test("quick taps read one after the other; a later tap reads again", async () => {
+    const h = harness();
+    h.focus(true);
+    await h.readsSettled(1);
+    for (const [seconds, reads] of [
+      [10, 2],
+      [20, 3],
+      [40, 4],
+    ] as const) {
+      await h.adjust(Duration.seconds(seconds));
+      await h.readsSettled(reads);
+    }
+
+    // The registry may hand both taps over at once; either way the reads
+    // run one after the other.
+    h.tap();
+    h.tap();
+    await h.quietly();
+    const afterTaps = h.reads();
+    expect([5, 6]).toContain(afterTaps);
+    await h.readsSettled(afterTaps);
+
+    h.tap();
+    await h.readsSettled(afterTaps + 1);
     h.dispose();
   });
 });

@@ -44,9 +44,11 @@ const statusReads = (workspace: FakeWorkspace) =>
 const harness = ({
   visit = "normal",
   orderId = sampleOrderIds.pending,
+  resume = Option.none(),
 }: {
   readonly visit?: StatusVisit;
   readonly orderId?: CustomerReservationOrderId;
+  readonly resume?: Option.Option<StatusRefreshState>;
 } = {}) => {
   const workspace = FakeWorkspace.forKind("linked");
   const layer = Layer.mergeAll(
@@ -64,7 +66,8 @@ const harness = ({
     eventually(
       () =>
         reads() === count &&
-        states.filter((state) => state.reading).length === count - 1 &&
+        states.filter((state) => state.reading).length ===
+          count - (Option.isNone(resume) ? 1 : 0) &&
         last()?.reading === false
     );
   const run = <A, E>(
@@ -77,6 +80,7 @@ const harness = ({
         remainingBudget: remainingReadBudget,
         visit,
         manualRequests: Stream.fromQueue(manual),
+        resume,
       }).pipe(
         Stream.runForEach((state) => Effect.sync(() => states.push(state))),
         Effect.forkChild
@@ -242,6 +246,7 @@ describe("statusRefreshes", () => {
           remainingBudget: remainingReadBudget,
           visit: "normal",
           manualRequests: Stream.never,
+          resume: Option.none(),
         }).pipe(
           Stream.runCollect,
           Effect.provide(
@@ -313,5 +318,81 @@ describe("statusRefreshes", () => {
     expect(h.reads()).toBe(3);
     expect(h.last()?.failure).toEqual(Option.none());
     expect(stopped(h.last())).toBe("limited");
+  });
+
+  test("rechecks the budget after waiting and skips the read when it ran low", async () => {
+    const h = harness();
+
+    await h.run(() =>
+      Effect.gen(function* () {
+        yield* h.readsSettled(1);
+        const budget = yield* DotyposReadBudget;
+        // Other screens spend 12 reads while the screen waits: 7 are left.
+        yield* Effect.repeat(budget.spend, { times: 11 });
+        yield* TestClock.adjust("10 seconds");
+        yield* eventually(() => stopped(h.last()) === "budget");
+        yield* TestClock.adjust("30 minutes");
+        yield* quietly;
+      })
+    );
+
+    expect(h.reads()).toBe(1);
+  });
+
+  test("a resumed run continues its automatic count without a first read", async () => {
+    const first = harness();
+    await first.run(() =>
+      Effect.gen(function* () {
+        yield* first.readsSettled(1);
+        yield* TestClock.adjust("10 seconds");
+        yield* first.readsSettled(2);
+      })
+    );
+    const left = first.last();
+    expect(left?.attempt).toBe(1);
+
+    const h = harness({ resume: Option.fromUndefinedOr(left) });
+    await h.run(() =>
+      Effect.gen(function* () {
+        yield* quietly;
+        expect(h.reads()).toBe(0);
+        yield* TestClock.adjust("19 seconds");
+        yield* quietly;
+        expect(h.reads()).toBe(0);
+        yield* TestClock.adjust("1 second");
+        yield* h.readsSettled(1);
+        yield* TestClock.adjust("40 seconds");
+        yield* h.readsSettled(2);
+        yield* TestClock.adjust("30 minutes");
+        yield* quietly;
+      })
+    );
+
+    expect(h.reads()).toBe(2);
+    expect(stopped(h.last())).toBe("exhausted");
+  });
+
+  test("a resumed run that had stopped stays stopped but answers taps", async () => {
+    const first = harness();
+    await first.run(() =>
+      Effect.gen(function* () {
+        yield* first.readsSettled(1);
+        first.workspace.fail("getReservationStatus", "rate-limited");
+        yield* TestClock.adjust("10 seconds");
+        yield* first.readsSettled(2);
+      })
+    );
+
+    const h = harness({ resume: Option.fromUndefinedOr(first.last()) });
+    await h.run((manual) =>
+      Effect.gen(function* () {
+        yield* TestClock.adjust("30 minutes");
+        yield* quietly;
+        expect(h.reads()).toBe(0);
+        expect(stopped(h.last())).toBe("limited");
+        yield* Queue.offer(manual, undefined);
+        yield* eventually(() => h.reads() === 1 && h.last()?.reading === false);
+      })
+    );
   });
 });

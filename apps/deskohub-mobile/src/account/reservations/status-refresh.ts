@@ -5,8 +5,10 @@ import {
   CustomerViewError,
   toCustomerViewError,
 } from "../../customer-api/customer-view-error";
+import { allowsAutomaticRefresh } from "../../customer-api/dotypos-read-budget";
 import {
   AutomaticRefresh,
+  type AutomaticRefreshStop,
   type StatusVisit,
   nextAutomaticRefresh,
 } from "./status-refresh-rules";
@@ -19,6 +21,8 @@ export interface StatusRefreshState {
   readonly reading: boolean;
   /** When the screen reads the order again on its own, or why it stopped. */
   readonly automatic: AutomaticRefresh;
+  /** The automatic reads made since the screen came into view. */
+  readonly attempt: number;
   /** Why the last read failed; the order shown is the one read before. */
   readonly failure: Option.Option<CustomerViewError>;
 }
@@ -35,10 +39,30 @@ export interface StatusRefreshInput<R> {
   readonly visit: StatusVisit;
   /** The customer's refresh taps; honoured once automatic refreshes stop. */
   readonly manualRequests: Stream.Stream<unknown>;
+  /**
+   * Where an interrupted run of the same screen visit left off (the app went
+   * to the background): it continues without a new first read, keeps the
+   * automatic reads already made, and stays stopped if it had stopped.
+   */
+  readonly resume: Option.Option<StatusRefreshState>;
 }
 
-const stopReasonOf = (failure: CustomerViewError) =>
+const stopReasonOf = (failure: CustomerViewError): AutomaticRefreshStop =>
   CustomerViewError.$is("RateLimited")(failure) ? "limited" : "failed";
+
+const firstState = (order: CustomerOrderState): StatusRefreshState => ({
+  order,
+  reading: false,
+  automatic: AutomaticRefresh.Stopped({ reason: "settled" }),
+  attempt: 0,
+  failure: Option.none(),
+});
+
+// A run interrupted mid-read has no read under way any more.
+const resumedState = (state: StatusRefreshState): StatusRefreshState => ({
+  ...state,
+  reading: false,
+});
 
 /**
  * Reads an order and keeps it up to date while the screen is in view: the
@@ -46,23 +70,22 @@ const stopReasonOf = (failure: CustomerViewError) =>
  * fails the stream), then the screen reads again on the visit's schedule
  * until the order settles, the budget runs low, the schedule is used up or a
  * read fails, and after that only when the customer asks. A manual refresh
- * never restarts automatic refreshes; a new stream (the screen coming back
- * into view) does. Interrupting the stream cancels the pending wait or read.
+ * never restarts automatic refreshes. Interrupting the stream cancels the
+ * pending wait or read; `resume` continues from where it stopped.
  */
 export const statusRefreshes = <R>(
   input: StatusRefreshInput<R>
 ): Stream.Stream<StatusRefreshState, CustomerRequestFailure, R> =>
   Stream.unwrap(
-    Effect.map(input.read, (order) =>
-      Stream.callback<StatusRefreshState, never, R>((queue) =>
-        Effect.flatMap(
-          Ref.make<StatusRefreshState>({
-            order,
-            reading: false,
-            automatic: AutomaticRefresh.Stopped({ reason: "settled" }),
-            failure: Option.none(),
-          }),
-          (current) => refreshLoop(input, current, queue)
+    Option.match(input.resume, {
+      onNone: () => Effect.map(input.read, firstState),
+      onSome: (state) => Effect.succeed(resumedState(state)),
+    }).pipe(
+      Effect.map((start) =>
+        Stream.callback<StatusRefreshState, never, R>((queue) =>
+          Effect.flatMap(Ref.make(start), (current) =>
+            refreshLoop(input, current, queue)
+          )
         )
       )
     )
@@ -77,6 +100,12 @@ const refreshLoop = <R>(
     Effect.flatMap(Ref.updateAndGet(current, change), (state) =>
       Queue.offer(queue, state)
     );
+
+  const stop = (reason: AutomaticRefreshStop) =>
+    publish((state) => ({
+      ...state,
+      automatic: AutomaticRefresh.Stopped({ reason }),
+    }));
 
   // Marks the read, runs it and keeps the order or the failure; answers the
   // failure so the caller can stop.
@@ -99,6 +128,24 @@ const refreshLoop = <R>(
     Effect.map(({ failure }) => failure)
   );
 
+  // One automatic read, unless the budget ran low while waiting for it.
+  const automaticRead = (attempt: number): Effect.Effect<void, never, R> =>
+    Effect.flatMap(input.remainingBudget, (remaining) =>
+      allowsAutomaticRefresh(remaining)
+        ? readOnce.pipe(
+            Effect.tap(() =>
+              publish((state) => ({ ...state, attempt: attempt + 1 }))
+            ),
+            Effect.flatMap(
+              Option.match({
+                onNone: () => automaticFrom(attempt + 1),
+                onSome: (failure) => stop(stopReasonOf(failure)),
+              })
+            )
+          )
+        : stop("budget")
+    );
+
   const automaticFrom = (attempt: number): Effect.Effect<void, never, R> =>
     Effect.Do.pipe(
       Effect.bind("remainingBudget", () => input.remainingBudget),
@@ -118,27 +165,25 @@ const refreshLoop = <R>(
         AutomaticRefresh.$match(next, {
           Stopped: () => Effect.void,
           After: ({ delay }) =>
-            Effect.sleep(delay).pipe(
-              Effect.andThen(readOnce),
-              Effect.flatMap(
-                Option.match({
-                  onNone: () => automaticFrom(attempt + 1),
-                  onSome: (failure) =>
-                    publish((state) => ({
-                      ...state,
-                      automatic: AutomaticRefresh.Stopped({
-                        reason: stopReasonOf(failure),
-                      }),
-                    })),
-                })
-              )
-            ),
+            Effect.sleep(delay).pipe(Effect.andThen(automaticRead(attempt))),
         })
-      ),
-      Effect.asVoid
+      )
     );
 
-  return automaticFrom(0).pipe(
+  // A fresh run schedules from the start; a resumed one continues its count,
+  // or, when it had stopped, shows where it stopped and waits for taps.
+  const automaticRefreshes = Effect.flatMap(Ref.get(current), (start) =>
+    Option.match(input.resume, {
+      onNone: () => automaticFrom(0),
+      onSome: () =>
+        AutomaticRefresh.$match(start.automatic, {
+          Stopped: () => publish(resumedState),
+          After: () => automaticFrom(start.attempt),
+        }),
+    })
+  );
+
+  return automaticRefreshes.pipe(
     Effect.andThen(
       Stream.runForEach(input.manualRequests, () => Effect.asVoid(readOnce))
     )
