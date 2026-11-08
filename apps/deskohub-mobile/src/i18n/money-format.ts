@@ -13,7 +13,9 @@ export const minorUnitsText = ({
   value,
   exponent,
 }: Pick<MinorUnitMoney, "value" | "exponent">): string => {
-  const digits = Math.abs(value).toString().padStart(exponent + 1, "0");
+  const digits = Math.abs(value)
+    .toString()
+    .padStart(exponent + 1, "0");
   const whole = digits.slice(0, digits.length - exponent);
   const fraction = digits.slice(digits.length - exponent);
   return `${value < 0 ? "-" : ""}${whole}${exponent > 0 ? `.${fraction}` : ""}`;
