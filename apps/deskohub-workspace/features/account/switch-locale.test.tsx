@@ -3,6 +3,7 @@ import { testEmailAddress } from "@deskohub/test-email";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import type { LocalePreferenceSaving } from "@/features/account/switch-locale";
 import { type Locale, m } from "@/features/i18n";
+import { languageNames } from "@/features/i18n/language-labels";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -68,7 +69,7 @@ test("the header switcher and the profile language control switch through the sa
 
   fireEvent.click(
     view.getByRole("link", {
-      name: m.languageCzech({}, { locale: "en-US" }),
+      name: languageNames["cs-CZ"],
     })
   );
 

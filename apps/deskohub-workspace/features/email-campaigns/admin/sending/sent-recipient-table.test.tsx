@@ -67,7 +67,7 @@ test("labels recipients in the Czech admin locale", () => {
   expect(
     view.getAllByText("Odvolaný marketingový souhlas").length
   ).toBeGreaterThan(0);
-  expect(view.getByText("Angličtina · od 14. 10. 2026 10:00")).toBeTruthy();
+  expect(view.getByText("English · od 14. 10. 2026 10:00")).toBeTruthy();
   expect(
     view.getByText("Přeskočeno: Odvolaný marketingový souhlas")
   ).toBeTruthy();

@@ -1,4 +1,8 @@
-import type { EmailDraftFormValues } from "./email-draft-form";
+import type { Locale } from "@/features/i18n";
+import type {
+  EmailDraftFormValues,
+  EmailDraftTranslation,
+} from "./email-draft-form";
 import type { EmailEditorDiscount } from "./email-values-section";
 
 /** A synthetic discount the fixtures' discount value issues codes from. */
@@ -13,7 +17,8 @@ export const fixtureImageCloudName = "cloud";
 /**
  * A draft with every kind of problem the editor must show: a reference to a
  * value that no longer exists, an incomplete Czech translation, a used and an
- * unused definition. Synthetic content only.
+ * unused definition. Every Workspace language has a translation, so every
+ * editor tab has texts to show. Synthetic content only.
  */
 export const fixtureDraft: EmailDraftFormValues = {
   purpose: "marketing",
@@ -93,5 +98,5 @@ export const fixtureDraft: EmailDraftFormValues = {
         "heading-1-text": [{ _tag: "Text", text: "Vítejte zpět" }],
       },
     },
-  },
+  } satisfies Record<Locale, EmailDraftTranslation>,
 };

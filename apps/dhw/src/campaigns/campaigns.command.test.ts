@@ -1162,9 +1162,9 @@ describe("dhw campaigns audiences", () => {
     [
       [
         "--filter",
-        '{"attribute":"locale","_tag":"Condition","operator":"anyOf","value":["de-DE"]}',
+        '{"attribute":"locale","_tag":"Condition","operator":"anyOf","value":["xx-XX"]}',
       ],
-      'Expected "cs-CZ" | "en-US", got "de-DE"\n  at ["value"][0]',
+      'got "xx-XX"\n  at ["value"][0]',
     ],
     [
       [

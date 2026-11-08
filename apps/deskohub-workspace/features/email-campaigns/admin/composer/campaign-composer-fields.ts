@@ -1,3 +1,4 @@
+import { mapSupportedLocales } from "@deskohub/i18n/locale-registry";
 import type {
   AdministrationCampaignContentInputType,
   AdministrationCampaignEditorContentType,
@@ -55,10 +56,9 @@ export const createCampaignComposerFields = (locale: Locale) =>
     templateKey: CampaignTemplateKey,
     /** Empty means no audience yet. */
     audienceId: Schema.String,
-    locales: Schema.Struct({
-      "cs-CZ": CampaignComposerLocaleFields,
-      "en-US": CampaignComposerLocaleFields,
-    }),
+    locales: Schema.Struct(
+      mapSupportedLocales(() => CampaignComposerLocaleFields)
+    ),
   });
 
 export type CampaignComposerFields = ReturnType<
@@ -77,7 +77,7 @@ export const newCampaignComposerFields: CampaignComposerFields = {
   purpose: "marketing",
   templateKey: "workspace",
   audienceId: "",
-  locales: { "cs-CZ": emptyLocaleFields, "en-US": emptyLocaleFields },
+  locales: mapSupportedLocales(() => emptyLocaleFields),
 };
 
 const localeFieldsFromContent = (
@@ -100,10 +100,9 @@ export const campaignComposerFieldsFromCampaign = (
   purpose: campaign.purpose,
   templateKey: campaign.templateKey,
   audienceId: campaign.audienceId ?? "",
-  locales: {
-    "cs-CZ": localeFieldsFromContent(campaign.content["cs-CZ"]),
-    "en-US": localeFieldsFromContent(campaign.content["en-US"]),
-  },
+  locales: mapSupportedLocales((locale) =>
+    localeFieldsFromContent(campaign.content[locale])
+  ),
 });
 
 /** The locale has any text, so saving keeps it as campaign content. */

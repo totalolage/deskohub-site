@@ -1,4 +1,5 @@
 import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
+import { supportedLocales } from "@deskohub/i18n/locale-registry";
 import { EmailDraft } from "@deskohub/workspace-admin-api";
 import { Schema } from "effect";
 import { useState } from "react";
@@ -27,8 +28,6 @@ const locale = mountPoint.dataset.locale as Locale;
 const initialDraft: EmailDraftFormValues = mountPoint.dataset.draft
   ? Schema.decodeUnknownSync(EmailDraft)(JSON.parse(mountPoint.dataset.draft))
   : fixtureDraft;
-/** The Workspace languages, as the host passes them. */
-const locales = ["cs-CZ", "en-US"] as const satisfies readonly Locale[];
 
 /** Synthetic sample values the host supplies; the rest show by name. */
 const sampleValues: EmailPreviewValues = {
@@ -98,7 +97,8 @@ const discounts: readonly EmailEditorDiscount[] = [fixtureDiscount];
 const editorProps: EmailEditorProps = {
   discounts,
   imageCloudName: fixtureImageCloudName,
-  locales,
+  // The Workspace's languages, as the host passes them.
+  locales: supportedLocales,
   renderPreview,
   values: sampleValues,
 };

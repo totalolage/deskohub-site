@@ -30,6 +30,7 @@ import {
   voucherIdSchema,
 } from "@/features/discounts/persistence-contracts";
 import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
+import type { Locale } from "@/features/i18n";
 import type { Money } from "@/shared/money/money";
 import { type WorkspaceE2EError, workspaceE2EError } from "../errors";
 import { log } from "../runtime";
@@ -469,7 +470,7 @@ export const setE2ECalendarSaleReservedDeskEligibility = (
 interface DiscountDefinitionFixture {
   readonly basisPoints: number;
   readonly id: StoredDiscountId;
-  readonly labels: Readonly<Record<"cs-CZ" | "en-US", string>>;
+  readonly labels: Readonly<Record<Locale, string>>;
   readonly products: readonly WorkspaceProductTarget[];
 }
 

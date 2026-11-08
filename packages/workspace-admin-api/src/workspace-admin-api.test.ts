@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
+import { supportedLocales } from "@deskohub/i18n/locale-registry";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Context, Effect, Layer, Option, Schema, Struct } from "effect";
 import { HttpRouter, HttpServer } from "effect/unstable/http";
@@ -38,6 +39,7 @@ import {
   AdministrationDotyposCustomerId,
   AdministrationDotyposDiscountGroupId,
   AdministrationInvoiceCreateInput,
+  AdministrationInvoiceDetail,
   AdministrationInvoiceListItem,
   AdministrationOverview,
   AdministrationOverviewMetric,
@@ -1206,5 +1208,16 @@ describe("administration operation groups", () => {
           .annotate(MinimumDhwVersion, Option.some(minimum))
       )
     ).not.toThrow();
+  });
+});
+
+describe("invoice locale contract", () => {
+  test("invoices are written in exactly the supported locales", () => {
+    expect(AdministrationInvoiceCreateInput.fields.locale.literals).toEqual(
+      supportedLocales
+    );
+    expect(AdministrationInvoiceDetail.fields.locale.literals).toEqual(
+      supportedLocales
+    );
   });
 });

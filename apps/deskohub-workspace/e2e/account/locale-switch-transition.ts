@@ -4,6 +4,7 @@ import {
   getAccountSectionPath,
 } from "@/features/account/routes";
 import { type Locale, locales, m } from "@/features/i18n";
+import { languageNames } from "@/features/i18n/language-labels";
 import {
   type WorkspaceE2EAccountLocaleSwitchDiagnosticCode,
   workspaceE2EError,
@@ -20,10 +21,6 @@ import {
 const accountProfilePath = (locale: Locale) =>
   getAccountSectionPath(locale, "profile");
 const languageTriggerSelector = `${accountSectionLandmarks.profile} [data-slot="select-trigger"]`;
-const languageOptionLabels = {
-  "cs-CZ": "Čeština",
-  "en-US": "English (US)",
-} as const satisfies Readonly<Record<Locale, string>>;
 const localeSwitchLinkSelector = (locale: Locale) =>
   `[data-locale-switcher] a[href^="/${locale}"]`;
 const mobileMenuToggleSelector =
@@ -145,7 +142,7 @@ const chooseProfileLanguage = async (page: Page, to: Locale) => {
   );
   await trigger.click({ timeout: workspaceE2ETimeouts.browserAction });
   await page
-    .getByRole("option", { name: languageOptionLabels[to] })
+    .getByRole("option", { name: languageNames[to] })
     .click({ timeout: workspaceE2ETimeouts.browserAction });
 };
 

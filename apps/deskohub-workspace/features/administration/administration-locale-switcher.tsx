@@ -1,9 +1,9 @@
 "use client";
 
+import { getLocaleDefinition } from "@deskohub/i18n/locale-registry";
 import { type MouseEvent, Suspense } from "react";
 import type { LocalePreferenceSaving } from "@/features/account/switch-locale";
 import { type Locale, locales } from "@/features/i18n";
-import { getLanguageLabels } from "@/features/i18n/language-labels";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { useLocaleSwitch } from "@/shared/components/locale-switcher";
 import { m } from "./i18n";
@@ -11,13 +11,11 @@ import { m } from "./i18n";
 type LocaleOptionsProps = {
   readonly currentLocale: Locale;
   readonly label: string;
-  readonly languageLabels: Record<Locale, string>;
 };
 
 function LocaleOptions({
   currentLocale,
   label,
-  languageLabels,
   getLocaleHref,
   selectLocale,
 }: LocaleOptionsProps & {
@@ -41,7 +39,7 @@ function LocaleOptions({
                     : "block px-2.5 py-1.5 text-navy-blue/65"
                 }
               >
-                {languageLabels[locale]}
+                {getLocaleDefinition(locale).nativeName}
               </span>
             ) : (
               <a
@@ -50,7 +48,7 @@ function LocaleOptions({
                 hrefLang={locale}
                 onClick={(event) => selectLocale?.(locale, event)}
               >
-                {languageLabels[locale]}
+                {getLocaleDefinition(locale).nativeName}
               </a>
             )}
           </li>
@@ -89,7 +87,6 @@ export function AdministrationLocaleSwitcher({
   const props = {
     currentLocale: locale,
     label: m.shellLanguageSwitcherLabel({}, { locale }),
-    languageLabels: getLanguageLabels(locale),
   };
   return (
     <Suspense fallback={<LocaleOptions {...props} />}>

@@ -15,6 +15,7 @@ import { normalizedOfficeReservationOrderSchema } from "@/features/reservation/o
 import { censorDatabaseQueryParams } from "@/shared/backend/logging/censorship";
 import { CENSORED_LOG_VALUE } from "@/shared/utils/log-classification";
 import {
+  accountingDocumentIdentitySchema,
   accountingDocumentSnapshotSchema,
   decodeStoredAccountingDocumentSnapshot,
   makeAccountingDocumentSnapshot,
@@ -245,4 +246,13 @@ describe("accounting document snapshot", () => {
       CENSORED_LOG_VALUE,
     ]);
   });
+});
+
+test("keeps a document only in a language Workspace serves", () => {
+  const decodeLocale = Schema.decodeUnknownSync(
+    accountingDocumentIdentitySchema.fields.locale
+  );
+  expect(decodeLocale("cs-CZ")).toBe("cs-CZ");
+  expect(decodeLocale("en-US")).toBe("en-US");
+  expect(() => decodeLocale("zz-ZZ")).toThrow();
 });

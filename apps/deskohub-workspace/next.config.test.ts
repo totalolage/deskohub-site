@@ -2,6 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { supportedLocales } from "@deskohub/i18n/locale-registry";
 import {
   getRewrittenUrl,
   unstable_getResponseFromNextConfig,
@@ -146,6 +147,15 @@ const resolveRedirect = async (path: string) => {
     location: response.headers.get("location"),
   };
 };
+
+test("routes every supported locale's dotted paths and reservation link", async () => {
+  for (const locale of supportedLocales) {
+    expect(await resolveRewrite(`/${locale}/nope.html`)).toBeNull();
+    expect(
+      (await resolveRedirect(`/${locale}/reservation`)).location
+    ).toStartWith(`https://workspace.example/${locale}/reservation/cowork?`);
+  }
+});
 
 test("drops a trailing slash everywhere except inside the installed app's scope", async () => {
   for (const [path, location] of [

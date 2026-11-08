@@ -1,4 +1,8 @@
 import {
+  getLocaleDefinition,
+  isSupportedLocale,
+} from "@deskohub/i18n/locale-registry";
+import {
   type EmailContentLocation,
   type EmailDocumentProblem,
   type EmailDraft,
@@ -27,18 +31,13 @@ export type EmailEditorProblem = {
   readonly place: string;
 };
 
-const languageNames = {
-  "en-US": m.emailsEditorLanguageEnglish,
-  "cs-CZ": m.emailsEditorLanguageCzech,
-} as const satisfies Record<Locale, typeof m.emailsEditorLanguageEnglish>;
-
-/** A Workspace language's name in the administrator's language. */
-export const emailEditorLanguageName = (
-  language: string,
-  locale: Locale
-): string =>
-  Object.hasOwn(languageNames, language)
-    ? languageNames[language as Locale]({}, { locale })
+/**
+ * A language's name in itself, or the code of a language Workspace no longer
+ * serves.
+ */
+export const emailEditorLanguageName = (language: string): string =>
+  isSupportedLocale(language)
+    ? getLocaleDefinition(language).nativeName
     : language;
 
 const componentSettingMessages = {
@@ -125,7 +124,6 @@ export const emailEditorProblems = ({
   const decoded = draft as EmailDraft;
   const structure = draft.structure ?? [];
   const values = draft.values ?? [];
-  const language = (code: string) => emailEditorLanguageName(code, locale);
   const blockNumber = (componentId: string | undefined) =>
     structure.findIndex((component) => component.id === componentId) + 1;
   const valueIndex = (name: string) =>
@@ -189,7 +187,7 @@ export const emailEditorProblems = ({
           fieldId: emailEditorFieldIds.translation(code, "subject"),
           locale: code,
           place: m.emailsEditorPlaceSubject(
-            { language: language(code) },
+            { language: emailEditorLanguageName(code) },
             { locale }
           ),
         };
@@ -198,7 +196,7 @@ export const emailEditorProblems = ({
           fieldId: emailEditorFieldIds.translation(code, "preheader"),
           locale: code,
           place: m.emailsEditorPlacePreheader(
-            { language: language(code) },
+            { language: emailEditorLanguageName(code) },
             { locale }
           ),
         };
@@ -207,7 +205,7 @@ export const emailEditorProblems = ({
           fieldId: emailEditorFieldIds.translation(code, "operationalReason"),
           locale: code,
           place: m.emailsEditorPlaceOperationalReason(
-            { language: language(code) },
+            { language: emailEditorLanguageName(code) },
             { locale }
           ),
         };
@@ -216,7 +214,10 @@ export const emailEditorProblems = ({
           fieldId: emailEditorFieldIds.text(code, at.textKey ?? ""),
           locale: code,
           place: m.emailsEditorPlaceBlockText(
-            { number: blockNumber(at.componentId), language: language(code) },
+            {
+              number: blockNumber(at.componentId),
+              language: emailEditorLanguageName(code),
+            },
             { locale }
           ),
         };

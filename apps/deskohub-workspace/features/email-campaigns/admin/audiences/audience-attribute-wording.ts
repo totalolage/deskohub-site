@@ -1,3 +1,7 @@
+import {
+  getLocaleDefinition,
+  mapSupportedLocales,
+} from "@deskohub/i18n/locale-registry";
 import type {
   AudienceAttribute,
   AudienceAttributeCatalogue,
@@ -203,6 +207,15 @@ const optionOf = <Options extends object>(
   param: string
 ): Options[keyof Options] | undefined =>
   Object.entries(options).find(([option]) => option === params[param])?.[1];
+
+/**
+ * How a condition summary names an audience language inside its sentence
+ * ("speak Czech", "mluví česky").
+ */
+const audienceLocaleNames = {
+  "cs-CZ": m.emailCampaignsAudienceLocaleNameCzech,
+  "en-US": m.emailCampaignsAudienceLocaleNameEnglish,
+} as const satisfies Record<Locale, AudienceMessage>;
 
 /**
  * The Admin UI wording of every catalogued attribute in a locale: labels,
@@ -488,16 +501,10 @@ const audienceAttributeWordings = (
       lead: m.emailCampaignsAudienceLocaleLabel({}, options),
       values: {
         _tag: "Options",
-        options: {
-          "cs-CZ": {
-            label: m.emailCampaignsAudienceLocaleOptionCzech({}, options),
-            name: m.emailCampaignsAudienceLocaleNameCzech({}, options),
-          },
-          "en-US": {
-            label: m.emailCampaignsAudienceLocaleOptionEnglish({}, options),
-            name: m.emailCampaignsAudienceLocaleNameEnglish({}, options),
-          },
-        },
+        options: mapSupportedLocales((option) => ({
+          label: `${getLocaleDefinition(option).nativeName} (${option})`,
+          name: audienceLocaleNames[option]({}, options),
+        })),
       },
       emptyError: m.emailCampaignsAudienceLocaleEmptyError({}, options),
       summary: {

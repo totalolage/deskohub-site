@@ -90,15 +90,41 @@ describe("Workspace locale resolution", () => {
     }
   });
 
-  test("Slovak readers get Czech", () => {
+  test("a browser language finds the locale of its language", () => {
+    for (const [acceptLanguage, locale] of [
+      ["en-GB", "en-US"],
+      ["cs-SK", "cs-CZ"],
+      ["en-GB,cs;q=0.5", "en-US"],
+    ] as const) {
+      expect(
+        resolveWorkspaceLocale(
+          sources({ pathname: "/faq", acceptLanguage }),
+          undefined
+        )
+      ).toBe(locale);
+    }
+  });
+
+  test("a reader of only unserved languages gets English", () => {
+    for (const acceptLanguage of ["sk-SK,sk;q=0.9", "ru", "de-AT,de;q=0.9"]) {
+      expect(
+        resolveWorkspaceLocale(
+          sources({ pathname: "/faq", acceptLanguage }),
+          undefined
+        )
+      ).toBe("en-US");
+    }
+  });
+
+  test("Slovak readers who also read English get English", () => {
     expect(
       resolveWorkspaceLocale(
         sources({
           pathname: "/faq",
-          acceptLanguage: "sk-SK,sk;q=0.9,en;q=0.8",
+          acceptLanguage: "sk-SK,sk;q=0.9,cs;q=0.5,en;q=0.8",
         }),
         undefined
       )
-    ).toBe("cs-CZ");
+    ).toBe("en-US");
   });
 });

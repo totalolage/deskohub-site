@@ -64,6 +64,7 @@ import {
 } from "@/features/administration/administration-href";
 import { unnamedCustomerDisplayName } from "@/features/administration/customer-name";
 import { getAdministrationPagination } from "@/features/administration/listing";
+import type { Locale } from "@/features/i18n";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import {
   defaultWorkspaceCurrencyCode,
@@ -142,7 +143,7 @@ export type InvoiceAdministrationListItem = {
 };
 
 export type InvoiceAdministrationDetail = InvoiceAdministrationListItem & {
-  readonly locale: "cs-CZ" | "en-US";
+  readonly locale: Locale;
   readonly serviceDate: string | null;
   readonly dueDate: string | null;
   readonly paidOn: string | null;

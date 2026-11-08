@@ -98,10 +98,7 @@ import { formatDiscountUsageLimit } from "./usage-limit";
 
 export type DiscountTableItem = {
   readonly id: StoredDiscountId;
-  readonly labels: {
-    readonly "cs-CZ": string;
-    readonly "en-US": string;
-  };
+  readonly labels: Readonly<Record<Locale, string>>;
   readonly adjustment: DiscountAdjustment;
   readonly products: readonly WorkspaceProductTarget[];
   readonly codeCount: number;

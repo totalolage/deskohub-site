@@ -99,7 +99,7 @@ function EmailLanguageTabs() {
             const count = emailEditorLanguageProblemCount(problems, language);
             return (
               <TabsTrigger key={language} value={language}>
-                {emailEditorLanguageName(language, locale)}
+                {emailEditorLanguageName(language)}
                 {count > 0 && (
                   <>
                     <span
@@ -124,7 +124,7 @@ function EmailLanguageTabs() {
           <TabsContent className="space-y-6" key={language} value={language}>
             <h2 className="sr-only">
               {m.emailsEditorTranslationHeading(
-                { language: emailEditorLanguageName(language, locale) },
+                { language: emailEditorLanguageName(language) },
                 { locale }
               )}
             </h2>

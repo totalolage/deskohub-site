@@ -14,7 +14,7 @@ import {
   render,
   waitFor,
 } from "@testing-library/react";
-import { m } from "@/features/i18n";
+import { languageNames } from "@/features/i18n/language-labels";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -52,7 +52,7 @@ afterAll(async () => {
   await unregisterWorkspaceComponentTestEnv();
 });
 
-const czech = m.languageCzech({}, { locale: "en-US" });
+const czech = languageNames["cs-CZ"];
 
 const localePreference = (signedIn: boolean) => {
   const saves: { locale: string }[] = [];
@@ -103,31 +103,39 @@ test.each(["stacked", "inline"] as const)(
             ["SPAN", 0],
             ["SPAN", 1],
           ]
-        : [["STRONG", 0]]
+        : [
+            ["STRONG", 0],
+            ["SPAN", 0],
+          ]
     );
+    // Each label, linked or not, is marked with its own language.
+    for (const [locale, name] of Object.entries(languageNames)) {
+      expect(shellView.querySelector(`[lang="${locale}"]`)?.textContent).toBe(
+        name
+      );
+    }
     expect(shellMarkup).toBe(
-      ready.container.innerHTML.replace(/<a [^>]*>([^<]*)<\/a>/g, "$1")
+      ready.container.innerHTML.replace(
+        /<a [^>]*?lang="([^"]*)"[^>]*>([^<]*)<\/a>/g,
+        '<span lang="$1">$2</span>'
+      )
     );
   }
 );
 
-test("names each language in the current locale's language and keeps the current one unlinked", async () => {
+test("names each language in its own language and keeps the current one unlinked", async () => {
   const { LocaleSwitcher } = await import("./locale-switcher");
   currentPathname = "/cs-CZ";
 
   const view = render(<LocaleSwitcher locale="cs-CZ" appearance="stacked" />);
 
-  expect(
-    view.queryByRole("link", { name: m.languageCzech({}, { locale: "cs-CZ" }) })
-  ).toBeNull();
-  expect(view.getByText(m.languageCzech({}, { locale: "cs-CZ" })).tagName).toBe(
-    "STRONG"
-  );
-  expect(
-    view
-      .getByRole("link", { name: m.languageEnglish({}, { locale: "cs-CZ" }) })
-      .getAttribute("href")
-  ).toBe("/en-US");
+  expect(view.queryByRole("link", { name: languageNames["cs-CZ"] })).toBeNull();
+  const current = view.getByText(languageNames["cs-CZ"]);
+  expect(current.tagName).toBe("STRONG");
+  expect(current.closest("[lang]")?.getAttribute("lang")).toBe("cs-CZ");
+  const english = view.getByRole("link", { name: languageNames["en-US"] });
+  expect(english.getAttribute("href")).toBe("/en-US");
+  expect(english.closest("[lang]")?.getAttribute("lang")).toBe("en-US");
 });
 
 test("links the other locale to the current page with its query", async () => {

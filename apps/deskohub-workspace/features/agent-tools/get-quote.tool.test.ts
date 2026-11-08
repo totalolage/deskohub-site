@@ -1,5 +1,6 @@
 import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
+import { supportedLocales } from "@deskohub/i18n/locale-registry";
 import { Effect, type Schema } from "effect";
 import type { AdvertisedPriceRequest } from "@/features/checkout/advertised-price";
 import { m } from "@/features/i18n";
@@ -210,7 +211,7 @@ describe("get_quote", () => {
   test("links a later office booking on its quoted start over the customer's remembered options", async () => {
     const startsOn = workspaceDateFromToday(3);
 
-    for (const locale of ["en-US", "cs-CZ"] as const) {
+    for (const locale of supportedLocales) {
       const office = await quote({
         family: "office",
         date: startsOn,

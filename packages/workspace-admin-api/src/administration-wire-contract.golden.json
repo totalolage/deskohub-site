@@ -15722,8 +15722,8 @@
                       "locale": {
                         "type": "string",
                         "enum": [
-                          "cs-CZ",
-                          "en-US"
+                          "en-US",
+                          "cs-CZ"
                         ]
                       },
                       "serviceDate": {
@@ -16788,8 +16788,8 @@
                     "locale": {
                       "type": "string",
                       "enum": [
-                        "cs-CZ",
-                        "en-US"
+                        "en-US",
+                        "cs-CZ"
                       ]
                     },
                     "serviceDate": {
@@ -17436,8 +17436,8 @@
                     "locale": {
                       "type": "string",
                       "enum": [
-                        "cs-CZ",
-                        "en-US"
+                        "en-US",
+                        "cs-CZ"
                       ]
                     },
                     "serviceDate": {
@@ -22722,8 +22722,8 @@
                         "locale": {
                           "type": "string",
                           "enum": [
-                            "cs-CZ",
-                            "en-US"
+                            "en-US",
+                            "cs-CZ"
                           ]
                         },
                         "content": {
@@ -22820,8 +22820,8 @@
                         "locale": {
                           "type": "string",
                           "enum": [
-                            "cs-CZ",
-                            "en-US"
+                            "en-US",
+                            "cs-CZ"
                           ]
                         },
                         "content": {
@@ -22914,8 +22914,8 @@
                         "locale": {
                           "type": "string",
                           "enum": [
-                            "cs-CZ",
-                            "en-US"
+                            "en-US",
+                            "cs-CZ"
                           ]
                         }
                       },
@@ -23048,8 +23048,8 @@
                           "items": {
                             "type": "string",
                             "enum": [
-                              "cs-CZ",
-                              "en-US"
+                              "en-US",
+                              "cs-CZ"
                             ]
                           }
                         },
@@ -23297,8 +23297,8 @@
                         "items": {
                           "type": "string",
                           "enum": [
-                            "cs-CZ",
-                            "en-US"
+                            "en-US",
+                            "cs-CZ"
                           ]
                         }
                       },
@@ -23311,7 +23311,7 @@
                       "content": {
                         "type": "object",
                         "properties": {
-                          "cs-CZ": {
+                          "en-US": {
                             "type": "object",
                             "properties": {
                               "subject": {
@@ -23334,7 +23334,7 @@
                             ],
                             "additionalProperties": false
                           },
-                          "en-US": {
+                          "cs-CZ": {
                             "type": "object",
                             "properties": {
                               "subject": {
@@ -23598,8 +23598,8 @@
                         "items": {
                           "type": "string",
                           "enum": [
-                            "cs-CZ",
-                            "en-US"
+                            "en-US",
+                            "cs-CZ"
                           ]
                         }
                       },
@@ -23612,7 +23612,7 @@
                       "content": {
                         "type": "object",
                         "properties": {
-                          "cs-CZ": {
+                          "en-US": {
                             "type": "object",
                             "properties": {
                               "subject": {
@@ -23651,7 +23651,7 @@
                             ],
                             "additionalProperties": false
                           },
-                          "en-US": {
+                          "cs-CZ": {
                             "type": "object",
                             "properties": {
                               "subject": {
@@ -23904,8 +23904,8 @@
                         "items": {
                           "type": "string",
                           "enum": [
-                            "cs-CZ",
-                            "en-US"
+                            "en-US",
+                            "cs-CZ"
                           ]
                         }
                       },
@@ -23918,7 +23918,7 @@
                       "content": {
                         "type": "object",
                         "properties": {
-                          "cs-CZ": {
+                          "en-US": {
                             "type": "object",
                             "properties": {
                               "subject": {
@@ -23941,7 +23941,7 @@
                             ],
                             "additionalProperties": false
                           },
-                          "en-US": {
+                          "cs-CZ": {
                             "type": "object",
                             "properties": {
                               "subject": {
@@ -24109,7 +24109,7 @@
                         "content": {
                           "type": "object",
                           "properties": {
-                            "cs-CZ": {
+                            "en-US": {
                               "anyOf": [
                                 {
                                   "type": "object",
@@ -24175,7 +24175,7 @@
                                 }
                               ]
                             },
-                            "en-US": {
+                            "cs-CZ": {
                               "anyOf": [
                                 {
                                   "type": "object",
@@ -24420,8 +24420,8 @@
                         "items": {
                           "type": "string",
                           "enum": [
-                            "cs-CZ",
-                            "en-US"
+                            "en-US",
+                            "cs-CZ"
                           ]
                         }
                       },
@@ -24434,7 +24434,7 @@
                       "content": {
                         "type": "object",
                         "properties": {
-                          "cs-CZ": {
+                          "en-US": {
                             "type": "object",
                             "properties": {
                               "subject": {
@@ -24457,7 +24457,7 @@
                             ],
                             "additionalProperties": false
                           },
-                          "en-US": {
+                          "cs-CZ": {
                             "type": "object",
                             "properties": {
                               "subject": {
@@ -24612,7 +24612,7 @@
                     "content": {
                       "type": "object",
                       "properties": {
-                        "cs-CZ": {
+                        "en-US": {
                           "anyOf": [
                             {
                               "type": "object",
@@ -24663,7 +24663,7 @@
                             }
                           ]
                         },
-                        "en-US": {
+                        "cs-CZ": {
                           "anyOf": [
                             {
                               "type": "object",
@@ -24879,8 +24879,8 @@
                         "items": {
                           "type": "string",
                           "enum": [
-                            "cs-CZ",
-                            "en-US"
+                            "en-US",
+                            "cs-CZ"
                           ]
                         }
                       },
@@ -24893,7 +24893,7 @@
                       "content": {
                         "type": "object",
                         "properties": {
-                          "cs-CZ": {
+                          "en-US": {
                             "type": "object",
                             "properties": {
                               "subject": {
@@ -24916,7 +24916,7 @@
                             ],
                             "additionalProperties": false
                           },
-                          "en-US": {
+                          "cs-CZ": {
                             "type": "object",
                             "properties": {
                               "subject": {
@@ -25334,8 +25334,8 @@
                             "locale": {
                               "type": "string",
                               "enum": [
-                                "cs-CZ",
-                                "en-US"
+                                "en-US",
+                                "cs-CZ"
                               ]
                             },
                             "email": {
@@ -25741,8 +25741,8 @@
                         "items": {
                           "type": "string",
                           "enum": [
-                            "cs-CZ",
-                            "en-US"
+                            "en-US",
+                            "cs-CZ"
                           ]
                         }
                       },
@@ -26503,8 +26503,8 @@
                                     "locale": {
                                       "type": "string",
                                       "enum": [
-                                        "cs-CZ",
-                                        "en-US"
+                                        "en-US",
+                                        "cs-CZ"
                                       ]
                                     },
                                     "status": {
@@ -28104,8 +28104,8 @@
                             "locale": {
                               "type": "string",
                               "enum": [
-                                "cs-CZ",
-                                "en-US"
+                                "en-US",
+                                "cs-CZ"
                               ]
                             },
                             "subject": {
@@ -30074,7 +30074,7 @@
                       "content": {
                         "type": "object",
                         "properties": {
-                          "cs-CZ": {
+                          "en-US": {
                             "type": "object",
                             "properties": {
                               "subject": {
@@ -30097,7 +30097,7 @@
                             ],
                             "additionalProperties": false
                           },
-                          "en-US": {
+                          "cs-CZ": {
                             "type": "object",
                             "properties": {
                               "subject": {
@@ -31758,8 +31758,8 @@
                     "locale": {
                       "type": "string",
                       "enum": [
-                        "cs-CZ",
-                        "en-US"
+                        "en-US",
+                        "cs-CZ"
                       ]
                     }
                   },
@@ -33585,8 +33585,8 @@
                 "items": {
                   "type": "string",
                   "enum": [
-                    "cs-CZ",
-                    "en-US"
+                    "en-US",
+                    "cs-CZ"
                   ]
                 },
                 "allOf": [
@@ -34176,8 +34176,8 @@
                 "items": {
                   "type": "string",
                   "enum": [
-                    "cs-CZ",
-                    "en-US"
+                    "en-US",
+                    "cs-CZ"
                   ]
                 },
                 "allOf": [
@@ -34837,8 +34837,8 @@
                 "items": {
                   "type": "string",
                   "enum": [
-                    "cs-CZ",
-                    "en-US"
+                    "en-US",
+                    "cs-CZ"
                   ]
                 },
                 "allOf": [

@@ -9,6 +9,7 @@ import type {
   NexiWebhookEventId,
 } from "@deskohub/nexi";
 import type { Effect } from "effect";
+import type { Locale } from "@/features/i18n";
 import type {
   CheckoutAttemptKey,
   CheckoutSessionKey,
@@ -80,7 +81,7 @@ export type CheckoutData = {
   readonly date: string;
   readonly email: string;
   readonly expectedReservationDetails: StoredWorkspaceReservationDetails;
-  readonly locale: "en-US" | "cs-CZ";
+  readonly locale: Locale;
   readonly meetingRoom?: {
     readonly duration: MeetingRoomReservationDuration;
     readonly endsAt: ReservationInterval["endsAt"];

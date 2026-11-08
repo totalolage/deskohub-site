@@ -222,9 +222,7 @@ test("switches the current administration page to the other locale", async () =>
     within(switcher).getByText("Čeština").getAttribute("aria-current")
   ).toBe("true");
   expect(
-    within(switcher)
-      .getByRole("link", { name: "Angličtina" })
-      .getAttribute("href")
+    within(switcher).getByRole("link", { name: "English" }).getAttribute("href")
   ).toBe("/en-US/admin/reservations?status=paid");
 });
 
@@ -248,7 +246,7 @@ test("a signed-in switch saves the preference before navigating", async () => {
   );
   await act(() => signedIn);
 
-  fireEvent.click(view.getByRole("link", { name: "Czech" }));
+  fireEvent.click(view.getByRole("link", { name: "Čeština" }));
 
   await waitFor(() => expect(saves).toEqual([{ locale: "cs-CZ" }]));
   await waitFor(() =>

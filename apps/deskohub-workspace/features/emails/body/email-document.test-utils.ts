@@ -1,3 +1,4 @@
+import { mapSupportedLocales } from "@deskohub/i18n/locale-registry";
 import { testEmailAddress } from "@deskohub/test-email";
 import {
   type EmailCustomerField,
@@ -224,10 +225,9 @@ export const emailDocumentFixture: EmailDocument = Schema.decodeUnknownSync(
       href: "https://deskohub.cz/rezervace",
     },
   ],
-  translations: {
-    "en-US": translation(emailFixtureWords["en-US"]),
-    "cs-CZ": translation(emailFixtureWords["cs-CZ"]),
-  },
+  translations: mapSupportedLocales((locale) =>
+    translation(emailFixtureWords[locale])
+  ),
   values: [
     {
       name: "first_name",
