@@ -30,7 +30,10 @@ const getPreviewAccess = Match.type<"available" | "unavailable">().pipe(
   ),
   Match.when(
     "unavailable",
-    (): ReservationAccessViewModel => ({ state: "unavailable" })
+    (): ReservationAccessViewModel => ({
+      state: "unavailable",
+      reason: "reservation-state",
+    })
   ),
   Match.exhaustive
 );

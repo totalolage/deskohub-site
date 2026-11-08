@@ -32,16 +32,14 @@ export const addCheckoutReferralAppliedMarker = (
   }
 };
 
-export const hasCheckoutReferralAppliedNotice = ({
-  marker,
+/** Whether the discounts hold this customer's invitation at the program rate. */
+export const hasCheckoutReferralBenefit = ({
   discounts,
   dotyposCustomerId,
 }: {
-  readonly marker: unknown;
   readonly discounts: readonly AppliedDiscount[];
   readonly dotyposCustomerId: DotyposCustomerId;
 }) =>
-  marker === checkoutReferralAppliedMarker &&
   discounts.some(({ discount }) => {
     const recognition = recognizeReferralBenefit({
       dotyposCustomerId,
@@ -49,3 +47,14 @@ export const hasCheckoutReferralAppliedNotice = ({
     });
     return recognition.kind === "invitation" && recognition.offersProgramRate;
   });
+
+export const hasCheckoutReferralAppliedNotice = ({
+  marker,
+  ...benefit
+}: {
+  readonly marker: unknown;
+  readonly discounts: readonly AppliedDiscount[];
+  readonly dotyposCustomerId: DotyposCustomerId;
+}) =>
+  marker === checkoutReferralAppliedMarker &&
+  hasCheckoutReferralBenefit(benefit);

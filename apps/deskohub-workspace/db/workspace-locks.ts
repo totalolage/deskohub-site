@@ -51,6 +51,16 @@ export const WorkspaceLocks = {
       customerAccount,
       { discard: true }
     ),
+  /**
+   * Serializes an account's analytics consent decisions, so a decision that
+   * may only seed an empty ledger sees every decision recorded before it.
+   */
+  analyticsConsentLedger: (accountId: CustomerAccountId): TransactionLock =>
+    take({
+      name: "analyticsConsentLedger",
+      rank: 25,
+      pair: ["analytics-consent-ledger", accountId],
+    }),
   referralFirstBooking: (customerId: DotyposCustomerId): TransactionLock =>
     take({
       name: "referralFirstBooking",
