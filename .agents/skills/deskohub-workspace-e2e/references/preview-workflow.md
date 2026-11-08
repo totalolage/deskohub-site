@@ -62,7 +62,7 @@ Nightly cases never run against a PR (D38). `resolve-target` passes `include_nig
   ```bash
   gh workflow run workspace-e2e.yml --ref main -f sha=<head> -f url=<immutable preview URL> -f ref=<branch>
   ```
-- **Local run against a preview.** From the repository root, run `bun turbo test:e2e --filter=deskohub-workspace` with the variables in [runner variables](#runner-variables). The task depends on `i18n:compile` and `@deskohub/igloohome#generate`.
+- **Local run against a preview.** With the same variables in [runner variables](#runner-variables) and the preview's exact `TARGET_SHA`, first run `bun --cwd apps/deskohub-workspace e2e:capacity`. Then run `bun turbo test:e2e --filter=deskohub-workspace` from the repository root. Account and referral fixture creation requires that command's private observation and stops at its 50-minute cutoff, including for direct local calls. See [fixture capacity admission](suite-orchestration.md#dotypos-capacity-and-stale-reservations). The E2E task depends on `i18n:compile` and `@deskohub/igloohome#generate`.
 - **Instant navigation only.** `bun run test:instant-navigation` from `apps/deskohub-workspace`. Without `WORKSPACE_E2E_BASE_URL`, the Playwright configs start `turbo dev` and target `http://localhost:3000`, and the administration navigation skips because its seeded administrator needs a preview and its E2E database.
 
 Bun loads dotenv files before the entry module runs. Email-provider secrets that exist only in Vercel are intentionally unavailable to local E2E.

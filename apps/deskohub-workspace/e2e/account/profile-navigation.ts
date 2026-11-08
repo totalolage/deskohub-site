@@ -1,5 +1,6 @@
-import { normalizePhoneNumber } from "@deskohub/dotypos";
+import { parsePhoneNumber } from "@deskohub/phone-number";
 import { expect, type Page } from "@playwright/test";
+import { Option } from "effect";
 import {
   type AccountSection,
   accountSectionLabel,
@@ -125,9 +126,10 @@ export async function verifyProfileNavigation(
         timeout: workspaceE2ETimeouts.browserAction,
       }),
     };
-    const canonicalOriginalPhone = normalizePhoneNumber(originalProfile.phone);
-    if (canonicalOriginalPhone === null)
-      throw new Error("profile phone is not a valid canonical phone number");
+    const canonicalOriginalPhone = Option.getOrThrowWith(
+      parsePhoneNumber(originalProfile.phone),
+      () => new Error("profile phone is not a valid canonical phone number")
+    );
     await selectSection("billing");
     await expect(page.locator(accountSectionLandmarks.billing)).toBeVisible({
       timeout: workspaceE2ETimeouts.browserAction,

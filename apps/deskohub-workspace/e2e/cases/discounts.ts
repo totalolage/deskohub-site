@@ -734,6 +734,7 @@ const executeCalendarSalePricingChanges = ({
       execute: Effect.gen(function* () {
         const browser = yield* browserSessionFor(run, session);
         const orderId = yield* submitReservationForPayPage({
+          data: paymentChangeData,
           onOrderId: (startedOrderId) => {
             paymentChangeState.orderId = startedOrderId;
           },
@@ -785,6 +786,7 @@ const executeCalendarSalePricingChanges = ({
       execute: Effect.gen(function* () {
         const browser = yield* browserSessionFor(run, session);
         const orderId = yield* submitReservationForPayPage({
+          data: quoteChangeData,
           onOrderId: (startedOrderId) => {
             quoteChangeState.orderId = startedOrderId;
           },
@@ -877,6 +879,7 @@ const executeCustomerDiscountChangesBeforePayment = ({
           timeoutMs: config.timeouts.browserNavigation,
         });
         return yield* submitReservationForPayPage({
+          data,
           onOrderId: (startedOrderId) => {
             state.orderId = startedOrderId;
           },
@@ -1292,6 +1295,7 @@ const executeUnavailableDiscountCode = ({
           timeoutMs: config.timeouts.browserNavigation,
         });
         return yield* submitReservationForPayPage({
+          data,
           onOrderId: (startedOrderId) => {
             state.orderId = startedOrderId;
           },
@@ -1355,6 +1359,7 @@ const executeDiscountCodeExpiresBeforePayment = ({
           timeoutMs: config.timeouts.browserNavigation,
         });
         return yield* submitReservationForPayPage({
+          data,
           onOrderId: (startedOrderId) => {
             state.orderId = startedOrderId;
           },

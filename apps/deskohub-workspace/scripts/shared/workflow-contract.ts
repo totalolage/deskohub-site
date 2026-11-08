@@ -31,6 +31,15 @@ interface WorkflowJob {
   readonly outputs?: Record<string, string>;
   readonly steps?: readonly WorkflowStep[];
   readonly permissions?: Record<string, string>;
+  readonly env?: Record<string, string>;
+  readonly services?: Readonly<Record<string, WorkflowService>>;
+}
+
+interface WorkflowService {
+  readonly image: string;
+  readonly env?: Record<string, string>;
+  readonly ports?: readonly string[];
+  readonly options?: string;
 }
 
 interface WorkflowDispatchInput {

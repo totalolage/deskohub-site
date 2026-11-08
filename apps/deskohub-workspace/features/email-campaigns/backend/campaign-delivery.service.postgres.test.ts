@@ -1,4 +1,4 @@
-import { seededCustomerReads } from "@deskohub/dotypos/backend/service.mock";
+import { makeInMemoryDotypos } from "@deskohub/dotypos/testing";
 import "@/shared/testing/workspace-test-env";
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -197,7 +197,9 @@ describe.skipIf(!testDatabase)(
               getCustomersByIds: (ids) =>
                 readCustomers(ids).pipe(
                   Effect.flatMap((records) =>
-                    seededCustomerReads(records).getCustomersByIds(ids)
+                    makeInMemoryDotypos({
+                      customers: records,
+                    }).service.getCustomersByIds(ids)
                   )
                 ),
             }),

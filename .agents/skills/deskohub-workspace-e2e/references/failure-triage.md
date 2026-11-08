@@ -19,6 +19,8 @@ Read [operations diagnostics](../../deskohub-workspace-operations/references/dia
 
 Never dump whole spans, attribute objects, exception events, or artifact payloads. Report correlation values, span names, durations, configured timeouts, closed outcomes and failure kinds, and the minimum artifact facts.
 
+The anonymous public-account-legal render saves `anonymous-navigation-diagnostics.json` in its test output directory and attaches it by path on failure, including a whole-test timeout. The default reporters do not persist in-memory JSON bodies, so verify artifact retention with the normal reporter chain. The file records load milestones, error counts, and request statuses, outcomes and elapsed times by fixed resource category. It contains no URLs, paths, payloads or error messages and reads no browser state during teardown. Use it to distinguish an unfinished document from pending scripts or other resources; a loading fallback alone does not identify the stalled server operation.
+
 ## Query spans in PostHog
 
 In the Workspace PostHog project, open **Traces**, filter the service name to `deskohub-workspace-e2e` and the span attribute `e2e.run.id` to the correlation value, and use native span duration, not log timestamps.
@@ -90,6 +92,7 @@ Preview E2E shares the Cloudinary quota with production, and decorative provider
 - `Temporal is missing or incomplete` among the page errors, with the `Temporal polyfill` request failed or answered 4xx/5xx: the `<head>` loader's polyfill didn't arrive, so the browser entry threw and the server-rendered page stayed dead. WebKit reports an error status as a failed request (`Load request cancelled`) with the status beside it. Reproduced locally by aborting that route; why the runner's request failed is in the trace's network entry.
 - The polyfill `still pending`: the parser is still blocked in `<head>`, so the page snapshot is empty.
 - The polyfill succeeded, `Temporal=object`, and `Next.js runtime=not started`: look at the failed `App scripts` entries and the page errors instead.
+- The polyfill succeeded, all app scripts succeeded, `Temporal=object`, and `Next.js runtime=started`, with no errors: check whether the page hydrated anyway. In the trace's network list, before any interaction, the date picker's calendar chunk (the `react-day-picker` stylesheet) is requested only from an effect of the hydrated picker; pointer and focus on its trigger also request it. Header link `_rsc` prefetches follow IntersectionObserver callbacks, which run in WebKit's rendering update. A calendar chunk seconds before the wait expired, with no interaction and prefetches only after it, is consistent with WebKit having stopped delivering animation frames while the page was already hydrated. Hydration waits in `e2e/react-handlers.ts` poll on a timer for this reason; a `waitForFunction` left on Playwright's default animation-frame polling can't see a change until frames resume.
 
 The failure keeps `sanitized-trace.zip` in the test's folder of the uploaded artifact; open it with `bunx playwright show-trace`. URLs in it point at `preview.invalid`, and response bodies are dropped.
 

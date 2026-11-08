@@ -8,6 +8,7 @@ import {
   preparePayStateInputSchema,
 } from "@/features/reservation/actions/prepare-pay-state.schema";
 import { BookingAgent } from "@/features/reservation/backend/booking-agent";
+import type { QuoteSelection } from "@/features/reservation/backend/booking-selection";
 import { defaultReservationBillingSelection } from "@/features/reservation/reservation-billing";
 import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/workspace-url.config";
 import { currentInstant } from "@/shared/utils/temporal";
@@ -22,7 +23,6 @@ import { toAgentToolMoney } from "./agent-tool-money";
 import { CurrentCustomerAgentGrant } from "./customer-agent-caller";
 import {
   completeSelectionFields,
-  type QuoteSelection,
   resolveQuoteSelection,
 } from "./quote-selection";
 import {

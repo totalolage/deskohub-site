@@ -1,4 +1,5 @@
 import { Plus } from "lucide-react";
+import type { ReactNode } from "react";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
 import type {
   AdministrationCustomerActivity,
@@ -56,6 +57,7 @@ import type {
   AdminVoucherDetail,
 } from "./discount-administration.service";
 import { PromotionAudienceSection } from "./promotion-audience";
+import { PromotionCustomerPicker } from "./promotion-customers";
 import { formatDiscountUsageLimit } from "./usage-limit";
 
 type Notice = {
@@ -135,13 +137,15 @@ export function CodeAdministrationDetailPage({
           <p className="mb-4 mt-1 text-sm leading-5 text-navy-blue/65">
             {m.discountsCodeAddCustomerDescription({}, { locale })}
           </p>
-          <AddCodeCustomerForm codeId={code.id} />
-          <Link
-            className="mt-4 inline-block text-sm font-semibold underline underline-offset-4"
-            href={administrationHref("/[locale]/admin/customers")}
-          >
-            {m.discountsFindDotyposCustomer({}, { locale })}
-          </Link>
+          <PromotionCustomerPicker
+            audienceCustomerIds={code.audienceCustomerIds}
+            code={code.code}
+            deleteRedirect={administrationHref("/[locale]/admin/codes")}
+            promotion={{ kind: "discount-code", id: code.id }}
+          />
+          <AddCustomerByIdDisclosure locale={locale}>
+            <AddCodeCustomerForm codeId={code.id} />
+          </AddCustomerByIdDisclosure>
         </aside>
       </div>
 
@@ -242,7 +246,15 @@ export function VoucherAdministrationDetailPage({
           <p className="mb-4 mt-1 text-sm leading-5 text-navy-blue/65">
             {m.discountsVoucherAddCustomerDescription({}, { locale })}
           </p>
-          <AddVoucherCustomerForm voucherId={voucher.id} />
+          <PromotionCustomerPicker
+            audienceCustomerIds={voucher.audienceCustomerIds}
+            code={voucher.code}
+            deleteRedirect={administrationHref("/[locale]/admin/vouchers")}
+            promotion={{ kind: "voucher", id: voucher.id }}
+          />
+          <AddCustomerByIdDisclosure locale={locale}>
+            <AddVoucherCustomerForm voucherId={voucher.id} />
+          </AddCustomerByIdDisclosure>
         </aside>
       </div>
 
@@ -259,6 +271,27 @@ export function VoucherAdministrationDetailPage({
         />
       </section>
     </AdministrationPage>
+  );
+}
+
+/**
+ * Adding a customer by Dotypos ID, for a customer the name and email search
+ * cannot single out.
+ */
+function AddCustomerByIdDisclosure({
+  children,
+  locale,
+}: {
+  readonly children: ReactNode;
+  readonly locale: Locale;
+}) {
+  return (
+    <details className="mt-5 border-t border-navy-blue/10 pt-4">
+      <summary className="cursor-pointer text-sm font-semibold">
+        {m.discountsAddCustomerById({}, { locale })}
+      </summary>
+      <div className="mt-3">{children}</div>
+    </details>
   );
 }
 

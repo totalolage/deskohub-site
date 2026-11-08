@@ -34,7 +34,8 @@ const unavailable = makeIdentity("unavailable");
 const anonymous = makeIdentity("anonymous");
 
 const makeFakeClient = (input: {
-  readonly beforeIdentify?: () => void;
+  /** Runs once the SDK switched identity, as when it emits $identify. */
+  readonly duringIdentify?: () => void;
   readonly distinctId: string;
   readonly userState: PersistedUserState;
 }) => {
@@ -57,13 +58,13 @@ const makeFakeClient = (input: {
     identify(...arguments_) {
       identifyArguments.push(arguments_);
       calls.push("identify");
-      input.beforeIdentify?.();
       const [nextDistinctId] = arguments_;
       if (nextDistinctId === undefined) {
         throw new Error("The fake only supports explicit identify IDs");
       }
       distinctId = nextDistinctId;
       userState = "identified";
+      input.duringIdentify?.();
     },
     opt_in_capturing(options) {
       calls.push(`opt_in(${String(options?.captureEventName)})`);
@@ -102,6 +103,7 @@ const makeFakeClient = (input: {
 };
 
 const accountId = (value: string) => customerAccountIdSchema.make(value);
+const accountA = makeIdentity("authenticated", accountId("account-a"));
 
 const setDotyposCustomer = (dotyposCustomerId: string) =>
   `set_person_properties(${JSON.stringify({ dotypos_customer_id: dotyposCustomerId })})`;
@@ -135,13 +137,13 @@ describe("PostHog identity controller", () => {
       onReady: () => lifecycle.push("ready"),
     });
 
-    expect(controller.isReady()).toBe(false);
+    expect(controller.isReadyFor(accountA)).toBe(false);
 
     controller.reconcile(true, pending);
     controller.reconcile(true, unavailable);
     controller.reconcile(true, pending);
 
-    expect(controller.isReady()).toBe(false);
+    expect(controller.isReadyFor(accountA)).toBe(false);
     expect(lifecycle).toEqual(["pause"]);
     expect(fake.calls).toEqual([]);
     expect(fake.resetCount).toBe(0);
@@ -161,7 +163,7 @@ describe("PostHog identity controller", () => {
     controller.reconcile(false, pending);
     controller.reconcile(false, pending);
 
-    expect(controller.isReady()).toBe(false);
+    expect(controller.isReadyFor(accountA)).toBe(false);
     expect(fake.calls).toEqual(["pause", "reset(true)", "opt_out"]);
     expect(fake.resetCount).toBe(1);
 
@@ -179,7 +181,7 @@ describe("PostHog identity controller", () => {
       "ready",
     ]);
     expect(fake.identifyArguments).toEqual([["workspace-account:account-a"]]);
-    expect(controller.isReady()).toBe(true);
+    expect(controller.isReadyFor(accountA)).toBe(true);
   });
 
   test("opts in anonymous persistence without resetting an already anonymous visitor", () => {
@@ -196,7 +198,7 @@ describe("PostHog identity controller", () => {
 
     controller.reconcile(true, anonymous);
 
-    expect(controller.isReady()).toBe(true);
+    expect(controller.isReadyFor(anonymous)).toBe(true);
     expect(fake.calls).toEqual(["opt_in(false)"]);
     expect(lifecycle).toEqual(["ready"]);
     expect(fake.resetCount).toBe(0);
@@ -206,8 +208,8 @@ describe("PostHog identity controller", () => {
     let readyAtIdentify = false;
     let controller: ReturnType<typeof createPostHogIdentityController>;
     const fake = makeFakeClient({
-      beforeIdentify: () => {
-        readyAtIdentify = controller.isReady();
+      duringIdentify: () => {
+        readyAtIdentify = controller.isReadyFor(accountA);
       },
       distinctId: "device-id",
       userState: "anonymous",
@@ -354,7 +356,11 @@ describe("PostHog identity controller", () => {
     ]);
     expect(fake.identifyArguments).toEqual([["workspace-account:account-b"]]);
     expect(fake.resetCount).toBe(1);
-    expect(controller.isReady()).toBe(true);
+    expect(
+      controller.isReadyFor(
+        makeIdentity("authenticated", accountId("account-b"))
+      )
+    ).toBe(true);
   });
 
   test("does not identify the same account more than once", () => {
@@ -402,7 +408,7 @@ describe("PostHog identity controller", () => {
     expect(fake.calls).toEqual(["reset(true)", "opt_in(false)", "identify"]);
     expect(fake.identifyArguments).toEqual([["workspace-account:account-a"]]);
     expect(fake.resetCount).toBe(1);
-    expect(controller.isReady()).toBe(true);
+    expect(controller.isReadyFor(identity)).toBe(true);
   });
 
   test("identifies a canonical distinct ID when the SDK persistence is not identified", () => {
@@ -448,7 +454,7 @@ describe("PostHog identity controller", () => {
     expect(fake.identifyArguments).toEqual([["workspace-account:account-a"]]);
     expect(fake.resetCount).toBe(0);
     expect(lifecycle).toEqual(["ready", "pause", "ready"]);
-    expect(controller.isReady()).toBe(true);
+    expect(controller.isReadyFor(identity)).toBe(true);
   });
 
   test("resets once when an identified account becomes anonymous", () => {
@@ -496,7 +502,45 @@ describe("PostHog identity controller", () => {
 
     expect(fake.calls).toEqual(["reset(true)", "opt_in(false)"]);
     expect(fake.resetCount).toBe(1);
-    expect(controller.isReady()).toBe(true);
+    expect(controller.isReadyFor(anonymous)).toBe(true);
+  });
+
+  test("is ready only for the settled identity while the SDK still holds it", () => {
+    const fake = makeFakeClient({
+      distinctId: "device-id",
+      userState: "anonymous",
+    });
+    const controller = createPostHogIdentityController(fake.client, {
+      deploymentEnvironment: "production",
+      onPause: () => undefined,
+      onReady: () => undefined,
+    });
+
+    controller.reconcile(true, accountA);
+
+    expect(controller.isReadyFor(accountA)).toBe(true);
+    expect(
+      controller.isReadyFor(
+        makeIdentity("authenticated", accountId("account-a"), true)
+      )
+    ).toBe(true);
+    expect(
+      controller.isReadyFor(
+        makeIdentity("authenticated", accountId("account-b"))
+      )
+    ).toBe(false);
+    expect(controller.isReadyFor(anonymous)).toBe(false);
+    expect(controller.isReadyFor(pending)).toBe(false);
+
+    fake.setSdkState({ userState: "anonymous" });
+    expect(controller.isReadyFor(accountA)).toBe(false);
+
+    controller.reconcile(false, accountA);
+    fake.setSdkState({
+      distinctId: "workspace-account:account-a",
+      userState: "identified",
+    });
+    expect(controller.isReadyFor(accountA)).toBe(false);
   });
 
   describe("Dotypos customer person property", () => {

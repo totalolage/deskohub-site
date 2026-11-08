@@ -1,3 +1,4 @@
+import type { PhoneNumber } from "@deskohub/phone-number";
 import {
   Clock,
   Context,
@@ -62,7 +63,6 @@ import {
 } from "../types";
 import { toCustomerEmailIdentity } from "../utils/customer-email";
 import { customerLifecycle } from "../utils/customer-lifecycle";
-import { normalizePhoneNumber } from "../utils/phone-formatting";
 import {
   DotyposAccessToken,
   DotyposGeneratedClient,
@@ -192,7 +192,7 @@ const emptyFirstPageWhenNotFound =
       )
     );
 
-const validateReservationInterval = (
+export const validateReservationInterval = (
   interval: DotyposReservationInterval,
   operation: DotyposOperation
 ): Effect.Effect<void, DotyposRejected> => {
@@ -269,7 +269,7 @@ type ReservationListQuery = {
 };
 
 /** The reservation list request's filter and sort. */
-const reservationListQuery = (
+export const reservationListQuery = (
   options: ReservationListOptions,
   operation: DotyposOperation
 ): Effect.Effect<ReservationListQuery, DotyposRejected> => {
@@ -325,7 +325,7 @@ const singleIdPage = <A>(
     Effect.as(page.data ?? [])
   );
 
-const validateReservationPageNumber = (
+export const validateReservationPageNumber = (
   page: number,
   operation: DotyposOperation
 ): Effect.Effect<void, DotyposRejected> =>
@@ -416,7 +416,7 @@ export type DotyposCustomerLookupData = {
   firstName: string;
   lastName?: string;
   email?: string;
-  phone?: string;
+  phone?: PhoneNumber;
 };
 
 export type DotyposCustomerDiscountGroup = {
@@ -435,22 +435,22 @@ export type DotyposCustomerBillingDetails = {
   readonly vatId: string;
 };
 
+/** Customer details a write sets. A write without a phone leaves the stored phone alone. */
 export type DotyposCustomerDetails = DotyposCustomerBillingDetails & {
   readonly firstName: string;
   readonly lastName: string;
   readonly email: string;
-  readonly phone?: string;
+  readonly phone?: PhoneNumber;
 };
 
 /**
  * A customer's own profile edit. Every field is written; the email is not
- * part of it. A blank phone explicitly clears the stored phone, and any other
- * phone must normalize to E.164.
+ * part of it. A blank phone explicitly clears the stored phone.
  */
 export type DotyposCustomerProfile = DotyposCustomerBillingDetails & {
   readonly firstName: string;
   readonly lastName: string;
-  readonly phone: string;
+  readonly phone: PhoneNumber | "";
 };
 
 /** A customer text field a details write always sets. */
@@ -528,36 +528,22 @@ const holdsCustomerProfile = (profile: DotyposCustomerProfile) => {
     (customer.phone ?? "") === profile.phone;
 };
 
-/**
- * The trimmed profile an update writes, with the phone normalized to E.164.
- * A nonblank phone that doesn't normalize fails DotyposRejected{invalid-request}
- * instead of clearing the stored phone.
- */
-const toCustomerProfileUpdate = (profile: DotyposCustomerProfile) => {
-  const enteredPhone = profile.phone.trim();
-  const phone = enteredPhone ? normalizePhoneNumber(enteredPhone) : "";
-  if (phone == null) {
-    return Effect.fail(
-      dotyposInvalidRequest(
-        "updateCustomerProfile",
-        "Phone number must be blank or a valid phone number"
-      )
-    );
-  }
-  return Effect.succeed<DotyposCustomerProfile>({
-    addressLine1: profile.addressLine1.trim(),
-    addressLine2: profile.addressLine2.trim(),
-    city: profile.city.trim(),
-    companyId: profile.companyId.trim(),
-    companyName: profile.companyName.trim(),
-    country: profile.country.trim(),
-    firstName: profile.firstName.trim(),
-    lastName: profile.lastName.trim(),
-    phone,
-    vatId: profile.vatId.trim(),
-    zip: profile.zip.trim(),
-  });
-};
+/** The trimmed profile an update writes. */
+const toCustomerProfileUpdate = (
+  profile: DotyposCustomerProfile
+): DotyposCustomerProfile => ({
+  addressLine1: profile.addressLine1.trim(),
+  addressLine2: profile.addressLine2.trim(),
+  city: profile.city.trim(),
+  companyId: profile.companyId.trim(),
+  companyName: profile.companyName.trim(),
+  country: profile.country.trim(),
+  firstName: profile.firstName.trim(),
+  lastName: profile.lastName.trim(),
+  phone: profile.phone,
+  vatId: profile.vatId.trim(),
+  zip: profile.zip.trim(),
+});
 
 /**
  * How far in the past an expiration sets the expiry, so the customer reads
@@ -566,29 +552,26 @@ const toCustomerProfileUpdate = (profile: DotyposCustomerProfile) => {
 const customerExpiryLeadMilliseconds = 60_000;
 
 /**
- * The trimmed details an update writes. An absent or unparseable phone is
- * left out so the phone stored in Dotypos stays untouched; clearing it
- * requires an explicit provider patch.
+ * The trimmed details an update writes. An absent phone is left out so the
+ * phone stored in Dotypos stays untouched; clearing it requires an explicit
+ * provider patch.
  */
 const toCustomerDetailsUpdate = (
   details: DotyposCustomerDetails
-): DotyposCustomerDetails => {
-  const phone = normalizePhoneNumber(details.phone);
-  return {
-    addressLine1: details.addressLine1.trim(),
-    addressLine2: details.addressLine2.trim(),
-    city: details.city.trim(),
-    companyId: details.companyId.trim(),
-    companyName: details.companyName.trim(),
-    country: details.country.trim(),
-    email: details.email.trim(),
-    firstName: details.firstName.trim(),
-    lastName: details.lastName.trim(),
-    ...(phone && { phone }),
-    vatId: details.vatId.trim(),
-    zip: details.zip.trim(),
-  };
-};
+): DotyposCustomerDetails => ({
+  addressLine1: details.addressLine1.trim(),
+  addressLine2: details.addressLine2.trim(),
+  city: details.city.trim(),
+  companyId: details.companyId.trim(),
+  companyName: details.companyName.trim(),
+  country: details.country.trim(),
+  email: details.email.trim(),
+  firstName: details.firstName.trim(),
+  lastName: details.lastName.trim(),
+  ...(details.phone && { phone: details.phone }),
+  vatId: details.vatId.trim(),
+  zip: details.zip.trim(),
+});
 
 export type FindCustomerOptions = {
   readonly lookupFields?: readonly CustomerLookupField[];
@@ -623,17 +606,10 @@ const defaultCustomerLookupFields: readonly CustomerLookupField[] = [
 
 const normalizeCustomerLookupData = (
   customerData: DotyposCustomerLookupData
-): DotyposCustomerLookupData => {
-  const normalizedPhone = customerData.phone
-    ? normalizePhoneNumber(customerData.phone)
-    : null;
-
-  return {
-    ...customerData,
-    email: customerData.email?.trim() || undefined,
-    phone: normalizedPhone || undefined,
-  };
-};
+): DotyposCustomerLookupData => ({
+  ...customerData,
+  email: customerData.email?.trim() || undefined,
+});
 
 /**
  * Customers own one mailbox regardless of how its address was cased, so
@@ -993,7 +969,7 @@ export interface IDotyposService {
    * exist and nothing was applied. A genuine 412 is DotyposVersionConflict; refreshing after it is the caller's choice.
    *
    * updateCustomerProfile writes the trimmed profile; it holds when a customer that is not deleted carries every
-   * field, the blank-cleared phone included. A nonblank phone that doesn't normalize fails DotyposRejected{invalid-request}.
+   * field, the blank-cleared phone included.
    */
   readonly updateCustomerProfile: (
     customerId: DotyposCustomerId,
@@ -1842,8 +1818,8 @@ const makeDotyposService: Effect.Effect<
         internalNote: "",
         lastName: details.lastName.trim(),
         // Dotypos requires a phone on creation; a new customer has no stored
-        // phone to preserve, so an absent or unparseable phone stays blank.
-        phone: normalizePhoneNumber(details.phone) ?? "",
+        // phone to preserve, so an absent phone stays blank.
+        phone: details.phone ?? "",
         points: "0",
         tags: [],
         vatId: details.vatId.trim(),
@@ -2403,7 +2379,7 @@ const makeDotyposService: Effect.Effect<
   const updateCustomerProfile = Effect.fn(
     "DotyposService.updateCustomerProfile"
   )(function* (customerId: DotyposCustomerId, profile: DotyposCustomerProfile) {
-    const update = yield* toCustomerProfileUpdate(profile);
+    const update = toCustomerProfileUpdate(profile);
     return yield* noneWhenCustomerMissing(
       updateCustomerVersion(
         customerId,

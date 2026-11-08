@@ -16,6 +16,7 @@ import type {
   DiscountGroup,
   Reservation,
 } from "@deskohub/dotypos/generated";
+import { parsePhoneNumber } from "@deskohub/phone-number";
 import { Effect, Layer, Logger, Option, Schema } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import { splitCustomerName } from "@/features/checkout/backend/reservation/dotypos-customer-policy";
@@ -446,10 +447,9 @@ export const readDotyposReservationStatus = (
   config: DatasourceConfig,
   dotyposReservationId: DotyposReservationId
 ) =>
-  Effect.gen(function* () {
-    const dotypos = yield* DotyposService;
-    return yield* dotypos.getReservationStatus(dotyposReservationId);
-  }).pipe(
+  Effect.flatMap(DotyposService, (dotypos) =>
+    dotypos.getReservationStatus(dotyposReservationId)
+  ).pipe(
     Effect.provide(getDotyposLayer(config)),
     Effect.mapError((cause) =>
       toWorkspaceE2EError("read Dotypos reservation status", cause)
@@ -489,7 +489,7 @@ export const prepareDotyposCustomerDiscount = (
       {
         ...customerName,
         email: data.email,
-        phone: data.phone,
+        phone: Option.getOrUndefined(parsePhoneNumber(data.phone)),
       },
       { lookupFields: ["email"] }
     );

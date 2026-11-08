@@ -9,6 +9,7 @@ import {
   NexiOrderIdSchema,
   NexiService,
 } from "@deskohub/nexi";
+import { parsePhoneNumber } from "@deskohub/phone-number";
 import { Context, Data, Effect, Layer, Match, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { OptionalAccountActivityGuard } from "@/features/account";
@@ -72,7 +73,11 @@ import {
 } from "../repositories/payment-attempt.repository";
 import { PaymentLifecycleRepository } from "../repositories/payment-lifecycle.repository";
 import { formatWorkspaceReservationNote } from "../reservation/dotypos-reservation.adapter";
-import { buildFreshCheckoutPayPath } from "./checkout-pay-url";
+import {
+  type FreshPayState,
+  issueFreshPayState,
+  toFreshPayState,
+} from "./checkout-pay-url";
 import {
   CheckoutPricingService,
   type PaymentPriceAffirmation,
@@ -102,13 +107,16 @@ export class CheckoutError extends Data.TaggedError("CheckoutError")<{
     | "meeting_room_reservation_ended"
     | "office_reservation_ended"
     | "cowork_reservation_ended"
-    | "cowork_offer_replaced";
+    | "cowork_offer_replaced"
+    | "legal_consent_required"
+    | "early_performance_consent_required";
   readonly message: string;
   readonly cause?: unknown;
 }> {}
 
 type CheckoutRedirectResult = {
   readonly status: "redirect";
+  readonly orderId: WorkspaceReservationId;
   readonly redirectUrl: string;
   readonly statusUrl?: string;
   /** The order is paid: completed internally or already paid before. */
@@ -207,12 +215,11 @@ export interface ICheckoutService {
     locale: Locale
   ) => Effect.Effect<
     | CheckoutRedirectResult
-    | {
+    | ({
         readonly status: "pricing_changed";
         readonly changedKeys: ReturnType<typeof getCheckoutSummaryChangedKeys>;
         readonly freshSummary: CheckoutSummary;
-        readonly freshPayUrl: string;
-      }
+      } & FreshPayState)
     | { readonly status: "in_progress" },
     CheckoutError
   >;
@@ -370,12 +377,13 @@ const openFinalPayState: (
   return state;
 });
 
-const getFreshPayUrl: (
+const issuePriceReviewPayState: (
   input: BuildSignedPayStateInput
-) => Effect.Effect<string, CheckoutError, SealedStateKeys> = Effect.fn(
-  "getFreshPayUrl"
+) => Effect.Effect<FreshPayState, CheckoutError, SealedStateKeys> = Effect.fn(
+  "issuePriceReviewPayState"
 )((input) =>
-  buildFreshCheckoutPayPath(input).pipe(
+  issueFreshPayState(input).pipe(
+    Effect.map(toFreshPayState),
     Effect.mapError(
       (cause) =>
         new CheckoutError({
@@ -401,6 +409,7 @@ const isReusableAttemptState = (state: string) =>
   state === "created" || state === "pending";
 
 const getCheckoutRedirectResult = (input: {
+  readonly orderId: WorkspaceReservationId;
   readonly redirectUrl: string;
   readonly statusUrl?: string;
   readonly paid?: true;
@@ -412,6 +421,7 @@ const getHostedPaymentCheckoutResult = (input: {
   readonly workspaceReservationId: WorkspaceReservationId;
 }): CheckoutRedirectResult =>
   getCheckoutRedirectResult({
+    orderId: input.workspaceReservationId,
     redirectUrl: input.providerRedirectUrl,
     statusUrl: getReservationStatusPath({
       locale: input.locale,
@@ -700,6 +710,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
         );
 
         return getCheckoutRedirectResult({
+          orderId: input.workspaceReservationId,
           redirectUrl: getReservationStatusPath({
             locale: input.locale,
             orderId: input.workspaceReservationId,
@@ -726,6 +737,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
         );
 
         return getCheckoutRedirectResult({
+          orderId: input.orderId,
           redirectUrl: getReservationStatusPath({
             locale: input.locale,
             orderId: input.orderId,
@@ -914,7 +926,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
             "Hosted payment checkout returned existing pricing_changed review"
           );
 
-          const freshPayUrl = yield* getFreshPayUrl({
+          const priceReviewPayState = yield* issuePriceReviewPayState({
             ...state,
             locale: input.locale,
             orderId: input.reservation.id,
@@ -925,7 +937,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
             status: "pricing_changed" as const,
             changedKeys: input.changedKeys,
             freshSummary: getSignedPayStateCheckoutSummary(state),
-            freshPayUrl,
+            ...priceReviewPayState,
           };
         }
       );
@@ -1004,7 +1016,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
           "Hosted payment checkout returned pricing_changed"
         );
 
-        const freshPayUrl = yield* getFreshPayUrl({
+        const priceReviewPayState = yield* issuePriceReviewPayState({
           ...prepared,
           locale: input.locale,
           orderId: input.reservation.id,
@@ -1023,7 +1035,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
           status: "pricing_changed" as const,
           changedKeys,
           freshSummary,
-          freshPayUrl,
+          ...priceReviewPayState,
         };
       });
 
@@ -1046,7 +1058,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
               );
 
               return yield* new CheckoutError({
-                code: "checkout_failed",
+                code: "legal_consent_required",
                 message: "Legal consent is required before checkout.",
               });
             }
@@ -1125,7 +1137,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
               );
 
               return yield* new CheckoutError({
-                code: "checkout_failed",
+                code: "early_performance_consent_required",
                 message:
                   "Early performance consent is required before checkout.",
               });
@@ -1226,7 +1238,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                             id: dotyposCustomerId,
                             name: data.name,
                             email: data.email,
-                            phone: data.phone,
+                            phone: parsePhoneNumber(data.phone),
                           }),
                           accountingSnapshot,
                           reservation: state.reservation,
@@ -1277,27 +1289,29 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                             reservation: refreshedCheckoutDetails.reservation,
                           }),
                         });
-                        const freshPayUrl = yield* getFreshPayUrl({
-                          ...refreshed,
-                          locale,
-                          orderId: reservation.id,
-                          bookedAt: state.bookedAt,
-                          checkoutSessionId: state.checkoutSessionId,
-                          referralCode: state.referralCode,
-                          requestedDiscountCode:
-                            state.requestedDiscountCode ?? state.submittedCode,
-                          ...getSignedPayStateSubmittedCode(
-                            state,
-                            refreshed.quote.payment.discounts
-                          ),
-                          changedKeys,
-                        }).pipe(provideSealedStateKeys);
+                        const priceReviewPayState =
+                          yield* issuePriceReviewPayState({
+                            ...refreshed,
+                            locale,
+                            orderId: reservation.id,
+                            bookedAt: state.bookedAt,
+                            checkoutSessionId: state.checkoutSessionId,
+                            referralCode: state.referralCode,
+                            requestedDiscountCode:
+                              state.requestedDiscountCode ??
+                              state.submittedCode,
+                            ...getSignedPayStateSubmittedCode(
+                              state,
+                              refreshed.quote.payment.discounts
+                            ),
+                            changedKeys,
+                          }).pipe(provideSealedStateKeys);
 
                         return {
                           status: "pricing_changed" as const,
                           changedKeys,
                           freshSummary: refreshedSummary,
-                          freshPayUrl,
+                          ...priceReviewPayState,
                         };
                       })
                     )

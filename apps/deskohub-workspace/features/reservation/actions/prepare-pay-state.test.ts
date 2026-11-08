@@ -14,7 +14,7 @@ import { EmailRecipientDomainServiceMock } from "@deskohub/email/backend/recipie
 import { testEmailAddress } from "@deskohub/test-email";
 import { eq } from "drizzle-orm";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Duration, Effect, Fiber, Layer, Schema } from "effect";
+import { Duration, Effect, Fiber, Layer, Option, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -46,6 +46,7 @@ import {
 } from "@/features/discounts/contracts";
 import { PromotionCodeUnavailableError } from "@/features/discounts/errors";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
+import type { AnalyticsConsentMirrorRecord } from "@/features/legal/backend/analytics-consent-ledger";
 import type {
   IMarketingConsentLedger,
   MarketingConsentLedger as MarketingConsentLedgerService,
@@ -58,6 +59,7 @@ import {
   ReferralServiceMock,
   WithheldReferralService,
 } from "@/features/referrals/referral.service.mock";
+import { getReferralBenefitIds } from "@/features/referrals/referral-benefits";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import type { IWorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
@@ -419,9 +421,12 @@ const runReusableReservationScenario = async (input: {
   readonly checkoutAttemptId?: string;
   readonly now?: Temporal.Instant;
   readonly marketingConsent?: boolean;
-  readonly marketingConsentSource?: "site_tool";
+  readonly marketingConsentSource?: "site_tool" | "customer_app";
   /** Replaces the mocked marketing consent ledger. */
   readonly marketingConsentLedger?: Layer.Layer<MarketingConsentLedgerService>;
+  /** The `Cookie` header of the booking request; none by default. */
+  readonly requestCookie?: string;
+  readonly mirrorAnalyticsConsent?: ReturnType<typeof mock>;
   readonly affirmAdvertisement?: ReturnType<typeof mock>;
   readonly quoteForCustomer?: ReturnType<typeof mock>;
   readonly ensureAvailable?: ReturnType<typeof mock>;
@@ -453,6 +458,11 @@ const runReusableReservationScenario = async (input: {
   };
   /** Lets waits for in-flight reservations run out their window at once. */
   readonly instantSleeps?: boolean;
+  /**
+   * Books through a server caller such as the customer HTTP API: the shared
+   * operation without BotID or an agent.
+   */
+  readonly serverCaller?: boolean;
 }) => {
   const prepareFromReservationForm = await loadReservationFormPreparation();
   const { prepareWorkspacePayState } = await import("./prepare-pay-state");
@@ -464,6 +474,12 @@ const runReusableReservationScenario = async (input: {
   );
   const { MarketingConsentLedger } = await import(
     "@/features/legal/backend/marketing-consent-ledger"
+  );
+  const { AnalyticsConsentLedger } = await import(
+    "@/features/legal/backend/analytics-consent-ledger"
+  );
+  const { CurrentWorkspaceRequestHeaders } = await import(
+    "@/shared/backend/workspace-request-context"
   );
   const { ReservationHoldCleanupScheduleService } = await import(
     "@/features/checkout/backend/holds"
@@ -483,6 +499,8 @@ const runReusableReservationScenario = async (input: {
   const recordMarketingConsent =
     input.recordMarketingConsent ?? mock(() => Effect.void);
   const withdrawActiveMarketingConsent = mock(() => Effect.succeed(false));
+  const mirrorAnalyticsConsent =
+    input.mirrorAnalyticsConsent ?? mock(() => Effect.succeed(true));
   const ensureAvailable = input.ensureAvailable ?? mock(() => Effect.void);
   const verifyHuman = mock(() => Effect.void);
   const findLatestByAgentSelectionKey =
@@ -633,6 +651,7 @@ const runReusableReservationScenario = async (input: {
         status: mock(() => Effect.succeed("absent")),
         withdrawActive: withdrawActiveMarketingConsent,
       } satisfies IMarketingConsentLedger),
+    Layer.mock(AnalyticsConsentLedger, { mirror: mirrorAnalyticsConsent }),
     Layer.mock(ReservationHoldCleanupScheduleService, {
       enqueueCleanup,
     } as never),
@@ -668,15 +687,26 @@ const runReusableReservationScenario = async (input: {
     customer: input.customer,
   } as PreparePayStateInput;
   const { bookingAgent } = input;
-  const bookingPreparation = (
-    bookingAgent
-      ? prepareWorkspacePayState(submission).pipe(
-          Effect.provideService(BookingAgent, bookingAgent as never)
-        )
-      : prepareFromReservationForm(submission).pipe(
-          Effect.provide(BotProtectionServiceMock({ verifyHuman }))
-        )
-  ).pipe(Effect.provide(testLayer));
+  const callerPreparation = () => {
+    if (bookingAgent) {
+      return prepareWorkspacePayState(submission).pipe(
+        Effect.provideService(BookingAgent, bookingAgent as never)
+      );
+    }
+    if (input.serverCaller) return prepareWorkspacePayState(submission);
+    return prepareFromReservationForm(submission).pipe(
+      Effect.provide(BotProtectionServiceMock({ verifyHuman }))
+    );
+  };
+  const bookingPreparation = callerPreparation().pipe(
+    input.requestCookie === undefined
+      ? (preparation) => preparation
+      : Effect.provideService(
+          CurrentWorkspaceRequestHeaders,
+          new Headers({ cookie: input.requestCookie })
+        ),
+    Effect.provide(testLayer)
+  );
   const timedPreparation = input.instantSleeps
     ? withSecondSleeps(
         TestClock.setTime(Date.now()).pipe(Effect.andThen(bookingPreparation))
@@ -695,6 +725,7 @@ const runReusableReservationScenario = async (input: {
     updateReservationDetails,
     recordMarketingConsent,
     withdrawActiveMarketingConsent,
+    mirrorAnalyticsConsent,
     ensureAvailable,
     findLatestByAgentSelectionKey,
     findSupersedableByAgentClient,
@@ -1415,6 +1446,30 @@ describe("prepareWorkspacePayState", () => {
     );
   });
 
+  test("returns the sealed Pay state token its URL carries", async () => {
+    const { openPayState, payStateTokenQueryParam } = await import(
+      "@/features/checkout/backend/checkout"
+    );
+    const scenario = await runReusableReservationScenario({
+      findByAttemptKeys: mock(() => Effect.succeed(makeReusableReservation())),
+    });
+
+    if (scenario.result?.status !== "ready") {
+      throw new Error("Expected ready result");
+    }
+    const urlToken = new URL(
+      scenario.result.redirectUrl,
+      "https://deskohub.test"
+    ).searchParams.get(payStateTokenQueryParam);
+    expect(scenario.result.payStateToken).toBe(urlToken ?? "");
+    const state = Effect.runSync(
+      openPayState(scenario.result.payStateToken).pipe(
+        Effect.provide(TestSealedStateKeys)
+      )
+    );
+    expect(state.orderId).toBe(scenario.result.orderId);
+  });
+
   test("reuses an immediate retry without scheduling cleanup", async () => {
     const existingReservation = makeReusableReservation();
     const result = await runReusableReservationScenario({
@@ -1464,6 +1519,84 @@ describe("prepareWorkspacePayState", () => {
     // An initial grant keeps an existing row, including a withdrawal.
   });
 
+  describe("analytics consent mirror", () => {
+    const savedChoice = `cc_cookie=${encodeURIComponent(
+      JSON.stringify({
+        categories: ["necessary", "analytics"],
+        lastConsentTimestamp: "2026-11-02T09:30:00.000Z",
+      })
+    )}`;
+
+    test("mirrors the booking device's saved choice into the account's ledger", async () => {
+      const result = await runReusableReservationScenario({
+        findByAttemptKeys: mock(() =>
+          Effect.succeed(makeReusableReservation())
+        ),
+        requestCookie: savedChoice,
+      });
+
+      expect(result.result?.status).toBe("ready");
+      const [mirrored] = result.mirrorAnalyticsConsent.mock.calls.map(
+        ([record]) => record as AnalyticsConsentMirrorRecord
+      );
+      expect(result.mirrorAnalyticsConsent).toHaveBeenCalledTimes(1);
+      expect(mirrored).toMatchObject({
+        decision: "grant",
+        locale: "en-US",
+        source: "hydration_mirror",
+      });
+      expect(String(mirrored?.decidedAt.pipe(Option.getOrUndefined))).toBe(
+        "2026-11-02T09:30:00Z"
+      );
+    });
+
+    test("books when the mirror fails or dies", async () => {
+      const { AnalyticsConsentUnavailable } = await import(
+        "@/features/legal/backend/analytics-consent-ledger"
+      );
+      for (const failure of [
+        Effect.fail(new AnalyticsConsentUnavailable({ cause: "down" })),
+        Effect.die(new Error("Synthetic mirror defect")),
+      ]) {
+        const result = await runReusableReservationScenario({
+          findByAttemptKeys: mock(() =>
+            Effect.succeed(makeReusableReservation())
+          ),
+          requestCookie: savedChoice,
+          mirrorAnalyticsConsent: mock(() => failure),
+        });
+
+        expect(result.result?.status).toBe("ready");
+      }
+    });
+
+    test("mirrors nothing for a request without a saved choice", async () => {
+      const result = await runReusableReservationScenario({
+        findByAttemptKeys: mock(() =>
+          Effect.succeed(makeReusableReservation())
+        ),
+      });
+
+      expect(result.result?.status).toBe("ready");
+      expect(result.mirrorAnalyticsConsent).not.toHaveBeenCalled();
+    });
+
+    test("mirrors nothing for a customer agent's booking", async () => {
+      const result = await runReusableReservationScenario({
+        findByAttemptKeys: mock(() =>
+          Effect.succeed(makeReusableReservation())
+        ),
+        requestCookie: savedChoice,
+        bookingAgent: {
+          clientId: "https://assistant.example/oauth-client.json",
+          selectionKey: "analytics-mirror-agent-selection",
+        },
+      });
+
+      expect(result.mirrorAnalyticsConsent).not.toHaveBeenCalled();
+    });
+  });
+
   test("labels an opt-in submitted through the site's tools", async () => {
     const result = await runReusableReservationScenario({
       findByAttemptKeys: mock(() => Effect.succeed(makeReusableReservation())),
@@ -1481,6 +1614,47 @@ describe("prepareWorkspacePayState", () => {
         channel: "site_tool",
       })
     );
+  });
+
+  test("labels an opt-in the customer's app submitted through the customer HTTP API", async () => {
+    const result = await runReusableReservationScenario({
+      findByAttemptKeys: mock(() => Effect.succeed(makeReusableReservation())),
+      marketingConsent: true,
+      marketingConsentSource: "customer_app",
+      serverCaller: true,
+    });
+
+    expect(result.result.status).toBe("ready");
+    expect(result.verifyHuman).not.toHaveBeenCalled();
+    expect(result.recordMarketingConsent).toHaveBeenCalledTimes(1);
+    expect(result.recordMarketingConsent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerId: "customer-id",
+        choice: "grant",
+        mode: "initial",
+        channel: "customer_app",
+      })
+    );
+  });
+
+  test("keeps rejecting the customer app's consent source from the site", async () => {
+    const { preparePayStateSchema } = await import(
+      "./prepare-pay-state.schema"
+    );
+
+    const result = await preparePayStateSchema["~standard"].validate({
+      locale: "en-US",
+      checkoutSessionId: "session-id",
+      checkoutAttemptId: "attempt-id",
+      advertisedPriceToken: "advertised-price-token",
+      reservation: { ...reservation, date: "2099-07-01" },
+      marketingConsent: true,
+      marketingConsentSource: "customer_app",
+    });
+
+    expect(result.issues).toEqual([
+      expect.objectContaining({ path: ["marketingConsentSource"] }),
+    ]);
   });
 
   test.each([
@@ -1573,7 +1747,8 @@ describe("prepareWorkspacePayState", () => {
       stored: typeof activeRow | typeof withdrawnRow | null,
       input: {
         readonly marketingConsent?: boolean;
-        readonly marketingConsentSource?: "site_tool";
+        readonly marketingConsentSource?: "site_tool" | "customer_app";
+        readonly serverCaller?: boolean;
         readonly bookingAgent?: {
           readonly clientId: string;
           readonly selectionKey: string;
@@ -1668,6 +1843,16 @@ describe("prepareWorkspacePayState", () => {
       expect(row?.documentHash).toBe(
         getLegalDocumentVersion("en-US", "marketing-communications")
       );
+    });
+
+    test("an opt-in from the customer's app stores customer_app as the source", async () => {
+      const row = await runWithStoredConsent(null, {
+        marketingConsent: true,
+        marketingConsentSource: "customer_app",
+        serverCaller: true,
+      });
+      expect(row?.grantSource).toBe("customer_app");
+      expect(row?.withdrawnAt).toBeNull();
     });
 
     test("a form opt-in stores reservation_form as the source", async () => {
@@ -2825,7 +3010,7 @@ describe("prepareWorkspacePayState", () => {
             {
               firstName: "Grace",
               lastName: "Hopper",
-              phone: "+420 602 123 456",
+              phone: "+420602123456",
               ...(profileBilling && { billing: profileBilling }),
             },
           ],
@@ -3104,6 +3289,92 @@ describe("prepareWorkspacePayState", () => {
           ).toBe("1");
         }
       );
+
+      // A quote whose only discount is the 15% invitation of this customer.
+      const invitationQuoteFor = (dotyposCustomerId: string) => {
+        const advertised = makeAdvertisementQuote(1500, "Referral discount");
+        return buildQuoteFromAdvertisement(
+          discountAdvertisementQuoteCodec.make({
+            ...advertised,
+            discounts: advertised.discounts.map((applied) => ({
+              ...applied,
+              discount: {
+                ...applied.discount,
+                id: getReferralBenefitIds(dotyposCustomerId as never)
+                  .invitation,
+              },
+            })),
+          })
+        );
+      };
+      const referralBookingQuoting = (
+        quote: ReturnType<typeof buildQuoteFromAdvertisement>,
+        rememberedReferralCode: string | undefined
+      ) => ({
+        findByAttemptKeys: mock(() => Effect.succeed(null)),
+        createDraft: createFreshDraft(),
+        ...linkedAccountBooking(),
+        linkedAccount: linkedAccount(),
+        rememberedReferralCode,
+        evaluateCheckoutReferral: mock(() =>
+          Effect.succeed({ kind: "eligible" as const, code: "RFL12345" })
+        ),
+        quoteForCustomer: mock(() => Effect.succeed(quote)),
+      });
+      const markerOf = (result: object | undefined) =>
+        referralAppliedOf(
+          result && "redirectUrl" in result
+            ? (result.redirectUrl as string)
+            : undefined
+        );
+
+      test("reports the referral applied when the carried referral prices the booked customer's invitation", async () => {
+        const scenario = await runReusableReservationScenario(
+          referralBookingQuoting(
+            invitationQuoteFor(accountDotyposCustomerId),
+            "RFL12345"
+          )
+        );
+
+        expect(scenario.result).toMatchObject({
+          status: "ready",
+          referralApplied: true,
+        });
+        expect(markerOf(scenario.result)).toBe("1");
+      });
+
+      test.each([
+        [
+          "no discount",
+          () => buildQuoteFromAdvertisement(makeAdvertisementQuote()),
+        ],
+        ["another customer's invitation", () => invitationQuoteFor("60999")],
+      ] as const)(
+        "leaves the referral unreported when the carried referral prices %s, keeping the URL marker",
+        async (_label, quote) => {
+          const scenario = await runReusableReservationScenario(
+            referralBookingQuoting(quote(), "RFL12345")
+          );
+
+          expect(scenario.result?.status).toBe("ready");
+          expect(scenario.result).not.toHaveProperty("referralApplied");
+          expect(markerOf(scenario.result)).toBe("1");
+        }
+      );
+
+      test("leaves the referral unreported for an invitation price without a carried referral", async () => {
+        const scenario = await runReusableReservationScenario(
+          referralBookingQuoting(
+            invitationQuoteFor(accountDotyposCustomerId),
+            undefined
+          )
+        );
+
+        expect(scenario.result?.status).toBe("ready");
+        expect(scenario.evaluateCheckoutReferral).not.toHaveBeenCalled();
+        expect(scenario.result).not.toHaveProperty("referralApplied");
+        expect(markerOf(scenario.result)).toBeNull();
+      });
 
       test("carries an eligible referral for the customer a first profile saved at checkout created", async () => {
         const order: string[] = [];
@@ -3446,7 +3717,7 @@ describe("prepareWorkspacePayState", () => {
       expect(scenario.findOrCreateCustomer).toHaveBeenCalledTimes(1);
       expect(scenario.findOrCreateCustomer.mock.calls[0]?.[0]).toMatchObject({
         email: reservation.email,
-        phone: reservation.phone,
+        phone: "+420777777777",
       });
       expect(scenario.createDraft.mock.calls[0]?.[0]).toMatchObject({
         dotyposCustomerId: "customer-id",
@@ -4295,6 +4566,7 @@ describe("prepareWorkspacePayState", () => {
     );
     expect(state.changedKeys?.itemKeys).toContain("product:cowork:open-space");
     expect(state.quote.payment.discounts).toEqual([]);
+    expect(result.result.payStateToken).toBe(token ?? "");
   });
 
   test("allows the customer discount to first appear on a ready summary", async () => {

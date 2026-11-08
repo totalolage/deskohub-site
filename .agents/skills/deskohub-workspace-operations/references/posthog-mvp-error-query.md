@@ -45,6 +45,6 @@ The Error Tracking issue ID identifies the subject, and each sampled event `uuid
 ## Coverage limits
 
 - Logs cover server-side `Effect.logError` and `Effect.logFatal`. Workspace doesn't call server-side `captureException`, so an escaped server exception appears only when a boundary logs it at error or fatal level.
-- Error Tracking covers browser uncaught errors and unhandled rejections as `$exception` events, only after analytics consent and while PostHog exception autocapture is on. The browser adds `deployment.environment.name` in [`posthog-analytics.tsx`](../../../../apps/deskohub-workspace/features/cookie-consent/components/posthog-analytics.tsx). Browser `console.error` isn't captured.
+- Error Tracking covers browser uncaught errors and unhandled rejections as `$exception` events, only after analytics consent and while PostHog exception autocapture is on. The browser adds `deployment.environment.name` in [`browser-analytics-session.ts`](../../../../apps/deskohub-workspace/features/cookie-consent/browser-analytics-session.ts). Browser `console.error` isn't captured.
 - An outage longer than seven days leaves a gap. Widen the window after one.
 - ID and fingerprint matches are only the first duplicate check. Semantic triage decides.

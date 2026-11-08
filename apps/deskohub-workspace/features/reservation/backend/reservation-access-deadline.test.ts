@@ -62,7 +62,7 @@ test("renders the unavailable state within 8 seconds when Dotypos hangs", async 
   );
 
   expect(completedWithinDeadline).toBe(true);
-  expect(access).toEqual({ state: "unavailable" });
+  expect(access).toEqual({ state: "unavailable", reason: "lookup-failed" });
   expect(getReservation).toHaveBeenCalledTimes(1);
   expect(resolveCustomerAccessCode).not.toHaveBeenCalled();
 });

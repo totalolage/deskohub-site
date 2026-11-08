@@ -66,6 +66,7 @@ export const assertReservationReplacement = ({
           timeoutMs: config.timeouts.browserNavigation,
         });
         return yield* submitReservationForPayPage({
+          data,
           onOrderId: (orderId) => {
             state.orderId = orderId;
           },
@@ -120,6 +121,7 @@ export const assertReservationReplacement = ({
       execute: Effect.gen(function* () {
         const browser = yield* browserSessionFor(run, session);
         return yield* submitReservationForPayPage({
+          data: replacementData,
           onOrderId: (orderId) => {
             state.orderId = orderId;
           },
