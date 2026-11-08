@@ -2,6 +2,7 @@ import {
   CurrentCustomerSession,
   CustomerAccessCodeUnavailable,
   type CustomerAccountApi,
+  type CustomerAccountDeletionResult,
   CustomerAccountLinkRequired,
   type CustomerAccountState,
   type CustomerAuthEndpoints,
@@ -61,7 +62,12 @@ export type FakeRequestOutcome =
   /** No answer ever comes; the client's timeout decides. */
   | "hang"
   /** The server handles the request, then answers a body nobody can read. */
-  | "unreadable-answer";
+  | "unreadable-answer"
+  /**
+   * Better Auth endpoints only: the session is too old for this change
+   * (403 `SESSION_NOT_FRESH`), so the customer must confirm it's them.
+   */
+  | "session-not-fresh";
 
 type EndpointName = HttpApiEndpoint.Name<
   | HttpApiGroup.Endpoints<typeof CustomerAccountApi>
@@ -78,6 +84,11 @@ type EndpointName = HttpApiEndpoint.Name<
 export class FakeWorkspace {
   data: FakeWorkspaceData;
   signedIn = true;
+  /**
+   * How the next deletion request ends. Only `deleted` deletes the account
+   * and ends the session.
+   */
+  deletionOutcome: CustomerAccountDeletionResult["status"] = "deleted";
   /** Endpoint names in the order requests reached them. */
   readonly calls: EndpointName[] = [];
   private readonly outcomes = new Map<EndpointName, FakeRequestOutcome[]>();
@@ -301,8 +312,9 @@ const serverLayer = (workspace: FakeWorkspace) => {
         .handle("acknowledgeSignupReferral", () => Effect.void)
         .handle("requestDeletion", () =>
           Effect.sync(() => {
-            workspace.signedIn = false;
-            return { status: "deleted" as const };
+            const status = workspace.deletionOutcome;
+            if (status === "deleted") workspace.signedIn = false;
+            return { status };
           })
         )
   );
@@ -512,6 +524,9 @@ const betterAuthRefusal = (
   }
   if (outcome === "rate-limited") return json(429, {});
   if (outcome === "service-unavailable") return json(503, {});
+  if (outcome === "session-not-fresh") {
+    return json(403, { code: "SESSION_NOT_FRESH" });
+  }
   return undefined;
 };
 
