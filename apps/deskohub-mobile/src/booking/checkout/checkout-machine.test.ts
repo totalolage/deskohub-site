@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import type {
   CustomerCheckout,
   CustomerLegalDocument,
@@ -32,7 +33,7 @@ const details = {
   bookingFor: "self",
   contact: {
     name: "Synthetic Booker",
-    email: "booker@example.test",
+    email: testEmailAddress("booker"),
     phone: "+420700000000",
   },
   billing: { purpose: "personal", invoice: "none" },

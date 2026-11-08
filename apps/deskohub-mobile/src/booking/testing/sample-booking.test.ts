@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import {
   type CustomerBookingSelection,
   type CustomerCheckoutSubmission,
@@ -61,7 +62,7 @@ const submitted = (
         bookingFor: "self",
         contact: {
           name: "Alex Sample",
-          email: "alex@example.test",
+          email: testEmailAddress("alex"),
           phone: "+420600000000",
         },
         billing: { purpose: "personal", invoice: "none" },

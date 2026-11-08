@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import type { CustomerAccountState } from "@deskohub/workspace-customer-api";
 import { Option } from "effect";
 import { sampleWorkspaceData } from "../../customer-api/testing/sample-fixtures";
@@ -21,7 +22,7 @@ const linkedAccount = (
 };
 
 const profileSelf: SelfContact = {
-  email: "booker@example.test",
+  email: testEmailAddress("booker"),
   name: Option.some("Synthetic Booker"),
   phone: Option.some("+420 700 000 000"),
 };
@@ -93,7 +94,7 @@ describe("validateDetails", () => {
         bookingFor: "self",
         contact: {
           name: "Synthetic Booker",
-          email: "booker@example.test",
+          email: testEmailAddress("booker"),
           phone: "+420 700 000 000",
         },
         billing: { purpose: "personal", invoice: "none" },
@@ -116,8 +117,8 @@ describe("validateDetails", () => {
         marketingConsent: true,
         someoneElse: {
           name: "Guest Person",
-          email: "guest@example.test",
-          emailRepeat: "GUEST@example.test",
+          email: testEmailAddress("guest"),
+          emailRepeat: testEmailAddress("guest").toUpperCase(),
           phone: "777 123 456",
         },
       })
@@ -125,7 +126,9 @@ describe("validateDetails", () => {
     expect(forSomeoneElse._tag).toBe("Valid");
     if (forSomeoneElse._tag !== "Valid") return;
     expect("marketingConsent" in forSomeoneElse.details).toBe(false);
-    expect(forSomeoneElse.details.contact.email).toBe("guest@example.test");
+    expect(forSomeoneElse.details.contact.email).toBe(
+      testEmailAddress("guest")
+    );
   });
 
   test("a missing self phone is required, then checked", () => {
@@ -145,7 +148,7 @@ describe("validateDetails", () => {
 
   test("an unprofiled account must name itself", () => {
     const unprofiled = {
-      email: "new@example.test",
+      email: testEmailAddress("new"),
       name: Option.none(),
       phone: Option.none(),
     };
@@ -171,7 +174,7 @@ describe("validateDetails", () => {
           someoneElse: {
             name: "Guest Person",
             email: "guest@example",
-            emailRepeat: "other@example.test",
+            emailRepeat: testEmailAddress("other"),
             phone: "777123456",
           },
         })

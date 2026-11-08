@@ -1,3 +1,4 @@
+import { testEmailAddress } from "@deskohub/test-email";
 import type { CustomerBookingSelection } from "@deskohub/workspace-customer-api";
 import { Effect, Layer } from "effect";
 import { TestClock } from "effect/testing";
@@ -61,7 +62,7 @@ export const sampleCheckoutDetails: CheckoutDetails = {
   bookingFor: "self",
   contact: {
     name: "Alex Sample",
-    email: "alex@example.test",
+    email: testEmailAddress("alex"),
     phone: "+420600000000",
   },
   billing: { purpose: "personal", invoice: "none" },

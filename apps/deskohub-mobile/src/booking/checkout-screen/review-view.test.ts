@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import type { CustomerCheckout } from "@deskohub/workspace-customer-api";
 import { Option } from "effect";
 import { BookingProblem } from "../checkout/booking-problem";
@@ -91,7 +92,7 @@ const reviewWith = (
         bookingFor: "self",
         contact: {
           name: "Synthetic Booker",
-          email: "booker@example.test",
+          email: testEmailAddress("booker"),
           phone: "+420700000000",
         },
         billing: { purpose: "personal", invoice: "none" },
