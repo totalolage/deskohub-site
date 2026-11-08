@@ -2,7 +2,6 @@ import "server-only";
 
 import { type EmailMessage, EmailServiceTag } from "@deskohub/email";
 import { NodeCrypto } from "@effect/platform-node";
-import { and, eq, inArray, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import {
   Array as Arr,
@@ -17,13 +16,7 @@ import {
 } from "effect";
 import type { SqlError } from "effect/unstable/sql";
 import { WorkspaceDatabase } from "@/db/database.service";
-import {
-  type CampaignAudienceRow,
-  type CampaignRow,
-  emailCampaignRecipients,
-  emailCampaignSends,
-  emailCampaigns,
-} from "@/db/schema";
+import type { CampaignAudienceRow, CampaignRow } from "@/db/schema";
 import type { Locale } from "@/features/i18n";
 import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
@@ -39,20 +32,19 @@ import type {
   CampaignId,
   CampaignSendId,
 } from "../campaign-identifiers";
-import { isOnceCampaign } from "../campaign-states";
 import {
   CampaignAudienceMissing,
   type CampaignAudienceNotFound,
   type CampaignConfirmationRejected,
   CampaignContentMissing,
-  CampaignDeliveryMismatch,
+  type CampaignDeliveryMismatch,
   CampaignDeliveryQueueFailed,
   CampaignEmailDeliveryFailed,
   type CampaignEmailNotConfigured,
   CampaignFallbackContentMissing,
   CampaignNoRecipients,
-  CampaignNotFound,
-  CampaignNotRetryable,
+  type CampaignNotFound,
+  type CampaignNotRetryable,
   CampaignReadOnly,
   type CampaignRecipientResolutionError,
   type CampaignRecipientsOutsideTestDomain,
@@ -68,14 +60,14 @@ import { AudienceFactsService } from "./audience-facts.service";
 import { CampaignService } from "./campaign.service";
 import { CampaignAudienceService } from "./campaign-audience.service";
 import { CampaignCandidateRepository } from "./campaign-candidate.repository";
-import {
-  CampaignConfirmationCodeService,
-  type CampaignSendFreeze,
-} from "./campaign-confirmation-code.service";
+import { CampaignConfirmationCodeService } from "./campaign-confirmation-code.service";
 import { CampaignEmailConfig } from "./campaign-email.config";
 import { CampaignRecipientService } from "./campaign-recipient.service";
 import { CampaignSendQueueService } from "./campaign-send-queue.service";
-import { onceCampaignSend } from "./campaign-send-selection";
+import {
+  type CampaignSendFreeze,
+  OnceCampaignLifecycle,
+} from "./once-campaign-lifecycle";
 
 type DatabaseError = EffectDrizzleQueryError | SqlError.SqlError;
 
@@ -187,7 +179,7 @@ export class CampaignSendService extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const { db, transaction } = yield* WorkspaceDatabase;
+      const { transaction } = yield* WorkspaceDatabase;
       const campaigns = yield* CampaignService;
       const audiences = yield* CampaignAudienceService;
       const recipientResolution = yield* CampaignRecipientService;
@@ -410,15 +402,14 @@ export class CampaignSendService extends Context.Service<
               Effect.catchTag("CampaignSendQueueError", (cause) =>
                 currentInstant.pipe(
                   Effect.flatMap((updatedAt) =>
-                    db
-                      .update(emailCampaigns)
-                      .set({ status: "failed", updatedAt })
-                      .where(
-                        and(
-                          eq(emailCampaigns.id, input.campaignId),
-                          eq(emailCampaigns.status, "sending")
-                        )
-                      )
+                    transaction(
+                      OnceCampaignLifecycle.abandon({
+                        campaignId: input.campaignId,
+                        sendId: input.sendId,
+                        deliveryAttempt: input.deliveryAttempt,
+                        now: updatedAt,
+                      })
+                    )
                   ),
                   Effect.andThen(
                     Effect.fail(
@@ -431,79 +422,6 @@ export class CampaignSendService extends Context.Service<
                 )
               )
             );
-        }
-      );
-
-      /**
-       * Under the campaign row lock, moves a Failed campaign back to Sending
-       * and puts its undelivered recipients into a new delivery attempt.
-       */
-      const startRetry = Effect.fn("CampaignSendService.startRetry")(
-        function* (input: {
-          readonly campaignId: CampaignId;
-          readonly includeUnconfirmed: boolean;
-          readonly now: Temporal.Instant;
-        }) {
-          const { campaignId, now } = input;
-          const [campaign] = yield* db
-            .select({
-              delivery: emailCampaigns.delivery,
-              status: emailCampaigns.status,
-            })
-            .from(emailCampaigns)
-            .where(eq(emailCampaigns.id, campaignId))
-            .for("update");
-          if (!campaign) {
-            return yield* new CampaignNotFound({ campaignId });
-          }
-          if (!isOnceCampaign(campaign)) {
-            return yield* new CampaignDeliveryMismatch({
-              campaignId,
-              delivery: campaign.delivery,
-            });
-          }
-          if (campaign.status !== "failed") {
-            return yield* new CampaignNotRetryable({
-              campaignId,
-              status: campaign.status,
-            });
-          }
-          const [send] = yield* db
-            .update(emailCampaignSends)
-            .set({
-              deliveryAttempt: sql`${emailCampaignSends.deliveryAttempt} + 1`,
-            })
-            .where(onceCampaignSend(campaignId))
-            .returning({
-              sendId: emailCampaignSends.id,
-              deliveryAttempt: emailCampaignSends.deliveryAttempt,
-            });
-          const retried = yield* db
-            .update(emailCampaignRecipients)
-            .set({
-              deliveryAttempt: send!.deliveryAttempt,
-              status: "pending",
-              statusUpdatedAt: now,
-            })
-            .where(
-              and(
-                eq(emailCampaignRecipients.sendId, send!.sendId),
-                inArray(
-                  emailCampaignRecipients.status,
-                  input.includeUnconfirmed
-                    ? ["pending", "failed", "unconfirmed"]
-                    : ["pending", "failed"]
-                )
-              )
-            )
-            .returning({
-              dotyposCustomerId: emailCampaignRecipients.dotyposCustomerId,
-            });
-          yield* db
-            .update(emailCampaigns)
-            .set({ status: "sending", updatedAt: now })
-            .where(eq(emailCampaigns.id, campaignId));
-          return { ...send!, retriedCount: retried.length };
         }
       );
 
@@ -565,7 +483,13 @@ export class CampaignSendService extends Context.Service<
           ({ campaignId, includeUnconfirmed = false }) =>
             currentInstant.pipe(
               Effect.flatMap((now) =>
-                transaction(startRetry({ campaignId, includeUnconfirmed, now }))
+                transaction(
+                  OnceCampaignLifecycle.retry({
+                    campaignId,
+                    includeUnconfirmed,
+                    now,
+                  })
+                )
               ),
               Effect.tap(({ sendId, deliveryAttempt }) =>
                 enqueueOrFail({ campaignId, sendId, deliveryAttempt })
