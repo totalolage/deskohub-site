@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync } from "node:fs";
 import { join, relative, sep } from "node:path";
+import {
+  accountSectionHref,
+  accountSectionOrder,
+} from "../account/account-gating";
 import { screenPathPattern } from "../analytics/screen-path";
 import { appLinkRoute } from "./app-link";
 
@@ -97,5 +101,15 @@ describe("app route tree", () => {
       });
     }
     expect(resolves("deskohub://no-such-screen")).toBe(false);
+  });
+
+  test("every Account section links to a screen", () => {
+    for (const section of accountSectionOrder) {
+      const href = accountSectionHref[section];
+      expect({ section, resolves: resolves(href) }).toEqual({
+        section,
+        resolves: true,
+      });
+    }
   });
 });
