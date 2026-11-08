@@ -8,10 +8,15 @@ import {
 } from "effect/unstable/reactivity";
 import { CustomerWriteUnconfirmed } from "../../customer-api/customer-request";
 import {
+  CustomerViewError,
+  toCustomerViewError,
+} from "../../customer-api/customer-view-error";
+import {
   makeFakeCustomerData,
   settle,
 } from "../../customer-api/testing/customer-data-test-registry";
 import {
+  isMarketingPreferenceUnavailable,
   type MarketingPreferenceChoice,
   marketingPreferencesAtom,
   marketingSwitchView,
@@ -87,6 +92,38 @@ describe("marketingPreferencesAtom", () => {
         reason: "profile-missing",
       },
     });
+  });
+});
+
+describe("isMarketingPreferenceUnavailable", () => {
+  test("answers guidance when the Workspace can't read the preference", async () => {
+    const data = makeFakeCustomerData("linked");
+    data.workspace.fail("getMarketingPreferences", "service-unavailable");
+
+    const result = await settle(data.registry, marketingPreferencesAtom);
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "CustomerServiceUnavailable" },
+    });
+    if (result._tag !== "Failure") throw new Error("expected a failure");
+    expect(
+      isMarketingPreferenceUnavailable(toCustomerViewError(result.failure))
+    ).toBe(true);
+  });
+
+  test("leaves other failures to the shared wording", () => {
+    expect(
+      isMarketingPreferenceUnavailable(CustomerViewError.RateLimited())
+    ).toBe(false);
+    expect(
+      isMarketingPreferenceUnavailable(
+        CustomerViewError.LinkRequired({ reason: "profile-missing" })
+      )
+    ).toBe(false);
+    expect(isMarketingPreferenceUnavailable(CustomerViewError.TimedOut())).toBe(
+      false
+    );
   });
 });
 

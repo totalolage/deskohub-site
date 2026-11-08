@@ -26,6 +26,7 @@ import {
   legalDocumentUrl,
 } from "./legal-documents";
 import {
+  isMarketingPreferenceUnavailable,
   type MarketingSaveFeedback,
   marketingPreferencesAtom,
   marketingSwitchView,
@@ -160,7 +161,15 @@ function MarketingPreference() {
 
   return (
     <>
-      <AsyncView result={preferences} onRetry={refresh}>
+      <AsyncView
+        result={preferences}
+        onRetry={refresh}
+        errorMessage={(error) =>
+          isMarketingPreferenceUnavailable(error)
+            ? m.legal_marketing_unavailable({}, { locale })
+            : undefined
+        }
+      >
         {(current) => (
           <ListGroup>
             <View style={styles.switchRow}>

@@ -29,6 +29,14 @@ export const marketingPreferencesAtom = customerDataRuntime.atom(
   ).pipe(customerRead({ dotyposBacked: true }))
 );
 
+/**
+ * Whether a failed preferences read is the "can't show it here" state the
+ * site answers with guidance: the Workspace couldn't read the preference.
+ * Other failures keep their shared wording.
+ */
+export const isMarketingPreferenceUnavailable = (error: CustomerViewError) =>
+  error._tag === "Unavailable";
+
 /** What the customer chose with the switch, and the state it changes. */
 export interface MarketingPreferenceChoice {
   /** The `context` of the preferences the switch showed. */
