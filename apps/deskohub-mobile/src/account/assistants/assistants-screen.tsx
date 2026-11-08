@@ -1,7 +1,7 @@
 import { useAtom, useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/unstable/reactivity";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { AsyncView } from "../../customer-api/async-view";
 import type { CustomerViewError } from "../../customer-api/customer-view-error";
 import type { AppLocale } from "../../i18n/app-locale";
@@ -9,7 +9,7 @@ import { useAppLocale } from "../../i18n/locale-context";
 import { m } from "../../i18n/messages";
 import { theme } from "../../theme";
 import { ConfirmDialog } from "../../ui/confirm-dialog";
-import { BodyText, LiveMessage } from "../../ui/controls";
+import { BodyText, Button, LiveMessage } from "../../ui/controls";
 import { ListGroup, ListRow } from "../../ui/list";
 import { Notice } from "../../ui/notice";
 import { ScrollScreen } from "../../ui/scroll-screen";
@@ -116,6 +116,7 @@ export function AssistantsScreen() {
                 <AssistantConnectionRow
                   key={row.id}
                   row={row}
+                  locale={locale}
                   onDisconnect={() => ask({ id: row.id, name: row.name })}
                 />
               ))}
@@ -150,14 +151,16 @@ export function AssistantsScreen() {
   );
 }
 
-function AssistantConnectionRow({
+/** One connected assistant: who it is, what it may do, and Disconnect. */
+export function AssistantConnectionRow({
   row,
+  locale,
   onDisconnect,
 }: {
   readonly row: AssistantRow;
+  readonly locale: AppLocale;
   readonly onDisconnect: () => void;
 }) {
-  const locale = useAppLocale();
   const name = row.name ?? m.assistants_unnamed({}, { locale });
   const details = detailsText(row, locale);
   return (
@@ -171,20 +174,17 @@ function AssistantConnectionRow({
             <Text style={styles.details}>{details}</Text>
           )}
         </View>
-        <Pressable
-          role="button"
-          aria-label={m.assistants_disconnect_label({ name }, { locale })}
-          hitSlop={theme.spacing.sm}
-          onPress={onDisconnect}
-          style={({ pressed }) => [
-            styles.disconnect,
-            pressed && styles.pressed,
-          ]}
-        >
-          <Text style={styles.disconnectLabel}>
-            {m.assistants_disconnect({}, { locale })}
-          </Text>
-        </Pressable>
+        <View style={styles.disconnect}>
+          <Button
+            variant="secondary"
+            label={m.assistants_disconnect({}, { locale })}
+            accessibilityLabel={m.assistants_disconnect_label(
+              { name },
+              { locale }
+            )}
+            onPress={onDisconnect}
+          />
+        </View>
       </View>
       {(row.scopes.length > 0 || row.administration) && (
         <View
@@ -230,19 +230,7 @@ const styles = StyleSheet.create({
   identity: { flex: 1, gap: 2 },
   name: { color: theme.colors.text, ...theme.type.body, fontWeight: "600" },
   details: { color: theme.colors.textMuted, ...theme.type.caption },
-  disconnect: {
-    alignItems: "center",
-    borderRadius: theme.radius.md,
-    justifyContent: "center",
-    minHeight: theme.touchTarget,
-    paddingHorizontal: theme.spacing.sm,
-  },
-  pressed: { backgroundColor: theme.colors.surfacePressed },
-  disconnectLabel: {
-    color: theme.colors.danger,
-    ...theme.type.caption,
-    fontWeight: "600",
-  },
+  disconnect: { flexShrink: 0 },
   scopes: { gap: theme.spacing.xs },
   scope: { flexDirection: "row", gap: theme.spacing.sm },
   granted: { color: theme.colors.accent, ...theme.type.caption },
