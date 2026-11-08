@@ -6,16 +6,19 @@ import {
 import type { Customer } from "@deskohub/dotypos/generated";
 import { Temporal } from "@js-temporal/polyfill";
 import { Effect, Option } from "effect";
-import {
-  workspaceMeetingRoomReservationTableTag,
-  workspaceOfficeReservationTableTag,
-} from "@/features/checkout/backend/reservation/workspace-table-selection";
 import type { DatasourceConfig } from "../config";
 import {
   toWorkspaceE2EError,
   type WorkspaceE2EError,
   workspaceE2EError,
 } from "../errors";
+import {
+  admitSyntheticReservation,
+  recheckFixtureCapacityTime,
+  syntheticReservationDuration,
+  syntheticReservationFutureOffset,
+  syntheticReservationPastOffset,
+} from "../fixture-capacity";
 import {
   cancelDotyposReservation,
   getDotyposLayer,
@@ -180,9 +183,6 @@ export const assertNoSyntheticCustomerProfile = (
     )
   );
 
-const futureReservationDays = 120;
-const referralHistoryEndOffsetDays = 2;
-
 export type SyntheticReservation = {
   readonly endsAt: Temporal.Instant;
   readonly reservationId: DotyposReservationId | undefined;
@@ -196,34 +196,36 @@ const createSyntheticReservationAt = (
     readonly customerId: DotyposCustomerId;
     readonly seats?: number;
     readonly startsAtMillis: number;
+    readonly window: "past" | "future";
   }
 ): Effect.Effect<SyntheticReservation, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const dotypos = yield* DotyposService;
-    const tables = yield* dotypos.getTables();
-    const table = tables.find(
-      (candidate) =>
-        candidate.enabled === true &&
-        candidate.display === true &&
-        !candidate.tags?.includes(workspaceOfficeReservationTableTag) &&
-        !candidate.tags?.includes(workspaceMeetingRoomReservationTableTag)
-    );
-    if (!table) {
-      return yield* workspaceE2EError(
-        "No enabled shared table is available for the synthetic account reservation",
-        {
+    const tables = yield* dotypos.getTables().pipe(
+      Effect.mapError(() =>
+        workspaceE2EError("Synthetic fixture table inventory is Unknown", {
           diagnosticCode: "dotypos_account_fixture_mutation_failed",
-          operation: "select synthetic reservation table",
-        }
-      );
-    }
+          operation: "admit synthetic reservation",
+        })
+      )
+    );
+    const { table, observation } = yield* admitSyntheticReservation({
+      config,
+      tables,
+      startsAtMillis: input.startsAtMillis,
+      seats: input.seats ?? 1,
+      window: input.window,
+    });
     const startsAt = new Date(input.startsAtMillis);
-    const endsAt = new Date(input.startsAtMillis + 2 * 60 * 60 * 1000);
+    const endsAt = new Date(
+      input.startsAtMillis + syntheticReservationDuration
+    );
     const intent = yield* recordReservationIntent({
       owner: { customerId: input.customerId },
       startDate: startsAt,
       endDate: endsAt,
     });
+    yield* recheckFixtureCapacityTime(observation);
     const reservation = yield* dotypos.createReservation({
       customerId: input.customerId,
       endDate: endsAt,
@@ -256,7 +258,8 @@ export const createSyntheticReservation = (
 ): Effect.Effect<SyntheticReservation, WorkspaceE2EError> =>
   createSyntheticReservationAt(config, {
     ...input,
-    startsAtMillis: Date.now() + futureReservationDays * 24 * 60 * 60 * 1000,
+    window: "future",
+    startsAtMillis: Date.now() + syntheticReservationFutureOffset,
   });
 
 /**
@@ -269,10 +272,8 @@ export const createSyntheticReferralHistoryReservation = (
 ): Effect.Effect<SyntheticReservation, WorkspaceE2EError> =>
   createSyntheticReservationAt(config, {
     ...input,
-    startsAtMillis:
-      Date.now() -
-      referralHistoryEndOffsetDays * 24 * 60 * 60 * 1000 -
-      2 * 60 * 60 * 1000,
+    window: "past",
+    startsAtMillis: Date.now() + syntheticReservationPastOffset,
   });
 
 export const cancelSyntheticReservation = (

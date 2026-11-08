@@ -139,6 +139,22 @@ Groups count only enabled, displayed tables with an ID and a positive seat count
 
 Use peak overlap, never a sum across unrelated dates, and never treat meeting-room seats as room concurrency. Query whole first and last candidate dates. Change table seats or rooms operationally in Dotypos, then rerun the validator; never change capacity from the runner.
 
+The same command also observes the account and referral fixture table after the workflow's queue and lease wait. Before reading tables it declares a 50-minute execution interval `[S,E]`. The bounded reader (`e2e/integrations/fixture-capacity.ts`) preserves provider table order and uses the shared fixture selector. It reads all owners' active half-open overlaps in the past `[S-2d-2h,E-2d]` and future `[S+120d,E+120d+2h]` envelopes. Days are fixed 24-hour offsets. Each window compares peak occupied seats, processing ends before starts at equal times, plus four past or two future one-seat fixtures per supported concurrent run. Cancelled reservations are excluded; an expired customer's active reservation still counts.
+
+This fixture read uses generated schemas, complete pagination metadata, and cloud and record-ID validation. It makes no retries, follows no redirects, and disables proxies. Its ceilings include token and table requests: ten physical requests, three pages per traversal, 100 records per page, 30 seconds per request, ten minutes elapsed, 1 MiB per response, and 16 MiB total. A timeout, exceeded limit, malformed or incomplete response, token404, table404, or later-page404 yields Unknown. Only an empty first reservation-page404 after successful token acquisition and an independent complete nonempty table/cloud read means empty. The checkout aggregate read keeps its existing provider policy; these fixture-reader limits do not describe it.
+
+At command start, stale fixture admission is removed. After both reports pass, the command atomically writes a mode-0600 observation to `apps/deskohub-workspace/.workspace-e2e.local/fixture-capacity.json`, outside `e2e-artifacts`. It contains aggregate counts and digests binding the target SHA, immutable preview, run attempt, provider/database configuration, ordered table inventory, selected table, and its seat capacity. Public output contains intervals, observation times, counts, and per-window capacity only. Keep this private file out of uploads and retain no old observation for a new target.
+
+Both fixture wrappers converge on `createSyntheticReservationAt`, which requires a current successful observation and matching target, configuration, table inventory, capacity, one-seat demand, and covered fixture interval. It rechecks the cutoff after asynchronous intent journaling immediately before provider creation. Missing or failed admission stops creation; the writer never refreshes it. Cancellation and cleanup remain available after expiry. This enforces the same finite admission bound for direct local calls. Run `e2e:capacity` with the same decoded environment and `TARGET_SHA` before local E2E, and finish fixture creation within its interval. Queueing before the command consumes none of that interval.
+
+Capacity is an observation, not a provider-side reservation or transactional snapshot. Coordinate other provider-backed writers through terminal cleanup, or account for their bounded demand within supported concurrency. Changed provider inventory or unknown writers invalidate the capacity claim. Keep `cleanup_stale_e2e_reservations` off during this observation and validation campaign. After a source-head change, record historical campaign results separately and start fresh exact-head evidence; never reuse an older observation or artifact.
+
+Focused offline checks from `apps/deskohub-workspace`:
+
+```bash
+bun run test e2e/fixture-capacity.test.ts e2e/integrations/fixture-capacity.test.ts e2e/account/fixture-capacity.test.ts e2e/reservation-intents.test.ts scripts/workspace-e2e-capacity.test.ts
+```
+
 `e2e:cleanup-stale` is dry-run by default and applies only with `--apply`, which the workflow passes when `cleanup_stale_e2e_reservations` is set on a manual dispatch. It cancels only reservations whose customer name has the `Workspace E2E ` prefix and a `delivered+…` email on the test domain or the legacy `resend.dev` simulator domain, and whose embedded timestamp is at least two hours old (the job timeout is 50 minutes). If any candidate's details can't be read, it cancels nothing. Don't request it during a load soak.
 
 Before you raise supported concurrency or loosen a provider boundary:

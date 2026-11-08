@@ -10,6 +10,14 @@ import { makeOfficeCheckoutData } from "./checkout/data";
 import { getDatasourceConfig } from "./config";
 import { makeTestE2EEnvironment } from "./e2e-env.test-fixture";
 import {
+  invalidateFixtureCapacityObservation,
+  writeFixtureCapacityObservation,
+} from "./fixture-capacity";
+import {
+  fixtureCapacityTestTable,
+  makeFixtureCapacityTestObservation,
+} from "./fixture-capacity.test-fixture";
+import {
   CurrentReservationCase,
   recordCheckoutIntent,
   recordReservationIntent,
@@ -41,16 +49,7 @@ test("the real account fixture persists each far-future intent before POST and e
         return Response.json({ accessToken: "local-access-token" });
       if (url.pathname === "/clouds/cloud/tables")
         return Response.json({
-          data: [
-            {
-              id: "table",
-              name: "Synthetic table",
-              _cloudId: "cloud",
-              enabled: true,
-              display: true,
-              seats: "16",
-            },
-          ],
+          data: [fixtureCapacityTestTable],
         });
       if (
         url.pathname === "/clouds/cloud/reservations" &&
@@ -94,6 +93,9 @@ test("the real account fixture persists each far-future intent before POST and e
       ...environment,
       DOTYPOS_API_URL: `http://127.0.0.1:${server.port}`,
     });
+    await writeFixtureCapacityObservation(
+      makeFixtureCapacityTestObservation(config)
+    );
     await Effect.runPromise(
       Effect.gen(function* () {
         yield* createSyntheticReservation(config, {
@@ -118,6 +120,7 @@ test("the real account fixture persists each far-future intent before POST and e
       ]).map(({ reservationId }) => reservationId)
     ).toEqual(["reservation-1", "reservation-2"]);
   } finally {
+    await invalidateFixtureCapacityObservation();
     await server.stop(true);
     await rm(directory, { recursive: true, force: true });
   }

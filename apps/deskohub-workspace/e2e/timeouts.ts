@@ -69,6 +69,9 @@ export const workspaceE2ETimeouts = {
   contactCase: 2 * MINUTE,
   datasource: 2 * MINUTE,
   emailCampaignCase: 4 * MINUTE,
+  fixtureCapacityLifetime: 50 * MINUTE,
+  fixtureCapacityObservation: 10 * MINUTE,
+  fixtureCapacityRequest: dotyposApiTimeoutDefaultMilliseconds,
   hostedPayment: 3 * MINUTE,
   localeCase: 3 * MINUTE,
   // Profile creation, customer-page streaming, and profile expiration each
