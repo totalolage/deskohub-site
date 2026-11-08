@@ -64,10 +64,12 @@ const serveInstances = () => {
   const allStarted = Promise.withResolvers<void>();
   const answer = Effect.gen(function* () {
     const request = yield* RequestOwn;
-    const nested = yield* Effect.provide(NestedOwn, NestedOwn.Live);
-    started += 1;
-    if (started === overlapping) allStarted.resolve();
-    yield* Effect.promise(() => allStarted.promise);
+    // Held inside the nested provide, so the nested builds overlap too.
+    const nested = yield* Effect.tap(NestedOwn, () => {
+      started += 1;
+      if (started === overlapping) allStarted.resolve();
+      return Effect.promise(() => allStarted.promise);
+    }).pipe(Effect.provide(NestedOwn.Live));
     return { handler: request.handler, request: request.id, nested: nested.id };
   });
   const handlers = HttpApiBuilder.group(Api, "instances", (group) =>
@@ -110,6 +112,7 @@ describe("providePerRequest", () => {
     const answers = await serveInstances()("/plain");
 
     expect(new Set(answers.map(({ request }) => request)).size).toBe(1);
+    expect(new Set(answers.map(({ nested }) => nested)).size).toBe(1);
   });
 
   test("reuses a Layer the enclosing memo map already built", async () => {
