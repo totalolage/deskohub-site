@@ -3,7 +3,10 @@ import { Context, Data, Deferred, Effect, Layer } from "effect";
 import * as WebBrowser from "expo-web-browser";
 import { Platform } from "react-native";
 import type { TrustedWebActivityProvider } from "../../modules/trusted-web-activity";
-import { AuthSessionDevice } from "./auth-session-device.service";
+import {
+  AuthSessionDevice,
+  type CustomTabOptions,
+} from "./auth-session-device.service";
 import { chooseSignInBrowser } from "./sign-in-browser-choice";
 
 /**
@@ -212,6 +215,18 @@ const customTabsBrowser = (
       )
     : Effect.succeed(undefined);
 
+/**
+ * The Custom Tab opens in the app's own task, like the Trusted Web Activity,
+ * so the return link to the app closes it and every sign-in opens a new page.
+ * Expo's default opens it in a task of its own, which outlives the attempt:
+ * the next sign-in brings that task back with the previous page, whose state
+ * the app then refuses.
+ */
+const customTabOptions = (browserPackage: string): CustomTabOptions => ({
+  browserPackage,
+  createTask: false,
+});
+
 const openAuthSession = (
   device: AuthSessionDevice["Service"],
   url: string,
@@ -224,7 +239,9 @@ const openAuthSession = (
           device.openAuthSession(
             url,
             returnUri,
-            browserPackage === undefined ? undefined : { browserPackage }
+            browserPackage === undefined
+              ? undefined
+              : customTabOptions(browserPackage)
           ),
         catch: (cause) => new AuthSessionUnavailable({ cause }),
       })
