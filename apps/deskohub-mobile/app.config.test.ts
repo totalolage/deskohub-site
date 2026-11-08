@@ -103,7 +103,7 @@ describe("app config", () => {
     url: updatesManifestUrl(undefined),
     checkAutomatically: "ON_ERROR_RECOVERY",
     fallbackToCacheTimeout: 0,
-  };
+  } as const;
 
   test("configures updates without signing for development clients and Metro", () => {
     expect(appConfig(context(staticConfig), {}).updates).toEqual(
