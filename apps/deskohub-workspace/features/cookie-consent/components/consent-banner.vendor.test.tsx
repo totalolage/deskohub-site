@@ -479,7 +479,9 @@ test("both modals link the privacy notice and the cookie policy of the page's lo
     getLegalDocumentPath("cs-CZ", "cookie-policy"),
   ];
   for (const modal of [".cm__footer", ".pm__body"]) {
-    const groups = document.querySelectorAll(`#cc-main ${modal} .cm__link-group`);
+    const groups = document.querySelectorAll(
+      `#cc-main ${modal} .cm__link-group`
+    );
     expect(groups).toHaveLength(1);
     expect(
       [...(groups[0]?.children ?? [])].map((link) => link.getAttribute("href"))
