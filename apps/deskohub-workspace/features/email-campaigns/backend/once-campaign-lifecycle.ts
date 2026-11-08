@@ -113,6 +113,14 @@ const retry = Effect.fn("OnceCampaignLifecycle.retry")(function* (input: {
 }) {
   const { db } = yield* WorkspaceTransaction;
   const { campaignId, now } = input;
+  // Lock order: an existing send before its campaign. A delivery run holds
+  // its send under the lease before settling the campaign, so taking the
+  // campaign first would deadlock against it.
+  yield* db
+    .select({ id: emailCampaignSends.id })
+    .from(emailCampaignSends)
+    .where(onceCampaignSend(campaignId))
+    .for("update");
   const [campaign] = yield* db
     .select({
       delivery: emailCampaigns.delivery,
