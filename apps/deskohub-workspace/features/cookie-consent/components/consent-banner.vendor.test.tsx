@@ -466,6 +466,133 @@ describe("silent grant", () => {
   });
 });
 
+describe("account decision", () => {
+  const decidedAt = "2026-11-08T21:15:42.123Z";
+  const savedAt = () =>
+    Option.getOrUndefined(
+      Option.flatMap(
+        readConsentCookieChoice(document.cookie, { revision }),
+        (saved) => Option.map(saved.lastConsentAt, String)
+      )
+    );
+
+  /** Renders the banner for a signed-out device, as the vendor first sees it. */
+  const renderDevice = async () => {
+    render(<ConsentBanner locale="en-US" revision={revision} />);
+    await act(flushMicrotasks);
+  };
+
+  /** Applies `decision` and returns every change announced meanwhile. */
+  const applyDecision = async (
+    decision: Parameters<typeof visitorConsent.applyAccountDecision>[0]
+  ) => {
+    const changes: string[] = [];
+    const stopFollowing = visitorConsent.subscribe((change) =>
+      changes.push(change)
+    );
+    try {
+      await act(async () => {
+        visitorConsent.applyAccountDecision(decision);
+        await flushMicrotasks();
+      });
+    } finally {
+      stopFollowing();
+    }
+    return changes;
+  };
+
+  test("on a device with a choice, a decline and then an accept change only analytics, each dated at its decision and announced once as its change", async () => {
+    await renderDevice();
+    await act(async () => {
+      vendor.acceptCategory(["analytics", "marketing"]);
+      await flushMicrotasks();
+    });
+    expect(accepted()).toEqual(["necessary", "analytics", "marketing"]);
+
+    const signalBeforeDecline = localStorage.getItem(
+      CONSENT_UPDATED_STORAGE_KEY
+    );
+    const declineChanges = await applyDecision({
+      analytics: false,
+      decidedAt,
+      change: "preference",
+    });
+
+    expect(accepted()).toEqual(["necessary", "marketing"]);
+    expect(savedAt()).toBe(decidedAt);
+    expect(declineChanges).toEqual(["preference"]);
+    // Other tabs are told, so their analytics sessions reconcile too.
+    expect(localStorage.getItem(CONSENT_UPDATED_STORAGE_KEY)).not.toBe(
+      signalBeforeDecline
+    );
+
+    const acceptedAt = "2026-11-08T21:20:00.456Z";
+    const acceptChanges = await applyDecision({
+      analytics: true,
+      decidedAt: acceptedAt,
+      change: "account",
+    });
+
+    expect(accepted()).toEqual(["necessary", "analytics", "marketing"]);
+    expect(savedAt()).toBe(acceptedAt);
+    expect(acceptChanges).toEqual(["account"]);
+  });
+
+  test("on a device without a choice, a decline saves every optional category declined, dated at the decision, and closes the banner", async () => {
+    await renderDevice();
+    expect(bannerOpen()).toBe(true);
+    expect(visitorConsent.hasChoice()).toBe(false);
+
+    const changes = await applyDecision({
+      analytics: false,
+      decidedAt,
+      change: "preference",
+    });
+
+    expect(visitorConsent.hasChoice()).toBe(true);
+    expect(accepted()).toEqual(["necessary"]);
+    expect(savedAt()).toBe(decidedAt);
+    expect(changes).toEqual(["preference"]);
+    expect(bannerOpen()).toBe(false);
+  });
+
+  test("on a device without a choice, an accept saves analytics alone, dated at the decision, and closes the banner", async () => {
+    await renderDevice();
+    expect(bannerOpen()).toBe(true);
+
+    const changes = await applyDecision({
+      analytics: true,
+      decidedAt,
+      change: "preference",
+    });
+
+    expect(accepted()).toEqual(["necessary", "analytics"]);
+    expect(savedAt()).toBe(decidedAt);
+    expect(changes).toEqual(["preference"]);
+    expect(bannerOpen()).toBe(false);
+  });
+
+  test("a decline in a tab that still remembers the declined set, after another tab accepted analytics, persists", async () => {
+    await renderDevice();
+    await act(async () => {
+      vendor.acceptCategory([]);
+      await flushMicrotasks();
+    });
+    changeConsentInAnotherTab(["necessary", "analytics"]);
+    expect(visitorConsent.accepts("analytics")).toBe(true);
+
+    const changes = await applyDecision({
+      analytics: false,
+      decidedAt,
+      change: "account",
+    });
+
+    expect(accepted()).toEqual(["necessary"]);
+    expect(savedAt()).toBe(decidedAt);
+    expect(changes).toEqual(["account"]);
+  });
+});
+
 test("both modals link the privacy notice and the cookie policy of the page's locale as separate links of a link group", async () => {
   render(<ConsentBanner locale="cs-CZ" revision={revision} />);
   await act(async () => {
