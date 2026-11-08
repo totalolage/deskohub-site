@@ -32,8 +32,9 @@ export const readAnalyticsPreference = Effect.fn(
 
 /**
  * Records the signed-in account's analytics preference as its decision now,
- * from account preferences, and returns the instant the ledger stored, which
- * the device's consent cookie takes. A withdrawal also requests the
+ * from account preferences, and returns the account it was recorded for with
+ * the instant the ledger stored, which the device's consent cookie takes
+ * while that account is still the one signed in on the device. A withdrawal also requests the
  * anonymisation of the account's PostHog person; that request never fails
  * the save. None for a signed-out request or an account being deleted,
  * which records nothing.
@@ -74,5 +75,5 @@ export const saveAnalyticsPreference = Effect.fn(
     );
   }
 
-  return Option.some(decidedAt);
+  return Option.some({ accountId: session.accountId, decidedAt });
 });

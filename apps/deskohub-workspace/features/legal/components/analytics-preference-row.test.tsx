@@ -23,12 +23,21 @@ import {
 } from "@/shared/testing/workspace-component-test-env";
 
 type ActionResult = {
-  readonly data?: string | null;
+  readonly data?: {
+    readonly accountId: string;
+    readonly decidedAt: string;
+  } | null;
   readonly serverError?: string;
 };
 
+// The save's answer: the account it was recorded for and its instant.
+const savedFor = (decidedAt: string, accountId = "account-a") => ({
+  accountId,
+  decidedAt,
+});
+
 const savePreference = (): Promise<ActionResult> =>
-  Promise.resolve({ data: "2026-11-08T10:15:30.123Z" });
+  Promise.resolve({ data: savedFor("2026-11-08T10:15:30.123Z") });
 const saveAccountAnalyticsPreference = mock(
   (_input: { readonly granted: boolean }) => savePreference()
 );
@@ -162,7 +171,7 @@ test.each([
     expect(preferenceSwitch.getAttribute("aria-checked")).toBe(`${!granted}`);
     expect(applyAccountDecision).not.toHaveBeenCalled();
 
-    settle({ data: decidedAt });
+    settle({ data: savedFor(decidedAt) });
 
     await waitForSavedFeedback(view);
     expect(preferenceSwitch.getAttribute("aria-checked")).toBe(`${!granted}`);
@@ -242,7 +251,7 @@ test.each([
       expect(saveAccountAnalyticsPreference).toHaveBeenCalledTimes(1)
     );
     apply();
-    settle({ data: "2026-11-08T10:15:30.123Z" });
+    settle({ data: savedFor("2026-11-08T10:15:30.123Z") });
 
     await waitForSavedFeedback(view);
     expect(preferenceSwitch.getAttribute("aria-checked")).toBe("true");
@@ -263,7 +272,7 @@ test("applies the saved decision to the device when the account was verified dur
     expect(saveAccountAnalyticsPreference).toHaveBeenCalledTimes(1)
   );
   identity = signedIn("account-a");
-  settle({ data: "2026-11-08T10:15:30.123Z" });
+  settle({ data: savedFor("2026-11-08T10:15:30.123Z") });
 
   await waitForSavedFeedback(view);
   expect(applyAccountDecision).toHaveBeenCalledTimes(1);
@@ -272,6 +281,24 @@ test("applies the saved decision to the device when the account was verified dur
     decidedAt: "2026-11-08T10:15:30.123Z",
     change: "preference",
   });
+});
+
+test("leaves the device alone when the save was recorded for an account other than the one verified during it", async () => {
+  identity = { status: "pending" };
+  const settle = deferSave();
+  const view = renderRow({ status: "available", granted: false });
+  const preferenceSwitch = getSwitch(view);
+
+  fireEvent.click(preferenceSwitch);
+  await waitFor(() =>
+    expect(saveAccountAnalyticsPreference).toHaveBeenCalledTimes(1)
+  );
+  identity = signedIn("account-b");
+  settle({ data: savedFor("2026-11-08T10:15:30.123Z", "account-a") });
+
+  await waitForSavedFeedback(view);
+  expect(preferenceSwitch.getAttribute("aria-checked")).toBe("true");
+  expect(applyAccountDecision).not.toHaveBeenCalled();
 });
 
 test("reverts to the last saved decision, not the initial one", async () => {
@@ -312,7 +339,7 @@ test("sends one save at a time and accepts the next toggle once it settles", asy
   expect(saveAccountAnalyticsPreference).toHaveBeenCalledTimes(1);
   expect(preferenceSwitch.getAttribute("aria-checked")).toBe("true");
 
-  settle({ data: "2026-11-08T10:15:30.123Z" });
+  settle({ data: savedFor("2026-11-08T10:15:30.123Z") });
   await waitForSavedFeedback(view);
 
   fireEvent.click(preferenceSwitch);

@@ -177,7 +177,15 @@ const saveAnalyticsPreferenceAction = defineWorkspaceAction(
   },
   ({ granted }, { locale }) =>
     saveAnalyticsPreference({ granted, locale }).pipe(
-      Effect.map(consentCookieTimestampOrNull),
+      Effect.map(
+        Option.match({
+          onNone: () => null,
+          onSome: ({ accountId, decidedAt }) => ({
+            accountId,
+            decidedAt: toConsentCookieTimestamp(decidedAt),
+          }),
+        })
+      ),
       Effect.provide(
         Layer.mergeAll(
           AnalyticsConsentLedger.Live,
@@ -191,9 +199,9 @@ const saveAnalyticsPreferenceAction = defineWorkspaceAction(
 /**
  * Records the signed-in account's analytics preference from account
  * preferences as its decision now; turning it off also requests the
- * anonymisation of the account's PostHog person. Returns the instant (ISO
- * 8601) the decision was recorded at, which this device's consent cookie
- * takes; null when signed out, which records nothing.
+ * anonymisation of the account's PostHog person. Returns the account the
+ * decision was recorded for and its instant (ISO 8601), which this device's
+ * consent cookie takes; null when signed out, which records nothing.
  */
 export const saveAccountAnalyticsPreference: typeof saveAnalyticsPreferenceAction =
   async (...args: Parameters<typeof saveAnalyticsPreferenceAction>) => {

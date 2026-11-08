@@ -122,7 +122,10 @@ describe("saveAnalyticsPreference", () => {
   test("turning the preference off records a withdrawal from preferences and requests the account's anonymisation once", async () => {
     const saved = await save(false);
 
-    expect(Option.getOrUndefined(saved)).toBe(storedAt);
+    expect(Option.getOrUndefined(saved)).toEqual({
+      accountId,
+      decidedAt: storedAt,
+    });
     expect(recorded).toEqual([
       {
         accountId,
@@ -137,7 +140,10 @@ describe("saveAnalyticsPreference", () => {
   test("turning the preference on records a grant from preferences and requests no anonymisation", async () => {
     const saved = await save(true);
 
-    expect(Option.getOrUndefined(saved)).toBe(storedAt);
+    expect(Option.getOrUndefined(saved)).toEqual({
+      accountId,
+      decidedAt: storedAt,
+    });
     expect(recorded).toEqual([
       { accountId, decision: "grant", locale: "en-US", source: "preference" },
     ]);
@@ -172,7 +178,10 @@ describe("saveAnalyticsPreference", () => {
       ).pipe(Effect.provide(Logger.layer([logger])))
     );
 
-    expect(Option.getOrUndefined(saved)).toBe(storedAt);
+    expect(Option.getOrUndefined(saved)).toEqual({
+      accountId,
+      decidedAt: storedAt,
+    });
     expect(recorded.map(({ decision }) => decision)).toEqual(["withdraw"]);
     expect(anonymised).toEqual([accountId]);
     expect(

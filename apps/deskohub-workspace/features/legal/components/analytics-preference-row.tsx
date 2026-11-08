@@ -52,16 +52,11 @@ export function AnalyticsPreferenceRow({
   }
   const [feedback, setFeedback] = useState<Feedback | null>(null);
 
-  // This device's saved choice and the signed-in account when the save was
-  // sent. A choice saved on the device meanwhile, as with its own analytics
-  // switch, is newer than the account's decision, and another account's
-  // decision never applies, so either leaves the device as it is, as does a
-  // signed-out session. A save sent before the session's account was verified
-  // applies to the account verified by then.
-  const sentFrom = useRef<{
-    readonly accountId: ReturnType<typeof signedInAccount>;
-    readonly savedChoice: string;
-  } | null>(null);
+  // This device's saved choice when the save was sent. A choice saved on the
+  // device meanwhile, as with its own analytics switch, is newer than the
+  // account's decision and leaves the device as it is, as does a session no
+  // longer signed in to the account the decision was recorded for.
+  const savedChoiceAtSend = useRef<string | null>(null);
 
   const fail = () => {
     setChecked(confirmedGranted);
@@ -74,16 +69,13 @@ export function AnalyticsPreferenceRow({
       onSuccess: ({ data, input }) => {
         // Null when the session ended meanwhile: nothing was recorded.
         if (!data) return fail();
-        const account = signedInAccount();
         if (
-          sentFrom.current?.savedChoice === visitorConsent.saveMark() &&
-          account !== undefined &&
-          (sentFrom.current.accountId === undefined ||
-            sentFrom.current.accountId === account)
+          savedChoiceAtSend.current === visitorConsent.saveMark() &&
+          data.accountId === signedInAccount()
         ) {
           visitorConsent.applyAccountDecision({
             analytics: input.granted,
-            decidedAt: data,
+            decidedAt: data.decidedAt,
             change: "preference",
           });
         }
@@ -107,10 +99,7 @@ export function AnalyticsPreferenceRow({
   const handleToggle = (nextChecked: boolean) => {
     if (isExecuting || inFlight.current || nextChecked === checked) return;
     inFlight.current = true;
-    sentFrom.current = {
-      accountId: signedInAccount(),
-      savedChoice: visitorConsent.saveMark(),
-    };
+    savedChoiceAtSend.current = visitorConsent.saveMark();
     setFeedback(null);
     setChecked(nextChecked);
     void executeAsync({ granted: nextChecked }).then(release, release);

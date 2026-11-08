@@ -175,16 +175,17 @@ glossary defines the customer account, reservation author, and tombstone.
   source `preference` and requests `AnalyticsPersonAnonymisation
   .anonymiseWithdrawnAccount`, whose failure never reaches the action; on
   records a `grant` under the current privacy notice and makes no PostHog
-  call. The action returns the stored instant, and the row applies it to
-  this device with `visitorConsent.applyAccountDecision` (change
+  call. The action returns the account the decision was recorded for and
+  the stored instant, and the row applies it to this device with `visitorConsent.applyAccountDecision` (change
   `preference`): the cookie is dated at that instant, so the hydration mirror
   never records it again, and the banner-save mirror never sees it as a
   `local` save. The analytics session then resets the browser identity on
   off, or re-verifies the account and identifies on on. The switch is
   optimistic and returns to the last saved value when the save fails or the
   session ended; nothing is written to the device then. A device choice
-  saved while the save ran (its own analytics switch, another tab) or a
-  change of signed-in account also leaves the device as it is.
+  saved while the save ran (its own analytics switch, another tab), or a
+  session no longer signed in to the account the decision was recorded for,
+  also leaves the device as it is.
 - Other devices take a withdrawal at their next signed-in page load: the
   hydration mirror (`recordSignedInDeviceAnalyticsConsent`) returns the
   account's withdrawal when the device's saved choice accepts analytics and
