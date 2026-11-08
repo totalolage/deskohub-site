@@ -93,6 +93,12 @@ export const getDatasourceConfig = (environment: E2EEnvironment) => {
   return {
     databaseUrl,
     databaseUrlUnpooled,
+    fixtureCapacityTarget: {
+      baseUrl: environment.WORKSPACE_E2E_BASE_URL,
+      targetSha: environment.TARGET_SHA,
+      githubRunId: environment.GITHUB_RUN_ID,
+      githubRunAttempt: environment.GITHUB_RUN_ATTEMPT,
+    },
     dotypos: {
       apiTimeout: dotyposApiTimeoutDefaultMilliseconds,
       apiUrl: environment.DOTYPOS_API_URL,

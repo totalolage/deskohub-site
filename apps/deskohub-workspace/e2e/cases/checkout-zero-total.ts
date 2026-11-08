@@ -56,6 +56,7 @@ export const executeZeroTotalCheckout = ({
           timeoutMs: config.timeouts.browserNavigation,
         });
         return yield* submitReservationForPayPage({
+          data,
           onOrderId: (startedOrderId) => {
             state.orderId = startedOrderId;
           },
