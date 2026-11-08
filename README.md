@@ -22,3 +22,5 @@ Workspace also provides authenticated administration tools for operators to mana
 - [Boardgame Bar reservation notifications](apps/deskohub-boardgame-bar/docs/reservation-notifications.md)
 
 Implementation and operational guidance lives in the repository skills under `.agents/skills`.
+
+<!-- CI evidence probe for #1034; this pull request is closed unmerged. -->
