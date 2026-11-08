@@ -58,18 +58,21 @@ const openFailure = (
 ) =>
   Effect.runPromise(Effect.flip(openReservationAccessCookie(input, options)));
 
+/** Signs encoded claims with `key` for `purpose`, as the cookie format does. */
+const signEncodedClaims = (
+  encodedClaims: string,
+  key = secret,
+  purpose = "reservation-access-cookie"
+) =>
+  `${encodedClaims}.${createHmac("sha256", key)
+    .update(`${purpose}.${encodedClaims}`)
+    .digest("base64url")}`;
+
 /** Seals arbitrary claims the way the cookie format signs them. */
 const sealClaims = (
   claims: Readonly<Record<string, string | number | boolean>>
-) => {
-  const encodedClaims = Buffer.from(JSON.stringify(claims)).toString(
-    "base64url"
-  );
-  const signature = createHmac("sha256", secret)
-    .update(`reservation-access-cookie.${encodedClaims}`)
-    .digest("base64url");
-  return `${encodedClaims}.${signature}`;
-};
+) =>
+  signEncodedClaims(Buffer.from(JSON.stringify(claims)).toString("base64url"));
 
 const validClaims = {
   purpose: "reservation-access-cookie",
@@ -373,13 +376,19 @@ describe("reservation access cookie", () => {
       `.${encodedSignature}`,
       `${value}.extra`,
       `${Buffer.from("not json").toString("base64url")}.${encodedSignature}`,
+      `${encodedClaims}.${encodedSignature?.slice(0, -1)}`,
+      `${value}=`,
+      `${Buffer.from([0xff, 0xfe]).toString("base64url")}.${encodedSignature}`,
     ]) {
       expect(
         await openFailure(
           { value: malformed ?? "", orderId },
           { now: () => now, secret: "" }
         )
-      ).toMatchObject({ code: "invalid-cookie" });
+      ).toMatchObject({
+        code: "invalid-cookie",
+        message: "Reservation access cookie is invalid.",
+      });
     }
   });
 
@@ -396,19 +405,23 @@ describe("reservation access cookie", () => {
     }
   });
 
-  test("rejects a signature from another secret or of another length", async () => {
+  test("rejects a signature from another secret, for another purpose or of another length", async () => {
     const value = await seal();
-    const [encodedClaims] = value.split(".");
-    const otherSignature = createHmac("sha256", Buffer.alloc(32, 14))
-      .update(`reservation-access-cookie.${encodedClaims}`)
-      .digest("base64url");
+    const [encodedClaims = ""] = value.split(".");
+    const otherSecretCookie = signEncodedClaims(
+      encodedClaims,
+      Buffer.alloc(32, 14)
+    );
 
+    expect(signEncodedClaims(encodedClaims)).toBe(value);
     for (const forged of [
-      `${encodedClaims}.${otherSignature}`,
-      `${encodedClaims}.${otherSignature.slice(0, 20)}`,
+      otherSecretCookie,
+      signEncodedClaims(encodedClaims, secret, "reservation-access"),
+      otherSecretCookie.slice(0, encodedClaims.length + 21),
     ]) {
       expect(await openFailure({ value: forged, orderId })).toMatchObject({
         code: "invalid-cookie",
+        message: "Reservation access cookie is invalid.",
       });
     }
   });
