@@ -213,8 +213,9 @@ export type CustomerCheckoutDiscountCodeResult =
 /**
  * A submitted checkout. `payment_required`: open `paymentUrl` (the payment
  * gateway); it returns to the Workspace site, which redirects to
- * `statusUrl`. `paid`: nothing is left to pay. `price_review`: the price
- * changed at submission.
+ * `statusUrl`: the site's status page, or the app screen the submission's
+ * `returnTarget` names. `paid`: nothing is left to pay; `statusUrl` follows
+ * the same choice. `price_review`: the price changed at submission.
  */
 export const CustomerCheckoutSubmission = Schema.Union([
   Schema.Struct({
@@ -329,6 +330,19 @@ export const AcceptCustomerCheckoutPriceChange = Schema.Struct(
   parseOptions: customerInputParseOptions,
 });
 
+/**
+ * The app a payment returns the customer to. `native-app`:
+ * `deskohub://reservations/{orderId}?after=payment`, which ends the app's
+ * payment browser session. `web-app`:
+ * `/app/reservations/{orderId}?after=payment` on the Workspace origin.
+ */
+export const CustomerCheckoutReturnTarget = Schema.Literals([
+  "native-app",
+  "web-app",
+]).annotate({ identifier: "CustomerCheckoutReturnTarget" });
+export type CustomerCheckoutReturnTarget =
+  typeof CustomerCheckoutReturnTarget.Type;
+
 export const SubmitCustomerCheckout = Schema.Struct({
   ...PayStateStep,
   /** The customer accepted the terms and operating rules. */
@@ -339,6 +353,8 @@ export const SubmitCustomerCheckout = Schema.Struct({
   acceptedLegalDocuments: Schema.Array(
     Schema.Struct({ key: Schema.String, hash: Schema.String })
   ),
+  /** Absent: the payment returns to the Workspace site's status page. */
+  returnTarget: Schema.optionalKey(CustomerCheckoutReturnTarget),
 }).annotate({
   identifier: "SubmitCustomerCheckout",
   parseOptions: customerInputParseOptions,
