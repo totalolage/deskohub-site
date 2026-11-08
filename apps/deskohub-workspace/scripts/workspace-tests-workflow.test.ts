@@ -292,6 +292,8 @@ describe("shard selection step", () => {
     await git("merge", "switch", "--quiet", "-");
     await git("merge", "merge", "--quiet", "--no-ff", "-m", "merge", "change");
     merge = await git("merge", "rev-parse", "HEAD");
+    // A parent to compare with, but no merge.
+    await git("linear", "commit", "--quiet", "--allow-empty", "-m", "change");
     linear = await git("linear", "rev-parse", "HEAD");
   });
 
@@ -362,6 +364,9 @@ exit ${exitCode}
       runSelection("{}"),
       runSelection(JSON.stringify({ tasks: {} })),
       runSelection(JSON.stringify({ tasks: [{ task: "test:shard-1" }] })),
+      runSelection(
+        `${dryRunOf([])}\n${dryRunOf(["deskohub-workspace#test:shard-1"])}`
+      ),
       // Not the commit the run is for, or not a merge commit.
       runSelection(dryRunOf([]), { head: base }),
       runSelection(dryRunOf([]), { repository: "linear", head: linear }),
