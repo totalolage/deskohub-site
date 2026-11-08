@@ -1,5 +1,5 @@
-import { PlaceholderScreen } from "../../../../src/ui/placeholder-screen";
+import { LegalScreen } from "../../../../src/account/legal/legal-screen";
 
 export default function LegalRoute() {
-  return <PlaceholderScreen />;
+  return <LegalScreen />;
 }
