@@ -152,6 +152,7 @@
       "devDependencies": {
         "@inlang/paraglide-js": "^2.26.0",
         "@types/react": "^19.3.0",
+        "@types/react-dom": "^19.3.0",
         "chokidar-cli": "^3.0.0",
         "typescript": "npm:@typescript/typescript6@6.0.2",
       },
