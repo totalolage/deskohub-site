@@ -418,12 +418,23 @@ const serverLayer = (workspace: FakeWorkspace) => {
         })
       )
       .handle("deletePasskey", ({ payload }) =>
-        update((data) => ({
-          ...data,
-          passkeys: data.passkeys.filter(
-            (candidate) => candidate.id !== payload.id
-          ),
-        })).pipe(Effect.as({ status: true }))
+        Effect.suspend(() => {
+          if (
+            !workspace.data.passkeys.some(
+              (candidate) => candidate.id === payload.id
+            )
+          ) {
+            return Effect.fail(
+              new CustomerAuthRejected({ reason: "not-found" })
+            );
+          }
+          return update((data) => ({
+            ...data,
+            passkeys: data.passkeys.filter(
+              (candidate) => candidate.id !== payload.id
+            ),
+          })).pipe(Effect.as({ status: true }));
+        })
       )
       .handle("deleteConsent", ({ payload }) =>
         update((data) => ({
