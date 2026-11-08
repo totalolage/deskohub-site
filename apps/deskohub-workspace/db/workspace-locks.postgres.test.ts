@@ -146,6 +146,13 @@ describe.skipIf(!suiteDatabase)(
           accountProbe(`account-${id}`),
         ],
         [
+          "analyticsConsentLedger",
+          WorkspaceLocks.analyticsConsentLedger(
+            `account-${id}` as CustomerAccountId
+          ),
+          pairProbe("analytics-consent-ledger", `account-${id}`),
+        ],
+        [
           "referralFirstBooking",
           WorkspaceLocks.referralFirstBooking(
             `customer-${id}` as DotyposCustomerId

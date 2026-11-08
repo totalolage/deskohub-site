@@ -21,6 +21,28 @@ Code: `features/account/analytics-identity.ts`,
   `consent_update` dataLayer event follows in a microtask, for first consent
   and changes only. Externally managed tags rely on that order.
 
+## Account analytics consent ledger
+
+- The account keeps every analytics consent decision it made in
+  `account_analytics_consent_decisions`: grant or withdrawal, the privacy
+  notice hash and locale it was given under, when it was made, and its
+  source. It exists so the server can read a booker's current decision
+  without a browser; the vocabulary and ordering rules are in the
+  `deskohub-workspace-domain` skill's
+  [analytics consent](../../deskohub-workspace-domain/references/analytics-consent.md)
+  reference.
+- The strict reader's `readConsentCookieChoice` also returns the cookie's
+  `lastConsentTimestamp` and `languageCode`; mirrors date a decision at that
+  timestamp. Browser and server keep using the one reader.
+- The ledger is written at sign-in (Better Auth's session create hook), when
+  a signed-in page hydrates or the visitor saves the banner in that tab
+  (`AccountAnalyticsConsentMirror` calling `recordDeviceAnalyticsConsent`),
+  and in Pay-state preparation. A customer agent's booking carries no device
+  choice and mirrors nothing.
+- Nothing about the ledger reaches PostHog: no new identifier, property, or
+  event, and the banner, consent cookie, and capture rules are unchanged.
+- Rows cascade with the `auth.user` row when the account is deleted.
+
 ## Account identity contract
 
 - The account analytics boundary publishes only `pending`, `unavailable`,
