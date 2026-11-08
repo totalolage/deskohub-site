@@ -82,10 +82,10 @@
   "discountsCalendarOpen": "Otvoriť kalendár",
   "discountsCustomerCodeCreateLoading": "Načítava sa formulár zľavového kódu",
   "discountsCustomerCodeCreateDescription": "Vytvorte kód obmedzený na tohto zákazníka a zvoľte zľavu, ktorú uplatní.",
-  "discountsCustomerCodeCreateTitle": "Vytvorenie zľavového kódu pre zákazníka {customerName}",
+  "discountsCustomerCodeCreateTitle": "Nový zľavový kód pre zákazníka: {customerName}",
   "discountsCustomerVoucherCreateLoading": "Načítava sa formulár poukážky",
   "discountsCustomerVoucherCreateDescription": "Vydajte propagačný kredit, ktorý môže využiť iba tento zákazník.",
-  "discountsCustomerVoucherCreateTitle": "Vytvorenie poukážky pre zákazníka {customerName}",
+  "discountsCustomerVoucherCreateTitle": "Nová poukážka pre zákazníka: {customerName}",
   "discountsDiscountCodeEyebrow": "Zľavový kód",
   "discountsVoucherEyebrow": "Poukážka",
   "discountsCodeCreateButton": "Vytvoriť zľavový kód",
@@ -151,8 +151,8 @@
   "discountsCodeDeleteConfirmation": "Odstrániť kód „{code}“? Kódy s históriou uplatnení nemožno odstrániť. Ak chcete históriu zachovať, kód deaktivujte. Túto akciu nemožno vrátiť späť.",
   "discountsVoucherDeleteConfirmation": "Odstrániť poukážku „{code}“? Poukážky s históriou uplatnení nemožno odstrániť. Ak chcete históriu zachovať, poukážku deaktivujte. Túto akciu nemožno vrátiť späť.",
   "discountsDiscountDeleteConfirmation": "Odstrániť zľavu „{label}“? Zľavy, na ktoré niečo odkazuje, nemožno odstrániť. Túto akciu nemožno vrátiť späť.",
-  "discountsDeleteItemLabel": "Odstrániť {name}",
-  "discountsEditItemLabel": "Upraviť {name}",
+  "discountsDeleteItemLabel": "Odstrániť: {name}",
+  "discountsEditItemLabel": "Upraviť: {name}",
   "discountsVoucherSave": "Uložiť poukážku",
   "discountsDiscountSave": "Uložiť zľavu",
   "discountsCodeSave": "Uložiť kód",
@@ -173,7 +173,7 @@
   "discountsCalendarMissingDiscountId": "Bez ID zľavy",
   "discountsDiscountCreateSubmit": "Vytvoriť zľavu",
   "discountsVoucherCreateSubmit": "Vytvoriť poukážku",
-  "discountsVoucherCustomerRestriction": "Nová poukážka bude k dispozícii iba zákazníkovi {customerName}.",
+  "discountsVoucherCustomerRestriction": "Novú poukážku bude môcť použiť iba tento zákazník: {customerName}.",
   "discountsCalendarIdLabel": "ID pre kalendár",
   "discountsCreatedDiscountNotice": "{notice} ID pre kalendár: {calendarId}",
   "discountsSaveFailedCheckForm": "Zmenu sa nepodarilo uložiť. Skontrolujte formulár a skúste to znova.",
@@ -268,7 +268,7 @@
   "discountsCodeCreateFailedRetry": "Zľavový kód sa nepodarilo vytvoriť. Skúste to znova.",
   "discountsCodeCreateAnother": "Vytvoriť ďalší kód",
   "discountsCodeCreateSubmit": "Vytvoriť zľavový kód",
-  "discountsCodeCustomerRestriction": "Nový kód bude k dispozícii iba zákazníkovi {customerName}.",
+  "discountsCodeCustomerRestriction": "Nový kód bude môcť použiť iba tento zákazník: {customerName}.",
   "discountsCodeDiscountChoiceDescription": "Zvoľte, akú zľavu má kód uplatniť.",
   "discountsCodeDiscountExisting": "Použiť existujúcu zľavu",
   "discountsCodeDiscountExistingDescription": "Spojte kód so zľavou, ktorá je už nastavená.",
@@ -326,8 +326,8 @@
   "discountsCustomerDetailsUnavailable": "Podrobnosti nie sú dostupné",
   "discountsCustomerNoContactDetails": "Bez kontaktných údajov",
   "discountsUnnamedCustomer": "Zákazník bez mena",
-  "discountsCodeRemoveCustomerConfirmation": "Odobrať zákazníka {customerName} z okruhu zákazníkov kódu?",
-  "discountsVoucherRemoveCustomerConfirmation": "Odobrať zákazníka {customerName} z okruhu zákazníkov poukážky?",
+  "discountsCodeRemoveCustomerConfirmation": "Odobrať z okruhu zákazníkov kódu tohto zákazníka: {customerName}?",
+  "discountsVoucherRemoveCustomerConfirmation": "Odobrať z okruhu zákazníkov poukážky tohto zákazníka: {customerName}?",
   "discountsRemove": "Odobrať",
   "discountsUseMakeUnrestricted": "Použite „Zrušiť obmedzenie“",
   "discountsAddCustomer": "Pridať zákazníka",
@@ -431,22 +431,22 @@
   "discountsSaveGroup": "Uložiť skupinu",
   "discountsDiscountGroupNone": "Bez zľavovej skupiny",
   "discountsDiscountGroupUnavailable": "Nedostupná skupina ({groupId})",
-  "discountsCodeRemoveCustomerLabel": "Odobrať zákazníka {customerName} z kódu {code}",
-  "discountsVoucherRemoveCustomerLabel": "Odobrať zákazníka {customerName} z poukážky {code}",
-  "discountsCodeAddCustomerLabel": "Pridať zákazníka {customerName} ku kódu {code}",
-  "discountsVoucherAddCustomerLabel": "Pridať zákazníka {customerName} k poukážke {code}",
-  "discountsCodeLimitTitle": "Obmedziť kód {code} na zákazníka {customerName}?",
-  "discountsVoucherLimitTitle": "Obmedziť poukážku {code} na zákazníka {customerName}?",
+  "discountsCodeRemoveCustomerLabel": "Odobrať z kódu {code} zákazníka: {customerName}",
+  "discountsVoucherRemoveCustomerLabel": "Odobrať z poukážky {code} zákazníka: {customerName}",
+  "discountsCodeAddCustomerLabel": "Pridať ku kódu {code} zákazníka: {customerName}",
+  "discountsVoucherAddCustomerLabel": "Pridať k poukážke {code} zákazníka: {customerName}",
+  "discountsCodeLimitTitle": "Obmedziť kód {code} na tohto zákazníka: {customerName}?",
+  "discountsVoucherLimitTitle": "Obmedziť poukážku {code} na tohto zákazníka: {customerName}?",
   "discountsCodeLimitDescription": "Kód {code} je teraz dostupný všetkým zákazníkom. Po obmedzení ho bude môcť použiť iba zákazník {customerName}.",
   "discountsVoucherLimitDescription": "Poukážka {code} je teraz dostupná všetkým zákazníkom. Po obmedzení ju bude môcť použiť iba zákazník {customerName}.",
   "discountsRemoveOnlyCustomerTitle": "Odobrať jediného oprávneného zákazníka?",
-  "discountsCodeRemoveOnlyCustomerDescription": "Odobratím zákazníka {customerName} by kód {code} zostal bez okruhu zákazníkov, a bol by tak dostupný všetkým. Vyberte, či chcete kód odstrániť alebo sprístupniť všetkým.",
-  "discountsVoucherRemoveOnlyCustomerDescription": "Odobratím zákazníka {customerName} by poukážka {code} zostala bez okruhu zákazníkov, a bola by tak dostupná všetkým. Vyberte, či chcete poukážku odstrániť alebo sprístupniť všetkým.",
-  "discountsRemoveCustomerTitle": "Odobrať zákazníka {customerName}?",
+  "discountsCodeRemoveOnlyCustomerDescription": "Odobratím tohto zákazníka ({customerName}) by kód {code} zostal bez okruhu zákazníkov, a bol by tak dostupný všetkým. Vyberte, či chcete kód odstrániť alebo sprístupniť všetkým.",
+  "discountsVoucherRemoveOnlyCustomerDescription": "Odobratím tohto zákazníka ({customerName}) by poukážka {code} zostala bez okruhu zákazníkov, a bola by tak dostupná všetkým. Vyberte, či chcete poukážku odstrániť alebo sprístupniť všetkým.",
+  "discountsRemoveCustomerTitle": "Odobrať zákazníka: {customerName}?",
   "discountsCodeRemoveCustomerDescription": "Zákazník {customerName} už nebude môcť použiť kód {code}.",
   "discountsVoucherRemoveCustomerDescription": "Zákazník {customerName} už nebude môcť použiť poukážku {code}.",
-  "discountsCodeAddCustomerTitle": "Pridať zákazníka {customerName} ku kódu {code}?",
-  "discountsVoucherAddCustomerTitle": "Pridať zákazníka {customerName} k poukážke {code}?",
+  "discountsCodeAddCustomerTitle": "Pridať ku kódu {code} zákazníka: {customerName}?",
+  "discountsVoucherAddCustomerTitle": "Pridať k poukážke {code} zákazníka: {customerName}?",
   "discountsCodeAddCustomerDialogDescription": [
     {
       "declarations": [
@@ -460,10 +460,10 @@
         "countPlural"
       ],
       "match": {
-        "countPlural=one": "Kód {code} je teraz obmedzený na {formattedCount} ďalšieho zákazníka. Po pridaní zákazníka {customerName} bude dostupný {formattedTotal} zákazníkom.",
-        "countPlural=few": "Kód {code} je teraz obmedzený na {formattedCount} ďalších zákazníkov. Po pridaní zákazníka {customerName} bude dostupný {formattedTotal} zákazníkom.",
-        "countPlural=many": "Kód {code} je teraz obmedzený na {formattedCount} ďalšieho zákazníka. Po pridaní zákazníka {customerName} bude dostupný {formattedTotal} zákazníkom.",
-        "countPlural=other": "Kód {code} je teraz obmedzený na {formattedCount} ďalších zákazníkov. Po pridaní zákazníka {customerName} bude dostupný {formattedTotal} zákazníkom."
+        "countPlural=one": "Kód {code} je teraz obmedzený na {formattedCount} ďalšieho zákazníka. Po pridaní tohto zákazníka ({customerName}) bude dostupný {formattedTotal} zákazníkom.",
+        "countPlural=few": "Kód {code} je teraz obmedzený na {formattedCount} ďalších zákazníkov. Po pridaní tohto zákazníka ({customerName}) bude dostupný {formattedTotal} zákazníkom.",
+        "countPlural=many": "Kód {code} je teraz obmedzený na {formattedCount} ďalšieho zákazníka. Po pridaní tohto zákazníka ({customerName}) bude dostupný {formattedTotal} zákazníkom.",
+        "countPlural=other": "Kód {code} je teraz obmedzený na {formattedCount} ďalších zákazníkov. Po pridaní tohto zákazníka ({customerName}) bude dostupný {formattedTotal} zákazníkom."
       }
     }
   ],
@@ -480,10 +480,10 @@
         "countPlural"
       ],
       "match": {
-        "countPlural=one": "Poukážka {code} je teraz obmedzená na {formattedCount} ďalšieho zákazníka. Po pridaní zákazníka {customerName} bude dostupná {formattedTotal} zákazníkom.",
-        "countPlural=few": "Poukážka {code} je teraz obmedzená na {formattedCount} ďalších zákazníkov. Po pridaní zákazníka {customerName} bude dostupná {formattedTotal} zákazníkom.",
-        "countPlural=many": "Poukážka {code} je teraz obmedzená na {formattedCount} ďalšieho zákazníka. Po pridaní zákazníka {customerName} bude dostupná {formattedTotal} zákazníkom.",
-        "countPlural=other": "Poukážka {code} je teraz obmedzená na {formattedCount} ďalších zákazníkov. Po pridaní zákazníka {customerName} bude dostupná {formattedTotal} zákazníkom."
+        "countPlural=one": "Poukážka {code} je teraz obmedzená na {formattedCount} ďalšieho zákazníka. Po pridaní tohto zákazníka ({customerName}) bude dostupná {formattedTotal} zákazníkom.",
+        "countPlural=few": "Poukážka {code} je teraz obmedzená na {formattedCount} ďalších zákazníkov. Po pridaní tohto zákazníka ({customerName}) bude dostupná {formattedTotal} zákazníkom.",
+        "countPlural=many": "Poukážka {code} je teraz obmedzená na {formattedCount} ďalšieho zákazníka. Po pridaní tohto zákazníka ({customerName}) bude dostupná {formattedTotal} zákazníkom.",
+        "countPlural=other": "Poukážka {code} je teraz obmedzená na {formattedCount} ďalších zákazníkov. Po pridaní tohto zákazníka ({customerName}) bude dostupná {formattedTotal} zákazníkom."
       }
     }
   ],
