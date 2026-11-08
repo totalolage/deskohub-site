@@ -189,6 +189,143 @@ describe("useUnsavedChangesGuard", () => {
   });
 });
 
+/**
+ * The account stack with both profile editors over one shared draft. It
+ * removes routes as a stack navigator does: an action removing several
+ * routes is blocked when any of them prevents removal, and the blocked
+ * screen gets the action back as `repeat`.
+ */
+const editorStack = () => {
+  const draft: { edits: string | undefined } = { edits: "Othertown" };
+  const guards = new Map<string, Guard>();
+  let rerender: () => void = () => undefined;
+  const editors: Record<string, ReadonlyArray<string>> = {
+    billing: ["profile"],
+    profile: ["billing"],
+  };
+
+  function Editor({ routeKey, name }: { routeKey: string; name: string }) {
+    currentKey = routeKey;
+    guards.set(
+      routeKey,
+      useUnsavedChangesGuard({
+        unsaved: draft.edits !== undefined,
+        onDiscard: () => {
+          draft.edits = undefined;
+          rerender();
+        },
+        sharedWith: editors[name] ?? [],
+      })
+    );
+    return null;
+  }
+
+  function Stack() {
+    const [, setVersion] = useState(0);
+    rerender = () => setVersion((version) => version + 1);
+    return createElement(
+      "div",
+      null,
+      navigator.routes
+        .filter(({ name }) => name in editors)
+        .map(({ key, name }) =>
+          createElement(Editor, { key, routeKey: key, name })
+        )
+    );
+  }
+
+  const remove = async (keys: ReadonlyArray<string>) => {
+    let removals = 0;
+    const run = async (): Promise<void> => {
+      const blocking = keys.find(
+        (key) => navigator.prevention.get(key)?.prevent === true
+      );
+      if (blocking !== undefined) {
+        navigator.prevention.get(blocking)?.blocked({
+          repeat: () => {
+            void run();
+          },
+        });
+        rerender();
+        return;
+      }
+      removals += 1;
+      navigator.routes = navigator.routes.filter(
+        ({ key }) => !keys.includes(key)
+      );
+      for (const key of keys) navigator.prevention.delete(key);
+      rerender();
+    };
+    await act(run);
+    return { removals: () => removals };
+  };
+
+  return { Stack, draft, guards, remove };
+};
+
+describe("profile editors in the account stack", () => {
+  const openBoth = async () => {
+    navigator.routes = [
+      { key: "si", name: "index" },
+      { key: "sb", name: "billing" },
+      { key: "sp", name: "profile" },
+    ];
+    const stack = editorStack();
+    await render(createElement(stack.Stack));
+    return stack;
+  };
+
+  test("back from Profile to Billing keeps the shared edits without asking", async () => {
+    const stack = await openBoth();
+
+    await stack.remove(["sp"]);
+
+    expect(navigator.routes.map(({ name }) => name)).toEqual([
+      "index",
+      "billing",
+    ]);
+    expect(stack.draft.edits).toBe("Othertown");
+    expect(stack.guards.get("sb")?.asking).toBe(false);
+    expect(navigator.prevention.get("sb")?.prevent).toBe(true);
+  });
+
+  test("leaving both editors at once asks, and keep editing keeps routes and edits", async () => {
+    const stack = await openBoth();
+
+    const leaving = await stack.remove(["sp", "sb"]);
+    expect(stack.guards.get("sb")?.asking).toBe(true);
+    expect(leaving.removals()).toBe(0);
+
+    await act(async () => stack.guards.get("sb")?.keepEditing());
+
+    expect(stack.guards.get("sb")?.asking).toBe(false);
+    expect(navigator.routes).toHaveLength(3);
+    expect(stack.draft.edits).toBe("Othertown");
+  });
+
+  test("discard while leaving both clears the edits and leaves once", async () => {
+    const stack = await openBoth();
+    const leaving = await stack.remove(["sp", "sb"]);
+
+    await act(async () => stack.guards.get("sb")?.discard());
+
+    expect(stack.draft.edits).toBeUndefined();
+    expect(leaving.removals()).toBe(1);
+    expect(navigator.routes.map(({ name }) => name)).toEqual(["index"]);
+  });
+
+  test("back from Billing alone, once Profile is gone, asks", async () => {
+    const stack = await openBoth();
+    await stack.remove(["sp"]);
+
+    const leaving = await stack.remove(["sb"]);
+
+    expect(stack.guards.get("sb")?.asking).toBe(true);
+    expect(leaving.removals()).toBe(0);
+    expect(stack.draft.edits).toBe("Othertown");
+  });
+});
+
 describe("useFocusFirstInvalid", () => {
   const refusal = (field: CompletionTextField): ProfileSubmitState =>
     SubmitState.Invalid({
