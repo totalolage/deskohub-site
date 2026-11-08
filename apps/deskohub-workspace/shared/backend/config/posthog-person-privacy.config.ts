@@ -23,10 +23,10 @@ export const getPostHogPersonDeletionAttemptTimeout = (
   });
 
 /**
- * The longest a person deletion, with its retries, may take: Vercel's
- * 300-second function limit, which also bounds work scheduled after the
- * response, less room for the ledger reads, the cold start, and the
- * telemetry flush.
+ * The longest a person deletion, ledger reads and retries included, may run.
+ * Vercel's 300-second function limit also bounds work scheduled after the
+ * response; the rest is room for the request before it, the cold start, and
+ * the telemetry flush. The deletion is cut off at this budget.
  */
 export const postHogPersonDeletionBudget = Duration.seconds(240);
 

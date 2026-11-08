@@ -8,7 +8,10 @@ import {
 import { Context, Effect, Layer, Match, Option } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { AnalyticsConsentLedger } from "@/features/legal/backend/analytics-consent-ledger";
-import { PostHogPersonPrivacyConfig } from "@/shared/backend/config/posthog-person-privacy.config";
+import {
+  PostHogPersonPrivacyConfig,
+  postHogPersonDeletionBudget,
+} from "@/shared/backend/config/posthog-person-privacy.config";
 import { runWorkspaceEffectAfterResponse } from "@/shared/backend/workspace-effect";
 import type { CustomerAccountId } from "../customer-account";
 import { getPostHogAccountDistinctId } from "../posthog-account-distinct-id";
@@ -50,8 +53,7 @@ export class AnalyticsPersonAnonymisation extends Context.Service<
       const persons = yield* Option.match(config.persons, {
         onNone: () => Effect.succeedNone,
         onSome: (personsConfig) =>
-          PostHogPersonsService.asEffect().pipe(
-            Effect.map(Option.some),
+          Effect.map(PostHogPersonsService, Option.some).pipe(
             Effect.provide(
               PostHogPersonsService.Default.pipe(
                 Layer.provide(PostHogPersonsConfig.from(personsConfig))
@@ -104,12 +106,14 @@ export class AnalyticsPersonAnonymisation extends Context.Service<
         anonymiseDeletedAccount: (accountId) =>
           runWorkspaceEffectAfterResponse(
             "account.analytics-person-anonymisation.deleted-account",
-            deletePerson(accountId)
+            deletePerson(accountId).pipe(withinDeletionBudget)
           ),
         anonymiseWithdrawnAccount: (accountId) =>
           runWorkspaceEffectAfterResponse(
             "account.analytics-person-anonymisation.withdrawn-account",
-            deletePerson(accountId, isStillWithdrawn(accountId))
+            deletePerson(accountId, isStillWithdrawn(accountId)).pipe(
+              withinDeletionBudget
+            )
           ),
       } satisfies IAnalyticsPersonAnonymisation;
     })
@@ -125,6 +129,23 @@ export class AnalyticsPersonAnonymisation extends Context.Service<
     )
   );
 }
+
+/**
+ * Bounds the whole deletion, ledger reads included, so it ends inside the
+ * function limit that also bounds work after the response. A deletion cut
+ * off mid-request may have applied.
+ */
+const withinDeletionBudget = (deletion: Effect.Effect<void>) =>
+  deletion.pipe(
+    Effect.timeoutOrElse({
+      duration: postHogPersonDeletionBudget,
+      orElse: () =>
+        Effect.logWarning(
+          "PostHog person anonymisation ran out of time; it may not have applied.",
+          { code: "posthog_person_anonymisation_timed_out" }
+        ),
+    })
+  );
 
 const logDeletion = Match.type<PostHogPersonDeletion>().pipe(
   Match.when("deleted", () =>

@@ -2,6 +2,7 @@ import type { DotyposCustomer, DotyposCustomerId } from "@deskohub/dotypos";
 import { Context, Data, Effect, Layer, Option } from "effect";
 import type { SqlError } from "effect/unstable/sql";
 import { ReviewAccounts } from "@/features/review-accounts";
+import { catchRecoverableCause } from "@/shared/backend/workspace-effect";
 import type { CustomerAccountId } from "../customer-account";
 import { AnalyticsPersonAnonymisation } from "./analytics-person-anonymisation";
 import { CustomerAccountRepository } from "./customer-account.repository";
@@ -134,16 +135,17 @@ export const expireLinkedDotyposProfile = (
     // Only a tombstoned account loses its PostHog person. The deletion runs
     // after the response and never fails, so it can't undo the tombstone by
     // keeping Better Auth from removing the identity rows.
-    yield* dependencies
-      .anonymiseAnalyticsPerson(accountId)
-      .pipe(
-        Effect.catchCause((cause) =>
-          Effect.logWarning(
-            "Customer account deletion: PostHog person anonymisation not scheduled.",
-            { code: "account.deletion.analytics-person-not-scheduled", cause }
-          )
+    // Its cause stays out of the log, which must carry no identifiers.
+    yield* Effect.suspend(() =>
+      dependencies.anonymiseAnalyticsPerson(accountId)
+    ).pipe(
+      catchRecoverableCause(() =>
+        Effect.logWarning(
+          "Customer account deletion: PostHog person anonymisation not scheduled.",
+          { code: "account.deletion.analytics-person-not-scheduled" }
         )
-      );
+      )
+    );
   });
 
 interface ICustomerAccountDeletionService {

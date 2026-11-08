@@ -55,7 +55,13 @@ describe("PostHog person privacy config", () => {
     ).toBe(30);
   });
 
-  test("fits every deployment's retried deletion inside the after-response budget", () => {
+  test("keeps the after-response budget inside Vercel's 300-second function limit", () => {
+    expect(
+      Duration.isLessThan(postHogPersonDeletionBudget, Duration.seconds(300))
+    ).toBe(true);
+  });
+
+  test("fits every deployment's retried PostHog request inside the after-response budget", () => {
     for (const stage of ["production", "preview", "development"] as const) {
       expect(
         Duration.isLessThanOrEqualTo(

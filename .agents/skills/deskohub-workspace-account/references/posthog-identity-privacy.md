@@ -357,9 +357,12 @@ they carry the traffic category and the name of a recognized assistant.
   grant, after a withdrawal, or from a failed ledger read.
 - After anonymisation the person is gone, so the retained person-linked
   events can't be deleted through the person delete API
-  (`delete_events=true`) either. A request to erase them goes through the
-  same support request, matching `distinct_id`
-  `workspace-account:<accountId>`.
+  (`delete_events=true`) either. A request to erase them goes to PostHog
+  support too. Give `distinct_id` `workspace-account:<accountId>` as the
+  starting selector, and have support confirm it also covers the anonymous
+  history merged into the account at identify (see
+  [account identity contract](#account-identity-contract)); PostHog has not
+  confirmed it can erase events for a deleted person, so promise no outcome.
 
 ## Funnel insights
 

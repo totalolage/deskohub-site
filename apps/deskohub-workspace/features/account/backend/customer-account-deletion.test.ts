@@ -171,25 +171,40 @@ describe("Customer account deletion", () => {
     expect(calls).not.toContain("anonymise-analytics-person");
   });
 
-  test("completes the deletion when the PostHog person anonymisation dies", async () => {
-    let anonymisationRequests = 0;
-    const { dependencies, calls } = makeDependencies({
-      anonymiseAnalyticsPerson: () => {
-        anonymisationRequests += 1;
-        return Effect.die(new Error("synthetic anonymisation defect"));
-      },
-    });
+  test("completes the deletion and logs no identifier when the PostHog person anonymisation dies or throws", async () => {
+    for (const failure of ["dies", "throws"] as const) {
+      let anonymisationRequests = 0;
+      const logged: unknown[] = [];
+      const { dependencies, calls } = makeDependencies({
+        anonymiseAnalyticsPerson: (id) => {
+          anonymisationRequests += 1;
+          const defect = new Error(`synthetic defect for ${id}`);
+          if (failure === "throws") throw defect;
+          return Effect.die(defect);
+        },
+      });
 
-    const outcome = await Effect.runPromise(
-      expireLinkedDotyposProfile(dependencies)(accountId).pipe(
-        Effect.result,
-        Effect.provide(Logger.layer([]))
-      )
-    );
+      const outcome = await Effect.runPromise(
+        expireLinkedDotyposProfile(dependencies)(accountId).pipe(
+          Effect.result,
+          Effect.provide(
+            Logger.layer([
+              Logger.make(({ message }) => {
+                logged.push(message);
+              }),
+            ])
+          )
+        )
+      );
 
-    expect(outcome._tag).toBe("Success");
-    expect(anonymisationRequests).toBe(1);
-    expect(calls.slice(-2)).toEqual(["tombstone", "lock-release"]);
+      expect(outcome._tag).toBe("Success");
+      expect(anonymisationRequests).toBe(1);
+      expect(calls.slice(-2)).toEqual(["tombstone", "lock-release"]);
+      expect(JSON.stringify(logged)).toContain(
+        "account.deletion.analytics-person-not-scheduled"
+      );
+      expect(JSON.stringify(logged)).not.toContain(accountId);
+    }
   });
 
   test("tolerates a definitively missing provider profile", async () => {

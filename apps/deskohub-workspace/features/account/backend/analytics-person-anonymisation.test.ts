@@ -43,7 +43,12 @@ interface RecordedRequest {
 }
 
 type PostHogAnswer =
-  | { readonly status: number; readonly body?: unknown }
+  | {
+      readonly status: number;
+      readonly body?: unknown;
+      /** Runs when PostHog gives this answer. */
+      readonly onAnswer?: () => void;
+    }
   | "transport-failure";
 
 /** A PostHog API that records each request and gives the next answer; the last answer repeats. */
@@ -71,6 +76,7 @@ const makePostHog = (answers: readonly PostHogAnswer[]) => {
           })
         );
       }
+      answer.onAnswer?.();
       return Effect.succeed(
         HttpClientResponse.fromWeb(
           outgoing,
@@ -157,7 +163,7 @@ const makeAnonymisation = ({
     ) => Effect.Effect<void>
   ) =>
     Effect.runPromise(
-      Effect.flatMap(AnalyticsPersonAnonymisation.asEffect(), anonymise).pipe(
+      Effect.flatMap(AnalyticsPersonAnonymisation, anonymise).pipe(
         Effect.provide(layer)
       )
     );
@@ -298,6 +304,27 @@ describe("AnalyticsPersonAnonymisation", () => {
     expect(loggedCodes()).toEqual(
       expect.arrayContaining(["posthog_person_anonymisation_uncertain"])
     );
+    expectLogsFreeOfIdentifiers();
+  });
+
+  test("checks the ledger again before a retry and stops once a grant follows", async () => {
+    const grantAfterFirstAttempt = { now: () => {} };
+    const { postHog, schedule, ledger } = makeAnonymisation({
+      answers: [
+        { status: 429, onAnswer: () => grantAfterFirstAttempt.now() },
+        deleted,
+      ],
+    });
+    grantAfterFirstAttempt.now = () => {
+      ledger.current = "grant";
+    };
+
+    await schedule((service) => service.anonymiseWithdrawnAccount(accountId));
+    await sendResponse();
+
+    expect(postHog.requests).toHaveLength(1);
+    expect(ledger.reads).toBe(2);
+    expect(loggedCodes()).toContain("posthog_person_anonymisation_skipped");
     expectLogsFreeOfIdentifiers();
   });
 
